@@ -52,8 +52,35 @@ import {
  *   `createSessionStore` builds sessions over; see `runtime-composition.ts`
  *   lines ~1731-1743, "Keep the raw Storage so the durable engine can share
  *   the exact backend with the text-value KV view"). One key per
- *   `(principal, id)`, compare-and-swapped via `kv.conditionalBatch`. An
- *   entry older than `SESSION_INPUT_IDENTITY_TTL_MS` is treated as absent —
+ *   `(principal, id)`, compare-and-swapped via `kv.conditionalBatch`, holding
+ *   the session the id belongs to and whether that session's mailbox has
+ *   admitted it (`pending` from the claim until the mailbox commit,
+ *   `admitted` after). The rules the index keeps, and why:
+ *
+ *   - An identity is never deleted. A refusal (either backlog) or a thrown
+ *     admission leaves its `pending` claim in place, because another process
+ *     may already be admitting under it: deleting it would let the same id
+ *     into a second session while the first's record stood.
+ *   - A claim this session holds is a replay only if this session's mailbox
+ *     holds a record for the id. Otherwise the claim is an orphan of a refused
+ *     admission, and the attempt runs the full admission, principal check
+ *     included, so a retry at the limit is refused the way the original was.
+ *   - A claim another session holds answers `conflict` only if that session's
+ *     mailbox holds a record. A `pending` claim with no record is an orphan
+ *     and is taken over by compare-and-swap against the value read. The
+ *     owner of an admission still in flight loses that swap when it commits
+ *     its own record: it cancels the command it just admitted and answers
+ *     with that receipt (`canceled`), so one id is never live in two
+ *     sessions; its caller resends, and the resend reads the conflict.
+ *   - `admitted` with no record is unreachable while
+ *     `SESSION_INPUT_TERMINAL_RETENTION_MS` is at least
+ *     `SESSION_INPUT_IDENTITY_TTL_MS`: the mailbox keeps a terminal record
+ *     past the identity's lifetime, so the cross-session path always finds the
+ *     record it answers from and never throws. Should it happen anyway (a
+ *     replay refreshed an identity after its record terminalized), it is
+ *     treated as an orphan and taken over, never thrown on.
+ *
+ *   An entry older than `SESSION_INPUT_IDENTITY_TTL_MS` is treated as absent —
  *   claimable again — rather than kept forever: overwriting an expired
  *   entry keeps each key's OWN storage bounded (a stale value is replaced,
  *   never accumulated), and the tradeoff this makes explicit is that
@@ -94,29 +121,32 @@ export const SESSION_INPUT_COMMAND_TIMEOUT_MS = 7 * 86_400_000;
 export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
 
 /**
- * How long the mailbox keeps a terminal record (`promoted`, `canceled`,
- * `expired`, `rejected`) before retiring it, after which a replay of its id is
- * admitted as a fresh command. Weft's own default, made explicit because the
- * two retention windows below are derived from it.
+ * How long a `(principal, id) -> sessionId` identity claim is honored before
+ * being treated as absent: the command's whole lifetime plus a day's margin,
+ * so the same id can never be admitted to another session while the original
+ * is still open.
  */
-export const SESSION_INPUT_TERMINAL_RETENTION_MS = 86_400_000;
+export const SESSION_INPUT_IDENTITY_TTL_MS = SESSION_INPUT_COMMAND_TIMEOUT_MS + 86_400_000;
 
 /**
- * How long a `(principal, id) -> sessionId` identity claim is honored before
- * being treated as absent: the command's whole lifetime, plus the window in
- * which the mailbox still answers its id from the retained record. Shorter,
- * and the same id could be admitted to another session while the original
- * was still open.
+ * How long the mailbox keeps a terminal record (`promoted`, `canceled`,
+ * `expired`, `rejected`) before retiring it, after which a replay of its id is
+ * admitted as a fresh command. At least the identity's lifetime: a record is
+ * retired no earlier than its terminal transition plus this, and an identity
+ * is recorded no later than its admission, so the record the cross-session
+ * path answers a conflict from outlives the identity that names it. Weft's
+ * default of a day would retire an input that terminalized soon after
+ * admission while its identity still named the session, and the conflict
+ * would have no receipt to answer from.
  */
-export const SESSION_INPUT_IDENTITY_TTL_MS =
-  SESSION_INPUT_COMMAND_TIMEOUT_MS + SESSION_INPUT_TERMINAL_RETENTION_MS;
+export const SESSION_INPUT_TERMINAL_RETENTION_MS = SESSION_INPUT_IDENTITY_TTL_MS;
 
 /**
  * How long a delivery record outlives its last write: the identity's lifetime
- * (the command timeout plus the mailbox's terminal retention), plus a day's
- * margin. A record may be deleted only when its command can no longer be
- * claimed by any run and a replay of its caller's id is answered from the
- * mailbox's retained record or as a fresh admission with a new command.
+ * plus a day's margin. A record may be deleted only when its command can no
+ * longer be claimed by any run and a replay of its caller's id is answered
+ * from the mailbox's retained record or as a fresh admission with a new
+ * command.
  */
 export const SESSION_INPUT_DELIVERY_RETENTION_MS = SESSION_INPUT_IDENTITY_TTL_MS + 86_400_000;
 
@@ -155,9 +185,17 @@ function sessionInputIdentityKey(principal: string, id: string): string {
   return `${SESSION_INPUT_IDENTITY_KEY_PREFIX}:${encodeStorageKeyComponent(principal)}:${encodeStorageKeyComponent(id)}`;
 }
 
+/** Whether the named session's mailbox has committed a record for the id. */
+type SessionInputIdentityAdmission = 'pending' | 'admitted';
+
 interface SessionInputIdentityRecord {
   readonly sessionId: string;
   readonly recordedAtMs: number;
+  readonly admission: SessionInputIdentityAdmission;
+}
+
+function encodeSessionInputIdentityRecord(record: SessionInputIdentityRecord): string {
+  return JSON.stringify(record);
 }
 
 function parseSessionInputIdentityRecord(
@@ -172,7 +210,18 @@ function parseSessionInputIdentityRecord(
       typeof (parsed as { sessionId?: unknown }).sessionId === 'string' &&
       typeof (parsed as { recordedAtMs?: unknown }).recordedAtMs === 'number'
     ) {
-      return parsed as SessionInputIdentityRecord;
+      const { sessionId, recordedAtMs, admission } = parsed as {
+        sessionId: string;
+        recordedAtMs: number;
+        admission?: unknown;
+      };
+      // A record without the field predates it; it was only ever written
+      // after an admission, so it is read as admitted.
+      return {
+        sessionId,
+        recordedAtMs,
+        admission: admission === 'pending' ? 'pending' : 'admitted',
+      };
     }
     return undefined;
   } catch {
@@ -183,65 +232,76 @@ function parseSessionInputIdentityRecord(
   }
 }
 
-type SessionInputIdentityResult =
-  | { readonly matches: true; readonly created: false }
-  | {
-      readonly matches: true;
-      readonly created: true;
-      /**
-       * Removes the record this call wrote, if it is still the current one.
-       * Called when the admission that claimed it created no mailbox record,
-       * so the identity names nothing.
-       */
-      readonly release: () => Promise<void>;
-    }
-  | { readonly matches: false; readonly existingSessionId: string };
-
 /**
- * Claims (or confirms) this `(principal, id)` pair's identity as belonging
- * to `sessionId`. See the module doc for the TTL-bounded design.
+ * What the identity index says about this attempt, resolved against the
+ * mailbox records it names (see the module doc's rules).
  *
- * `created: true` means this call itself wrote the identity record (either
- * genuinely fresh, or refreshing one that had expired) — the caller uses
- * this to decide whether a principal-backlog check is warranted (a REPLAY
- * within the SAME session, `created: false`, must never be blocked by
- * backlog, since it creates nothing new).
+ * - `fresh`: this session holds the claim, `pending`, and must run the full
+ *   admission; `expected` is the value the commit swaps against.
+ * - `replay`: this session holds the claim and its mailbox holds the record,
+ *   so the principal check is skipped and the mailbox answers the replay;
+ *   `commit` says the identity still reads `pending` and is upgraded.
+ * - `conflict`: another session holds the id and its mailbox holds the record.
  */
-async function claimSessionInputIdentity(
-  kv: ConditionalTextValueStore,
-  principal: string,
+type SessionInputIdentityClaim =
+  | { readonly kind: 'fresh'; readonly expected: string | null }
+  | { readonly kind: 'replay'; readonly expected: string; readonly commit: boolean }
+  | {
+      readonly kind: 'conflict';
+      readonly existingSessionId: string;
+      readonly record: ApplicationCommandReceipt;
+    };
+
+/** The mailbox record admitted under `id`, if the mailbox still holds one. */
+async function findSessionInputRecord(
+  mailbox: Mailbox,
   id: string,
-  sessionId: string,
-  nowMs: number,
-): Promise<SessionInputIdentityResult> {
+): Promise<ApplicationCommandReceipt | undefined> {
+  const receipts = await mailbox.list({ limit: 1000 });
+  return receipts.find((receipt) => receipt.idempotencyKey === id);
+}
+
+async function resolveSessionInputIdentity(
+  attempt: SessionInputAdmissionAttempt,
+): Promise<SessionInputIdentityClaim> {
+  const { kv, storage, sessionMailbox, sessionId, id, principal, nowMs } = attempt;
   const key = sessionInputIdentityKey(principal, id);
-  for (let attempt = 0; attempt < SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS; attempt += 1) {
-    const currentRaw = await kv.get(key);
-    const current = parseSessionInputIdentityRecord(currentRaw);
-    const currentIsLive =
+  for (let cas = 0; cas < SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS; cas += 1) {
+    const raw = await kv.get(key);
+    const current = parseSessionInputIdentityRecord(raw);
+    const live =
       current !== undefined && nowMs - current.recordedAtMs <= SESSION_INPUT_IDENTITY_TTL_MS;
-    if (currentIsLive && current) {
-      if (current.sessionId === sessionId) return { matches: true, created: false };
-      return { matches: false, existingSessionId: current.sessionId };
+    if (live && current.sessionId === sessionId) {
+      const record = await findSessionInputRecord(sessionMailbox, id);
+      if (record === undefined) return { kind: 'fresh', expected: raw };
+      return { kind: 'replay', expected: raw as string, commit: current.admission === 'pending' };
     }
-    // Absent, or expired (treated as absent) — claim it for this session.
-    const nextValue = JSON.stringify({
+    if (live) {
+      const record = await findSessionInputRecord(
+        createSessionInputMailbox(
+          storage,
+          current.sessionId,
+          attempt.sessionBacklogLimitForCrossSessionRead,
+        ),
+        id,
+      );
+      if (record !== undefined) {
+        return { kind: 'conflict', existingSessionId: current.sessionId, record };
+      }
+      // An orphan: a claim no admission committed under (or, unreachable while
+      // the terminal retention covers the identity's lifetime, one whose record
+      // has been retired). Taken over below.
+    }
+    const pending = encodeSessionInputIdentityRecord({
       sessionId,
       recordedAtMs: nowMs,
-    } satisfies SessionInputIdentityRecord);
+      admission: 'pending',
+    });
     const committed = await kv.conditionalBatch(
-      [{ key, expectedValue: currentRaw }],
-      [{ type: 'set', key, value: nextValue }],
+      [{ key, expectedValue: raw }],
+      [{ type: 'set', key, value: pending }],
     );
-    if (committed) {
-      return {
-        matches: true,
-        created: true,
-        release: async () => {
-          await kv.conditionalBatch([{ key, expectedValue: nextValue }], [{ type: 'delete', key }]);
-        },
-      };
-    }
+    if (committed) return { kind: 'fresh', expected: pending };
     // Lost the compare-and-swap race — someone else wrote this key between
     // the read and the write above. Re-read and retry against fresh state.
   }
@@ -249,6 +309,37 @@ async function claimSessionInputIdentity(
     `Session-input identity index exceeded ${SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS} compare-and-swap attempts for principal "${principal}", id "${id}".`,
   );
 }
+
+/**
+ * Records that this session's mailbox holds a record for the id. `false` when
+ * the identity changed since `expected` was read: another attempt of this
+ * session committed first, or another session took the claim over while this
+ * admission was in flight; the caller tells which.
+ */
+async function commitSessionInputIdentity(
+  attempt: SessionInputAdmissionAttempt,
+  expected: string | null,
+): Promise<boolean> {
+  const key = sessionInputIdentityKey(attempt.principal, attempt.id);
+  return attempt.kv.conditionalBatch(
+    [{ key, expectedValue: expected }],
+    [
+      {
+        type: 'set',
+        key,
+        value: encodeSessionInputIdentityRecord({
+          sessionId: attempt.sessionId,
+          recordedAtMs: attempt.nowMs,
+          admission: 'admitted',
+        }),
+      },
+    ],
+  );
+}
+
+/** Reason recorded on a command cancelled because its identity was taken over by another session. */
+export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
+  'the same input id was admitted to another session while this admission was in flight';
 
 /** The payload a session input persists as, inside the session mailbox's inline command payload. */
 export interface PersistedSessionInput {
@@ -363,42 +454,6 @@ async function countOpenCommandsForPrincipal(mailbox: Mailbox, principal: string
   return receipts.filter((receipt) => receipt.caller === principal).length;
 }
 
-/**
- * Reconstructs the original {@link SessionInputReceipt} for a `session-mismatch`
- * conflict, by locating the record the identity index says this
- * `(principal, id)` actually belongs to.
- */
-async function reconstructCrossSessionReceipt(
-  storage: Storage,
-  kv: ConditionalTextValueStore,
-  originalSessionId: string,
-  id: string,
-  sessionBacklogLimitForRead: number,
-): Promise<SessionInputReceipt> {
-  const originalMailbox = createSessionInputMailbox(
-    storage,
-    originalSessionId,
-    sessionBacklogLimitForRead,
-  );
-  const receipts = await originalMailbox.list({ limit: 1000 });
-  const match = receipts.find((receipt) => receipt.idempotencyKey === id);
-  if (match === undefined) {
-    // Rare: requires the original session's record to have independently
-    // reached a terminal state and been swept past `terminalRetentionMs`
-    // while the identity index's own (longer-lived, TTL-bounded) entry is
-    // still live — not reachable by anything AC1-5 exercises. Fails closed
-    // rather than fabricating a receipt.
-    throw new Error(
-      `Session-input identity index names session "${originalSessionId}" for id "${id}", but no matching record was found there.`,
-    );
-  }
-  // The ORIGINAL session, not the one this admission attempt targets — a
-  // session-mismatch conflict's `originalReceipt` must reflect whatever
-  // that other record's OWN current state is, promoted or not.
-  const promotion = await readSessionInputPromotion(kv, originalSessionId, match.commandId);
-  return buildReceipt(match, decodeSessionInputKind(match.kind), promotion);
-}
-
 /** Input to {@link admitSessionInput}, gathering everything the admission decision needs. */
 export interface SessionInputAdmissionAttempt {
   readonly storage: Storage;
@@ -440,7 +495,6 @@ export async function admitSessionInput(
   attempt: SessionInputAdmissionAttempt,
 ): Promise<SessionInputAdmissionAttemptOutcome> {
   const {
-    storage,
     kv,
     sessionMailbox,
     sessionId,
@@ -449,8 +503,6 @@ export async function admitSessionInput(
     deliveryMode,
     payload,
     principalBacklogLimit,
-    sessionBacklogLimitForCrossSessionRead,
-    nowMs,
   } = attempt;
 
   // Fresh, not the caller's earlier snapshot: `submitSessionInput` loads the
@@ -464,58 +516,81 @@ export async function admitSessionInput(
     return readSessionInputPromotion(kv, sessionId, commandId);
   }
 
-  const identity = await claimSessionInputIdentity(kv, principal, id, sessionId, nowMs);
+  const claim = await resolveSessionInputIdentity(attempt);
 
-  if (!identity.matches) {
-    const originalReceipt = await reconstructCrossSessionReceipt(
-      storage,
+  if (claim.kind === 'conflict') {
+    // The ORIGINAL session's record, not the one this attempt targets: a
+    // session-mismatch conflict's `originalReceipt` reflects that record's own
+    // current state, promoted or not.
+    const promotion = await readSessionInputPromotion(
       kv,
-      identity.existingSessionId,
-      id,
-      sessionBacklogLimitForCrossSessionRead,
+      claim.existingSessionId,
+      claim.record.commandId,
     );
     return {
       outcome: 'conflict',
-      conflict: { id, reason: 'session-mismatch', originalReceipt },
+      conflict: {
+        id,
+        reason: 'session-mismatch',
+        originalReceipt: buildReceipt(
+          claim.record,
+          decodeSessionInputKind(claim.record.kind),
+          promotion,
+        ),
+      },
     };
   }
 
-  // The principal backlog is checked ONLY when the identity claim was
-  // genuinely fresh: a matched-existing claim (`created: false`) means the
-  // real session-mailbox record for this id already exists, and a replay
-  // of it must never be blocked by backlog — it creates nothing new. AC5
-  // ("before a record is created") is satisfied because this check runs
-  // before the real mailbox's own `admit()` call below, which is the one
-  // that could create a record.
-  //
-  // An identity this call claimed is kept only once the mailbox has a record
-  // for it. A request the principal backlog or the session backlog refuses,
-  // or whose admission throws, releases it again: otherwise its retry would
-  // read `created: false`, skip the principal check, and be admitted over the
-  // limit, and another session's attempt at the id would be sent to rebuild a
-  // receipt that never existed.
-  if (identity.created) {
+  // The principal backlog is checked ONLY for a fresh claim: a replay means
+  // this session's mailbox already holds the record, and it creates nothing
+  // new. AC5 ("before a record is created") is satisfied because this check
+  // runs before the mailbox's own `admit()` call below, which is the one that
+  // could create a record. A refusal leaves the pending claim in place (see
+  // the module doc): the retry runs this check again.
+  if (claim.kind === 'fresh') {
     const openForPrincipal = await countOpenCommandsForPrincipal(sessionMailbox, principal);
     if (openForPrincipal >= principalBacklogLimit) {
-      await identity.release();
       return { outcome: 'backlog-exhausted', scope: 'principal', limit: principalBacklogLimit };
     }
   }
 
-  let admission: Awaited<ReturnType<Mailbox['admit']>>;
-  try {
-    admission = await sessionMailbox.admit({
-      caller: principal,
-      target: sessionId,
-      kind: encodeSessionInputKind(deliveryMode),
-      payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
-      idempotencyKey: id,
-    });
-  } catch (error) {
-    if (identity.created) await identity.release();
-    throw error;
+  const admission = await sessionMailbox.admit({
+    caller: principal,
+    target: sessionId,
+    kind: encodeSessionInputKind(deliveryMode),
+    payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
+    idempotencyKey: id,
+  });
+
+  // With a record in this session's mailbox, the identity commits to
+  // `admitted`. Losing that swap to another attempt of this session is fine
+  // (it committed the same fact); losing it to another session means the
+  // claim was taken over while this admission was in flight, and the command
+  // this call created is cancelled before it can be delivered: the caller
+  // reads `canceled` and resends, and the resend answers from the session
+  // that holds the id.
+  const commits = claim.kind === 'fresh' || claim.commit;
+  if (admission.status !== 'rejected' && commits) {
+    const committed = await commitSessionInputIdentity(attempt, claim.expected);
+    if (!committed) {
+      const latest = parseSessionInputIdentityRecord(
+        await kv.get(sessionInputIdentityKey(principal, id)),
+      );
+      if (latest?.sessionId !== sessionId && admission.status === 'admitted') {
+        const commandId = admission.receipt.commandId;
+        await sessionMailbox.requestCancellation({
+          commandId,
+          reason: SESSION_INPUT_IDENTITY_TAKEN_REASON,
+        });
+        const cancelled = (await sessionMailbox.receipt(commandId)) ?? admission.receipt;
+        return {
+          outcome: 'admitted',
+          receipt: buildReceipt(cancelled, deliveryMode, undefined),
+          commandId,
+        };
+      }
+    }
   }
-  if (admission.status === 'rejected' && identity.created) await identity.release();
 
   switch (admission.status) {
     case 'admitted':

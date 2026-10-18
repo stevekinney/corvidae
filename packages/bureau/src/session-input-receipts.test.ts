@@ -4,7 +4,7 @@ import {
   parseSessionInputDeliveries,
   sessionInputDeliveriesKey,
 } from '@lostgradient/operative';
-import { MemoryStorage, textValueStore } from '@lostgradient/weft';
+import { type Mailbox, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -15,6 +15,7 @@ import {
   SESSION_INPUT_IDENTITY_TTL_MS,
 } from './session-input-durability';
 import { SESSION_INPUT_RUN_ENDED_REASON } from './session-input-settlement';
+import { deferred } from './test/session-input-fixtures';
 
 /**
  * COR-1476 — a replayed `submitSessionInput` reads an honest receipt on every
@@ -75,49 +76,207 @@ async function commandIdOf(mailbox: ReturnType<typeof fixture>['mailbox']): Prom
 }
 
 describe('the identity index (COR-1476)', () => {
-  it('keeps no identity for a request the principal backlog rejected, so its retry is rejected too', async () => {
+  function pair(now: () => number) {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const first = createSessionInputMailbox(storage, 'session-first', 100, now);
+    const second = createSessionInputMailbox(storage, 'session-second', 100, now);
+    const attempt = (sessionId: string, mailbox: Mailbox, id = 'input-shared') => ({
+      storage,
+      kv,
+      sessionMailbox: mailbox,
+      sessionId,
+      id,
+      principal: 'alice',
+      deliveryMode: 'steer' as const,
+      payload: { incarnation: 'incarnation-1', payload: 'hello' },
+      principalBacklogLimit: 100,
+      sessionBacklogLimitForCrossSessionRead: 100,
+      nowMs: now(),
+    });
+    const identities = () => kv.list('session-input-identity:v1:');
+    return { storage, kv, first, second, attempt, identities };
+  }
+
+  it('refuses the retry of a request the principal backlog rejected, and keeps its identity rather than deleting it', async () => {
     const f = fixture();
     const first = await admitSessionInput({ ...f.attempt('input-a'), principalBacklogLimit: 1 });
     expect(first.outcome).toBe('admitted');
     const rejected = await admitSessionInput({ ...f.attempt('input-b'), principalBacklogLimit: 1 });
     expect(rejected.outcome).toBe('backlog-exhausted');
 
-    const identities = await f.kv.list('session-input-identity:v1:');
-    expect(identities.map((key) => key.split(':').at(-1))).toEqual(['input-a']);
     const retried = await admitSessionInput({ ...f.attempt('input-b'), principalBacklogLimit: 1 });
     expect(retried.outcome).toBe('backlog-exhausted');
+    // Never deleted: a refusal leaves its pending claim, which a later
+    // admission of the id commits or another session takes over.
+    const identities = await f.kv.list('session-input-identity:v1:');
+    expect(
+      identities.map((key) => key.split(':').at(-1)).toSorted((a, b) => a!.localeCompare(b!)),
+    ).toEqual(['input-a', 'input-b']);
+  });
+
+  it('lets another session take over the identity a refused admission left pending', async () => {
+    let now = START;
+    const f = pair(() => now);
+    const earlier = await admitSessionInput(f.attempt('session-first', f.first, 'input-a'));
+    expect(earlier.outcome).toBe('admitted');
+    const refused = await admitSessionInput({
+      ...f.attempt('session-first', f.first),
+      principalBacklogLimit: 1,
+    });
+    expect(refused.outcome).toBe('backlog-exhausted');
+    now += 1_000;
+    const elsewhere = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(elsewhere.outcome).toBe('admitted');
+    // And the first session's later retry of the id finds it owned elsewhere.
+    const back = await admitSessionInput(f.attempt('session-first', f.first));
+    expect(back.outcome).toBe('conflict');
+    if (back.outcome === 'conflict') expect(back.conflict.reason).toBe('session-mismatch');
+  });
+
+  it('keeps the identity a concurrent same-session retry admitted under when the first attempt is refused at the limit', async () => {
+    const now = START;
+    const f = pair(() => now);
+    const reached = deferred();
+    const held = deferred();
+    let holds = 1;
+    // The first attempt's principal-count read (`mailbox.list`) is held once,
+    // after its pending identity claim committed; the retry, in another
+    // process, runs meanwhile.
+    const holding = new Proxy(f.first, {
+      get(target, property, receiver) {
+        if (property === 'list') {
+          return async (options?: Parameters<Mailbox['list']>[0]) => {
+            if (holds > 0) {
+              holds -= 1;
+              reached.resolve();
+              await held.promise;
+            }
+            return target.list(options);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const winner = admitSessionInput({
+      ...f.attempt('session-first', holding),
+      principalBacklogLimit: 1,
+    });
+    await reached.promise;
+    // The retry finds a pending claim with no record behind it, so it runs the
+    // full admission itself and creates the record.
+    const retry = await admitSessionInput({
+      ...f.attempt('session-first', f.first),
+      principalBacklogLimit: 1,
+    });
+    held.resolve();
+    const refused = await winner;
+    expect(retry.outcome).toBe('admitted');
+    expect(refused.outcome).toBe('backlog-exhausted');
+
+    // The refusal deleted nothing: the identity still names the session whose
+    // record stands, so the id reaches another session as a conflict.
+    expect(await f.identities()).toHaveLength(1);
+    const [record] = await f.first.list({ limit: 10 });
+    expect(record?.state).toBe('available');
+    const elsewhere = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(elsewhere.outcome).toBe('conflict');
+    if (elsewhere.outcome === 'conflict') {
+      expect(elsewhere.conflict.reason).toBe('session-mismatch');
+    }
+  });
+
+  it('cancels an admission whose identity another session took over while it was in flight', async () => {
+    let now = START;
+    const f = pair(() => now);
+    const reached = deferred();
+    const held = deferred();
+    // The first session's mailbox admission is held after its pending claim
+    // committed and its principal check passed.
+    const holding = new Proxy(f.first, {
+      get(target, property, receiver) {
+        if (property === 'admit') {
+          return async (options: Parameters<Mailbox['admit']>[0]) => {
+            reached.resolve();
+            await held.promise;
+            return target.admit(options);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const inFlight = admitSessionInput(f.attempt('session-first', holding));
+    await reached.promise;
+    // Another session sees a pending claim with no record: an orphan, taken over.
+    now += 1_000;
+    const taker = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(taker.outcome).toBe('admitted');
+    held.resolve();
+    const lost = await inFlight;
+
+    // The record the first session created after losing the identity is
+    // cancelled at once, and its caller reads that from the receipt.
+    expect(lost.outcome).toBe('admitted');
+    if (lost.outcome === 'admitted') expect(lost.receipt.state).toBe('canceled');
+    const [firstRecord] = await f.first.list({ limit: 10 });
+    expect(firstRecord?.state).toBe('cancelled');
+    const [secondRecord] = await f.second.list({ limit: 10 });
+    expect(secondRecord?.state).toBe('available');
+    // The resend lands as a conflict naming the session that holds the id.
+    const resend = await admitSessionInput(f.attempt('session-first', f.first));
+    expect(resend.outcome).toBe('conflict');
+    if (resend.outcome === 'conflict') expect(resend.conflict.reason).toBe('session-mismatch');
+    const replay = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(replay.outcome).toBe('replayed');
   });
 
   it('outlasts an open command: the same id reaches another session as a conflict a day later', async () => {
-    const storage = new MemoryStorage();
-    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
     let now = START;
-    const first = createSessionInputMailbox(storage, 'session-first', 100, () => now);
-    const second = createSessionInputMailbox(storage, 'session-second', 100, () => now);
-    const attempt = (sessionId: string, mailbox: typeof first) => ({
-      storage,
-      kv,
-      sessionMailbox: mailbox,
-      sessionId,
-      id: 'input-shared',
-      principal: 'alice',
-      deliveryMode: 'steer' as const,
-      payload: { incarnation: 'incarnation-1', payload: 'hello' },
-      principalBacklogLimit: 100,
-      sessionBacklogLimitForCrossSessionRead: 100,
-      nowMs: now,
-    });
-    const original = await admitSessionInput(attempt('session-first', first));
+    const f = pair(() => now);
+    const original = await admitSessionInput(f.attempt('session-first', f.first));
     expect(original.outcome).toBe('admitted');
 
     now += DAY_MS + 60_000;
-    const elsewhere = await admitSessionInput(attempt('session-second', second));
+    const elsewhere = await admitSessionInput(f.attempt('session-second', f.second));
     expect(elsewhere.outcome).toBe('conflict');
     if (elsewhere.outcome === 'conflict')
       expect(elsewhere.conflict.reason).toBe('session-mismatch');
   });
 
-  it('is held for at least the command lifetime plus what the mailbox retains afterwards', async () => {
+  it('answers conflict, never a throw, for an original that terminalized long before its identity expires', async () => {
+    let now = START;
+    const f = pair(() => now);
+    const original = await admitSessionInput(f.attempt('session-first', f.first));
+    expect(original.outcome).toBe('admitted');
+    const claimed = await f.first.claim();
+    if (claimed.status !== 'claimed') throw new Error('expected a claim');
+    await f.first.acknowledge({
+      commandId: claimed.claim.receipt.commandId,
+      attemptToken: claimed.claim.attemptToken,
+    });
+
+    // Two days on: the identity is live, and the record is still retained.
+    now += 2 * DAY_MS;
+    await f.first.runMaintenance();
+    const elsewhere = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(elsewhere.outcome).toBe('conflict');
+    if (elsewhere.outcome === 'conflict') {
+      expect(elsewhere.conflict.reason).toBe('session-mismatch');
+      expect(elsewhere.conflict.originalReceipt.state).toBe('promoted');
+    }
+
+    // Past the identity's lifetime the record has been retired too, and the
+    // id is admitted afresh.
+    now = START + SESSION_INPUT_IDENTITY_TTL_MS + 3_600_000;
+    await f.first.runMaintenance();
+    expect(await f.first.receipt(claimed.claim.receipt.commandId)).toBeNull();
+    const fresh = await admitSessionInput(f.attempt('session-second', f.second));
+    expect(fresh.outcome).toBe('admitted');
+  });
+
+  it('is outlived by the terminal record the cross-session path reads, and outlives any open command', async () => {
     const storage = new MemoryStorage();
     let now = START;
     const mailbox = createSessionInputMailbox(storage, 'retention-probe', 100, () => now);
@@ -136,22 +295,19 @@ describe('the identity index (COR-1476)', () => {
       attemptToken: claimed.claim.attemptToken,
     });
 
-    // Measure how long the mailbox keeps a terminal record.
+    // Measure, hour by hour, how long the mailbox keeps a terminal record.
     const settledAt = now;
     let retainedFor = 0;
-    for (const step of [3_600_000, 3_600_000 * 12, 3_600_000 * 11, 3_600_000, 1]) {
-      now += step;
+    for (let hour = 1; hour <= 24 * 10; hour += 1) {
+      now = settledAt + hour * 3_600_000;
       await mailbox.runMaintenance();
       if ((await mailbox.receipt(admission.receipt.commandId)) === null) break;
       retainedFor = now - settledAt;
     }
     expect(retainedFor).toBeGreaterThan(0);
-    expect(SESSION_INPUT_IDENTITY_TTL_MS).toBeGreaterThanOrEqual(
-      SESSION_INPUT_COMMAND_TIMEOUT_MS + retainedFor,
-    );
-    expect(SESSION_INPUT_DELIVERY_RETENTION_MS).toBeGreaterThan(
-      SESSION_INPUT_COMMAND_TIMEOUT_MS + retainedFor,
-    );
+    expect(SESSION_INPUT_IDENTITY_TTL_MS).toBeGreaterThan(SESSION_INPUT_COMMAND_TIMEOUT_MS);
+    expect(retainedFor).toBeGreaterThanOrEqual(SESSION_INPUT_IDENTITY_TTL_MS);
+    expect(SESSION_INPUT_DELIVERY_RETENTION_MS).toBeGreaterThan(SESSION_INPUT_IDENTITY_TTL_MS);
   });
 });
 
@@ -247,7 +403,13 @@ describe('receipts on every way an input can end (COR-1476)', () => {
       attemptToken: claimed.claim.attemptToken,
     });
 
+    // The record is retained, and the id answered as a replay, for the
+    // identity's whole lifetime; past it the mailbox has retired the record.
     f.advance(2 * DAY_MS);
+    await f.mailbox.runMaintenance();
+    const replayed = await admitSessionInput(f.attempt());
+    expect(replayed.outcome).toBe('replayed');
+    f.advance(SESSION_INPUT_IDENTITY_TTL_MS - 2 * DAY_MS + 3_600_000);
     await f.mailbox.runMaintenance();
     const reused = await admitSessionInput(f.attempt());
     expect(reused.outcome).toBe('admitted');
