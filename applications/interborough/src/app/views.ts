@@ -1,0 +1,57 @@
+import type { AuthorizationScope } from '../lib/scopes.svelte.ts';
+
+/**
+ * Every view Interborough has. A view is what a sidebar entry opens, and it owns four states
+ * besides its content: loading, empty, error, and forbidden (`view-frame.svelte`). Several routes
+ * can render one view, such as a run's list and one run's detail.
+ */
+export const VIEW_NAMES = [
+  'chat',
+  'agents',
+  'workflows',
+  'runs',
+  'schedules',
+  'inbox',
+  'workers',
+  'storage',
+  'system',
+  'audit',
+  'engine',
+] as const;
+
+export type ViewName = (typeof VIEW_NAMES)[number];
+
+/** The four states a view can be in besides showing its content. */
+export const VIEW_STATES = ['loading', 'empty', 'error', 'forbidden'] as const;
+
+export type ViewStateName = (typeof VIEW_STATES)[number];
+
+/** What a view needs from the principal before it asks the server anything. */
+export type ViewDefinition = {
+  /** The scopes the engine console gates the view on; none for a view Bureau serves. */
+  readonly scopes: readonly AuthorizationScope[];
+  /**
+   * Whether a later issue builds the view. A placeholder shows its empty state whenever the
+   * service behind it answers, because there is nothing to show yet.
+   */
+  readonly placeholder: boolean;
+  /**
+   * Whether the view can have nothing to show. A view that always has something, such as the
+   * engine's workers page with its task ledger and deployments, has no empty state.
+   */
+  readonly canBeEmpty: boolean;
+};
+
+export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
+  chat: { scopes: [], placeholder: true, canBeEmpty: true },
+  agents: { scopes: [], placeholder: true, canBeEmpty: true },
+  workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },
+  runs: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: true },
+  schedules: { scopes: ['schedules:read'], placeholder: false, canBeEmpty: true },
+  inbox: { scopes: ['reviews:read'], placeholder: false, canBeEmpty: true },
+  workers: { scopes: ['system:read'], placeholder: false, canBeEmpty: false },
+  storage: { scopes: ['storage:admin'], placeholder: false, canBeEmpty: false },
+  system: { scopes: ['system:read'], placeholder: false, canBeEmpty: false },
+  audit: { scopes: [], placeholder: true, canBeEmpty: true },
+  engine: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: false },
+};
