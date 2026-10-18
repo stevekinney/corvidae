@@ -12,7 +12,10 @@ import {
   RunErrorEvent,
   StepAbortedEvent,
 } from './events';
-import { assistantMessageIdentifier } from './message-identifiers';
+import {
+  assistantMessageIdentifier,
+  assistantRowIdentifierForAttempt,
+} from './message-identifiers';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
@@ -433,8 +436,11 @@ export async function runStep(
       conversation.appendAssistantMessage(content, metadata);
     } else {
       // The row is committed under the id a streaming client was shown.
+      const rowId = assistantRowIdentifierForAttempt(conversation, assistantMessageId);
       conversation.appendMessages(
-        withMessageId({ role: 'assistant', content, metadata }, assistantMessageId),
+        rowId === undefined
+          ? { role: 'assistant', content, metadata }
+          : withMessageId({ role: 'assistant', content, metadata }, rowId),
       );
     }
   }

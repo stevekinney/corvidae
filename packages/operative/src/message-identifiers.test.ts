@@ -1,9 +1,11 @@
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, defineMessagePlugin, type MessageInput } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';
+import type { OperativeHookMap } from './hooks';
 import { executeLoop } from './loop';
 import {
   assistantMessageIdentifier,
@@ -171,6 +173,31 @@ describe('a run with a run id commits deterministic row ids', () => {
     const [row] = conversation.getMessages({ includeHidden: true });
     expect(row?.id).toBe('run-1:step:0');
     expect(row?.content).toBe('HELLO');
+  });
+
+  it('commits one row under the derived id when a step is retried after its streamed row was finalized', async () => {
+    const conversation = new Conversation();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    let failures = 0;
+    hooks.on('afterGenerate', async () => {
+      if (failures++ === 0) throw new Error('afterGenerate rejected the first response');
+    });
+    hooks.on('onError', async () => 'retry');
+
+    const result = await executeLoop({
+      generate: withStreaming(async (context) => {
+        context.streaming.update('hello');
+        return { content: 'hello', toolCalls: [] };
+      }),
+      toolbox: createTestToolbox([]),
+      conversation,
+      stopWhen: noToolCalls(),
+      hooks,
+      runId: 'run-1',
+    });
+
+    expect(result.finishReason).not.toBe('error');
+    expect(rowIds(conversation)).toEqual(['run-1:step:0']);
   });
 
   it('mints ids as before when the run has no run id', async () => {

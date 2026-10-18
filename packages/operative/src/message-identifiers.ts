@@ -71,3 +71,27 @@ export function appendFinalAssistantMessage(
   }
   conversation.appendMessages(withMessageId({ role: 'assistant', content }, id));
 }
+
+/**
+ * The id a step's assistant row may be appended under on this attempt.
+ *
+ * A step that is retried (an `onError` hook answering `'retry'` after the model
+ * call already finalized its row) would append a second row under the step's id,
+ * which the conversation refuses. The earlier attempt's row is the last in the
+ * conversation, because nothing after generation has run, so it is taken out
+ * and the retry's row replaces it: the rejected response is not part of the
+ * history the client is shown. If that row is somewhere else, the retry takes a
+ * minted id, as a run without ids always has.
+ */
+export function assistantRowIdentifierForAttempt(
+  conversation: Conversation,
+  id: string | undefined,
+): string | undefined {
+  if (id === undefined) return undefined;
+  const rows = conversation.getMessages({ includeHidden: true });
+  const held = rows.findIndex((row) => row.id === id);
+  if (held === -1) return id;
+  if (held !== rows.length - 1) return undefined;
+  conversation.rewindBeforeMessage(id);
+  return id;
+}
