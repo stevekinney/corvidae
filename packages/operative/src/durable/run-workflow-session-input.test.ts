@@ -1369,6 +1369,192 @@ describe('session input delivery store and gate (COR-1476)', () => {
   });
 });
 
+describe("the gate's lease lifecycle (COR-1476)", () => {
+  async function stateOf(mailbox: Mailbox): Promise<string | undefined> {
+    const [receipt] = await mailbox.list({ limit: 10 });
+    return receipt?.state;
+  }
+
+  async function until(check: () => Promise<boolean>): Promise<void> {
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (await check()) return;
+      await yieldToPortableEventLoop();
+    }
+    throw new Error('the condition never became true');
+  }
+
+  async function settled(mailbox: Mailbox): Promise<void> {
+    await until(async () => (await stateOf(mailbox)) !== 'claimed');
+  }
+
+  it('settles the cancellation another holder requested, when renewal reports it, and never delivers the input again', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const { timers, tick } = manualTimers();
+    const gate = gateOver(mailbox, store, RUN_ID, { timers, now: () => now });
+    const commandId = await admit(mailbox, 'input-a', 'cancel me');
+    const [claimed] = await gate.claimPending();
+    expect(claimed?.commandId).toBe(commandId);
+
+    // Another process cancels the command this gate leases: the session was
+    // deleted there. The gate learns of it only through its renewal.
+    const other = newMailbox(storage, () => now);
+    const requested = await other.requestCancellation({
+      commandId,
+      reason: 'the session was deleted',
+    });
+    expect(requested.status).toBe('requested');
+    tick();
+    await until(async () => (await stateOf(mailbox)) === 'cancelled');
+
+    // Nothing is left for the step to retire, and the input is not delivered again.
+    await gate.settle([
+      {
+        id: 'input-a',
+        commandId,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(now).toISOString(),
+        conversationMessageId: 'message-a',
+        providerTurn: 0,
+      },
+    ]);
+    expect(await stateOf(mailbox)).toBe('cancelled');
+    expect(await gate.claimPending()).toEqual([]);
+    await gate.dispose?.();
+    expect(await stateOf(mailbox)).toBe('cancelled');
+  });
+
+  it('releases a claim it acquired while it was being disposed, and returns nothing', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    await admit(mailbox, 'input-a', 'first');
+    // The delivery record write is held: disposal lands while the claim is in flight.
+    const reached = deferred();
+    const proceed = deferred();
+    const gate = createMailboxSessionInputGate({
+      mailbox,
+      decode,
+      deliveries: {
+        claim: async (commandIds) => {
+          reached.resolve();
+          await proceed.promise;
+          return store.claim(SESSION_ID, RUN_ID, commandIds, alwaysLive);
+        },
+      },
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    const claiming = gate.claimPending();
+    await reached.promise;
+    expect(await stateOf(mailbox)).toBe('claimed');
+    await gate.dispose?.();
+    proceed.resolve();
+
+    expect(await claiming).toEqual([]);
+    await settled(mailbox);
+    expect(await stateOf(mailbox)).toBe('accepted');
+  });
+
+  it('keeps a lease whose acknowledgement failed, so disposal releases it', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandId = await admit(real, 'input-a', 'first');
+    let failures = 1;
+    const flaky = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'acknowledge') {
+          return async (...args: Parameters<Mailbox['acknowledge']>) => {
+            if (failures > 0) {
+              failures -= 1;
+              throw new Error('storage unavailable');
+            }
+            return target.acknowledge(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const errors: unknown[] = [];
+    const gate = createMailboxSessionInputGate({
+      mailbox: flaky,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+      onError: (error) => errors.push(error),
+    });
+    const [claimed] = await gate.claimPending();
+    await gate.settle([
+      {
+        id: 'input-a',
+        commandId: claimed!.commandId,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(now).toISOString(),
+        conversationMessageId: 'message-a',
+        providerTurn: 0,
+      },
+    ]);
+    expect(errors).toHaveLength(1);
+    expect(await stateOf(real)).toBe('claimed');
+
+    // The gate still holds the lease, so disposing it returns the command.
+    await gate.dispose?.();
+    expect(await stateOf(real)).toBe('accepted');
+    expect(commandId).toBe(claimed!.commandId);
+  });
+
+  it('leaves no lease claimed once dispose() resolves: acknowledged, released, or cancelled', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const { timers, tick } = manualTimers();
+    const gate = gateOver(mailbox, store, RUN_ID, { timers, now: () => now });
+    const commandA = await admit(mailbox, 'input-a', 'acknowledged');
+    const commandB = await admit(mailbox, 'input-b', 'cancelled elsewhere');
+    const commandC = await admit(mailbox, 'input-c', 'released');
+    const claimed = await gate.claimPending();
+    expect(claimed.map(({ commandId }) => commandId)).toEqual([commandA, commandB, commandC]);
+
+    // A is acknowledged by the step; B is cancelled by another holder and the
+    // renewal settles it; C is left for disposal.
+    await gate.settle([
+      {
+        id: 'input-a',
+        commandId: commandA,
+        sessionId: SESSION_ID,
+        deliveredAt: new Date(now).toISOString(),
+        conversationMessageId: 'message-a',
+        providerTurn: 0,
+      },
+    ]);
+    await newMailbox(storage, () => now).requestCancellation({
+      commandId: commandB,
+      reason: 'elsewhere',
+    });
+    tick();
+    await until(async () => {
+      const receipts = await mailbox.list({ limit: 10 });
+      return receipts.find((receipt) => receipt.commandId === commandB)?.state === 'cancelled';
+    });
+    await gate.dispose?.();
+
+    const receipts = await mailbox.list({ limit: 10 });
+    const states = new Map(receipts.map((receipt) => [receipt.commandId, receipt.state]));
+    expect(states.get(commandA)).toBe('applied');
+    expect(states.get(commandB)).toBe('cancelled');
+    expect(states.get(commandC)).toBe('accepted');
+    expect([...states.values()]).not.toContain('claimed');
+  });
+});
+
 type StorageKind = 'sqlite' | 'lmdb';
 
 describe.each<StorageKind>(['sqlite', 'lmdb'])(

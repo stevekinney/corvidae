@@ -89,10 +89,26 @@ export interface MailboxSessionInputGateOptions {
  *   across the whole step and its checkpoint writes, so a step that outlives the
  *   mailbox's visibility timeout does not hand the command to another claimant.
  * - `settle` only acknowledges: promotion already committed with the transcript.
- *   An acknowledgement that fails, or a process that died first, leaves the
- *   command open; the next boundary leases it, finds it promoted, and retires it.
+ *   An acknowledgement that fails leaves the lease with the gate, so the next
+ *   boundary retries the retirement or `dispose` releases it; a process that
+ *   died first leaves the command open for the next boundary to lease, find
+ *   promoted, and retire.
  * - `dispose` rejects (for retry) every lease the gate still holds and stops the
  *   timer. It is called when the run ends, however it ends.
+ *
+ * The invariant behind the four hand-offs: every lease the gate acquires ends
+ * in exactly one of three states, acknowledged, released, or cancelled, by the
+ * time `dispose()` resolves, unless the process dies first. The gate therefore
+ * keeps a lease in its table from the claim until the acknowledgement has
+ * committed; rechecks disposal after every awaited claim, releasing a lease it
+ * acquired while being disposed; and honours the `cancellationRequested` flag
+ * its renewal reports, which is the only channel through which another
+ * process's cancellation (a session deleted there) reaches a leaseholder. Such
+ * a cancellation settles through the mailbox's own cancel path, and the input
+ * is never returned again. A turn the step had already appended by then stays
+ * in the conversation, and the write that saves it promotes it: the receipt
+ * reads `promoted` from the promotion record, while the command reads
+ * `cancelled`.
  *
  * Order survives a crash: while any command another gate leased is outstanding the gate returns nothing,
  * since the mailbox would otherwise skip the leased head and deliver a later
@@ -127,9 +143,22 @@ export function createMailboxSessionInputGate(
     for (const [commandId, attemptToken] of leases) {
       try {
         const result = await mailbox.renew({ commandId, attemptToken });
-        // A lease that could not be renewed is gone; the delivery record, not
-        // the lease, is what keeps a peer from appending the input.
-        if (result.status !== 'renewed') leases.delete(commandId);
+        if (result.status !== 'renewed') {
+          // A lease that could not be renewed is gone; the delivery record, not
+          // the lease, is what keeps a peer from appending the input.
+          leases.delete(commandId);
+        } else if (result.cancellationRequested) {
+          // Another process cancelled the command this gate holds. Settle the
+          // cancellation and stop delivering it: the mailbox closes it as
+          // `cancelled` whatever reason the rejection carries.
+          leases.delete(commandId);
+          await mailbox.reject({
+            commandId,
+            attemptToken,
+            failure: { reason: 'application', message: 'cancelled while leased' },
+            retry: false,
+          });
+        }
       } catch (error) {
         onError?.(error);
       }
@@ -144,7 +173,6 @@ export function createMailboxSessionInputGate(
     // process open.
     (handle as { unref?: () => void } | null)?.unref?.();
     renewal = { handle };
-    options.signal?.addEventListener('abort', onAbort, { once: true });
   }
 
   async function reject(claim: ApplicationCommandClaim, retry: boolean, message: string) {
@@ -156,17 +184,14 @@ export function createMailboxSessionInputGate(
     });
   }
 
-  async function dispose(): Promise<void> {
-    disposed = true;
-    stopRenewal();
-    const held = [...leases];
-    leases.clear();
+  /** Returns leases to the mailbox, for whichever run next reaches a boundary. */
+  async function release(held: Iterable<readonly [string, string]>, message: string) {
     for (const [commandId, attemptToken] of held) {
       try {
         await mailbox.reject({
           commandId,
           attemptToken,
-          failure: { reason: 'application', message: 'the run ended before delivering this input' },
+          failure: { reason: 'application', message },
           retry: true,
         });
       } catch (error) {
@@ -175,8 +200,29 @@ export function createMailboxSessionInputGate(
     }
   }
 
+  async function dispose(): Promise<void> {
+    disposed = true;
+    stopRenewal();
+    options.signal?.removeEventListener('abort', onAbort);
+    const held = [...leases];
+    leases.clear();
+    await release(held, 'the run ended before delivering this input');
+  }
+
   function onAbort(): void {
     void dispose();
+  }
+
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+
+  /** A claim acquired while the gate was being disposed: nothing is left to hold it. */
+  async function releaseIfDisposed(claims: readonly ApplicationCommandClaim[]): Promise<boolean> {
+    if (!disposed) return false;
+    await release(
+      claims.map((claim) => [claim.receipt.commandId, claim.attemptToken] as const),
+      'the run ended while claiming this input',
+    );
+    return true;
   }
 
   return {
@@ -214,6 +260,7 @@ export function createMailboxSessionInputGate(
         if (result.status !== 'claimed') break;
         claims.push(result.claim);
       }
+      if (await releaseIfDisposed(claims)) return [];
 
       const decoded: { claim: ApplicationCommandClaim; id: string; input: DecodedSessionInput }[] =
         [];
@@ -242,6 +289,7 @@ export function createMailboxSessionInputGate(
       if (decoded.length === 0) return [];
 
       const outcomes = await deliveries.claim(decoded.map(({ claim }) => claim.receipt.commandId));
+      if (await releaseIfDisposed(decoded.map(({ claim }) => claim))) return [];
       const claimedInputs: ClaimedSessionInput[] = [];
       let blocked = false;
       for (const { claim, id, input } of decoded) {
@@ -252,11 +300,13 @@ export function createMailboxSessionInputGate(
           await reject(claim, true, 'another run is delivering this input or one before it');
         } else if (outcome === 'promoted') {
           // Already in a transcript; only its command is left to retire. A failure
-          // to retire it is retried by the next boundary, never thrown out of this one.
+          // to retire it is never thrown out of this boundary: the lease is kept,
+          // so the next boundary retries the retirement or disposal releases it.
           try {
             await mailbox.acknowledge({ commandId, attemptToken: claim.attemptToken });
           } catch (error) {
             onError?.(error);
+            leases.set(commandId, claim.attemptToken);
           }
         } else if (leases.has(commandId)) {
           // A command this gate already returned and has not settled: its lease
@@ -281,12 +331,13 @@ export function createMailboxSessionInputGate(
       for (const { commandId } of delivered) {
         const attemptToken = leases.get(commandId);
         if (attemptToken === undefined) continue;
-        leases.delete(commandId);
         try {
           await mailbox.acknowledge({ commandId, attemptToken });
+          leases.delete(commandId);
         } catch (error) {
-          // Promotion already committed with the transcript; an input left open
-          // is retired by the next boundary, so this never fails the run.
+          // Promotion already committed with the transcript, so this never
+          // fails the run. The lease stays with the gate: the next boundary
+          // retries the retirement, or disposal releases it.
           onError?.(error);
         }
       }

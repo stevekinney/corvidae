@@ -585,7 +585,7 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
 });
 
 describe('a promoted input whose command was never acknowledged (COR-1476)', () => {
-  it('is spared by the run that ends, because its turn is in the transcript, and retired by the sweep once its lease lapses, still promoted', async () => {
+  it('is spared by the run that ends, because its turn is in the transcript, released with the gate, and retired by the sweep, still promoted', async () => {
     const origin = '2026-10-17T12:00:00.000Z';
     const runtime = createManualRuntimeServices({ origin });
     const real = new MemoryStorage();
@@ -631,8 +631,9 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       expect(prompts[1]).toEqual(['First', 'delivered']);
       expect(failing.attempts()).toBe(1);
 
-      // The run's end spares the command, whose turn its transcript holds: it
-      // stays leased and promoted, and the session stays listed.
+      // The run's end spares the command, whose turn its transcript holds. The
+      // gate kept the lease its failed acknowledgement left, so disposal has
+      // already returned the command to the mailbox: open, promoted, listed.
       const mailbox = createSessionInputMailbox(real, run.sessionId, 100, () =>
         runtime.clock.now(),
       );
@@ -641,7 +642,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
         return receipt?.state;
       };
       await atMarkerRead.reached;
-      expect(await state()).toBe('claimed');
+      expect(await state()).toBe('accepted');
       atMarkerRead.release();
       await pollUntil(async () => {
         const session = await bureau.getSession(run.sessionId);
@@ -652,12 +653,8 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
         'promoted',
       );
 
-      // The sweep requests the cancellation of what no run will acknowledge,
-      // and settles it once the lease lapses; the promotion stands.
-      await bureau.runDurableMaintenance();
-      expect(await state()).toBe('cancellation-requested');
-      expect(await markers(real)).toHaveLength(1);
-      runtime.setTime(Date.parse(origin) + 31_000);
+      // The sweep retires what no run will acknowledge, at once, since nothing
+      // leases it any more; the promotion stands.
       await bureau.runDurableMaintenance();
       expect(await state()).toBe('cancelled');
       expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
