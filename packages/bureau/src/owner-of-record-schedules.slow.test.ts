@@ -139,6 +139,17 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const session = await bureau.getSession(run.sessionId);
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('tick');
+
+      // The refused fire is still a fire: it is audited once, and its run is Alice's.
+      const refusedRunId = failed[0]!;
+      const fired = await bureau.auditTrail?.query({ runId: refusedRunId, type: 'schedule.fired' });
+      expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
+      expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
+      expect(await bureau.getOwner({ kind: 'audit', runId: refusedRunId })).toBe('api-key:alice');
+      // And it tells Alice only that the session was not found, never that Bob owns it.
+      const refused = await bureau.getDurableRun(refusedRunId);
+      expect(refused?.error).toContain('was not found');
+      expect(refused?.error).not.toMatch(/owner|another principal/i);
     } finally {
       await bureau.dispose();
     }

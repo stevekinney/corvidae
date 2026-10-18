@@ -3610,12 +3610,9 @@ async function buildRuntimeComposition(
     // session it creates. A fire into a session another principal owns would write
     // into a conversation its owner never shared, so it is refused.
     const owner = ownerOrLocal(scheduledInput.principal);
-    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which another principal owns`,
-      };
-    }
+    // The fire is recorded, with its owner and its `schedule.fired` entry, before
+    // any refusal: a refused fire is still a fire, and its run is the schedule
+    // owner's.
     await dependencies.onScheduledFire?.({
       runId,
       scheduleId: recoveredScheduleId,
@@ -3623,6 +3620,14 @@ async function buildRuntimeComposition(
       agentName,
       owner,
     });
+    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
+      // Worded as a session that is not there, so the schedule owner learns nothing
+      // about whose session it is.
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
+      };
+    }
     const isRecoveredFireReplay = existing?.metadata['lastScheduledFireRunId'] === runId;
     let conversation: Conversation;
     if (existing) {

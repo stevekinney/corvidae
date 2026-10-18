@@ -40,7 +40,7 @@ export function resolveSessionOwner(metadata: Record<string, JSONValue>): string
  */
 export class SessionOwnerConflictError extends Error {
   constructor(sessionId: string) {
-    super(`Session "${sessionId}" belongs to another owner`);
+    super(`Session "${sessionId}" not found`);
     this.name = 'SessionOwnerConflictError';
   }
 }
