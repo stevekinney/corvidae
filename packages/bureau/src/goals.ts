@@ -212,7 +212,10 @@ export function createBureauGoals<TName extends string = string>(
           retryPolicy: request.retryPolicy,
           bounds: request.bounds,
           // The goal's owner of record, stored once. A request with no principal
-          // is owned by `anonymous:local`.
+          // is owned by `anonymous:local`. The request is untyped input, so a
+          // principal that is not text passes through `ownerOrLocal` unchanged and
+          // `createGoalState` refuses it with `principalDefect`, before anything
+          // is stored.
           principal: ownerOrLocal(request.principal),
           now: clock.nowISO(),
         }),

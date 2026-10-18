@@ -3570,6 +3570,18 @@ async function buildRuntimeComposition(
       existingStatelessSessionId ??
       `sched-${recoveredScheduleId ?? 'unknown'}-${runId}`;
 
+    // COR-718 — the fire is recorded, with its owner and its `schedule.fired` entry,
+    // before any refusal below: a refused fire is still a fire, and its run is the
+    // schedule owner's.
+    const owner = ownerOrLocal(scheduledInput.principal);
+    await dependencies.onScheduledFire?.({
+      runId,
+      scheduleId: recoveredScheduleId,
+      sessionId,
+      agentName,
+      owner,
+    });
+
     // COR-851: a goal's sessions are the goal's alone. A schedule can name any
     // session (an agent registers one itself through `scheduleSelf`, and one
     // persisted before the reservation existed is still live), and the fire
@@ -3599,6 +3611,16 @@ async function buildRuntimeComposition(
         reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which belongs to a durable goal`,
       };
     }
+    // COR-718 — a fire's run is owned by the schedule's owner, and so is the
+    // session it creates. A fire into a session another principal owns would write
+    // into a conversation its owner never shared, so it is refused, worded as a
+    // session that is not there so the schedule owner learns nothing about whose it is.
+    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
+      return {
+        status: 'unavailable',
+        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
+      };
+    }
     // The session's own metadata — not `info.schedule` — is the source of
     // truth for "have we already run this exact fire": `info.schedule` is
     // populated on BOTH a live tick and a recovered one, so it cannot
@@ -3606,28 +3628,6 @@ async function buildRuntimeComposition(
     // A match here means this runId already wrote to this session, so its
     // transcript (and any committed active-skills snapshot) belongs to a
     // stale, partial attempt that must be cleaned before replay re-appends.
-    // COR-718 — a fire's run is owned by the schedule's owner, and so is the
-    // session it creates. A fire into a session another principal owns would write
-    // into a conversation its owner never shared, so it is refused.
-    const owner = ownerOrLocal(scheduledInput.principal);
-    // The fire is recorded, with its owner and its `schedule.fired` entry, before
-    // any refusal: a refused fire is still a fire, and its run is the schedule
-    // owner's.
-    await dependencies.onScheduledFire?.({
-      runId,
-      scheduleId: recoveredScheduleId,
-      sessionId,
-      agentName,
-      owner,
-    });
-    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
-      // Worded as a session that is not there, so the schedule owner learns nothing
-      // about whose session it is.
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
-      };
-    }
     const isRecoveredFireReplay = existing?.metadata['lastScheduledFireRunId'] === runId;
     let conversation: Conversation;
     if (existing) {

@@ -2,7 +2,13 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, ScheduleCompletedEvent, stopWhen } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  type GenerateFunction,
+  ScheduleCompletedEvent,
+  stopWhen,
+} from '@lostgradient/operative';
+import { createConversationHistory } from 'conversationalist';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -239,8 +245,46 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       const session = await bureau.getSession('raced-recurring');
       expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('racing tick');
+      // The failed run says only that the session was not found, never whose it is.
+      const failedRun = await bureau.getDurableRun(failed[0]!);
+      const outcome = failedRun?.result as { errorMessage?: string } | undefined;
+      expect(outcome?.errorMessage).toContain('not found');
+      expect(outcome?.errorMessage).not.toMatch(/owner|another principal/i);
     } finally {
       release.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('records a fire refused because its session belongs to a goal, with its owner and audit entry', async () => {
+    const bureau = await openBureau();
+    try {
+      await bureau.sessionStore?.save(
+        createAgentSession({
+          id: 'plain-session-with-goal',
+          agentName: 'researcher',
+          conversationHistory: createConversationHistory({ id: 'plain-session-with-goal' }),
+          metadata: { goalRunId: 'some-goal' },
+        }),
+      );
+      const failed: string[] = [];
+      bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
+      const summary = await bureau.createSchedule({
+        agentName: 'researcher',
+        input: 'tick',
+        spec: '1s',
+        sessionId: 'plain-session-with-goal',
+        principal: 'api-key:alice',
+      });
+
+      expect(await waitForReal(() => failed.length >= 1)).toBe(true);
+      await bureau.cancelSchedule(summary!.id);
+
+      const refusedRunId = failed[0]!;
+      const fired = await bureau.auditTrail?.query({ runId: refusedRunId, type: 'schedule.fired' });
+      expect(fired?.map((entry) => entry.principal)).toEqual(['system:scheduler']);
+      expect(await bureau.getOwner({ kind: 'run', id: refusedRunId })).toBe('api-key:alice');
+    } finally {
       await bureau.dispose();
     }
   });
