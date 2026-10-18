@@ -496,6 +496,57 @@ describe('Mailbox observation', () => {
     mailbox.dispose();
   });
 
+  it('looks a receipt up by its idempotency key, and answers null once the key names nothing', async () => {
+    const { mailbox, clock } = createMailboxFixture({ terminalRetentionMs: 1_000 });
+    const commandId = await admitOne(mailbox, { idempotencyKey: 'steer-1' });
+    expect(await mailbox.receiptByIdempotencyKey('steer-1')).toEqual(
+      await mailbox.receipt(commandId),
+    );
+    expect(await mailbox.receiptByIdempotencyKey('steer-2')).toBeNull();
+    // Observing never advances work.
+    const observed = await mailbox.receipt(commandId);
+    expect(observed?.state).toBe('available');
+
+    // Retired past retention, the key names nothing again.
+    const claim = await claimOne(mailbox);
+    await mailbox.acknowledge({ commandId, attemptToken: claim.attemptToken });
+    clock.advance(1_001);
+    await mailbox.runMaintenance();
+    expect(await mailbox.receipt(commandId)).toBeNull();
+    expect(await mailbox.receiptByIdempotencyKey('steer-1')).toBeNull();
+    mailbox.dispose();
+  });
+
+  it('rejects an empty idempotency key on lookup', async () => {
+    const { mailbox } = createMailboxFixture();
+    expect(await throwingRejectionOf(mailbox.receiptByIdempotencyKey(''))).toThrow(
+      ApplicationCommandValidationError,
+    );
+    mailbox.dispose();
+  });
+
+  it('resumes a listing after a sequence, so a caller can walk the whole index page by page', async () => {
+    const { mailbox } = createMailboxFixture();
+    for (let index = 0; index < 5; index += 1) await admitOne(mailbox);
+    const first = await mailbox.list({ limit: 2 });
+    expect(first.map((receipt) => receipt.sequence)).toEqual([0, 1]);
+    const second = await mailbox.list({ limit: 2, afterSequence: first.at(-1)!.sequence });
+    expect(second.map((receipt) => receipt.sequence)).toEqual([2, 3]);
+    const third = await mailbox.list({ limit: 2, afterSequence: second.at(-1)!.sequence });
+    expect(third.map((receipt) => receipt.sequence)).toEqual([4]);
+    expect(await mailbox.list({ limit: 2, afterSequence: 4 })).toEqual([]);
+    // Combined with a state filter: the claimed head is sequence 0.
+    await claimOne(mailbox);
+    const available = await mailbox.list({ states: ['available'], afterSequence: 0 });
+    expect(available.map((receipt) => receipt.sequence)).toEqual([1, 2, 3, 4]);
+    const claimed = await mailbox.list({ states: ['claimed'] });
+    expect(claimed.map((receipt) => receipt.sequence)).toEqual([0]);
+    expect(await throwingRejectionOf(mailbox.list({ afterSequence: -1 }))).toThrow(
+      ApplicationCommandValidationError,
+    );
+    mailbox.dispose();
+  });
+
   it('clamps an oversized listing limit and rejects a nonsensical one', async () => {
     const { mailbox } = createMailboxFixture();
     await admitOne(mailbox);
