@@ -10,6 +10,7 @@ import {
   ScheduleMissedFireEvent,
   SignalDeliveredEvent,
   SignalReceivedEvent,
+  SignalWaitingEvent,
   UpdateCompletedEvent,
   UpdateReceivedEvent,
   WorkflowCancelledEvent,
@@ -240,6 +241,20 @@ describe('SignalDeliveredEvent', () => {
   });
 });
 
+describe('SignalWaitingEvent', () => {
+  it('sets all properties from constructor arguments', () => {
+    const event = new SignalWaitingEvent('wf-13', 'approve');
+    expect(event.workflowId).toBe('wf-13');
+    expect(event.signalName).toBe('approve');
+  });
+
+  it('has a matching static type and instance type', () => {
+    const event = new SignalWaitingEvent('wf-13', 'approve');
+    expect(event.type).toBe(SignalWaitingEvent.type);
+    expect(event.type).toBe('signal:waiting');
+  });
+});
+
 describe('AttributesChangedEvent', () => {
   it('sets all properties from constructor arguments', () => {
     const changes = { status: 'active', count: 5 };
@@ -393,6 +408,7 @@ describe('WeftEventMap type coverage', () => {
     expect(ActivityFailedEvent.type).toBe('activity:failed');
     expect(SignalReceivedEvent.type).toBe('signal:received');
     expect(SignalDeliveredEvent.type).toBe('signal:delivered');
+    expect(SignalWaitingEvent.type).toBe('signal:waiting');
     expect(AttributesChangedEvent.type).toBe('attributes:changed');
     expect(UpdateReceivedEvent.type).toBe('update:received');
     expect(UpdateCompletedEvent.type).toBe('update:completed');

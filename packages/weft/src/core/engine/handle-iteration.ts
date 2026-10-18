@@ -14,6 +14,7 @@ const WORKFLOW_HANDLE_NON_TERMINAL_EVENT_TYPES = [
   'activity:started',
   'activity:completed',
   'signal:received',
+  'signal:waiting',
 ] as const;
 
 // The terminal lifecycle types come from the shared source of truth so the

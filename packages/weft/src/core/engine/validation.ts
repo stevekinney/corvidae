@@ -18,7 +18,9 @@ import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
 import { isDecodableWorkflowId } from '../workflow-identifiers.ts';
 import { isWorkflowTagArray } from '../workflow-tags.ts';
 import type { WorkflowVersionTuple } from '../workflow-version-tuple.ts';
+import { sanitizeDecodedParentLineage, sanitizeDecodedRestartLineage } from './decode-lineage.ts';
 import { sanitizeDecodedRevision } from './decode-revision.ts';
+import { sanitizeDecodedSignalWaits } from './signal-wait-state.ts';
 import {
   MAX_TIMELINE_COORDINATOR_DETAILS,
   MAX_TIMELINE_DETAIL_STRING_LENGTH,
@@ -69,6 +71,7 @@ const WORKFLOW_STATE_FIELD_NAMES = new Set<string>(
     'terminalCleanupToken',
     'terminalCommittedBy',
     'executionDeadline',
+    'waitingForSignals',
     'forkedFrom',
     'restartedFrom',
     'workerBinding',
@@ -246,54 +249,10 @@ export function decodeWorkflowState(bytes: Uint8Array): WorkflowState {
   sanitizeDecodedParentLineage(state);
   sanitizeDecodedRestartLineage(state);
   sanitizeDecodedRevision(state);
+  sanitizeDecodedSignalWaits(state);
   return decodedRecord === undefined
     ? state
     : stripUnknownWorkflowStateFields(state, decodedRecord);
-}
-
-function sanitizeDecodedParentLineage(state: WorkflowState): void {
-  // Decode-facing check (WFT-95 review) — see the `executionStateOwnerId`
-  // comment above `decodeWorkflowState`; a pre-WFT-95 parent id of `.`/`..`
-  // must survive decode instead of severing the parent lineage (and, via the
-  // `parentWorkflowId === undefined` check below, the execution token too).
-  if (state.parentWorkflowId !== undefined && !isDecodableWorkflowId(state.parentWorkflowId)) {
-    delete state.parentWorkflowId;
-  }
-  if (
-    typeof state.parentWorkflowExecutionToken !== 'string' ||
-    state.parentWorkflowExecutionToken.length === 0 ||
-    state.parentWorkflowId === undefined
-  ) {
-    delete state.parentWorkflowExecutionToken;
-  }
-}
-
-function sanitizeDecodedRestartLineage(state: WorkflowState): void {
-  const restartedFrom = state.restartedFrom;
-  if (!isRecord(restartedFrom)) {
-    delete state.restartedFrom;
-    return;
-  }
-  // Decode-facing check (WFT-95 review) — same reasoning as
-  // `sanitizeDecodedParentLineage`: a pre-WFT-95 `restartedFrom.workflowId`
-  // of `.`/`..` must remain decodable rather than dropping the whole
-  // restart-lineage record.
-  const restartWorkflowId = restartedFrom['workflowId'];
-  if (typeof restartWorkflowId !== 'string' || !isDecodableWorkflowId(restartWorkflowId)) {
-    delete state.restartedFrom;
-    return;
-  }
-  const workflowExecutionToken = restartedFrom['workflowExecutionToken'];
-  const replacedAt = restartedFrom['replacedAt'];
-  if (
-    (workflowExecutionToken !== undefined &&
-      (typeof workflowExecutionToken !== 'string' || workflowExecutionToken.length === 0)) ||
-    typeof replacedAt !== 'number' ||
-    !Number.isSafeInteger(replacedAt) ||
-    replacedAt < 0
-  ) {
-    delete state.restartedFrom;
-  }
 }
 
 function stripUnknownWorkflowStateFields(

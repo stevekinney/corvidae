@@ -22,9 +22,9 @@ describe('watch WebSocket delivery', () => {
   it('reads the highest durable stream and watch sequence from storage keys', async () => {
     const storage = new MemoryStorage();
     await storage.put(KEYS.streamChunk('wf-sequences', 'tokens', 3), encode({ token: 'a' }));
-    await storage.put(`${KEYS.eventPrefix('wf-sequences')}head`, encode({ ignored: true }));
+    await storage.put(`${KEYS.watchEventPrefix('wf-sequences')}head`, encode({ ignored: true }));
     await storage.put(
-      KEYS.event('wf-sequences', 4),
+      KEYS.watchEvent('wf-sequences', 4),
       encode({
         type: 'workflow:suspended',
         timestamp: 1,
@@ -41,7 +41,7 @@ describe('watch WebSocket delivery', () => {
 
   it('returns no durable watch sequence when only non-event keys share the prefix', async () => {
     const storage = new MemoryStorage();
-    await storage.put(`${KEYS.eventPrefix('wf-empty-watch')}head`, encode({ ignored: true }));
+    await storage.put(`${KEYS.watchEventPrefix('wf-empty-watch')}head`, encode({ ignored: true }));
     const engine = { storage } as unknown as Engine;
 
     expect(await getHighestStoredWatchSequence(engine, 'wf-empty-watch')).toBe(-1);
@@ -216,9 +216,9 @@ describe('watch WebSocket delivery', () => {
   it('skips malformed stored watch records and continues replaying later events', async () => {
     const context = minimalServerContext();
     const storage = new MemoryStorage();
-    await storage.put(KEYS.event('wf-watch', 1), new Uint8Array([0xc1]));
+    await storage.put(KEYS.watchEvent('wf-watch', 1), new Uint8Array([0xc1]));
     await storage.put(
-      KEYS.event('wf-watch', 2),
+      KEYS.watchEvent('wf-watch', 2),
       encode({
         type: 'workflow:suspended',
         timestamp: 2,
@@ -226,7 +226,7 @@ describe('watch WebSocket delivery', () => {
       }),
     );
     await storage.put(
-      KEYS.event('wf-watch', 3),
+      KEYS.watchEvent('wf-watch', 3),
       encode({
         type: 'workflow:failed',
         timestamp: Number.NaN,
@@ -265,7 +265,7 @@ describe('watch WebSocket delivery', () => {
     const storage = new MemoryStorage();
     for (let sequence = 0; sequence <= 1000; sequence += 1) {
       await storage.put(
-        KEYS.event('wf-watch', sequence),
+        KEYS.watchEvent('wf-watch', sequence),
         encode({
           type: 'workflow:suspended',
           timestamp: sequence,

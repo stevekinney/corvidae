@@ -71,6 +71,7 @@ export const WEFT_RESERVED_KEY_PREFIXES = [
   'upd:',
   'upk:',
   'upr:',
+  'watch-event:',
   'wf:',
   'wf-cleanup:',
   'wf-cleanup-needed:',
