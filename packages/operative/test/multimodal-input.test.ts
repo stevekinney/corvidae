@@ -14,14 +14,14 @@ import type {
   Message,
   MultiModalContent,
 } from 'conversationalist';
-import { Conversation } from 'conversationalist';
-
 import {
+  Conversation,
   toAnthropicMessages,
   toGeminiMessages,
   toOpenAIMessages,
   UnsupportedContentError,
 } from 'conversationalist';
+
 import { z } from 'zod';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
 import { prepareSubagentContext } from '../src/context/subagent-context';

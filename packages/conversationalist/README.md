@@ -396,7 +396,11 @@ import {
 - Composition exports: `createInstructionComposer`, `createInstructionTemplate`, `createConditionalInstructionComposer`, `whenStep`, `whenToolsAvailable`, `whenAnyToolAvailable`, `whenMetadata`, `whenMetadataPresent`.
 - Event classes: `ConversationChangeEvent`, `ConversationPushEvent`, `MessagesAppendedEvent`, `StreamStartedEvent`, `StreamFinalizedEvent`, and others.
 
-**AB-70 portable content and modality vocabulary (type-only):** `Modality`, `MimeFamily`, `MediaLimitScope`, `MediaLimits`, `ContentSource`, and `ModalityMatrix`, defined in `src/multi-modal.ts` and re-exported from the root. These are additive names for other packages (notably `@lostgradient/operative`'s `BackendDescriptor`) to cite, and do not replace `MultiModalContent`, `ImageContent`, `DocumentContent`, or `DocumentSource`, which stay as they are.
+**Media content (COR-716):** an image, audio, video, document, or file part is one of `ImageContent`, `AudioContent`, `VideoContent`, `DocumentContent`, or `FileContent` (together `MediaContent`), each with a literal `type`. They share `MediaContentFields`: a required `source: ContentSource` and optional `mimeType`, `name`, `alt`, `caption`, `transcript`, `extractedText`, and `metadata`. `source` is the AB-70 `ContentSource`, the only place a part names its bytes or location: `inline`, `data-url`, `remote-url`, `local-file`, `upload`, `provider-file`, `mcp-resource`, `a2a-reference`, or `managed-asset` (with an asset id and optional revision). `contentSourceSchema` validates exactly those nine kinds.
+
+`Modality`, `MimeFamily`, `MediaLimitScope`, `MediaLimits`, and `ModalityMatrix` are the AB-70 vocabulary other packages (notably `@lostgradient/operative`'s `BackendDescriptor`) cite. `contentSourceDisplayUrl(source)` returns a URL a UI may show (defined for `data-url` and `remote-url` only), and `mediaDisplayUrl(part)` also builds a data URL from inline base64 bytes with a declared media type. `renderMediaPlaceholder(part)` is a one-line description for display; no provider or compaction path substitutes it for a part.
+
+A conversation stored under another `CURRENT_SCHEMA_VERSION` is refused with an `error:unsupported-schema-version` `ConversationalistError` (`context: { schemaVersion, expected }`), not read: there is no migration or dual-read path. Version 6 replaced `{ type: 'image', url }` and the `base64`/`reference` document sources with `source: ContentSource`.
 
 ### Immutable conversation helpers
 
@@ -706,7 +710,7 @@ Schema version constant for serialization compatibility checks.
 ```typescript
 import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
-console.log(CURRENT_SCHEMA_VERSION); // e.g. 1
+console.log(CURRENT_SCHEMA_VERSION); // 6
 ```
 
 **Key exports:** `CURRENT_SCHEMA_VERSION`.
@@ -781,8 +785,8 @@ import {
 } from 'conversationalist';
 import type { OpenAIMessage } from 'conversationalist';
 
-// Export to OpenAI format
-const messages = toOpenAIMessages(history);
+// Export to OpenAI format: the wire messages, and one lineage entry per media part delivered
+const { messages, lineage } = toOpenAIMessages(history);
 
 // Group tool-call and tool-result pairs (preferred for most providers)
 const grouped = toOpenAIMessagesGrouped(history);
@@ -797,7 +801,9 @@ const updated = appendOpenAIMessages(history, newMessages);
 const restored = await Conversation.fromProvider('openai', { messages: openAIMessages });
 ```
 
-**Key exports:** `toOpenAIMessages`, `toOpenAIMessagesGrouped`, `fromOpenAIMessages`, `appendOpenAIMessages`, `openAIConversationAdapter`. Type exports: `OpenAIMessage`, `OpenAISystemMessage`, `OpenAIUserMessage`, `OpenAIAssistantMessage`, `OpenAIToolMessage`, `OpenAIToolCall`, `OpenAIContentPart`, `OpenAITextContentPart`, `OpenAIImageContentPart`, `OpenAIConversationExportOptions`.
+Every outbound adapter delivers each media part or throws an `UnsupportedContentError` (`error:unsupported-content`) before any provider call. The error names the `provider`, `messageId`, `partIndex`, `partType`, optional `sourceKind`, and a `reason`: `modality-not-accepted`, `source-form-not-accepted`, `mime-family-not-accepted`, `mime-type-required`, `role-not-accepted`, or `part-type-not-accepted`. Nothing becomes marker prose, an empty string, or text alone. OpenAI Chat Completions takes an image as `image_url` (a remote URL or a data URL) and a document as a `file` part holding a base64 data URL; it has no audio, video, or generic file input on this endpoint. `lineage` (a `ContentPartLineage[]`) records, for each delivered part, its `from` and `to` source kinds and a `transform` (`passthrough`, `data-url-split`, `inline-base64`, `remote-url-delegated`, `provider-file-reference`, or `resolved`). Pass `{ sources }` (a map keyed `${messageId}:${partIndex}` to a `ResolvedMediaSource`) to export a part through a source a resolver projected, such as a managed asset resolved to inline bytes, without rewriting the stored message.
+
+**Key exports:** `toOpenAIMessages`, `toOpenAIMessagesGrouped`, `fromOpenAIMessages`, `appendOpenAIMessages`, `openAIConversationAdapter`. Type exports: `OpenAIExport`, `OpenAIFileContentPart`, `OpenAIMessage`, `OpenAISystemMessage`, `OpenAIUserMessage`, `OpenAIAssistantMessage`, `OpenAIToolMessage`, `OpenAIToolCall`, `OpenAIContentPart`, `OpenAITextContentPart`, `OpenAIImageContentPart`, `OpenAIConversationExportOptions`.
 
 ### Anthropic conversion
 
@@ -815,13 +821,13 @@ import {
 import type { AnthropicConversation } from 'conversationalist';
 
 const payload = toAnthropicMessages(history);
-// payload.system: string, payload.messages: AnthropicMessage[]
+// payload.system: string, payload.messages: AnthropicMessage[], payload.lineage: ContentPartLineage[]
 
 const imported = fromAnthropicMessages(payload);
 const updated = appendAnthropicMessages(history, payload);
 ```
 
-**Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
+**Key exports:** `toAnthropicMessages`, `fromAnthropicMessages`, `appendAnthropicMessages`, `anthropicConversationAdapter`. Type exports: `AnthropicConversation`, `AnthropicExport`, `AnthropicMessage`, `AnthropicContentBlock`, `AnthropicTextBlock`, `AnthropicToolUseBlock`, `AnthropicToolResultBlock`, `AnthropicImageBlock`, `AnthropicImageSource`, `AnthropicBase64ImageSource`, `AnthropicUrlImageSource`.
 
 ```typescript
 import { toAnthropicMessagesForSdk } from 'conversationalist/adapters/anthropic/sdk';
@@ -843,13 +849,13 @@ import {
 import type { GeminiConversation } from 'conversationalist';
 
 const payload = toGeminiMessages(history);
-// payload.contents: GeminiContent[]
+// payload.contents: GeminiContent[], payload.lineage: ContentPartLineage[]
 
 const imported = fromGeminiMessages(payload);
 const updated = appendGeminiMessages(history, payload);
 ```
 
-**Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
+**Key exports:** `toGeminiMessages`, `fromGeminiMessages`, `appendGeminiMessages`, `geminiConversationAdapter`. Type exports: `GeminiConversation`, `GeminiExport`, `GeminiContent`, `GeminiPart`, `GeminiTextPart`, `GeminiInlineDataPart`, `GeminiFileDataPart`, `GeminiFunctionCallPart`, `GeminiFunctionResponsePart`.
 
 ### AG-UI message mapping
 

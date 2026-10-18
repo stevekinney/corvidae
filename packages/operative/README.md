@@ -148,7 +148,7 @@ const result = await run.result(); // await—same handle
 | `contextManagement` | `ContextManagementOptions` | Automatic context compaction. |
 | `permissions` | `HeadlessPermissionPolicyConfiguration` | Deny-by-default headless mode (AB-94). Mutually exclusive with `toolbox`. |
 
-`agent.run(input)` accepts either a plain `string` (starts a fresh conversation—`instructions`, if given, is appended as a system message, then `input` as a user message) or `{ conversation: ConversationHistory }` (resumes an existing history—see the next section).
+`agent.run(input)` accepts a plain `string` (starts a fresh conversation—`instructions`, if given, is appended as a system message, then `input` as a user message), an ordered array of user-admissible parts (text, and image, audio, video, document, or file parts addressed by a `ContentSource`; the array becomes exactly one user message, in order, and an empty array throws an `AgentContractError`), or `{ conversation: ConversationHistory }` (resumes an existing history—see the next section). `SessionHandle.run` and `MonitorOptions.input` accept the same string-or-parts payload.
 
 ### Stateless chat host: resume a conversation, share a toolbox, park on approval
 
@@ -247,6 +247,26 @@ const resumedResult = await toolbox.resumeApproval(signedApproval, {
 > Start the next turn from the resolved history. This README does not yet carry a full worked example of that round trip; see conversationalist's own documentation for `resolveToolResult` until one lands here.
 
 **Mutation ownership:** `agent.run({ conversation })` SNAPSHOTS the supplied `ConversationHistory`—it clones the value before wrapping it in a fresh internal `Conversation`, so the run's state and the object you passed in are independent from the moment `run()` is called: the run never mutates your object, and mutations you make to it afterward (a stateless host commonly keeps a mutable reference between turns) never leak into an in-flight run. This matches the durable path's existing snapshot semantics. `instructions` is not re-appended on this path; the supplied history is assumed to already carry whatever system context it needs, so resuming it repeatedly never duplicates system messages.
+
+### Media input (COR-716)
+
+A run's input can carry media, not just text. Pass an ordered array of parts to `agent.run`, `session.run`, or a `toAgentInput` projection, and the provider boundary receives those parts in that order, unchanged, or the step fails with a typed error before any provider call. Nothing is replaced by an empty string, reduced to its text, or rewritten as marker prose.
+
+Each step with a media part in its conversation runs three checks before the input guardrail, context management, or the provider sees it:
+
+1. **Resolve.** A part whose source kind no provider takes directly (`managed-asset`, `upload`, `local-file`, `mcp-resource`, `a2a-reference`) goes through `RunOptions.contentSourceResolver` (also a `createAgent` option). It returns a `ResolvedMediaSource` (an `inline`, `data-url`, `remote-url`, or `provider-file` source, with optional `mimeType`, `byteLength`, and a `safety` of `clean`, `flagged`, or `unknown`) or `{ outcome: 'unavailable', reason }`. The stored message keeps the part's original source, so asset identity and revision survive; the resolved form reaches the provider adapter through `GenerateContext.resolvedSources` and the input guardrail through `StepContext.resolvedSources`.
+2. **Cost.** `RunOptions.mediaCostEstimator` (also a `createAgent` option) returns a `MediaCostOutcome` per part. Without one, `createCatalogMediaCostEstimator` costs the part against the `BackendDescriptor`s the `generate` function carries: the modality must be accepted, the source kind listed, the MIME family listed, the size known and within `mediaLimits`; the token figure is a conservative upper bound from the part's bytes, and its `basis` is `catalog-estimate`. A caller with a provider token counter supplies its own estimator and reports `provider-count`.
+3. **Admit.** Any outcome other than `estimated` (`unsupported` with a reason of `modality-not-accepted`, `source-form-not-accepted`, or `mime-family-not-accepted`; `unbounded` with `no-estimator`, `size-unknown`, or `media-limit-exceeded`) fails the step with a `MediaAdmissionError` (code `MEDIA_NOT_ADMITTED`, kind `policy`) carrying one outcome per refused part. A `generate` function with no descriptors and no estimator therefore admits no media. Estimated media tokens count toward `contextManagement`'s compaction threshold, and `createContextAssembler` reports them in `BudgetReport.mediaTokens` and `AssemblyResult.mediaCosts`; it leaves a message out, never admits it at zero, when a part is not `estimated`.
+
+The OpenAI, Anthropic, and Gemini factories record what each request delivered in `GenerateResponse.metadata.inputLineage`: one entry per media part with its `from` and `to` source kinds and the `transform` applied, so it lands in the durable transcript beside the assistant message. An unsupported combination throws conversationalist's `UnsupportedContentError` outside the SDK `try`, so it is never wrapped in a `ProviderError`.
+
+`createInputGuardrail` inspects every text-bearing field of the last user message as its own detector input: text parts; a media part's `name`, `alt`, `caption`, `transcript`, and `extractedText`; the strings in its `metadata`; and a `remote-url` source's URL. `sanitize` rewrites only the flagged fields and keeps every media part in order (a URL has no sanitized form, so it blocks). A resolved asset the safety gate marked `flagged` is always refused; `assetSafety: { unknown: 'block' }` also refuses assets with no verdict (default `'allow'`).
+
+Compaction keeps media: `Conversation.compact()` preserves every message that holds a media part verbatim (`preservePolicy.media`, default `true`), so `createContextCompactor`, the sliding-window strategy, and `createOverflowMutator` summarize around them. `prepareSubagentContext` carries text and media parts to the child and leaves out provider-private reasoning blocks. A fresh attempt carries none of the source transcript: its seed is the rendered artifact.
+
+For selection, `describeInputMedia(parts)` derives `InputMediaRequirement`s, and `SelectionRequest.inputMedia` makes `select()` exclude any backend that cannot take them (no input for the modality, a source form it does not list, a MIME family it does not list, a part over `mediaLimits`, or more parts than `mediaCounts` allows, or a `remote-url` it cannot fetch itself) with `incompatible-modality` before ranking. `AgentPreferences.requiredInputModalities` excludes backends missing a modality or source form with `missing-required-capability`. `BackendDescriptor` (version 2) declares `mediaCounts` and `providerFetchesRemoteUrls` beside `modalities`, `mimeFamilies`, and `mediaLimits`.
+
+The durable run envelope is `RUN_ENVELOPE_SCHEMA_VERSION` 3: an envelope or transcript stored under version 2 is refused with `UnsupportedRunResultVersionError`, not read.
 
 ### Process-local session timing
 

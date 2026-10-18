@@ -509,12 +509,14 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
 
     it('refuses an asset the safety gate flagged, whatever the detectors say', async () => {
       const hook = createInputGuardrail({ detectors: [] });
-      expect((await hook(withSafety('flagged')))?.content).toContain('blocked');
+      const result = await hook(withSafety('flagged'));
+      expect(result?.content).toContain('blocked');
     });
 
     it('refuses a flagged asset instead of sanitizing, since sanitizing cannot make bytes safe', async () => {
       const hook = createInputGuardrail({ detectors: [], action: 'sanitize' });
-      expect((await hook(withSafety('flagged')))?.content).toContain('blocked');
+      const result = await hook(withSafety('flagged'));
+      expect(result?.content).toContain('blocked');
     });
 
     it('trips the tripwire for a flagged asset', async () => {
@@ -526,7 +528,8 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
       expect(await createInputGuardrail({ detectors: [] })(withSafety('clean'))).toBeUndefined();
       expect(await createInputGuardrail({ detectors: [] })(withSafety('unknown'))).toBeUndefined();
       const strict = createInputGuardrail({ detectors: [], assetSafety: { unknown: 'block' } });
-      expect((await strict(withSafety('unknown')))?.content).toContain('blocked');
+      const refused = await strict(withSafety('unknown'));
+      expect(refused?.content).toContain('blocked');
       expect(await strict(withSafety('clean'))).toBeUndefined();
     });
   });
