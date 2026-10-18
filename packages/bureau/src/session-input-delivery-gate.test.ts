@@ -81,19 +81,37 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
   });
 
   it.each([
-    ['a non-object value', 'just a string'],
-    ['an array value', []],
-    ['a missing incarnation', { schemaVersion: SCHEMA_VERSION, payload: 'hello' }],
-    ['a numeric payload', { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 42 }],
-    ['a missing payload', { incarnation: INCARNATION }],
+    ['a non-object value', 'just a string', /must be stored as an object/],
+    ['an array value', [], /must be stored as an object/],
+    [
+      'a missing incarnation',
+      { schemaVersion: SCHEMA_VERSION, payload: 'hello' },
+      /must record the session incarnation/,
+    ],
+    [
+      'a numeric payload',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 42 },
+      /must be a string or an array of content parts/,
+    ],
+    [
+      'a missing payload',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION },
+      /must be a string or an array of content parts/,
+    ],
     [
       'an object payload',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: { text: 'hello' } },
+      /must be a string or an array of content parts/,
     ],
-    ['a null part', { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [null] }],
+    [
+      'a null part',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [null] },
+      /part 0 is not valid content/,
+    ],
     [
       'a part with no type',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ text: 'hello' }] },
+      /part 0 is not valid content/,
     ],
     [
       'a provider-generated part',
@@ -102,10 +120,12 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
         incarnation: INCARNATION,
         payload: [{ type: 'thinking', thinking: 'x', signature: 's' }],
       },
+      /part 0 has an unsupported type/,
     ],
     [
       'a text part with no text',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ type: 'text' }] },
+      /part 0 is not valid content/,
     ],
     [
       'a text part carrying citations',
@@ -114,10 +134,12 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
         incarnation: INCARNATION,
         payload: [{ type: 'text', text: 'x', citations: null }],
       },
+      /part 0 has an unsupported type/,
     ],
     [
       'an image with no source',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ type: 'image' }] },
+      /part 0 is not valid content/,
     ],
     [
       'an image in the shape before the media schema',
@@ -126,6 +148,7 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
         incarnation: INCARNATION,
         payload: [{ type: 'image', url: 'https://example.invalid/a.png', mimeType: 'image/png' }],
       },
+      /part 0 is not valid content/,
     ],
     [
       'an image whose remote-url is not http',
@@ -134,23 +157,32 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
         incarnation: INCARNATION,
         payload: [{ type: 'image', source: { kind: 'remote-url', url: 's3://bucket/a.png' } }],
       },
+      /part 0 is not valid content/,
     ],
     [
       'an empty part list',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [] },
+      /must not be an empty list/,
     ],
-    ['a missing schema version', { incarnation: INCARNATION, payload: 'hello' }],
+    [
+      'a missing schema version',
+      { incarnation: INCARNATION, payload: 'hello' },
+      /unsupported schema version/,
+    ],
     [
       'a schema version from before this build',
       { schemaVersion: SCHEMA_VERSION - 1, incarnation: INCARNATION, payload: 'hello' },
+      /unsupported schema version/,
     ],
     [
       'a schema version from after this build',
       { schemaVersion: SCHEMA_VERSION + 1, incarnation: INCARNATION, payload: 'hello' },
+      /unsupported schema version/,
     ],
     [
       'a schema version that is not a number',
       { schemaVersion: String(SCHEMA_VERSION), incarnation: INCARNATION, payload: 'hello' },
+      /unsupported schema version/,
     ],
     [
       'a document with a bad source',
@@ -161,17 +193,20 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
           { type: 'document', name: 'n', mimeType: 'm', source: { kind: 'ftp', host: 'x' } },
         ],
       },
+      /part 0 is not valid content/,
     ],
     [
       'a non-string expiresAt',
       { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 'x', expiresAt: 5 },
+      /expiresAt must be a string/,
     ],
     [
       'another incarnation',
       { schemaVersion: SCHEMA_VERSION, incarnation: 'incarnation-0', payload: 'hello' },
+      /earlier incarnation/,
     ],
-  ])('refuses %s', (_name, value) => {
-    expect(() => decodeSessionInputCommand(claimWith(value), INCARNATION)).toThrow();
+  ])('refuses %s', (_name, value, error) => {
+    expect(() => decodeSessionInputCommand(claimWith(value), INCARNATION)).toThrow(error);
   });
 
   it('refuses a kind it never produced', () => {
@@ -183,7 +218,7 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
         ),
         INCARNATION,
       ),
-    ).toThrow();
+    ).toThrow(/Unrecognized session-input mailbox command kind/);
   });
 });
 

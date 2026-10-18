@@ -2,9 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import {
   appendMessages,
+  appendUnsafeMessage,
   createConversationHistory as createConversation,
 } from '../src/conversation/index';
-import { ConversationalistError, UnsupportedContentError } from '../src/errors';
+import { ConversationalistError } from '../src/errors';
 import {
   createBasicConversation,
   createToolCallConversation,
@@ -250,7 +251,7 @@ describe('Anthropic Adapter', () => {
 
     it('rejects a data URL that carries no bytes instead of sending it as a url source', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
-      conv = appendMessages(
+      conv = appendUnsafeMessage(
         conv,
         {
           role: 'user',
@@ -261,8 +262,9 @@ describe('Anthropic Adapter', () => {
       );
 
       // The part can neither vanish from the payload nor be sent as a bogus
-      // `url` source: the adapter rejects it before any provider call.
-      expect(() => toAnthropicMessages(conv)).toThrow(UnsupportedContentError);
+      // `url` source: the export rejects it before any provider call, since a data URL with
+      // no payload fails the content schema.
+      expect(() => toAnthropicMessages(conv)).toThrow(ConversationalistError);
     });
 
     it('rejects unknown roles before adapter formatting', () => {

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-import type { ContentSource, MultiModalContent } from './multi-modal';
+import { isDecodableBase64, mimeTypeFitsModality } from './media-types';
+import type { ContentSource, Modality, MultiModalContent } from './multi-modal';
 import type {
   ConversationHistory as Conversation,
   ConversationStatus,
@@ -72,16 +73,26 @@ function urlWithScheme(schemes: readonly string[]) {
 }
 
 /**
- * Zod schema for the nine AB-70 `ContentSource` kinds. Mirrors the
+ * Zod schema for the nine `ContentSource` kinds. Mirrors the
  * `ContentSource` type in `multi-modal.ts` exactly.
  */
 export const contentSourceSchema = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('inline'),
+      data: z.string().min(1),
+      encoding: z.enum(['base64', 'utf8']),
+    })
+    .refine((source) => source.encoding === 'utf8' || isDecodableBase64(source.data), {
+      message: 'inline base64 data must decode',
+      path: ['data'],
+    }),
   z.object({
-    kind: z.literal('inline'),
-    data: z.string().min(1),
-    encoding: z.enum(['base64', 'utf8']),
+    kind: z.literal('data-url'),
+    url: urlWithScheme(['data:']).refine(isWellFormedDataUrl, {
+      message: 'a data URL must carry a payload that decodes',
+    }),
   }),
-  z.object({ kind: z.literal('data-url'), url: urlWithScheme(['data:']) }),
   z.object({ kind: z.literal('remote-url'), url: urlWithScheme(['http:', 'https:']) }),
   z.object({ kind: z.literal('local-file'), path: z.string().min(1) }),
   z.object({ kind: z.literal('upload'), uploadId: z.string().min(1) }),
@@ -108,6 +119,34 @@ export const contentSourceSchema = z.discriminatedUnion('kind', [
   }),
 ]) satisfies z.ZodType<ContentSource>;
 
+/** A data URL whose payload decodes: valid base64 after `;base64`, a valid URI component otherwise. */
+function isWellFormedDataUrl(url: string): boolean {
+  const comma = url.indexOf(',');
+  if (comma === -1) return false;
+  const payload = url.slice(comma + 1);
+  if (payload === '') return false;
+  if (url.slice('data:'.length, comma).split(';').includes('base64')) {
+    return isDecodableBase64(payload);
+  }
+  try {
+    decodeURIComponent(payload);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Refines a media variant so a declared media type fits the modality it is declared on. */
+function mediaTypeFitsModality(modality: Exclude<Modality, 'text'>) {
+  const check = (part: { mimeType?: string | undefined }): boolean =>
+    part.mimeType === undefined || mimeTypeFitsModality(modality, part.mimeType);
+  const params: { message: string; path: string[] } = {
+    message: `the media type does not fit a ${modality} part`,
+    path: ['mimeType'],
+  };
+  return [check, params] as const;
+}
+
 const mediaContentFields = {
   source: contentSourceSchema,
   mimeType: z.string().min(1).exactOptional(),
@@ -125,10 +164,18 @@ const multiModalContentUnion = z.discriminatedUnion('type', [
     text: z.string(),
     citations: jsonValueSchema.optional(),
   }),
-  z.object({ type: z.literal('image'), ...mediaContentFields }),
-  z.object({ type: z.literal('audio'), ...mediaContentFields }),
-  z.object({ type: z.literal('video'), ...mediaContentFields }),
-  z.object({ type: z.literal('document'), ...mediaContentFields }),
+  z
+    .object({ type: z.literal('image'), ...mediaContentFields })
+    .refine(...mediaTypeFitsModality('image')),
+  z
+    .object({ type: z.literal('audio'), ...mediaContentFields })
+    .refine(...mediaTypeFitsModality('audio')),
+  z
+    .object({ type: z.literal('video'), ...mediaContentFields })
+    .refine(...mediaTypeFitsModality('video')),
+  z
+    .object({ type: z.literal('document'), ...mediaContentFields })
+    .refine(...mediaTypeFitsModality('document')),
   z.object({ type: z.literal('file'), ...mediaContentFields }),
   z.object({
     type: z.literal('thinking'),

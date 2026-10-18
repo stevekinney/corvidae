@@ -11,7 +11,7 @@ import {
   stopWhen,
   withBackendDescriptors,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { MemoryStorage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
@@ -263,6 +263,40 @@ describe('session input carrying a managed asset (COR-716)', () => {
       }
       expect(thrown).toMatchObject({ code: 'BAD_REQUEST' });
     }
+  });
+});
+
+describe('the asset service is ready before the scheduler can fire (COR-716)', () => {
+  it('touches the asset storage before the engine storage, so no fire finds no resolver', async () => {
+    const order: Array<'assets' | 'engine'> = [];
+    const spy = <T extends object>(name: 'assets' | 'engine', target: T): T =>
+      new Proxy(target, {
+        get(object, property, receiver) {
+          const value: unknown = Reflect.get(object, property, receiver);
+          if (typeof value !== 'function' || typeof property !== 'string') return value;
+          return (...args: unknown[]) => {
+            order.push(name);
+            return (value as (...parameters: unknown[]) => unknown).apply(object, args);
+          };
+        },
+      });
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const bureau = await createBureau({
+      agents: {},
+      generate: recordingGenerate([]),
+      toolbox: createToolbox([]),
+      storage: spy('engine', new MemoryStorage()),
+      durableExecution: true,
+      assets: { storage: spy('assets', fixture.storage) },
+    });
+    cleanups.push(async () => {
+      await bureau.dispose();
+    });
+
+    expect(order.indexOf('assets')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('engine')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('assets')).toBeLessThan(order.indexOf('engine'));
   });
 });
 

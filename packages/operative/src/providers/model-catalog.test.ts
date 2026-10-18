@@ -444,6 +444,25 @@ describe('createModelCatalog: catalog invariants', () => {
     expect([...anthropicCounts].toSorted((a, b) => (a ?? 0) - (b ?? 0))).toEqual([100, 600]);
   });
 
+  it('bounds every Gemini input modality per part, so a remote URL of unknown size can be costed', () => {
+    // https://ai.google.dev/gemini-api/docs/file-input-methods: inline data is capped by the
+    // 20 MB request total, so no single inline part can exceed it.
+    const TWENTY_MEGABYTES = 20 * 1024 * 1024;
+    const catalog = createModelCatalog({ now: fixedNow });
+    const gemini = catalog.descriptors.filter((row) => row.provider === 'gemini');
+    expect(gemini.length).toBeGreaterThan(0);
+    for (const row of gemini) {
+      for (const modality of ['image', 'document', 'audio', 'video'] as const) {
+        if (!row.modalities[modality].input) continue;
+        expect(row.mediaLimits).toContainEqual({
+          scope: 'per-part',
+          modality,
+          maxBytes: TWENTY_MEGABYTES,
+        });
+      }
+    }
+  });
+
   it('has Gemini fetch remote URLs itself only on models that support external URLs', () => {
     // https://ai.google.dev/gemini-api/docs/file-input-methods: public HTTPS URLs
     // are accepted for external URLs, but "Gemini 2.0 models don't support this method".

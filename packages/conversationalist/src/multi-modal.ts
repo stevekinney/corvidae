@@ -10,7 +10,7 @@ export interface TextContent {
   citations?: JSONValue;
 }
 
-/** Fields every media part carries. `source` is the AB-70 `ContentSource` (below); nothing else names bytes or a location. */
+/** Fields every media part carries. `source` is a `ContentSource` (below); nothing else names bytes or a location. */
 export interface MediaContentFields {
   source: ContentSource;
   mimeType?: string;

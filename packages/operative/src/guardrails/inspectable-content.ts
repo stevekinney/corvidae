@@ -14,8 +14,9 @@ import type {
   MediaContent,
   Message,
   MultiModalContent,
+  ResolvedMediaSource,
 } from 'conversationalist';
-import { isMediaContent, parseDataUrl } from 'conversationalist';
+import { isMediaContent, readMediaBody } from 'conversationalist';
 
 /** One piece of text a detector inspects, and how a sanitized value would replace it. */
 export interface InspectableField {
@@ -26,8 +27,19 @@ export interface InspectableField {
   readonly replaceable: boolean;
 }
 
+/** A text body a provider would read but that cannot be read as text, so it cannot be inspected. */
+export interface UninspectableBody {
+  readonly label: string;
+  readonly reason: string;
+}
+
 export interface InspectableContent {
   readonly fields: readonly InspectableField[];
+  /**
+   * Media parts whose text body does not decode. A detector cannot read them, so
+   * the guardrail refuses the message rather than skip them.
+   */
+  readonly uninspectable: readonly UninspectableBody[];
   /**
    * Rebuilds the message content with `replacements` (field index to new text)
    * applied. Parts and fields without a replacement are carried through
@@ -38,15 +50,24 @@ export interface InspectableContent {
 
 const MEDIA_TEXT_KEYS = ['name', 'alt', 'caption', 'transcript', 'extractedText'] as const;
 
-export function inspectContent(content: Message['content']): InspectableContent {
+/**
+ * @param resolvedFor The resolution of the part at an index, when the run
+ *   resolved one: the bytes a provider will read in place of a stored source.
+ */
+export function inspectContent(
+  content: Message['content'],
+  resolvedFor?: (partIndex: number) => ResolvedMediaSource | undefined,
+): InspectableContent {
   if (typeof content === 'string') {
     return {
+      uninspectable: [],
       fields: content === '' ? [] : [{ label: 'text', text: content, replaceable: true }],
       rebuild: (replacements) => replacements.get(0) ?? content,
     };
   }
 
   const fields: InspectableField[] = [];
+  const uninspectable: UninspectableBody[] = [];
   /** For each field, the part it belongs to and how to rewrite that part. */
   const writers: Array<(part: MultiModalContent, text: string) => MultiModalContent> = [];
   const partOfField: number[] = [];
@@ -79,12 +100,25 @@ export function inspectContent(content: Message['content']): InspectableContent 
     }
     // Locators name where bytes live; a detector reads them, but a sanitized
     // value cannot replace one, so they are not replaceable.
-    const locator = sourceLocator(part);
+    const locator = sourceLocator(part.source);
     if (locator !== undefined) {
       add(
         { label: `${part.type}.${locator.label}`, text: locator.text, replaceable: false },
         (current) => current,
       );
+    }
+    // The text a provider reads from the part's own bytes (inline text, a textual
+    // data URL, or the body a resolver returned) is content, whatever the source's
+    // address says. It is read through the one helper every content-inspecting
+    // surface uses, and cannot be rewritten in place here.
+    const body = readMediaBody(part, resolvedFor?.(partIndex));
+    if (body.status === 'text') {
+      add(
+        { label: `${part.type}.data`, text: body.body.text, replaceable: false },
+        (current) => current,
+      );
+    } else if (body.status === 'undecodable') {
+      uninspectable.push({ label: `${part.type}.data`, reason: body.reason });
     }
     if (part.metadata !== undefined) {
       collectMetadataStrings(part.metadata, [], (path, text) => {
@@ -99,6 +133,7 @@ export function inspectContent(content: Message['content']): InspectableContent 
 
   return {
     fields,
+    uninspectable,
     rebuild(replacements) {
       const rebuilt: MultiModalContent[] = [...content];
       for (const [fieldIndex, text] of replacements) {
@@ -113,50 +148,8 @@ export function inspectContent(content: Message['content']): InspectableContent 
   };
 }
 
-/** Media types whose bytes are text a detector can read once decoded. */
-function isTextMimeType(mimeType: string | undefined): boolean {
-  if (mimeType === undefined) return false;
-  const base = mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
-  return (
-    base.startsWith('text/') ||
-    base === 'application/json' ||
-    base === 'application/xml' ||
-    base.endsWith('+json') ||
-    base.endsWith('+xml')
-  );
-}
-
-function decodeBase64Text(data: string): string | undefined {
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(
-      Uint8Array.from(atob(data), (character) => character.charCodeAt(0)),
-    );
-  } catch {
-    return undefined;
-  }
-}
-
-function sourceLocator(part: MediaContent): { label: string; text: string } | undefined {
-  const source: ContentSource = part.source;
+function sourceLocator(source: ContentSource): { label: string; text: string } | undefined {
   switch (source.kind) {
-    case 'data-url': {
-      const parsed = parseDataUrl(source.url);
-      if (parsed === undefined || !isTextMimeType(parsed.mimeType ?? part.mimeType))
-        return undefined;
-      const decoded = decodeBase64Text(parsed.data);
-      return decoded === undefined || decoded === '' ? undefined : { label: 'data', text: decoded };
-    }
-    case 'inline': {
-      // A provider receives inline text verbatim, so it is content, not an opaque
-      // payload. UTF-8 data is read as is, and base64 data is read when the part
-      // declares a text media type. Opaque bytes carry nothing a detector can read.
-      if (source.encoding === 'utf8') {
-        return source.data === '' ? undefined : { label: 'data', text: source.data };
-      }
-      if (!isTextMimeType(part.mimeType)) return undefined;
-      const decoded = decodeBase64Text(source.data);
-      return decoded === undefined || decoded === '' ? undefined : { label: 'data', text: decoded };
-    }
     case 'remote-url':
       return { label: 'url', text: source.url };
     case 'mcp-resource':
@@ -168,7 +161,7 @@ function sourceLocator(part: MediaContent): { label: string; text: string } | un
     case 'provider-file':
       return { label: 'providerFileId', text: source.providerFileId };
     default:
-      // Bytes (`data-url`) and opaque ids (`upload`, `managed-asset`)
+      // Bytes (`inline`, `data-url`) are read as a body above; opaque ids (`upload`, `managed-asset`)
       // carry nothing a text detector can usefully read.
       return undefined;
   }

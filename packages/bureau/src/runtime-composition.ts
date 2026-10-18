@@ -62,6 +62,7 @@ import {
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
+  isSessionInputPayload,
   payloadText,
   reservedIdentifierReason,
   ScheduleAttemptedEvent,
@@ -859,8 +860,19 @@ function catalogRunRecoveryKey(runId: string): string {
   return `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`;
 }
 
+/**
+ * The input a catalog run's recovery record may hold: text, a non-empty list of
+ * user text and media parts (checked with the media schemas), or `{ conversation }`.
+ *
+ * COR-716 widened this from text and `{ conversation }` without changing the
+ * record's `schemaVersion`. The decision is that the record stays at version 1: its
+ * writer and reader ship together, nothing is deployed, the project is pre-release,
+ * and a widened input is additive for a reader (every record an earlier writer made
+ * still passes).
+ */
 function isCatalogAgentInput(value: unknown): value is AgentInput {
   if (typeof value === 'string') return true;
+  if (Array.isArray(value)) return isSessionInputPayload(value);
   return isRecord(value) && isRecord(value['conversation']);
 }
 
@@ -3447,6 +3459,9 @@ async function buildRuntimeComposition(
       services: {
         options: {
           ...resolution.options,
+          // The run's owner of record resolves its assets and holds the same
+          // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
+          ...unsetMediaOptions(resolution.options, mediaOptionsFor(ownerOrLocal(record.principal))),
           hooks: mergeHookRegistries(invariants, resolution.options.hooks),
         },
         toolbox: resolution.options.toolbox,

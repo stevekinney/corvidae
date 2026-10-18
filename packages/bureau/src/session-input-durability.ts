@@ -8,6 +8,7 @@ import {
   type SessionInputState,
 } from '@lostgradient/operative';
 import { sha256HexSync } from '@lostgradient/cryptography';
+import type { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 import {
   type ApplicationCommandReceipt,
   type ConditionalTextValueStore,
@@ -452,11 +453,11 @@ export const SESSION_INPUT_IDENTITY_TAKEN_REASON =
 export interface PersistedSessionInput {
   /**
    * The conversation schema version the payload's media parts were written
-   * under (`CURRENT_SCHEMA_VERSION` when written). A stored input is read only by a build on the same version: there is
+   * under. A stored input is read only by a build on the same version: there is
    * no migration, so a mismatch is refused when the mailbox is read, not
    * coerced into a part the build would misread.
    */
-  readonly schemaVersion: number;
+  readonly schemaVersion: typeof CURRENT_SCHEMA_VERSION;
   /**
    * The session incarnation the input was admitted to. The mailbox is keyed by
    * session id alone, so a recreated session would otherwise inherit what a

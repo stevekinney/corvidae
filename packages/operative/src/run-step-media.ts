@@ -23,7 +23,7 @@ import type {
   ResolvedMediaSource,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { isMediaContent } from 'conversationalist';
+import { isMediaContent, mimeTypeFitsModality, parseDataUrl } from 'conversationalist';
 
 import { createCatalogMediaCostEstimator, sourceByteLength } from './context/media-cost';
 import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from './context/types';
@@ -31,7 +31,7 @@ import { MediaAdmissionError } from './errors';
 import { RunErrorEvent } from './events';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
-import { describeInputMedia, type InputMediaRequirement } from './providers/selection';
+import { type InputMediaRequirement, locateInputMedia } from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 
 /** The source kinds a provider adapter can carry without a resolver. */
@@ -159,22 +159,15 @@ export function describeStepInputMedia(
   conversation: Conversation,
   resolvedSources: ResolvedMediaSources | undefined,
 ): readonly InputMediaRequirement[] | undefined {
-  const requirements = locateMedia(conversation).flatMap(({ part, messageId, partIndex }) => {
-    const resolved = resolvedSources?.get(`${messageId}:${partIndex}`);
-    const effective: MediaContent =
-      resolved === undefined
-        ? part
-        : {
-            ...part,
-            source: resolved.source,
-            ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
-          };
-    const described = describeInputMedia([effective]);
-    return resolved?.byteLength === undefined
-      ? described
-      : described.map((requirement) => ({ ...requirement, byteLength: resolved.byteLength }));
-  });
+  const requirements = locateInputMedia(conversation, resolvedSources).map(
+    ({ requirement }) => requirement,
+  );
   return requirements.length === 0 ? undefined : requirements;
+}
+
+/** The media type a data URL's header declares, if the source is one. */
+function dataUrlMimeType(source: ContentSource): string | undefined {
+  return source.kind === 'data-url' ? parseDataUrl(source.url)?.mimeType : undefined;
 }
 
 /** A stable fingerprint of every media part and where it sits, to notice a change. */
@@ -198,27 +191,8 @@ export async function admitStepMedia(input: {
   readonly conversation: Conversation;
   readonly step: number;
   readonly emitter: EventDispatcher | undefined;
-  /**
-   * Also refuse an asset the safety gate `flagged`. Set when re-admitting media
-   * a `beforeGenerate` handler changed, which never reached the input guardrail
-   * that otherwise owns that verdict.
-   */
-  readonly refuseFlagged?: boolean | undefined;
-  /**
-   * Also refuse an asset with no safety verdict (`unknown`). Set on the same
-   * re-admission, when the run's `assetSafety` policy is `'block'`, so the policy
-   * the guardrail applies to the user's input holds for media a handler added.
-   */
-  readonly refuseUnverified?: boolean | undefined;
 }): Promise<StepMedia | StepOutcome> {
-  const {
-    deps,
-    conversation,
-    step,
-    emitter,
-    refuseFlagged = false,
-    refuseUnverified = false,
-  } = input;
+  const { deps, conversation, step, emitter } = input;
   const located = locateMedia(conversation);
   const descriptors = readBackendDescriptors(deps.generate);
 
@@ -243,23 +217,7 @@ export async function admitStepMedia(input: {
         return { kind: 'error', error, errorKind: 'policy' };
       }
       const key = `${messageId}:${partIndex}`;
-      if (result.outcome === 'resolved' && refuseFlagged && result.safety === 'flagged') {
-        unavailable.set(key, {
-          messageId,
-          partIndex,
-          modality: part.type,
-          outcome: 'unsupported',
-          reason: 'asset-flagged',
-        });
-      } else if (result.outcome === 'resolved' && refuseUnverified && result.safety === 'unknown') {
-        unavailable.set(key, {
-          messageId,
-          partIndex,
-          modality: part.type,
-          outcome: 'unsupported',
-          reason: 'asset-unverified',
-        });
-      } else if (result.outcome === 'resolved') {
+      if (result.outcome === 'resolved') {
         resolved.set(key, result);
       } else {
         unavailable.set(key, {
@@ -270,6 +228,32 @@ export async function admitStepMedia(input: {
           reason: 'source-form-not-accepted',
         });
       }
+    }
+  }
+  // A media type that comes from outside the schema's reach (a data URL's own header,
+  // or what a resolver reported) must fit the part's modality as a declared one does.
+  for (const { part, messageId, partIndex } of located) {
+    const key = `${messageId}:${partIndex}`;
+    if (unavailable.has(key)) continue;
+    const entry = resolved.get(key);
+    const declared = [
+      entry?.mimeType,
+      dataUrlMimeType(part.source),
+      entry === undefined ? undefined : dataUrlMimeType(entry.source),
+    ];
+    if (
+      declared.some(
+        (mimeType) => mimeType !== undefined && !mimeTypeFitsModality(part.type, mimeType),
+      )
+    ) {
+      resolved.delete(key);
+      unavailable.set(key, {
+        messageId,
+        partIndex,
+        modality: part.type,
+        outcome: 'unsupported',
+        reason: 'mime-type-mismatch',
+      });
     }
   }
   const resolvedSources: ResolvedMediaSources | undefined =
@@ -302,4 +286,44 @@ export async function admitStepMedia(input: {
     0,
   );
   return { resolvedSources, mediaTokens, estimate };
+}
+
+/**
+ * Admission's safety verdict for the media a step will send (COR-716), applied to
+ * every media part in the conversation, in every message, on every path: a
+ * `flagged` asset is always refused, and an `unknown` one when the run's
+ * `assetSafety` policy is `'block'`. It reads the resolutions admission produced,
+ * not a guardrail's verdict, so it holds with no input guardrail, with one in
+ * `warn` mode, and for assets that arrived in an earlier turn or from a
+ * `beforeGenerate` handler. Returns the failing step outcome, or `undefined`.
+ */
+export function refuseUnsafeMedia(input: {
+  readonly deps: StepDeps;
+  readonly conversation: Conversation;
+  readonly resolvedSources: ResolvedMediaSources | undefined;
+  readonly step: number;
+  readonly emitter: EventDispatcher | undefined;
+}): StepOutcome | undefined {
+  const { deps, conversation, resolvedSources, step, emitter } = input;
+  if (resolvedSources === undefined) return undefined;
+  const blockUnknown = deps.assetSafety?.unknown === 'block';
+  const refused: UnadmittedMediaCost[] = [];
+  for (const { part, messageId, partIndex } of locateMedia(conversation)) {
+    const resolved = resolvedSources.get(`${messageId}:${partIndex}`);
+    if (resolved === undefined) continue;
+    const flagged = resolved.safety === 'flagged';
+    const unverified = resolved.safety === 'unknown' && blockUnknown;
+    if (!flagged && !unverified) continue;
+    refused.push({
+      messageId,
+      partIndex,
+      modality: part.type,
+      outcome: 'unsupported',
+      reason: flagged ? 'asset-flagged' : 'asset-unverified',
+    });
+  }
+  if (refused.length === 0) return undefined;
+  const error = new MediaAdmissionError(refused);
+  emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+  return { kind: 'error', error, errorKind: 'policy' };
 }

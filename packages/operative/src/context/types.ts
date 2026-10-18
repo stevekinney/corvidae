@@ -83,7 +83,10 @@ export type MediaCostOutcome =
         | 'mime-family-not-accepted'
         | 'media-count-exceeded'
         | 'asset-flagged'
-        | 'asset-unverified';
+        | 'asset-unverified'
+        | 'media-over-budget'
+        | 'no-route-admits-media'
+        | 'mime-type-mismatch';
     })
   | (MediaPartPosition & {
       readonly outcome: 'unbounded';

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import { createPIIRedactionPlugin } from '../src/index';
+import type { MultiModalContent } from '../src/multi-modal';
 import type { JSONValue, MessageInput } from '../src/types';
 
 function requireRecord(value: JSONValue | undefined): Record<string, JSONValue> {
@@ -234,5 +235,87 @@ describe('PII redaction in media parts', () => {
     const result = plugin({ role: 'user', content: [part] });
     expect(requireParts(result.content)).toEqual([part]);
     expect(Object.keys(requireParts(result.content)[0]!)).toEqual(['type', 'source']);
+  });
+
+  describe('the text a provider reads from a part’s own bytes (COR-716)', () => {
+    const plugin = createPIIRedactionPlugin();
+    const redactPart = (part: MultiModalContent) =>
+      requireParts(plugin({ role: 'user', content: [part] }).content)[0]!;
+
+    it('redacts an email inside inline UTF-8 text, keeping the encoding', () => {
+      expect(
+        redactPart({
+          type: 'document',
+          mimeType: 'text/plain',
+          source: { kind: 'inline', data: 'contact me at jane.doe@example.com', encoding: 'utf8' },
+        }),
+      ).toEqual({
+        type: 'document',
+        mimeType: 'text/plain',
+        source: { kind: 'inline', data: 'contact me at [EMAIL_REDACTED]', encoding: 'utf8' },
+      });
+    });
+
+    it('redacts inline base64 under a text media type and re-encodes it', () => {
+      const redacted = redactPart({
+        type: 'document',
+        mimeType: 'text/markdown; charset=utf-8',
+        source: { kind: 'inline', data: btoa('mail jane.doe@example.com'), encoding: 'base64' },
+      });
+      expect(redacted).toMatchObject({
+        source: { kind: 'inline', data: btoa('mail [EMAIL_REDACTED]'), encoding: 'base64' },
+      });
+    });
+
+    it('redacts an email inside a textual data URL, keeping its header and encoding', () => {
+      const base64 = redactPart({
+        type: 'document',
+        source: {
+          kind: 'data-url',
+          url: `data:text/plain;base64,${btoa('write jane.doe@example.com')}`,
+        },
+      });
+      expect(base64).toMatchObject({
+        source: {
+          kind: 'data-url',
+          url: `data:text/plain;base64,${btoa('write [EMAIL_REDACTED]')}`,
+        },
+      });
+
+      const percent = redactPart({
+        type: 'document',
+        source: { kind: 'data-url', url: 'data:text/plain,write%20jane.doe%40example.com' },
+      });
+      expect(percent).toMatchObject({
+        source: {
+          kind: 'data-url',
+          url: `data:text/plain,${encodeURIComponent('write [EMAIL_REDACTED]')}`,
+        },
+      });
+    });
+
+    it('leaves binary bytes alone, even when they happen to contain an address', () => {
+      const part: MultiModalContent = {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'inline', data: btoa('jane.doe@example.com'), encoding: 'base64' },
+      };
+      expect(redactPart(part)).toEqual(part);
+    });
+
+    it('refuses a text body that is not UTF-8 instead of passing it through unredacted', () => {
+      expect(() =>
+        plugin({
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              mimeType: 'text/plain',
+              source: { kind: 'inline', data: btoa('\xff\xfe'), encoding: 'base64' },
+            },
+          ],
+        }),
+      ).toThrow(/UTF-8/);
+    });
   });
 });

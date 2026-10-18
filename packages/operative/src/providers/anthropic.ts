@@ -67,7 +67,12 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
   let clientPromise: Promise<AnthropicClient> | undefined;
   const cacheAwareAssembly =
     options.assembler && options.contextBudget
-      ? createCacheAwareAssembly(options.assembler, options.contextBudget, options.pinnedMessages)
+      ? createCacheAwareAssembly(
+          options.assembler,
+          options.contextBudget,
+          options.pinnedMessages,
+          anthropicDescriptorsFor(resolvedModel),
+        )
       : undefined;
 
   function getClient(): Promise<AnthropicClient> {

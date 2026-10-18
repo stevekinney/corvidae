@@ -118,6 +118,11 @@ export async function prepareStep(
   // part by the form its source takes once resolved.
   const media = await admitStepMedia({ deps, conversation, step, emitter });
   if ('kind' in media) return media;
+  // Resolving an asset awaits a resolver, so a cancellation can land inside it.
+  // COR-104: the run ends as aborted, before selection or any provider call.
+  if (signal?.aborted) {
+    return { kind: 'abort', reason: explicitAbortReason(signal) };
+  }
   const { resolvedSources, mediaTokens } = media;
 
   // AB-64/AB-250 selection boundary: revalidate a previously planned

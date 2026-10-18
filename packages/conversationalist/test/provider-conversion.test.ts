@@ -372,7 +372,7 @@ describe('provider conversion matrix: lineage and wire shape', () => {
       {
         type: 'document',
         source: { kind: 'managed-asset', assetId: 'asset-7' },
-        mimeType: 'application/octet-stream',
+        mimeType: 'text/plain',
       },
     ]);
     const messageId = conversation.ids[0]!;

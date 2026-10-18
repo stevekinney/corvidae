@@ -293,6 +293,29 @@ describe('SessionHandle.run: ordered parts as input', () => {
     expect(userContents(persisted)).toEqual([parts()]);
   });
 
+  it('rejects a { conversation } input from an untyped caller with the typed contract error, before reserving a run', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const handle = createSessionHandle('session-conversation-input', {
+      store,
+      agentName: 'agent',
+      runOptions: {
+        generate: recorder().generate,
+        toolbox: createToolbox([]),
+        stopWhen: () => true,
+      },
+    });
+
+    let thrown: unknown;
+    try {
+      handle.run({ conversation: new Conversation().current } as never);
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(AgentContractError);
+    expect(await store.load('session-conversation-input')).toBeUndefined();
+  });
+
   it('rejects an empty list before reserving a run', async () => {
     const store = createSessionStore(textValueStore(new MemoryStorage()));
     const handle = createSessionHandle('session-empty', {
@@ -543,9 +566,8 @@ describe('media admission: a part is delivered or refused before generation', ()
   });
 
   it('refuses a part whose size it cannot bound, rather than pricing it at zero', async () => {
-    // Gemini declares no per-image byte cap, so an unsized remote image has no bound.
-    const geminiRow = catalog.descriptors.find((d) => d.provider === 'gemini')!;
-    const { seen, result } = run([image()], {}, [geminiRow]);
+    // OpenAI declares no per-image byte cap, so an unsized remote image has no bound.
+    const { seen, result } = run([image()], {}, [openAIRow]);
     const outcome = await result;
     expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
       outcome: 'unbounded',
@@ -694,6 +716,35 @@ describe('media admission: a part is delivered or refused before generation', ()
       expect(seen.contexts).toHaveLength(1);
       expect(gate.getPlan()?.request.inputMedia).toBeUndefined();
     });
+  });
+
+  it('refuses a media type that does not fit the part, when it comes from a resolver or a data URL', async () => {
+    const mismatchedResolver: ContentSourceResolver = async () => ({
+      outcome: 'resolved',
+      source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      mimeType: 'application/pdf',
+      safety: 'clean',
+    });
+    const fromResolver = run(
+      [{ type: 'image', source: { kind: 'managed-asset', assetId: 'a' } }],
+      { contentSourceResolver: mismatchedResolver },
+      [anthropicRow],
+    );
+    const fromDataUrl = run(
+      [{ type: 'image', source: { kind: 'data-url', url: 'data:application/pdf;base64,QUJD' } }],
+      {},
+      [anthropicRow],
+    );
+
+    for (const attempt of [fromResolver, fromDataUrl]) {
+      const outcome = await attempt.result;
+      expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+        outcome: 'unsupported',
+        reason: 'mime-type-mismatch',
+        modality: 'image',
+      });
+      expect(attempt.seen.contexts).toHaveLength(0);
+    }
   });
 
   it('refuses the parts past a backend’s aggregate byte limit on a modality', async () => {

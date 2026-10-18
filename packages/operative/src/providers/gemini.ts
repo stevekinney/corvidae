@@ -413,7 +413,12 @@ function createGeminiContentResolver(input: {
   const { options, resolvedModel, runtime } = input;
   const cacheAwareAssembly =
     options.assembler && options.contextBudget
-      ? createCacheAwareAssembly(options.assembler, options.contextBudget, options.pinnedMessages)
+      ? createCacheAwareAssembly(
+          options.assembler,
+          options.contextBudget,
+          options.pinnedMessages,
+          geminiDescriptorsFor(resolvedModel),
+        )
       : undefined;
 
   /** Prefix digest to in-flight-or-settled creation. Insertion order is LRU order. */

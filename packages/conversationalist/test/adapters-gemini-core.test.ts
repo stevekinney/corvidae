@@ -2,9 +2,10 @@ import { describe, expect, it } from 'bun:test';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import {
   appendMessages,
+  appendUnsafeMessage,
   createConversationHistory as createConversation,
 } from '../src/conversation/index';
-import { ConversationalistError, UnsupportedContentError } from '../src/errors';
+import { ConversationalistError } from '../src/errors';
 import {
   createBasicConversation,
   requireRecord,
@@ -150,7 +151,7 @@ describe('Gemini core content', () => {
 
     it('rejects data URLs with missing parts instead of dropping the image', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
-      conv = appendMessages(
+      conv = appendUnsafeMessage(
         conv,
         {
           role: 'user',
@@ -159,7 +160,7 @@ describe('Gemini core content', () => {
         testEnvironment,
       );
 
-      expect(() => toGeminiMessages(conv)).toThrow(UnsupportedContentError);
+      expect(() => toGeminiMessages(conv)).toThrow(ConversationalistError);
     });
   });
 });

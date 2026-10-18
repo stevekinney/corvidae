@@ -273,17 +273,23 @@ const ALL_SOURCES: readonly ContentSource[] = [
 function richUserContent(): MultiModalContent[] {
   return [
     { type: 'text', text: 'first' },
-    ...ALL_SOURCES.map((source, index): MultiModalContent => ({
-      type: (['image', 'audio', 'video', 'document', 'file'] as const)[index % 5]!,
-      source,
-      mimeType: 'application/octet-stream',
-      name: `part-${index}`,
-      alt: `alt ${index}`,
-      caption: `caption ${index}`,
-      transcript: `transcript ${index}`,
-      extractedText: `extracted ${index}`,
-      metadata: { index, nested: { list: [index, null, true] } },
-    })),
+    ...ALL_SOURCES.map((source, index): MultiModalContent => {
+      const type = (['image', 'audio', 'video', 'document', 'file'] as const)[index % 5]!;
+      return {
+        type,
+        source,
+        mimeType:
+          type === 'file'
+            ? 'application/octet-stream'
+            : `${type === 'document' ? 'application' : type}/${type === 'document' ? 'pdf' : 'x-test'}`,
+        name: `part-${index}`,
+        alt: `alt ${index}`,
+        caption: `caption ${index}`,
+        transcript: `transcript ${index}`,
+        extractedText: `extracted ${index}`,
+        metadata: { index, nested: { list: [index, null, true] } },
+      };
+    }),
     { type: 'text', text: 'last' },
   ];
 }
@@ -311,7 +317,7 @@ function richConversation() {
 }
 
 describe('media parts survive every persistence path', () => {
-  it('accepts every one of the nine AB-70 source kinds, and no other', () => {
+  it('accepts every one of the nine source kinds, and no other', () => {
     for (const source of ALL_SOURCES) {
       expect(contentSourceSchema.safeParse(source).success).toBeTrue();
     }

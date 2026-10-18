@@ -121,12 +121,12 @@ describe('createCatalogMediaCostEstimator', () => {
       type: 'image',
       source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     };
-    // Gemini declares an image count but no per-image byte limit.
-    expect(createCatalogMediaCostEstimator([gemini])(remote, position)).toMatchObject({
+    // OpenAI declares an image count but no per-image byte limit.
+    expect(createCatalogMediaCostEstimator([openai])(remote, position)).toMatchObject({
       outcome: 'unbounded',
       reason: 'size-unknown',
     });
-    expect(createCatalogMediaCostEstimator([anthropic, gemini])(remote, position)).toMatchObject({
+    expect(createCatalogMediaCostEstimator([anthropic, openai])(remote, position)).toMatchObject({
       outcome: 'unbounded',
       reason: 'size-unknown',
     });
@@ -178,6 +178,28 @@ describe('createCatalogMediaCostEstimator', () => {
       ]),
     });
     expect(estimate(stale, position)).toMatchObject({ outcome: 'estimated' });
+  });
+
+  it('refuses a remote URL on a backend that does not fetch URLs itself, and costs it at the cap on one that does', () => {
+    const remote: MediaContent = {
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
+    };
+    const gemini20 = catalog.descriptors.find((row) => row.model.startsWith('gemini-2.0'));
+    const gemini25 = catalog.descriptors.find(
+      (row) => row.provider === 'gemini' && !row.model.startsWith('gemini-2.0'),
+    )!;
+    expect(gemini20).toBeDefined();
+
+    expect(createCatalogMediaCostEstimator([gemini20!])(remote, position)).toMatchObject({
+      outcome: 'unsupported',
+      reason: 'source-form-not-accepted',
+    });
+    // The per-part cap Gemini documents makes an unsized URL costable.
+    expect(createCatalogMediaCostEstimator([gemini25])(remote, position)).toMatchObject({
+      outcome: 'estimated',
+    });
   });
 
   it('refuses a part over a per-part byte limit', () => {

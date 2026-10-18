@@ -219,8 +219,8 @@ export type SessionInputDeliveryMode = 'steer' | 'queue';
  *  (`ThinkingContent`, `RedactedThinkingContent`, `ServerToolUseContent`,
  *  `WebSearchToolResultContent`, `ServerToolResultContent`, `ContainerUploadContent`):
  *  `conversationalist` is consumed at a `^` semver range, and a blacklist silently admits any new
- *  `MultiModalContent` variant a future compatible release adds, defeating AB-70's ownership of
- *  widening this union deliberately. Every excluded kind is either rejected outright (the
+ *  `MultiModalContent` variant a future compatible release adds, defeating the deliberate ownership of
+ *  widening this union. Every excluded kind is either rejected outright (the
  *  Anthropic adapter throws serializing `container_upload` and the other response-only blocks as
  *  request content; the OpenAI and Gemini adapters reject `container_upload` with an
  *  `UnsupportedContentError`) or misattributed if replayed as if the user had sent it. AB-42's

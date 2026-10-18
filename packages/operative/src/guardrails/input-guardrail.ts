@@ -48,13 +48,28 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
     const lastUser = lastUserPosition === -1 ? undefined : messages[lastUserPosition];
     if (!lastUser) return;
 
-    const inspectable = inspectContent(lastUser.content);
+    const inspectable = inspectContent(lastUser.content, (partIndex) =>
+      context.resolvedSources?.get(`${lastUser.id}:${partIndex}`),
+    );
     const assetFindings = findUnsafeAssets(
       context,
       lastUser.id,
       lastUser.content,
       unverifiedAssets,
     );
+    const undecodable = inspectable.uninspectable.map((body): AssetFinding => ({
+      blocking: true,
+      event: (eventAction, provenance) => ({
+        detector: 'content-body',
+        category: 'uninspectable-content',
+        confidence: 1,
+        action: eventAction,
+        input: body.label,
+        detail: `A provider would read this media part as text, but it cannot be decoded: ${body.reason}.`,
+        provenance,
+      }),
+    }));
+    assetFindings.push(...undecodable);
     if (inspectable.fields.length === 0 && assetFindings.length === 0) return;
 
     const detectorContext: DetectorContext = {
@@ -108,7 +123,9 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
       );
     }
 
-    if (action === 'warn') {
+    // Text no detector could read is refused whatever the action: warning about
+    // it would send a provider content nothing inspected.
+    if (action === 'warn' && !assetFindings.some((finding) => finding.blocking)) {
       return;
     }
 
@@ -146,6 +163,8 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
 
 /** A media part the asset-safety policy refuses, described as a guardrail event. */
 interface AssetFinding {
+  /** Refused even when the guardrail's action is `warn`. */
+  readonly blocking?: boolean;
   event(
     action: GuardrailTriggeredEvent['action'],
     provenance: GuardrailTriggeredEvent['provenance'],

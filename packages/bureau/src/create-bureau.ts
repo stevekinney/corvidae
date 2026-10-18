@@ -1583,9 +1583,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // record an expiring session needs, so the hook waits for the recorder the same way.
   const sessionCleanupHandler =
     Promise.withResolvers<(sessions: readonly AgentSession[]) => Promise<void>>();
-  // COR-716: the asset service is built after the composition, and a run resolves
-  // through it only once it starts, so the composition reads it through this holder.
-  const assetServiceHolder: { current: AssetService | undefined } = { current: undefined };
+  // COR-794: the managed-asset owner, on this bureau's runtime services so its timers,
+  // identifiers, and deferred cleanup are the bureau's own.
+  //
+  // COR-716: built BEFORE the composition, and handed to it through this holder, because
+  // the composition's scheduler can fire a schedule as soon as the engine exists. A fire
+  // that came first would find no asset service and fail its managed assets, typed but
+  // spuriously. The asset service needs only these options and the runtime services, so
+  // nothing about the composition has to exist first.
+  const assetServiceInstance: AssetService | undefined = options.assets
+    ? await createAssetService({ ...options.assets, runtime: runtimeServices })
+    : undefined;
+  const assetServiceHolder: { current: AssetService | undefined } = {
+    current: assetServiceInstance,
+  };
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
@@ -1608,7 +1619,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await handler(info);
       },
     },
-  );
+  ).catch(async (error: unknown) => {
+    // The composition failed after the asset service started; stop its work.
+    await assetServiceInstance?.shutdown();
+    throw error;
+  });
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
   // terminal `schedule.completed`/`schedule.failed` has nowhere else to
@@ -12380,13 +12395,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let auditTrailInstance: AuditTrail | undefined;
   let webhookNotifierInstance: WebhookNotifier | undefined;
   let onlineEvalSamplerInstance: OnlineEvalSampler | undefined;
-  // COR-794: the managed-asset owner, on this bureau's runtime services so
-  // its timers, identifiers, and deferred cleanup are the bureau's own.
-  const assetServiceInstance: AssetService | undefined = options.assets
-    ? await createAssetService({ ...options.assets, runtime: runtimeServices })
-    : undefined;
-  assetServiceHolder.current = assetServiceInstance;
-
   // The durable event history store (AB-91's `ab91-01` slice, AB-310) —
   // built eagerly (unlike `auditTrailInstance`/`webhookNotifierInstance`
   // below, which need `bureau` itself to subscribe to action events) since

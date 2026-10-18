@@ -3,7 +3,12 @@ import { CompletableEventTarget, ForwardedEvent } from '@lostgradient/lifecycle'
 import type { ConversationHistory } from 'conversationalist';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
-import { appendAgentInput, assertAgentInput, snapshotPayload } from '../agent-input';
+import {
+  appendAgentInput,
+  assertAgentInput,
+  isConversationInput,
+  snapshotPayload,
+} from '../agent-input';
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';
 import type { RunRef } from '../agent-session';
@@ -14,6 +19,7 @@ import { createActiveRun } from '../create-run';
 import type { CheckpointStore } from '../durable/checkpoint-store';
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
 import type { SessionInputPayload } from '../durable/types';
+import { AgentContractError } from '../errors';
 import type { CombinedOperativeEventMap } from '../events';
 import { HumanWaitParkedEvent } from '../events';
 import type {
@@ -78,8 +84,15 @@ export function createSessionRun(
   return (input: SessionInputPayload): AgentRun => {
     if (!runOptions) throw new MissingRunOptionsError();
     // An empty or non-admissible part list is rejected here, synchronously,
-    // before anything is reserved or persisted.
+    // before anything is reserved or persisted. A session run appends its input to the
+    // session's own conversation, so `{ conversation }` (which belongs to `agent.run`)
+    // is refused here with the same typed error rather than failing later in the append.
     assertAgentInput(input);
+    if (isConversationInput(input)) {
+      throw new AgentContractError(
+        'A session run takes a string or a list of content parts; { conversation } is an agent.run input',
+      );
+    }
     // Snapshot now, synchronously: the reservation below is asynchronous, and a
     // caller-owned part array mutated in between must not reach the run.
     const payload = snapshotPayload(input);

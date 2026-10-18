@@ -120,7 +120,15 @@
  */
 
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
-import type { ContentSource, MimeFamily, Modality, MultiModalContent } from 'conversationalist';
+import type {
+  ContentSource,
+  Conversation,
+  MediaContent,
+  MimeFamily,
+  Modality,
+  MultiModalContent,
+  ResolvedMediaSources,
+} from 'conversationalist';
 import { isMediaContent } from 'conversationalist';
 
 import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
@@ -191,6 +199,56 @@ export interface InputMediaRequirement {
   readonly mimeFamily?: MimeFamily | undefined;
   readonly byteLength?: number | undefined;
   readonly count: number;
+}
+
+/** One media part of a conversation and what it requires of a backend. */
+export interface LocatedInputMedia {
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly part: MediaContent;
+  readonly requirement: InputMediaRequirement;
+}
+
+/**
+ * The media parts of a conversation's visible messages, in order, each described by
+ * the source it takes once a resolver has projected it: a resolved part is judged as
+ * the inline bytes or provider-fetched URL it resolves to, with the resolver's media
+ * type and size. Hidden messages are not sent, so they require nothing.
+ */
+export function locateInputMedia(
+  conversation: Conversation,
+  resolvedSources: ResolvedMediaSources | undefined,
+): LocatedInputMedia[] {
+  const located: LocatedInputMedia[] = [];
+  const { ids, messages } = conversation.current;
+  for (const id of ids) {
+    const message = messages[id];
+    if (message === undefined || message.hidden || typeof message.content === 'string') continue;
+    message.content.forEach((part, partIndex) => {
+      if (!isMediaContent(part)) return;
+      const resolved = resolvedSources?.get(`${message.id}:${partIndex}`);
+      const effective: MediaContent =
+        resolved === undefined
+          ? part
+          : {
+              ...part,
+              source: resolved.source,
+              ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
+            };
+      const [described] = describeInputMedia([effective]);
+      if (described === undefined) return;
+      located.push({
+        messageId: message.id,
+        partIndex,
+        part,
+        requirement:
+          resolved?.byteLength === undefined
+            ? described
+            : { ...described, byteLength: resolved.byteLength },
+      });
+    });
+  }
+  return located;
 }
 
 /**

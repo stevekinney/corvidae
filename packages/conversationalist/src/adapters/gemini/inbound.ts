@@ -74,16 +74,19 @@ function toWrappedToolResult(callId: string, value: JSONValue): ToolResult | und
 }
 
 /**
- * A Gemini `fileUri` is a public HTTPS URL, or a handle Gemini itself issued: a
- * Files API URI or a Cloud Storage URI. Only the first is a `remote-url`; the
- * others are `provider-file` handles, which `remote-url` (http or https only)
- * cannot represent.
+ * A Gemini `fileUri` is a public HTTP or HTTPS URL, or a handle Gemini itself
+ * issued: a Files API URI or a Cloud Storage URI (`gs://`). Only a public URL is a
+ * `remote-url`; the handles are `provider-file` references, which `remote-url`
+ * (http or https only) cannot represent. Any other scheme (`ftp:`, `s3:`, `file:`)
+ * names nothing Gemini can read, so it is refused rather than stored as a handle.
  */
 function sourceFromGeminiFileUri(fileUri: string): ContentSource {
-  const isHttp = fileUri.startsWith('https://') || fileUri.startsWith('http://');
   const isFilesApiUri = fileUri.startsWith('https://generativelanguage.googleapis.com/');
-  if (fileUri.startsWith('data:') || (isHttp && !isFilesApiUri)) return sourceFromUrl(fileUri);
-  return { kind: 'provider-file', provider: 'gemini', providerFileId: fileUri };
+  const isCloudStorageUri = fileUri.startsWith('gs://');
+  if (isFilesApiUri || isCloudStorageUri) {
+    return { kind: 'provider-file', provider: 'gemini', providerFileId: fileUri };
+  }
+  return sourceFromUrl(fileUri);
 }
 
 function toMediaFromGeminiPart(part: GeminiInlineDataPart | GeminiFileDataPart): MediaContent {

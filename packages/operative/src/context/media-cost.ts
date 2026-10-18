@@ -120,7 +120,9 @@ export function createCatalogMediaCostEstimator(
         (descriptor) =>
           !descriptor.modalities[part.type].sourceForms.includes(source.kind) ||
           // A file handle only works at the provider that issued it.
-          (source.kind === 'provider-file' && source.provider !== descriptor.provider),
+          (source.kind === 'provider-file' && source.provider !== descriptor.provider) ||
+          // A URL is useful only to a backend that fetches it; the host never does.
+          (source.kind === 'remote-url' && !descriptor.providerFetchesRemoteUrls),
       )
     ) {
       return { ...base, outcome: 'unsupported', reason: 'source-form-not-accepted' };

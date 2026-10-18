@@ -1,10 +1,12 @@
+import { MediaAdmissionError } from '../../errors.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
 import type { BackendDescriptor } from '../model-catalog.ts';
+import { evaluateInputMedia, locateInputMedia } from '../selection.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '../types.ts';
-import type { RoutingDecision, RoutingOptions } from './types.ts';
+import type { ModelRoute, RoutingDecision, RoutingOptions } from './types.ts';
 
 /** `(provider, endpoint, model)` as a collision-safe map key. */
 function tripleKey(descriptor: BackendDescriptor): string {
@@ -79,6 +81,43 @@ function unionDescriptors(
 }
 
 /**
+ * The routes whose backends admit the step's media. A route that attaches no
+ * descriptor is opaque and is kept: nothing says it cannot take the media. With no
+ * media every route is a candidate; with media and no admitting route, the step is
+ * refused.
+ */
+function routesAdmittingMedia(
+  context: GenerateContext,
+  routes: readonly ModelRoute[],
+): readonly ModelRoute[] {
+  const requirements = locateInputMedia(context.conversation, context.resolvedSources).map(
+    ({ requirement }) => requirement,
+  );
+  if (requirements.length === 0) return routes;
+  const admitting = routes.filter((route) =>
+    readBackendDescriptors(route.generate).every(
+      (descriptor) => evaluateInputMedia(descriptor, requirements).eligible,
+    ),
+  );
+  if (admitting.length === 0) throw noRouteAdmitsMedia(context);
+  return admitting;
+}
+
+function noRouteAdmitsMedia(context: GenerateContext): MediaAdmissionError {
+  return new MediaAdmissionError(
+    locateInputMedia(context.conversation, context.resolvedSources).map(
+      ({ messageId, partIndex, part }) => ({
+        messageId,
+        partIndex,
+        modality: part.type,
+        outcome: 'unsupported' as const,
+        reason: 'no-route-admits-media' as const,
+      }),
+    ),
+  );
+}
+
+/**
  * Creates a GenerateFunction that routes each call to a different model
  * based on the provided strategy.
  *
@@ -141,15 +180,25 @@ export function createRoutingGenerate(options: RoutingOptions): GenerateFunction
     // string, so a catalog entry named `''` is a real, distinguishable route
     // — a truthiness check would silently ignore a steering override for it
     // and fall through to the strategy instead.
+    // COR-716: a route whose backend cannot take the step's media is not a candidate.
+    // The strategy chooses among the routes that can, a steering override of one that
+    // cannot is refused, and a step no route can take fails here, typed, before any
+    // provider call. A step with no media is untouched.
+    const candidates = routesAdmittingMedia(context, routes);
     const steeringRoute = context.steering?.route;
+    if (steeringRoute !== undefined && !candidates.some((route) => route.name === steeringRoute)) {
+      if (routeMap.has(steeringRoute)) throw noRouteAdmitsMedia(context);
+    }
     const decision: RoutingDecision =
       steeringRoute !== undefined
         ? { route: steeringRoute, reason: 'steering override (AB-67)' }
-        : strategy(context, routes);
-    let selectedRoute = routeMap.get(decision.route);
+        : strategy(context, candidates);
+    let selectedRoute = candidates.find((route) => route.name === decision.route);
 
     if (!selectedRoute) {
-      selectedRoute = routeMap.get(fallback);
+      selectedRoute = candidates.find((route) => route.name === fallback);
+      // The configured fallback is not one the media fits: take the first route that does.
+      if (!selectedRoute && routeMap.has(fallback)) selectedRoute = candidates[0];
     }
 
     if (!selectedRoute) {

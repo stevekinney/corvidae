@@ -209,6 +209,19 @@ const OPENAI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
 const GEMINI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
   { modality: 'image', maxPerRequest: 3600 },
 ]);
+// https://ai.google.dev/gemini-api/docs/file-input-methods: inline data is capped by
+// the 20 MB request total, so no single inline part exceeds 20 MB; a part larger than
+// that must go through the Files API (a `provider-file` handle, which carries no size
+// here). A public URL is fetched per request up to 15 MB per file, which Gemini
+// enforces itself. The per-part cap lets a remote URL of unknown size be costed at the
+// cap instead of refused as unbounded, consistent with `providerFetchesRemoteUrls`.
+const GEMINI_MEDIA_LIMITS: readonly MediaLimits[] = deepFreeze(
+  (['image', 'document', 'audio', 'video'] as const).map((modality) => ({
+    scope: 'per-part' as const,
+    modality,
+    maxBytes: 20 * 1024 * 1024,
+  })),
+);
 
 export function buildAnthropicRow(model: string, freshness: string): BackendDescriptor {
   const limits = requireLimits('anthropic', model);
@@ -304,7 +317,7 @@ export function buildGeminiRow(model: string, freshness: string): BackendDescrip
     lifecycle: 'stable',
     modalities: requireModalities('gemini', model),
     mimeFamilies: ['text', 'image', 'document', 'audio', 'video'],
-    mediaLimits: [],
+    mediaLimits: GEMINI_MEDIA_LIMITS,
     mediaCounts: GEMINI_MEDIA_COUNTS,
     // https://ai.google.dev/gemini-api/docs/file-input-methods: a public HTTPS
     // URL is accepted as an external URL (up to 15 MB per file, fetched per

@@ -8,7 +8,7 @@ import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './event
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
-import { admitStepMedia, mediaFingerprint } from './run-step-media';
+import { admitStepMedia, mediaFingerprint, refuseUnsafeMedia } from './run-step-media';
 import { createElicit } from './run-step-support';
 import {
   applyWaterfallHandlerErrorPolicy,
@@ -186,12 +186,26 @@ export async function executeGeneration(
             conversation: generateContext.conversation,
             step,
             emitter,
-            refuseFlagged: true,
-            refuseUnverified: deps.assetSafety?.unknown === 'block',
           });
           if ('kind' in readmitted) return readmitted;
+          // COR-104: a cancellation can land while the handler's media resolves.
+          if (signal?.aborted) {
+            return { kind: 'abort', reason: explicitAbortReason(signal) };
+          }
           generateContext = { ...generateContext, resolvedSources: readmitted.resolvedSources };
         }
+
+        // Admission's safety verdict, for every media part the step will send. It is
+        // not the guardrail's: a flagged asset is refused with no guardrail, with one
+        // that only warns, and when it arrived in an earlier turn.
+        const unsafe = refuseUnsafeMedia({
+          deps,
+          conversation: generateContext.conversation,
+          resolvedSources: generateContext.resolvedSources,
+          step,
+          emitter,
+        });
+        if (unsafe !== undefined) return unsafe;
 
         // onLLMInput: parallel allSettled, read-only, non-blocking. AB-204:
         // handed to hookTracker so closed() can await it — it can still be

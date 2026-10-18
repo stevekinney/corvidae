@@ -65,6 +65,70 @@ describe('schemas', () => {
     }
   });
 
+  test('contentSourceSchema requires base64 bytes to decode, inline and in a data URL', () => {
+    for (const data of ['QUJD', 'QQ==', 'QUI=']) {
+      expect(
+        contentSourceSchema.safeParse({ kind: 'inline', data, encoding: 'base64' }).success,
+      ).toBeTrue();
+    }
+    for (const data of ['!!!', 'QUJ', 'QU=JD', 'Q', 'QUJD====', 'QU JD']) {
+      expect(
+        contentSourceSchema.safeParse({ kind: 'inline', data, encoding: 'base64' }).success,
+      ).toBeFalse();
+    }
+    // UTF-8 text is any non-empty string.
+    expect(
+      contentSourceSchema.safeParse({ kind: 'inline', data: '!!!', encoding: 'utf8' }).success,
+    ).toBeTrue();
+
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain;base64,QUJD' })
+        .success,
+    ).toBeTrue();
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain;base64,!!!' })
+        .success,
+    ).toBeFalse();
+    // The percent-encoded branch is text, so it need only decode as a URI component.
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain,hello%20world' })
+        .success,
+    ).toBeTrue();
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain,%E0%A4%A' }).success,
+    ).toBeFalse();
+  });
+
+  test('multiModalContentSchema requires a declared media type to fit the part’s modality', () => {
+    const source = { kind: 'remote-url', url: 'https://example.com/a' } as const;
+    const accepts: Array<[string, string]> = [
+      ['image', 'image/png'],
+      ['image', 'IMAGE/SVG+XML; charset=utf-8'],
+      ['audio', 'audio/mpeg'],
+      ['video', 'video/mp4'],
+      ['document', 'application/pdf'],
+      ['document', 'text/markdown'],
+      ['document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['file', 'application/zip'],
+      ['file', 'image/png'],
+    ];
+    for (const [type, mimeType] of accepts) {
+      expect(multiModalContentSchema.safeParse({ type, source, mimeType }).success).toBeTrue();
+    }
+    const refuses: Array<[string, string]> = [
+      ['image', 'application/pdf'],
+      ['image', 'audio/mpeg'],
+      ['audio', 'image/png'],
+      ['video', 'application/pdf'],
+      ['document', 'image/png'],
+      ['document', 'application/zip'],
+    ];
+    for (const [type, mimeType] of refuses) {
+      expect(multiModalContentSchema.safeParse({ type, source, mimeType }).success).toBeFalse();
+    }
+    expect(multiModalContentSchema.safeParse({ type: 'image', source }).success).toBeTrue();
+  });
+
   test('multiModalContentSchema rejects the retired url and base64-source shapes', () => {
     expect(
       multiModalContentSchema.safeParse({ type: 'image', url: 'https://example.com/a.png' })

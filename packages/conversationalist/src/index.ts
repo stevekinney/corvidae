@@ -241,6 +241,14 @@ export type {
   ConversationMutationResult,
   ConversationStoreSnapshot,
 } from './history';
+export { readMediaBody } from './media-body';
+export type { MediaBody, MediaBodyReading } from './media-body';
+export {
+  baseMimeType,
+  isDecodableBase64,
+  isTextualMimeType,
+  mimeTypeFitsModality,
+} from './media-types';
 export {
   contentSourceDisplayUrl,
   copyContent,
