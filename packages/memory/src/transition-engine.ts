@@ -236,6 +236,17 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
       throw new TransitionIdentifierConflictError(tenantId, operationId, receipt.digest, digest);
     }
 
+    /**
+     * A refusal decided before the batch yields to a receipt that has appeared
+     * while this submission validated: an identical submission that committed
+     * first advanced the very state this one found stale or invalid, and its
+     * receipt is this submission's answer.
+     */
+    async function settleIfReceiptAppeared(): Promise<TransitionResult | undefined> {
+      const stored = await readReceipt(tenantId, operationId);
+      return stored === undefined ? undefined : settleAgainst(stored);
+    }
+
     async function runHook(
       hook: ((context: TransitionEngineHookContext) => void | Promise<void>) | undefined,
     ) {
@@ -304,6 +315,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
           tenantId,
           evidence: plan.evidence,
           projections: plannedProjections(plan),
+          readSet: reader.readSet(),
           receipt: {
             key: keys.receipt(tenantId, operationId),
             build: (outcomes) => {
@@ -346,6 +358,8 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
 
       const validation = await validateTransition({ proposal, reader, at: committedAt });
       if (!validation.ok) {
+        const settled = await settleIfReceiptAppeared();
+        if (settled !== undefined) return settled;
         if (isAborted()) return await canceled();
         await emit({ kind: 'rejected', reason: validation.reason, detail: validation.detail });
         return { outcome: 'rejected', reason: validation.reason, detail: validation.detail };
@@ -355,6 +369,8 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
         revision.stale === undefined ? [] : [revision.stale],
       );
       if (stale.length > 0) {
+        const settled = await settleIfReceiptAppeared();
+        if (settled !== undefined) return settled;
         if (isAborted()) return await canceled();
         const detail = stale.join(' ');
         await emit({ kind: 'conflicted', reason: 'stale-revision', detail });

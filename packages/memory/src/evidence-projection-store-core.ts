@@ -530,6 +530,9 @@ export function createEvidenceProjectionStoreCore(options: {
     if (receipt !== undefined && receipt.key.length === 0) {
       invalid('The commit receipt needs a non-empty key.');
     }
+    if (commit.readSet?.some((entry) => entry.key.length === 0) === true) {
+      invalid('A read set entry needs a non-empty key.');
+    }
     const evidenceIds = new Set(evidence.map((record) => record.id));
     if (evidenceIds.size !== evidence.length) invalid('The commit repeats an evidence id.');
     const addresses = projections.map((record) => JSON.stringify([record.namespace, record.id]));
@@ -660,6 +663,36 @@ export function createEvidenceProjectionStoreCore(options: {
     }
   }
 
+  /**
+   * Turns the caller's read set into conditions. An entry whose key the batch
+   * already conditions must agree with that condition; any entry whose key no
+   * longer holds the bytes the caller saw means the state it decided on has
+   * moved, and the commit is refused as a conflict instead of being retried: a
+   * re-plan would only re-read the same changed key.
+   */
+  async function planReadSet(
+    builder: BatchPlan,
+    tenantId: string,
+    readSet: NonNullable<EvidenceProjectionCommit['readSet']>,
+  ): Promise<void> {
+    for (const entry of readSet) {
+      const seen = entry.value ?? null;
+      const planned = builder.conditions.get(entry.key);
+      const current = planned !== undefined ? planned : await reader.get(entry.key);
+      const holds =
+        seen === null ? current === null : current !== null && bytesEqual(current, seen);
+      if (!holds) {
+        throw new ProjectionRevisionConflictError(
+          tenantId,
+          undefined,
+          [],
+          `The state this commit was decided on changed at "${entry.key}"; nothing was written.`,
+        );
+      }
+      if (planned === undefined) builder.require(entry.key, seen);
+    }
+  }
+
   async function planCommit(request: EvidenceProjectionCommit): Promise<{
     batch: PlannedBatch;
     result: EvidenceProjectionCommitResult;
@@ -669,6 +702,9 @@ export function createEvidenceProjectionStoreCore(options: {
     const planned = await planEvidence(builder, request.tenantId, evidence);
     const projectionOutcomes = await planProjections(builder, projections, planned.appended);
     await planEmbeddingProfiles(builder, projections, projectionOutcomes);
+    if (request.readSet !== undefined) {
+      await planReadSet(builder, request.tenantId, request.readSet);
+    }
     const { receipt } = request;
     const result = { evidence: planned.outcomes, projections: projectionOutcomes };
     if (receipt !== undefined) {
@@ -833,6 +869,7 @@ export function createEvidenceProjectionStoreCore(options: {
   }
 
   return {
+    keys,
     commit: executeCommit,
     getReceipt,
     getEmbeddingProfile,

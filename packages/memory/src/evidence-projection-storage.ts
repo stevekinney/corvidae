@@ -1,3 +1,4 @@
+import type { EvidenceProjectionKeys } from './evidence-projection-keys';
 import type {
   EmbeddingProfile,
   EvidenceProjectionRecord,
@@ -33,6 +34,19 @@ export interface EvidenceProjectionCommit {
     readonly key: string;
     readonly build: (outcomes: EvidenceProjectionCommitResult) => Uint8Array;
   };
+  /**
+   * Keys the caller read to decide this commit, with the raw bytes it saw
+   * (`undefined` when the key was absent). Each becomes a condition of the batch,
+   * counted against the batch cap: the stored bytes must still equal the recorded
+   * ones, or the key must still be absent. The store never interprets an entry. A
+   * change to any of them since the caller read it fails the commit with
+   * `ProjectionRevisionConflictError`, so a decision made on state that has since
+   * moved cannot apply.
+   */
+  readonly readSet?: ReadonlyArray<{
+    readonly key: string;
+    readonly value: Uint8Array | undefined;
+  }>;
 }
 
 export interface EvidenceProjectionCommitResult {
@@ -74,6 +88,11 @@ export interface EvidenceProjectionCommitResult {
  * reads.
  */
 export interface EvidenceProjectionStorage {
+  /**
+   * The key layout this storage writes under. A caller that binds its reads to a
+   * commit through `readSet` names the keys it read with it; nothing else should.
+   */
+  readonly keys: EvidenceProjectionKeys;
   init(): Promise<void>;
   close(): Promise<void>;
   /** Applies everything in one atomic batch, or nothing. */

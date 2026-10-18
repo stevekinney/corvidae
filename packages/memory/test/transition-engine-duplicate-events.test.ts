@@ -8,12 +8,14 @@ import {
   createOrderedGates,
   createRecordingSink,
   expectCommitted,
+  expectRefused,
   seedCorrectionState,
+  TENANT,
 } from './transition-test-support';
 
 for (const [label, makeBackend] of TRANSITION_BACKENDS) {
-  describe(`the events of an all-duplicate commit (${label})`, () => {
-    it('emits no superseded event for a supersession another operation performed', async () => {
+  describe(`an identical correction under another operation id (${label})`, () => {
+    it('conflicts instead of committing and emitting events for a supersession another operation performed', async () => {
       const storage = makeBackend();
       await seedCorrectionState(storage);
       const gates = createOrderedGates(2);
@@ -25,19 +27,20 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
           now: createManualClock().now,
           hooks: { beforeBatch: gates.hold(index) },
         });
-      const a = engine(0).submit(correctionProposal('operation-a'));
-      const b = engine(1).submit(correctionProposal('operation-b'));
+      const first = engine(0);
+      const second = engine(1);
+      const a = first.submit(correctionProposal('operation-a'));
+      const b = second.submit(correctionProposal('operation-b'));
       await gates.whenAllArrived;
       gates.release(0);
       expectCommitted(await a);
       gates.release(1);
-      const resultB = expectCommitted(await b);
-      const outcomes = [
-        ...resultB.receipt.evidence.map((entry) => entry.outcome),
-        ...resultB.receipt.projections.map((entry) => entry.outcome),
-      ];
-      expect(outcomes.every((outcome) => outcome === 'duplicate')).toBe(true);
-      expect(sinks[1]!.kinds()).toEqual(['requested', 'validation-started', 'committed']);
+      // The state this one validated against (the old projection and evidence, unsuperseded) is gone.
+      const result = expectRefused(await b, 'conflicted');
+
+      expect(result.reason).toBe('revision-conflict');
+      expect(sinks[1]!.kinds()).toEqual(['requested', 'validation-started', 'conflicted']);
+      expect(await second.getReceipt(TENANT, 'operation-b')).toBeUndefined();
     });
   });
 }
