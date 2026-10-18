@@ -139,9 +139,8 @@ describe('child runs', () => {
         type: EventType.RUN_FINISHED,
         outcome: { type: 'cancelled' },
       });
-      expect((await bureau.children.get({ parentRunId, childRunId: childId }))?.status).toBe(
-        'aborted',
-      );
+      const record = await bureau.children.get({ parentRunId, childRunId: childId });
+      expect(record?.status).toBe('aborted');
     });
   });
 
@@ -150,10 +149,11 @@ describe('child runs', () => {
       const stranger = await handler(cancelRequest(childId, as('bob-key')));
       const random = await handler(cancelRequest('child-run-never-was', as('bob-key')));
 
+      const strangerText = await stranger.text();
+      const randomText = await random.text();
+
       expect(stranger.status).toBe(404);
-      expect(await stranger.text()).toBe(
-        (await random.text()).replaceAll('child-run-never-was', childId),
-      );
+      expect(strangerText).toBe(randomText.replaceAll('child-run-never-was', childId));
     });
   });
 

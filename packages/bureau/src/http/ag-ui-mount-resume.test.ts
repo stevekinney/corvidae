@@ -4,7 +4,7 @@
  * the reviews its entries answer and opens a new stream, on the same native run
  * for a human wait and on a fresh one for a tool approval.
  */
-import { EventType, type ResumeEntry } from '@ag-ui/core';
+import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
@@ -971,7 +971,7 @@ describe('a resume whose approvals are only partly applied', () => {
         expect(pendingAfterPartial).toBe(1);
         expect(runsAfterPartial).toBe(1);
         expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
-        expect(charges.toSorted()).toEqual([500, 700]);
+        expect(charges.toSorted((left, right) => left - right)).toEqual([500, 700]);
         expect(bureau.listRuns()).toHaveLength(2);
       },
     );
@@ -1233,7 +1233,7 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
   };
   const answerOf = (interruptId: string, text: string) =>
     resolved(interruptId, { decision: 'approve', answer: text });
-  const userRows = (frames: ReadonlyArray<{ event: { type: string } }>) =>
+  const userRows = (frames: ReadonlyArray<{ event: Event }>) =>
     frames
       .filter(
         (frame) =>
