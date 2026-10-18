@@ -7,7 +7,13 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
-import { MemoryStorage, resolveStorage, type Storage, textValueStore } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  resolveStorage,
+  type Storage,
+  textValueStore,
+  yieldToPortableEventLoop,
+} from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
@@ -579,6 +585,74 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
       expect(generations).toBe(1);
       expect(bureau.listRuns()).toHaveLength(1);
     } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('a cancellation that reaches a run after it appended the turn (COR-1476)', () => {
+  it('never lets a retry read canceled: accepted until the checkpoint commits, promoted after', async () => {
+    const origin = '2026-10-17T12:00:00.000Z';
+    const runtime = createManualRuntimeServices({ origin });
+    const storage = new MemoryStorage();
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const stepOneStarted = deferred();
+    const releaseStepOne = deferred();
+    const prompts: string[][] = [];
+    const bureau = await openBureau(
+      storage,
+      async (context: GenerateContext) => {
+        prompts.push(userTexts(context.conversation));
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        stepOneStarted.resolve();
+        await releaseStepOne.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+      { runtime },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 3 });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
+      releaseStepZero.resolve();
+      await stepOneStarted.promise;
+      expect(prompts[1]).toEqual(['First', 'delivered']);
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+        runtime.clock.now(),
+      );
+      const [receipt] = await mailbox.list({ limit: 10 });
+      expect(receipt?.state).toBe('claimed');
+
+      // Another process cancels the leased command while step 1 generates.
+      await mailbox.requestCancellation({ commandId: receipt!.commandId, reason: 'elsewhere' });
+      // The gate's renewal reports it and keeps the lease: the turn is in the
+      // conversation, so a retry must never read `canceled`.
+      await runtime.advance(10_000);
+      await yieldToPortableEventLoop();
+      const [inWindow] = await mailbox.list({ limit: 10 });
+      expect(inWindow?.state).toBe('cancellation-requested');
+      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+        'accepted',
+      );
+
+      // The checkpoint commits the turn: promoted, and the command closes as
+      // cancelled through the acknowledgement.
+      releaseStepOne.resolve();
+      await bureau.waitForDurableRun(run.id);
+      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+        'promoted',
+      );
+      const [final] = await mailbox.list({ limit: 10 });
+      expect(final?.state).toBe('cancelled');
+    } finally {
+      releaseStepZero.resolve();
+      releaseStepOne.resolve();
       await bureau.dispose();
     }
   });

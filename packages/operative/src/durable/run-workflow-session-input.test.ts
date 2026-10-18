@@ -1370,8 +1370,12 @@ describe('session input delivery store and gate (COR-1476)', () => {
 });
 
 describe("the gate's lease lifecycle (COR-1476)", () => {
-  async function stateOf(mailbox: Mailbox): Promise<string | undefined> {
-    const [receipt] = await mailbox.list({ limit: 10 });
+  async function stateOf(mailbox: Mailbox, commandId?: string): Promise<string | undefined> {
+    const receipts = await mailbox.list({ limit: 20 });
+    const receipt =
+      commandId === undefined
+        ? receipts[0]
+        : receipts.find((entry) => entry.commandId === commandId);
     return receipt?.state;
   }
 
@@ -1387,7 +1391,55 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     await until(async () => (await stateOf(mailbox)) !== 'claimed');
   }
 
-  it('settles the cancellation another holder requested, when renewal reports it, and never delivers the input again', async () => {
+  const delivery = (id: string, commandId: string, now: number) => ({
+    id,
+    commandId,
+    sessionId: SESSION_ID,
+    deliveredAt: new Date(now).toISOString(),
+    conversationMessageId: `message-${id}`,
+    providerTurn: 0,
+  });
+
+  /** The checkpoint write that promotes a delivered input, outside a workflow. */
+  async function promote(
+    storage: Storage,
+    runId: string,
+    id: string,
+    commandId: string,
+    now: number,
+  ) {
+    const kv = kvOver(storage);
+    const key = sessionInputDeliveriesKey(SESSION_ID);
+    await kv.set(
+      key,
+      JSON.stringify(
+        planSessionInputPromotion(parseSessionInputDeliveries(await kv.get(key)), runId, [
+          delivery(id, commandId, now),
+        ]),
+      ),
+    );
+  }
+
+  /** A mailbox whose next `failures.count` acknowledgements throw. */
+  function flakyAcknowledge(real: Mailbox, failures: { count: number }): Mailbox {
+    return new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'acknowledge') {
+          return async (...args: Parameters<Mailbox['acknowledge']>) => {
+            if (failures.count > 0) {
+              failures.count -= 1;
+              throw new Error('storage unavailable');
+            }
+            return target.acknowledge(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  it('keeps a lease whose cancellation renewal reports, and lets the acknowledgement after promotion close it as cancelled', async () => {
     const storage = new MemoryStorage();
     const now = 1_000_000;
     const mailbox = newMailbox(storage, () => now);
@@ -1398,32 +1450,55 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     const [claimed] = await gate.claimPending();
     expect(claimed?.commandId).toBe(commandId);
 
-    // Another process cancels the command this gate leases: the session was
-    // deleted there. The gate learns of it only through its renewal.
+    // The turn is appended in the same turn as the claim. Another process then
+    // cancels the command; the gate learns of it through its renewal, which
+    // changes nothing: the lease stands until the step's checkpoint commits.
     const other = newMailbox(storage, () => now);
-    const requested = await other.requestCancellation({
-      commandId,
-      reason: 'the session was deleted',
-    });
+    const requested = await other.requestCancellation({ commandId, reason: 'elsewhere' });
     expect(requested.status).toBe('requested');
     tick();
-    await until(async () => (await stateOf(mailbox)) === 'cancelled');
+    await yieldToPortableEventLoop();
+    await yieldToPortableEventLoop();
+    expect(await stateOf(mailbox)).toBe('cancellation-requested');
 
-    // Nothing is left for the step to retire, and the input is not delivered again.
-    await gate.settle([
-      {
-        id: 'input-a',
-        commandId,
-        sessionId: SESSION_ID,
-        deliveredAt: new Date(now).toISOString(),
-        conversationMessageId: 'message-a',
-        providerTurn: 0,
-      },
-    ]);
+    // The checkpoint promotes the turn; the acknowledgement closes the command
+    // as cancelled, and the promotion record is what the receipt reads.
+    await promote(storage, RUN_ID, 'input-a', commandId, now);
+    await gate.settle([delivery('input-a', commandId, now)]);
     expect(await stateOf(mailbox)).toBe('cancelled');
+    const records = await store.read(SESSION_ID);
+    expect(records[commandId]?.promotion).toBeDefined();
     expect(await gate.claimPending()).toEqual([]);
     await gate.dispose?.();
     expect(await stateOf(mailbox)).toBe('cancelled');
+  });
+
+  it('does not hand back an input whose cancellation landed between the claim and the return', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandId = await admit(mailbox, 'input-a', 'cancel me');
+    // The cancellation lands while the delivery record is being written.
+    const gate = createMailboxSessionInputGate({
+      mailbox,
+      decode,
+      deliveries: {
+        claim: async (commandIds) => {
+          await newMailbox(storage, () => now).requestCancellation({
+            commandId,
+            reason: 'elsewhere',
+          });
+          return store.claim(SESSION_ID, RUN_ID, commandIds, alwaysLive);
+        },
+      },
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+
+    expect(await gate.claimPending()).toEqual([]);
+    expect(await stateOf(mailbox)).toBe('cancelled');
+    await gate.dispose?.();
   });
 
   it('releases a claim it acquired while it was being disposed, and returns nothing', async () => {
@@ -1459,21 +1534,30 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     expect(await stateOf(mailbox)).toBe('accepted');
   });
 
-  it('keeps a lease whose acknowledgement failed, so disposal releases it', async () => {
+  it('releases what it leased when disposal lands while it retires a promoted command ahead of a fresh one', async () => {
     const storage = new MemoryStorage();
-    const now = 1_000_000;
+    let now = 1_000_000;
     const real = newMailbox(storage, () => now);
     const store = deliveryStoreOver(storage, () => now);
-    const commandId = await admit(real, 'input-a', 'first');
-    let failures = 1;
-    const flaky = new Proxy(real, {
+    const commandA = await admit(real, 'input-a', 'first');
+    // A was delivered and promoted by an earlier run that died before acknowledging.
+    const earlier = gateOver(real, store, 'run-earlier', {
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    await earlier.claimPending();
+    await promote(storage, 'run-earlier', 'input-a', commandA, now);
+    await earlier.dispose?.();
+    now += 1_000;
+    const commandB = await admit(real, 'input-b', 'second');
+    const ackReached = deferred();
+    const ackHeld = deferred();
+    const holding = new Proxy(real, {
       get(target, property, receiver) {
         if (property === 'acknowledge') {
           return async (...args: Parameters<Mailbox['acknowledge']>) => {
-            if (failures > 0) {
-              failures -= 1;
-              throw new Error('storage unavailable');
-            }
+            ackReached.resolve();
+            await ackHeld.promise;
             return target.acknowledge(...args);
           };
         }
@@ -1481,9 +1565,103 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
         return typeof value === 'function' ? value.bind(target) : value;
       },
     });
+    const gate = createMailboxSessionInputGate({
+      mailbox: holding,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    const claiming = gate.claimPending();
+    await ackReached.promise;
+    await gate.dispose?.();
+    ackHeld.resolve();
+
+    expect(await claiming).toEqual([]);
+    expect(await stateOf(real, commandA)).toBe('applied');
+    expect(await stateOf(real, commandB)).toBe('accepted');
+  });
+
+  it('retries a failed acknowledgement at its next boundary, so a peer can claim what follows', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandA = await admit(real, 'input-a', 'first');
+    const failures = { count: 1 };
     const errors: unknown[] = [];
     const gate = createMailboxSessionInputGate({
-      mailbox: flaky,
+      mailbox: flakyAcknowledge(real, failures),
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, 'run-a', ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+      onError: (error) => errors.push(error),
+    });
+    const [claimed] = await gate.claimPending();
+    await promote(storage, 'run-a', 'input-a', commandA, now);
+    await gate.settle([delivery('input-a', claimed!.commandId, now)]);
+    expect(errors).toHaveLength(1);
+    expect(await stateOf(real, commandA)).toBe('claimed');
+
+    // The next boundary retires it before it looks for new input.
+    now += 1_000;
+    expect(await gate.claimPending()).toEqual([]);
+    expect(await stateOf(real, commandA)).toBe('applied');
+
+    // Nothing of this run's stands in a peer's way.
+    const commandB = await admit(real, 'input-b', 'second');
+    const peer = gateOver(real, store, 'run-b', { timers: manualTimers().timers, now: () => now });
+    const peerClaimed = await peer.claimPending();
+    expect(peerClaimed.map(({ commandId }) => commandId)).toEqual([commandB]);
+    await peer.dispose?.();
+    await gate.dispose?.();
+  });
+
+  it('retries the retirement of a promoted command it reclaimed, when that acknowledgement failed', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandA = await admit(real, 'input-a', 'first');
+    // Promoted by an earlier run that died before acknowledging.
+    const earlier = gateOver(real, store, 'run-earlier', {
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    await earlier.claimPending();
+    await promote(storage, 'run-earlier', 'input-a', commandA, now);
+    await earlier.dispose?.();
+    now += 1_000;
+    const failures = { count: 1 };
+    const errors: unknown[] = [];
+    const gate = createMailboxSessionInputGate({
+      mailbox: flakyAcknowledge(real, failures),
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+      onError: (error) => errors.push(error),
+    });
+    expect(await gate.claimPending()).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(await stateOf(real, commandA)).toBe('claimed');
+
+    now += 1_000;
+    expect(await gate.claimPending()).toEqual([]);
+    expect(await stateOf(real, commandA)).toBe('applied');
+    await gate.dispose?.();
+  });
+
+  it('keeps a lease whose acknowledgement failed, so disposal releases it', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandId = await admit(real, 'input-a', 'first');
+    const errors: unknown[] = [];
+    const gate = createMailboxSessionInputGate({
+      mailbox: flakyAcknowledge(real, { count: 1 }),
       decode,
       deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
       timers: manualTimers().timers,
@@ -1491,16 +1669,7 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
       onError: (error) => errors.push(error),
     });
     const [claimed] = await gate.claimPending();
-    await gate.settle([
-      {
-        id: 'input-a',
-        commandId: claimed!.commandId,
-        sessionId: SESSION_ID,
-        deliveredAt: new Date(now).toISOString(),
-        conversationMessageId: 'message-a',
-        providerTurn: 0,
-      },
-    ]);
+    await gate.settle([delivery('input-a', claimed!.commandId, now)]);
     expect(errors).toHaveLength(1);
     expect(await stateOf(real)).toBe('claimed');
 
@@ -1508,6 +1677,35 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     await gate.dispose?.();
     expect(await stateOf(real)).toBe('accepted');
     expect(commandId).toBe(claimed!.commandId);
+  });
+
+  it('still disposes on its abort signal after a settle emptied its table', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const mailbox = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const controller = new AbortController();
+    const gate = createMailboxSessionInputGate({
+      mailbox,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+      signal: controller.signal,
+    });
+    const commandA = await admit(mailbox, 'input-a', 'first');
+    const [a] = await gate.claimPending();
+    await gate.settle([delivery('input-a', a!.commandId, now)]);
+    const commandB = await admit(mailbox, 'input-b', 'second');
+    const [b] = await gate.claimPending();
+    expect(b?.commandId).toBe(commandB);
+
+    // The run is aborted: the gate releases B, as it would have before A settled.
+    controller.abort();
+    await until(async () => (await stateOf(mailbox, commandB)) !== 'claimed');
+    expect(await stateOf(mailbox, commandA)).toBe('applied');
+    expect(await stateOf(mailbox, commandB)).toBe('accepted');
+    await gate.dispose?.();
   });
 
   it('leaves no lease claimed once dispose() resolves: acknowledged, released, or cancelled', async () => {
@@ -1523,27 +1721,17 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     const claimed = await gate.claimPending();
     expect(claimed.map(({ commandId }) => commandId)).toEqual([commandA, commandB, commandC]);
 
-    // A is acknowledged by the step; B is cancelled by another holder and the
-    // renewal settles it; C is left for disposal.
-    await gate.settle([
-      {
-        id: 'input-a',
-        commandId: commandA,
-        sessionId: SESSION_ID,
-        deliveredAt: new Date(now).toISOString(),
-        conversationMessageId: 'message-a',
-        providerTurn: 0,
-      },
-    ]);
+    // A is acknowledged by the step; B is cancelled by another holder, which
+    // renewal reports and the gate keeps; C is left for disposal.
+    await gate.settle([delivery('input-a', commandA, now)]);
     await newMailbox(storage, () => now).requestCancellation({
       commandId: commandB,
       reason: 'elsewhere',
     });
     tick();
-    await until(async () => {
-      const receipts = await mailbox.list({ limit: 10 });
-      return receipts.find((receipt) => receipt.commandId === commandB)?.state === 'cancelled';
-    });
+    await yieldToPortableEventLoop();
+    await yieldToPortableEventLoop();
+    expect(await stateOf(mailbox, commandB)).toBe('cancellation-requested');
     await gate.dispose?.();
 
     const receipts = await mailbox.list({ limit: 10 });
