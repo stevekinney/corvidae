@@ -343,18 +343,32 @@ function canonicalJson(value: unknown): string {
  * and therefore in the digest. Order is semantic, so arrays are not sorted.
  */
 export function transitionDigest(proposal: unknown): string {
-  return digestOfParsedProposal(parseTransitionProposal(proposal));
+  return snapshotTransitionProposal(proposal).digest;
 }
 
-/** {@link transitionDigest} for a proposal that has already been parsed. */
-export function digestOfParsedProposal(proposal: TransitionProposal): string {
+/**
+ * Reads a proposal once. It parses the caller's object, computes the canonical
+ * JSON the digest is taken over, and returns a proposal parsed back from that
+ * JSON: a fresh object that shares nothing with the caller's. A caller that keeps
+ * a reference to a payload and changes it afterward therefore changes neither the
+ * digest nor anything the engine writes; nothing after this call reads the
+ * caller's object.
+ */
+export function snapshotTransitionProposal(raw: unknown): {
+  readonly proposal: TransitionProposal;
+  readonly digest: string;
+} {
+  const parsed = parseTransitionProposal(raw);
   let canonical: string;
   try {
-    canonical = canonicalJson(proposal);
+    canonical = canonicalJson(parsed);
   } catch (error) {
     throw new MemoryTransitionProposalError(
       `it has no canonical form: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
-  return `sha256:${sha256HexSync(canonical)}`;
+  return {
+    proposal: parseTransitionProposal(JSON.parse(canonical)),
+    digest: `sha256:${sha256HexSync(canonical)}`,
+  };
 }

@@ -231,23 +231,33 @@ export const embeddingProfileSchema = z
     schemaVersion: z.literal(EMBEDDING_PROFILE_SCHEMA_VERSION),
     model: nonEmpty,
     dimensions: z.number().int().positive(),
+    /**
+     * How many embedded writes the namespace has taken. Every commit that writes
+     * an embedded record puts the marker with the stored generation plus one, so
+     * the second of two such commits to apply fails its marker condition.
+     */
+    generation: z.number().int().positive(),
   })
   .strict();
 
 export type EmbeddingProfile = z.infer<typeof embeddingProfileSchema>;
 
-export function embeddingProfileOf(embedding: {
-  readonly model: string;
-  readonly vector: readonly number[];
-}): EmbeddingProfile {
+export function embeddingProfileOf(
+  embedding: {
+    readonly model: string;
+    readonly vector: readonly number[];
+  },
+  generation = 1,
+): EmbeddingProfile {
   return {
     schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
     model: embedding.model,
     dimensions: embedding.vector.length,
+    generation,
   };
 }
 
-/** Two profiles are equal when model and dimensions are, and then their canonical bytes are too. */
+/** Two profiles are the same when model and dimensions are; the generation is bookkeeping, not identity. */
 export function sameEmbeddingProfile(left: EmbeddingProfile, right: EmbeddingProfile): boolean {
   return left.model === right.model && left.dimensions === right.dimensions;
 }

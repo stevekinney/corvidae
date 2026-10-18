@@ -114,7 +114,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       });
     }
 
-    it('lets both commit when they share a profile, each conditioned on the one marker', async () => {
+    it('lets both commit when they share a profile, one after the other, each bumping the marker', async () => {
       const recorder = recordBatches();
       const storage = makeBackend(recorder.wrapApply);
       await storage.commit({ tenantId: TENANT, evidence: [e1] });
@@ -138,17 +138,18 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       expectCommitted(await pendingA);
       expectCommitted(await pendingB);
 
+      // Two embedded writers, two generations: the second to apply re-planned against the first's.
       expect(await storage.getEmbeddingProfile(TENANT, NAMESPACE)).toEqual(
-        embeddingProfileOf({ model: 'm', vector: [0, 0, 0] }),
+        embeddingProfileOf({ model: 'm', vector: [0, 0, 0] }, 2),
       );
       for (const batch of recorder.batches) {
         expect(batch.conditions.filter((condition) => condition.key === MARKER)).toHaveLength(1);
       }
-      // However the two interleaved, the marker was put once and conditioned on by the other.
+      // Each batch that applied put the marker, because every embedded write bumps its generation.
       const applied = recorder.batches.filter((_, index) => recorder.results[index]);
       expect(
         applied.filter((batch) => batch.operations.some((op) => op.key === MARKER)),
-      ).toHaveLength(1);
+      ).toHaveLength(2);
     });
   });
 
@@ -414,6 +415,7 @@ describe('the embedding profile record', () => {
       schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
       model: 'm',
       dimensions: 2,
+      generation: 1,
     });
   });
 
@@ -422,6 +424,8 @@ describe('the embedding profile record', () => {
       [{ ...profile, extra: true }, 'malformed'],
       [{ ...profile, schemaVersion: 2 }, 'unsupported-revision'],
       [{ ...profile, dimensions: 0 }, 'malformed'],
+      [{ ...profile, generation: 0 }, 'malformed'],
+      [{ ...profile, generation: undefined }, 'malformed'],
       [{ ...profile, model: '' }, 'malformed'],
     ] as const) {
       try {

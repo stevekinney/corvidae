@@ -37,8 +37,12 @@ describe('the transition path', () => {
     expect(typeof memory.transitionDigest).toBe('function');
     expect(memory.EMBEDDING_PROFILE_SCHEMA_VERSION).toBe(1);
     expect(
-      memory.embeddingProfileSchema.safeParse({ schemaVersion: 1, model: 'm', dimensions: 2 })
-        .success,
+      memory.embeddingProfileSchema.safeParse({
+        schemaVersion: 1,
+        model: 'm',
+        dimensions: 2,
+        generation: 1,
+      }).success,
     ).toBe(true);
     expect(memory.TRANSITION_EVENT_KINDS).toHaveLength(9);
     expect(memory.TRANSITION_PROPOSAL_KINDS).toHaveLength(5);

@@ -623,14 +623,25 @@ export function createEvidenceProjectionStoreCore(options: {
    * embeddings cannot both apply: they condition on one key, and the loser
    * re-plans against the winner's marker.
    *
+   * Every such commit conditions on the marker's exact bytes (or on its
+   * absence) and puts it back with the generation plus one. A condition
+   * serializes a commit only against commits that write the same key, so the
+   * bump is what makes two embedded writers to one namespace exclusive: the
+   * second to apply fails its marker condition and re-plans against the first's
+   * result. Without it a same-profile creation could land between a migration's
+   * scan and its apply, and the namespace would end up with a marker of one
+   * profile and a recallable record of the other.
+   *
    * - No marker: scan once for a recallable embedded record of another
    *   profile (a namespace that predates the marker), then put the marker.
-   * - The same profile: condition on the marker's exact bytes, no scan, no put.
+   * - The same profile: no scan.
    * - Another profile: allowed only when the commit leaves no recallable
-   *   embedded record of the old profile; then replace the marker by
-   *   compare-and-swap. Otherwise `embedding-profile-conflict`.
+   *   embedded record of the old profile; otherwise `embedding-profile-conflict`.
    *
-   * A commit that writes no embedded record never touches a marker.
+   * No transition makes a non-recallable embedded record recallable except a
+   * `created` or `rebuilt` revision (status follows the transition, and
+   * `superseded` and `revoked` are terminal), so those are the only embedded
+   * writes. A commit that only retires or demotes records never touches a marker.
    */
   async function planEmbeddingProfiles(
     builder: BatchPlan,
@@ -648,20 +659,21 @@ export function createEvidenceProjectionStoreCore(options: {
     for (const [namespace, { tenantId, profile }] of incoming) {
       const key = keys.embeddingProfile(tenantId, namespace);
       const stored = await readEmbeddingProfile(tenantId, namespace);
-      if (stored !== undefined && sameEmbeddingProfile(stored.profile, profile)) {
-        builder.require(key, stored.raw);
-        continue;
-      }
-      const inNamespace = projections.filter((record) => record.namespace === namespace);
-      const conflicting = await recallableMismatch(tenantId, namespace, profile, inNamespace);
-      if (conflicting !== undefined) {
-        throw new EvidenceProjectionCommitError(
-          'embedding-profile-conflict',
-          `Namespace "${namespace}" keeps recallable embedded record "${conflicting}" with another model or dimension than the ${profile.model}/${profile.dimensions} this commit writes.`,
-        );
+      if (stored === undefined || !sameEmbeddingProfile(stored.profile, profile)) {
+        const inNamespace = projections.filter((record) => record.namespace === namespace);
+        const conflicting = await recallableMismatch(tenantId, namespace, profile, inNamespace);
+        if (conflicting !== undefined) {
+          throw new EvidenceProjectionCommitError(
+            'embedding-profile-conflict',
+            `Namespace "${namespace}" keeps recallable embedded record "${conflicting}" with another model or dimension than the ${profile.model}/${profile.dimensions} this commit writes.`,
+          );
+        }
       }
       builder.require(key, stored?.raw ?? null);
-      builder.put(key, encodeEmbeddingProfile(profile));
+      builder.put(
+        key,
+        encodeEmbeddingProfile({ ...profile, generation: (stored?.profile.generation ?? 0) + 1 }),
+      );
     }
   }
 

@@ -7,11 +7,7 @@ import type {
 } from './transition-events';
 import { classifyStoreError, type TransitionResult } from './transition-outcome';
 import { plannedProjections, type TransitionPlan } from './transition-plan';
-import {
-  digestOfParsedProposal,
-  parseTransitionProposal,
-  type TransitionProposal,
-} from './transition-proposal';
+import { snapshotTransitionProposal, type TransitionProposal } from './transition-proposal';
 import { createTransitionReader, type TransitionReader } from './transition-reader';
 import {
   createTransitionKeys,
@@ -193,8 +189,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
     raw: TransitionProposal,
     submitOptions?: SubmitTransitionOptions,
   ): Promise<TransitionResult> {
-    const proposal = parseTransitionProposal(raw);
-    const digest = digestOfParsedProposal(proposal);
+    const { proposal, digest } = snapshotTransitionProposal(raw);
     const { tenantId, operationId, authority } = proposal;
     const signal = submitOptions?.signal;
     // A call, not a property read, so no narrowing hides a signal that aborts between awaits.

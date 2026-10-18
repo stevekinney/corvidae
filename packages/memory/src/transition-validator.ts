@@ -1,5 +1,6 @@
 import {
   encodeEvidenceProjectionRecord,
+  type EvidenceProjectionRecord,
   type ProjectionSource,
 } from './evidence-projection-schema';
 import type { EvidenceRecord } from './evidence-schema';
@@ -279,6 +280,49 @@ async function activeAfter(
   return stored?.status === 'active' && stored.revision === reference.revision;
 }
 
+/** A projection some revision of the proposal is retired in favour of. */
+interface Successor {
+  readonly predecessor: RevisionPlan;
+  readonly reference: { readonly id: string; readonly revision: number };
+  readonly kind: 'superseded' | 'demoted';
+  /** The successor revision, whether the proposal creates it or finds it stored. */
+  readonly record: EvidenceProjectionRecord | undefined;
+}
+
+/**
+ * The one successor set of a proposal: every projection a `superseded` or
+ * `demoted` revision names, created in the proposal or already stored. Every
+ * per-successor invariant (active afterwards, same tenant and namespace, not
+ * valid from before its predecessor) is checked against every member, so a rule
+ * cannot hold for a successor the proposal creates and be skipped for one it
+ * merely references.
+ */
+async function successorSet(
+  { reader }: TransitionValidationContext,
+  plan: TransitionPlan,
+): Promise<Successor[]> {
+  const successors: Successor[] = [];
+  for (const predecessor of plan.revisions) {
+    const { change } = predecessor.request;
+    if (change.kind !== 'superseded' && change.kind !== 'demoted') continue;
+    const reference = change.kind === 'superseded' ? change.supersededBy : change.demotedBy;
+    const { namespace } = predecessor;
+    const created = plan.created.find(
+      (record) =>
+        record.namespace === namespace &&
+        record.id === reference.id &&
+        record.revision === reference.revision,
+    );
+    const rebuilt = revisionOf(plan, namespace, reference.id)?.next;
+    const record =
+      created ??
+      (rebuilt?.revision === reference.revision ? rebuilt : undefined) ??
+      (await reader.projectionRevision(namespace, reference.id, reference.revision));
+    successors.push({ predecessor, reference, kind: change.kind, record });
+  }
+  return successors;
+}
+
 /**
  * Check 4. The proposal cannot carry the fields a non-rebuilt revision may not
  * change, since the engine copies them from the current revision, so this
@@ -291,21 +335,22 @@ async function checkPriorState(
   context: TransitionValidationContext,
   plan: TransitionPlan,
 ): Promise<TransitionRefusal | undefined> {
-  for (const revision of plan.revisions) {
-    const { change } = revision.request;
-    const successor =
-      change.kind === 'superseded'
-        ? change.supersededBy
-        : change.kind === 'demoted'
-          ? change.demotedBy
-          : undefined;
-    if (
-      successor !== undefined &&
-      !(await activeAfter(context, plan, revision.namespace, successor))
-    ) {
+  for (const successor of await successorSet(context, plan)) {
+    const { predecessor, reference, kind, record } = successor;
+    const where = projectionLabel({ namespace: predecessor.namespace, ...reference });
+    const sameScope =
+      record === undefined ||
+      (record.tenantId === context.proposal.tenantId && record.namespace === predecessor.namespace);
+    if (!sameScope) {
       return refuse(
         'prior-state-not-preserved',
-        `${projectionLabel(revision)} would be ${change.kind} by ${projectionLabel({ namespace: revision.namespace, ...successor })}, which is not active after the proposal.`,
+        `${projectionLabel(predecessor)} would be ${kind} by ${where}, which is in another tenant or namespace.`,
+      );
+    }
+    if (!(await activeAfter(context, plan, predecessor.namespace, reference))) {
+      return refuse(
+        'prior-state-not-preserved',
+        `${projectionLabel(predecessor)} would be ${kind} by ${where}, which is not active after the proposal.`,
       );
     }
   }
@@ -370,6 +415,19 @@ async function checkTemporal(
       return refuse(
         'temporal-inconsistency',
         `${projectionLabel(revision)} would be valid until ${validUntil}, not after it begins (${validFrom}).`,
+      );
+    }
+  }
+  for (const { predecessor, reference, kind, record } of await successorSet(context, plan)) {
+    const { base } = predecessor;
+    if (
+      record !== undefined &&
+      base !== undefined &&
+      record.validity.validFrom < base.validity.validFrom
+    ) {
+      return refuse(
+        'temporal-inconsistency',
+        `${projectionLabel({ namespace: predecessor.namespace, ...reference })} is valid from ${record.validity.validFrom}, before the ${projectionLabel(predecessor)} it ${kind === 'superseded' ? 'supersedes' : 'demotes'} (${base.validity.validFrom}).`,
       );
     }
   }
