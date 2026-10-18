@@ -35,6 +35,14 @@ When Chat accepts snippets or arbitrary children, the caller owns the semantics 
 - Inspect the accessible name, role, and state in browser accessibility tools.
 - Check forced-colors mode when the component adds borders, focus rings, selected state, or status color.
 
+## Follow-ups during a run
+
+When the adapter provides `sendRunInput`, the composer textarea stays enabled while `streaming` is `true`, so keyboard focus is never pulled out of it mid-run. Stop becomes a separate button beside Send, each with its own accessible name ("Stop generating", "Send message"), and the composer's shortcut description names the key the composer's `submitOn` listens for, so a modifier-Enter composer never announces a bare Enter. When the run ends and the side Stop button unmounts while it has focus, focus moves to Send, or to the textarea while Send is disabled. A follow-up that is waiting for the transport shows a visible "Sending…" label rather than relying on color or opacity; the row adds no live region of its own, because the transcript's log region announces the added message. One that the transport rejected shows the existing "Failed to send" alert with a Retry button.
+
+## Composer actions
+
+`composerActions` renders host-owned controls in the composer footer, before Send, so they sit in the tab order between the attachment button and Send. The host owns their semantics: give a `Select` or `Combobox` an accessible name (a visually hidden `label` works when the footer has no room for a visible one), and keep their state announced the way the control already does. Chat does not disable them while a run streams or a tool approval is pending; if the host locks a control during a run, it should disable it natively so the state is exposed.
+
 ## scrollFadeVisible (Tier 3 polish)
 
 `scrollFadeVisible` paints an opaque, scroll-driven fade (never a `mask-`) on the top and bottom edges of the message timeline as it overflows, using `@lostgradient/cinder`'s shared `_scroll-fade.css` recipe. It is presentation-only and never the sole signal that more messages exist — the jump-to-latest button and unread-count indicator (`atBottom`, `unreadCount`, `newMessageIndicatorVisible`) remain the authoritative affordances, unaffected by this prop. The timeline's own `role="log"`/`aria-live` and `:focus-visible` ring (documented above) are unchanged. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so the JS driver is gated off entirely rather than fading toward an incorrect color (see `chat.types.ts`). `@media (forced-colors: active)` disables the fade outright.

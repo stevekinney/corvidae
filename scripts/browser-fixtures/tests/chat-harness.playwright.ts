@@ -3165,6 +3165,79 @@ test.describe('chat harness — accessibility', () => {
   });
 });
 
+test.describe('chat conversation list — accessibility', () => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    test(`the agent label, activity indicators, and load-more control have no serious axe violations (${colorScheme})`, async ({
+      browser,
+    }) => {
+      const context = await browser.newContext({
+        baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+        colorScheme,
+        reducedMotion: 'reduce',
+        viewport: { width: 1280, height: 900 },
+      });
+      try {
+        await context.addInitScript(setFixtureThemeOnOrigin, themeInitScriptPayload(colorScheme));
+        const page = await context.newPage();
+        await page.goto(fixtureRoute('chat-conversation-list'), { waitUntil: 'load' });
+        const list = page.locator('nav.cinder-chat-conversation-list');
+        await list.waitFor({ state: 'visible', timeout: 20_000 });
+
+        // The fixture exercises the new surface: an agent label per row, both
+        // non-idle activity values (idle renders nothing), and LoadMore after
+        // the last row.
+        await expect(list.locator('[data-cinder-conversation-agent]')).toHaveCount(11);
+        await expect(list.locator('[data-cinder-conversation-activity="running"]')).toHaveCount(1);
+        await expect(
+          list.locator('[data-cinder-conversation-activity="awaiting-input"]'),
+        ).toHaveCount(1);
+        await expect(list.locator('[data-cinder-conversation-activity]')).toHaveCount(2);
+        await expect(list.getByRole('img', { name: 'Running' })).toBeVisible();
+        await expect(list.getByRole('img', { name: 'Awaiting input' })).toBeVisible();
+
+        // The list is bounded and overflows, so the control is past the fold and
+        // has not asked for anything yet; it fires only after scrolling to the end.
+        const calls = page.locator('[data-load-more-calls]');
+        const overflows = await list.evaluate(
+          (element) => element.scrollHeight > element.clientHeight,
+        );
+        expect(overflows, 'the list must overflow its bounded height').toBe(true);
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+            ),
+        );
+        await expect(calls).toHaveAttribute('data-load-more-calls', '0');
+        await list.evaluate((element) => {
+          element.scrollTop = element.scrollHeight;
+        });
+        await expect(list.getByRole('button', { name: 'Load more' })).toBeVisible();
+        await expect
+          .poll(async () => Number(await calls.getAttribute('data-load-more-calls')))
+          .toBeGreaterThan(0);
+
+        const buckets = await runAxe(
+          page,
+          {
+            slug: 'chat-conversation-list',
+            theme: colorScheme,
+            viewport: 'desktop',
+            fixture: 'assertion',
+          },
+          { include: 'nav.cinder-chat-conversation-list' },
+        );
+        expect(buckets.critical, JSON.stringify(buckets.critical, null, 2)).toHaveLength(0);
+        expect(buckets.serious, JSON.stringify(buckets.serious, null, 2)).toHaveLength(0);
+        expect(buckets.moderate, JSON.stringify(buckets.moderate, null, 2)).toHaveLength(0);
+        expect(buckets.minor, JSON.stringify(buckets.minor, null, 2)).toHaveLength(0);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+});
+
 // Regression suite for #1237's reopened symptoms, driven against the
 // `history-prepend-stress` example: an adapter-mode load-earlier flow inside
 // a full-height app shell whose header content (an event log line) grows when
