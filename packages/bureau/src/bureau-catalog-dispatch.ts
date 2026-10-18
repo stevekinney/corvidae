@@ -67,6 +67,21 @@ export interface CatalogDispatcherDependencies {
    */
   readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
+   * COR-1481 — called once for each `bureau.run()` dispatch, with its handle, as
+   * the handle is returned: the moment the run becomes a task. Child runs and goal
+   * attempts are not passed. `contextId` is the session id the caller named, or
+   * the run's own id when it named none.
+   */
+  readonly onCatalogRunAdmitted?:
+    | ((admission: {
+        readonly handle: AgentRun<unknown, boolean>;
+        readonly agentName: string;
+        readonly owner: string;
+        readonly contextId: string;
+        readonly input: AgentInput;
+      }) => void)
+    | undefined;
+  /**
    * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
    */
@@ -222,6 +237,7 @@ export function createCatalogDispatcher({
   onDurableRunAborted,
   guardrails,
   registerCatalogRun,
+  onCatalogRunAdmitted,
 }: CatalogDispatcherDependencies): {
   runAgent: (
     name: string,
@@ -843,11 +859,25 @@ export function createCatalogDispatcher({
       ...catalogRunGuardrailsContext(agent, guardrails),
     };
 
+    // COR-1481 — the dispatch is a task from the moment its handle exists.
+    const admitted = (handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> => {
+      onCatalogRunAdmitted?.({
+        handle,
+        agentName: name,
+        owner: ownerOrLocal(principal),
+        contextId: runOptions?.sessionId ?? handle.id,
+        input,
+      });
+      return handle;
+    };
+
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
-      return indexCatalogRun(
-        runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
-        name,
+      return admitted(
+        indexCatalogRun(
+          runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
+          name,
+        ),
       );
     }
     // COR-1302 — the direct branch's handle is returned before the agent's
@@ -868,25 +898,27 @@ export function createCatalogDispatcher({
     // microtask later than before — compatible with the contract, which
     // promises a synchronous RETURN of the handle, not synchronous START of
     // the agent's own work.
-    return indexCatalogRun(
-      trackCatalogRun(
-        createDeferredAgentRun(
-          () =>
-            resolveInvariantComposedAgent(
-              name,
-              input,
-              context,
-              principal,
-              agent,
-              hasResolver,
-              registerCatalogRun,
-            ),
-          input,
-          context,
-          name,
+    return admitted(
+      indexCatalogRun(
+        trackCatalogRun(
+          createDeferredAgentRun(
+            () =>
+              resolveInvariantComposedAgent(
+                name,
+                input,
+                context,
+                principal,
+                agent,
+                hasResolver,
+                registerCatalogRun,
+              ),
+            input,
+            context,
+            name,
+          ),
         ),
+        name,
       ),
-      name,
     );
   }
 

@@ -20,6 +20,7 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import {
   BUREAU_HANDLER_OPERATIONS,
   type BureauHandlerHost,
+  buildBureauHandlerHost,
   createBureauHandler,
 } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, type OwnerAccessPredicate } from './owner-predicate.ts';
@@ -524,6 +525,9 @@ describe('credentials', () => {
         const params = paramsFor(operation, {
           id: 'x',
           runId: 'x',
+          taskId: 'x',
+          contextId: 'x',
+          messageId: 'x',
           bureauId: bureau.id,
           decision: 'approve',
         });
@@ -618,7 +622,11 @@ describe('identifiers grant nothing', () => {
   /** The string-valued id parameters an operation declares, found from its own schema. */
   function idParameters(operation: (typeof BUREAU_HANDLER_OPERATIONS)[number]): string[] {
     const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
-    return Object.keys(shape).filter((key) => key === 'id' || key.endsWith('Id'));
+    // `messageId` is a caller's idempotency key and `callId` selects a wait within a task:
+    // neither is the id of a resource, and each needs its task named beside it.
+    return Object.keys(shape).filter(
+      (key) => key !== 'messageId' && key !== 'callId' && (key === 'id' || key.endsWith('Id')),
+    );
   }
 
   it('answers real and random ids identically to a non-owner without operator scopes', async () => {
@@ -626,6 +634,8 @@ describe('identifiers grant nothing', () => {
       const realIds: Record<string, string> = {
         id: bob.reviewId,
         runId: bob.run.id,
+        taskId: bob.run.id,
+        contextId: bob.run.sessionId,
         bureauId: bureau.id,
       };
       let probed = 0;
@@ -633,7 +643,11 @@ describe('identifiers grant nothing', () => {
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         for (const parameter of idParameters(operation)) {
           const send = async (requested: string) => {
-            const params = paramsFor(operation, { [parameter]: requested, decision: 'approve' });
+            const params = paramsFor(operation, {
+              messageId: 'message-1',
+              [parameter]: requested,
+              decision: 'approve',
+            });
             const request = operation.transports.jsonRpcHttp
               ? rpc(operation.name, params, as('alice-key'))
               : subscribe(operation.name, params, as('alice-key'));
@@ -649,11 +663,17 @@ describe('identifiers grant nothing', () => {
           expect([operation.name, parameter, real]).toEqual([operation.name, parameter, random]);
           // The request reached the operation and was refused there: not a 400
           // for a malformed request, and not a success.
-          expect([operation.name, parameter, [403, 404].includes(real.status)]).toEqual([
+          // A list filtered by another owner's id leaves that owner's rows out: it answers
+          // an empty page, which the identical-text check above shows for a random id too.
+          const refused = operation.name === 'bureau.tasks.list' ? [200] : [403, 404];
+          expect([operation.name, parameter, refused.includes(real.status)]).toEqual([
             operation.name,
             parameter,
             true,
           ]);
+          if (operation.name === 'bureau.tasks.list') {
+            expect(real.text).toContain('"tasks":[]');
+          }
           probed += 1;
         }
       }
@@ -670,14 +690,10 @@ describe('one predicate on both transports', () => {
         decisions.push(request.operatorScope);
         return mayAccessOwnedResource(request);
       };
+      const base = buildBureauHandlerHost(bureau, []);
       const host: BureauHandlerHost = {
-        bureauFeeds: { get: (id) => (id === bureau.id ? bureau.eventFeed : undefined) },
-        runFeeds: bureau.runEventFeeds,
-        reviews: bureau,
-        ownership: {
-          runOwner: (runId) => bureau.getOwner({ kind: 'run', id: runId }),
-          mayAccess: counting,
-        },
+        ...base,
+        ownership: { ...base.ownership, mayAccess: counting },
       };
       const handler = createOperationHandler({
         operations: BUREAU_HANDLER_OPERATIONS,
@@ -765,6 +781,10 @@ describe('transcripts stay inside the Bureau', () => {
         const params = paramsFor(operation, {
           id: alice.reviewId,
           runId: alice.run.id,
+          taskId: alice.run.id,
+          // Not alice's own context: deleting it here would remove what the rest of the loop reads.
+          contextId: 'no-such-context',
+          messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
         });

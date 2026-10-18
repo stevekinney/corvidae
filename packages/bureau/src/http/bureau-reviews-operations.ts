@@ -233,7 +233,7 @@ function reviewNotFound(identifier: string): OperationFault {
  * that is not a {@link BureauError} is left to the pipeline, which masks it as an
  * internal failure.
  */
-function reviewFault(error: unknown, identifier: string): unknown {
+export function reviewFault(error: unknown, identifier: string): unknown {
   if (!(error instanceof BureauError)) return error;
   switch (error.code) {
     case 'NOT_FOUND':
@@ -354,7 +354,7 @@ const reviewsResolveOutput = z.object({
  * `applied`, not `rejected`: `rejected` means the command was refused and nothing
  * took effect, and a refusal is a fault in v1.
  */
-function receiptFor(result: unknown): z.infer<typeof reviewReceiptSchema> {
+export function receiptFor(result: unknown): z.infer<typeof reviewReceiptSchema> {
   // `resumeApproval` re-ran the tool's policy and gated it again: the tool did
   // not run and the review remains pending under a replacement approval.
   if (

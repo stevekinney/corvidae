@@ -200,12 +200,13 @@ export type ReviewEventKind = 'tool-approval' | 'human-wait';
  * `create-bureau.ts`), a separately-redacted surface.
  *
  * One event per non-`'pending'` `ReviewStatus` value; `pending` itself
- * dispatches nothing — per AB-87, "pending is the resting state before any
- * armorer signal fires":
+ * dispatches no resolution event — per AB-87, "pending is the resting state
+ * before any armorer signal fires". COR-1481 adds the one request event,
+ * `review.requested`, for the moment a review becomes pending:
  *
  * | `ReviewStatus` | Event                |
  * | -------------- | --------------------- |
- * | `pending`      | none — resting state  |
+ * | `pending`      | `review.requested` (on entry only) |
  * | `approved`     | `review.approved`     |
  * | `denied`       | `review.denied`       |
  * | `rejected`     | `review.rejected`     |
@@ -232,6 +233,33 @@ class ReviewLifecycleEvent extends Event {
     this.runId = runId;
     this.principal = principal;
     this.kind = kind;
+  }
+}
+
+/**
+ * Fired once when a review becomes pending (COR-1481): a run parks on a human
+ * wait, or a tool call needs approval. It is the one `review.*` event that is
+ * not a resolution, and it exists so a task's durable history can show the task
+ * entering `input-required`. `principal` is the run's owner. It carries the
+ * review id and kind plus the identifier that addresses the wait (`signalName`
+ * for a human wait, `callId` for an approval) and nothing the review holds: no
+ * prompt text and no tool arguments.
+ */
+export class ReviewRequestedEvent extends ReviewLifecycleEvent {
+  static readonly type = 'review.requested' as const;
+  readonly signalName: string | undefined;
+  readonly callId: string | undefined;
+
+  constructor(
+    reviewId: string,
+    runId: string,
+    principal: string,
+    kind: ReviewEventKind,
+    target: { readonly signalName?: string | undefined; readonly callId?: string | undefined } = {},
+  ) {
+    super(ReviewRequestedEvent.type, reviewId, runId, principal, kind);
+    this.signalName = target.signalName;
+    this.callId = target.callId;
   }
 }
 
@@ -388,6 +416,7 @@ export interface BureauEventMap extends EventMap {
   'session.created': SessionCreatedEvent;
   'session.saved': SessionSavedEvent;
   'session.deleted': SessionDeletedEvent;
+  [ReviewRequestedEvent.type]: ReviewRequestedEvent;
   [ReviewApprovedEvent.type]: ReviewApprovedEvent;
   [ReviewDeniedEvent.type]: ReviewDeniedEvent;
   [ReviewRejectedEvent.type]: ReviewRejectedEvent;

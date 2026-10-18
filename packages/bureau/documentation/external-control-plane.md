@@ -116,6 +116,18 @@ A task is the external face of one agent run. Bureau maps its run and review sta
 
 `TASK_STATE_CANCELED` is terminal in A2A, but cleanup may still be pending when the result settles. The cleanup extension carries the `CleanupAcknowledgement` separately, so a client that cares can wait for `completed` and one that does not can stop at the terminal state.
 
+### Tasks and contexts in code
+
+A task is one top-level Bureau run. Its identifier is the run identifier, verbatim: a `createRun` session run is `run-<n>-<uuid>`, and a `bureau.run` catalog dispatch is `agent-run-<n>-<uuid>`. The `agent-run-…` shape in the taxonomy above names the catalog family; session runs keep their own prefix, and there is no second namespace and no mapping table. Schedule fires, child runs, and goal attempts are not tasks in v1: each belongs to its own operations, and the `bureau.tasks.*` operations answer one as a missing task.
+
+A task's `contextId` is its session identifier for a session run. A catalog run owns no Bureau session, so its `contextId` is the `sessionId` its caller named, or else its own run identifier; `bureau.contexts.get` and `bureau.contexts.delete` answer that identifier as a missing context.
+
+`RunRef.runId`, the `${sessionId}:${sequence}` identifier, is not a task identifier and does not relate to one. It belongs to Operative's `SessionHandle`, which Bureau uses only inside a goal's conversation. Two turns in one Bureau session are two `createRun` runs, so they are two tasks with different identifiers and one `contextId`, and `bureau.tasks.list({ contextId })` returns exactly those two.
+
+Bureau keeps one durable record per task, written before the run starts and removed when the run is deleted: the owner, the context and the session incarnation it ran in, the originating user message, and how the run settled and how its cleanup ended. The record is how a settled task keeps its owner and its history across a restart, and it is where a task's own message history lives, apart from the internal session transcript. Deleting a context empties the history of its tasks, so a user's message text does not outlive the context it belonged to; their status and cleanup facts remain. The management plane serves the history to no one in v1: it exists for the A2A `GetTask` that follows.
+
+The management plane shows a task's state as `submitted`, `working`, `input-required`, `completed`, `failed`, or `canceled`. A task whose run finished successfully while a review is still open is `input-required`, and answering that review is what finishes it; a failed or canceled task is that whatever is open. `rejected` and `auth-required` cannot arise in v1.
+
 ### Assets
 
 The asset entries follow COR-794's specification. An asset is admitted from bounded inline bytes, an upload completion, an authorized URL, a provider file identifier, or an existing asset reference, and admission returns a handle or durable locator immediately when work continues asynchronously. Its `AssetDescriptor` carries identity, monotonic revision, digest, media type, byte length, owner, authorization, provenance, lifecycle state, creation time, expiry, retention, and a general-versus-privileged projection distinction, consistent with `ContentSource`, `Modality`, and `MediaLimits` in `packages/conversationalist/src/multi-modal.ts:214-270`.
@@ -173,10 +185,12 @@ Management operations are Weft catalog operations named under `bureau.*`, served
 
 | Operation | Kind | Purpose |
 | --- | --- | --- |
-| `bureau.deployment.get` | Query | The deployment profile; any authenticated principal |
-| `bureau.agents.list` | Query | Published agents, their `definitionRevision`, and their card URLs; any authenticated principal |
-| `bureau.tasks.list`, `bureau.tasks.get` | Query | Any principal's tasks, with cleanup status, for operator scopes |
-| `bureau.tasks.cancel` | Command | Operator cancellation of any task |
+| `weft.system.principal` | Query | The caller's resolved principal and scopes; Weft's own operation, registered beside Bureau's |
+| `bureau.deployment.get` | Query | The deployment profile: identity, state, published agents, served operations with schema versions, and recovery status; any authenticated principal |
+| `bureau.agents.list` | Query | Published agents with their `name` (the catalog key every other operation calls `agentName`), display name, description, `definitionRevision`, and publish state. The Agent Card URL is not carried until A2A arrives; any authenticated principal |
+| `bureau.tasks.list`, `bureau.tasks.get` | Query | The caller's own tasks, with cleanup status; any owner's for `bureau.tasks:read`. `list` filters by `contextId` (the context's current incarnation), `agentName`, and `status` |
+| `bureau.tasks.cancel` | Command | Cancellation of the caller's own task, or any task for `bureau.tasks:write` |
+| `bureau.tasks.respond` | Command | Answer a task's open human-input or approval wait, as an A2A continuation does: answer text (parts joined with a newline), an optional `signalName` or `callId` when several waits are open, or a `decision` (`reject` requires a `reason`), plus a caller-supplied `messageId` that makes it idempotent through the COR-424 ledger. The task's owner answers anything; `bureau.tasks:write` answers human-input waits only, and a non-owner's approval decision is answered as a missing task. It answers through `Bureau.resolveReview` |
 | `bureau.tasks.events` | Subscription | A task's durable history with a resumable cursor, as an allowlisted projection: each event carries only the fields its A2A counterpart carries (status, status message, artifact, cursor, and timestamps), never the raw durable payload, whose run-completion detail keeps step content, tool calls, and tool results |
 | `bureau.contexts.delete` | Command | Delete a context (a Bureau session): fence its incarnation against new tasks and continuations, cancel and await every live task in it (not only the latest), and report the aggregate of their cleanup acknowledgements, the least settled state winning; A2A has no core context deletion |
 | `bureau.reviews.list`, `bureau.reviews.get` | Query | `list` returns pending reviews; resolved reviews are reached by id through `get` |
@@ -190,6 +204,10 @@ Management operations are Weft catalog operations named under `bureau.*`, served
 | `bureau.goals.create`, `bureau.goals.cancel` | Command | Goal lifecycle |
 
 The existing `bureau.events` and `operative.runs.events` operations are served through `createBureauHandler` over the generic Server-Sent Events route, as COR-1299 and COR-1300 require, with live-only semantics: a cursor resumes within one process lifetime and carries no promise across a restart. `bureau.tasks.events` is the durable, resumable equivalent. This answers COR-1298's third open question: both operations turn on `transports.http`, and their tests that assert WebSocket-only change accordingly.
+
+`bureau.tasks.events` elements are `task.snapshot`, `task.status`, `task.gap`, and `task.removed`, each carrying `taskId`, the durable `cursor`, and `emittedAtMs`. A `task.status` carries the state, the finish reason, a status message of at most 1,000 characters, and, for a task that completed, the answer as one artifact of at most 64 KiB (`truncated` says when it was cut). A durable kind the projection does not list is dropped, and each durable event yields at most one element, so a cursor never names two. A review becoming pending is a durable `review.requested` event (the review identifier, its kind, and the signal name or call identifier, never the prompt or the arguments), which the stream shows as `input-required`; the event is an additive kind inside the existing record wrapper, so the history's `CURRENT_SCHEMA_VERSION` stays 1. A subscription that names no cursor begins with a `task.snapshot` and then replays what the history retains, and a stream ends at the task's terminal status once no review is open, or at its removal. Only session runs record durable `run.*` events: a catalog run is released from the run store when it settles and records none, so its stream is the snapshot alone, and `bureau.tasks.get` is where its state is read. A Bureau with no persistent storage keeps no durable history, and `bureau.tasks.events` answers it with `UnsupportedCapability`.
+
+`bureau.tasks.cancel` and `bureau.contexts.delete` take `waitMilliseconds` (default 0, at most 60,000), the longest they wait for a cleanup acknowledgement still outstanding; with the default the receipt is whatever has settled, and `bureau.tasks.get` carries the same cleanup state afterwards. `Bureau.deleteSession` resolves a report of the tasks that were live in the session, each with its run's cleanup acknowledgement, so the operation reports without a second deletion method.
 
 ## Command envelope
 
@@ -272,6 +290,8 @@ Which states each operation can produce:
 | Management delivery commands (`bureau.deliveries.retry`, `bureau.deliveries.cancel`; A2A push-configuration methods return their fixed objects and carry no receipt) | `accepted`, `pending`, `applied`, `failed`, `canceled`, `unknown-outcome` |
 | Schedule and goal commands | `applied`, `rejected`, `cancel-requested`, `canceled`, `cleanup-pending`, `cleaned-up`, `cleanup-failed`, `cleanup-unresolved` |
 
+The management receipts map onto observed facts. `bureau.tasks.cancel` answers `cancel-requested` while the run has not stopped, and then the state its `CleanupAcknowledgement` ends in: `cleanup-pending` while it is outstanding, `cleaned-up` for `completed` or `not-required`, `cleanup-failed` for `failed`, `cleanup-unresolved` for `unresolved` with `timed-out`, `unreachable`, or `persistence-failed`, and `unknown-outcome` for `unresolved` with `unknown-effect`. `canceled` is the receipt for a durable run that this process holds no live handle for and whose workflow cancellation was requested: it claims the stop and nothing about cleanup, because no acknowledgement exists to report. `rejected` is a cancel of a task that finished without being canceled (reason `already-terminal`): nothing is applied, and it is a receipt, not a `Conflict` fault; a repeated cancel of a task already canceled answers its current cleanup receipt. `bureau.contexts.delete` answers `applied` when no task was live, and `rejected` (reason `shutting-down`) once `shutdown()` has closed admission. Otherwise it answers the aggregate of its live tasks' cleanup states, the least settled winning in this order: `cleanup-pending` (a request still outstanding counts here), `cleanup-unresolved` (a stop with no acknowledgement behind it counts here), `unknown-outcome`, `cleanup-failed`, `cleaned-up`; the response lists each task's own state.
+
 A `bureau.reviews.resolve` whose decision is `reject` and that lands is `applied`: the response's `decision` carries `reject`, and `rejected` stays the receipt of a command refused at admission, which v1 reports as a fault.
 
 ## Retry, concurrency, and ordering
@@ -348,7 +368,7 @@ Errors are versioned with the surface that returns them, machine-readable, and, 
 | Unsupported capability | `UnsupportedOperationError` (`-32004`), `ExtensionSupportRequiredError` (`-32008`), `VersionNotSupportedError` (`-32009`) | `NotImplemented`, `UnsupportedCapability` (new) | 400, 501 |
 | Rate limit | HTTP 429 | `RateLimited` (new) | 429 |
 | Deadline | A2A has no deadline code. A creation command that expires before applying projects the new task as `TASK_STATE_FAILED` with a deadline reason; an expired continuation leaves the existing task in its current, still-interrupted state and reports the command's `expired` receipt; an expired request is JSON-RPC `-32603` with `Timeout` data | `Timeout` | 408 |
-| Cancellation | `TaskNotCancelableError` (`-32002`) for a task that is `COMPLETED`, `FAILED`, or `REJECTED`; `CANCELED` (A2A 1.0.1 §3.1.5 names an already-canceled task as not cancelable, so a repeated cancel has the same effect and the same error), and `TaskNotFoundError` once the task is purged (§3.3.1) | `Conflict` (Weft keeps no cancellation category) | 409 |
+| Cancellation | `TaskNotCancelableError` (`-32002`) for a task that is `COMPLETED`, `FAILED`, or `REJECTED`; `CANCELED` (A2A 1.0.1 §3.1.5 names an already-canceled task as not cancelable, so a repeated cancel has the same effect and the same error), and `TaskNotFoundError` once the task is purged (§3.3.1) | `Conflict` (Weft keeps no cancellation category), for the A2A surface only: `bureau.tasks.cancel` reports a task that finished without being canceled as the `rejected` receipt, and a repeated cancel as its current cleanup receipt, so it raises no fault for either | 409 |
 | Unavailable dependency | JSON-RPC `-32603` with retry detail | `Unavailable` (new) | 503 |
 | Internal failure | JSON-RPC `-32603` | `EngineFailure` | 500 |
 

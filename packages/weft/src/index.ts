@@ -132,6 +132,13 @@ export type {
   UnarySchemaOperationDefinition,
 } from './server/operation-registry.ts';
 /*
+ * `weft.system.principal`, as a definition a package handler registers beside its
+ * own operations. It reads only the request's principal, so it needs no engine; a
+ * handler built with `createOperationHandler` serves Weft's own operation instead of
+ * copying its wire contract.
+ */
+export { getPrincipalOperation } from './server/operations/get-principal.ts';
+/*
  * The replay-plus-live feed and its subscription plumbing, as public
  * contracts.
  *
