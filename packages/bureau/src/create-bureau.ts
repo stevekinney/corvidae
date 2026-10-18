@@ -2032,7 +2032,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     services: DurableRunDeps,
   ): Promise<void> {
     const gate = await sessionInputGateFor(sessionId, runId);
-    if (gate !== undefined) services.options = { ...services.options, sessionInput: gate };
+    if (gate !== undefined) {
+      services.options = { ...services.options, sessionId, sessionInput: gate };
+    }
   }
 
   /**

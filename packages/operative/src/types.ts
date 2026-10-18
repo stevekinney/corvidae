@@ -589,23 +589,6 @@ export interface RunOptionsBase {
    */
   agentName?: string | undefined;
   /**
-   * The session this run belongs to, when it belongs to one (COR-1269).
-   *
-   * Read only to stamp the run's hook-plan observations, so an operator
-   * correlating a hook invocation can reach the session it happened in. Not a
-   * behavior input: nothing in the loop branches on it, and a run without a
-   * session simply omits it.
-   */
-  sessionId?: string | undefined;
-  /**
-   * Where this durable run receives session input admitted while it is live
-   * (COR-1476). The run workflow asks it at each step boundary and appends what
-   * it returns to the conversation before the step generates. Honoured only by
-   * the durable run workflow; the in-memory loop ignores it. A run without one
-   * receives no session input.
-   */
-  sessionInput?: SessionInputGate | undefined;
-  /**
    * Set when this run was dispatched as another run's child (COR-1269), by
    * `dispatchChildRun` through `AgentRunContext.childCorrelation`.
    *
@@ -811,6 +794,39 @@ export type RunOptions = RunOptionsBase &
          * that `runId` requires a gate.
          */
         readonly steering?: SteeringGate | undefined;
+      }
+  ) &
+  (
+    | {
+        /**
+         * The session this run belongs to, when it belongs to one (COR-1269).
+         *
+         * Read to stamp the run's hook-plan observations, so an operator
+         * correlating a hook invocation can reach the session it happened in.
+         * Optional when the run receives no session input: nothing in the
+         * loop branches on it, and a run without a session simply omits it.
+         */
+        readonly sessionId?: string | undefined;
+        readonly sessionInput?: undefined;
+      }
+    | {
+        /**
+         * Required whenever `sessionInput` holds a gate (COR-1476): the
+         * deliveries the gate records name the session the input was admitted
+         * to, so a gate without a session is a shape the durable workflow
+         * cannot run. The pairing is one-directional, as `runId` and
+         * `steering` are: a session id with no gate is an ordinary run that
+         * happens to belong to a session.
+         */
+        readonly sessionId: string;
+        /**
+         * Where this durable run receives session input admitted while it is
+         * live (COR-1476). The run workflow asks it at each step boundary and
+         * appends what it returns to the conversation before the step
+         * generates. Honoured only by the durable run workflow; the in-memory
+         * loop ignores it. A run without one receives no session input.
+         */
+        readonly sessionInput?: SessionInputGate | undefined;
       }
   );
 

@@ -3574,15 +3574,18 @@ describe('durable agentRun workflow', () => {
 
     /**
      * Build services with an agent that always emits a tool call (never
-     * settles). Excludes `runId`/`steering` from the override bag rather
-     * than accepting `Partial<DurableRunDeps['options']>` — AB-236 makes
-     * those two a discriminated pair on `RunOptions`, and `Partial` (like
-     * `Omit`) flattens a union's members into one merged, looser shape,
-     * which would let this helper accept a `steering` override with no
-     * `runId` again. No caller below needs to override either field.
+     * settles). Excludes `runId`/`steering` and `sessionId`/`sessionInput`
+     * from the override bag rather than accepting
+     * `Partial<DurableRunDeps['options']>` — AB-236 and COR-1476 make each
+     * pair discriminated on `RunOptions`, and `Partial` (like `Omit`)
+     * flattens a union's members into one merged, looser shape, which would
+     * let this helper accept a gate override with no id again. No caller
+     * below needs to override any of the four.
      */
     function makeNeverSettlingServices(
-      options?: Partial<Omit<DurableRunDeps['options'], 'runId' | 'steering'>>,
+      options?: Partial<
+        Omit<DurableRunDeps['options'], 'runId' | 'steering' | 'sessionId' | 'sessionInput'>
+      >,
     ): DurableRunDeps {
       const toolbox = continuingToolbox();
       return {

@@ -288,12 +288,11 @@ async function deliverSessionInputs(
   conversation: Conversation,
   providerTurn: number,
 ): Promise<SessionInputDelivery[]> {
-  const gate = deps.options.sessionInput;
-  if (gate === undefined) return [];
-  const sessionId = deps.options.sessionId;
-  if (sessionId === undefined) {
-    throw new Error('A run with a session input gate must belong to a session.');
-  }
+  const { options } = deps;
+  // A gate comes paired with its session id (`RunOptions`), so the narrowing
+  // on the gate is what makes the id definite below.
+  if (options.sessionInput === undefined) return [];
+  const { sessionId, sessionInput: gate } = options;
   const deliveries: SessionInputDelivery[] = [];
   for (const input of await gate.claimPending()) {
     // Hidden messages count: a hidden turn still holds its command and its id.
