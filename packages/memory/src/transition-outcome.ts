@@ -51,7 +51,9 @@ export type TransitionConflictReason =
   | 'revision-conflict'
   | 'evidence-superseded'
   | 'projection-terminal'
-  | 'evidence-immutable';
+  | 'evidence-immutable'
+  /** The namespace keeps a recallable embedding of another model or dimension. */
+  | 'embedding-profile-conflict';
 
 /**
  * The five outcomes. Every submission that passes its schema ends in exactly
@@ -97,6 +99,7 @@ export function classifyStoreError(error: unknown): Classified | undefined {
     switch (error.code) {
       case 'evidence-superseded':
       case 'projection-terminal':
+      case 'embedding-profile-conflict':
         return { outcome: 'conflicted', reason: error.code, detail };
       case 'invalid-commit':
       case 'evidence-not-found':

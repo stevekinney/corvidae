@@ -1,4 +1,4 @@
-import type { EvidenceProjectionRecord } from './evidence-projection-schema';
+import type { EmbeddingProfile, EvidenceProjectionRecord } from './evidence-projection-schema';
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import type { EvidenceRecord } from './evidence-schema';
 
@@ -21,6 +21,8 @@ export interface TransitionReader {
   ): Promise<EvidenceProjectionRecord | undefined>;
   /** Current revisions that stay recallable: `active` or `demoted`. */
   recallable(namespace: string): Promise<EvidenceProjectionRecord[]>;
+  /** The namespace's embedding profile marker, when a commit has written one. */
+  embeddingProfile(namespace: string): Promise<EmbeddingProfile | undefined>;
 }
 
 function memoize<Value>(
@@ -43,6 +45,7 @@ export function createTransitionReader(
     | 'getProjection'
     | 'getProjectionRevision'
     | 'listProjections'
+    | 'getEmbeddingProfile'
   >,
   tenantId: string,
 ): TransitionReader {
@@ -51,6 +54,7 @@ export function createTransitionReader(
   const projections = new Map<string, Promise<EvidenceProjectionRecord | undefined>>();
   const revisions = new Map<string, Promise<EvidenceProjectionRecord | undefined>>();
   const recallable = new Map<string, Promise<EvidenceProjectionRecord[]>>();
+  const profiles = new Map<string, Promise<EmbeddingProfile | undefined>>();
   const address = (...parts: Array<string | number>): string => JSON.stringify(parts);
   return {
     evidence: (id) => memoize(evidence, id, () => storage.getEvidence(tenantId, id)),
@@ -66,6 +70,8 @@ export function createTransitionReader(
       memoize(revisions, address(namespace, id, revision), () =>
         storage.getProjectionRevision(tenantId, namespace, id, revision),
       ),
+    embeddingProfile: (namespace) =>
+      memoize(profiles, namespace, () => storage.getEmbeddingProfile(tenantId, namespace)),
     recallable: (namespace) =>
       memoize(recallable, namespace, () =>
         storage.listProjections({ tenantId, namespace, status: ['active', 'demoted'] }),

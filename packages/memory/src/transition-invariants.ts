@@ -1,4 +1,8 @@
-import { type EvidenceProjectionRecord } from './evidence-projection-schema';
+import {
+  embeddingProfileOf,
+  type EvidenceProjectionRecord,
+  sameEmbeddingProfile,
+} from './evidence-projection-schema';
 import type { TransitionRefusal } from './transition-outcome';
 import {
   plannedProjections,
@@ -133,10 +137,15 @@ function chunkOrdinals(built: readonly EvidenceProjectionRecord[]): TransitionRe
 
 /**
  * Every embedding that stays recallable agrees with the namespace's on model
- * and dimension, since a vector index takes one of each. What stays recallable
- * is the post-proposal state: stored active or demoted projections the proposal
- * does not retire, plus what it writes. A demoted candidate stays recallable and
- * is compared with; a superseded or revoked one is not.
+ * and dimension, since a vector index takes one of each. The namespace's
+ * embedding profile marker is the profile by construction, so a proposal whose
+ * embeddings all match it fits on that one read. Otherwise (no marker yet, or a
+ * proposal that changes the profile) what stays recallable is the post-proposal
+ * state: stored active or demoted projections the proposal does not retire, plus
+ * what it writes. A demoted candidate stays recallable and is compared with; a
+ * superseded or revoked one is not. The store plans the same marker in the
+ * commit's batch, which is what keeps two proposals that each fit the state they
+ * read from both applying.
  */
 async function embeddingFits(
   context: TransitionValidationContext,
@@ -148,6 +157,16 @@ async function embeddingFits(
     written.filter((record) => record.embedding !== undefined).map((record) => record.namespace),
   );
   for (const namespace of namespaces) {
+    const marker = await context.reader.embeddingProfile(namespace);
+    const matchesMarker = written
+      .filter((record) => record.namespace === namespace && record.embedding !== undefined)
+      .every(
+        (record) =>
+          marker !== undefined &&
+          record.embedding !== undefined &&
+          sameEmbeddingProfile(embeddingProfileOf(record.embedding), marker),
+      );
+    if (matchesMarker) continue;
     const touched = new Set(
       plan.revisions
         .filter((revision) => revision.namespace === namespace)

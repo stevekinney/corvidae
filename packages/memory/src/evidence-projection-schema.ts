@@ -217,6 +217,53 @@ export const evidenceProjectionRecordSchema = z
 
 export type EvidenceProjectionRecord = z.infer<typeof evidenceProjectionRecordSchema>;
 
+export const EMBEDDING_PROFILE_SCHEMA_VERSION = 1;
+
+/**
+ * The per-namespace embedding profile marker: the model and dimension the
+ * namespace's recallable embeddings share. A vector index takes one of each, so
+ * the store keeps this marker in the same batch that writes an embedded record,
+ * and two commits that would give a namespace incompatible embeddings cannot
+ * both apply. It is the projection family's second persisted shape.
+ */
+export const embeddingProfileSchema = z
+  .object({
+    schemaVersion: z.literal(EMBEDDING_PROFILE_SCHEMA_VERSION),
+    model: nonEmpty,
+    dimensions: z.number().int().positive(),
+  })
+  .strict();
+
+export type EmbeddingProfile = z.infer<typeof embeddingProfileSchema>;
+
+export function embeddingProfileOf(embedding: {
+  readonly model: string;
+  readonly vector: readonly number[];
+}): EmbeddingProfile {
+  return {
+    schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
+    model: embedding.model,
+    dimensions: embedding.vector.length,
+  };
+}
+
+/** Two profiles are equal when model and dimensions are, and then their canonical bytes are too. */
+export function sameEmbeddingProfile(left: EmbeddingProfile, right: EmbeddingProfile): boolean {
+  return left.model === right.model && left.dimensions === right.dimensions;
+}
+
+export function encodeEmbeddingProfile(profile: EmbeddingProfile): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(embeddingProfileSchema.parse(profile)));
+}
+
+export function decodeEmbeddingProfile(raw: unknown): EmbeddingProfile {
+  return parseWithRejectionCodes(embeddingProfileSchema, raw, {
+    record: 'projection',
+    schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
+    sourceKey: undefined,
+  });
+}
+
 /**
  * Validates a persisted projection with the evidence decoder's order. The
  * source-less signal is the `sources` array being absent, not an array, or

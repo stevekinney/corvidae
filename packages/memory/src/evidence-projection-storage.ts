@@ -1,4 +1,8 @@
-import type { EvidenceProjectionRecord, ProjectionStatus } from './evidence-projection-schema';
+import type {
+  EmbeddingProfile,
+  EvidenceProjectionRecord,
+  ProjectionStatus,
+} from './evidence-projection-schema';
 import type { EvidenceRecord, EvidenceSupersession } from './evidence-schema';
 
 /**
@@ -76,6 +80,13 @@ export interface EvidenceProjectionStorage {
   commit(commit: EvidenceProjectionCommit): Promise<EvidenceProjectionCommitResult>;
   /** The bytes under a commit's receipt key, or `null`. The store attaches no meaning to them. */
   getReceipt(key: string): Promise<Uint8Array | null>;
+  /**
+   * The embedding profile the namespace's recallable embeddings share, or
+   * `undefined` when no commit has written an embedded record there. Every commit
+   * that creates or rebuilds an embedded record plans this marker in its own
+   * batch, so two commits cannot give a namespace incompatible embeddings.
+   */
+  getEmbeddingProfile(tenantId: string, namespace: string): Promise<EmbeddingProfile | undefined>;
   /** `commit({ tenantId: record.tenantId, evidence: [record] })`, returning that record's outcome. */
   appendEvidence(record: EvidenceRecord): Promise<'appended' | 'duplicate'>;
   /** `commit({ tenantId: record.tenantId, projections: [record] })`, returning that record's outcome. */
@@ -159,7 +170,8 @@ export type EvidenceProjectionCommitErrorCode =
   | 'evidence-superseded'
   | 'projection-not-found'
   | 'projection-terminal'
-  | 'receipt-exists';
+  | 'receipt-exists'
+  | 'embedding-profile-conflict';
 
 export class EvidenceProjectionCommitError extends Error {
   constructor(

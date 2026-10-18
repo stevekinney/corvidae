@@ -1,10 +1,15 @@
 import type { EvidenceProjectionKeys } from './evidence-projection-keys';
 import {
+  decodeEmbeddingProfile,
   decodeEvidenceProjectionRecord,
+  type EmbeddingProfile,
+  embeddingProfileOf,
+  encodeEmbeddingProfile,
   encodeEvidenceProjectionRecord,
   type EvidenceProjectionRecord,
   type ProjectionReference,
   type ProjectionStatus,
+  sameEmbeddingProfile,
 } from './evidence-projection-schema';
 import {
   EvidenceImmutableError,
@@ -164,6 +169,33 @@ function assertNoReferenceCycle(projections: readonly EvidenceProjectionRecord[]
     finished.add(address);
   };
   for (const address of edges.keys()) visit(address, new Set());
+}
+
+/** A record this commit gives an embedding to: a created or rebuilt revision that carries one. */
+function writesEmbedding(record: EvidenceProjectionRecord): record is EvidenceProjectionRecord & {
+  embedding: NonNullable<EvidenceProjectionRecord['embedding']>;
+} {
+  return (
+    record.embedding !== undefined &&
+    (record.transition.kind === 'created' || record.transition.kind === 'rebuilt')
+  );
+}
+
+/** Two embedded records written to one namespace by one commit must share a profile. */
+function assertOneProfilePerNamespace(projections: readonly EvidenceProjectionRecord[]): void {
+  const profiles = new Map<string, EmbeddingProfile>();
+  for (const record of projections) {
+    if (!writesEmbedding(record)) continue;
+    const profile = embeddingProfileOf(record.embedding);
+    const earlier = profiles.get(record.namespace);
+    if (earlier !== undefined && !sameEmbeddingProfile(earlier, profile)) {
+      throw new EvidenceProjectionCommitError(
+        'invalid-commit',
+        `The commit writes embeddings with two profiles into namespace "${record.namespace}".`,
+      );
+    }
+    profiles.set(record.namespace, profile);
+  }
 }
 
 function assertWithinBatchCap(batch: PlannedBatch): void {
@@ -512,6 +544,7 @@ export function createEvidenceProjectionStoreCore(options: {
       invalid('The commit supersedes evidence it also appends.');
     }
     assertNoReferenceCycle(projections);
+    assertOneProfilePerNamespace(projections);
     return { evidence, projections };
   }
 
@@ -533,6 +566,100 @@ export function createEvidenceProjectionStoreCore(options: {
     }
   }
 
+  async function readEmbeddingProfile(
+    tenantId: string,
+    namespace: string,
+  ): Promise<{ raw: Uint8Array; profile: EmbeddingProfile } | undefined> {
+    const raw = await reader.get(keys.embeddingProfile(tenantId, namespace));
+    if (raw === null) return undefined;
+    return { raw, profile: decodeEmbeddingProfile(parseJson(raw, 'projection')) };
+  }
+
+  /**
+   * Whether the namespace would still hold a recallable embedded record whose
+   * profile is not `incoming` once the commit applied: stored `active` or
+   * `demoted` current revisions the commit does not replace, plus what the
+   * commit itself writes. A demoted revision keeps its embedding recallable, so
+   * demoting is not retiring.
+   */
+  async function recallableMismatch(
+    tenantId: string,
+    namespace: string,
+    incoming: EmbeddingProfile,
+    commitRecords: readonly EvidenceProjectionRecord[],
+  ): Promise<string | undefined> {
+    const replaced = new Set(commitRecords.map((record) => record.id));
+    const prefix = keys.currentScan(tenantId, namespace);
+    for (const key of await scan(prefix)) {
+      const id = keys.idOfCurrentKey(key, prefix);
+      if (replaced.has(id)) continue;
+      const current = await getProjection(tenantId, namespace, id);
+      if (current === undefined || current.embedding === undefined) continue;
+      if (current.status !== 'active' && current.status !== 'demoted') continue;
+      if (!sameEmbeddingProfile(embeddingProfileOf(current.embedding), incoming)) return id;
+    }
+    for (const record of commitRecords) {
+      const recallable = record.status === 'active' || record.status === 'demoted';
+      if (
+        recallable &&
+        record.embedding !== undefined &&
+        !sameEmbeddingProfile(embeddingProfileOf(record.embedding), incoming)
+      ) {
+        return record.id;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Plans each namespace's embedding profile marker for the embedded records
+   * the commit writes. The marker is read and conditioned in the same batch as
+   * the records, so two commits that would give a namespace incompatible
+   * embeddings cannot both apply: they condition on one key, and the loser
+   * re-plans against the winner's marker.
+   *
+   * - No marker: scan once for a recallable embedded record of another
+   *   profile (a namespace that predates the marker), then put the marker.
+   * - The same profile: condition on the marker's exact bytes, no scan, no put.
+   * - Another profile: allowed only when the commit leaves no recallable
+   *   embedded record of the old profile; then replace the marker by
+   *   compare-and-swap. Otherwise `embedding-profile-conflict`.
+   *
+   * A commit that writes no embedded record never touches a marker.
+   */
+  async function planEmbeddingProfiles(
+    builder: BatchPlan,
+    projections: readonly EvidenceProjectionRecord[],
+    outcomes: EvidenceProjectionCommitResult['projections'],
+  ): Promise<void> {
+    const incoming = new Map<string, { tenantId: string; profile: EmbeddingProfile }>();
+    projections.forEach((record, index) => {
+      if (outcomes[index]?.outcome !== 'written' || !writesEmbedding(record)) return;
+      incoming.set(record.namespace, {
+        tenantId: record.tenantId,
+        profile: embeddingProfileOf(record.embedding),
+      });
+    });
+    for (const [namespace, { tenantId, profile }] of incoming) {
+      const key = keys.embeddingProfile(tenantId, namespace);
+      const stored = await readEmbeddingProfile(tenantId, namespace);
+      if (stored !== undefined && sameEmbeddingProfile(stored.profile, profile)) {
+        builder.require(key, stored.raw);
+        continue;
+      }
+      const inNamespace = projections.filter((record) => record.namespace === namespace);
+      const conflicting = await recallableMismatch(tenantId, namespace, profile, inNamespace);
+      if (conflicting !== undefined) {
+        throw new EvidenceProjectionCommitError(
+          'embedding-profile-conflict',
+          `Namespace "${namespace}" keeps recallable embedded record "${conflicting}" with another model or dimension than the ${profile.model}/${profile.dimensions} this commit writes.`,
+        );
+      }
+      builder.require(key, stored?.raw ?? null);
+      builder.put(key, encodeEmbeddingProfile(profile));
+    }
+  }
+
   async function planCommit(request: EvidenceProjectionCommit): Promise<{
     batch: PlannedBatch;
     result: EvidenceProjectionCommitResult;
@@ -541,6 +668,7 @@ export function createEvidenceProjectionStoreCore(options: {
     const builder = new BatchPlan();
     const planned = await planEvidence(builder, request.tenantId, evidence);
     const projectionOutcomes = await planProjections(builder, projections, planned.appended);
+    await planEmbeddingProfiles(builder, projections, projectionOutcomes);
     const { receipt } = request;
     const result = { evidence: planned.outcomes, projections: projectionOutcomes };
     if (receipt !== undefined) {
@@ -584,6 +712,14 @@ export function createEvidenceProjectionStoreCore(options: {
 
   async function getReceipt(key: string): Promise<Uint8Array | null> {
     return reader.get(key);
+  }
+
+  async function getEmbeddingProfile(
+    tenantId: string,
+    namespace: string,
+  ): Promise<EmbeddingProfile | undefined> {
+    const stored = await readEmbeddingProfile(tenantId, namespace);
+    return stored?.profile;
   }
 
   async function getEvidence(tenantId: string, id: string): Promise<EvidenceRecord | undefined> {
@@ -699,6 +835,7 @@ export function createEvidenceProjectionStoreCore(options: {
   return {
     commit: executeCommit,
     getReceipt,
+    getEmbeddingProfile,
     async appendEvidence(record) {
       const result = await executeCommit({ tenantId: record.tenantId, evidence: [record] });
       return result.evidence[0]!.outcome;
