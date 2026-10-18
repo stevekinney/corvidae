@@ -517,6 +517,38 @@ describe('Mailbox observation', () => {
     mailbox.dispose();
   });
 
+  it('fails closed when a binding names a command that does not carry its key', async () => {
+    const { mailbox, storage } = createMailboxFixture();
+    await admitOne(mailbox, { idempotencyKey: 'k1' });
+    const otherId = await admitOne(mailbox, { idempotencyKey: 'k2', kind: 'route' });
+    await storage.put(
+      KEYS.applicationCommandIdempotency('bureau', 'agent-7', 'k1'),
+      encode({ recordVersion: 1, commandId: otherId, identityDigest: 'a'.repeat(64) }),
+    );
+    expect(await throwingRejectionOf(mailbox.receiptByIdempotencyKey('k1'))).toThrow(
+      PersistedDataCorruptError,
+    );
+    mailbox.dispose();
+  });
+
+  it('lists newest first on request, with the cursor resuming toward older receipts', async () => {
+    const { mailbox } = createMailboxFixture();
+    for (let index = 0; index < 5; index += 1) await admitOne(mailbox);
+    const newestFirst = await mailbox.list({ reverse: true });
+    expect(newestFirst.map((receipt) => receipt.sequence)).toEqual([4, 3, 2, 1, 0]);
+    const page = await mailbox.list({ reverse: true, limit: 2 });
+    expect(page.map((receipt) => receipt.sequence)).toEqual([4, 3]);
+    const older = await mailbox.list({ reverse: true, limit: 2, afterSequence: 3 });
+    expect(older.map((receipt) => receipt.sequence)).toEqual([2, 1]);
+    const oldest = await mailbox.list({ reverse: true, afterSequence: 1 });
+    expect(oldest.map((receipt) => receipt.sequence)).toEqual([0]);
+    expect(await mailbox.list({ reverse: true, afterSequence: 0 })).toEqual([]);
+    await claimOne(mailbox);
+    const available = await mailbox.list({ reverse: true, states: ['available'] });
+    expect(available.map((receipt) => receipt.sequence)).toEqual([4, 3, 2, 1]);
+    mailbox.dispose();
+  });
+
   it('rejects an empty idempotency key on lookup', async () => {
     const { mailbox } = createMailboxFixture();
     expect(await throwingRejectionOf(mailbox.receiptByIdempotencyKey(''))).toThrow(

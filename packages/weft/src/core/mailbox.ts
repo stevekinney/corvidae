@@ -237,6 +237,7 @@ export class Mailbox {
         options?.afterSequence === undefined
           ? undefined
           : this.#runtime.keys.bySequence(validateListAfterSequence(options.afterSequence)),
+      reverse: options?.reverse === true,
     });
   }
 

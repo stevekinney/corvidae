@@ -307,7 +307,9 @@ export type MailboxCapacity = Readonly<{
  * filter, pass the last receipt's `sequence` to the next call, and stop at an
  * empty page. One call still examines a bounded number of index entries, so a
  * state-filtered page that comes back short is not proof that nothing more
- * matches; only an unfiltered walk is exhaustive.
+ * matches; only an unfiltered walk is exhaustive. `reverse` lists newest
+ * first, and the cursor then resumes toward older receipts, which lets a
+ * caller that wants the open commands, usually the newest, stop early.
  *
  * @example
  * ```ts
@@ -321,6 +323,7 @@ export type MailboxListOptions = {
   readonly limit?: number | undefined;
   readonly states?: readonly ApplicationCommandState[] | undefined;
   readonly afterSequence?: number | undefined;
+  readonly reverse?: boolean | undefined;
 };
 
 export type {

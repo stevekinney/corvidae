@@ -30,6 +30,8 @@ export type CommandListingRequest = {
   readonly states: ReadonlySet<string> | null;
   /** The index key to resume after, when the caller passed `afterSequence`. */
   readonly afterCursor: string | undefined;
+  /** Newest first; the cursor then resumes toward older entries. */
+  readonly reverse: boolean;
 };
 
 /**
@@ -52,6 +54,7 @@ export async function listCommandReceipts(
       cursor,
       request.limit - receipts.length,
       request.states,
+      request.reverse,
     );
     receipts.push(...page.receipts);
     examined += page.examined;
@@ -91,6 +94,7 @@ async function readListingPage(
   cursor: string | undefined,
   remaining: number,
   states: ReadonlySet<string> | null,
+  reverse: boolean,
 ): Promise<{
   receipts: ApplicationCommandReceipt[];
   cursor: string | undefined;
@@ -98,10 +102,11 @@ async function readListingPage(
   examined: number;
 }> {
   const receipts: ApplicationCommandReceipt[] = [];
-  const scanOptions =
-    cursor === undefined
-      ? { limit: MAILBOX_LIST_PAGE_SIZE }
-      : { limit: MAILBOX_LIST_PAGE_SIZE, gt: cursor };
+  const scanOptions = {
+    limit: MAILBOX_LIST_PAGE_SIZE,
+    reverse,
+    ...(cursor === undefined ? {} : reverse ? { lt: cursor } : { gt: cursor }),
+  };
   let seen = 0;
   let nextCursor = cursor;
   for await (const [indexKey, indexValue] of runtime.storage.scan(
