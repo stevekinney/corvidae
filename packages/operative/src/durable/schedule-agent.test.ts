@@ -5,7 +5,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { ScheduleHandle } from '@lostgradient/weft';
+import { encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentScheduledEvent, SchedulePausedEvent } from '../events';
@@ -82,6 +82,13 @@ function makeSchedulingEngine(options?: {
    * `createAgentSchedule` path's `handle.cancel()` to reject.
    */
   handleCancelSchedule?: (scheduleId: string) => Promise<void>;
+  /**
+   * The input the engine holds for an existing schedule, readable through its
+   * `storage` as the real engine's is. Omitted, the stub has no storage.
+   */
+  storedInput?: unknown;
+  /** `schedule()` rejects as a duplicate id would, so only the existing-schedule path remains. */
+  rejectSchedule?: boolean;
 }): SchedulingEngine & { calls: ScheduleCall[] } {
   const scheduleId = options?.scheduleId ?? 'test-sched-1';
   const summaries = options?.summaries ?? [mockSummary];
@@ -89,6 +96,14 @@ function makeSchedulingEngine(options?: {
 
   return {
     calls,
+    ...(options && 'storedInput' in options
+      ? {
+          storage: {
+            get: async (key: string) =>
+              key === KEYS.schedule(scheduleId) ? encode({ input: options.storedInput }) : null,
+          },
+        }
+      : {}),
     async schedule(
       type: string,
       input: unknown,
@@ -96,6 +111,7 @@ function makeSchedulingEngine(options?: {
       opts?: ScheduleOptions,
     ): Promise<ScheduleHandle> {
       calls.push({ type, input, spec, options: opts });
+      if (options?.rejectSchedule) throw new Error('duplicate schedule id');
       return makeFakeHandle(
         opts?.id ?? scheduleId,
         options?.handleRecorder,
@@ -577,6 +593,47 @@ describe('createAgentSchedule', () => {
     const summary = await handle.describe();
     expect(summary.id).toBe('schedule-self-run-step');
   });
+
+  it.each([
+    ['the existing-schedule path', false],
+    ['the duplicate-id race path', true],
+  ])(
+    'refuses an idempotent retry under another principal on %s',
+    async (_label, rejectSchedule) => {
+      const existingSummary: ScheduleSummary = {
+        ...mockSummary,
+        id: 'schedule-self-run-step',
+        intervalMs: 3_600_000,
+      };
+      const engine = makeSchedulingEngine({
+        summaries: [existingSummary],
+        scheduleId: 'schedule-self-run-step',
+        storedInput: { agentName: 'researcher', input: 'hello', principal: 'api-key:alice' },
+        rejectSchedule,
+      });
+      const retry = (principal: string) =>
+        createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '1h' },
+          input: 'hello',
+          id: 'schedule-self-run-step',
+          idempotent: true,
+          principal,
+        });
+
+      let refusal: unknown;
+      try {
+        await retry('api-key:bob');
+      } catch (error) {
+        refusal = error;
+      }
+      expect(String(refusal)).toContain('different principal');
+      // The owner's own retry is still the same schedule.
+      const own = await retry('api-key:alice');
+      expect(own.id).toBe('schedule-self-run-step');
+    },
+  );
 
   it('dispatches lifecycle events from a reused idempotent handle (scheduleHandleFromEngine) when an emitter is supplied (AB-223)', async () => {
     const existingSummary: ScheduleSummary = {

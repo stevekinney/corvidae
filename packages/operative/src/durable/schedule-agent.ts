@@ -8,7 +8,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { parseDuration, ScheduleHandle } from '@lostgradient/weft';
+import { decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
 
 import type { ClosedFunction } from '../closed-acknowledgement';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';
@@ -234,6 +234,13 @@ export interface AgentScheduleHandle {
  * `RegistryAgnosticEngine` interface.
  */
 export interface SchedulingEngine {
+  /**
+   * The engine's storage, when it can be read. An idempotent registration reads the
+   * stored schedule's input through it to check that the retry names the same
+   * `principal`, because `getSchedule` returns a summary that leaves the input out.
+   * An engine without it cannot be asked, and its retries are not compared.
+   */
+  readonly storage?: { get(key: string): Promise<Uint8Array | null> };
   schedule(
     type: string,
     input: unknown,
@@ -425,6 +432,26 @@ function assertSupportedOverlapPolicy(
   }
 }
 
+/**
+ * An idempotent registration is the same schedule only if it names the same owner:
+ * a retry under another `principal` must not be handed the first owner's schedule.
+ * The stored input is read through the engine's storage; an engine that cannot be
+ * read is not compared.
+ */
+async function assertSameScheduleOwner(
+  engine: SchedulingEngine,
+  scheduleId: string,
+  principal: string | undefined,
+): Promise<void> {
+  const bytes = await engine.storage?.get(KEYS.schedule(scheduleId));
+  if (!bytes) return;
+  const state = decode(bytes) as { input?: { principal?: unknown } } | null;
+  const stored = state?.input?.principal;
+  if (stored !== principal) {
+    throw new Error(`Schedule ${scheduleId} already exists with a different principal.`);
+  }
+}
+
 function assertCompatibleAgentSchedule(
   schedule: ScheduleSummary,
   scheduleId: string,
@@ -563,6 +590,7 @@ export async function createAgentSchedule(
         overlap,
         description,
       );
+      await assertSameScheduleOwner(engine, scheduleId, principal);
       return scheduleHandleFromEngine(engine, scheduleId, emitter);
     }
   }
@@ -582,6 +610,7 @@ export async function createAgentSchedule(
           overlap,
           description,
         );
+        await assertSameScheduleOwner(engine, scheduleId, principal);
         return scheduleHandleFromEngine(engine, scheduleId, emitter);
       }
     }
