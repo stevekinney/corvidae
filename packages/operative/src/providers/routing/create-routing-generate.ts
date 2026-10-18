@@ -1,10 +1,17 @@
 import {
+  isDescriptorUnionIncomplete,
+  markDescriptorUnionIncomplete,
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
+import {
+  generateAdmitsMedia,
+  noBackendAdmitsMedia,
+  requestMediaRequirements,
+} from '../media-dispatch.ts';
 import type { BackendDescriptor } from '../model-catalog.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '../types.ts';
-import type { RoutingDecision, RoutingOptions } from './types.ts';
+import type { ModelRoute, RoutingDecision, RoutingOptions } from './types.ts';
 
 /** `(provider, endpoint, model)` as a collision-safe map key. */
 function tripleKey(descriptor: BackendDescriptor): string {
@@ -64,8 +71,13 @@ function unionDescriptors(
   routeMap: ReadonlyMap<string, RoutingOptions['routes'][number]>,
 ): readonly BackendDescriptor[] {
   const byKey = new Map<string, BackendDescriptor>();
+  let incomplete = false;
   for (const route of routeMap.values()) {
-    for (const descriptor of readBackendDescriptors(route.generate)) {
+    const descriptors = readBackendDescriptors(route.generate);
+    // COR-716: an opaque route (no descriptor), or one whose own union is
+    // incomplete, leaves this union not describing every reachable backend.
+    if (descriptors.length === 0 || isDescriptorUnionIncomplete(descriptors)) incomplete = true;
+    for (const descriptor of descriptors) {
       const key = tripleKey(descriptor);
       const existing = byKey.get(key);
       if (!existing || conservativeOrder(descriptor, existing) < 0) {
@@ -73,9 +85,30 @@ function unionDescriptors(
       }
     }
   }
-  return [...byKey.entries()]
+  const union = [...byKey.entries()]
     .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([, descriptor]) => descriptor);
+  return incomplete ? markDescriptorUnionIncomplete(union) : union;
+}
+
+/**
+ * The reachable routes whose backends admit the step's media, judged by the
+ * shared dispatcher filter (`generateAdmitsMedia`): a route with no descriptor is
+ * opaque and is kept, and one is a candidate when at least one of its backends
+ * takes every part. Reachable means the routes `routeMap` keeps: two routes
+ * sharing a name are never both reachable, so the shadowed one is never a
+ * candidate either. With no media every reachable route is a candidate; with
+ * media and no admitting route, the step is refused.
+ */
+function routesAdmittingMedia(
+  context: GenerateContext,
+  reachable: readonly ModelRoute[],
+): readonly ModelRoute[] {
+  const requirements = requestMediaRequirements(context);
+  if (requirements.length === 0) return reachable;
+  const admitting = reachable.filter((route) => generateAdmitsMedia(route.generate, requirements));
+  if (admitting.length === 0) throw noBackendAdmitsMedia(context, 'no-route-admits-media');
+  return admitting;
 }
 
 /**
@@ -133,6 +166,8 @@ export function createRoutingGenerate(options: RoutingOptions): GenerateFunction
   // actually invokes.
   const routes = options.routes.map((route) => Object.freeze({ ...route }));
   const routeMap = new Map(routes.map((r) => [r.name, r]));
+  // The routes dispatch can reach: last-write-wins by name, like `routeMap.get`.
+  const reachable = [...routeMap.values()];
 
   const generate: GenerateFunction = async (
     context: GenerateContext,
@@ -141,15 +176,27 @@ export function createRoutingGenerate(options: RoutingOptions): GenerateFunction
     // string, so a catalog entry named `''` is a real, distinguishable route
     // — a truthiness check would silently ignore a steering override for it
     // and fall through to the strategy instead.
+    // COR-716: a route whose backend cannot take the step's media is not a candidate.
+    // The strategy chooses among the routes that can, a steering override of one that
+    // cannot is refused, and a step no route can take fails here, typed, before any
+    // provider call. A step with no media is untouched.
+    const candidates = routesAdmittingMedia(context, reachable);
     const steeringRoute = context.steering?.route;
+    if (steeringRoute !== undefined && !candidates.some((route) => route.name === steeringRoute)) {
+      if (routeMap.has(steeringRoute)) {
+        throw noBackendAdmitsMedia(context, 'no-route-admits-media');
+      }
+    }
     const decision: RoutingDecision =
       steeringRoute !== undefined
         ? { route: steeringRoute, reason: 'steering override (AB-67)' }
-        : strategy(context, routes);
-    let selectedRoute = routeMap.get(decision.route);
+        : strategy(context, candidates);
+    let selectedRoute = candidates.find((route) => route.name === decision.route);
 
     if (!selectedRoute) {
-      selectedRoute = routeMap.get(fallback);
+      selectedRoute = candidates.find((route) => route.name === fallback);
+      // The configured fallback is not one the media fits: take the first route that does.
+      if (!selectedRoute && routeMap.has(fallback)) selectedRoute = candidates[0];
     }
 
     if (!selectedRoute) {

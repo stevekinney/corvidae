@@ -23,6 +23,7 @@ import {
 } from './fallover/classify-error.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveAnthropicEffort } from './shared/effort.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveAnthropicModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import type {
@@ -66,7 +67,12 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
   let clientPromise: Promise<AnthropicClient> | undefined;
   const cacheAwareAssembly =
     options.assembler && options.contextBudget
-      ? createCacheAwareAssembly(options.assembler, options.contextBudget, options.pinnedMessages)
+      ? createCacheAwareAssembly(
+          options.assembler,
+          options.contextBudget,
+          options.pinnedMessages,
+          anthropicDescriptorsFor(resolvedModel),
+        )
       : undefined;
 
   function getClient(): Promise<AnthropicClient> {
@@ -90,10 +96,10 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
     const conversationForRequest = cacheAwareAssembly
       ? cacheAwareAssembly(context)
       : context.conversation.current;
-    const { system, messages } = toAnthropicMessages(
-      conversationForRequest,
-      options.extendedCacheTtl ? { extendedCacheTtl: true } : undefined,
-    );
+    const { system, messages, lineage } = toAnthropicMessages(conversationForRequest, {
+      ...(options.extendedCacheTtl ? { extendedCacheTtl: true } : {}),
+      sources: context.resolvedSources,
+    });
     const tools = await context.toolbox.toAnthropicTools();
     const params = buildAnthropicMessageRequest({
       model: resolvedModel,
@@ -113,7 +119,10 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
     try {
       const response = await client.messages.create(params, requestOptions);
 
-      return createAnthropicResponse(response, resolvedModel, resolvedEffort);
+      return withInputLineage(
+        createAnthropicResponse(response, resolvedModel, resolvedEffort),
+        lineage,
+      );
     } catch (error) {
       throw (
         samplingParameterRejection(error, resolvedModel) ??

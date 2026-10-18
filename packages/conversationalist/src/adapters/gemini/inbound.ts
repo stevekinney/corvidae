@@ -1,11 +1,12 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
-import type { MultiModalContent } from '../../multi-modal';
+import type { ContentSource, MediaContent, MultiModalContent } from '../../multi-modal';
 import type {
   ConversationHistory as Conversation,
   JSONValue,
   MessageInput,
   ToolResult,
 } from '../../types';
+import { createMediaPart, inlineBase64Source, modalityFromMimeType, sourceFromUrl } from '../media';
 import { isCanonicalToolResultPayload, toJSONValue } from '../shared';
 import type {
   GeminiConversation,
@@ -72,6 +73,37 @@ function toWrappedToolResult(callId: string, value: JSONValue): ToolResult | und
   return { callId, outcome: 'success', content: Object.values(value)[0] ?? null };
 }
 
+/**
+ * A Gemini `fileUri` is a public HTTP or HTTPS URL, or a handle Gemini itself
+ * issued: a Files API URI or a Cloud Storage URI (`gs://`). Only a public URL is a
+ * `remote-url`; the handles are `provider-file` references, which `remote-url`
+ * (http or https only) cannot represent. Any other scheme (`ftp:`, `s3:`, `file:`)
+ * names nothing Gemini can read, so it is refused rather than stored as a handle.
+ */
+function sourceFromGeminiFileUri(fileUri: string): ContentSource {
+  const isFilesApiUri = fileUri.startsWith('https://generativelanguage.googleapis.com/');
+  const isCloudStorageUri = fileUri.startsWith('gs://');
+  if (isFilesApiUri || isCloudStorageUri) {
+    return { kind: 'provider-file', provider: 'gemini', providerFileId: fileUri };
+  }
+  return sourceFromUrl(fileUri);
+}
+
+function toMediaFromGeminiPart(part: GeminiInlineDataPart | GeminiFileDataPart): MediaContent {
+  if ('inlineData' in part) {
+    return createMediaPart(
+      modalityFromMimeType(part.inlineData.mimeType) ?? 'file',
+      inlineBase64Source(part.inlineData.data),
+      { mimeType: part.inlineData.mimeType },
+    );
+  }
+  return createMediaPart(
+    modalityFromMimeType(part.fileData.mimeType) ?? 'file',
+    sourceFromGeminiFileUri(part.fileData.fileUri),
+    { mimeType: part.fileData.mimeType },
+  );
+}
+
 function toContentFromGeminiPart(
   part: GeminiTextPart | GeminiInlineDataPart | GeminiFileDataPart,
 ): MessageInput['content'] {
@@ -79,23 +111,7 @@ function toContentFromGeminiPart(
     return part.text;
   }
 
-  if ('inlineData' in part) {
-    return [
-      {
-        type: 'image',
-        url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-        mimeType: part.inlineData.mimeType,
-      },
-    ];
-  }
-
-  return [
-    {
-      type: 'image',
-      url: part.fileData.fileUri,
-      mimeType: part.fileData.mimeType,
-    },
-  ];
+  return [toMediaFromGeminiPart(part)];
 }
 
 function toSystemInstructionContent(parts: GeminiPart[]): MessageInput['content'] | undefined {
@@ -104,18 +120,8 @@ function toSystemInstructionContent(parts: GeminiPart[]): MessageInput['content'
   for (const part of parts) {
     if ('text' in part) {
       contentParts.push({ type: 'text', text: part.text });
-    } else if ('inlineData' in part) {
-      contentParts.push({
-        type: 'image',
-        url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-        mimeType: part.inlineData.mimeType,
-      });
-    } else if ('fileData' in part) {
-      contentParts.push({
-        type: 'image',
-        url: part.fileData.fileUri,
-        mimeType: part.fileData.mimeType,
-      });
+    } else if ('inlineData' in part || 'fileData' in part) {
+      contentParts.push(toMediaFromGeminiPart(part));
     }
   }
 

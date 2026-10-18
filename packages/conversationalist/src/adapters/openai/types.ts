@@ -1,4 +1,7 @@
-export interface OpenAIConversationExportOptions {
+import type { ContentPartLineage } from '../../multi-modal';
+import type { MediaExportOptions } from '../media';
+
+export interface OpenAIConversationExportOptions extends MediaExportOptions {
   groupToolCalls?: boolean;
 }
 
@@ -22,9 +25,32 @@ export interface OpenAIImageContentPart {
 }
 
 /**
+ * OpenAI file content part: a document as a base64 data URL, optionally
+ * named, or a Files-API id.
+ */
+export interface OpenAIFileContentPart {
+  type: 'file';
+  file: {
+    file_data?: string;
+    file_id?: string;
+    filename?: string;
+  };
+}
+
+/**
  * OpenAI content part union type.
  */
-export type OpenAIContentPart = OpenAITextContentPart | OpenAIImageContentPart;
+export type OpenAIContentPart =
+  OpenAITextContentPart | OpenAIImageContentPart | OpenAIFileContentPart;
+
+/**
+ * Result of converting a conversation to OpenAI format: the wire messages, and
+ * one lineage entry per media part delivered.
+ */
+export interface OpenAIExport {
+  messages: OpenAIMessage[];
+  lineage: readonly ContentPartLineage[];
+}
 
 /**
  * OpenAI tool call format.

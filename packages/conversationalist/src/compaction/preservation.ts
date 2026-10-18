@@ -1,8 +1,13 @@
 import { getMessages } from '../conversation/index';
 import type { ConversationEnvironment } from '../environment';
+import { isMediaContent } from '../multi-modal';
 import { isStreamingMessage } from '../streaming';
 import type { ConversationHistory, Message } from '../types';
 import type { CompactionOptions, CompactionPreservePolicy } from './types';
+
+function hasMediaPart(message: Message): boolean {
+  return typeof message.content !== 'string' && message.content.some(isMediaContent);
+}
 
 function isPolicyPreservedMessage(
   message: Message,
@@ -10,6 +15,7 @@ function isPolicyPreservedMessage(
 ): boolean {
   const metadata = message.metadata;
   return Boolean(
+    (policy.media && hasMediaPart(message)) ||
     (policy.pinned && metadata['pinned'] === true) ||
     (policy.decisions && metadata['decision'] === true) ||
     (policy.errors && (message.toolResult?.outcome === 'error' || metadata['error'] === true)),
@@ -48,6 +54,7 @@ function resolvePolicy(options?: CompactionOptions): Required<CompactionPreserve
     pinned: options?.preservePolicy?.pinned ?? true,
     decisions: options?.preservePolicy?.decisions ?? true,
     errors: options?.preservePolicy?.errors ?? true,
+    media: options?.preservePolicy?.media ?? true,
   };
 }
 

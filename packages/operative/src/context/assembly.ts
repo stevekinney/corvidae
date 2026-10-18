@@ -5,20 +5,85 @@
  * (system, history, retrieved) may consume, then trims messages to fit.
  */
 
-import type { Message } from 'conversationalist';
+import type { MediaContent, Message, MultiModalContent, TextContent } from 'conversationalist';
+import { isMediaContent } from 'conversationalist';
 
 import { getPendingToolCallIds } from './pending-tool-calls';
-import type { AssemblyOptions, AssemblyResult, BudgetReport, ContextAssembler } from './types';
+import type {
+  AssemblyOptions,
+  AssemblyResult,
+  BudgetReport,
+  ContextAssembler,
+  MediaCostEstimator,
+  MediaCostOutcome,
+} from './types';
 
 /** Default token estimator: roughly 4 characters per token. */
 const defaultEstimator = (text: string): number => Math.ceil(text.length / 4);
 
+/** What it costs to hold one message in the window. */
+interface MessageCost {
+  /** Total tokens: text, structural blocks, tool payloads, and admitted media. */
+  readonly tokens: number;
+  /** The part of `tokens` that media parts cost. */
+  readonly mediaTokens: number;
+  /** One outcome per media part. */
+  readonly mediaOutcomes: readonly MediaCostOutcome[];
+  /** False when any media part is not `estimated`: the message must not be admitted. */
+  readonly admissible: boolean;
+}
+
+/** The text a structural (non-text, non-media) block contributes to the estimate. */
+function structuralPartText(part: Exclude<MultiModalContent, TextContent | MediaContent>): string {
+  switch (part.type) {
+    case 'thinking':
+      return part.thinking + part.signature;
+    case 'redacted_thinking':
+      return part.data;
+    case 'server_tool_use':
+      return part.name + JSON.stringify(part.input);
+    case 'container_upload':
+      return part.file_id;
+    default:
+      return JSON.stringify(part.content);
+  }
+}
+
 /**
- * Estimates the token count for a single message using the provided estimator.
+ * Estimates what a single message costs using the provided estimators. Media
+ * parts are costed by `mediaCostEstimator`; a part whose outcome is not
+ * `estimated` contributes no tokens and makes the message inadmissible, because
+ * admitting it would price it at zero.
  */
-function estimateMessageTokens(message: Message, estimator: (text: string) => number): number {
-  const content = typeof message.content === 'string' ? message.content : '';
-  let tokens = estimator(content);
+function estimateMessage(
+  message: Message,
+  estimator: (text: string) => number,
+  mediaCostEstimator: MediaCostEstimator,
+): MessageCost {
+  let tokens = 0;
+  let mediaTokens = 0;
+  const mediaOutcomes: MediaCostOutcome[] = [];
+
+  if (typeof message.content === 'string') {
+    tokens += estimator(message.content);
+  } else {
+    message.content.forEach((part, partIndex) => {
+      if (part.type === 'text') {
+        tokens += estimator(part.text);
+      } else if (isMediaContent(part)) {
+        const outcome = mediaCostEstimator(part, { messageId: message.id, partIndex });
+        mediaOutcomes.push(outcome);
+        // The portable text a media part carries is read by the model too.
+        tokens += estimator(portableMediaText(part));
+        if (outcome.outcome === 'estimated') {
+          tokens += outcome.tokens;
+          mediaTokens += outcome.tokens;
+        }
+      } else {
+        tokens += estimator(structuralPartText(part));
+      }
+    });
+  }
 
   if (message.toolCall) {
     tokens += estimator(
@@ -33,7 +98,19 @@ function estimateMessageTokens(message: Message, estimator: (text: string) => nu
     tokens += estimator(resultContent);
   }
 
-  return tokens;
+  return {
+    tokens,
+    mediaTokens,
+    mediaOutcomes,
+    admissible: mediaOutcomes.every((outcome) => outcome.outcome === 'estimated'),
+  };
+}
+
+/** The text fields a media part carries alongside its source. */
+function portableMediaText(part: MediaContent): string {
+  return [part.name, part.alt, part.caption, part.transcript, part.extractedText]
+    .filter((value): value is string => value !== undefined)
+    .join('\n');
 }
 
 /**
@@ -62,6 +139,39 @@ export function createContextAssembler(): ContextAssembler {
       stablePrefix = false,
       pinnedMessages = [],
     } = options;
+    const mediaCostEstimator: MediaCostEstimator =
+      options.mediaCostEstimator ?? ((part, position) => budget.estimateMedia(part, position));
+
+    // Each message is costed once. Its media outcomes are reported whether or
+    // not the message ends up in the window.
+    const costs = new Map<Message, MessageCost>();
+    const costOf = (message: Message): MessageCost => {
+      let cost = costs.get(message);
+      if (cost === undefined) {
+        cost = estimateMessage(message, tokenEstimator, mediaCostEstimator);
+        costs.set(message, cost);
+      }
+      return cost;
+    };
+    const reportMediaCosts = (): MediaCostOutcome[] => {
+      const seen = new Set<string>();
+      const outcomes: MediaCostOutcome[] = [];
+      for (const cost of costs.values()) {
+        for (const outcome of cost.mediaOutcomes) {
+          const key = `${outcome.messageId}:${outcome.partIndex}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          outcomes.push(outcome);
+        }
+      }
+      return outcomes;
+    };
+    let mediaTokens = 0;
+    const admit = (message: Message): number => {
+      const cost = costOf(message);
+      mediaTokens += cost.mediaTokens;
+      return cost.tokens;
+    };
 
     const allMessages = conversation.getMessages();
 
@@ -79,9 +189,11 @@ export function createContextAssembler(): ContextAssembler {
           systemTokens: 0,
           historyTokens: 0,
           retrievedTokens: 0,
+          mediaTokens: 0,
           totalTokens: 0,
           remainingTokens: budget.maxTokens,
         },
+        mediaCosts: [],
       };
     }
 
@@ -126,10 +238,11 @@ export function createContextAssembler(): ContextAssembler {
     const assembledSystem: Message[] = [];
     let systemTokens = 0;
     for (const msg of systemMessages) {
-      const tokens = estimateMessageTokens(msg, tokenEstimator);
+      const { tokens, admissible } = costOf(msg);
+      if (!admissible) continue;
       if (stablePrefix || systemTokens + tokens <= systemBudget || assembledSystem.length === 0) {
         assembledSystem.push(msg);
-        systemTokens += tokens;
+        systemTokens += admit(msg);
       }
     }
 
@@ -140,8 +253,9 @@ export function createContextAssembler(): ContextAssembler {
     if (stablePrefix) {
       for (const msg of pinnedMessages) {
         if (msg.hidden) continue;
+        if (!costOf(msg).admissible) continue;
         assembledPinned.push(msg);
-        systemTokens += estimateMessageTokens(msg, tokenEstimator);
+        systemTokens += admit(msg);
       }
     }
 
@@ -164,26 +278,35 @@ export function createContextAssembler(): ContextAssembler {
     // Assemble history messages within budget
     // Start with mandatory messages, then fill with older history
     const assembledHistory: Message[] = [];
-    const includedIds = new Set<string>(assembledSystem.map((m) => m.id));
+    // A pinned message keeps its id (COR-716: a resolved source is keyed by it),
+    // so one that also sits in the history is already included and must not be
+    // assembled a second time, which the conversation integrity check refuses.
+    const includedIds = new Set<string>(
+      [...assembledSystem, ...assembledPinned].map((message) => message.id),
+    );
     let historyTokens = 0;
 
     // First, include all mandatory non-system messages
     for (const msg of nonSystem) {
       if (mustIncludeIds.has(msg.id)) {
+        if (includedIds.has(msg.id)) continue;
+        // A mandatory message with media that cannot be costed is still not
+        // admitted at zero; its outcome is in `mediaCosts` and the run refuses it.
+        if (!costOf(msg).admissible) continue;
         assembledHistory.push(msg);
         includedIds.add(msg.id);
-        historyTokens += estimateMessageTokens(msg, tokenEstimator);
+        historyTokens += admit(msg);
       }
     }
 
     // Then fill with remaining history from oldest to newest (up to budget)
     for (const msg of nonSystem) {
       if (includedIds.has(msg.id)) continue;
-      const tokens = estimateMessageTokens(msg, tokenEstimator);
-      if (historyTokens + tokens <= historyBudget) {
+      const { tokens, admissible } = costOf(msg);
+      if (admissible && historyTokens + tokens <= historyBudget) {
         assembledHistory.push(msg);
         includedIds.add(msg.id);
-        historyTokens += tokens;
+        historyTokens += admit(msg);
       }
     }
 
@@ -195,10 +318,10 @@ export function createContextAssembler(): ContextAssembler {
     let retrievedTokens = 0;
     for (const msg of retrievedMessages) {
       if (msg.hidden) continue;
-      const tokens = estimateMessageTokens(msg, tokenEstimator);
-      if (retrievedTokens + tokens <= retrievedBudget) {
+      const { tokens, admissible } = costOf(msg);
+      if (admissible && retrievedTokens + tokens <= retrievedBudget) {
         assembledRetrieved.push(msg);
-        retrievedTokens += tokens;
+        retrievedTokens += admit(msg);
       }
     }
 
@@ -213,10 +336,11 @@ export function createContextAssembler(): ContextAssembler {
       systemTokens,
       historyTokens,
       retrievedTokens,
+      mediaTokens,
       totalTokens,
       remainingTokens: budget.maxTokens - totalTokens,
     };
 
-    return { messages: combined, budgetReport };
+    return { messages: combined, budgetReport, mediaCosts: reportMediaCosts() };
   };
 }

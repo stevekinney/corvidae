@@ -1,6 +1,7 @@
 import { isToolboxBudgetExceededToolError } from 'armorer';
 import { type core, ZodError } from 'zod';
 
+import type { UnadmittedMediaCost } from './context/types';
 import { isToolCallParseError } from './providers/errors.ts';
 import type { SelectionPlan } from './providers/selection.ts';
 import type { RunResult } from './types';
@@ -89,6 +90,7 @@ export type AgentRunErrorCode =
   | 'INVALID_AGENT_HANDLE'
   | 'INVALID_OUTPUT'
   | 'MAXIMUM_STEPS'
+  | 'MEDIA_NOT_ADMITTED'
   | 'NON_JSON_OUTPUT'
   | 'OUTPUT_SCHEMA_CONVERSION_FAILED'
   | 'SELECTION_REVALIDATION_FAILED'
@@ -281,6 +283,25 @@ export class AgentContractError extends AgentRunError {
   constructor(message: string, cause?: unknown) {
     super(message, { kind: 'contract', code: 'INVALID_AGENT_HANDLE', cause });
     this.name = 'AgentContractError';
+  }
+}
+
+/**
+ * Raised before generation when a step's conversation holds a media part that
+ * cannot be admitted to the context window: the backend does not accept it, or
+ * its cost cannot be bounded. Carries one typed outcome per refused part. The
+ * run fails here rather than sending the part as free or dropping it.
+ */
+export class MediaAdmissionError extends AgentRunError {
+  readonly outcomes: readonly UnadmittedMediaCost[];
+
+  constructor(outcomes: readonly UnadmittedMediaCost[]) {
+    super(`${outcomes.length} media part(s) cannot be admitted to the context window`, {
+      kind: 'policy',
+      code: 'MEDIA_NOT_ADMITTED',
+    });
+    this.name = 'MediaAdmissionError';
+    this.outcomes = outcomes;
   }
 }
 

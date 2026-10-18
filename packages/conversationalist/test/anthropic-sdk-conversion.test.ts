@@ -14,6 +14,7 @@ describe('Anthropic SDK conversion', () => {
     expect(toAnthropicMessagesForSdk(conversation)).toEqual({
       system: 'Follow the system instructions.',
       messages: [{ role: 'user', content: 'Hello' }],
+      lineage: [],
     });
   });
 
@@ -34,7 +35,40 @@ describe('Anthropic SDK conversion', () => {
     });
 
     expect(toAnthropicMessagesForSdk(conversation).messages).toEqual([
-      { role: 'user', content: 'Plain text document' },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            title: 'inline.txt',
+            source: { type: 'text', media_type: 'text/plain', data: 'Plain text document' },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('maps a provider file reference on an image or a document to the SDK file source', () => {
+    const conversation = fromAnthropicMessages({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'file', file_id: 'file_img' } },
+            { type: 'document', title: 'a.pdf', source: { type: 'file', file_id: 'file_doc' } },
+          ],
+        },
+      ],
+    });
+
+    expect(toAnthropicMessagesForSdk(conversation).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'file', file_id: 'file_img' } },
+          { type: 'document', title: 'a.pdf', source: { type: 'file', file_id: 'file_doc' } },
+        ],
+      },
     ]);
   });
 
@@ -143,8 +177,7 @@ describe('Anthropic SDK conversion', () => {
       {
         type: 'document',
         name: 'upload.pdf',
-        mimeType: 'application/octet-stream',
-        source: { kind: 'reference', uri: 'file:file-1' },
+        source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file-1' },
       },
     ]);
   });

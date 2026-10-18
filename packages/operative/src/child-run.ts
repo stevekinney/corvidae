@@ -49,6 +49,7 @@
 import type { RuntimeServices, Subscription } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
+import { isConversationInput } from './agent-input';
 import type { RunEvent } from './agent-run';
 import {
   type ChildSignalCloseReason,
@@ -839,7 +840,7 @@ export function dispatchChildRun<O = never, H extends boolean = false>(
   options.emitter?.dispatchEvent(
     new ChildWorkflowStartedEvent({
       ...correlation,
-      input: typeof input === 'string' ? input : '[conversation history]',
+      input: describeChildInput(input),
       durable,
     }),
   );
@@ -993,4 +994,11 @@ export function dispatchChildRun<O = never, H extends boolean = false>(
     },
   };
   return channel === undefined ? handle : { ...handle, signals: channel.parent };
+}
+
+/** The one-line summary a child-start event carries; the child itself receives `input` unchanged. */
+function describeChildInput(input: AgentInput): string {
+  if (typeof input === 'string') return input;
+  if (isConversationInput(input)) return '[conversation history]';
+  return `[${input.length} content part${input.length === 1 ? '' : 's'}]`;
 }

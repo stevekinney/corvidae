@@ -165,6 +165,13 @@ export async function callGenerateWithRetry(
    * claim a context change that did not happen.
    */
   sealMutatedEpoch?: (mutatedContext: GenerateContext, attempt: number) => string,
+  /**
+   * COR-716 — derives `resolvedSources` for a mutated request before it is
+   * issued, so the media a retry sends was admitted on the exact conversation it
+   * carries. Runs in the attempt's `catch`, outside its `try`, so a refusal is
+   * thrown out of the loop and never itself retried.
+   */
+  admitMutated?: (mutatedContext: GenerateContext) => Promise<GenerateContext>,
 ): Promise<GenerateResponse> {
   if (!retry || retry.attempts <= 1) {
     return generate(context);
@@ -205,6 +212,7 @@ export async function callGenerateWithRetry(
             steering: context.steering,
             assistantMessageId: context.assistantMessageId,
           };
+          if (admitMutated) currentContext = await admitMutated(currentContext);
           mutated = true;
           mutationDescription = `Context mutated on attempt ${attempt}`;
         }

@@ -72,6 +72,12 @@ export interface StepDeps {
   readonly onElicitation: OnElicitation | undefined;
   readonly hooks: RunOptions['hooks'];
   readonly contextManagement: ContextManagementOptions | undefined;
+  /** Projects media parts to a source form the provider accepts (COR-716). */
+  readonly contentSourceResolver: RunOptions['contentSourceResolver'];
+  /** The policy for a resolved asset with no safety verdict (COR-716). */
+  readonly assetSafety: RunOptions['assetSafety'];
+  /** Costs media parts; defaults to a catalog estimator over the generate function's descriptors. */
+  readonly mediaCostEstimator: RunOptions['mediaCostEstimator'];
   readonly output: ZodType | undefined;
   readonly responseFormat: GenerateContext['responseFormat'];
   /** Per-request output token cap passed through to every GenerateContext. */
@@ -341,6 +347,8 @@ export async function runStep(
     elicit,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
+    admission,
   } = preparation;
 
   const generation = await executeGeneration({
@@ -354,6 +362,8 @@ export async function runStep(
     steeringDesiredState,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
+    admission,
   });
   if ('kind' in generation) return generation;
   const { stepSkipped, generateDurationMilliseconds } = generation;
@@ -445,8 +455,18 @@ export async function runStep(
     }
   }
 
+  // A response with tool calls and no text appends no assistant message, so its
+  // metadata (the request's media lineage) would otherwise be lost: stamp the
+  // lineage on the step's first tool-call message instead.
+  const inputLineage = metadata?.['inputLineage'];
+  const lineageOnToolCall =
+    !content && !response.messageAppended && inputLineage !== undefined
+      ? { inputLineage }
+      : undefined;
+
   const toolExecution = await executeTools({
     deps,
+    firstToolCallMetadata: lineageOnToolCall,
     conversation,
     step,
     emitter,

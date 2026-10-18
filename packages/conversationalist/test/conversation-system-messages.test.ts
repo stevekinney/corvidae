@@ -261,7 +261,11 @@ describe('system message management', () => {
         role: 'system',
         content: [
           { type: 'text', text: 'Rules:' },
-          { type: 'image', url: 'https://example.com/image.png', text: 'diagram' },
+          {
+            type: 'image',
+            source: { kind: 'remote-url', url: 'https://example.com/image.png' },
+            alt: 'diagram',
+          },
         ],
       },
       { role: 'system', content: 'Second' },

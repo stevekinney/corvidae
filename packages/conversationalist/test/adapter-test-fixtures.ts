@@ -63,7 +63,7 @@ export function createMultiModalConversation(): Conversation {
       role: 'user',
       content: [
         { type: 'text', text: 'What is in this image?' },
-        { type: 'image', url: 'https://example.com/image.jpg' },
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/image.jpg' } },
       ],
     },
     { role: 'assistant', content: 'I see a cat.' },

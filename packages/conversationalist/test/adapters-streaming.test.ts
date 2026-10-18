@@ -24,7 +24,7 @@ function createConversationWithStreamingMessage(): import('../src/types').Conver
 describe('Streaming message protection in adapters', () => {
   it('OpenAI adapter skips streaming messages in ungrouped export', () => {
     const conv = createConversationWithStreamingMessage();
-    const messages = toOpenAIMessages(conv);
+    const messages = toOpenAIMessages(conv).messages;
 
     // Should only have user and assistant, not the streaming message
     expect(messages).toHaveLength(2);
@@ -34,7 +34,7 @@ describe('Streaming message protection in adapters', () => {
 
   it('OpenAI adapter skips streaming messages in grouped export', () => {
     const conv = createConversationWithStreamingMessage();
-    const messages = toOpenAIMessagesGrouped(conv);
+    const messages = toOpenAIMessagesGrouped(conv).messages;
 
     expect(messages).toHaveLength(2);
     expect(messages[0]?.role).toBe('user');

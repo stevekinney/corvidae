@@ -21,8 +21,8 @@ function assertIntegrityError(fn: () => void): void {
 describe('Adapter integrity enforcement', () => {
   it('rejects broken tool linkage across adapters', () => {
     const conv = createBrokenToolConversation();
-    assertIntegrityError(() => toOpenAIMessages(conv));
-    assertIntegrityError(() => toOpenAIMessagesGrouped(conv));
+    assertIntegrityError(() => toOpenAIMessages(conv).messages);
+    assertIntegrityError(() => toOpenAIMessagesGrouped(conv).messages);
     assertIntegrityError(() => toAnthropicMessages(conv));
     assertIntegrityError(() => toGeminiMessages(conv));
   });

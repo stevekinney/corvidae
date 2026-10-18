@@ -264,13 +264,13 @@ describe('Chat — basic render', () => {
 
     try {
       const conversation = createConversation({ id: 'future-schema' });
-      conversation.schemaVersion = 6;
+      conversation.schemaVersion = 7;
       const first = render(Chat, {
         props: { id: 'future-schema-chat', conversation },
       });
       await tick();
 
-      const newerConversation = { ...conversation, schemaVersion: 7 };
+      const newerConversation = { ...conversation, schemaVersion: 8 };
       first.rerender({ conversation: newerConversation });
       await tick();
       first.rerender({ conversation });
@@ -282,8 +282,8 @@ describe('Chat — basic render', () => {
 
       expect(warnings).toHaveLength(2);
       expect(warnings.map((warning) => warning[0])).toEqual([
-        '[Chat] Conversation schema version 6 is newer than the supported version 5. Upgrade @lostgradient/chat before relying on this history.',
-        '[Chat] Conversation schema version 7 is newer than the supported version 5. Upgrade @lostgradient/chat before relying on this history.',
+        '[Chat] Conversation schema version 7 is newer than the supported version 6. Upgrade @lostgradient/chat before relying on this history.',
+        '[Chat] Conversation schema version 8 is newer than the supported version 6. Upgrade @lostgradient/chat before relying on this history.',
       ]);
     } finally {
       console.warn = originalWarn;

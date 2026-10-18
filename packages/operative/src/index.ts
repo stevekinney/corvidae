@@ -68,6 +68,14 @@ export type {
 } from './delegation-grant';
 
 export {
+  appendAgentInput,
+  assertAgentInput,
+  isConversationInput,
+  payloadText,
+  snapshotAgentInput,
+  snapshotPayload,
+} from './agent-input';
+export {
   AGENT_POLICY_HOOK_SOURCE,
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   OPERATIVE_RESOLVES_GUARDRAILS,
@@ -125,6 +133,7 @@ export {
   ElicitationDeniedError,
   GuardrailTripwireError,
   MaximumStepsExceededError,
+  MediaAdmissionError,
   NonJsonOutputError,
   OutputSchemaConversionError,
   OutputValidationError,
@@ -525,6 +534,8 @@ export type {
   CleanupAcknowledgement,
   CleanupAcknowledgementReason,
   ClosedOptions,
+  ContentSourceResolutionContext,
+  ContentSourceResolver,
   ContextManagementOptions,
   Conversation,
   ConversationHistory,

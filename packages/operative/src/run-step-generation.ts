@@ -1,13 +1,15 @@
 import type { AnyToolbox } from 'armorer';
+import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
-import { GuardrailTripwireError } from './errors';
+import { GuardrailTripwireError, MediaAdmissionError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { assistantMessageIdentifier } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
+import type { StepMediaAdmission } from './run-step-media';
 import { createElicit } from './run-step-support';
 import {
   applyWaterfallHandlerErrorPolicy,
@@ -29,6 +31,10 @@ export interface GenerationDependencies {
   steeringDesiredState: SteeringDesiredState | undefined;
   stepToolbox: AnyToolbox;
   stepToolChoice: ToolChoice | undefined;
+  /** The step boundary's derivation of the media sources, for the `prepareStep` hooks (COR-716). */
+  resolvedSources: ResolvedMediaSources | undefined;
+  /** This step's media admission; every `generate` call derives its own `resolvedSources` from it. */
+  admission: StepMediaAdmission;
 }
 
 export interface GenerationResult {
@@ -51,6 +57,8 @@ export async function executeGeneration(
     steeringDesiredState,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
+    admission,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
@@ -75,7 +83,14 @@ export async function executeGeneration(
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
-        const prepareContext = { conversation, step, signal: stepSignal, abortStep, elicit };
+        const prepareContext = {
+          conversation,
+          step,
+          signal: stepSignal,
+          abortStep,
+          elicit,
+          resolvedSources,
+        };
         // `runFirst`, not `run`: a `prepareStep` handler returns a
         // `GenerateResponse` but receives a `StepContext`, so the waterfall
         // would hand the next handler a response where it expects a context.
@@ -100,6 +115,7 @@ export async function executeGeneration(
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
           assistantMessageId,
+          resolvedSources,
         };
         if (hooks?.has('beforeGenerate')) {
           // Iterate handlers manually (the same reason afterGenerate does,
@@ -124,6 +140,7 @@ export async function executeGeneration(
             signal: stepSignal,
             steering: steeringDesiredState,
             assistantMessageId,
+            resolvedSources,
           };
           for (const [index, entry] of handlers.entries()) {
             let handlerResult: GenerateContext | void;
@@ -158,11 +175,29 @@ export async function executeGeneration(
                 ...handlerResult,
                 steering: steeringDesiredState,
                 assistantMessageId,
+                resolvedSources,
               };
             }
           }
           generateContext = beforeGenContext;
         }
+
+        // COR-716: the binding admission, on the exact conversation this call
+        // receives, after the last hook that could change it. The derivation
+        // is never carried over from the boundary preview: a `prepareStep` or
+        // `beforeGenerate` handler may have appended or replaced media, and a
+        // part the preview already resolved is memoized, so an unchanged
+        // conversation costs no resolver call. Nothing this loop controls sits
+        // between this derivation and the call; the two sites that do are
+        // named in `run-step-media.ts` (a background compaction, which only
+        // removes messages; a provider's own `pinnedMessages`).
+        const bound = await admission.admit(generateContext.conversation);
+        if ('kind' in bound) return bound;
+        // COR-104: a cancellation can land while a handler's media resolves.
+        if (signal?.aborted) {
+          return { kind: 'abort', reason: explicitAbortReason(signal) };
+        }
+        generateContext = { ...generateContext, resolvedSources: bound.resolvedSources };
 
         // onLLMInput: parallel allSettled, read-only, non-blocking. AB-204:
         // handed to hookTracker so closed() can await it — it can still be
@@ -171,10 +206,16 @@ export async function executeGeneration(
         // would short-circuit optional-call semantics and never evaluate
         // the argument (never fire the hook at all) when hookTracker is
         // undefined.
+        // COR-716: a snapshot copy, not the live conversation. The hook runs
+        // after the binding derivation and before the call, and it is
+        // read-only by contract; handing it the live object would open a
+        // mutation window no derivation covers. Writes land in the copy and
+        // never reach the request.
+        const inputSnapshot = new Conversation(generateContext.conversation.current);
         const onLLMInputHookPromise = runHookSilently(hooks, 'onLLMInput', {
-          conversation: generateContext.conversation,
+          conversation: inputSnapshot,
           step: generateContext.step,
-          messageCount: generateContext.conversation.getMessages().length,
+          messageCount: inputSnapshot.getMessages().length,
         });
         hookTracker?.(onLLMInputHookPromise);
 
@@ -215,6 +256,14 @@ export async function executeGeneration(
         // `generate.retry`. Without this the mutation would be invisible —
         // the seal above happens once, before the call, and a mutated
         // retry sends the model something the epoch does not describe.
+        // COR-716: a retry mutator returns a new request, so its media is
+        // derived again before the retry is issued; `resolvedSources` is never
+        // carried across a mutation. A refusal propagates as a
+        // `MediaAdmissionError`, handled below as the policy error it is.
+        const admitMutated = async (mutatedContext: GenerateContext): Promise<GenerateContext> => {
+          const derived = await admission.derive(mutatedContext.conversation);
+          return { ...mutatedContext, resolvedSources: derived.resolvedSources };
+        };
         const sealMutatedEpoch =
           deps.contextEpoch === undefined
             ? undefined
@@ -244,6 +293,7 @@ export async function executeGeneration(
                     emitter,
                     deps.runtime,
                     sealMutatedEpoch,
+                    admitMutated,
                   ),
                 )
               : await callGenerateWithRetry(
@@ -253,6 +303,7 @@ export async function executeGeneration(
                   emitter,
                   deps.runtime,
                   sealMutatedEpoch,
+                  admitMutated,
                 );
           durationMilliseconds = deps.runtime.monotonic.now() - generateStart;
         } catch (generateError) {
@@ -334,6 +385,15 @@ export async function executeGeneration(
       // entirely and propagate straight to the error result, matching how the
       // validateResponse tripwire path (below) never consults onError either.
       if (error instanceof GuardrailTripwireError) {
+        backpressure?.onError(error);
+        emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+        return { kind: 'error', error, errorKind: 'policy' };
+      }
+
+      // COR-716: a refusal of the media a retry mutator left behind is
+      // admission's verdict, the same policy error the boundary returns, and
+      // not something `onError` may recover from.
+      if (error instanceof MediaAdmissionError) {
         backpressure?.onError(error);
         emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
         return { kind: 'error', error, errorKind: 'policy' };

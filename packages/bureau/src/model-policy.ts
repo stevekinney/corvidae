@@ -29,8 +29,10 @@ import type {
   BureauInvariants,
   DelegatedAuthority,
   DeploymentInvariants,
+  InputMediaRequirement,
   ModelCatalog,
   RunnableAgent,
+  SelectionBoundaryContext,
   SelectionGate,
   SelectionPlan,
   SelectionRequest,
@@ -91,6 +93,12 @@ export interface PlanSelectionRequest {
     { target: 'model' | 'provider' | 'route' | 'effort' }
   >;
   readonly principal?: string;
+  /**
+   * The media the run's input carries (COR-716), for a caller planning ahead of the
+   * run. A gate's `revalidate` replaces it with the media of the step in hand, so the
+   * plan a run acts on is always judged against what that step will send.
+   */
+  readonly inputMedia?: readonly InputMediaRequirement[];
 }
 
 export interface CreateModelPolicyPlannerOptions<D extends AgentDefinitions> {
@@ -204,7 +212,12 @@ function buildSelectionRequest(
   request: PlanSelectionRequest,
   modelCatalog: ModelCatalogService,
   modelPolicy: BureauModelPolicyOptions | undefined,
+  context?: SelectionBoundaryContext,
 ): SelectionRequest {
+  // The step in hand knows what it will send; a request planned ahead of the run only
+  // what its caller said. At a revalidation the step's media wins, and a step with none
+  // is judged with none rather than with the plan's earlier guess.
+  const inputMedia = context === undefined ? request.inputMedia : context.inputMedia;
   // `availabilitySnapshotRevision` is pinned to the catalog's own
   // `revision`: AB-246's `ModelCatalogService` has no separate availability
   // overlay — descriptor availability is part of the catalog's own
@@ -219,6 +232,7 @@ function buildSelectionRequest(
       ? {}
       : { taskClassification: request.taskClassification }),
     ...(request.requestedValue === undefined ? {} : { requestedValue: request.requestedValue }),
+    ...(inputMedia === undefined ? {} : { inputMedia }),
     catalogRevision: catalog.revision,
     policyRevision: modelPolicy?.policyRevision ?? 0,
     availabilitySnapshotRevision: catalog.revision,
@@ -271,7 +285,7 @@ export function createModelPolicyPlanner<D extends AgentDefinitions>(
   function createSelectionGateFor(request: PlanSelectionRequest): SelectionGate {
     return createSelectionGate({
       initialPlan: planSelection(request),
-      request: () => buildSelectionRequest(request, modelCatalog, modelPolicy),
+      request: (context) => buildSelectionRequest(request, modelCatalog, modelPolicy, context),
       options: () => buildSelectOptions(request, agents, modelCatalog, modelPolicy, now, newPlanId),
     });
   }

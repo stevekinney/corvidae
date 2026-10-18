@@ -37,6 +37,8 @@ export {
 export type { MaterializeToolCallOptions } from 'armorer/protocol';
 
 export interface AppendToolCallOptions {
+  /** The id the row is committed under, instead of a minted one; plugins still run over it. */
+  messageId?: string;
   content?: MessageInput['content'];
   metadata?: Record<string, JSONValue>;
   hidden?: boolean;
@@ -81,11 +83,14 @@ export function appendToolCall(
 
   return appendMessages(
     conversation,
-    createToolCallMessageInput(
-      materializeToolCall(toolCall, {
-        generateId: resolvedEnvironment.randomId,
-      }),
-      resolvedOptions,
+    withBatchMessageId(
+      createToolCallMessageInput(
+        materializeToolCall(toolCall, {
+          generateId: resolvedEnvironment.randomId,
+        }),
+        resolvedOptions,
+      ),
+      resolvedOptions?.messageId,
     ),
     resolvedEnvironment,
   );

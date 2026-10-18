@@ -10,7 +10,6 @@ import {
   createBrokenToolConversation,
   createToolCallConversation,
   requireRecord,
-  requireRecordArray,
   testEnvironment,
 } from './adapter-test-fixtures';
 
@@ -52,24 +51,20 @@ describe('Gemini tool content', () => {
       expect(requireRecord(responsePart.functionResponse).name).toBe('get_weather');
     });
 
-    it('falls back to default mimeType when extension is unknown', () => {
+    it('rejects a hosted image whose media type is unknown instead of inventing one', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
         conv,
         {
           role: 'user',
-          content: [{ type: 'image', url: 'http://localhost/image' }],
+          content: [
+            { type: 'image', source: { kind: 'remote-url', url: 'http://localhost/image' } },
+          ],
         },
         testEnvironment,
       );
 
-      const { contents } = toGeminiMessages(conv);
-      const parts = requireRecordArray(contents[0]?.parts);
-
-      expect(requireRecord(parts[0]).fileData).toBeDefined();
-      expect(requireRecord(requireRecord(parts[0]).fileData).mimeType).toBe(
-        'application/octet-stream',
-      );
+      expect(() => toGeminiMessages(conv)).toThrow(/mime-type-required/);
     });
 
     it('handles tool call with invalid JSON arguments', () => {

@@ -16,6 +16,7 @@ import type {
   ToolCall,
   ToolResult,
 } from '../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 // Manual runtime standing in for the real clock (AB-321/AB-329) — this file asserts only type
 // shapes, so one shared runtime for every timestamp read below is sufficient.
@@ -193,7 +194,7 @@ describe('conversationalist types Type Inference', () => {
     it('is immutable (all nested arrays are readonly)', () => {
       // This verifies that the ConversationHistory type enforces immutability
       const conv: ConversationHistory = {
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         id: 'conv-1',
         status: 'active',
         metadata: {},

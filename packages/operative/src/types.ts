@@ -9,6 +9,9 @@ import type {
   CompactionScheduler,
   Conversation,
   ConversationHistory,
+  MediaContent,
+  ResolvedMediaSource,
+  ResolvedMediaSources,
   TokenUsage,
 } from 'conversationalist';
 import type { ZodType } from 'zod';
@@ -17,9 +20,11 @@ import type { BackpressureStrategy } from './backpressure';
 import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
+import type { MediaCostEstimator } from './context/types';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
+import type { AssetSafetyPolicy } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RetryMutator } from './retry/types';
@@ -247,7 +252,47 @@ export interface GenerateContext {
    * `beforeGenerate` and after a retry mutator.
    */
   assistantMessageId?: string | undefined;
+  /**
+   * Media sources a {@link ContentSourceResolver} projected to a kind the
+   * provider accepts, keyed `${messageId}:${partIndex}`. A provider adapter
+   * substitutes them at export time; the conversation itself keeps each part's
+   * original source, so asset identity and revision are never rewritten.
+   * `undefined` when the run has no resolver or no part needed resolving.
+   *
+   * Derived, never carried: `runStep` derives it from this context's own
+   * conversation immediately before the call, and again before a mutated
+   * retry is issued, so a `beforeGenerate` handler or retry mutator that
+   * appends media gets that media admitted, and one that drops the field gets
+   * it back. Like `steering`, a hook cannot override it.
+   */
+  resolvedSources?: ResolvedMediaSources | undefined;
 }
+
+/**
+ * Where a part sits, and the run's cancellation. A resolver reads bytes (a file, a
+ * resource, an artifact), so it must stop when the run does: `signal` is the run's own
+ * `AbortSignal`, passed on every call. A resolver that honors it releases its read at
+ * once; one that does not is still abandoned, because admission stops waiting for it the
+ * moment the signal aborts and the run ends as aborted.
+ */
+export interface ContentSourceResolutionContext {
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly signal?: AbortSignal | undefined;
+}
+
+/**
+ * Projects a media part whose source no provider accepts directly (a managed
+ * asset, an upload, a local file, an MCP resource, an A2A reference) to a form
+ * one does. Bureau supplies it from its asset service; Operative cannot import
+ * Bureau, which is why it is injected. `unavailable` is a typed result, not a
+ * throw: the part is then reported `unsupported` and the step fails before any
+ * provider call.
+ */
+export type ContentSourceResolver = (
+  part: MediaContent,
+  position: ContentSourceResolutionContext,
+) => Promise<ResolvedMediaSource | { readonly outcome: 'unavailable'; readonly reason: string }>;
 
 /**
  * Response returned by the user-provided generate function.
@@ -301,6 +346,14 @@ export interface RunOutcome {
 export interface StepContext {
   conversation: Conversation;
   step: number;
+  /**
+   * The media sources resolved so far (see {@link GenerateContext.resolvedSources}):
+   * at a `prepareStep` hook, the step boundary's derivation, which the input
+   * guardrail reads to inspect each resolved body; at `onMaximumSteps`, the
+   * derivation for the conversation the handler receives. The call to
+   * `generate` derives its own from the conversation it is given.
+   */
+  resolvedSources?: ResolvedMediaSources | undefined;
   signal?: AbortSignal | undefined;
   abortStep?: ((reason?: string) => void) | undefined;
   elicit?:
@@ -558,6 +611,27 @@ export interface RunOptionsBase {
   hooks?: HookRegistry<OperativeHookMap> | undefined;
   contextManagement?: ContextManagementOptions | undefined;
   /**
+   * Projects media parts to a source form the provider accepts. Without one, a
+   * part whose source kind the backend does not list is reported `unsupported`
+   * and the step fails with a `MediaAdmissionError`; nothing is dropped.
+   */
+  contentSourceResolver?: ContentSourceResolver | undefined;
+  /**
+   * What to do with a resolved asset no safety gate gave a verdict (`unknown`)
+   * (COR-716). Admission applies it to every resolved part a call sends, in
+   * every message, whichever hook or handler added it, with or without an input
+   * guardrail. A flagged asset is always refused; `'allow'` (the default) admits
+   * unverified assets, `'block'` refuses them. `createAgent` takes it from the
+   * agent's input guardrail declaration when this is not set.
+   */
+  assetSafety?: AssetSafetyPolicy | undefined;
+  /**
+   * Costs media parts against the backend. Defaults to a catalog estimator built
+   * from the descriptors the `generate` function carries; with neither, every
+   * media part is `unbounded` and the step fails rather than admitting it free.
+   */
+  mediaCostEstimator?: MediaCostEstimator | undefined;
+  /**
    * The Zod schema the final response must satisfy (AB-18) — the single
    * validated output contract. Validated with `.parseAsync()`; its
    * provider-native JSON Schema is derived automatically via
@@ -585,6 +659,13 @@ export interface RunOptionsBase {
    * returns a string, it replaces the final content (e.g. a forced summary
    * from one last LLM call without tools). The `finishReason` remains
    * `'maximum-steps'` regardless.
+   *
+   * COR-716: the loop derives `context.resolvedSources` for the conversation it
+   * hands this handler, so a final `generate` call that forwards it sends media
+   * that admission costed and vetted; a refusal ends the run as a policy error
+   * before the handler runs. The handler may append text to the conversation
+   * first, as `createEarlyStoppingHandler` does. Media a handler appends is
+   * outside that derivation: the loop cannot admit what it has not seen.
    */
   onMaximumSteps?: ((context: StepContext) => Promise<string | void>) | undefined;
   /**

@@ -16,7 +16,11 @@ const source = readFileSync(resolve(import.meta.dir, 'message-attachments.svelte
 describe('MessageAttachments image layout contract', () => {
   test('renders a resting placeholder box without changing the image element shape', () => {
     const { container } = render(MessageAttachments, {
-      props: { images: [{ type: 'image', url: 'portrait.png', text: 'Portrait' }] },
+      props: {
+        images: [
+          { type: 'image', source: { kind: 'remote-url', url: 'portrait.png' }, alt: 'Portrait' },
+        ],
+      },
     });
     const figure = container.querySelector<HTMLElement>('.message-attachment');
     const button = container.querySelector('.message-attachment-button');

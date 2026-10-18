@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import {
+  contentSourceSchema,
   conversationSchema,
   conversationShape,
   jsonValueSchema,
@@ -28,12 +29,119 @@ describe('schemas', () => {
     expect(res.success).toBeTrue();
   });
 
-  test('multiModalContentSchema validates url', () => {
+  test('multiModalContentSchema validates a remote image source', () => {
     const ok = multiModalContentSchema.safeParse({
       type: 'image',
-      url: 'https://example.com/a.png',
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     });
     expect(ok.success).toBeTrue();
+    expect(
+      multiModalContentSchema.safeParse({
+        type: 'image',
+        source: { kind: 'remote-url', url: 'not a url' },
+      }).success,
+    ).toBeFalse();
+  });
+
+  test('contentSourceSchema pins the scheme of a remote URL to http or https and a data URL to data', () => {
+    for (const url of ['https://example.com/a.png', 'http://example.com/a.png']) {
+      expect(contentSourceSchema.safeParse({ kind: 'remote-url', url }).success).toBeTrue();
+    }
+    for (const url of [
+      'file:///etc/passwd',
+      'ftp://example.com/a.png',
+      'blob:https://x/1',
+      'javascript:alert(1)',
+      'data:image/png;base64,QUJD',
+    ]) {
+      expect(contentSourceSchema.safeParse({ kind: 'remote-url', url }).success).toBeFalse();
+    }
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:image/png;base64,QUJD' })
+        .success,
+    ).toBeTrue();
+    for (const url of ['https://example.com/a.png', 'blob:https://x/1', 'file:///a']) {
+      expect(contentSourceSchema.safeParse({ kind: 'data-url', url }).success).toBeFalse();
+    }
+  });
+
+  test('contentSourceSchema requires base64 bytes to decode, inline and in a data URL', () => {
+    for (const data of ['QUJD', 'QQ==', 'QUI=']) {
+      expect(
+        contentSourceSchema.safeParse({ kind: 'inline', data, encoding: 'base64' }).success,
+      ).toBeTrue();
+    }
+    for (const data of ['!!!', 'QUJ', 'QU=JD', 'Q', 'QUJD====', 'QU JD']) {
+      expect(
+        contentSourceSchema.safeParse({ kind: 'inline', data, encoding: 'base64' }).success,
+      ).toBeFalse();
+    }
+    // UTF-8 text is any non-empty string.
+    expect(
+      contentSourceSchema.safeParse({ kind: 'inline', data: '!!!', encoding: 'utf8' }).success,
+    ).toBeTrue();
+
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain;base64,QUJD' })
+        .success,
+    ).toBeTrue();
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain;base64,!!!' })
+        .success,
+    ).toBeFalse();
+    // The percent-encoded branch is text, so it need only decode as a URI component.
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain,hello%20world' })
+        .success,
+    ).toBeTrue();
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:text/plain,%E0%A4%A' }).success,
+    ).toBeFalse();
+  });
+
+  test('multiModalContentSchema requires a declared media type to fit the part’s modality', () => {
+    const source = { kind: 'remote-url', url: 'https://example.com/a' } as const;
+    const accepts: Array<[string, string]> = [
+      ['image', 'image/png'],
+      ['image', 'IMAGE/SVG+XML; charset=utf-8'],
+      ['audio', 'audio/mpeg'],
+      ['video', 'video/mp4'],
+      ['document', 'application/pdf'],
+      ['document', 'text/markdown'],
+      ['document', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      ['file', 'application/zip'],
+      ['file', 'image/png'],
+    ];
+    for (const [type, mimeType] of accepts) {
+      expect(multiModalContentSchema.safeParse({ type, source, mimeType }).success).toBeTrue();
+    }
+    const refuses: Array<[string, string]> = [
+      ['image', 'application/pdf'],
+      ['image', 'audio/mpeg'],
+      ['audio', 'image/png'],
+      ['video', 'application/pdf'],
+      ['document', 'image/png'],
+      ['document', 'application/zip'],
+    ];
+    for (const [type, mimeType] of refuses) {
+      expect(multiModalContentSchema.safeParse({ type, source, mimeType }).success).toBeFalse();
+    }
+    expect(multiModalContentSchema.safeParse({ type: 'image', source }).success).toBeTrue();
+  });
+
+  test('multiModalContentSchema rejects the retired url and base64-source shapes', () => {
+    expect(
+      multiModalContentSchema.safeParse({ type: 'image', url: 'https://example.com/a.png' })
+        .success,
+    ).toBeFalse();
+    expect(
+      multiModalContentSchema.safeParse({
+        type: 'document',
+        name: 'a.pdf',
+        mimeType: 'application/pdf',
+        source: { kind: 'base64', data: 'cGRm' },
+      }).success,
+    ).toBeFalse();
   });
 
   test('multiModalContentSchema accepts document base64 and reference sources', () => {
@@ -42,7 +150,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'requirements.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       }).success,
     ).toBeTrue();
 
@@ -51,7 +159,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'notes.md',
         mimeType: 'text/markdown',
-        source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+        source: { kind: 'local-file', path: '/workspace/notes.md' },
       }).success,
     ).toBeTrue();
   });
@@ -62,7 +170,7 @@ describe('schemas', () => {
         type: 'document',
         name: '',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       }).success,
     ).toBeFalse();
 
@@ -71,7 +179,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'empty.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'reference', uri: '' },
+        source: { kind: 'local-file', path: '' },
       }).success,
     ).toBeFalse();
   });

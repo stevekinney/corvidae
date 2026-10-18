@@ -1,7 +1,9 @@
 import { assertConversationSafe } from '../../conversation/validation';
+import type { ContentPartLineage } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { ConversationHistory as Conversation, Message } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
+import { createMediaExportContext } from '../media';
 import {
   extractSystemPrompt,
   toAnthropicContent,
@@ -11,6 +13,7 @@ import {
 import type {
   AnthropicContentBlock,
   AnthropicConversation,
+  AnthropicExport,
   AnthropicMessage,
   AnthropicSystemBlock,
   ToAnthropicMessagesOptions,
@@ -129,10 +132,15 @@ function capCacheBreakpoints(result: AnthropicConversation): AnthropicConversati
 
 function toOutboundMessage(
   message: Message,
+  lineage: ContentPartLineage[],
+  options: ToAnthropicMessagesOptions | undefined,
 ): { role: 'user' | 'assistant'; blocks: AnthropicContentBlock[] } | undefined {
   if (shouldSkipOutboundMessage(message)) return undefined;
   if (message.role === 'user' || message.role === 'assistant') {
-    const content = toAnthropicContent(message.content);
+    const content = toAnthropicContent(
+      message.content,
+      createMediaExportContext('anthropic', message, lineage, options),
+    );
     return {
       role: message.role,
       blocks: typeof content === 'string' ? [{ type: 'text', text: content }] : content,
@@ -181,8 +189,9 @@ function toToolMessage(
 export function toAnthropicMessages(
   conversation: Conversation,
   options?: ToAnthropicMessagesOptions,
-): AnthropicConversation {
+): AnthropicExport {
   assertConversationSafe(conversation);
+  const lineage: ContentPartLineage[] = [];
   const extendedCacheTtl = options?.extendedCacheTtl ?? false;
   const ordered = getOrderedMessages(conversation);
   const system = extractSystemPrompt(ordered, extendedCacheTtl);
@@ -211,7 +220,7 @@ export function toAnthropicMessages(
   };
 
   for (const message of ordered) {
-    const converted = toOutboundMessage(message);
+    const converted = toOutboundMessage(message, lineage, options);
     if (converted === undefined) continue;
     let { role: targetRole, blocks } = converted;
 
@@ -241,7 +250,7 @@ export function toAnthropicMessages(
   if (system !== undefined) {
     result.system = system;
   }
-  return capCacheBreakpoints(result);
+  return { ...capCacheBreakpoints(result), lineage };
 }
 
 function applyCacheBoundary(

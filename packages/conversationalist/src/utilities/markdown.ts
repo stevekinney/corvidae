@@ -2,7 +2,12 @@ import { dump } from 'js-yaml';
 
 import { assertConversationSafe } from '../conversation/validation';
 import type { MultiModalContent } from '../multi-modal';
-import { copyMultiModalContent, renderDocumentReferenceText } from '../multi-modal';
+import {
+  contentSourceDisplayUrl,
+  copyMultiModalContent,
+  isMediaContent,
+  renderMediaPlaceholder,
+} from '../multi-modal';
 import type {
   ConversationHistory as Conversation,
   ConversationStatus,
@@ -32,11 +37,14 @@ function formatMessageContent(message: Message): string {
     if (part.type === 'text' && part.text) {
       lines.push(part.text);
     } else if (part.type === 'image') {
-      const imageUrl = part.url;
-      const altText = part.text ?? 'image';
-      lines.push(`![${altText}](${imageUrl})`);
-    } else if (part.type === 'document') {
-      lines.push(renderDocumentReferenceText(part));
+      const imageUrl = contentSourceDisplayUrl(part.source);
+      lines.push(
+        imageUrl === undefined
+          ? renderMediaPlaceholder(part)
+          : `![${part.alt ?? 'image'}](${imageUrl})`,
+      );
+    } else if (isMediaContent(part)) {
+      lines.push(renderMediaPlaceholder(part));
     }
   }
 

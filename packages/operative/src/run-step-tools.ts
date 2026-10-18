@@ -1,5 +1,5 @@
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
-import type { ToolCall } from 'armorer/protocol';
+import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
 import { reclassifyToolError } from './errors';
@@ -31,6 +31,11 @@ export interface ToolExecutionDependencies {
   emittedSettledCallIds: Set<string>;
   stepAbortController: AbortController;
   stepToolbox: AnyToolbox;
+  /**
+   * Metadata for the first tool-call message, when the step appended no
+   * assistant message to carry it (a response with tool calls and no text).
+   */
+  firstToolCallMetadata?: Record<string, JSONValue> | undefined;
 }
 
 export interface ToolExecutionResultSet {
@@ -53,6 +58,7 @@ export async function executeTools(
     toolCallInputs,
     emittedSettledCallIds,
     stepAbortController,
+    firstToolCallMetadata,
   } = input;
   const { hooks } = deps;
   let materializedToolCalls: ToolCall[] = [];
@@ -70,10 +76,22 @@ export async function executeTools(
           .getMessages({ includeHidden: true })
           .some((message) => message.id === assistantMessageId),
     );
-    conversation.appendToolCalls(
-      materializedToolCalls,
-      callRowIds === undefined ? undefined : { messageIds: callRowIds },
-    );
+    const [firstCall, ...otherCalls] = materializedToolCalls;
+    if (firstToolCallMetadata !== undefined && firstCall !== undefined) {
+      conversation.appendToolCall(firstCall, {
+        metadata: firstToolCallMetadata,
+        ...(callRowIds === undefined ? {} : { messageId: callRowIds[0]! }),
+      });
+      conversation.appendToolCalls(
+        otherCalls,
+        callRowIds === undefined ? undefined : { messageIds: callRowIds.slice(1) },
+      );
+    } else {
+      conversation.appendToolCalls(
+        materializedToolCalls,
+        callRowIds === undefined ? undefined : { messageIds: callRowIds },
+      );
+    }
 
     let callsToExecute = materializedToolCalls;
     let filteredResults: ToolExecutionResult[] = [];

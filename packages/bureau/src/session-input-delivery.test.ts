@@ -2,7 +2,7 @@ import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgrad
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import type { Conversation } from 'conversationalist';
+import { type Conversation, CURRENT_SCHEMA_VERSION } from 'conversationalist';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
@@ -361,7 +361,11 @@ describe('createBureau delivers admitted session input at the next step boundary
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',
-        payload: { incarnation: session?.incarnation ?? '', payload: 'cancel me later' },
+        payload: {
+          schemaVersion: CURRENT_SCHEMA_VERSION,
+          incarnation: session?.incarnation ?? '',
+          payload: 'cancel me later',
+        },
         principalBacklogLimit: 100,
         sessionBacklogLimitForCrossSessionRead: 100,
         nowMs: Date.now(),

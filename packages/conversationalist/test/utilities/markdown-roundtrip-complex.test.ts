@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { fromMarkdown, toMarkdown } from '../../src';
 import type { AssistantMessage, ConversationHistory, Message } from '../../src/types';
 import { isAssistantMessage } from '../../src/utilities';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationMessage = Message | AssistantMessage;
 type ConversationOverrides = Partial<Omit<ConversationHistory, 'messages' | 'ids'>> & {
@@ -36,7 +37,7 @@ const createConversation = (
   const baseMessages = overrideMessages ?? messages;
   const baseIds = ids ?? baseMessages.map((message) => message.id);
   return {
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: 'conv-1',
     status: 'active',
     metadata: {},
@@ -54,9 +55,13 @@ describe('markdown-roundtrip-complex', () => {
       createMessage({
         content: [
           { type: 'text', text: 'First text' },
-          { type: 'image', url: 'https://example.com/1.png' },
+          { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/1.png' } },
           { type: 'text', text: 'Second text' },
-          { type: 'image', url: 'https://example.com/2.png', mimeType: 'image/png' },
+          {
+            type: 'image',
+            source: { kind: 'remote-url', url: 'https://example.com/2.png' },
+            mimeType: 'image/png',
+          },
           { type: 'text', text: 'Third text' },
         ],
       }),
@@ -87,9 +92,9 @@ describe('markdown-roundtrip-complex', () => {
           { type: 'text', text: 'Can you analyze this receipt?' },
           {
             type: 'image',
-            url: 'https://example.com/receipt.jpg',
+            source: { kind: 'remote-url', url: 'https://example.com/receipt.jpg' },
             mimeType: 'image/jpeg',
-            text: 'Receipt image',
+            alt: 'Receipt image',
           },
         ],
         position: 1,
@@ -135,7 +140,7 @@ describe('markdown-roundtrip-complex', () => {
     ];
 
     const original: ConversationHistory = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conv-complex-123',
       title: 'Complex Test Conversation',
       status: 'archived',

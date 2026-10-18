@@ -362,3 +362,51 @@ describe('createOverflowMutator', () => {
     expect(context.conversation.getMessages().some(isSummary)).toBe(false);
   });
 });
+
+describe('createOverflowMutator: multimodal history (COR-716)', () => {
+  const document = {
+    type: 'document' as const,
+    name: 'spec.pdf',
+    mimeType: 'application/pdf',
+    source: { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 3 },
+  };
+
+  it('compacts around a media-bearing message: the summarizer never sees it and it survives verbatim', async () => {
+    const context = makeContext([]);
+    context.conversation.appendUserMessage([{ type: 'text', text: 'read' }, document]);
+    for (let index = 0; index < 8; index++)
+      context.conversation.appendUserMessage(`filler ${index}`);
+    const summarized: string[] = [];
+    const mutator = createOverflowMutator({
+      summarize: async (messages) => {
+        for (const message of messages) summarized.push(JSON.stringify(message.content));
+        return 'summary';
+      },
+      retainRecentMessages: 2,
+    });
+
+    const result = await mutator(context, overflow, 1);
+
+    expect(result).toBeDefined();
+    const survivors = context.conversation.getMessages().map((message) => message.content);
+    expect(survivors).toContainEqual([{ type: 'text', text: 'read' }, document]);
+    expect(summarized.join('')).not.toContain('asset-1');
+    expect(context.conversation.getMessages().some(isSummary)).toBe(true);
+  });
+
+  it('rethrows the provider error when the only compactable history is media, rather than dropping it', async () => {
+    const context = makeContext([]);
+    context.conversation.appendUserMessage([document]);
+    context.conversation.appendUserMessage([document]);
+    const mutator = createOverflowMutator({
+      summarize: async () => 'summary',
+      retainRecentMessages: 1,
+    });
+
+    expect(await rejectionOf(mutator(context, overflow, 1))).toBe(overflow);
+    expect(context.conversation.getMessages().map((message) => message.content)).toEqual([
+      [document],
+      [document],
+    ]);
+  });
+});

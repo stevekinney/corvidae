@@ -32,6 +32,12 @@ export { geminiConversationAdapter } from './adapters/gemini';
 export { appendGeminiMessages, fromGeminiMessages } from './adapters/gemini/inbound';
 export { toGeminiMessages } from './adapters/gemini/outbound';
 export type * from './adapters/gemini/types';
+export { parseDataUrl, resolvedSourceKey } from './adapters/media';
+export type {
+  MediaExportOptions,
+  ResolvedMediaSource,
+  ResolvedMediaSources,
+} from './adapters/media';
 export { openAIConversationAdapter } from './adapters/openai';
 export { appendOpenAIMessages, fromOpenAIMessages } from './adapters/openai/inbound';
 export { toOpenAIMessages, toOpenAIMessagesGrouped } from './adapters/openai/outbound';
@@ -168,6 +174,7 @@ export {
 export type { SessionInfo } from './environment';
 export {
   ConversationalistError,
+  UnsupportedContentError,
   createConversationLifecycleError,
   createDuplicateIdError,
   createInvalidInputError,
@@ -179,9 +186,15 @@ export {
   createRevisionConflictError,
   createSerializationError,
   createToolResultNotFoundError,
+  createUnsupportedSchemaVersionError,
   createValidationError,
 } from './errors';
-export type { ConversationalistErrorCode } from './errors';
+export type {
+  ConversationalistErrorCode,
+  UnsupportedContentOptions,
+  UnsupportedContentProvider,
+  UnsupportedContentReason,
+} from './errors';
 export {
   CompactionCompletedEvent,
   CompactionStartedEvent,
@@ -231,12 +244,34 @@ export type {
   ConversationMutationResult,
   ConversationStoreSnapshot,
 } from './history';
+export { readMediaBody } from './media-body';
+export type { MediaBody, MediaBodyReading } from './media-body';
+export {
+  baseMimeType,
+  isDecodableBase64,
+  isDocumentMimeType,
+  isTextualMimeType,
+  mimeTypeFitsModality,
+} from './media-types';
+export {
+  contentSourceDisplayUrl,
+  copyContent,
+  copyMultiModalContent,
+  isMediaContent,
+  mediaDisplayUrl,
+  renderMediaPlaceholder,
+} from './multi-modal';
 export type {
+  AudioContent,
   ContainerUploadContent,
+  ContentPartLineage,
   ContentSource,
+  ContentTransform,
   DocumentContent,
-  DocumentSource,
+  FileContent,
   ImageContent,
+  MediaContent,
+  MediaContentFields,
   MediaLimitScope,
   MediaLimits,
   MimeFamily,
@@ -249,6 +284,7 @@ export type {
   ServerToolUseContent,
   TextContent,
   ThinkingContent,
+  VideoContent,
   WebSearchToolResultContent,
 } from './multi-modal';
 export {

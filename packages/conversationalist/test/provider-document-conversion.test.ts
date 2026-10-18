@@ -3,8 +3,10 @@ import { describe, expect, it } from 'bun:test';
 import { fromAnthropicMessages } from '../src/adapters/anthropic/inbound';
 import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
+import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
 import { appendMessages, createConversationHistory } from '../src/conversation';
+import { UnsupportedContentError } from '../src/errors';
 import type { Message } from '../src/types';
 
 const getOrderedMessages = (messages: {
@@ -16,7 +18,7 @@ const getOrderedMessages = (messages: {
     .filter((message): message is Message => Boolean(message));
 
 describe('provider document conversion', () => {
-  it('exports document content to Anthropic document blocks and text fallbacks', () => {
+  it('exports document content to Anthropic document blocks with lineage', () => {
     let conversation = createConversationHistory();
     conversation = appendMessages(conversation, {
       role: 'user',
@@ -25,65 +27,155 @@ describe('provider document conversion', () => {
           type: 'document',
           name: 'requirements.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'base64', data: 'cGRm' },
-        },
-        {
-          type: 'document',
-          name: 'workspace-notes.md',
-          mimeType: 'text/markdown',
-          source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+          source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
         },
         {
           type: 'document',
           name: 'hosted.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'reference', uri: 'https://example.com/hosted.pdf' },
+          source: { kind: 'remote-url', url: 'https://example.com/hosted.pdf' },
         },
         {
           type: 'document',
           name: 'uploaded.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'reference', uri: 'file:file_123' },
+          source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file_123' },
         },
       ],
     });
 
-    expect(toAnthropicMessages(conversation).messages).toEqual([
+    const exported = toAnthropicMessages(conversation);
+    expect(exported.messages).toEqual([
       {
         role: 'user',
         content: [
           {
             type: 'document',
             title: 'requirements.pdf',
-            source: {
-              type: 'base64',
-              media_type: 'application/pdf',
-              data: 'cGRm',
-            },
-          },
-          {
-            type: 'text',
-            text: '[Document: workspace-notes.md (text/markdown) at sandbox:/workspace/notes.md]',
+            source: { type: 'base64', media_type: 'application/pdf', data: 'cGRm' },
           },
           {
             type: 'document',
             title: 'hosted.pdf',
-            source: {
-              type: 'url',
-              url: 'https://example.com/hosted.pdf',
-            },
+            source: { type: 'url', url: 'https://example.com/hosted.pdf' },
           },
           {
             type: 'document',
             title: 'uploaded.pdf',
-            source: {
-              type: 'file',
-              file_id: 'file_123',
-            },
+            source: { type: 'file', file_id: 'file_123' },
           },
         ],
       },
     ]);
+    expect(exported.lineage.map((entry) => [entry.partIndex, entry.from, entry.transform])).toEqual(
+      [
+        [0, 'inline', 'inline-base64'],
+        [1, 'remote-url', 'remote-url-delegated'],
+        [2, 'provider-file', 'provider-file-reference'],
+      ],
+    );
+  });
+
+  it.each([
+    [
+      'inline base64',
+      { kind: 'inline', data: btoa('# Notes'), encoding: 'base64' } as const,
+      'text/markdown',
+    ],
+    [
+      'data URL',
+      { kind: 'data-url', url: `data:text/plain;base64,${btoa('# Notes')}` } as const,
+      undefined,
+    ],
+  ])(
+    'decodes a %s text document to an Anthropic text source, which accepts no other text media type',
+    (_label, source, mimeType) => {
+      let conversation = createConversationHistory();
+      conversation = appendMessages(conversation, {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            name: 'notes.md',
+            ...(mimeType !== undefined ? { mimeType } : {}),
+            source,
+          },
+        ],
+      });
+
+      const exported = toAnthropicMessages(conversation);
+
+      expect(exported.messages[0]?.content).toEqual([
+        {
+          type: 'document',
+          title: 'notes.md',
+          source: { type: 'text', media_type: 'text/plain', data: '# Notes' },
+        },
+      ]);
+    },
+  );
+
+  it('sends a base64 structured-text document to Anthropic as a text source, by the shared table', () => {
+    let conversation = createConversationHistory();
+    conversation = appendMessages(conversation, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          mimeType: 'application/json',
+          source: { kind: 'inline', data: btoa('{"a":1}'), encoding: 'base64' },
+        },
+      ],
+    });
+
+    expect(toAnthropicMessages(conversation).messages[0]?.content).toEqual([
+      { type: 'document', source: { type: 'text', media_type: 'text/plain', data: '{"a":1}' } },
+    ]);
+  });
+
+  it('rejects a text document whose bytes are not UTF-8 before the client call', () => {
+    let conversation = createConversationHistory();
+    conversation = appendMessages(conversation, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          mimeType: 'text/plain',
+          source: { kind: 'inline', data: btoa('\xff\xfe'), encoding: 'base64' },
+        },
+      ],
+    });
+
+    expect(() => toAnthropicMessages(conversation)).toThrow(UnsupportedContentError);
+  });
+
+  it('rejects an imported URL that is not http, https, or data, instead of storing an invalid remote-url', () => {
+    expect(() =>
+      fromOpenAIMessages([
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 's3://bucket/photo.png' } }],
+        },
+      ]),
+    ).toThrow(/s3:\/\/bucket\/photo\.png/);
+  });
+
+  it('rejects a document source Anthropic cannot carry instead of writing marker prose', () => {
+    let conversation = createConversationHistory();
+    conversation = appendMessages(conversation, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          name: 'workspace-notes.md',
+          mimeType: 'text/markdown',
+          source: { kind: 'local-file', path: '/workspace/notes.md' },
+        },
+      ],
+    });
+
+    expect(() => toAnthropicMessages(conversation)).toThrow(UnsupportedContentError);
+    expect(() => toAnthropicMessages(conversation)).toThrow(/source-form-not-accepted/);
   });
 
   it('reconstructs Anthropic document blocks into document content', () => {
@@ -120,18 +212,17 @@ describe('provider document conversion', () => {
         type: 'document',
         name: 'requirements.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       },
       {
         type: 'document',
         name: 'hosted.pdf',
-        mimeType: 'application/octet-stream',
-        source: { kind: 'reference', uri: 'https://example.com/hosted.pdf' },
+        source: { kind: 'remote-url', url: 'https://example.com/hosted.pdf' },
       },
     ]);
   });
 
-  it('downgrades Anthropic text document sources to text content', () => {
+  it('keeps Anthropic text document sources as inline text documents', () => {
     const conversation = fromAnthropicMessages({
       messages: [
         {
@@ -152,10 +243,17 @@ describe('provider document conversion', () => {
     });
     const messages = getOrderedMessages(conversation);
 
-    expect(messages[0]?.content).toBe('# Notes\n\nPlain document text.');
+    expect(messages[0]?.content).toEqual([
+      {
+        type: 'document',
+        name: 'notes.md',
+        mimeType: 'text/markdown',
+        source: { kind: 'inline', data: '# Notes\n\nPlain document text.', encoding: 'utf8' },
+      },
+    ]);
   });
 
-  it('downgrades document content to text for providers without document blocks', () => {
+  it('delivers or rejects a document for providers without document blocks, never marker prose', () => {
     let conversation = createConversationHistory();
     conversation = appendMessages(conversation, {
       role: 'user',
@@ -164,28 +262,59 @@ describe('provider document conversion', () => {
           type: 'document',
           name: 'workspace-notes.md',
           mimeType: 'text/markdown',
-          source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+          source: { kind: 'local-file', path: '/workspace/notes.md' },
         },
       ],
     });
 
-    expect(toOpenAIMessages(conversation)).toEqual([
-      {
-        role: 'user',
-        content: '[Document: workspace-notes.md (text/markdown) at sandbox:/workspace/notes.md]',
-      },
-    ]);
-    expect(toGeminiMessages(conversation)).toEqual({
-      contents: [
+    expect(() => toOpenAIMessages(conversation)).toThrow(UnsupportedContentError);
+    expect(() => toGeminiMessages(conversation)).toThrow(UnsupportedContentError);
+  });
+
+  it('delivers a hosted document to Gemini and an inline one to OpenAI', () => {
+    let hosted = createConversationHistory();
+    hosted = appendMessages(hosted, {
+      role: 'user',
+      content: [
         {
-          role: 'user',
-          parts: [
-            {
-              text: '[Document: workspace-notes.md (text/markdown) at sandbox:/workspace/notes.md]',
-            },
-          ],
+          type: 'document',
+          name: 'hosted.pdf',
+          mimeType: 'application/pdf',
+          source: { kind: 'remote-url', url: 'https://example.com/hosted.pdf' },
         },
       ],
     });
+    expect(toGeminiMessages(hosted).contents).toEqual([
+      {
+        role: 'user',
+        parts: [
+          { fileData: { mimeType: 'application/pdf', fileUri: 'https://example.com/hosted.pdf' } },
+        ],
+      },
+    ]);
+
+    let inline = createConversationHistory();
+    inline = appendMessages(inline, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          name: 'requirements.pdf',
+          mimeType: 'application/pdf',
+          source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
+        },
+      ],
+    });
+    expect(toOpenAIMessages(inline).messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'file',
+            file: { file_data: 'data:application/pdf;base64,cGRm', filename: 'requirements.pdf' },
+          },
+        ],
+      },
+    ]);
   });
 });

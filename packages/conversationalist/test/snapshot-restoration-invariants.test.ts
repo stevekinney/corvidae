@@ -61,28 +61,28 @@ describe('snapshot restoration invariants', () => {
     }
   });
 
-  it('rejects a node payload that only loads through legacy normalization', () => {
+  it('rejects a node payload that uses a retired role name', () => {
     const snapshot = mutable(toolConversation().snapshot());
     snapshot.messages.find((message: any) => message.toolCall).role = 'tool-use';
     resign(snapshot);
-    expect(() => Conversation.from(snapshot)).toThrow(/legacy/);
-    expect(() => decodeSnapshot(snapshot)).toThrow(/legacy/);
+    expect(() => Conversation.from(snapshot)).toThrow(/invalid data/);
+    expect(() => decodeSnapshot(snapshot)).toThrow(/invalid data/);
   });
 
-  it('rejects legacy tool call and result field names', () => {
+  it('rejects retired tool call and result field names', () => {
     const args = mutable(toolConversation().snapshot());
     const call = args.messages.find((message: any) => message.toolCall);
     call.toolCall.args = call.toolCall.arguments;
     delete call.toolCall.arguments;
     resign(args);
-    expect(() => decodeSnapshot(args)).toThrow(/legacy/);
+    expect(() => decodeSnapshot(args)).toThrow(/invalid data/);
 
     const result = mutable(toolConversation().snapshot());
     const output = result.messages.find((message: any) => message.toolResult);
     output.toolResult.result = output.toolResult.content;
     delete output.toolResult.content;
     resign(result);
-    expect(() => decodeSnapshot(result)).toThrow(/legacy/);
+    expect(() => decodeSnapshot(result)).toThrow(/invalid data/);
   });
 
   it('rejects a child whose revision is lower than its parent', () => {

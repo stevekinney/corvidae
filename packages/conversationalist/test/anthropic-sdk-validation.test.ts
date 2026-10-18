@@ -161,17 +161,25 @@ describe('Anthropic SDK validation', () => {
     }
   });
 
+  it('submits a base64 text document as a text source, since the SDK accepts base64 only for PDFs', () => {
+    const block: AnthropicContentBlock = {
+      type: 'document',
+      source: { type: 'base64', media_type: 'text/plain', data: 'dGV4dA==' },
+    };
+
+    const { messages } = toAnthropicMessagesForSdk(conversationFromBlock(block));
+
+    expect(messages[0]?.content).toEqual([
+      { type: 'document', source: { type: 'text', media_type: 'text/plain', data: 'text' } },
+    ]);
+  });
+
   it('rejects provider blocks the stable SDK cannot submit', () => {
     const unsupportedBlocks: AnthropicContentBlock[] = [
       {
         type: 'image',
         source: { type: 'base64', media_type: 'image/svg+xml', data: 'c3Zn' },
       },
-      {
-        type: 'document',
-        source: { type: 'base64', media_type: 'text/plain', data: 'dGV4dA==' },
-      },
-      { type: 'document', source: { type: 'file', file_id: 'file-1' } },
       { type: 'server_tool_use', id: 'server-1', name: 'code_execution', input: {} },
       { type: 'code_execution_tool_result', tool_use_id: 'server-1', content: {} },
       { type: 'bash_code_execution_tool_result', tool_use_id: 'server-1', content: {} },

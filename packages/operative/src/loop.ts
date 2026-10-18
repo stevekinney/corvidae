@@ -18,6 +18,7 @@ import {
   runStep,
   type StepDeps,
 } from './run-step';
+import { createStepMediaAdmission } from './run-step-media';
 import { resolveResponseFormat } from './structured-output/response-schema';
 import type { RunOptions, RunResult, StopCondition } from './types';
 
@@ -49,6 +50,9 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     onElicitation: options.onElicitation,
     hooks: options.hooks,
     contextManagement: options.contextManagement,
+    contentSourceResolver: options.contentSourceResolver,
+    assetSafety: options.assetSafety,
+    mediaCostEstimator: options.mediaCostEstimator,
     output: options.output,
     responseFormat,
     maximumTokens: options.maximumTokens,
@@ -249,10 +253,21 @@ async function executeLoopBody(
 
   if (onMaximumSteps) {
     try {
+      // COR-716: the tail's own derivation, so the final call the handler makes
+      // sends media that admission costed and vetted on this exact
+      // conversation. The handler may append text, as
+      // `createEarlyStoppingHandler` does; media a handler appends is outside
+      // this derivation and the handler's own responsibility.
+      const media = await createStepMediaAdmission({
+        deps,
+        step: runState.steps.length,
+        emitter,
+      }).derive(conversation);
       const finalContent = await onMaximumSteps({
         conversation,
         step: runState.steps.length,
         signal: options.signal,
+        resolvedSources: media.resolvedSources,
       });
       if (typeof finalContent === 'string') {
         runState.lastContent = finalContent;

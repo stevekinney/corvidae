@@ -11,10 +11,16 @@ import {
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import {
+  Conversation,
+  createConversationHistory,
+  currentConversationFromSnapshot,
+} from 'conversationalist';
 import { z } from 'zod';
 
+import { appendAgentInput } from '../agent-input';
 import { noToolCalls } from '../conditions/predicates';
+import type { MediaCostEstimator } from '../context/types';
 import { GuardrailTripwireError } from '../errors';
 import { SteeringAppliedEvent } from '../events';
 import type { OperativeHookMap } from '../hooks';
@@ -28,7 +34,7 @@ import { type AgentRunWorkflowInput, isAgentRunWorkflowInput } from './run-workf
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
 import { conversationAfterStep, runStepMemo } from './run-workflow-step';
 import { createStorageActivities } from './storage-activities';
-import type { DurableRunDeps } from './types';
+import type { DurableRunDeps, SessionInputPayload } from './types';
 
 type RegistryToolbox = DurableRunDeps['toolbox'];
 type ServicesResolver = (
@@ -275,7 +281,7 @@ async function runToCompletion(
     runId: string;
     sessionId?: string | undefined;
     agentName?: string | undefined;
-    prompt?: string | undefined;
+    prompt?: SessionInputPayload | undefined;
     maximumSteps?: number | undefined;
   },
   services: DurableRunDeps,
@@ -358,6 +364,27 @@ describe('durable agentRun workflow', () => {
     });
 
     expect(await checkpointStore.loadCursor('bad-json')).toBeNull();
+  });
+
+  it('accepts a media prompt in durable workflow input, and refuses a malformed part', () => {
+    const base = { runId: 'run', sessionId: 'session', agentName: 'researcher' };
+    expect(
+      isAgentRunWorkflowInput({
+        ...base,
+        prompt: [
+          { type: 'text', text: 'look' },
+          { type: 'image', mimeType: 'image/png', source: { kind: 'managed-asset', assetId: 'a' } },
+        ],
+      }),
+    ).toBe(true);
+    expect(isAgentRunWorkflowInput({ ...base, prompt: [] })).toBe(false);
+    expect(isAgentRunWorkflowInput({ ...base, prompt: [{ type: 'image', url: 'x' }] })).toBe(false);
+    expect(
+      isAgentRunWorkflowInput({
+        ...base,
+        prompt: [{ type: 'thinking', thinking: 'x', signature: 's' }],
+      }),
+    ).toBe(false);
   });
 
   it('validates durable workflow input at the trust boundary', () => {
@@ -4004,7 +4031,7 @@ describe('durable agentRun workflow', () => {
           .activities(storageActivities)
           .execute(async function* (ctx, input: AgentRunWorkflowInput) {
             const seeded = new Conversation(createConversationHistory());
-            seeded.appendUserMessage(input.prompt ?? '');
+            appendAgentInput(seeded, input.prompt ?? '');
             let snapshot = seeded.snapshot();
             yield* ctx.run('saveConversation', { runId: ctx.workflowId, snapshot });
             for (let step = 0; step < 2; step++) {
@@ -4179,5 +4206,139 @@ describe('durable agentRun workflow', () => {
         engine[Symbol.dispose]();
       }
     });
+  });
+});
+
+describe('durable agentRun workflow: a media prompt (COR-716)', () => {
+  const BYTES = 'QUJDREVGRw==';
+  const mediaPrompt: SessionInputPayload = [
+    { type: 'text', text: 'first' },
+    {
+      type: 'document',
+      name: 'spec.pdf',
+      mimeType: 'application/pdf',
+      source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      metadata: { owner: { id: 7 } },
+    },
+    {
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'managed-asset', assetId: 'a-1', revision: 2 },
+    },
+    { type: 'text', text: 'last' },
+  ];
+
+  /** Prices every part, standing in for a backend whose descriptors this test does not need. */
+  const priced: MediaCostEstimator = (part, position) => ({
+    ...position,
+    modality: part.type,
+    outcome: 'estimated',
+    tokens: 10,
+    basis: 'catalog-estimate',
+  });
+
+  function mediaServices(generate: GenerateFunction): DurableRunDeps {
+    const services = makeServices(generate);
+    return {
+      ...services,
+      options: {
+        ...services.options,
+        mediaCostEstimator: priced,
+        contentSourceResolver: async (_part, _position) => ({
+          outcome: 'resolved' as const,
+          source: { kind: 'inline' as const, data: BYTES, encoding: 'base64' as const },
+          safety: 'clean' as const,
+        }),
+      },
+    };
+  }
+
+  const userContents = (conversation: GenerateContext['conversation']): unknown[] =>
+    conversation
+      .getMessages()
+      .filter((message) => message.role === 'user')
+      .map((message) => message.content);
+
+  it('seeds the conversation with the parts as one user message, in order, and checkpoints them unchanged', async () => {
+    const storage = new MemoryStorage();
+    const seen: unknown[][] = [];
+    const services = mediaServices(async ({ conversation, step }) => {
+      seen.push(userContents(conversation));
+      return step === 0
+        ? { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] }
+        : { content: 'done', toolCalls: [] };
+    });
+    const { engine, checkpointStore } = await buildEngine(storage, false);
+    try {
+      const result = await runToCompletion(
+        engine,
+        { runId: 'media-run', prompt: mediaPrompt },
+        services,
+      );
+
+      expect(result.finishReason).toBe('stop-condition');
+      // Both steps saw the one user message with every part, equal to what went in.
+      expect(seen).toEqual([[mediaPrompt], [mediaPrompt]]);
+      // The persisted transcript holds the same message: the managed asset keeps its identity
+      // and revision, not the resolved bytes.
+      const snapshot = await checkpointStore.loadConversation('media-run');
+      expect(snapshot).not.toBeNull();
+      const restored = new Conversation(currentConversationFromSnapshot(snapshot!));
+      expect(userContents(restored)).toEqual([mediaPrompt]);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('refuses a malformed persisted prompt at the guard instead of seeding a broken run', () => {
+    expect(
+      isAgentRunWorkflowInput({
+        runId: 'r',
+        sessionId: 's',
+        agentName: 'a',
+        prompt: [{ type: 'image', url: 'https://example.invalid/a.png' }],
+      }),
+    ).toBe(false);
+  });
+
+  it('resumes after a crash with the media in the checkpointed transcript, and re-sends it at the recovered step', async () => {
+    const storage = new MemoryStorage();
+    const runId = 'bbbbbbbb-0000-4000-8000-000000000001';
+
+    // Engine A: step 0 commits a tool call, step 1 hangs; the process "crashes".
+    const servicesA = mediaServices(async ({ step }) =>
+      step === 0
+        ? { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] }
+        : new Promise<never>(() => {}),
+    );
+    const a = await buildEngine(storage, false);
+    const handle = await a.engine.start(
+      'agentRun',
+      { runId, sessionId: runId, agentName: '', prompt: mediaPrompt },
+      { id: runId, services: servicesA },
+    );
+    void handle.result().catch(() => {});
+    await a.waitForCursorSave(runId, 1);
+    a.engine[Symbol.dispose]();
+
+    // Engine B: a fresh process. Its resolver hands back a conversation that is only a
+    // placeholder; the media can come only from the checkpoint.
+    const recovered: Array<{ step: number; users: unknown[] }> = [];
+    const b = await buildEngine(storage, false, async () => ({
+      status: 'available',
+      services: mediaServices(async ({ conversation, step }) => {
+        recovered.push({ step, users: userContents(conversation) });
+        return { content: 'recovered', toolCalls: [] };
+      }),
+    }));
+    try {
+      const handles = await b.engine.recoverAll();
+      const result = (await handles[0]!.result()) as { finishReason: string };
+
+      expect(result.finishReason).toBe('stop-condition');
+      expect(recovered).toEqual([{ step: 1, users: [mediaPrompt] }]);
+    } finally {
+      b.engine[Symbol.dispose]();
+    }
   });
 });

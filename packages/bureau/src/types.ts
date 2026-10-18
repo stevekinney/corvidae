@@ -34,6 +34,7 @@ import type {
   SelectionPlan,
   SessionInputAdmissionOutcome,
   SessionInputAdmissionRequest,
+  SessionInputPayload,
   SessionListOptions,
   SessionStore,
   SessionSummary,
@@ -2519,8 +2520,11 @@ export interface DurableScheduleDefinition {
   description?: string;
   /** Agent name to run on each schedule fire. */
   agentName: string;
-  /** Input message delivered to the agent each fire. */
-  input: string;
+  /**
+   * Input delivered to the agent each fire: text, or an ordered list of text and
+   * media parts delivered as one user message.
+   */
+  input: SessionInputPayload;
   /** Cron expression (e.g. `'0 9 * * *'`) or weft duration shorthand (e.g. `'6h'`, `'30s'`, `'1d'`). */
   spec: string;
   /**
