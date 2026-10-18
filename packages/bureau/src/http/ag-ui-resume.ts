@@ -168,7 +168,10 @@ export function createResume(context: ResumeContext) {
     nextConflictId: () => runtime.identifiers.next('ag-ui-resume-conflict'),
   });
   /** Attempts this process is still settling, by command key, so a duplicate joins them. */
-  const inFlight = new Map<string, Promise<Refusal | Settled>>();
+  const inFlight = new Map<
+    string,
+    { readonly digest: string; readonly work: Promise<Refusal | Settled> }
+  >();
 
   /**
    * The stream for a resume that has an answer. A run the resume just created is
@@ -266,7 +269,17 @@ export function createResume(context: ResumeContext) {
         review?.kind === 'tool-approval' &&
         review.status === 'pending' &&
         runIsGoing(bureau, review.runId);
-      if (review === undefined || review.sessionId !== threadId || !mayAnswer || notYetOffered) {
+      // The continuation is the agent's that raised the interrupt: it runs under that
+      // agent's route, so a resume through another published agent's route is refused as
+      // an interrupt that does not exist there, and nothing is resolved.
+      const otherAgents = review?.agentName !== undefined && review.agentName !== request.agentName;
+      if (
+        review === undefined ||
+        review.sessionId !== threadId ||
+        !mayAnswer ||
+        notYetOffered ||
+        otherAgents
+      ) {
         return context.refuse(
           'INTERRUPT_NOT_FOUND',
           `Interrupt "${entry.interruptId}" was not found`,
@@ -295,15 +308,23 @@ export function createResume(context: ResumeContext) {
     });
     const key = `${identity.callerId}\u0000${identity.target}\u0000${identity.requestId}`;
 
-    // An attempt this process is settling: the retry gets that attempt's answer.
+    // An attempt this process is settling: an exact retry gets that attempt's answer,
+    // and the same interrupts answered differently are a conflict, not a join (the
+    // other answer must not take effect on the strength of this one's request).
     const running = inFlight.get(key);
     if (running !== undefined) {
-      const answered = await running;
+      if (running.digest !== digest) {
+        return context.refuse(
+          'RESUME_CONFLICT',
+          'These interrupts were already answered differently',
+        );
+      }
+      const answered = await running.work;
       if ('code' in answered) return context.refuse(answered.code, answered.message);
       return streamFor(request, answered.result);
     }
     const work = settle(request, reviews, identity, digest, key);
-    inFlight.set(key, work);
+    inFlight.set(key, { digest, work });
     try {
       const outcome = await work;
       if ('code' in outcome) return context.refuse(outcome.code, outcome.message);
@@ -503,7 +524,8 @@ export function createResume(context: ResumeContext) {
 
   /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `createRun` requires. */
   async function conversationAnswerable(threadId: string): Promise<boolean> {
-    const history = (await bureau.getSession(threadId))?.conversationHistory;
+    const session = await bureau.getSession(threadId);
+    const history = session?.conversationHistory;
     const last = history?.ids.at(-1);
     const role = last === undefined ? undefined : history?.messages[last]?.role;
     return role === 'user' || role === 'tool-result';

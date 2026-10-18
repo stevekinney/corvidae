@@ -997,6 +997,106 @@ describe('a resume applied by another Bureau over the same store', () => {
   });
 });
 
+describe('two requests that answer the same interrupts differently at once', () => {
+  it('lets one proceed and answers the other RESUME_CONFLICT, executing nothing for it', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        const approve = resumeRequest([resolved(id)], {}, 'client-run-2');
+        const deny = resumeRequest(
+          [resolved(id, { decision: 'deny', reason: 'no' })],
+          {},
+          'client-run-3',
+        );
+
+        // Both are in the handler before either has settled.
+        const [approved, denied] = await Promise.all([handler(approve), handler(deny)]);
+        const approvedFrames = await readAgUiStream(approved);
+        const deniedFrames = await readAgUiStream(denied);
+
+        expect(approvedFrames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(deniedFrames).toHaveLength(1);
+        expect(deniedFrames[0]!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'RESUME_CONFLICT',
+        });
+        expect(charges).toEqual([500]);
+        expect(bureau.listRuns()).toHaveLength(2);
+      },
+    );
+  });
+});
+
+describe('a resume through the route of another published agent', () => {
+  const throughOther = (entries: ResumeEntry[], runId: string) =>
+    startRequest(runAgentInput({ runId, messages: [], resume: entries }), {}, 'other');
+
+  it('is refused as an interrupt that does not exist there, and nothing runs', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        otherAgents: ['other'],
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const unknown = [resolved('approval:nope:call-9')];
+
+        const refused = await readAgUiStream(await handler(throughOther(entries, 'client-run-2')));
+        const missing = await readAgUiStream(await handler(throughOther(unknown, 'client-run-3')));
+        const own = await readAgUiStream(await handler(resumeRequest(entries, {}, 'client-run-4')));
+
+        expect(refused).toHaveLength(1);
+        expect(refused[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        expect(missing[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        // The agent that raised the interrupt still answers it, once.
+        expect(own.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+        expect(bureau.listRuns().map((run) => run.agentName)).toEqual(['assistant', 'assistant']);
+      },
+    );
+  });
+
+  it('creates no run for that agent when it retries a resume whose first attempt died', async () => {
+    const charges: number[] = [];
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        otherAgents: ['other'],
+        storage: 'sqlite',
+        agUi: { runtime: dead },
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(
+          () => new Promise(() => {}),
+        );
+        void harness.handler(resumeRequest(entries));
+        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
+        createRun.mockRestore();
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
+
+        const retried = await readAgUiStream(
+          await harness.remount({ runtime: living })(throughOther(entries, 'client-run-3')),
+        );
+
+        expect(retried[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        expect(harness.bureau.listRuns().map((run) => run.agentName)).toEqual(['assistant']);
+        expect(charges).toEqual([500]);
+      },
+    );
+  });
+});
+
 describe('a resume whose lease was taken over before it resolved anything', () => {
   it('resolves nothing, because it no longer holds the command', async () => {
     const charges: number[] = [];

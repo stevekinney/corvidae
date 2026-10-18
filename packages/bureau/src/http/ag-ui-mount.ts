@@ -239,7 +239,8 @@ export function createAgUiMount(
    * thread for ever.
    */
   async function liveElsewhere(threadId: string): Promise<boolean> {
-    const metadata = (await bureau.getSession(threadId))?.metadata;
+    const session = await bureau.getSession(threadId);
+    const metadata = session?.metadata;
     const lastRunId = metadata?.['lastRunId'];
     if (metadata?.['lastRunStatus'] !== 'running' || typeof lastRunId !== 'string') return false;
     if (bureau.getRun(lastRunId) !== undefined) return false;

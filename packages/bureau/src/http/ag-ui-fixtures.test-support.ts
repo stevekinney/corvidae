@@ -52,6 +52,8 @@ export type HarnessOptions = {
   readonly toolbox?: Toolbox;
   readonly stopWhen?: StopCondition;
   readonly humanInput?: boolean;
+  /** Further published agents, each running the same script as `assistant`. */
+  readonly otherAgents?: readonly string[];
   /** `'sqlite'` keeps a durable event history, so terminal events carry cursors. */
   readonly storage?: 'memory' | 'sqlite';
   readonly agUi?: AgUiOptions;
@@ -98,7 +100,12 @@ async function build(
   const generate = createScriptedGenerate(options.script);
   const bureau = await createBureau({
     id: 'ag-ui-fixture',
-    agents: { [AGENT]: createAgent({ generate, name: AGENT }) },
+    agents: Object.fromEntries(
+      [AGENT, ...(options.otherAgents ?? [])].map((name) => [
+        name,
+        createAgent({ generate, name }),
+      ]),
+    ),
     generate,
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
     storage: fixture?.configuration ?? { type: 'memory' },
@@ -113,7 +120,7 @@ async function build(
       ...(options.authentication === undefined
         ? { unauthenticatedAccess: 'allow' as const }
         : { authentication: options.authentication }),
-      publish: [AGENT],
+      publish: [AGENT, ...(options.otherAgents ?? [])],
       agUi: agUi ?? {},
     });
   let restarted = false;
