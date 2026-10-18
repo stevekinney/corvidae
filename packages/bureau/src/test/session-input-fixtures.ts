@@ -359,6 +359,21 @@ export function logsRunEnded(operations: readonly BatchOperation[]): boolean {
   );
 }
 
+/** A write that appends a run's `promoted` entry to its session's steering log. */
+export function logsRunPromoted(operations: readonly BatchOperation[]): boolean {
+  return operations.some(
+    (operation) =>
+      operation.type === 'put' &&
+      operation.key.startsWith('steering-log:v1:') &&
+      textOf(operation).includes('"promoted"'),
+  );
+}
+
+/** A read of a session's body or summary index. */
+export function readsSession(key: string): boolean {
+  return key.startsWith('agent-session');
+}
+
 /** A write that saves a session with the given last run status. */
 export function savesSessionAs(status: string) {
   return (operations: readonly BatchOperation[]): boolean =>

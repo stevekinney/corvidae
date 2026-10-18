@@ -96,10 +96,12 @@ export interface SessionInputSettlement {
    */
   markOpen(sessionId: string): Promise<void>;
   /**
-   * Cancels every open input of the session except the commands in `delivered`,
-   * in admission order, with {@link SESSION_INPUT_RUN_ENDED_REASON}, then removes
-   * the marker if nothing is left open. The caller has established that no run
-   * of the session is live or starting. Returns the cancelled command ids.
+   * Runs the mailbox's maintenance, so a lease a dead holder left behind is
+   * released and a cancellation it never settled completes, then cancels every
+   * open input of the session except the commands in `delivered`, in admission
+   * order, with {@link SESSION_INPUT_RUN_ENDED_REASON}, then removes the marker
+   * if nothing is left open. The caller has established that no run of the
+   * session is live or starting. Returns the cancelled command ids.
    */
   cancelUndelivered(sessionId: string, delivered: ReadonlySet<string>): Promise<string[]>;
   /**
@@ -215,6 +217,11 @@ export function createSessionInputSettlement(
   ): Promise<string[]> {
     const mailbox = dependencies.mailboxOf(sessionId);
     if (mailbox === undefined) return [];
+    // A command a gone holder leased stays `claimed` until its visibility
+    // lapses, and one whose cancellation that holder never settled stays
+    // `cancellation-requested`; maintenance moves both on, so the next lines
+    // can cancel the first and the marker can clear once the second is over.
+    await mailbox.runMaintenance();
     const cancelled = await cancelOpenSessionInput(mailbox, delivered);
     await removeMarkerIfIdle(sessionId, mailbox);
     return cancelled;

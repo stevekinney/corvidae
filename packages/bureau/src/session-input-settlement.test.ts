@@ -196,6 +196,50 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
   });
 });
 
+describe('a lease a gone holder left behind (COR-1476)', () => {
+  it('is cancelled while it stands, and settles once it lapses, with the marker removed', async () => {
+    let now = Date.parse('2026-10-17T12:00:00.000Z');
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve('incarnation-1'),
+      liveRunIds: () => Promise.resolve([]),
+      mailboxOf: () => mailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID);
+    await mailbox.admit({
+      caller: 'alice',
+      target: SESSION_ID,
+      kind: 'session-input:steer',
+      payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: 'x' } },
+      idempotencyKey: 'input-x',
+    });
+    // A gate in a process that then died claims it.
+    const claimed = await mailbox.claim();
+    expect(claimed.status).toBe('claimed');
+    const state = async () => {
+      const [receipt] = await mailbox.list({ limit: 10 });
+      return receipt?.state;
+    };
+
+    // The lease still stands: the cancellation is requested, and the marker
+    // stays until the command is over.
+    await settlement.sweep();
+    expect(await state()).toBe('cancellation-requested');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+
+    // Past the visibility timeout, the sweep's maintenance settles it.
+    now += 31_000;
+    await settlement.sweep();
+    expect(await state()).toBe('cancelled');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
+  });
+});
+
 describe('backlog paging (COR-1476)', () => {
   it('cancels a backlog deeper than one batch in full', async () => {
     const f = fixture();

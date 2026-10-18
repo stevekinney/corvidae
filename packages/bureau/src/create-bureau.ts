@@ -306,11 +306,15 @@ const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
 /**
- * COR-1476 — how long a run that has ended waits between attempts to write its
- * steering `run-ended` entry. The write is retried until it is acknowledged or
- * the bureau closes, because the run reads the session's mailbox only after it.
+ * COR-1476 — the first wait between attempts to write an ended run's steering
+ * `run-ended` entry; each later wait doubles, up to the cap. The write is
+ * retried until it is acknowledged or the bureau closes, because the run reads
+ * the session's mailbox only after it.
  */
 const SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS = 10;
+const SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS = 2_000;
+/** After the first failure is reported, how long passes before the next one is. */
+const SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS = 60_000;
 /**
  * How long `shutdown({ policy: 'abort' })` waits for the runs it aborted to
  * reach a terminal event before it stops waiting and tears storage down. A
@@ -1940,6 +1944,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
   const inFlightSessionInputSettlements = new Set<Promise<void>>();
 
+  /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
+  const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
+
+  /** Tracks a settlement, which never rejects, so shutdown lands it before it tears the stores down. */
+  function trackSessionInputSettlement(settling: Promise<void>): void {
+    inFlightSessionInputSettlements.add(settling);
+    void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
+  }
+
   /** The gate of each durable run that has one, disposed when the run ends however it ends. */
   const sessionInputGates = new Map<
     string,
@@ -2042,29 +2055,42 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * COR-1476 — a run has ended, however it ended: completed, failed, aborted by
    * `abortRun`, cancelled by `cancelDurableRun`, or promoted but never started.
-   * In this order, it
+   * A run is settled once: every path that reports its end shares the one
+   * settlement in flight. In this order, it
    *
-   * 1. writes its steering `run-ended` entry, the durable not-live write every
+   * 1. releases what it held (its gate's leases and its unpromoted claims),
+   *    which reads no mailbox and so keeps the ordering below;
+   * 2. writes its steering `run-ended` entry, the durable not-live write every
    *    process's `liveSessionRunIdsEverywhere` honours over the engine's status,
-   *    retrying until it is acknowledged or the bureau closes;
-   * 2. catches up steering;
-   * 3. reads the session's liveness without itself;
-   * 4. releases what it held (its gate's leases and its unpromoted claims), which
-   *    is all it does when another run of the session is live or starting, the
+   *    retrying with a growing backoff until it is acknowledged, the bureau
+   *    closes, or the log proves corrupt;
+   * 3. catches up steering;
+   * 4. reads the session's liveness without itself;
+   * 5. cancels every open input whose turn is not in its checkpoint transcript,
+   *    in admission order, so the client learns it was not delivered and
+   *    resends it, unless another run of the session is live or starting, the
    *    bureau is closing, the write was never acknowledged, or liveness could
-   *    not be read: that run's end, or the sweep, decides the rest;
-   * 5. otherwise cancels every open input whose turn is not in its checkpoint
-   *    transcript, in admission order, so the client learns it was not
-   *    delivered and resends it. A turn the transcript holds was promoted by
-   *    the write that saved it, and stays `promoted`.
+   *    not be read: that run's end, or the sweep, then decides. A turn the
+   *    transcript holds was promoted by the write that saved it, and stays
+   *    `promoted`.
    *
    * `submitSessionInput` orders itself the other way round, admission before
    * liveness, so one side always sees the other: see
    * `session-input-settlement.ts`.
    */
-  async function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
-    const acknowledged = await recordRunEnded(sessionId, runId);
+  function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
+    const inFlight = sessionInputSettlementsByRun.get(runId);
+    if (inFlight !== undefined) return inFlight;
+    const settling = settleSessionInputsOnce(sessionId, runId).finally(() => {
+      sessionInputSettlementsByRun.delete(runId);
+    });
+    sessionInputSettlementsByRun.set(runId, settling);
+    return settling;
+  }
+
+  async function settleSessionInputsOnce(sessionId: string, runId: string): Promise<void> {
     await releaseSessionInputs(sessionId, runId);
+    const acknowledged = await recordRunEnded(sessionId, runId);
     if (!acknowledged || sessionInputSettlement === undefined || isSessionInputClosed()) return;
     try {
       const session = await runtime.sessionStore?.load(sessionId);
@@ -2092,10 +2118,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /**
    * Makes sure `runId`'s steering `run-ended` entry is in the log, retrying the
-   * write until it is acknowledged, and reports whether it is. A run the log
-   * never promoted, or whose session is gone or recreated, was never counted
-   * live from the log, so there is nothing to write and the answer is yes. The
-   * only no is the bureau closing first.
+   * write with a backoff that doubles from 10 ms to 2 s, and reports whether it
+   * is. A run the log never promoted, or whose session is gone or recreated, was
+   * never counted live from the log, so there is nothing to write and the answer
+   * is yes. The answer is no when the bureau closes first, or when the log
+   * proves corrupt, which no retry repairs: the input is left to the sweep. The
+   * first failure is reported at once and later ones at most once a minute.
    */
   async function recordRunEnded(sessionId: string, runId: string): Promise<boolean> {
     const pending = steeringRunEndWrites.get(runId);
@@ -2110,6 +2138,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const steeringKv = durableSteeringStore();
     if (steeringKv === undefined) return true;
+    let delay = SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS;
+    let lastReportedAt: number | undefined;
     for (let attempt = 1; ; attempt += 1) {
       if (isSessionInputClosed()) return false;
       try {
@@ -2128,16 +2158,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
         return true;
       } catch (error) {
+        if (error instanceof SteeringLogCorruptError) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] The end of run "${runId}" in session "${sessionId}" cannot be recorded in a corrupt steering log; its open session input is left to the sweep: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return false;
+        }
         // Contention, a storage failure, or a session recreated under this
         // read: the next attempt reloads the session and refolds its log, so a
         // session that is gone or no longer promotes this run ends the loop.
-        diagnose({
-          level: 'error',
-          scope: 'session-input',
-          message: `[bureau] The end of run "${runId}" in session "${sessionId}" could not be recorded (attempt ${String(attempt)}); retrying before its session input is settled: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-        await sessionPersistenceSleep(SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS);
+        const now = runtimeServices.clock.now();
+        if (
+          lastReportedAt === undefined ||
+          now - lastReportedAt >= SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS
+        ) {
+          lastReportedAt = now;
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] The end of run "${runId}" in session "${sessionId}" could not be recorded (attempt ${String(attempt)}); retrying before its session input is settled: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        await sessionPersistenceSleep(delay);
+        delay = Math.min(delay * 2, SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS);
       }
     }
   }
@@ -3308,12 +3355,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
-    const settling = persistSessionUpdate(saveSessionUpdate, context).then(() =>
-      settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
+    trackSessionInputSettlement(
+      persistSessionUpdate(saveSessionUpdate, context).then(() =>
+        settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
+      ),
     );
-    // Tracked, so shutdown lands every settlement before it tears the stores down.
-    inFlightSessionInputSettlements.add(settling);
-    void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
   }
 
   /** Resolves once every run-end session-input settlement already started has finished. */
@@ -4536,14 +4582,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
       // concurrent run on this same session must never block this one.
       const runSteeringGate = steeringGate.forRun(runId);
-      const runSessionInputGate = await sessionInputGateFor(sessionId, runId);
 
       // COR-690: the last admission check before the run and its toolbox are
-      // registered. Everything from here to that registration is synchronous,
-      // so a `shutdown()` that started during the awaits above rejects this
-      // run instead of letting it start outside shutdown's snapshot.
+      // registered. Everything from that check to the registration is
+      // synchronous, so a `shutdown()` that started during the awaits above
+      // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
       try {
+        // COR-1476 — inside the block below, so a gate that cannot be built
+        // (its session read fails) ends the promoted run like any other start
+        // failure: its end is logged and its session's input settled.
+        const runSessionInputGate = await sessionInputGateFor(sessionId, runId);
         assertRunAdmissionOpen('run');
         activeRun = createActiveRun(
           {
@@ -4632,7 +4681,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
         // COR-1476 — a run that never starts has ended: it releases its gate
         // and, with no other run on the session, cancels the input left open.
-        await settleSessionInputsAfterRunEnd(sessionId, runId);
+        // Tracked rather than awaited, as a terminal listener's settlement is,
+        // so a write that must be retried never holds this caller's rejection.
+        trackSessionInputSettlement(settleSessionInputsAfterRunEnd(sessionId, runId));
         await markStartFailed(error);
         throw error;
       }

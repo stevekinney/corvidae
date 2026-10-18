@@ -22,8 +22,10 @@ import { appendSteeringLogEvent } from './steering-log';
 import {
   deferred,
   logsRunEnded,
+  logsRunPromoted,
   pollUntil,
   readsMailbox,
+  readsSession,
   seamStorage,
   userTexts,
 } from './test/session-input-fixtures';
@@ -463,6 +465,115 @@ describe('a run that ends cancels the input it never delivered (COR-1476)', () =
   });
 });
 
+describe('a run that ends over a lease a gone holder left behind (COR-1476)', () => {
+  it('requests the cancellation while the lease stands, and the sweep settles it once it lapses', async () => {
+    const origin = '2026-10-17T12:00:00.000Z';
+    const runtime = createManualRuntimeServices({ origin });
+    const storage = new MemoryStorage();
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const bureau = await openBureau(
+      storage,
+      async () => {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      { runtime },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
+      // A gate in a process that then died claims it, on the same clock.
+      const deadHolder = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+        runtime.clock.now(),
+      );
+      const deadClaim = await deadHolder.claim();
+      expect(deadClaim.status).toBe('claimed');
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+        runtime.clock.now(),
+      );
+      const state = async () => {
+        const [receipt] = await mailbox.list({ limit: 10 });
+        return receipt?.state;
+      };
+
+      // The run ends with the lease standing: its settlement requests the
+      // cancellation, which the holder will never settle, and keeps the marker.
+      releaseStepZero.resolve();
+      await bureau.waitForDurableRun(run.id);
+      await pollUntil(async () => (await state()) === 'cancellation-requested');
+      expect(await markers(storage)).toHaveLength(1);
+      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+        'accepted',
+      );
+
+      // Past the visibility timeout, the sweep's maintenance settles it.
+      runtime.setTime(Date.parse(origin) + 31_000);
+      await bureau.runDurableMaintenance();
+      expect(await state()).toBe('cancelled');
+      expect(await receiptState(storage, run.sessionId, incarnation, 'input-x', 'late')).toBe(
+        'canceled',
+      );
+      expect(await markers(storage)).toHaveLength(0);
+    } finally {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('a run whose start fails after its promotion (COR-1476)', () => {
+  it('logs its end and settles the session, so input submitted next is cancelled rather than left for it', async () => {
+    const real = new MemoryStorage();
+    const seam = seamStorage(real);
+    let generations = 0;
+    const bureau = await openBureau(seam.storage, async () => {
+      generations += 1;
+      return { content: 'answer', toolCalls: [] };
+    });
+    try {
+      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await bureau.waitForDurableRun(first.id);
+      await pollUntil(async () => {
+        const session = await bureau.getSession(first.sessionId);
+        return session?.metadata['lastRunStatus'] === 'completed';
+      });
+      const incarnation = await incarnationOf(bureau, first.sessionId);
+
+      // The second run's promotion commits; the session read its gate needs
+      // fails, so the run never starts.
+      const failing = seam.failReads(
+        readsSession,
+        new Error('session read failed'),
+        seam.awaitWriteCommitted(logsRunPromoted),
+      );
+      const ended = seam.awaitWriteCommitted(logsRunEnded);
+      await expect(
+        bureau.createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId }),
+      ).rejects.toThrow('session read failed');
+      failing.stop();
+      // Its end is recorded once the log can be written again.
+      await ended;
+
+      // The never-started run is over, so nothing counts it as starting: the
+      // admission finds no run and cancels its own input.
+      const outcome = await bureau.submitSessionInput(first.sessionId, input('input-x', 'hello'));
+      expect(outcome.outcome).toBe('admitted');
+      if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
+      expect(await receiptState(real, first.sessionId, incarnation, 'input-x', 'hello')).toBe(
+        'canceled',
+      );
+      expect(generations).toBe(1);
+      expect(bureau.listRuns()).toHaveLength(1);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
 describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
   it('retries the run-ended write until it is acknowledged, then cancels what was left open', async () => {
     const seam = seamStorage(new MemoryStorage());
@@ -512,6 +623,100 @@ describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
             diagnostic.scope === 'session-input' && diagnostic.message.includes('retrying'),
         ),
       ).toHaveLength(1);
+    } finally {
+      failing.stop();
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('backs off between attempts, doubling to a 2 s cap, and reports only the first failure', async () => {
+    const seam = seamStorage(new MemoryStorage());
+    const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
+    const delays: number[] = [];
+    const diagnostics: BureauDiagnostic[] = [];
+    const bureau = await openBureau(
+      seam.storage,
+      async () => ({ content: 'answer', toolCalls: [] }),
+      {
+        // Every wait is recorded and cut to one event-loop turn, so the loop's
+        // schedule is read, not timed.
+        sessionPersistenceSleep: async (milliseconds) => {
+          delays.push(milliseconds);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        },
+        onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
+      },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      await bureau.waitForDurableRun(run.id);
+      await pollUntil(() => failing.attempts() >= 12);
+
+      expect(delays.slice(0, 9)).toEqual([10, 20, 40, 80, 160, 320, 640, 1280, 2000]);
+      expect(delays.slice(9).every((delay) => delay === 2000)).toBe(true);
+      expect(
+        diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.scope === 'session-input' && diagnostic.message.includes('retrying'),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      failing.stop();
+      await bureau.dispose();
+    }
+  });
+
+  it('stops retrying on a corrupt steering log, reports it once, and leaves the input to the sweep', async () => {
+    const real = new MemoryStorage();
+    const seam = seamStorage(real);
+    const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
+    const diagnostics: BureauDiagnostic[] = [];
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const stepOneStarted = deferred();
+    const bureau = await openBureau(
+      seam.storage,
+      async (context: GenerateContext) => {
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        stepOneStarted.resolve();
+        return new Promise<never>(() => {});
+      },
+      { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await stepZeroStarted.promise;
+      releaseStepZero.resolve();
+      await stepOneStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-x', 'open'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
+
+      // The cancellation's settlement cannot write `run-ended`; after its first
+      // failed attempt the log's head is found corrupt.
+      const cancelling = bureau.cancelDurableRun(run.id);
+      await pollUntil(() => failing.attempts() >= 1);
+      const kv = textValueStore(real, { disposeUnderlyingStorage: false });
+      const logKeys = await kv.list('steering-log:v1:');
+      const head = logKeys.find((key) => key.endsWith(':head'));
+      if (head === undefined) throw new Error('the session has no steering log head');
+      await kv.set(head, 'not a head');
+
+      // Corruption is not retried: the settlement ends and the caller returns.
+      const cancelled = await cancelling;
+      expect(cancelled.status).toBe('requested');
+      const corrupt = diagnostics.filter(
+        (diagnostic) =>
+          diagnostic.scope === 'session-input' && diagnostic.message.includes('corrupt'),
+      );
+      expect(corrupt).toHaveLength(1);
+      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'open')).toBe(
+        'accepted',
+      );
     } finally {
       failing.stop();
       releaseStepZero.resolve();
