@@ -70,6 +70,11 @@ async function deletionEntries(
   return entries ?? [];
 }
 
+async function deletionCount(bureau: { auditTrail: FirstBureau['auditTrail'] }, sessionId: string) {
+  const entries = await deletionEntries(bureau, sessionId);
+  return entries.length;
+}
+
 const ownerOf = (entry: { detail: unknown }) => (entry.detail as { owner?: string }).owner;
 
 describe('a session deletion replayed after a restart (COR-718)', () => {
@@ -93,7 +98,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     try {
       await second.runDurableMaintenance();
       await waitForCondition(
-        async () => (await deletionEntries(second, 'replayed')).length === 1,
+        async () => (await deletionCount(second, 'replayed')) === 1,
         'the replayed deletion never reached the audit trail',
       );
 
@@ -127,7 +132,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
     try {
       await second.runDurableMaintenance();
       await waitForCondition(
-        async () => (await deletionEntries(second, 'reused')).length === 2,
+        async () => (await deletionCount(second, 'reused')) === 2,
         'the replayed deletions never reached the audit trail',
       );
 
@@ -136,10 +141,11 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
         (entry) => (entry.detail as { incarnation: string }).incarnation,
       );
       expect(new Set(incarnations).size).toBe(2);
-      expect(entries.map((entry) => ownerOf(entry)).toSorted()).toEqual([
-        'api-key:alice',
-        'api-key:bob',
-      ]);
+      expect(
+        entries
+          .map((entry) => ownerOf(entry))
+          .toSorted((left, right) => String(left).localeCompare(String(right))),
+      ).toEqual(['api-key:alice', 'api-key:bob']);
       expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(0);
     } finally {
       await second.dispose();
@@ -180,7 +186,7 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       reading.fails = false;
       await second.runDurableMaintenance();
       await waitForCondition(
-        async () => (await deletionEntries(second, 'retried')).length === 1,
+        async () => (await deletionCount(second, 'retried')) === 1,
         'the retried deletion never reached the audit trail',
       );
       const [entry] = await deletionEntries(second, 'retried');

@@ -323,3 +323,40 @@ describe('durable history follows the owner of record (COR-718)', () => {
     }
   });
 });
+
+describe('the history of a live catalog run (COR-718)', () => {
+  it('reads a durable bureau.run dispatched with no principal as owned by anonymous:local', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-catalog-history-'));
+    const release = Promise.withResolvers<void>();
+    const worker = createAgent({
+      name: 'worker',
+      generate: async () => {
+        await release.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+    });
+    const bureau = await createBureau({
+      agents: { worker },
+      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+    });
+    try {
+      const unowned = bureau.run('worker', 'work');
+      const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
+      const history = async (id: string, principal: string) => {
+        const page = await bureau.eventHistory({ kind: 'run', id }, { principal });
+        return 'outcome' in page ? page.outcome : 'page';
+      };
+
+      expect(await history(unowned.id, 'anonymous:local')).toBe('page');
+      expect(await history(unowned.id, 'api-key:alice')).toBe('not-found');
+      expect(await history(owned.id, 'api-key:alice')).toBe('page');
+      expect(await history(owned.id, 'anonymous:local')).toBe('not-found');
+    } finally {
+      release.resolve();
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
