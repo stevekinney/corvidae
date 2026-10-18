@@ -16,7 +16,9 @@
  * decides with the owner predicate every catalog operation decides with
  * (`owner-predicate.ts`): the owner of the resource, or the kind's operator
  * scope. `bureau.tasks:read` lets another principal attach. `bureau.tasks:write`
- * lets it cancel a run and answer a human-input wait, and no more: only the
+ * lets it cancel a run and answer a human-input wait, and no more (the answer is
+ * acknowledged with `RUN_STARTED` and `RUN_FINISHED` alone, never the thread or the
+ * run's output, which only an attach reads): only the
  * thread's owner starts a run on an existing thread (a cross-owner start is
  * `THREAD_NOT_FOUND`), and only the owner answers a tool approval (a resume that
  * includes one is `INTERRUPT_NOT_FOUND`, before anything is resolved), because
@@ -420,6 +422,14 @@ export function createAgUiMount(
         ownerOfReview: (reviewId) => authorization.ownerOf({ kind: 'review', id: reviewId }),
         refuse,
       });
+      // The attach route's own predicate: a write scope alone answers, and reads nothing.
+      // Read alongside the resume rather than ahead of it, and a read that fails reads as no
+      // access, so the caller is told no more than it was.
+      const mayRead = authorization.ownerOf({ kind: 'session', id: input.threadId }).then(
+        (sessionOwner) =>
+          sessionOwner !== undefined && may(principal, sessionOwner, 'bureau.tasks:read'),
+        () => false,
+      );
       return resumeRun({
         threadId: input.threadId,
         runId: input.runId,
@@ -427,6 +437,7 @@ export function createAgUiMount(
         entries: input.resume,
         principal,
         owner,
+        mayRead,
       });
     }
     // Only the thread's owner starts a run on a thread that exists: a start adds to

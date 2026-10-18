@@ -992,6 +992,9 @@ describe('the AG-UI routes owner predicate', () => {
       expect(readerCancel.status).toBe(404);
       expect(writerAttach[0]!.event).toMatchObject({ code: 'RUN_NOT_FOUND' });
       expect(writerCancel.status).toBe(200);
+      // What a writer is told of the run it cancelled is its id and status, nothing of the thread.
+      const cancelled = (await writerCancel.json()) as Record<string, unknown>;
+      expect(Object.keys(cancelled).toSorted()).toEqual(['runId', 'status']);
     });
   });
 

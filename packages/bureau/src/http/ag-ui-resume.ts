@@ -37,7 +37,7 @@
  * @module ag-ui-resume
  */
 
-import type { Event, ResumeEntry } from '@ag-ui/core';
+import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { buildSignalContinuationInput, renderSignalContinuation } from '@lostgradient/operative';
 import {
@@ -52,6 +52,7 @@ import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-w
 import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
 import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
 import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
+import { eventsResponse } from './ag-ui-sink.ts';
 import {
   interruptibleReviews,
   openRunStream,
@@ -59,7 +60,7 @@ import {
   runIsGoing,
   type AgUiStreamEnvironment,
 } from './ag-ui-stream.ts';
-import type { AgUiErrorCode } from './ag-ui-vocabulary.ts';
+import { type AgUiErrorCode, stamp } from './ag-ui-vocabulary.ts';
 import type { OwnerAccessPredicate } from './owner-predicate.ts';
 
 /** The version of the resume command's contract the ledger keys on. */
@@ -116,6 +117,12 @@ export type ResumeRequest = {
   readonly entries: ReadonlyArray<ResumeEntry>;
   readonly principal: Principal;
   readonly owner: string;
+  /**
+   * Whether the caller may read the thread, by the predicate the attach route uses (its owner,
+   * or `bureau.tasks:read`). A caller who may only write answers a human wait and is told no more
+   * than that the answer was applied.
+   */
+  readonly mayRead: Promise<boolean>;
 };
 
 const CANCELLED_REASON = 'cancelled by the client';
@@ -174,6 +181,31 @@ export function createResume(context: ResumeContext) {
   >();
 
   /**
+   * What a caller who may write but not read is told: its answer was applied, and nothing of
+   * the thread or the run. Only the ids the caller supplied, and the end of the command.
+   */
+  function acknowledgement(request: ResumeRequest): Response {
+    const context = { now: () => runtime.clock.now() };
+    return eventsResponse([
+      stamp(
+        { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
+        context,
+        { durable: false },
+      ),
+      stamp(
+        {
+          type: EventType.RUN_FINISHED,
+          threadId: request.threadId,
+          runId: request.runId,
+          outcome: { type: 'success' },
+        },
+        context,
+        { durable: false },
+      ),
+    ]);
+  }
+
+  /**
    * The stream for a resume that has an answer. A run the resume just created is
    * the client's to read from its first event, behind a replay of the call it
    * approved; any other stream, a retry's included, attaches to the run as it
@@ -181,12 +213,14 @@ export function createResume(context: ResumeContext) {
    */
   function streamFor(
     request: ResumeRequest,
+    mayRead: boolean,
     result: ResumeResult,
     fresh?: {
       readonly prelude?: () => Event[];
       readonly answerRows?: ReadonlyArray<{ readonly id: string; readonly content: string }>;
     },
   ): Response {
+    if (!mayRead) return acknowledgement(request);
     const started = fresh?.prelude !== undefined;
     return openRunStream(environment, {
       threadId: request.threadId,
@@ -335,14 +369,14 @@ export function createResume(context: ResumeContext) {
       }
       const answered = await running.work;
       if ('code' in answered) return context.refuse(answered.code, answered.message);
-      return streamFor(request, answered.result);
+      return streamFor(request, await request.mayRead, answered.result);
     }
     const work = settle(request, reviews, identity, digest, key);
     inFlight.set(key, { digest, work });
     try {
       const outcome = await work;
       if ('code' in outcome) return context.refuse(outcome.code, outcome.message);
-      return await streamForSettled(request, reviews, outcome);
+      return await streamForSettled(request, await request.mayRead, reviews, outcome);
     } finally {
       inFlight.delete(key);
     }
@@ -351,10 +385,11 @@ export function createResume(context: ResumeContext) {
   /** The stream of an answer: a fresh one gets what the client has not seen, any other attaches to the run as it stands. */
   async function streamForSettled(
     request: ResumeRequest,
+    mayRead: boolean,
     reviews: ReadonlyMap<string, PendingReview>,
     { result, applied }: Settled,
   ): Promise<Response> {
-    if (!applied) return streamFor(request, result);
+    if (!applied) return streamFor(request, mayRead, result);
     // Whether this attempt, or an attempt it took over, put the entry's answer to work.
     const delivered = (entry: ResumeEntry): boolean =>
       result.recovered === true ||
@@ -365,12 +400,15 @@ export function createResume(context: ResumeContext) {
             (result.takenOver === true && outcome.outcome === 'no-op')),
       );
     if (result.mode === 'continued') {
-      return streamFor(request, result, { answerRows: answerRowsOf(request, reviews, delivered) });
+      return streamFor(request, mayRead, result, {
+        answerRows: answerRowsOf(request, reviews, delivered),
+      });
     }
-    if (result.mode !== 'created' || result.recovered === true) return streamFor(request, result);
+    if (result.mode !== 'created' || result.recovered === true)
+      return streamFor(request, mayRead, result);
     const session = await bureau.getSession(request.threadId);
     const executed = executedArguments(request, reviews, delivered);
-    return streamFor(request, result, {
+    return streamFor(request, mayRead, result, {
       prelude: () =>
         [...reviews.values()].flatMap((review) =>
           review.kind === 'tool-approval'

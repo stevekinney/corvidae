@@ -186,3 +186,13 @@ export function createAgUiSink(options: AgUiSinkOptions): AgUiSink {
 export function singleEventResponse(event: Event): Response {
   return new Response(frameText(event, undefined), { headers: AG_UI_RESPONSE_HEADERS });
 }
+
+/**
+ * A stream of fixed events that ends: how a caller who may answer but not read is told its
+ * answer was applied, with no thread or run content in it.
+ */
+export function eventsResponse(events: readonly Event[]): Response {
+  return new Response(events.map((event) => frameText(event, undefined)).join(''), {
+    headers: AG_UI_RESPONSE_HEADERS,
+  });
+}

@@ -76,6 +76,10 @@ export const CREDENTIALS: Record<
   'bob-key': { subject: 'bob', scopes: [] },
   'reader-key': { subject: 'reader', scopes: ['bureau.tasks:read'] },
   'writer-key': { subject: 'writer', scopes: ['bureau.tasks:write'] },
+  'writer-reader-key': {
+    subject: 'writer-reader',
+    scopes: ['bureau.tasks:read', 'bureau.tasks:write'],
+  },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
 };
 

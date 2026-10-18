@@ -897,6 +897,91 @@ describe('resuming a human wait', () => {
   });
 });
 
+describe('a human wait answered by a caller who may write but not read', () => {
+  const options = {
+    script: [askHuman, say('Thanks for the answer.')],
+    humanInput: true,
+    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    authentication,
+  };
+  const answer = { decision: 'approve', answer: 'the secret answer' } as const;
+  const READ_TYPES = new Set<string>([
+    EventType.MESSAGES_SNAPSHOT,
+    EventType.STATE_SNAPSHOT,
+    EventType.TEXT_MESSAGE_START,
+    EventType.TEXT_MESSAGE_CONTENT,
+    EventType.TEXT_MESSAGE_END,
+    EventType.TOOL_CALL_START,
+    EventType.TOOL_CALL_ARGS,
+    EventType.TOOL_CALL_END,
+    EventType.TOOL_CALL_RESULT,
+    EventType.STEP_STARTED,
+    EventType.STEP_FINISHED,
+  ]);
+
+  it('delivers the answer and is told only that it was applied, with nothing of the thread in the stream', async () => {
+    await withHarness(options, async ({ handler, bureau, generate }) => {
+      const first = await startUntilInterrupted(handler, as('alice-key'));
+
+      const response = await handler(
+        resumeRequest([resolved(first.interruptIds[0]!, answer)], as('writer-key')),
+      );
+      const bytes = await response.clone().text();
+      const frames = await readAgUiStream(response);
+
+      expect(typesOf(frames)).toEqual([EventType.RUN_STARTED, EventType.RUN_FINISHED]);
+      expect(frames.some((frame) => READ_TYPES.has(frame.event.type))).toBe(false);
+      expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      for (const text of ['hello', 'Asking.', 'Thanks for the answer.', 'the secret answer']) {
+        expect(bytes).not.toContain(text);
+      }
+      // The answer was delivered: the run went on with it.
+      await waitForCondition(
+        () => bureau.getRun(first.nativeRunId)?.status === 'completed',
+        'the run did not continue',
+      );
+      const continuation = generate.calls.at(-1)!.context.conversation;
+      expect(JSON.stringify(continuation.getMessages())).toContain('the secret answer');
+    });
+  });
+
+  it('is told the same on a retry of the same answer', async () => {
+    await withHarness(options, async ({ handler }) => {
+      const first = await startUntilInterrupted(handler, as('alice-key'));
+      const entries = [resolved(first.interruptIds[0]!, answer)];
+      await readAgUiStream(await handler(resumeRequest(entries, as('writer-key'))));
+
+      const retry = await readAgUiStream(
+        await handler(resumeRequest(entries, as('writer-key'), 'client-run-3')),
+      );
+
+      expect(typesOf(retry)).toEqual([EventType.RUN_STARTED, EventType.RUN_FINISHED]);
+    });
+  });
+
+  it('gets the full stream once it may read as well', async () => {
+    await withHarness(options, async ({ handler }) => {
+      const first = await startUntilInterrupted(handler, as('alice-key'));
+
+      const frames = await readAgUiStream(
+        await handler(
+          resumeRequest([resolved(first.interruptIds[0]!, answer)], as('writer-reader-key')),
+        ),
+      );
+
+      expect(typesOf(frames).slice(0, 3)).toEqual([
+        EventType.RUN_STARTED,
+        EventType.MESSAGES_SNAPSHOT,
+        EventType.STATE_SNAPSHOT,
+      ]);
+      expect(frames.some((frame) => frame.event.type === EventType.TEXT_MESSAGE_CONTENT)).toBe(
+        true,
+      );
+      expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+    });
+  });
+});
+
 /** A promise a test settles by hand, so a call can be held at a named point. */
 function barrier() {
   let release!: () => void;
