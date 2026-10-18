@@ -5,7 +5,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { textValueStore } from '@lostgradient/weft';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createMemoryStorageFixture } from '../test/storage-fixtures.ts';
 import { AG_UI_LEASE_KEY_PREFIX, createAgUiLeases, DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
@@ -16,6 +16,7 @@ async function withLeases<T>(
     leases: ReturnType<typeof createAgUiLeases>;
     other: ReturnType<typeof createAgUiLeases>;
     keys: () => Promise<string[]>;
+    kv: ReturnType<typeof textValueStore>;
   }) => Promise<T>,
 ): Promise<T> {
   const fixture = createMemoryStorageFixture();
@@ -29,6 +30,7 @@ async function withLeases<T>(
       leases: createAgUiLeases({ kv, runtime }),
       other: createAgUiLeases({ kv, runtime: otherRuntime }),
       keys: () => kv.list(`${AG_UI_LEASE_KEY_PREFIX}:`),
+      kv,
     });
   } finally {
     await fixture.dispose();
@@ -99,6 +101,55 @@ describe('a lease', () => {
 
       expect(runtime.pendingTimers()).toHaveLength(0);
       expect(await leases.acquire('resume', 'key')).toBeDefined();
+    });
+  });
+
+  it('is gone once released, even when a renewal was already under way', async () => {
+    await withLeases(async ({ runtime, leases, other, keys, kv }) => {
+      // Claimed on the clock this test moves, so a renewal writes a record that differs
+      // from the one it replaces (as one made later does).
+      const held = await other.acquire('thread', 'thread-1');
+      await runtime.advance(1000);
+      const write = kv.conditionalBatch.bind(kv);
+      const renewalWriting = Promise.withResolvers<void>();
+      const renewalMayLand = Promise.withResolvers<void>();
+      const deleteMayLand = Promise.withResolvers<void>();
+      let writes = 0;
+      // A slow store: the renewal's write is held mid-flight, and so is the write a
+      // release makes, so each can be made to land after the other has read.
+      spyOn(kv, 'conditionalBatch').mockImplementation(async (conditions, operations) => {
+        writes += 1;
+        if (writes === 1) {
+          renewalWriting.resolve();
+          await renewalMayLand.promise;
+        } else if (writes === 2) {
+          await deleteMayLand.promise;
+        }
+        return write(conditions, operations);
+      });
+
+      const renewing = held!.renew();
+      await renewalWriting.promise;
+      const releasing = held!.release();
+      // Long enough for a release that does not wait to have read the record the renewal
+      // is about to replace.
+      for (let turn = 0; turn < 3; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+      renewalMayLand.resolve();
+      await renewing;
+      deleteMayLand.resolve();
+      await releasing;
+
+      expect(await keys()).toEqual([]);
+      expect(await leases.acquire('thread', 'thread-1')).toBeDefined();
+    });
+  });
+
+  it('cannot be renewed after it was released', async () => {
+    await withLeases(async ({ leases }) => {
+      const held = await leases.acquire('thread', 'thread-1');
+      await held!.release();
+
+      expect(await held!.renew()).toBe(false);
     });
   });
 });

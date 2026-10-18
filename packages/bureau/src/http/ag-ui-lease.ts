@@ -115,8 +115,19 @@ export function createAgUiLeases(options: {
         if (!taken) continue;
 
         let lost = false;
-        const renew = async (): Promise<boolean> => {
-          if (lost) return false;
+        let released = false;
+        // Renewal and release read the record and then compare-and-swap against what
+        // they read, so one running while the other reads would lose its swap (a
+        // release that deletes the record a renewal has just replaced leaves the lease
+        // standing). They run one after another, in the order they were asked.
+        let queue: Promise<unknown> = Promise.resolve();
+        const serialized = <T>(operation: () => Promise<T>): Promise<T> => {
+          const run = queue.then(operation, operation);
+          queue = run.catch(() => undefined);
+          return run;
+        };
+        const renewOnce = async (): Promise<boolean> => {
+          if (lost || released) return false;
           const current = await kv.get(key);
           const held = current === null ? undefined : parse(current);
           if (current === null || held?.claimant !== claimant) {
@@ -134,19 +145,26 @@ export function createAgUiLeases(options: {
         // renewal that fails marks the lease lost, and the next explicit renew says so.
         const interval = runtime.timers.setInterval(
           () => {
-            void renew().catch(() => {
+            void serialized(renewOnce).catch(() => {
               lost = true;
             });
           },
           Math.max(1, Math.floor(leaseMs / 3)),
         );
         return {
-          renew,
-          async release() {
+          renew: () => serialized(renewOnce),
+          release() {
+            released = true;
             runtime.timers.clearInterval(interval);
-            const current = await kv.get(key);
-            if (current === null || parse(current)?.claimant !== claimant) return;
-            await kv.conditionalBatch([{ key, expectedValue: current }], [{ type: 'delete', key }]);
+            // After any renewal already under way, so the record it leaves is the one deleted.
+            return serialized(async () => {
+              const current = await kv.get(key);
+              if (current === null || parse(current)?.claimant !== claimant) return;
+              await kv.conditionalBatch(
+                [{ key, expectedValue: current }],
+                [{ type: 'delete', key }],
+              );
+            });
           },
         };
       }
