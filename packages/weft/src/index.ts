@@ -385,3 +385,5 @@ export {
 } from './core/task-ledger/task-ledger.ts';
 export { createLiveOperationRegistry } from './server/rest-bindings.ts';
 export type { LiveOperationRegistryOptions } from './server/rest-bindings.ts';
+
+export * from './document-workflow/index.ts';

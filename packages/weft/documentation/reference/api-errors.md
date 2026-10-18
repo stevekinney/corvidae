@@ -193,3 +193,4 @@ These classes are exported from the package root but extend plain `Error`, so `i
 | `WeftWorkflowCheckpointConflictWarning`   | `core/engine/checkpoint-conflict-error.ts` |
 | `WeftWorkflowClaimLostWarning`            | `core/engine/lease-deposition.ts`          |
 | `WeftWorkflowWakeDiscardedWarning`        | `core/engine/lease-deposition.ts`          |
+| `WorkflowDocumentValidationError`         | `document-workflow/document.ts`            |
