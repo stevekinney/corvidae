@@ -15,17 +15,18 @@ import {
   type BureauReviewsOperationHost,
   bureauReviewsOperations,
   projectReview,
-  reviewerPrincipal,
 } from './bureau-reviews-operations.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
 const credentials = { 'X-API-Key': API_KEY };
+/** One caller, `tester`, who owns what the stubbed reviews' run belongs to. */
 const authentication = {
-  apiKeys: [API_KEY],
-  defaultApiKeyScopes: [...BUREAU_SCOPES],
+  resolveApiKeyPrincipal: async (key: string) =>
+    key === API_KEY ? principalFromApiKey({ subject: 'tester', scopes: [] }) : null,
   auditSink: silent,
 };
 
@@ -76,6 +77,10 @@ function stubHost(
   overrides: Partial<BureauReviewsOperationHost['reviews']> = {},
   record: ResolveReviewInput[] = [],
 ) {
+  const ownership: BureauReviewsOperationHost['ownership'] = {
+    runOwner: async (runId) => (runId === 'run-1' ? 'api-key:tester' : undefined),
+    mayAccess: mayAccessOwnedResource,
+  };
   const reviews: BureauReviewsOperationHost['reviews'] = {
     listPendingReviews: () => [toolApprovalReview()],
     getReview: async (id) =>
@@ -88,7 +93,7 @@ function stubHost(
     },
     ...overrides,
   };
-  return { reviews };
+  return { reviews, ownership };
 }
 
 function serve(
@@ -271,7 +276,7 @@ describe('bureau.reviews.resolve', () => {
       receipt: 'applied',
     });
     expect(record).toEqual([
-      { id: 'approval:run-1:call-1', decision: 'approve', principal: 'api-key:api-key-caller' },
+      { id: 'approval:run-1:call-1', decision: 'approve', principal: 'api-key:tester' },
     ]);
   });
 
@@ -293,7 +298,9 @@ describe('bureau.reviews.resolve', () => {
     });
 
     expect(record[0]?.principal).toBe('api-key:ops%20user%2F1%3Aa');
-    expect(reviewerPrincipal('ops user/1:a')).toBe('api-key:ops%20user%2F1%3Aa');
+    expect(ownerOfPrincipal(principalFromApiKey({ subject: 'ops user/1:a', scopes: [] }))).toBe(
+      'api-key:ops%20user%2F1%3Aa',
+    );
   });
 
   it('rejects a principal in the payload', async () => {
@@ -468,7 +475,7 @@ describe('the reviews operations against a real Bureau', () => {
       humanInput: true,
       stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
     });
-    const run = await bureau.createRun({ message: 'park-me' });
+    const run = await bureau.createRun({ message: 'park-me', principal: 'api-key:tester' });
     await waitForCondition(
       () => bureau.listPendingReviews().some((review) => review.runId === run.id),
       'expected requestHumanInput to park and surface a pending review',
@@ -530,7 +537,7 @@ describe('the reviews operations against a real Bureau', () => {
 
       expect(resolved.result).toMatchObject({ decision: 'reject', receipt: 'applied' });
       const records = JSON.stringify(await bureau.auditTrail?.query({}));
-      expect(records).toContain('api-key:api-key-caller');
+      expect(records).toContain('api-key:tester');
     } finally {
       await bureau.dispose();
     }

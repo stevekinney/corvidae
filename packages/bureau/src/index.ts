@@ -410,6 +410,7 @@ export type {
   IdentityConfiguration,
   LoadedSkill,
   LocateRunCreationReceiptRequest,
+  OwnedResource,
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
@@ -437,6 +438,7 @@ export type {
   ToolPolicy,
   ToolSummary,
 } from './types';
+export { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 export {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,

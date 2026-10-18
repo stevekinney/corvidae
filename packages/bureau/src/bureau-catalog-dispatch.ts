@@ -27,6 +27,7 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { ownerOrLocal } from './owner-of-record';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import type { BureauRunOptions } from './types';
@@ -342,7 +343,7 @@ export function createCatalogDispatcher({
         goalAttemptAttributions.get(held)?.goalRunId === goalAttempt.goalRunId &&
         goalAttemptAttributions.get(held)?.attemptIndex === goalAttempt.attemptIndex &&
         held.agentName === name &&
-        held.principal === principal;
+        held.principal === ownerOrLocal(principal);
       if (held !== undefined && !sameAttempt) {
         throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
       }
@@ -357,26 +358,26 @@ export function createCatalogDispatcher({
     // existed would otherwise be a permanent phantom. A run that DOES
     // dispatch and settle keeps its attribution indefinitely (see
     // `trackCatalogRun`'s own doc comment) — it is not cleaned up here.
-    let ownAttribution: RunAttribution | undefined;
-    if (principal !== undefined) {
-      const retained = runIdOverride === undefined ? undefined : runAttribution.get(runId);
-      if (retained !== undefined) {
-        // The same attempt's retry (any other holder threw above): it takes a
-        // share of the held object rather than replacing it.
-        ownAttribution = retained;
-      } else {
-        ownAttribution = { agentName: name, principal };
-        runAttribution.set(runId, ownAttribution);
-        if (goalAttempt !== undefined) goalAttemptAttributions.set(ownAttribution, goalAttempt);
-      }
-      attributionHolders.set(ownAttribution, (attributionHolders.get(ownAttribution) ?? 0) + 1);
+    const retained = runIdOverride === undefined ? undefined : runAttribution.get(runId);
+    let ownAttribution: RunAttribution;
+    if (retained !== undefined) {
+      // The same attempt's retry (any other holder threw above): it takes a
+      // share of the held object rather than replacing it.
+      ownAttribution = retained;
+    } else {
+      // COR-718: every run has an owner, so a dispatch with no principal is
+      // owned by `anonymous:local` rather than left without an attribution.
+      ownAttribution = { agentName: name, principal: ownerOrLocal(principal) };
+      runAttribution.set(runId, ownAttribution);
+      if (goalAttempt !== undefined) goalAttemptAttributions.set(ownAttribution, goalAttempt);
     }
+    attributionHolders.set(ownAttribution, (attributionHolders.get(ownAttribution) ?? 0) + 1);
     // Lets go of this execution's share, once. The entry is deleted only when
     // the map still holds the very object this execution holds and no other
     // execution of the attempt does.
     let attributionReleased = false;
     const releaseAttribution = (): void => {
-      if (ownAttribution === undefined || attributionReleased) return;
+      if (attributionReleased) return;
       attributionReleased = true;
       const remaining = (attributionHolders.get(ownAttribution) ?? 1) - 1;
       attributionHolders.set(ownAttribution, remaining);

@@ -9,10 +9,12 @@
  *
  * ## Authorization
  *
- * Each operation takes an optional `principal`, compared with the one the goal
- * was created under exactly as `bureau.children` compares them: omitting it is
- * a trusted, internal call, and a mismatch reads as `not-found`, so a caller
- * cannot tell "wrong id" from "not yours".
+ * Each operation takes an optional `principal`, compared with the goal's owner of
+ * record exactly as `bureau.children` compares them: omitting it is a trusted,
+ * internal call, and a mismatch reads as `not-found`, so a caller cannot tell
+ * "wrong id" from "not yours". The owner is the create request's `principal`, or
+ * `anonymous:local` when it states none; a record stored without one reads the
+ * same way.
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -54,6 +56,7 @@ import type {
   BureauGoalRequest,
   BureauGoals,
 } from './goal-types';
+import { ownerOrLocal } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 
 export interface BureauGoalsDependencies extends GoalControlDependencies {
@@ -104,7 +107,9 @@ function configurationOf(state: GoalState): string {
     state.conversationPolicy,
     state.retryPolicy ?? null,
     state.bounds,
-    state.principal ?? null,
+    // A record stored without an owner reads as `anonymous:local`, so a repeat of the
+    // request that created it is still the same request.
+    ownerOrLocal(state.principal),
   ]);
 }
 
@@ -206,7 +211,12 @@ export function createBureauGoals<TName extends string = string>(
             conversationPolicy === undefined ? { kind: 'continue' } : conversationPolicy,
           retryPolicy: request.retryPolicy,
           bounds: request.bounds,
-          principal: request.principal,
+          // The goal's owner of record, stored once. A request with no principal
+          // is owned by `anonymous:local`. The request is untyped input, so a
+          // principal that is not text passes through `ownerOrLocal` unchanged and
+          // `createGoalState` refuses it with `principalDefect`, before anything
+          // is stored.
+          principal: ownerOrLocal(request.principal),
           now: clock.nowISO(),
         }),
       };

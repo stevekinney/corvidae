@@ -94,82 +94,95 @@ export type BureauEventsOperationHost = {
   readonly runtime?: Pick<RuntimeServices, 'identifiers'>;
 };
 
-export const bureauEventsSubscriptionOperation = defineOperation<
-  typeof bureauEventsSubscriptionInput,
-  typeof bureauEventsSubscriptionEnvelope,
-  typeof bureauEventEnvelopeSchema,
-  BureauEventsOperationHost
->({
-  name: 'bureau.events',
-  mcpExposable: false,
-  kind: 'subscription',
-  summary: 'Subscribe to a bureau’s lifecycle events with replay-from-cursor',
-  description:
-    'Replays the bureau’s events from `fromCursor` (or the beginning) and then follows live. Covers registration, recovery, disposal, and review lifecycle; supervisor task and synthesis events are not published. Requires `events:read`.',
-  destructive: false,
-  tags: ['Events'],
-  inputSchema: bureauEventsSubscriptionInput,
-  outputSchema: bureauEventsSubscriptionEnvelope,
-  producibleFaults: ['InvalidParams', 'NotFound'],
-  eventSchema: bureauEventEnvelopeSchema,
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['events:read'] } },
-  discoverable: true,
-  // WebSocket for a session that holds a socket, and HTTP for a fetch handler
-  // that cannot accept one: `GET /v1/subscriptions/bureau.events` streams the
-  // feed as Server-Sent Events and resumes through `Last-Event-ID`.
-  transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
-  unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: ({ input, host }) => {
-    try {
-      const runtime = host.runtime ?? createDefaultRuntimeServices();
-      const bureauFeed = host.bureauFeeds.get(input.bureauId);
-      if (bureauFeed === undefined) {
-        // An unknown bureau is a caller error: it may have been disposed
-        // between listing it and subscribing.
-        // A typed fault, which the catalog pipeline passes through intact.
-        const notFound: OperationFault = {
-          code: 'NotFound',
-          message: `Unknown bureau "${input.bureauId}"`,
-          data: { resource: 'bureau', identifier: input.bureauId },
+/**
+ * The scope that gates the feed. Weft's `events:read` is the general reader of
+ * every event feed; `bureau.events:observe-all` is the Bureau operator scope
+ * for the fleet-wide feed, which `createBureauHandler` requires instead.
+ */
+export type BureauEventsAccessScope = 'events:read' | 'bureau.events:observe-all';
+
+/** Define `bureau.events`, gated by `scope`. */
+export function defineBureauEventsSubscriptionOperation(scope: BureauEventsAccessScope) {
+  return defineOperation<
+    typeof bureauEventsSubscriptionInput,
+    typeof bureauEventsSubscriptionEnvelope,
+    typeof bureauEventEnvelopeSchema,
+    BureauEventsOperationHost
+  >({
+    name: 'bureau.events',
+    mcpExposable: false,
+    kind: 'subscription',
+    summary: 'Subscribe to a bureau’s lifecycle events with replay-from-cursor',
+    description: `Replays the bureau’s events from \`fromCursor\` (or the beginning) and then follows live. Covers registration, recovery, disposal, and review lifecycle; supervisor task and synthesis events are not published. Requires \`${scope}\`.`,
+    destructive: false,
+    tags: ['Events'],
+    inputSchema: bureauEventsSubscriptionInput,
+    outputSchema: bureauEventsSubscriptionEnvelope,
+    producibleFaults: ['InvalidParams', 'NotFound'],
+    eventSchema: bureauEventEnvelopeSchema,
+    access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: [scope] } },
+    discoverable: true,
+    // WebSocket for a session that holds a socket, and HTTP for a fetch handler
+    // that cannot accept one: `GET /v1/subscriptions/bureau.events` streams the
+    // feed as Server-Sent Events and resumes through `Last-Event-ID`.
+    transports: { http: true, jsonRpcHttp: false, jsonRpcWebSocket: true, jsonRpcStdio: false },
+    unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+    invoke: ({ input, host }) => {
+      try {
+        const runtime = host.runtime ?? createDefaultRuntimeServices();
+        const bureauFeed = host.bureauFeeds.get(input.bureauId);
+        if (bureauFeed === undefined) {
+          // An unknown bureau is a caller error: it may have been disposed
+          // between listing it and subscribing.
+          // A typed fault, which the catalog pipeline passes through intact.
+          const notFound: OperationFault = {
+            code: 'NotFound',
+            message: `Unknown bureau "${input.bureauId}"`,
+            data: { resource: 'bureau', identifier: input.bureauId },
+          };
+          throw notFound;
+        }
+
+        // Only the session's own signal: the feed binds its own lifetime into
+        // every subscription, so disposing the bureau ends this one too.
+        const controller = new AbortController();
+        // Normalized here rather than by a schema `.transform()`, so `invoke`
+        // behaves identically whether it is reached through the catalog pipeline
+        // or called directly.
+        const kinds =
+          input.kinds === undefined
+            ? undefined
+            : new Set<string>(Array.isArray(input.kinds) ? input.kinds : [input.kinds]);
+        const subscribeOptions: ReplayLiveSubscribeOptions<BureauEventEnvelope> = {
+          ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
+          signal: controller.signal,
+          replayLimit: MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS,
+          // No `countReplayEnvelope`: the feed filters before counting, so the
+          // cap already measures matching events.
+          filterEnvelope: (envelope) => kinds === undefined || kinds.has(envelope.kind),
         };
-        throw notFound;
+        const iterable = createReplayAwareClosableIterable<BureauEventEnvelope>(
+          (onReplayComplete) =>
+            bureauFeed.feed.subscribe({ ...subscribeOptions, onReplayComplete }),
+          { close: () => controller.abort() },
+        );
+
+        return Promise.resolve({
+          envelope: {
+            subscriptionId: `sub_${runtime.identifiers.next('bureau-subscription')}`,
+            cursor: input.fromCursor ?? '-1',
+          },
+          iterable,
+          close: () => iterable.close(),
+        });
+      } catch (error) {
+        return Promise.resolve().then(() => {
+          throw error;
+        });
       }
+    },
+  });
+}
 
-      // Only the session's own signal: the feed binds its own lifetime into
-      // every subscription, so disposing the bureau ends this one too.
-      const controller = new AbortController();
-      // Normalized here rather than by a schema `.transform()`, so `invoke`
-      // behaves identically whether it is reached through the catalog pipeline
-      // or called directly.
-      const kinds =
-        input.kinds === undefined
-          ? undefined
-          : new Set<string>(Array.isArray(input.kinds) ? input.kinds : [input.kinds]);
-      const subscribeOptions: ReplayLiveSubscribeOptions<BureauEventEnvelope> = {
-        ...(input.fromCursor === undefined ? {} : { fromCursor: input.fromCursor }),
-        signal: controller.signal,
-        replayLimit: MAX_BUREAU_SUBSCRIPTION_REPLAY_EVENTS,
-        // No `countReplayEnvelope`: the feed filters before counting, so the
-        // cap already measures matching events.
-        filterEnvelope: (envelope) => kinds === undefined || kinds.has(envelope.kind),
-      };
-      const iterable = createReplayAwareClosableIterable<BureauEventEnvelope>(
-        (onReplayComplete) => bureauFeed.feed.subscribe({ ...subscribeOptions, onReplayComplete }),
-        { close: () => controller.abort() },
-      );
-
-      return Promise.resolve({
-        envelope: {
-          subscriptionId: `sub_${runtime.identifiers.next('bureau-subscription')}`,
-          cursor: input.fromCursor ?? '-1',
-        },
-        iterable,
-        close: () => iterable.close(),
-      });
-    } catch (error) {
-      return Promise.resolve().then(() => {
-        throw error;
-      });
-    }
-  },
-});
+export const bureauEventsSubscriptionOperation =
+  defineBureauEventsSubscriptionOperation('events:read');

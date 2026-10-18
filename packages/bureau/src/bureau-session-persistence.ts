@@ -6,7 +6,12 @@ import {
   createConversationHistory,
 } from 'conversationalist';
 
-import { isPlainAuthorityRecord } from './session-authority';
+import {
+  isPlainAuthorityRecord,
+  resolveSessionOwner,
+  SESSION_OWNER_METADATA_KEY,
+  SessionOwnerConflictError,
+} from './session-authority';
 import type { DiagnosticSink } from './types';
 
 const BUREAU_AGENT_NAME = 'bureau';
@@ -102,6 +107,11 @@ function mergeMetadata(
   return {
     ...current,
     ...metadata,
+    // The session's owner is written once, by the run that created it. A later
+    // save, from any run, never replaces it.
+    ...(current[SESSION_OWNER_METADATA_KEY] !== undefined
+      ? { [SESSION_OWNER_METADATA_KEY]: current[SESSION_OWNER_METADATA_KEY] }
+      : {}),
     ...(metadata['lastRequestAuthorities'] !== undefined
       ? {
           lastRequestAuthorities: {
@@ -234,6 +244,17 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
         existingSession?.incarnation !== expectedIncarnation
       ) {
         return undefined;
+      }
+      // A save that names an owner (the run that creates or continues the
+      // session) must name the one the stored session has: this is decided inside
+      // the atomic update, so a racing save cannot append to another owner's session.
+      const incomingOwner = metadata[SESSION_OWNER_METADATA_KEY];
+      if (
+        existingSession !== undefined &&
+        typeof incomingOwner === 'string' &&
+        resolveSessionOwner(existingSession.metadata) !== incomingOwner
+      ) {
+        throw new SessionOwnerConflictError(sessionId);
       }
       const nextSession =
         existingSession ??

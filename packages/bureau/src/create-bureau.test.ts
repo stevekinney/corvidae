@@ -828,6 +828,7 @@ describe('createBureau', () => {
         agentName: 'bureau',
         conversationHistory: createConversationHistory({ id: sessionId }),
         metadata: {
+          sessionOwner: 'alice',
           lastRequestAuthorities: '😀',
           lastRunOwningPrincipals: sparseOwners,
         },
@@ -912,7 +913,7 @@ describe('createBureau', () => {
     expect(detail?.liveness.owner).toBe('user-42');
   });
 
-  it('AB-88/AB-214: getRun(id).liveness.owner is absent when the run has no authenticated principal', async () => {
+  it('AB-88/AB-214: getRun(id).liveness.owner is anonymous:local when the run has no authenticated principal (COR-718)', async () => {
     const bureau = await createBureau({
       agents: {},
       generate: createMockGenerate(),
@@ -922,7 +923,7 @@ describe('createBureau', () => {
     const summary = await bureau.createRun({ message: 'Hello' });
     const detail = bureau.getRun(summary.id);
 
-    expect(detail?.liveness.owner).toBeUndefined();
+    expect(detail?.liveness.owner).toBe('anonymous:local');
   });
 
   it('AB-88/AB-214: subscribeRunSnapshot delivers the current snapshot synchronously, then live updates', async () => {
@@ -6981,12 +6982,10 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     }
   });
 
-  it('admits an open session (no recorded authority) for any principal through the real mailbox (COR-435)', async () => {
-    // Renamed from "returns unsupported-capability for an open session
-    // (no recorded authority) with any principal" for the same reason as
-    // the test above: this configuration now composes a real mailbox, so
-    // an authorized (here: unconditionally, since the session is "open")
-    // request reaches 'admitted'.
+  it('admits only anonymous:local to a session with no recorded owner, through the real mailbox (COR-435, COR-718)', async () => {
+    // A session persisted before owners existed reads as owned by
+    // anonymous:local (COR-718): it admits that owner through the real
+    // mailbox and answers every other principal as a session that is not there.
     const storage = await resolveStorage({ type: 'memory' });
     const sessionStore = createSessionStore(textValueStore(storage));
     await sessionStore.save(
@@ -7009,12 +7008,18 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       durableExecution: true,
     });
     try {
-      const outcome = await bureau.submitSessionInput('session-open', {
+      const stranger = await bureau.submitSessionInput('session-open', {
         principal: 'anyone-at-all',
         deliveryMode: 'steer',
         payload: 'hello',
       });
-      expect(outcome.outcome).toBe('admitted');
+      expect(stranger).toEqual({ outcome: 'not-found' });
+      const owner = await bureau.submitSessionInput('session-open', {
+        principal: 'anonymous:local',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect(owner.outcome).toBe('admitted');
     } finally {
       await bureau.dispose();
     }
@@ -7027,7 +7032,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
    * write has pruned its own authority entry while A's entry and liveness
    * remain, which is the exact shape the singular-field checks misread.
    */
-  async function createConcurrentRunSession(principalB: string): Promise<{
+  async function createConcurrentRunSession(): Promise<{
     bureau: Bureau;
     runA: { id: string; sessionId: string };
     releaseRunB: PromiseWithResolvers<void>;
@@ -7052,7 +7057,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       const runA = await bureau.createRun({ message: 'go A', principal: 'alice' });
       const runB = await bureau.createRun({
         message: 'go B',
-        principal: principalB,
+        principal: 'alice',
         sessionId: runA.sessionId,
       });
 
@@ -7090,7 +7095,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
   }
 
   it('admits the same principal while its other run on the session is still live (COR-301)', async () => {
-    const { bureau, runA, releaseRunB } = await createConcurrentRunSession('alice');
+    const { bureau, runA, releaseRunB } = await createConcurrentRunSession();
     try {
       const outcome = await bureau.submitSessionInput(runA.sessionId, {
         principal: 'alice',
@@ -7104,8 +7109,8 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     }
   });
 
-  it("authorizes the sole live run's principal, not the finished concurrent run's (COR-301)", async () => {
-    const { bureau, runA, releaseRunB } = await createConcurrentRunSession('bob');
+  it("authorizes the session's owner, and no one else, while a concurrent run has finished (COR-301, COR-718)", async () => {
+    const { bureau, runA, releaseRunB } = await createConcurrentRunSession();
     try {
       const alice = await bureau.submitSessionInput(runA.sessionId, {
         principal: 'alice',
@@ -7127,7 +7132,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
     }
   });
 
-  it("authorizes the run live in another process, not this process's finished run (COR-1569)", async () => {
+  it("authorizes the session's owner for the run live in another process, and no one else (COR-1569, COR-718)", async () => {
     // Two Bureaus over one SQLite file, sharing nothing else, as two
     // processes would. Run A stays live in bureau A; run B, on the same
     // session, finishes in bureau B. Bureau B hosts no live run, so only a
@@ -7159,7 +7164,7 @@ describe('createBureau submitSessionInput pre-admission checks (AB-194)', () => 
       ).toBe(true);
       const runB = await bureauB.createRun({
         message: 'go B',
-        principal: 'bob',
+        principal: 'alice',
         sessionId: runA.sessionId,
       });
       await waitForRunSettled(bureauB, runB.id);
@@ -11426,7 +11431,7 @@ describe('createBureau review lifecycle (AB-46)', () => {
         (record) => record.type === 'review.tool-approval.expired',
       );
       expect(expiredRecord).toBeDefined();
-      expect(expiredRecord!.principal).toBe('system:expiry-sweep');
+      expect(expiredRecord!.principal).toBe('system:expiry');
 
       expect(charges).toEqual([]); // never executed
     } finally {
@@ -11881,7 +11886,7 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
     }
   });
 
-  it('sweepExpiredReviews dispatches review.expired live, attributed to system:expiry-sweep', async () => {
+  it('sweepExpiredReviews dispatches review.expired live, attributed to system:expiry', async () => {
     const runtime = createManualRuntimeServices();
     const charges: number[] = [];
     const bureau = await createBureau({
@@ -11934,7 +11939,10 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         expired.push(reviewEventSnapshot(event)),
       );
 
-      const run = await bureau.createRun({ message: 'Charge the customer' });
+      const run = await bureau.createRun({
+        message: 'Charge the customer',
+        principal: 'api-key:alice',
+      });
       await waitForRunCompletion(bureau, run.id);
       const [review] = bureau.listPendingReviews();
       expect(review).toBeDefined();
@@ -11948,9 +11956,17 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
         type: 'review.expired',
         reviewId: review!.id,
         runId: run.id,
-        principal: 'system:expiry-sweep',
+        principal: 'system:expiry',
         kind: 'tool-approval',
       });
+      // COR-718 — expiry is only the actor: the expired review keeps its run's owner.
+      expect(await bureau.getOwner({ kind: 'review', id: review!.id })).toBe('api-key:alice');
+      expect(await bureau.getOwner({ kind: 'audit', runId: run.id })).toBe('api-key:alice');
+      const entries = await bureau.auditTrail?.query({
+        runId: run.id,
+        type: 'review.tool-approval.expired',
+      });
+      expect(entries?.map((entry) => entry.principal)).toEqual(['system:expiry']);
     } finally {
       bureau.dispose();
     }
@@ -15822,7 +15838,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     }
   });
 
-  it('a run dispatched WITHOUT a principal stays denied to any principal after recovery, and readable to a trusted caller that omits one', async () => {
+  it('a run dispatched WITHOUT a principal is owned by anonymous:local after recovery, denied to any other principal, and readable to a trusted caller that omits one', async () => {
     const databasePath = join(
       tmpdir(),
       `bureau-event-history-owner-recovery-open-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
@@ -15864,17 +15880,23 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       try {
         await waitForRunCompletion(bureauB, run.id);
 
-        // No entry is written at all for an unattributed run — never a
-        // present-but-empty/undefined value — matching `runAttribution.set`'s
-        // own conditional-write behavior at dispatch time.
+        // COR-718: an unattributed run is owned by anonymous:local, and that
+        // owner is what the session records.
         const recoveredSession = await bureauB.getSession(run.sessionId);
-        expect(recoveredSession?.metadata['lastRunOwningPrincipals']).toBeUndefined();
+        expect(recoveredSession?.metadata['lastRunOwningPrincipals']).toEqual({
+          [run.id]: 'anonymous:local',
+        });
 
         const withPrincipal = await bureauB.eventHistory(
           { kind: 'run', id: run.id },
           { principal: 'anyone' },
         );
         expect(withPrincipal).toEqual({ outcome: 'not-found' });
+        const asLocal = await bureauB.eventHistory(
+          { kind: 'run', id: run.id },
+          { principal: 'anonymous:local' },
+        );
+        expect('outcome' in asLocal).toBe(false);
 
         const trusted = await bureauB.eventHistory({ kind: 'run', id: run.id });
         if ('outcome' in trusted) {
@@ -15956,23 +15978,23 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       await waitForRunCompletion(bureau, runOne.id);
 
       const runTwo = await bureau.createRun({
-        message: 'Second, as bob',
+        message: 'Second, as alice again',
         sessionId,
-        principal: 'bob',
+        principal: 'alice',
       });
       await waitForRunCompletion(bureau, runTwo.id);
 
       const session = await bureau.getSession(sessionId);
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
         [runOne.id]: 'alice',
-        [runTwo.id]: 'bob',
+        [runTwo.id]: 'alice',
       });
     } finally {
       await bureau.dispose();
     }
   });
 
-  it("authorizes bureau.eventHistory per-run when two principals share one session, proving resolveEventHistory's own runAttribution map — not merely the map-lookup helper — never lets one principal read the other's run (Codex P2 review finding, PR #596)", async () => {
+  it("authorizes bureau.eventHistory per-run when two principals each own a run, proving resolveEventHistory's own runAttribution map — not merely the map-lookup helper — never lets one principal read the other's run (Codex P2 review finding, PR #596)", async () => {
     // Companion to the union-merge test above. `resolvePersistedRunOwningPrincipal`'s
     // unit test proves the MAP LOOKUP is correct for a two-entry map, and
     // the single-run tests throughout `bureau.eventHistory authorization
@@ -16020,17 +16042,16 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
       });
 
       try {
-        const sessionId = 'shared-session-auth';
         const runOne = await bureau.createRun({
           message: 'First, as alice',
-          sessionId,
+          sessionId: 'alice-session-auth',
           principal: 'alice',
         });
         await waitForRunState(bureau, runOne.id);
 
         const runTwo = await bureau.createRun({
           message: 'Second, as bob',
-          sessionId,
+          sessionId: 'bob-session-auth',
           principal: 'bob',
         });
         await waitForRunState(bureau, runTwo.id);
@@ -16088,7 +16109,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     };
   }
 
-  it('lets every principal that owned a finished run read the session-scoped eventHistory, and nobody else (COR-1382)', async () => {
+  it("lets only the session's owner read the session-scoped eventHistory, however many runs it started (COR-1382, COR-718)", async () => {
     const databasePath = join(
       tmpdir(),
       `bureau-session-history-co-owners-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
@@ -16109,12 +16130,19 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         const runB = await bureau.createRun({
           message: 'go B',
           sessionId: runA.sessionId,
-          principal: 'bob',
+          principal: 'alice',
         });
         await waitForRunState(bureau, runB.id);
+        // A different principal cannot add itself to the session's readers by
+        // starting a run on it: that is refused as a session that is not there.
+        expect(
+          await rejectionOf(
+            bureau.createRun({ message: 'go C', sessionId: runA.sessionId, principal: 'bob' }),
+          ),
+        ).toMatchObject({ code: 'NOT_FOUND' });
 
         const verdicts = await sessionHistoryVerdicts(bureau, runA.sessionId);
-        expect(verdicts).toEqual({ alice: 'page', bob: 'page', mallory: 'not-found' });
+        expect(verdicts).toEqual({ alice: 'page', bob: 'not-found', mallory: 'not-found' });
       } finally {
         await bureau.dispose();
       }
@@ -16125,7 +16153,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     }
   });
 
-  it('delivers a session-scoped subscription to every principal that owned a run on the session, matching eventHistory (COR-1382)', async () => {
+  it("delivers a session-scoped subscription to the session's owner, matching eventHistory (COR-1382, COR-718)", async () => {
     const databasePath = join(
       tmpdir(),
       `bureau-session-history-co-owners-subscribe-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
@@ -16146,7 +16174,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         const runB = await bureau.createRun({
           message: 'go B',
           sessionId: runA.sessionId,
-          principal: 'bob',
+          principal: 'alice',
         });
         await waitForRunState(bureau, runB.id);
 
@@ -16186,7 +16214,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     }
   });
 
-  it('lets the owner of a still-live run read the session-scoped eventHistory after a concurrent run on the session finishes (COR-1382)', async () => {
+  it("lets the session's owner read the session-scoped eventHistory after a concurrent run on the session finishes (COR-1382, COR-718)", async () => {
     const databasePath = join(
       tmpdir(),
       `bureau-session-history-co-owners-live-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
@@ -16214,12 +16242,12 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         const runB = await bureau.createRun({
           message: 'go B',
           sessionId: runA.sessionId,
-          principal: 'bob',
+          principal: 'alice',
         });
         await waitForRunState(bureau, runB.id);
 
         const verdicts = await sessionHistoryVerdicts(bureau, runA.sessionId);
-        expect(verdicts).toEqual({ alice: 'page', bob: 'page', mallory: 'not-found' });
+        expect(verdicts).toEqual({ alice: 'page', bob: 'not-found', mallory: 'not-found' });
       } finally {
         releaseRunA.resolve();
         await bureau.dispose();
@@ -16646,7 +16674,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         // Corrupt `lastRequestAuthorities` into a non-record shape — a
         // scalar, exactly the "present but malformed" shape
-        // `lookupSessionAuthority` already distinguishes from absence
+        // the pruner distinguishes from absence
         // elsewhere in this module — while the run's own ownership entry
         // is still a normal candidate once retention advances.
         const sessionStore = bureau.sessionStore;
@@ -16786,7 +16814,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         // Corrupt `lastRequestAuthorities` to a non-record shape (a bare
         // string) — present, not absent, the same "recorded but corrupted"
-        // shape `lookupSessionAuthority` fails closed on elsewhere in this
+        // shape the pruner fails closed on elsewhere in this
         // file. The run's own `lastRequestAuthorities` entry was already
         // cleared by its terminal transition, so nothing here recreates it
         // — this replaces the WHOLE map with a malformed value.
@@ -18004,7 +18032,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       }
     });
 
-    it('never adds an ownership entry on deleteRun for a run recorded without a principal', async () => {
+    it('keeps the anonymous:local ownership entry a run without a principal was recorded under across deleteRun', async () => {
       const databasePath = databasePathFor('no-principal');
       const runtime = createManualRuntimeServices();
       try {
@@ -18023,9 +18051,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await bureau.deleteRun(run.id);
           await runtime.deferred.drain();
           const session = await bureau.getSession(run.sessionId);
-          expect(
-            (ownersOf(session) as Record<string, unknown> | undefined)?.[run.id],
-          ).toBeUndefined();
+          expect((ownersOf(session) as Record<string, unknown> | undefined)?.[run.id]).toBe(
+            'anonymous:local',
+          );
         } finally {
           await bureau.shutdown();
         }
@@ -19749,7 +19777,12 @@ describe('createBureau durable audit trail — AB-228 parity gaps (toolbox loop-
         type: 'session.deleted',
       });
       expect(deletedRecords).toHaveLength(1);
-      expect(deletedRecords[0]?.detail).toEqual({ sessionId: run.sessionId, incarnation });
+      // COR-718: the deletion record also carries the owner the session had.
+      expect(deletedRecords[0]?.detail).toEqual({
+        sessionId: run.sessionId,
+        incarnation,
+        owner: 'anonymous:local',
+      });
 
       // Deleting an id that was never a live session dispatches nothing —
       // there is no genuine deletion fact to record.

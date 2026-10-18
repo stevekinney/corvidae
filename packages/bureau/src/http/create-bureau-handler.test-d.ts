@@ -59,7 +59,8 @@ export const explicit: boolean = bureau.hasExplicitId;
 // @ts-expect-error -- readonly
 bureau.hasExplicitId = true;
 
-// The scope list holds the two review scopes, as literal types.
-export const reviewScope: BureauScope = BUREAU_SCOPES[0];
-// @ts-expect-error -- not a Bureau scope
-export const notAScope: BureauScope = 'bureau.tasks:read';
+// The scope list holds the registered Bureau scopes, as literal types.
+export const reviewScope: BureauScope = BUREAU_SCOPES[2];
+export const fleetScope: BureauScope = 'bureau.events:observe-all';
+// @ts-expect-error -- the delivery scopes are not registered
+export const notAScope: BureauScope = 'bureau.deliveries:read';

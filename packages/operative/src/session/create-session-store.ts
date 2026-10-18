@@ -580,6 +580,16 @@ export interface CreateSessionStoreOptions {
    * time-controlled.
    */
   runtime?: RuntimeServices | undefined;
+  /**
+   * COR-718 — called by `cleanup()` with the sessions it is about to remove,
+   * once they are selected and before the batch that removes them commits. A
+   * rejection aborts the cleanup, and nothing is removed, so a caller that must
+   * record something about a session before it is gone (Bureau records each
+   * session's owner for the deletion's audit entry) can refuse to let it go
+   * without that record. Called again on each contention retry, with that
+   * attempt's own selection.
+   */
+  beforeCleanup?: ((sessions: readonly AgentSession[]) => Promise<void>) | undefined;
 }
 
 export function createSessionStore(
@@ -1250,7 +1260,10 @@ export function createSessionStore(
               representations.set(id, records);
             }),
           );
-          const expired = new Map<string, Array<{ key: string; raw: string }>>();
+          const expired = new Map<
+            string,
+            { canonical: AgentSession; records: Array<{ key: string; raw: string }> }
+          >();
           for (const [id, records] of representations) {
             const newest = records.reduce((current, candidate) =>
               new Date(candidate.session.updatedAt).getTime() >
@@ -1267,14 +1280,20 @@ export function createSessionStore(
             if (records.some(({ session }) => new Date(session.updatedAt).getTime() >= cutoff)) {
               continue;
             }
-            expired.set(
-              id,
-              records.map(({ key, raw }) => ({ key, raw })),
-            );
+            expired.set(id, {
+              canonical: canonical.session,
+              records: records.map(({ key, raw }) => ({ key, raw })),
+            });
           }
           if (expired.size === 0) return 0;
+          // COR-718 — before the batch, so a caller that cannot record what it
+          // needs about a session keeps the session by rejecting here.
+          await options.beforeCleanup?.([...expired.values()].map(({ canonical }) => canonical));
 
-          const summaryRaw = await store.get(SUMMARY_INDEX_KEY);
+          const [summaryRaw, ordinalRaw] = await Promise.all([
+            store.get(SUMMARY_INDEX_KEY),
+            store.get(OUTBOX_ORDINAL_KEY),
+          ]);
           const nextSummaries = await summariesForMutation(summaryRaw);
           for (const id of expired.keys()) nextSummaries.delete(id);
           const indexOperation =
@@ -1285,15 +1304,47 @@ export function createSessionStore(
                   value: serializeSummaryIndex(nextSummaries),
                 }
               : { type: 'delete' as const, key: SUMMARY_INDEX_KEY };
-          const records = [...expired.values()].flat();
+          const records = [...expired.values()].flatMap(({ records: bodies }) => bodies);
+          // COR-718 — an expiry is a deletion: one `session.deleted` outbox entry
+          // per expired id, each carrying that id's own incarnation, consuming
+          // consecutive ordinals, in the SAME batch as the removal, exactly as
+          // `delete()` appends its one. Without them an expired session would
+          // leave no durable deletion fact behind: no marker for a trusted
+          // history read and no audit entry.
+          const committedAtMs = runtime.clock.now();
+          const firstOrdinal = parseOutboxOrdinal(ordinalRaw) + 1;
+          const outboxEntries: SessionOutboxEntry[] = [...expired].map(
+            ([id, { canonical }], index) => ({
+              ordinal: firstOrdinal + index,
+              kind: 'session.deleted',
+              sessionId: id,
+              incarnation: canonical.incarnation,
+              committedAtMs,
+            }),
+          );
+          const lastOrdinal = firstOrdinal + outboxEntries.length - 1;
           const committed = await store.conditionalBatch(
             [
               ...records.map(({ key, raw }) => ({ key, expectedValue: raw })),
               { key: SUMMARY_INDEX_KEY, expectedValue: summaryRaw },
+              { key: OUTBOX_ORDINAL_KEY, expectedValue: ordinalRaw },
             ],
-            [...records.map(({ key }) => ({ type: 'delete' as const, key })), indexOperation],
+            [
+              ...records.map(({ key }) => ({ type: 'delete' as const, key })),
+              indexOperation,
+              { type: 'set' as const, key: OUTBOX_ORDINAL_KEY, value: String(lastOrdinal) },
+              ...outboxEntries.map((entry) => ({
+                type: 'set' as const,
+                key: outboxEntryKey(entry.ordinal),
+                value: JSON.stringify(entry),
+              })),
+            ],
           );
-          if (committed) return expired.size;
+          if (committed) {
+            // One wake-up is enough: a drain scans every pending entry.
+            events.dispatch(new SessionOutboxAppendedEvent(lastOrdinal));
+            return expired.size;
+          }
         }
         throw new SessionConflictError('cleanup', 'completed');
       });

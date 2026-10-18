@@ -596,6 +596,82 @@ describe('createDurableEventHistory', () => {
     });
   });
 
+  describe('the incarnation a durable event is recorded for (COR-718)', () => {
+    const owner: DurableEventOwner = { kind: 'session', id: 'sess-incarnation' };
+
+    it('page() keeps only the events recorded for the requested incarnation, never an unstamped one, without spending the limit on the rest', async () => {
+      const runtime = createManualRuntimeServices();
+      const storage = await createMemoryStorage();
+      const history = createDurableEventHistory(storage, runtime);
+
+      await history.record(owner, 'session.created', { n: 1 }, { incarnation: 'one' });
+      await history.record(owner, 'session.loaded', { n: 2 });
+      await history.record(owner, 'session.saved', { n: 3 }, { incarnation: 'one' });
+      await history.record(owner, 'session.deleted', { n: 4 }, { incarnation: 'one' });
+      await history.record(owner, 'session.created', { n: 5 }, { incarnation: 'two' });
+      await history.record(owner, 'session.saved', { n: 6 }, { incarnation: 'two' });
+
+      const one = await history.page(owner, { incarnation: 'one', limit: 2 });
+      if ('outcome' in one) throw new Error('expected a page');
+      expect(one.events.map((event) => event.payload)).toEqual([{ n: 1 }, { n: 3 }]);
+      expect(one.hasMore).toBe(true);
+      const rest = await history.page(owner, { incarnation: 'one', since: one.nextCursor });
+      if ('outcome' in rest) throw new Error('expected a page');
+      expect(rest.events.map((event) => event.payload)).toEqual([{ n: 4 }]);
+      expect(rest.hasMore).toBe(false);
+
+      const two = await history.page(owner, { incarnation: 'two' });
+      if ('outcome' in two) throw new Error('expected a page');
+      expect(two.events.map((event) => event.payload)).toEqual([{ n: 5 }, { n: 6 }]);
+
+      // The unstamped event is read only by a caller that names no incarnation.
+      const every = await history.page(owner);
+      if ('outcome' in every) throw new Error('expected a page');
+      expect(every.events).toHaveLength(6);
+      const none = await history.page(owner, { incarnation: '' });
+      if ('outcome' in none) throw new Error('expected a page');
+      expect(none.events).toEqual([]);
+
+      await history.dispose();
+    });
+
+    it('subscribeEventHistory() tells the listener which incarnation each event was recorded for', async () => {
+      const runtime = createManualRuntimeServices();
+      const storage = await createMemoryStorage();
+      const history = createDurableEventHistory(storage, runtime);
+      await history.record(owner, 'session.created', { n: 1 }, { incarnation: 'one' });
+      await history.record(owner, 'session.loaded', { n: 2 });
+
+      const seen: Array<[unknown, string | undefined]> = [];
+      let notify: (() => void) | undefined;
+      const subscription = history.subscribeEventHistory(owner, (event, incarnation) => {
+        seen.push([event.payload, incarnation]);
+        notify?.();
+      });
+      try {
+        while (seen.length < 2) {
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+          });
+        }
+        await history.record(owner, 'session.saved', { n: 3 }, { incarnation: 'two' });
+        while (seen.length < 3) {
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+          });
+        }
+        expect(seen).toEqual([
+          [{ n: 1 }, 'one'],
+          [{ n: 2 }, undefined],
+          [{ n: 3 }, 'two'],
+        ]);
+      } finally {
+        subscription.unsubscribe();
+        await history.dispose();
+      }
+    });
+  });
+
   describe('latestDeletionMarker() (AB-385)', () => {
     it('finds a session.deleted marker regardless of a small limit or a since cursor that would exclude it from page()', async () => {
       const storage = await createMemoryStorage();
@@ -3114,12 +3190,7 @@ describe('createDurableEventProducer()', () => {
       new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
     );
     dispatchReviewExpired(
-      new ReviewExpiredEvent(
-        'approval:run-1:call-4',
-        'run-1',
-        'system:expiry-sweep',
-        'tool-approval',
-      ),
+      new ReviewExpiredEvent('approval:run-1:call-4', 'run-1', 'system:expiry', 'tool-approval'),
     );
     dispatchReviewRevoked(
       new ReviewRevokedEvent(
@@ -3182,7 +3253,7 @@ describe('createDurableEventProducer()', () => {
         payload: {
           reviewId: 'approval:run-1:call-4',
           runId: 'run-1',
-          principal: 'system:expiry-sweep',
+          principal: 'system:expiry',
           kind: 'tool-approval',
         },
         emittedAtMs: undefined,
@@ -3475,6 +3546,87 @@ describe('createDurableEventProducer()', () => {
     await history.dispose();
   });
 
+  it('stamps session.created, session.saved, and session.deleted with the incarnation their events carry (COR-718)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchSessionCreated, dispatchSessionSaved, dispatchSessionDeleted } =
+      createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+    const owner = { kind: 'session' as const, id: 'sess-stamped' };
+
+    dispatchSessionCreated(
+      new SessionCreatedEvent('sess-stamped', 'triage', 'incarnation-a', 1, 0),
+    );
+    dispatchSessionSaved(new SessionSavedEvent('sess-stamped', 'triage', 'incarnation-a', 2, 0));
+    dispatchSessionDeleted(new SessionDeletedEvent('sess-stamped', 'incarnation-a', 3, 0));
+    dispatchSessionCreated(
+      new SessionCreatedEvent('sess-stamped', 'triage', 'incarnation-b', 4, 0),
+    );
+    await runtime.deferred.drain();
+
+    const first = await history.page(owner, { incarnation: 'incarnation-a' });
+    const second = await history.page(owner, { incarnation: 'incarnation-b' });
+    const both = await history.page(owner);
+    if ('outcome' in first || 'outcome' in second || 'outcome' in both) {
+      throw new Error('expected pages');
+    }
+    expect(first.events.map((event) => event.kind)).toEqual([
+      'session.created',
+      'session.saved',
+      'session.deleted',
+    ]);
+    expect(second.events.map((event) => event.kind)).toEqual(['session.created']);
+    expect(both.events).toHaveLength(4);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
+  it('stamps an action-stream session event with the incarnation its detail states, and leaves one that states none unstamped (COR-718)', async () => {
+    const runtime = createManualRuntimeServices();
+    const storage = await createMemoryStorage();
+    const history = createDurableEventHistory(storage, runtime);
+    const { bureau, dispatchAction } = createFakeBureauEventSurface();
+    const producer = createDurableEventProducer(bureau, history, runtime);
+    const owner = { kind: 'session' as const, id: 'sess-action' };
+
+    dispatchAction(
+      createAction({
+        type: 'session.loaded',
+        detail: { sessionId: 'sess-action', agentName: 'triage' },
+      }),
+    );
+    dispatchAction(
+      createAction({
+        type: 'session.loaded',
+        detail: { sessionId: 'sess-action', agentName: 'triage', incarnation: 'incarnation-a' },
+      }),
+    );
+    dispatchAction(
+      createAction({
+        type: 'session.recover',
+        detail: { sessionId: 'sess-action', incarnation: 7 },
+      }),
+    );
+    await runtime.deferred.drain();
+
+    const stamped = await history.page(owner, { incarnation: 'incarnation-a' });
+    const all = await history.page(owner);
+    if ('outcome' in stamped || 'outcome' in all) throw new Error('expected pages');
+    expect(all.events.map((event) => event.kind)).toEqual([
+      'session.loaded',
+      'session.loaded',
+      'session.recover',
+    ]);
+    expect(stamped.events.map((event) => event.payload)).toEqual([
+      { sessionId: 'sess-action', agentName: 'triage', incarnation: 'incarnation-a' },
+    ]);
+
+    await producer.dispose();
+    await history.dispose();
+  });
+
   it("hasActiveWrite() reports true for a session owner for the write's full duration (AB-372, Copilot review finding, PR #580)", async () => {
     const runtime = createManualRuntimeServices();
     const { bureau, dispatchSessionDeleted } = createFakeBureauEventSurface();
@@ -3751,12 +3903,7 @@ describe('createDurableEventProducer()', () => {
       new ReviewRejectedEvent('approval:run-1:call-3', 'run-1', 'operator-c', 'tool-approval'),
     );
     dispatchReviewExpired(
-      new ReviewExpiredEvent(
-        'approval:run-1:call-4',
-        'run-1',
-        'system:expiry-sweep',
-        'tool-approval',
-      ),
+      new ReviewExpiredEvent('approval:run-1:call-4', 'run-1', 'system:expiry', 'tool-approval'),
     );
     dispatchReviewRevoked(
       new ReviewRevokedEvent(

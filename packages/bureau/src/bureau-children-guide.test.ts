@@ -269,7 +269,7 @@ describe('documentation/multi-agent-lifecycle.md — a durable bureau.run parent
 });
 
 describe('documentation/multi-agent-lifecycle.md — which principal owns a Bureau child', () => {
-  it('gives a child the parent’s principal, or the dispatching principal when the parent has none', async () => {
+  it('gives a child the parent’s owner, which is anonymous:local for a parent started with no principal', async () => {
     const planner = createAgent({ name: 'planner', generate: untilAborted });
     const bureau = await createBureau({
       agents: { planner },
@@ -290,20 +290,21 @@ describe('documentation/multi-agent-lifecycle.md — which principal owns a Bure
       });
 
     const alices = await dispatch(sharedRunId, 'alices-helper', 'alice');
-    const bobs = await dispatch(sharedRunId, 'bobs-helper', 'bob');
+    const localDispatch = await dispatch(sharedRunId, 'locals-helper', 'anonymous:local');
+    const hostDispatch = await dispatch(sharedRunId, 'hosts-helper');
     const ownersByHost = await dispatch(ownedRunId, 'owners-helper');
     const alicesUnderOwner = await dispatch(ownedRunId, 'alices-intrusion', 'alice');
-    const alicesAsBob = { parentRunId: sharedRunId, childRunId: 'alices-helper', principal: 'bob' };
-    const readAsBob = {
-      get: await bureau.children.get(alicesAsBob),
-      list: await bureau.children.list(sharedRunId, { principal: 'bob' }),
-      wait: await bureau.children.wait(alicesAsBob),
-      cancel: await bureau.children.cancel(alicesAsBob),
+    const asAlice = { parentRunId: sharedRunId, childRunId: 'hosts-helper', principal: 'alice' };
+    const readAsAlice = {
+      get: await bureau.children.get(asAlice),
+      list: await bureau.children.list(sharedRunId, { principal: 'alice' }),
+      wait: await bureau.children.wait(asAlice),
+      cancel: await bureau.children.cancel(asAlice),
     };
-    const readAsAlice = await bureau.children.get({ ...alicesAsBob, principal: 'alice' });
+    const readAsLocal = await bureau.children.get({ ...asAlice, principal: 'anonymous:local' });
     const readByHost = await bureau.children.get({
       parentRunId: sharedRunId,
-      childRunId: 'alices-helper',
+      childRunId: 'hosts-helper',
     });
     const ownersAsAlice = await bureau.children.get({
       parentRunId: ownedRunId,
@@ -314,26 +315,33 @@ describe('documentation/multi-agent-lifecycle.md — which principal owns a Bure
     shared.abort('done');
     owned.abort('done');
     for (const [parentRunId, childRunId] of [
-      [sharedRunId, 'alices-helper'],
-      [sharedRunId, 'bobs-helper'],
+      [sharedRunId, 'locals-helper'],
+      [sharedRunId, 'hosts-helper'],
       [ownedRunId, 'owners-helper'],
     ] as const) {
       await bureau.children.wait({ parentRunId, childRunId });
     }
     await bureau.dispose();
 
-    expect(alices).toMatchObject({ outcome: 'started', child: { principal: 'alice' } });
-    expect(bobs).toMatchObject({ outcome: 'started', child: { principal: 'bob' } });
+    expect(alices).toEqual({ outcome: 'not-found' });
+    expect(localDispatch).toMatchObject({
+      outcome: 'started',
+      child: { principal: 'anonymous:local' },
+    });
+    expect(hostDispatch).toMatchObject({
+      outcome: 'started',
+      child: { principal: 'anonymous:local' },
+    });
     expect(ownersByHost).toMatchObject({ outcome: 'started', child: { principal: 'owner' } });
     expect(alicesUnderOwner).toEqual({ outcome: 'not-found' });
-    expect(readAsBob).toEqual({
+    expect(readAsAlice).toEqual({
       get: undefined,
-      list: [expect.objectContaining({ childRunId: 'bobs-helper' })],
+      list: [],
       wait: { outcome: 'not-found' },
       cancel: { outcome: 'not-found' },
     });
-    expect(readAsAlice).toMatchObject({ childRunId: 'alices-helper', status: 'running' });
-    expect(readByHost).toMatchObject({ childRunId: 'alices-helper', principal: 'alice' });
+    expect(readAsLocal).toMatchObject({ childRunId: 'hosts-helper', status: 'running' });
+    expect(readByHost).toMatchObject({ childRunId: 'hosts-helper', principal: 'anonymous:local' });
     expect(ownersAsAlice).toBeUndefined();
   });
 });
