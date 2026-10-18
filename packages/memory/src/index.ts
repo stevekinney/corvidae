@@ -1,13 +1,51 @@
 // Public type surface.
 export type { ChunkingOptions, ContentChunk, ExtractedDocument, StructureHint } from './chunking';
 export type {
+  ConsolidateProjectionsOptions,
+  ConsolidateProjectionsResult,
+} from './consolidate-projections';
+export type {
   ConsolidationChunkedTaskOptions,
   ConsolidationState,
   CreateConsolidationOptions,
 } from './consolidation';
+export type { CreateInMemoryEvidenceProjectionStorageOptions } from './create-in-memory-evidence-projection-storage';
+export type { CreateWeftEvidenceProjectionStorageOptions } from './create-weft-evidence-projection-storage';
 export type { CreateWeftMemoryRecordStorageOptions } from './create-weft-memory-record-storage';
+export type {
+  BuildDerivedIndexesInput,
+  DerivedIndexes,
+  EntityIndex,
+  GraphEdge,
+  GraphEdgeKind,
+  GraphIndex,
+  IndexSummary,
+  LexicalIndex,
+  ProjectionHit,
+  TemporalIndex,
+  VectorIndex,
+} from './derived-indexes';
 export type { DualNamespaceMemoryOptions } from './dual-namespace-memory';
 export type { CachedEmbedder, EmbeddingCacheOptions } from './embedding-cache';
+export type {
+  EvidenceProjectionRecord,
+  ProjectionKind,
+  ProjectionReference,
+  ProjectionSource,
+  ProjectionStatus,
+  TransformationStep,
+} from './evidence-projection-schema';
+export type {
+  EvidenceProjectionCommit,
+  EvidenceProjectionCommitErrorCode,
+  EvidenceProjectionCommitResult,
+  EvidenceProjectionStorage,
+} from './evidence-projection-storage';
+export type {
+  EvidenceRecord,
+  EvidenceSupersession,
+  MemoryEvidenceRejectionCode,
+} from './evidence-schema';
 export type { RunCaptureHookOptions, StepResultLike } from './experiential';
 export type {
   FileSynchronizer,
@@ -135,6 +173,7 @@ export type {
 } from './identity';
 export type { ChunkerFunction, IngestOptions, IngestResult } from './ingest';
 export type { MaximalMarginalRelevanceOptions } from './maximal-marginal-relevance';
+export type { ProjectAssetChunksOptions, ProjectAssetChunksResult } from './project-asset-chunks';
 export type { CreateReflectionHookOptions } from './reflection';
 export type { GetMemoryStatusOptions, MemoryStatus } from './status';
 export type { TemporalDecayOptions } from './temporal-decay';
@@ -258,10 +297,42 @@ export {
 } from './identity';
 export { CHUNK_INDEX_KEY, ingest } from './ingest';
 // The source-document key is public for ingestion metadata.
+export { consolidateProjections } from './consolidate-projections';
+export { createInMemoryEvidenceProjectionStorage } from './create-in-memory-evidence-projection-storage';
+export { createWeftEvidenceProjectionStorage } from './create-weft-evidence-projection-storage';
+export { buildDerivedIndexes, rebuildDerivedIndexes } from './derived-indexes';
+export {
+  MAX_PROJECTION_REVISION,
+  PROJECTION_KINDS,
+  PROJECTION_SCHEMA_VERSION,
+  PROJECTION_STATUSES,
+  PROJECTION_TRANSITION_KINDS,
+  TRANSFORMATION_STEPS,
+  decodeEvidenceProjectionRecord,
+  encodeEvidenceProjectionRecord,
+  evidenceProjectionRecordSchema,
+  projectionText,
+} from './evidence-projection-schema';
+export {
+  EvidenceImmutableError,
+  EvidenceProjectionCapacityError,
+  EvidenceProjectionCommitError,
+  ProjectionRevisionConflictError,
+} from './evidence-projection-storage';
+export {
+  EVIDENCE_KINDS,
+  EVIDENCE_SCHEMA_VERSION,
+  MEMORY_CLASSIFICATIONS,
+  MemoryEvidenceValidationError,
+  decodeEvidenceRecord,
+  encodeEvidenceRecord,
+  evidenceRecordSchema,
+} from './evidence-schema';
 export { SOURCE_DOCUMENT_KEY } from './ingest';
 export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
 export { MemoryRecordVersionConflictError } from './memory-record-storage';
 export { withNamespaceIsolation } from './namespace-isolation';
+export { projectAssetChunks } from './project-asset-chunks';
 export { extractKeywords, isStopWord } from './query-expansion';
 export { createReflectionHook } from './reflection';
 export { getMemoryStatus } from './status';

@@ -15,6 +15,7 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
 - [Ownership and shutdown](#ownership-and-shutdown)
 - [Core API](#core-api)
 - [Storage Backends](#storage-backends)
+- [Evidence and Projections](#evidence-and-projections)
 - [Hooks](#hooks)
 - [Tools](#tools)
 - [Ingestion](#ingestion)
@@ -473,6 +474,31 @@ interface TextSearchProvider {
   search(query: string, namespace: string): Promise<Map<string, number>>; // id → score
 }
 ```
+
+## Evidence and Projections
+
+Evidence and projections are a second storage model beside `MemoryRecord`. They are independent of it: nothing adapts one to the other, and `createMemory()` and `GovernedMemory` still run on the record model. Both exist during pre-release, and the record path is deletable in one change once callers move.
+
+- **Evidence** is an immutable, source-authenticated record of something admitted to memory: owner and tenant, kind, source locator, content (inline text, or a reference to a managed asset), a `sha256:<hex>` digest, producer, principal, trust tier, event, observation, and write times, classification, authorization scope, retention rule, and causal run, session, tool-call, or external-command identifiers. A stored record is never rewritten. A later record that names it in `supersedes` replaces it, and a write-once marker beside the original answers "is this still active" without a scan.
+- **Projections** are versioned views derived from evidence: `fact`, `episode`, `procedure`, `preference`, `summary`, and `chunk`. A projection has a stable `(tenantId, namespace, id)` identity and a monotonic `revision`. Every state change (`created`, `rebuilt`, `demoted`, `superseded`, `revoked`) is a new revision, and `status` follows from the transition. Each carries the evidence ids and digests it rests on, so it can always be traced to, and rebuilt from, its sources.
+- **Indexes** (lexical, vector, temporal, entity, graph) are never stored. `buildDerivedIndexes()` and `rebuildDerivedIndexes()` build them from the active evidence an authority may `search` and the projections that rest on it, and return a fingerprint of their inputs. Drop an index and build it again and it is identical.
+
+```ts
+import { MemoryStorage } from '@lostgradient/weft';
+import { createWeftEvidenceProjectionStorage, rebuildDerivedIndexes } from '@lostgradient/memory';
+
+const storage = createWeftEvidenceProjectionStorage(new MemoryStorage());
+
+// One atomic commit: new evidence, a correction that supersedes older evidence, and projections.
+await storage.commit({ tenantId, evidence: [evidence], projections: [fact] });
+
+const indexes = await rebuildDerivedIndexes({ storage, tenantId, namespace, authority });
+indexes.lexical.query('denver', { limit: 5 });
+```
+
+`createInMemoryEvidenceProjectionStorage({ maxEvidence, maxProjectionRevisions })` satisfies the same contract without Weft and refuses a commit that would exceed either bound. Bureau supplies durable storage by passing the `Storage` it already holds to `createWeftEvidenceProjectionStorage()`; the key layout is an implementation detail.
+
+`commit()` is the one write primitive. It checks the whole commit (tenant, digests, supersession, revision order, terminal statuses, references) and applies it in a single conditional batch, or applies nothing. It writes no receipt and emits no event. `consolidateProjections()` and `projectAssetChunks()` are the projection-based successors of in-place consolidation and chunked ingestion.
 
 ## Hooks
 
