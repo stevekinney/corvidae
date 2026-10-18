@@ -14,7 +14,10 @@ import {
   SESSION_INPUT_DELIVERY_RETENTION_MS,
   SESSION_INPUT_IDENTITY_TTL_MS,
 } from './session-input-durability';
-import { SESSION_INPUT_RUN_ENDED_REASON } from './session-input-settlement';
+import {
+  createSessionInputSettlement,
+  SESSION_INPUT_RUN_ENDED_REASON,
+} from './session-input-settlement';
 import { deferred } from './test/session-input-fixtures';
 
 /**
@@ -380,6 +383,166 @@ describe('the identity index (COR-1476)', () => {
     expect(SESSION_INPUT_IDENTITY_TTL_MS).toBeGreaterThan(SESSION_INPUT_COMMAND_TIMEOUT_MS);
     expect(retainedFor).toBeGreaterThanOrEqual(SESSION_INPUT_IDENTITY_TTL_MS);
     expect(SESSION_INPUT_DELIVERY_RETENTION_MS).toBeGreaterThan(SESSION_INPUT_IDENTITY_TTL_MS);
+  });
+});
+
+describe("the principal's open count against admissions landing mid-walk (COR-1476)", () => {
+  it('counts only the commands its open count described: admissions between the count and the first page are not counted', async () => {
+    const now = START;
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const real = createSessionInputMailbox(storage, SESSION_ID, 'incarnation-1', 100, () => now);
+    const admitRaw = async (caller: string, id: string) => {
+      const admission = await real.admit({
+        caller,
+        target: SESSION_ID,
+        kind: 'session-input:steer',
+        payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: id } },
+        idempotencyKey: id,
+      });
+      if (admission.status !== 'admitted') throw new Error(admission.status);
+    };
+    // Two open commands, one of them alice's, so the count equals the limit
+    // and the walk runs.
+    await admitRaw('alice', 'input-a');
+    await admitRaw('bob', 'input-b');
+    // After the open count is read, three more of alice's commands are
+    // admitted before the first page. Newest first, the walk sees them first;
+    // counting them would refuse alice over a limit she is under.
+    let bursts = 1;
+    const bursting = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'capacity') {
+          return async () => {
+            const snapshot = await target.capacity();
+            if (bursts > 0) {
+              bursts -= 1;
+              for (const id of ['input-c', 'input-d', 'input-e']) await admitRaw('alice', id);
+            }
+            return snapshot;
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const outcome = await admitSessionInput({
+      storage,
+      kv,
+      sessionMailbox: bursting,
+      sessionId: SESSION_ID,
+      incarnation: 'incarnation-1',
+      id: 'input-f',
+      principal: 'alice',
+      deliveryMode: 'steer',
+      payload: { incarnation: 'incarnation-1', payload: 'f' },
+      principalBacklogLimit: 2,
+      sessionBacklogLimitForCrossSessionRead: 100,
+      nowMs: now,
+    });
+    expect(outcome.outcome).toBe('admitted');
+  });
+});
+
+describe('the identity across incarnations of one session (COR-1476)', () => {
+  const SESSION = 'session-incarnations';
+  function attemptFor(
+    storage: MemoryStorage,
+    kv: ReturnType<typeof textValueStore>,
+    incarnation: string,
+    mailbox: Mailbox,
+  ) {
+    return {
+      storage,
+      kv,
+      sessionMailbox: mailbox,
+      sessionId: SESSION,
+      incarnation,
+      id: 'input-shared',
+      principal: 'alice',
+      deliveryMode: 'steer' as const,
+      payload: { incarnation, payload: 'hello' },
+      principalBacklogLimit: 100,
+      sessionBacklogLimitForCrossSessionRead: 100,
+      nowMs: START,
+    };
+  }
+  function holdAdmit(real: Mailbox) {
+    const reached = deferred();
+    const held = deferred();
+    const proxy = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'admit') {
+          return async (options: Parameters<Mailbox['admit']>[0]) => {
+            reached.resolve();
+            await held.promise;
+            return target.admit(options);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    return { proxy, reached: reached.promise, release: held.resolve };
+  }
+
+  it("loses an in-flight admission of the deleted incarnation to the new incarnation's takeover, and cancels its own command", async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const oldMailbox = createSessionInputMailbox(storage, SESSION, 'incarnation-a', 100);
+    const newMailbox = createSessionInputMailbox(storage, SESSION, 'incarnation-b', 100);
+    const hold = holdAdmit(oldMailbox);
+    const inFlight = admitSessionInput(attemptFor(storage, kv, 'incarnation-a', hold.proxy));
+    await hold.reached;
+    const taker = await admitSessionInput(attemptFor(storage, kv, 'incarnation-b', newMailbox));
+    hold.release();
+    const lost = await inFlight;
+    const identity = await kv.get('session-input-identity:v1:alice:input-shared');
+    const [oldRecord] = await oldMailbox.list({ limit: 10 });
+    const [newRecord] = await newMailbox.list({ limit: 10 });
+    expect(taker.outcome).toBe('admitted');
+    expect(lost.outcome === 'admitted' && lost.receipt.state).toBe('canceled');
+    expect(oldRecord?.state).toBe('cancelled');
+    expect(newRecord?.state).toBe('available');
+    expect(identity).toContain('"incarnation-b"');
+  });
+
+  it('takes over an admission the deleted incarnation completed, and the retired sweep cancels its record', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const oldMailbox = createSessionInputMailbox(storage, SESSION, 'incarnation-a', 100);
+    const newMailbox = createSessionInputMailbox(storage, SESSION, 'incarnation-b', 100);
+    const original = await admitSessionInput(attemptFor(storage, kv, 'incarnation-a', oldMailbox));
+    expect(original.outcome).toBe('admitted');
+    const taker = await admitSessionInput(attemptFor(storage, kv, 'incarnation-b', newMailbox));
+    expect(taker.outcome).toBe('admitted');
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve('incarnation-b'),
+      liveRunIds: () => Promise.resolve([]),
+      mailboxOf: (_sessionId, incarnation) =>
+        incarnation === 'incarnation-a' ? oldMailbox : newMailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION, 'incarnation-a');
+    await settlement.sweep();
+    const [oldAfter] = await oldMailbox.list({ limit: 10 });
+    const [newRecord] = await newMailbox.list({ limit: 10 });
+    expect(oldAfter?.state).toBe('cancelled');
+    expect(newRecord?.state).toBe('available');
+  });
+
+  it('treats a legacy identity value without an incarnation as absent, never throwing on it', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    await kv.set(
+      'session-input-identity:v1:alice:input-shared',
+      JSON.stringify({ sessionId: SESSION, recordedAtMs: START, admission: 'admitted' }),
+    );
+    const mailbox = createSessionInputMailbox(storage, SESSION, 'incarnation-b', 100);
+    const outcome = await admitSessionInput(attemptFor(storage, kv, 'incarnation-b', mailbox));
+    expect(outcome.outcome).toBe('admitted');
   });
 });
 

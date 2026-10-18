@@ -230,6 +230,38 @@ describe('createBureau delivers admitted session input at the next step boundary
     }
   });
 
+  it('answers unsupported-capability for a session id of exactly 300 bytes, which no command could carry as its target', async () => {
+    const started = deferred();
+    const hold = deferred();
+    const bureau = await openBureau(async () => {
+      started.resolve();
+      await hold.promise;
+      return { content: 'done', toolCalls: [] };
+    });
+    try {
+      const longId = 's'.repeat(300);
+      const run = await bureau.createRun({
+        message: 'Start',
+        principal: 'alice',
+        sessionId: longId,
+      });
+      await started.promise;
+      const outcome = await bureau.submitSessionInput(run.sessionId, {
+        id: 'input-a',
+        principal: 'alice',
+        deliveryMode: 'steer',
+        payload: 'hello',
+      });
+      expect(outcome).toEqual({
+        outcome: 'unsupported-capability',
+        reason: 'durable-mailbox-unavailable',
+      });
+    } finally {
+      hold.resolve();
+      await bureau.dispose();
+    }
+  });
+
   it('answers unsupported-capability, rather than throwing, for a session id too long to address a mailbox', async () => {
     const started = deferred();
     const hold = deferred();

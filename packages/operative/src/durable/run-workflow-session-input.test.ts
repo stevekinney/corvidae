@@ -1595,6 +1595,49 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     expect(await stateOf(real, commandA)).toBe('accepted');
   });
 
+  it('still sees a foreign lease on the oldest command when newer commands land between its open count and its first page', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandA = await admit(real, 'input-a', 'first');
+    const leased = await real.claim(); // another gate's lease on the oldest command
+    if (leased.status !== 'claimed') throw new Error('expected a claim');
+    expect(leased.claim.receipt.commandId).toBe(commandA);
+    await admit(real, 'input-b', 'second');
+    // After the gate reads its open count (2), three more commands are admitted
+    // before its first listing page. Walking newest first, it must not count
+    // them toward that open count, or it would stop before reaching A.
+    let bursts = 1;
+    const bursting = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'capacity') {
+          return async () => {
+            const snapshot = await target.capacity();
+            if (bursts > 0) {
+              bursts -= 1;
+              for (const id of ['input-c', 'input-d', 'input-e']) await admit(real, id, id);
+            }
+            return snapshot;
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const gate = createMailboxSessionInputGate({
+      mailbox: bursting,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, 'run-ours', ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    const claimed = await gate.claimPending();
+    await gate.dispose?.();
+    // A is leased elsewhere, so nothing behind it may be delivered yet.
+    expect(claimed.map(({ id }) => id)).toEqual([]);
+  });
+
   it('releases a claim it acquired while it was being disposed, and returns nothing', async () => {
     const storage = new MemoryStorage();
     const now = 1_000_000;

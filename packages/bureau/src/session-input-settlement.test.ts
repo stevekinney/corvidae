@@ -496,6 +496,58 @@ describe("a retired incarnation's marker beside the current incarnation (COR-147
   });
 });
 
+describe("the retired-incarnation sweep's cost (COR-1476)", () => {
+  it('makes no cancel-walk listing when nothing is open: the open count short-circuits the walk', async () => {
+    const now = Date.parse('2026-10-17T12:00:00.000Z');
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const real = createSessionInputMailbox(storage, SESSION_ID, 'incarnation-1', 1000, () => now);
+    const listings: Array<number | undefined> = [];
+    const counting = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'list') {
+          return (options?: Parameters<typeof real.list>[0]) => {
+            listings.push(options?.limit);
+            return target.list(options);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    // The retired incarnation's mailbox holds only a delivered, retained record.
+    const admission = await real.admit({
+      caller: 'alice',
+      target: SESSION_ID,
+      kind: 'session-input:steer',
+      payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: 'x' } },
+      idempotencyKey: 'input-x',
+    });
+    if (admission.status !== 'admitted') throw new Error(admission.status);
+    const claimed = await real.claim();
+    if (claimed.status !== 'claimed') throw new Error('expected a claim');
+    await real.acknowledge({
+      commandId: claimed.claim.receipt.commandId,
+      attemptToken: claimed.claim.attemptToken,
+    });
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve('incarnation-2'),
+      liveRunIds: () => Promise.resolve([]),
+      mailboxOf: () => counting,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID, 'incarnation-1');
+
+    await settlement.sweep();
+
+    // Only the one-entry emptiness read; no walk page was listed.
+    expect(listings).toEqual([1]);
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+  });
+});
+
 describe('a run parked past the command timeout (COR-1476)', () => {
   it('has its input expire at the deadline even though the sweep leaves a live run alone', async () => {
     let now = Date.parse('2026-10-17T12:00:00.000Z');

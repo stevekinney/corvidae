@@ -300,9 +300,15 @@ export function createSessionInputSettlement(
       // an admission that loaded the old incarnation can commit after that
       // pass, under this marker, and is cancelled here. Maintenance runs on
       // every visit until retention has emptied the mailbox, and only then
-      // does the marker go.
+      // does the marker go. The cancel walk runs only when the mailbox's
+      // exhaustive open count says something is open: a retired mailbox is
+      // visited on every sweep for as long as retention keeps its records,
+      // and walking those records each time would cost every visit a read of
+      // each of them for nothing.
       await mailbox.runMaintenance();
-      await cancelMaintained(sessionId, incarnation, mailbox, new Set(), 'no-records');
+      const { open } = await mailbox.capacity();
+      if (open > 0) await cancelOpenSessionInput(mailbox, new Set());
+      await removeMarkerOnceMaintained(sessionId, incarnation, mailbox, 'no-records');
       return;
     }
     if (dependencies.isClosed()) return;

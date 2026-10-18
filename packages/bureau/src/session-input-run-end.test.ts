@@ -23,7 +23,11 @@ import { join } from 'node:path';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
+import {
+  admitSessionInput,
+  createSessionInputMailbox,
+  SESSION_INPUT_TERMINAL_RETENTION_MS,
+} from './session-input-durability';
 import { appendSteeringLogEvent } from './steering-log';
 import {
   acknowledgesSessionInput,
@@ -1113,6 +1117,61 @@ describe('a run promoted but never started (COR-1476)', () => {
       ).toBe('canceled');
       expect(bureau.listRuns()).toHaveLength(0);
     } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe("a deleted session's input mailbox (COR-1476)", () => {
+  it('is retired by the sweep once retention has elapsed, because deletion marks the incarnation', async () => {
+    const origin = '2026-10-17T12:00:00.000Z';
+    const runtime = createManualRuntimeServices({ origin });
+    const storage = new MemoryStorage();
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const bureau = await openBureau(
+      storage,
+      async () => {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      { runtime, durableBackgroundTasks: 'manual' },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
+        runtime.clock.now(),
+      );
+      // The run delivers and retires the input; nothing is open, so the sweep
+      // drops the live marker.
+      releaseStepZero.resolve();
+      // Under manual background tasks nothing re-drives a durable-run wait, so
+      // the run's end is read from what it leaves behind.
+      await pollUntil(async () => {
+        const [receipt] = await mailbox.list({ limit: 10 });
+        return receipt?.state === 'applied';
+      });
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'completed';
+      });
+      await bureau.runDurableMaintenance();
+      expect(await markers(storage)).toHaveLength(0);
+
+      // Deletion marks the incarnation again, for the sweep to retire its
+      // mailbox: no run will ever maintain it.
+      await bureau.deleteSession(run.sessionId);
+      expect(await markers(storage)).toHaveLength(1);
+      await runtime.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
+      await bureau.runDurableMaintenance();
+      expect(await mailbox.list({ limit: 1 })).toEqual([]);
+      expect(await markers(storage)).toHaveLength(0);
+    } finally {
+      releaseStepZero.resolve();
       await bureau.dispose();
     }
   });
