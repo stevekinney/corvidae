@@ -16,12 +16,16 @@ bun add @a2a-js/sdk@1.3.0
 
 ## Serving an agent
 
-```ts partial
+```ts
 import type { AgentCard } from '@a2a-js/sdk';
 import { DefaultRequestHandler, InMemoryTaskStore, type AgentExecutor } from '@a2a-js/sdk/server';
+import { createAuthenticator, type AuthConfig } from '@lostgradient/weft';
 import { createA2AHandler, securitySchemesFromAuthConfig } from '@lostgradient/weft/a2a';
 
 declare const executor: AgentExecutor;
+
+const authConfig: AuthConfig = { apiKeys: [process.env['A2A_API_KEY'] ?? ''] };
+const authenticateWithWeft = await createAuthenticator(authConfig);
 
 const agentCard: AgentCard = {
   name: 'Support Agent',
@@ -30,7 +34,7 @@ const agentCard: AgentCard = {
   provider: undefined,
   version: '1.0.0',
   capabilities: { streaming: true, pushNotifications: false, extensions: [] },
-  ...securitySchemesFromAuthConfig({ apiKeys: [process.env['A2A_API_KEY'] ?? ''] }),
+  ...securitySchemesFromAuthConfig(authConfig),
   defaultInputModes: ['text/plain'],
   defaultOutputModes: ['text/plain'],
   skills: [],
@@ -41,10 +45,23 @@ const handler = createA2AHandler({
   requestHandler: new DefaultRequestHandler(agentCard, new InMemoryTaskStore(), executor),
   agentCard,
   publicUrl: 'https://agents.example.com/support',
+  // The card advertises API keys, so every JSON-RPC request must present one.
+  async authenticate(request) {
+    const result = await authenticateWithWeft(request);
+    if (!result.authenticated) {
+      return new Response('Unauthorized', {
+        status: 401,
+        headers: { 'www-authenticate': 'Bearer' },
+      });
+    }
+    return { isAuthenticated: true, userName: result.principal?.subject ?? 'api-key' };
+  },
 });
 
 Bun.serve({ fetch: handler });
 ```
+
+A card that advertises `apiKey` or `bearer` schemes needs an `authenticate` that accepts those credentials, as above: without one, the handler serves every request anonymously while the card tells clients a credential is required. The SDK `User` that `authenticate` returns scopes each caller's tasks and push configurations by its `userName`, so give each principal a distinct one.
 
 ## Options
 
@@ -120,6 +137,7 @@ Every SSE response closes after `maxStreamDurationMs` with a final comment line 
 The served card is your `agentCard` with exactly one interface: `{ url: publicUrl, protocolBinding: 'JSONRPC', protocolVersion: '1.0', tenant }`, with `tenant` omitted when the option is unset. It is built (and signed) once per handler and served with:
 
 - `ETag`: a strong validator, the SHA-256 digest of the card's [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785) serialization (signatures included).
+- `Last-Modified`: when the handler built the card, which never changes after that.
 - `Cache-Control: public, max-age=300`.
 - `304 Not Modified` for a matching `If-None-Match`.
 
@@ -151,9 +169,9 @@ const handler = createA2AHandler({
 | --- | --- |
 | `apiKeys` or `resolveApiKeyPrincipal` | `apiKeyHeader` (`apiKey` in the `X-API-Key` header) and `bearer` (`http`, scheme `bearer`) |
 | `jwt` | `bearer`, with `bearerFormat: "JWT"` |
-| `mtls` | `mutualTLS` |
+| `mtls`, with evidence that a client certificate is verified | `mutualTLS` |
 
-With `mtls.rejectUnauthorized: false` and no `verifyClientCertificate`, Weft's authenticator admits no one by certificate, so the card offers no `mutualTLS` scheme for that configuration.
+Weft's authenticator admits a caller by certificate only on evidence that the certificate was verified: a `verifyClientCertificate` callback, or the `transportVerifiesClientCertificates` option the authenticator was created with, which says the listener refuses every connection without a verified certificate. `securitySchemesFromAuthConfig(authConfig, { transportVerifiesClientCertificates })` takes the same option and offers `mutualTLS` only on the same evidence, so with TLS terminated outside `serve()` and no callback the card offers no scheme that could never admit anyone. Pass the value your authenticator was created with; `serve()` derives it from its own TLS options.
 
 API keys and `jwt` together share the single `bearer` scheme. `securityRequirements` lists each scheme as its own alternative.
 
@@ -375,6 +393,116 @@ The deliveries are found by scanning every record the outbox retains, terminal o
 
 `startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. A drain that throws is reported to `onError` (default `console.error`) and the loop continues, even when `onError` itself throws. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
 
+## Serving a workflow
+
+`createWorkflowAgentExecutor(options)` serves one registered Weft workflow as an A2A agent. Each A2A task is one workflow run, and its task identifier is the workflow identifier. It returns `{ agentCard, requestHandler, taskStore, idle, [Symbol.dispose] }`: pass the card and the request handler to `createA2AHandler`, call `taskStore.prune()` on a schedule, and dispose the agent when you stop serving it.
+
+```ts
+import { Engine, LMDBStorage, Outbox, workflow, type WorkflowContext } from '@lostgradient/weft';
+import {
+  createA2AHandler,
+  createEgressPolicy,
+  createHttpDeliveryAdapter,
+  createOutboxPushNotificationSender,
+  createWeftPushNotificationStore,
+  createWorkflowAgentExecutor,
+  pushNotificationResolvers,
+  startPushDelivery,
+  withRedactedPushConfigurations,
+} from '@lostgradient/weft/a2a';
+
+const storage = new LMDBStorage('./data/agents');
+const engine = new Engine({ storage });
+engine.register(
+  workflow({
+    name: 'refund-request',
+    description: 'Reviews a refund request.',
+    version: '1.2.0',
+  }).execute(async function* (ctx: WorkflowContext, request: string) {
+    const decision = yield* ctx.waitForSignal<string>('input');
+    return { request, decision };
+  }),
+);
+
+const pushStore = createWeftPushNotificationStore({ storage, namespace: 'refund-request' });
+const outbox = new Outbox({
+  storage,
+  namespace: 'refund-request',
+  ownerId: 'push-notifications',
+  adapter: createHttpDeliveryAdapter({
+    ...pushNotificationResolvers(pushStore),
+    egressPolicy: createEgressPolicy(),
+  }),
+});
+const agent = createWorkflowAgentExecutor({
+  engine,
+  workflowType: 'refund-request',
+  inputMode: 'text',
+  card: { name: 'Refund Desk' },
+  pushNotificationSender: createOutboxPushNotificationSender({ outbox, pushStore }),
+});
+
+const handler = createA2AHandler({
+  requestHandler: withRedactedPushConfigurations(agent.requestHandler),
+  agentCard: agent.agentCard,
+  publicUrl: 'https://agents.example.com/refunds',
+});
+const delivering = startPushDelivery({ outbox, signal: new AbortController().signal });
+```
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `engine` | required | The engine the workflow is registered with. |
+| `workflowType` | required | The registered workflow type. Construction throws for a type the engine does not know. |
+| `inputMode` | required | `'data'`: a message's first data part is the workflow input or signal payload. `'text'`: its text parts, concatenated. A message with no such part gets `RequestMalformedError`. |
+| `card` | required | `{ name, description?, security? }`, the card fields the workflow's definition cannot supply. |
+| `pushNotificationSender` | required | From `createOutboxPushNotificationSender`, whose push store must use the agent's storage and namespace. |
+| `namespace` | `workflowType` | Separates the agent's records in shared storage. |
+| `storage` | `engine.storage` | Where tasks and their events are kept: any adapter the task store accepts. |
+| `terminalRetentionMs` | thirty days | How long `taskStore.prune()` keeps a terminal task. |
+| `now` | `Date.now` | The clock that stamps status timestamps and records. |
+| `onError` | `console.error` | Receives errors no request waits on: a failed push enqueue, or a failed reconciliation after an engine event. |
+
+### The workflow's card
+
+The card's `name` is `card.name`; its `description` is the definition's `description`, else `card.description`, and construction throws when neither exists; its `version` is the definition's `version`. `createA2AHandler` gives it one interface at its `publicUrl`. Its default input and output modes are `application/json`, plus `text/plain` input for `inputMode: 'text'`, and a message part naming any other media type gets `ContentTypeNotSupportedError`. It has one skill, whose `id` is the workflow type, whose `name` and `description` are the card's, and whose `tags` are the definition's. `capabilities.streaming` and `capabilities.pushNotifications` are `true`. `card.security`, typically from `securitySchemesFromAuthConfig`, becomes its `securitySchemes` and `securityRequirements`.
+
+### Messages
+
+`SendMessage` without a `taskId` starts the workflow with the message's input, passing `idempotencyKey: ${user}:${messageId}` (the caller's `userName`, percent-encoded where it holds `:` or `%`) to `engine.start`, so a retried message from the same caller returns the same task instead of starting a second run. The task's `contextId` is the client's when it supplies one, otherwise the task identifier. A `configuration.taskPushNotificationConfig` is stored before the task's first event, so it is notified of every change.
+
+`SendMessage` with a `taskId` continues the task, after two checks that run before any signal is delivered and apply to `SendStreamingMessage` too: a `contextId` other than the task's gets `RequestMalformedError` (`-32602`), and a task that is `COMPLETED`, `FAILED`, `CANCELED`, or `REJECTED` gets `UnsupportedOperationError`. Then the message's input is delivered as the payload of the signal the workflow waits for (`ctx.waitForSignal`). A workflow waiting for several signals at once (in `ctx.race`, for instance) needs the message to name one in `metadata.signalName` (`SIGNAL_NAME_METADATA_KEY`); the `INPUT_REQUIRED` status message lists the names in its `metadata.signalNames` (`SIGNAL_NAMES_METADATA_KEY`). A continuation to a task that waits for no signal gets `RequestMalformedError`.
+
+A `SendMessage` returns once the task is terminal or waits for its caller (`INPUT_REQUIRED`), or at once with `configuration.returnImmediately`, and applies `configuration.historyLength` to the task it returns. The agent never answers with a bare `Message`.
+
+### Task state
+
+| Workflow | Task |
+| --- | --- |
+| `pending` | `SUBMITTED` |
+| `running`, waiting for no signal | `WORKING` |
+| `running`, waiting for any signal | `INPUT_REQUIRED` |
+| `suspended` | `WORKING` |
+| `completed` | `COMPLETED`, with the result as one artifact (`artifactId: 'result'`) holding one data part |
+| `failed`, `timed-out` | `FAILED`, with the reason in the status message |
+| `cancelled` | `CANCELED` |
+
+The task follows the workflow by reconciliation: the agent reads the workflow with `engine.get`, and commits any difference as a status update (preceded, on completion, by an artifact update). It reconciles a task whenever a request reads it and whenever the engine reports a lifecycle or signal event for its workflow, so a workflow that changes while no handler runs, completing during a restart for instance, reads correctly on its next request. `Task.history` holds only the messages exchanged on the task through A2A: the caller's messages and the agent's status messages, never anything else the workflow does.
+
+`CancelTask` on a running task calls `engine.cancel` and returns the canceled task; on a `CANCELED` task it returns the task again (A2A 1.0.1 §3.3.1), and on a `COMPLETED`, `FAILED`, or `REJECTED` one, or one whose workflow finishes before the cancel lands, it gets `TaskNotCancelableError`.
+
+`ListTasks` reconciles every one of the caller's tasks that matches its `contextId` before the task store applies the `status` and `statusTimestampAfter` filters, the sort, `totalSize`, and paging, so a status filter sees a task whose workflow finished while no handler ran. Its cost is linear in the caller's tasks in that context.
+
+### Streams
+
+Every status and artifact change is one durable event, committed in the same conditional batch as the task record, which records the sequence of the last event it reflects: its cursor. The events are kept beside the task, under the task store's keys, and `prune()` removes them with it.
+
+`SendStreamingMessage` and `SubscribeToTask` send the task first, tagged with its cursor, then each later event tagged with its own, and stay open through `INPUT_REQUIRED` until the task reaches a terminal state (A2A 1.0.1 §3.1.2). `SubscribeToTask` on a terminal task gets `UnsupportedOperationError` before any event (§3.1.6). A client that resumes with `Last-Event-ID` gets the current task, which already holds every change up to its cursor, then only the events after that cursor, so nothing older than the task it was just sent ever reaches it. A stream carries only these `StreamResponse` kinds: the workflow's own progress (token streams, activities, step and tool events) never reaches A2A. Live delivery is in-process, so a subscriber follows the changes that its own agent commits.
+
+The agent reads a signal wait from the workflow's persisted `waitingForSignals`. Right after it delivers a signal the persisted list still names it, so the agent treats that name as answered until the engine reports a new wait; this record is in memory, and after a restart the persisted list is read as it stands.
+
+`examples/a2a-workflow-agent.ts` serves a workflow that streams progress, waits for an `input` signal, sleeps thirty seconds unless it is cancelled, and completes, with push delivery to a loopback receiver on the egress allowlist. `bun run --filter=@lostgradient/weft test:a2a-tck` runs the official [A2A TCK](https://github.com/a2aproject/a2a-tck), at the commit `scripts/run-a2a-tck.ts` pins, against it at the `must`, `should`, and `may` levels over JSON-RPC, and keeps each level's JUnit report in `packages/weft/.cache/a2a-tck/reports/`. `--sut-host <url>` runs the same levels against an agent that is already running. It needs Python 3.11 or later, `uv`, and network access to clone the TCK.
+
 ## Not covered
 
-The kit serves the JSON-RPC binding only. A Weft workflow backend for the request handler, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath, and so are certificate pinning, DNS-rebinding protection, and an egress proxy for push delivery.
+The kit serves the JSON-RPC binding only. Several workflows behind one card, the `openIdConnect` scheme, the HTTP+JSON and gRPC bindings, and the authenticated extended card are outside this subpath, and so are certificate pinning, DNS-rebinding protection, and an egress proxy for push delivery.

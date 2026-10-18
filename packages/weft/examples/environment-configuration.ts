@@ -10,12 +10,23 @@ const schema = z.object({
     .transform((value) => Number(value ?? 7321))
     .meta({ env: 'PORT' }),
   host: z.string().optional().meta({ env: 'HOST' }),
+  a2aExampleTrustLoopbackWebhooks: z
+    .string()
+    .optional()
+    .transform((value) => value === '1')
+    .meta({ env: 'A2A_EXAMPLE_TRUST_LOOPBACK_WEBHOOKS' }),
 });
 
 /** Resolve only the runnable examples' environment values. */
 export function resolveExampleEnvironment() {
   const env: Record<string, string> = {};
-  for (const name of ['WEFT_CHECKOUT_DATABASE_PATH', 'WEFT_DATABASE_PATH', 'PORT', 'HOST']) {
+  for (const name of [
+    'WEFT_CHECKOUT_DATABASE_PATH',
+    'WEFT_DATABASE_PATH',
+    'PORT',
+    'HOST',
+    'A2A_EXAMPLE_TRUST_LOOPBACK_WEBHOOKS',
+  ]) {
     const value = Bun.env[name];
     if (value !== undefined) env[name] = value;
   }

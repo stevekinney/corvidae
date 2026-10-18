@@ -131,6 +131,25 @@ describe('createA2AHandler: Agent Card route', () => {
     expect(stale.status).toBe(200);
   });
 
+  test('sends a Last-Modified header, the same on every response, conditional ones included', async () => {
+    const before = Math.floor(Date.now() / 1000) * 1000;
+    const handler = cardHandler();
+    const response = await handler(new Request(CARD_URL));
+    const lastModified = response.headers.get('last-modified');
+
+    expect(lastModified).not.toBeNull();
+    const modifiedAt = Date.parse(lastModified ?? '');
+    expect(modifiedAt).toBeGreaterThanOrEqual(before);
+    expect(modifiedAt).toBeLessThanOrEqual(Date.now());
+    const etag = response.headers.get('etag') ?? '';
+    const conditional = await handler(
+      new Request(CARD_URL, { headers: { 'if-none-match': etag } }),
+    );
+    expect(conditional.headers.get('last-modified')).toBe(lastModified);
+    const repeated = await handler(new Request(CARD_URL));
+    expect(repeated.headers.get('last-modified')).toBe(lastModified);
+  });
+
   test('does not serve a JWKS without signing', async () => {
     const handler = cardHandler();
 
