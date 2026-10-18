@@ -2,12 +2,15 @@ import { type CleanupAcknowledgement, createAgent } from '@lostgradient/operativ
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError } from '../../create-bureau.ts';
+import { createMemoryStorageFixture } from '../../test/storage-fixtures';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { waitForCondition } from '../../test';
 import type { ContextDeletionReport } from '../../types.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
 import {
   answering,
   authentication,
+  createStorageGate,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -344,20 +347,105 @@ describe('the fence around a context being deleted', () => {
     });
   });
 
-  it('answers session input for the context as input to one that does not exist', async () => {
-    await withBureau({}, async (opened) => {
+  /**
+   * A Bureau whose deletion of a session is held at its first read of a session body: the
+   * session and its run are still live, nothing is cancelled, and the fence is the only
+   * thing standing between a continuation and the context.
+   */
+  async function withDeletionHeldAtTheFirstRead<T>(
+    body: (context: {
+      opened: OpenedBureau;
+      run: Awaited<ReturnType<typeof startRun>>;
+      deletion: Promise<unknown>;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const gate = createStorageGate(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+    );
+    const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => gate.wrap(raw) });
+    const opened = await openBureau({ storage: fixture.configuration });
+    try {
       const run = await startRun(opened);
-
+      gate.arm();
       const deletion = opened.bureau.deleteSession(run.sessionId);
+      await gate.reached;
+      try {
+        return await body({ opened, run, deletion });
+      } finally {
+        gate.release();
+        await deletion;
+      }
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  }
+
+  it('answers session input for the context as input to one that does not exist, and admits none', async () => {
+    await withDeletionHeldAtTheFirstRead(async ({ opened, run }) => {
       const outcome = await opened.bureau.submitSessionInput(run.sessionId, {
         id: 'input-late',
         principal: OWNER.alice,
         deliveryMode: 'steer',
         payload: 'too late',
       });
-      await deletion;
 
       expect(outcome.outcome).toBe('not-found');
     });
+  });
+
+  it('refuses a signal to the context as a session that does not exist', async () => {
+    await withDeletionHeldAtTheFirstRead(async ({ opened, run }) => {
+      const refused = await rejectionOf(opened.bureau.signalSession(run.sessionId, 'wake', {}));
+
+      expect(refused).toBeInstanceOf(BureauError);
+      expect((refused as BureauError).code).toBe('NOT_FOUND');
+      expect((refused as BureauError).message).toContain('Session not found');
+    });
+  });
+
+  it('refuses a run whose admission a deletion overtakes between the session save and the run registering', async () => {
+    // The task record is written after the session is saved as running and before the run
+    // registers: hold it there, start the deletion in the gap, and hold the deletion too, so
+    // it is in flight when the run reaches its registration.
+    const admission = createStorageGate((_verb, args) =>
+      JSON.stringify(args).includes('bureau-task:v1:'),
+    );
+    const deleting = createStorageGate(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+    );
+    const fixture = createMemoryStorageFixture({
+      wrapStorage: (raw) => admission.wrap(deleting.wrap(raw)),
+    });
+    const opened = await openBureau({ storage: fixture.configuration });
+    try {
+      admission.arm();
+      const creating = rejectionOf(
+        opened.bureau.createRun({
+          message: 'overtaken',
+          principal: OWNER.alice,
+          sessionId: 'overtaken',
+        }),
+      );
+      await admission.reached;
+      deleting.arm();
+      const deletion = opened.bureau.deleteSession('overtaken');
+      await deleting.reached;
+      admission.release();
+
+      const refused = await creating;
+      deleting.release();
+      await deletion;
+
+      expect(refused).toBeInstanceOf(BureauError);
+      expect((refused as BureauError).code).toBe('NOT_FOUND');
+      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(await opened.bureau.getSession('overtaken')).toBeUndefined();
+      const tasks = await opened.bureau.tasks.list({ limit: 50, offset: 0 });
+      expect(tasks.tasks).toEqual([]);
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
   });
 });

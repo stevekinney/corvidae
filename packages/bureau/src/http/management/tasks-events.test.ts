@@ -390,6 +390,21 @@ describe('the task event projection', () => {
     expect(projector.ended).toBe(true);
   });
 
+  it('serves the answer of a run that completed while a review was open once the last review is resolved', () => {
+    const projector = createTaskEventProjector('run-1');
+    projector.project(at('review.requested', { reviewId: 'a' }, '1'));
+    projector.project(
+      at('run.completed', { finishReason: 'stop-condition', content: 'the held answer' }, '2'),
+    );
+
+    const done = projector.project(at('review.approved', { reviewId: 'a' }, '3'));
+
+    expect(done).toMatchObject({
+      status: 'completed',
+      artifact: { artifactId: 'run-1:result', text: 'the held answer', truncated: false },
+    });
+  });
+
   it('shows a failed or canceled run as that, whatever review is open', () => {
     const failed = createTaskEventProjector('run-1');
     failed.project(at('review.requested', { reviewId: 'a' }, '1'));

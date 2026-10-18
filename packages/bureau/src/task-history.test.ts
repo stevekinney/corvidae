@@ -11,7 +11,10 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import { encodeStorageKeyComponent } from '@lostgradient/weft';
+
 import { createBureau } from './create-bureau';
+import { TASK_RECORD_KEY_PREFIX } from './task-registry';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
@@ -116,6 +119,35 @@ describe('a task’s own message history', () => {
 
       expect(await bureau.tasks.get(run.id)).toBeUndefined();
       expect(await bureau.tasks.history(run.id)).toBeUndefined();
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('deletes a run whose task record cannot be read, and diagnoses it', async () => {
+    const diagnostics: string[] = [];
+    const bureau = await createBureau({
+      id: 'history-unreadable',
+      agents: {},
+      generate: finishes,
+      toolbox,
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    try {
+      const run = await bureau.createRun({ message: 'short lived', principal: 'api-key:alice' });
+      await waitForCondition(() => bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await bureau.kv?.set(
+        `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(run.id)}`,
+        '{not json',
+      );
+
+      await bureau.deleteRun(run.id);
+
+      expect(bureau.getRun(run.id)).toBeUndefined();
+      expect(diagnostics.some((message) => message.includes('unreadable task record'))).toBe(true);
     } finally {
       await bureau.dispose();
     }

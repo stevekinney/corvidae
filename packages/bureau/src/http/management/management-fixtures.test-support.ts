@@ -9,6 +9,7 @@ import {
   type AuthConfig,
   type AuthorizationScope,
   principalFromApiKey,
+  type Storage,
   type StorageConfiguration,
 } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
@@ -176,7 +177,7 @@ export async function openBureau(
     humanInput?: boolean;
     /** Stop a run at a tool call that needs approval, as a real host does. */
     stopAtApproval?: boolean;
-    storage?: StorageConfiguration;
+    storage?: StorageConfiguration | Storage;
     publish?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
     durableHistory?: boolean;
@@ -250,3 +251,41 @@ export const chargesOnce: GenerateFunction = async () => ({
   content: '',
   toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 4242 } }],
 });
+
+/**
+ * A storage wrapper that holds the first call matching `matches` until `release()`, so a
+ * test can start a second operation while the first is in the middle of its steps. Nothing
+ * is held until `arm()`.
+ */
+export function createStorageGate(matches: (verb: string, args: readonly unknown[]) => boolean) {
+  let armed = false;
+  let held = false;
+  const reached = Promise.withResolvers<void>();
+  const open = Promise.withResolvers<void>();
+  return {
+    arm(): void {
+      armed = true;
+    },
+    /** Resolves once a matching call is being held. */
+    reached: reached.promise,
+    release(): void {
+      open.resolve();
+    },
+    wrap(raw: Storage): Storage {
+      return new Proxy(raw, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function') return member;
+          if (typeof property !== 'string') return member.bind(target);
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (!armed || held || !matches(property, args)) return call();
+            held = true;
+            reached.resolve();
+            return open.promise.then(call);
+          };
+        },
+      });
+    },
+  };
+}

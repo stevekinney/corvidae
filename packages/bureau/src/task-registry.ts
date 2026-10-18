@@ -387,10 +387,24 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   /** Where each followed task's cleanup stands, set as soon as its acknowledgement arrives. */
   const observed = new Map<string, TaskCleanupState>();
 
+  /**
+   * The record at `key`, or `undefined` when its value cannot be read: another version, or
+   * not a record at all. It is diagnosed and skipped, never thrown, so one bad value cannot
+   * fail listing, retention or deletion for every other task (as the command ledger does).
+   */
+  function readable(key: string, raw: string): TaskRecord | undefined {
+    try {
+      return parseRecord(key, raw);
+    } catch (error) {
+      diagnose(`Skipped an unreadable task record at "${key}"`, error);
+      return undefined;
+    }
+  }
+
   async function read(taskId: string): Promise<TaskRecord | undefined> {
     const key = recordKey(taskId);
     const raw = await kv.get(key);
-    return raw === null ? undefined : parseRecord(key, raw);
+    return raw === null ? undefined : readable(key, raw);
   }
 
   /** Applies `mutate` to the stored record with a compare-and-swap; no record, no write. */
@@ -402,7 +416,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     for (let attempt = 0; attempt < MAX_UPDATE_ATTEMPTS; attempt += 1) {
       const raw = await kv.get(key);
       if (raw === null) return false;
-      const next = mutate(parseRecord(key, raw));
+      const current = readable(key, raw);
+      // A record this build cannot read is left as it is.
+      if (current === undefined) return false;
+      const next = mutate(current);
       if (next === undefined) return true;
       const committed = await kv.conditionalBatch(
         [{ key, expectedValue: raw }],
@@ -505,7 +522,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     const records: TaskRecord[] = [];
     for (const key of await kv.list(TASK_RECORD_KEY_PREFIX)) {
       const raw = await kv.get(key);
-      if (raw !== null) records.push(parseRecord(key, raw));
+      const record = raw === null ? undefined : readable(key, raw);
+      if (record !== undefined) records.push(record);
     }
     return records;
   }
@@ -531,9 +549,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   }
 
   /** The receipt a cleanup state is reported as. */
-  function receiptFor(view: TaskView, watched: TaskCleanupState | undefined): TaskCancelReceipt {
-    if (watched !== undefined) return watched;
-    return view.cleanup ?? (view.status === 'canceled' ? 'cleanup-pending' : 'cancel-requested');
+  function receiptFor(
+    view: TaskView,
+    observedState: TaskCleanupState | undefined,
+    followed: boolean,
+  ): TaskCancelReceipt {
+    if (observedState !== undefined) return observedState;
+    if (view.cleanup !== null) return view.cleanup;
+    if (view.status !== 'canceled') return 'cancel-requested';
+    // A cleanup this process follows is pending until it is acknowledged. One nothing follows
+    // (a stop recorded before a restart) has no evidence behind it, so it claims only the stop.
+    return followed ? 'cleanup-pending' : 'canceled';
   }
 
   return {
@@ -734,6 +760,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
                 finishReason: 'aborted',
                 message: null,
               },
+              // A stop with no acknowledgement behind it: a repeat answers the same.
+              cleanup: 'canceled',
             }));
             return { receipt: 'canceled' };
           }
@@ -741,7 +769,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           return { receipt: 'rejected', reason: 'already-terminal' };
         }
         if (before.status === 'canceled') {
-          return { receipt: receiptFor(before, await watchers.get(taskId)) };
+          // The same bound a first cancel has: what the cleanup has reported by now, or what it
+          // reports within the wait, and `cleanup-pending` when it has not.
+          const watched = watchers.get(taskId);
+          let state = observed.get(taskId);
+          if (state === undefined && watched !== undefined && waitMilliseconds > 0) {
+            state = await Promise.race([
+              watched,
+              host.sleep(waitMilliseconds).then(() => undefined),
+            ]);
+          }
+          return { receipt: receiptFor(before, state, watched !== undefined) };
         }
         return { receipt: 'rejected', reason: 'already-terminal' };
       }
@@ -750,7 +788,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       if (watched === undefined || waitMilliseconds <= 0) {
         const view = (await this.get(taskId)) ?? before;
         return {
-          receipt: receiptFor(view, observed.get(taskId)),
+          receipt: receiptFor(view, observed.get(taskId), watchers.has(taskId)),
         };
       }
       const settled = await Promise.race([
@@ -758,7 +796,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         host.sleep(waitMilliseconds).then(() => undefined),
       ]);
       const view = (await this.get(taskId)) ?? before;
-      return { receipt: receiptFor(view, settled) };
+      return { receipt: receiptFor(view, settled, true) };
     },
   };
 }

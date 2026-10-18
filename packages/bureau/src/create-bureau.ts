@@ -7528,7 +7528,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runToolboxesByRunId.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
-    await tasks.remove(id);
+    // A task record that cannot be removed is diagnosed, like every step after the run has left
+    // the store: a throw here would skip the pruning below and make a second delete answer
+    // `Run not found`.
+    await tasks.remove(id).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not remove the task record of deleted run "${id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
     await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal, ownerIncarnation);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
@@ -12254,7 +12264,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function getReview(
     id: string,
-  ): Promise<(PendingReview & { status: ReviewStatus }) | undefined> {
+  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined> {
     const pending = listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) return pending;
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
@@ -12288,6 +12298,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...reviewDetail,
       ...(reviewDetail.kind === 'tool-approval' ? { round: reviewDetail.round ?? 0 } : {}),
       status: reviewStatusFromAuditType(match.type),
+      // Who decided it, as the audit trail recorded the decision.
+      ...(match.principal === undefined ? {} : { resolvedBy: match.principal }),
     };
   }
 
@@ -13671,9 +13683,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 message: originatingMessageText(input),
               });
               const result = await handle.result();
+              const status = settledTaskState('completed', result.finishReason);
+              // A run stopped through its own handle (not through `abortRun`) still has a
+              // cleanup to report: follow it before the task shows as canceled.
+              if (status === 'canceled') void tasks.watchCleanup(taskId, handle.closed());
               await tasks.recordSettled(taskId, {
                 at: runtimeServices.clock.nowISO(),
-                status: settledTaskState('completed', result.finishReason),
+                status,
                 finishReason: result.finishReason ?? null,
                 message:
                   result.error === undefined || result.error === null

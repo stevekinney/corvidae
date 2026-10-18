@@ -276,22 +276,23 @@ export const tasksRespondOperation = defineOperation<
         claimed.outcome === 'existing' && entry.claim.reviewId !== ''
           ? entry.claim.reviewId
           : (wait?.reviewId ?? '');
-      if (reviewId === '') {
-        // Nothing was addressed and nothing was applied: leave no claim behind.
-        await host.respondLedger.release(entry);
-        throw notAwaiting ?? conflict('The task is not awaiting input');
-      }
+      // Only a claim this invocation made is this invocation's to release. A pending claim
+      // another attempt made belongs to it: that attempt may be resolving the review right
+      // now, possibly in another process, and deleting its claim would lose its receipt.
+      const ownClaim = claimed.outcome === 'claimed';
       const refuse = async (fault: unknown): Promise<never> => {
         // The Bureau refused it before changing anything, so a retry may claim afresh.
-        await host.respondLedger.release(entry);
+        if (ownClaim) await host.respondLedger.release(entry);
         throw fault;
       };
+      // Nothing was addressed and nothing was applied: leave no claim of ours behind.
+      if (reviewId === '') return refuse(notAwaiting ?? conflict('The task is not awaiting input'));
       let result: TasksRespondResult;
       try {
         const review = await host.reviews.getReview(reviewId);
         if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
-        if (review.status === EXPECTED_STATUS[decision]) {
-          // The earlier attempt resolved it before it could record its receipt.
+        if (review.status === EXPECTED_STATUS[decision] && review.resolvedBy === actor) {
+          // The earlier attempt of this caller resolved it before it could record its receipt.
           result = {
             taskId: input.taskId,
             messageId: input.messageId,

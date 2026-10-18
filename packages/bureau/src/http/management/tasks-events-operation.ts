@@ -233,7 +233,7 @@ export function createTaskEventProjector(taskId: string) {
         case 'review.rejected': {
           const reviewId = textField(event.payload, 'reviewId');
           if (reviewId !== undefined) open.delete(reviewId);
-          return current(event, false);
+          return current(event);
         }
         // Expiry, revocation and cancellation carry no transition of their own while the
         // run is going; once it has finished they are what lets it be done.
@@ -242,7 +242,7 @@ export function createTaskEventProjector(taskId: string) {
         case 'review.canceled': {
           const reviewId = textField(event.payload, 'reviewId');
           if (reviewId !== undefined) open.delete(reviewId);
-          return settlement === undefined ? undefined : current(event, false);
+          return settlement === undefined ? undefined : current(event);
         }
         case 'run.removed':
           ended = true;
@@ -274,7 +274,7 @@ export function createTaskEventProjector(taskId: string) {
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf'>;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record'>;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -366,6 +366,7 @@ export const tasksEventsOperation = defineOperation<
     }
     const task = await host.tasks.get(taskId);
     if (task === undefined) throw resourceNotFound('task', taskId);
+    const catalog = (await host.tasks.record(taskId))?.incarnation === '';
     const owner = { kind: 'run', id: taskId } as const;
     const history = host.taskHistory;
     // A resume is probed here, so a Bureau with no durable history to follow answers
@@ -414,6 +415,14 @@ export const tasksEventsOperation = defineOperation<
           firstRetainedCursor: encodeCursor(probe.firstRetainedSequence),
         });
         emitAfter = lastBefore;
+      }
+
+      // A catalog task (no session, so no incarnation) records no durable `run.*` events: its
+      // stream is the snapshot alone, and the task's state is read with `bureau.tasks.get`.
+      if (catalog) {
+        queue.end();
+        onReplayComplete();
+        return;
       }
 
       let since: string | undefined;

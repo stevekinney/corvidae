@@ -538,6 +538,42 @@ describe('cancel', () => {
     expect(await registry.cancel('run-canceled', 0)).toEqual({ receipt: 'cleaned-up' });
   });
 
+  it('answers a repeated cancel at once while the cleanup is still pending, whatever the wait', async () => {
+    const { registry, held, runtime } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    void registry.watchCleanup('run-1', new Promise(() => undefined));
+    held.live.set('run-1', { ...running, phase: 'aborted', finishReason: 'aborted' });
+
+    const hung = Symbol('hung');
+    const bounded = <T>(promise: Promise<T>) =>
+      Promise.race([
+        promise,
+        new Promise<symbol>((resolve) => setTimeout(() => resolve(hung), 100)),
+      ]);
+    const immediate = await bounded(registry.cancel('run-1', 0));
+    const waiting = registry.cancel('run-1', 1000);
+    for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    await runtime.advance(1000);
+    const waited = await bounded(waiting);
+
+    expect(immediate).toEqual({ receipt: 'cleanup-pending' });
+    expect(waited).toEqual({ receipt: 'cleanup-pending' });
+  });
+
+  it('answers a repeated cancel of a durable run it stopped as canceled, and records that on the task', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+
+    const first = await registry.cancel('run-1', 0);
+    const repeat = await registry.cancel('run-1', 0);
+    const view = await registry.get('run-1');
+
+    expect(first).toEqual({ receipt: 'canceled' });
+    expect(repeat).toEqual({ receipt: 'canceled' });
+    expect(view?.cleanup).toBe('canceled');
+  });
+
   it('cancels a durable run this process holds no live run for', async () => {
     const requested = build();
     await admit(requested.registry, 'run-1');
@@ -598,4 +634,38 @@ describe('remove and expire', () => {
       expect(await registry.record(id), id).toBeDefined();
     }
   });
+});
+
+describe('an unreadable task record', () => {
+  const UNREADABLE = [
+    ['an unknown schema version', JSON.stringify({ schemaVersion: 2, taskId: 'run-bad' })],
+    ['malformed JSON', '{not json'],
+    ['a value that is not a record', '[]'],
+  ] as const;
+
+  it.each(UNREADABLE)(
+    'is skipped and diagnosed, not thrown, by listing, expiry and removal: %s',
+    async (_label, value) => {
+      const { registry, kv, diagnostics } = build();
+      await admit(registry, 'run-good', { owner: OWNER });
+      await admit(registry, 'run-old');
+      await registry.recordSettled('run-old', {
+        at: '2026-09-01T00:00:00.000Z',
+        status: 'completed',
+        finishReason: 'stop-condition',
+        message: null,
+      });
+      await kv.set(`${TASK_RECORD_KEY_PREFIX}run-bad`, value);
+
+      const listed = await registry.list({ limit: 50, offset: 0 });
+      const removed = await registry.expire(Date.parse('2026-10-01T00:00:00.000Z'), new Set());
+      await registry.remove('run-bad');
+
+      expect(listed.tasks.map((task) => task.id).toSorted()).toEqual(['run-good', 'run-old']);
+      expect(removed).toBe(1);
+      expect(await registry.record('run-old')).toBeUndefined();
+      expect(await registry.get('run-bad')).toBeUndefined();
+      expect(diagnostics.length).toBeGreaterThan(0);
+    },
+  );
 });

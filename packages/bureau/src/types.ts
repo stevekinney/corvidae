@@ -1818,7 +1818,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `undefined` when no audit trail is configured (ephemeral bureau) or when
    * `id` matches nothing at all.
    */
-  getReview(id: string): Promise<(PendingReview & { status: ReviewStatus }) | undefined>;
+  getReview(
+    id: string,
+  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
 
   /**
    * Approve, deny, or reject a pending review (AB-46). Approve resumes the
