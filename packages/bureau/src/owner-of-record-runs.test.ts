@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -185,6 +185,68 @@ describe('two principals racing to create one new session (COR-718)', () => {
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
         [winners[0]!.value.id]: String(owner),
       });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('the owner of a catalog run (COR-718)', () => {
+  it('reads the principal a live bureau.run dispatch was given, whether or not the engine is durable', async () => {
+    const release = Promise.withResolvers<void>();
+    const worker = createAgent({
+      name: 'worker',
+      generate: async () => {
+        await release.promise;
+        return { content: 'done', toolCalls: [] };
+      },
+    });
+    for (const durable of [false, true]) {
+      const bureau = await createBureau({
+        agents: { worker },
+        ...(durable ? { storage: { type: 'memory' as const }, durableExecution: true } : {}),
+      });
+      try {
+        const owned = bureau.run('worker', 'work', { principal: 'api-key:alice' });
+        const unowned = bureau.run('worker', 'work');
+
+        expect([durable, await bureau.getOwner({ kind: 'run', id: owned.id })]).toEqual([
+          durable,
+          'api-key:alice',
+        ]);
+        expect([durable, await bureau.getOwner({ kind: 'run', id: unowned.id })]).toEqual([
+          durable,
+          'anonymous:local',
+        ]);
+      } finally {
+        release.resolve();
+        await bureau.dispose();
+      }
+    }
+  });
+});
+
+describe('the owner of a schedule (COR-718)', () => {
+  it('refuses a schedule whose principal is not text, before it registers', async () => {
+    const bureau = await createBureau({
+      agents: {},
+      generate,
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    try {
+      const refusal = await rejectionOf(
+        bureau.createSchedule({
+          agentName: 'worker',
+          input: 'tick',
+          spec: '1h',
+          principal: 7 as never,
+        }),
+      );
+
+      expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
+      const listed = await bureau.listSchedules();
+      expect(listed?.items ?? []).toHaveLength(0);
     } finally {
       await bureau.dispose();
     }

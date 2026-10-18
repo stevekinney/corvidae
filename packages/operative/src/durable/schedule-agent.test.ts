@@ -257,6 +257,27 @@ describe('createAgentSchedule', () => {
     expect('principal' in (engine.calls[1]!.input as ScheduledAgentRunInput)).toBe(false);
   });
 
+  it('rejects a principal that is not text before registering anything', async () => {
+    const engine = makeSchedulingEngine();
+
+    for (const principal of [7, null, {}, ['alice']]) {
+      let thrown: unknown;
+      try {
+        await createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '6h' },
+          input: 'hello',
+          principal: principal as never,
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(InvalidScheduleError);
+    }
+    expect(engine.calls).toHaveLength(0);
+  });
+
   it('threads the principal through AgentScheduler.schedule', async () => {
     const engine = makeSchedulingEngine();
 

@@ -6093,12 +6093,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function runOwner(runId: string): Promise<string | undefined> {
     const attribution = runAttribution.get(runId);
-    if (
-      attribution !== undefined ||
-      store.getRun(runId) !== undefined ||
-      findCatalogRun(runId) !== undefined
-    ) {
-      return ownerOrLocal(attribution?.principal);
+    const catalogRun = findCatalogRun(runId);
+    if (attribution !== undefined || store.getRun(runId) !== undefined || catalogRun) {
+      // A live `bureau.run()` dispatch that is not durable seeds no attribution, but
+      // its handle's liveness snapshot carries the principal it was given.
+      return ownerOrLocal(attribution?.principal ?? catalogRun?.handle.snapshot().owner);
     }
     const child = await childTopologyStore.get(runId);
     return child === undefined ? undefined : ownerOrLocal(child.principal);

@@ -528,6 +528,11 @@ export async function createAgentSchedule(
       "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
     );
   }
+  // The owner is persisted in the scheduled input, and every fire rejects an input
+  // whose principal is not text, so a bad one is refused before it registers.
+  if (principal !== undefined && typeof principal !== 'string') {
+    throw new InvalidScheduleError('schedule principal must be a string');
+  }
   const scheduleId = id?.trim() ?? runtime.identifiers.next('schedule');
 
   // Trim the session id so a padded value ('  digest  ') persists under the same
