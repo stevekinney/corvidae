@@ -1,10 +1,15 @@
 import type { EvidenceProjectionKeys } from './evidence-projection-keys';
 import {
+  decodeEmbeddingProfile,
   decodeEvidenceProjectionRecord,
+  type EmbeddingProfile,
+  embeddingProfileOf,
+  encodeEmbeddingProfile,
   encodeEvidenceProjectionRecord,
   type EvidenceProjectionRecord,
   type ProjectionReference,
   type ProjectionStatus,
+  sameEmbeddingProfile,
 } from './evidence-projection-schema';
 import {
   EvidenceImmutableError,
@@ -12,8 +17,10 @@ import {
   type EvidenceProjectionCommit,
   EvidenceProjectionCommitError,
   type EvidenceProjectionCommitResult,
+  type EvidenceProjectionRawReads,
   type EvidenceProjectionStorage,
   ProjectionRevisionConflictError,
+  RAW_READS,
 } from './evidence-projection-storage';
 import {
   decodeEvidenceRecord,
@@ -166,6 +173,33 @@ function assertNoReferenceCycle(projections: readonly EvidenceProjectionRecord[]
   for (const address of edges.keys()) visit(address, new Set());
 }
 
+/** A record this commit gives an embedding to: a created or rebuilt revision that carries one. */
+function writesEmbedding(record: EvidenceProjectionRecord): record is EvidenceProjectionRecord & {
+  embedding: NonNullable<EvidenceProjectionRecord['embedding']>;
+} {
+  return (
+    record.embedding !== undefined &&
+    (record.transition.kind === 'created' || record.transition.kind === 'rebuilt')
+  );
+}
+
+/** Two embedded records written to one namespace by one commit must share a profile. */
+function assertOneProfilePerNamespace(projections: readonly EvidenceProjectionRecord[]): void {
+  const profiles = new Map<string, EmbeddingProfile>();
+  for (const record of projections) {
+    if (!writesEmbedding(record)) continue;
+    const profile = embeddingProfileOf(record.embedding);
+    const earlier = profiles.get(record.namespace);
+    if (earlier !== undefined && !sameEmbeddingProfile(earlier, profile)) {
+      throw new EvidenceProjectionCommitError(
+        'invalid-commit',
+        `The commit writes embeddings with two profiles into namespace "${record.namespace}".`,
+      );
+    }
+    profiles.set(record.namespace, profile);
+  }
+}
+
 function assertWithinBatchCap(batch: PlannedBatch): void {
   if (batch.conditions.length > MAX_COMMIT_BATCH_OPERATIONS) {
     throw new EvidenceProjectionBatchLimitError(
@@ -208,14 +242,22 @@ class BatchPlan {
   }
 }
 
+/**
+ * Wraps the backend's `apply`, so a test can fail, count, or park a batch at
+ * the store's one write boundary. Production code never sets it.
+ */
+export type WrapApply = (apply: ApplyPlannedBatch) => ApplyPlannedBatch;
+
 export type EvidenceProjectionStoreCore = Omit<EvidenceProjectionStorage, 'init' | 'close'>;
 
 export function createEvidenceProjectionStoreCore(options: {
   readonly reader: KeyValueReader;
   readonly apply: ApplyPlannedBatch;
   readonly keys: EvidenceProjectionKeys;
+  readonly wrapApply?: WrapApply;
 }): EvidenceProjectionStoreCore {
-  const { reader, apply, keys } = options;
+  const { reader, keys } = options;
+  const apply = options.wrapApply?.(options.apply) ?? options.apply;
 
   async function scan(prefix: string): Promise<string[]> {
     const found: string[] = [];
@@ -486,6 +528,13 @@ export function createEvidenceProjectionStoreCore(options: {
       throw new EvidenceProjectionCommitError('invalid-commit', message);
     };
     if (evidence.length === 0 && projections.length === 0) invalid('The commit is empty.');
+    const { receipt } = commit;
+    if (receipt !== undefined && receipt.key.length === 0) {
+      invalid('The commit receipt needs a non-empty key.');
+    }
+    if (commit.readSet?.some((entry) => entry.key.length === 0) === true) {
+      invalid('A read set entry needs a non-empty key.');
+    }
     const evidenceIds = new Set(evidence.map((record) => record.id));
     if (evidenceIds.size !== evidence.length) invalid('The commit repeats an evidence id.');
     const addresses = projections.map((record) => JSON.stringify([record.namespace, record.id]));
@@ -500,7 +549,166 @@ export function createEvidenceProjectionStoreCore(options: {
       invalid('The commit supersedes evidence it also appends.');
     }
     assertNoReferenceCycle(projections);
+    assertOneProfilePerNamespace(projections);
     return { evidence, projections };
+  }
+
+  /** A receipt key that another write of the same batch uses, or that lies in a record family, would overwrite a record. */
+  function planReceipt(
+    builder: BatchPlan,
+    receipt: NonNullable<EvidenceProjectionCommit['receipt']>,
+  ): void {
+    const collides =
+      builder.conditions.has(receipt.key) ||
+      builder.operations.some((operation) => operation.key === receipt.key) ||
+      receipt.key.startsWith(keys.evidencePrefix) ||
+      receipt.key.startsWith(keys.projectionPrefix);
+    if (collides) {
+      throw new EvidenceProjectionCommitError(
+        'invalid-commit',
+        `The commit receipt key "${receipt.key}" collides with a record key.`,
+      );
+    }
+  }
+
+  async function readEmbeddingProfile(
+    tenantId: string,
+    namespace: string,
+  ): Promise<{ raw: Uint8Array; profile: EmbeddingProfile } | undefined> {
+    const raw = await reader.get(keys.embeddingProfile(tenantId, namespace));
+    if (raw === null) return undefined;
+    return { raw, profile: decodeEmbeddingProfile(parseJson(raw, 'projection')) };
+  }
+
+  /**
+   * Whether the namespace would still hold a recallable embedded record whose
+   * profile is not `incoming` once the commit applied: stored `active` or
+   * `demoted` current revisions the commit does not replace, plus what the
+   * commit itself writes. A demoted revision keeps its embedding recallable, so
+   * demoting is not retiring.
+   */
+  async function recallableMismatch(
+    tenantId: string,
+    namespace: string,
+    incoming: EmbeddingProfile,
+    commitRecords: readonly EvidenceProjectionRecord[],
+  ): Promise<string | undefined> {
+    const replaced = new Set(commitRecords.map((record) => record.id));
+    const prefix = keys.currentScan(tenantId, namespace);
+    for (const key of await scan(prefix)) {
+      const id = keys.idOfCurrentKey(key, prefix);
+      if (replaced.has(id)) continue;
+      const current = await getProjection(tenantId, namespace, id);
+      if (current === undefined || current.embedding === undefined) continue;
+      if (current.status !== 'active' && current.status !== 'demoted') continue;
+      if (!sameEmbeddingProfile(embeddingProfileOf(current.embedding), incoming)) return id;
+    }
+    for (const record of commitRecords) {
+      const recallable = record.status === 'active' || record.status === 'demoted';
+      if (
+        recallable &&
+        record.embedding !== undefined &&
+        !sameEmbeddingProfile(embeddingProfileOf(record.embedding), incoming)
+      ) {
+        return record.id;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Plans each namespace's embedding profile marker for the embedded records
+   * the commit writes. The marker is read and conditioned in the same batch as
+   * the records, so two commits that would give a namespace incompatible
+   * embeddings cannot both apply: they condition on one key, and the loser
+   * re-plans against the winner's marker.
+   *
+   * Every such commit conditions on the marker's exact bytes (or on its
+   * absence) and puts it back with the generation plus one. A condition
+   * serializes a commit only against commits that write the same key, so the
+   * bump is what makes concurrent embedded writes to one namespace serialize
+   * through the marker: a write that loses its batch on the marker condition
+   * re-plans against the winner's result, within the commit's bounded attempt
+   * budget. Once that is spent the commit fails with
+   * `ProjectionRevisionConflictError` (the engine reports `conflicted`,
+   * `revision-conflict`) with nothing written, and the caller may resubmit.
+   * Without it a same-profile creation could land between a migration's
+   * scan and its apply, and the namespace would end up with a marker of one
+   * profile and a recallable record of the other.
+   *
+   * - No marker: scan once for a recallable embedded record of another
+   *   profile (a namespace that predates the marker), then put the marker.
+   * - The same profile: no scan.
+   * - Another profile: allowed only when the commit leaves no recallable
+   *   embedded record of the old profile; otherwise `embedding-profile-conflict`.
+   *
+   * No transition makes a non-recallable embedded record recallable except a
+   * `created` or `rebuilt` revision (status follows the transition, and
+   * `superseded` and `revoked` are terminal), so those are the only embedded
+   * writes. A commit that only retires or demotes records never touches a marker.
+   */
+  async function planEmbeddingProfiles(
+    builder: BatchPlan,
+    projections: readonly EvidenceProjectionRecord[],
+    outcomes: EvidenceProjectionCommitResult['projections'],
+  ): Promise<void> {
+    const incoming = new Map<string, { tenantId: string; profile: EmbeddingProfile }>();
+    projections.forEach((record, index) => {
+      if (outcomes[index]?.outcome !== 'written' || !writesEmbedding(record)) return;
+      incoming.set(record.namespace, {
+        tenantId: record.tenantId,
+        profile: embeddingProfileOf(record.embedding),
+      });
+    });
+    for (const [namespace, { tenantId, profile }] of incoming) {
+      const key = keys.embeddingProfile(tenantId, namespace);
+      const stored = await readEmbeddingProfile(tenantId, namespace);
+      if (stored === undefined || !sameEmbeddingProfile(stored.profile, profile)) {
+        const inNamespace = projections.filter((record) => record.namespace === namespace);
+        const conflicting = await recallableMismatch(tenantId, namespace, profile, inNamespace);
+        if (conflicting !== undefined) {
+          throw new EvidenceProjectionCommitError(
+            'embedding-profile-conflict',
+            `Namespace "${namespace}" keeps recallable embedded record "${conflicting}" with another model or dimension than the ${profile.model}/${profile.dimensions} this commit writes.`,
+          );
+        }
+      }
+      builder.require(key, stored?.raw ?? null);
+      builder.put(
+        key,
+        encodeEmbeddingProfile({ ...profile, generation: (stored?.profile.generation ?? 0) + 1 }),
+      );
+    }
+  }
+
+  /**
+   * Turns the caller's read set into conditions. An entry whose key the batch
+   * already conditions must agree with that condition; any entry whose key no
+   * longer holds the bytes the caller saw means the state it decided on has
+   * moved, and the commit is refused as a conflict instead of being retried: a
+   * re-plan would only re-read the same changed key.
+   */
+  async function planReadSet(
+    builder: BatchPlan,
+    tenantId: string,
+    readSet: NonNullable<EvidenceProjectionCommit['readSet']>,
+  ): Promise<void> {
+    for (const entry of readSet) {
+      const seen = entry.value ?? null;
+      const planned = builder.conditions.get(entry.key);
+      const current = planned !== undefined ? planned : await reader.get(entry.key);
+      const holds =
+        seen === null ? current === null : current !== null && bytesEqual(current, seen);
+      if (!holds) {
+        throw new ProjectionRevisionConflictError(
+          tenantId,
+          undefined,
+          [],
+          `The state this commit was decided on changed at "${entry.key}"; nothing was written.`,
+        );
+      }
+      if (planned === undefined) builder.require(entry.key, seen);
+    }
   }
 
   async function planCommit(request: EvidenceProjectionCommit): Promise<{
@@ -511,10 +719,29 @@ export function createEvidenceProjectionStoreCore(options: {
     const builder = new BatchPlan();
     const planned = await planEvidence(builder, request.tenantId, evidence);
     const projectionOutcomes = await planProjections(builder, projections, planned.appended);
-    return {
-      batch: builder.toBatch(),
-      result: { evidence: planned.outcomes, projections: projectionOutcomes },
-    };
+    await planEmbeddingProfiles(builder, projections, projectionOutcomes);
+    if (request.readSet !== undefined) {
+      await planReadSet(builder, request.tenantId, request.readSet);
+    }
+    const { receipt } = request;
+    const result = { evidence: planned.outcomes, projections: projectionOutcomes };
+    if (receipt !== undefined) {
+      planReceipt(builder, receipt);
+      if ((await reader.get(receipt.key)) !== null) {
+        // Refusing here, not losing the batch, keeps a lost receipt race from burning every attempt.
+        throw new EvidenceProjectionCommitError(
+          'receipt-exists',
+          `A receipt is already stored under "${receipt.key}".`,
+        );
+      }
+      const value = receipt.build(result);
+      if (value.length === 0) {
+        throw new EvidenceProjectionCommitError('invalid-commit', 'The commit receipt is empty.');
+      }
+      builder.require(receipt.key, null);
+      builder.put(receipt.key, value);
+    }
+    return { batch: builder.toBatch(), result };
   }
 
   async function executeCommit(
@@ -535,6 +762,18 @@ export function createEvidenceProjectionStoreCore(options: {
       projections.map((record) => record.id),
       'The commit lost its compare-and-swap; nothing was written.',
     );
+  }
+
+  async function getReceipt(key: string): Promise<Uint8Array | null> {
+    return reader.get(key);
+  }
+
+  async function getEmbeddingProfile(
+    tenantId: string,
+    namespace: string,
+  ): Promise<EmbeddingProfile | undefined> {
+    const stored = await readEmbeddingProfile(tenantId, namespace);
+    return stored?.profile;
   }
 
   async function getEvidence(tenantId: string, id: string): Promise<EvidenceRecord | undefined> {
@@ -647,8 +886,34 @@ export function createEvidenceProjectionStoreCore(options: {
     return history;
   }
 
+  const rawReads: EvidenceProjectionRawReads = {
+    async evidence(tenantId, id) {
+      const stored = await readStoredEvidence(tenantId, id);
+      return { key: keys.evidence(tenantId, id), raw: stored?.raw, record: stored?.record };
+    },
+    async evidenceSupersession(tenantId, id) {
+      const key = keys.supersession(tenantId, id);
+      const raw = await reader.get(key);
+      if (raw === null) return { key, raw: undefined, record: undefined };
+      return { key, raw, record: decodeEvidenceSupersession(parseJson(raw, 'evidence')) };
+    },
+    async projection(tenantId, namespace, id) {
+      const key = keys.current(tenantId, namespace, id);
+      const stored = await readStoredProjection(key, { tenantId, namespace, id });
+      return { key, raw: stored?.raw, record: stored?.record };
+    },
+    async projectionRevision(tenantId, namespace, id, revision) {
+      const key = keys.history(tenantId, namespace, id, revision);
+      const stored = await readStoredProjection(key, { tenantId, namespace, id, revision });
+      return { key, raw: stored?.raw, record: stored?.record };
+    },
+  };
+
   return {
+    [RAW_READS]: rawReads,
     commit: executeCommit,
+    getReceipt,
+    getEmbeddingProfile,
     async appendEvidence(record) {
       const result = await executeCommit({ tenantId: record.tenantId, evidence: [record] });
       return result.evidence[0]!.outcome;

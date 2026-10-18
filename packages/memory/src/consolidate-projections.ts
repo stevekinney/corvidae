@@ -1,19 +1,14 @@
-import { EmbeddingMismatchError } from './derived-indexes';
-import {
-  type EvidenceProjectionRecord,
-  type ProjectionReference,
-  type ProjectionSource,
-  projectionText,
-} from './evidence-projection-schema';
-import {
-  type EvidenceProjectionCommitResult,
-  type EvidenceProjectionStorage,
-  ProjectionRevisionConflictError,
-} from './evidence-projection-storage';
+import { type ProjectionReference, projectionText } from './evidence-projection-schema';
+import { EvidenceProjectionCommitError } from './evidence-projection-storage';
+import type { MemoryAuthority } from './governance/authority';
+import type { TransitionEngine } from './transition-engine';
+import type { TransitionResult } from './transition-outcome';
 
 export interface ConsolidateProjectionsOptions {
-  readonly storage: EvidenceProjectionStorage;
-  readonly tenantId: string;
+  readonly engine: TransitionEngine;
+  /** The authority the consolidation runs under; its tenant, owner, and policy revision are the proposal's. */
+  readonly authority: MemoryAuthority;
+  readonly operationId: string;
   readonly namespace: string;
   /** The exact current revisions to fold into one summary. */
   readonly candidates: readonly ProjectionReference[];
@@ -25,128 +20,68 @@ export interface ConsolidateProjectionsOptions {
   readonly summarize: (texts: readonly string[]) => Promise<string>;
   readonly summaryId: string;
   readonly projectorRevision: string;
-  readonly policyRevision: string;
-  readonly now: () => number;
+  /** The prompt or algorithm revision that produced the summary, recorded on the receipt. */
+  readonly promptRevision: string;
   /** Embeds the summary. Its model and dimension must match the embeddings that stay recallable. */
   readonly embed?: (text: string) => Promise<{ model: string; vector: number[] }>;
-}
-
-export interface ConsolidateProjectionsResult {
-  readonly summary: EvidenceProjectionRecord;
-  readonly commit: EvidenceProjectionCommitResult;
-}
-
-async function loadCandidates(
-  options: ConsolidateProjectionsOptions,
-): Promise<EvidenceProjectionRecord[]> {
-  const { storage, tenantId, namespace } = options;
-  const loaded: EvidenceProjectionRecord[] = [];
-  for (const reference of options.candidates) {
-    const current = await storage.getProjection(tenantId, namespace, reference.id);
-    const consolidatable = current?.status === 'active' || current?.status === 'demoted';
-    if (current === undefined || current.revision !== reference.revision || !consolidatable) {
-      throw new ProjectionRevisionConflictError(tenantId, namespace, [reference.id]);
-    }
-    loaded.push(current);
-  }
-  return loaded;
-}
-
-/**
- * Refuses a summary embedding that the namespace's index could not hold beside
- * the embeddings that stay recallable: a vector index takes one model and one
- * dimension, so a mismatch would make the next build throw. A demoted candidate
- * stays recallable and is compared with; a superseded one is not.
- */
-async function assertEmbeddingFits(
-  options: ConsolidateProjectionsOptions,
-  embedding: { model: string; vector: number[] },
-): Promise<void> {
-  const { storage, tenantId, namespace, outcome } = options;
-  const retired = new Set(outcome === 'supersede' ? options.candidates.map((c) => c.id) : []);
-  const recallable = await storage.listProjections({
-    tenantId,
-    namespace,
-    status: ['active', 'demoted'],
-  });
-  for (const record of recallable) {
-    if (record.embedding === undefined || retired.has(record.id)) continue;
-    if (record.embedding.model !== embedding.model) {
-      throw new EmbeddingMismatchError(
-        'model',
-        `The summary embedding is from model "${embedding.model}", but "${record.id}" stays recallable with "${record.embedding.model}".`,
-      );
-    }
-    if (record.embedding.vector.length !== embedding.vector.length) {
-      throw new EmbeddingMismatchError(
-        'dimension',
-        `The summary embedding has ${embedding.vector.length} dimensions, but "${record.id}" stays recallable with ${record.embedding.vector.length}.`,
-      );
-    }
-  }
+  /** Aborting before the submission returns `canceled` with no events and no engine call. */
+  readonly signal?: AbortSignal;
 }
 
 /**
  * The projection-based successor of in-place consolidation. It never rewrites a
- * record: one commit adds a summary projection that covers the candidates and
- * carries the union of their evidence sources, and writes a new `superseded`
- * (or `demoted`) revision of each candidate pointing at the summary. The
- * candidates' earlier revisions stay in history, so lineage back to the source
- * evidence is never lost.
+ * record: it asks `summarize` (and `embed`) for the summary, builds one
+ * `consolidate` proposal, and submits it through the transition engine, which
+ * validates it and commits the summary, the retired or demoted candidates, and
+ * the receipt in one batch. The candidates' earlier revisions stay in history,
+ * so lineage back to the source evidence is never lost.
+ *
+ * A reference to a revision that does not exist throws
+ * `EvidenceProjectionCommitError` (`projection-not-found`) before `summarize`
+ * runs, the way a malformed proposal throws: the caller named nothing. Every
+ * other result, including a candidate that is no longer current, is the
+ * engine's outcome.
  */
 export async function consolidateProjections(
   options: ConsolidateProjectionsOptions,
-): Promise<ConsolidateProjectionsResult> {
-  const { storage, tenantId, namespace, outcome, summaryId } = options;
-  const candidates = await loadCandidates(options);
-  const at = options.now();
-  const text = await options.summarize(candidates.map(projectionText));
-  const embedding = options.embed === undefined ? undefined : await options.embed(text);
-  if (embedding !== undefined) await assertEmbeddingFits(options, embedding);
-
-  const sources = new Map<string, ProjectionSource>();
-  for (const candidate of candidates) {
-    for (const source of candidate.sources) sources.set(source.evidenceId, source);
+): Promise<TransitionResult> {
+  const { authority, namespace, signal } = options;
+  // The candidates are read from the engine's own store, so the text summarized is the text
+  // the submission will be judged against. That revision is immutable history, so reading it
+  // can never be stale; whether it is still current is the engine's to detect.
+  const texts: string[] = [];
+  for (const reference of options.candidates) {
+    const candidate = await options.engine.storage.getProjectionRevision(
+      authority.tenantId,
+      namespace,
+      reference.id,
+      reference.revision,
+    );
+    if (candidate === undefined) {
+      throw new EvidenceProjectionCommitError(
+        'projection-not-found',
+        `Candidate ${namespace}/${reference.id}@${reference.revision} does not exist.`,
+      );
+    }
+    texts.push(projectionText(candidate));
   }
-  const covers = candidates.map(({ id, revision }) => ({ id, revision }));
-  const summary: EvidenceProjectionRecord = {
-    schemaVersion: 1,
-    id: summaryId,
-    tenantId,
-    namespace,
-    kind: 'summary',
-    revision: 1,
-    projectorRevision: options.projectorRevision,
-    policyRevision: options.policyRevision,
-    sources: [...sources.values()],
-    validity: { validFrom: at },
-    confidence: Math.min(...candidates.map((candidate) => candidate.confidence)),
-    status: 'active',
-    transition:
-      outcome === 'supersede'
-        ? { kind: 'created', at, supersedes: covers }
-        : { kind: 'created', at },
-    ...(embedding === undefined ? {} : { embedding }),
-    payload: { text, covers },
-  };
+  const text = await options.summarize(texts);
+  const embedding = options.embed === undefined ? undefined : await options.embed(text);
+  if (signal?.aborted === true) return { outcome: 'canceled' };
 
-  const successor: ProjectionReference = { id: summaryId, revision: 1 };
-  const retired = candidates.map((candidate): EvidenceProjectionRecord => {
-    const base = { ...candidate, revision: candidate.revision + 1 };
-    return outcome === 'supersede'
-      ? {
-          ...base,
-          status: 'superseded',
-          validity: { ...candidate.validity, validUntil: at },
-          transition: { kind: 'superseded', at, supersededBy: successor },
-        }
-      : {
-          ...base,
-          status: 'demoted',
-          transition: { kind: 'demoted', at, demotedBy: successor },
-        };
-  });
-
-  const commit = await storage.commit({ tenantId, projections: [summary, ...retired] });
-  return { summary, commit };
+  return options.engine.submit(
+    {
+      kind: 'consolidate',
+      operationId: options.operationId,
+      tenantId: authority.tenantId,
+      authority,
+      namespace,
+      candidates: options.candidates.map(({ id, revision }) => ({ id, revision })),
+      outcome: options.outcome,
+      summary: { id: options.summaryId, text, ...(embedding === undefined ? {} : { embedding }) },
+      projectorRevision: options.projectorRevision,
+      promptRevision: options.promptRevision,
+    },
+    signal === undefined ? undefined : { signal },
+  );
 }

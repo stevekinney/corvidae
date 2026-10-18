@@ -44,6 +44,12 @@ export interface EvidenceProjectionKeys {
   supersession(tenantId: string, id: string): string;
   currentScan(tenantId: string, namespace: string): string;
   current(tenantId: string, namespace: string, id: string): string;
+  /**
+   * The namespace's embedding profile marker: the one model and dimension every
+   * recallable embedding in the namespace shares. Its `m:` sub-family letter
+   * differs from `c:` and `h:`, so neither scan returns it.
+   */
+  embeddingProfile(tenantId: string, namespace: string): string;
   historyScan(tenantId: string, namespace: string, id: string): string;
   history(tenantId: string, namespace: string, id: string, revision: number): string;
   /** The id a key under {@link evidenceScan} or {@link supersessionScan} names. */
@@ -69,6 +75,8 @@ export function createEvidenceProjectionKeys(
     currentScan: (tenantId, namespace) => `${projectionScope(tenantId, namespace)}c:`,
     current: (tenantId, namespace, id) =>
       `${projectionScope(tenantId, namespace)}c:${component(id)}`,
+    embeddingProfile: (tenantId, namespace) =>
+      `${projectionScope(tenantId, namespace)}m:embedding-profile`,
     historyScan: (tenantId, namespace, id) =>
       `${projectionScope(tenantId, namespace)}h:${component(id)}:`,
     history: (tenantId, namespace, id, revision) =>
