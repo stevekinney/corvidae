@@ -273,3 +273,51 @@ describe('a human wait', () => {
     );
   });
 });
+
+describe('a thread that is waiting on an answer', () => {
+  const startAgain = (handler: Harness['handler']) =>
+    handler(
+      startRequest(
+        runAgentInput({
+          runId: 'client-run-2',
+          messages: [{ id: 'user-2', role: 'user', content: 'and another thing' }],
+        }),
+      ),
+    );
+
+  it('refuses a start while the run is parked on a human wait, and creates nothing', async () => {
+    await withHarness(
+      {
+        script: [askHuman],
+        humanInput: true,
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      },
+      async ({ handler, bureau }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        const runsBefore = bureau.listRuns().length;
+
+        const frames = await readAgUiStream(await startAgain(handler));
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
+        expect(bureau.listRuns()).toHaveLength(runsBefore);
+      },
+    );
+  });
+
+  it('refuses a start while a run has settled with a tool approval pending, and creates nothing', async () => {
+    await withHarness(
+      { script: [chargeCard], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        const runsBefore = bureau.listRuns().length;
+
+        const frames = await readAgUiStream(await startAgain(handler));
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
+        expect(bureau.listRuns()).toHaveLength(runsBefore);
+      },
+    );
+  });
+});
