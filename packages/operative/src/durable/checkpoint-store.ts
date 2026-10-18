@@ -2,6 +2,11 @@ import type { ConditionalTextValueStore, TextValueStore } from '@lostgradient/we
 import type { ConversationSnapshot } from 'conversationalist';
 
 import {
+  assertWritableCheckpointRecord,
+  CHECKPOINT_RECORD_SCHEMA_VERSION,
+  isCurrentCheckpointRecord,
+} from './checkpoint-version';
+import {
   parseSessionInputDeliveries,
   planSessionInputPromotion,
   sessionInputDeliveriesKey,
@@ -206,6 +211,7 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
 
   const checkpointStore: CheckpointStore = {
     async saveCursor(runId, cursor) {
+      assertWritableCheckpointRecord('cursor', cursor);
       await store.set(keys.cursor(runId), JSON.stringify(cursor));
     },
 
@@ -215,6 +221,17 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
         hasLegacyKeys(runId) ? legacyKeys.cursor(runId) : undefined,
         options,
       )) as RunCursor | null;
+      // COR-713: only a current-version cursor is read. An older one (including every cursor
+      // written before records were versioned) fails explicitly rather than reading as a cursor
+      // with empty parts; a current-version cursor missing its parts is malformed.
+      if (cursor !== null && !isCurrentCheckpointRecord('cursor', cursor)) {
+        if (options?.strict === true) {
+          throw new Error(
+            `Persisted checkpoint data at "${keys.cursor(runId)}" is a cursor without its parts.`,
+          );
+        }
+        return null;
+      }
       // A cursor persisted before AB-221 added `lastAppliedConfigVersion` to
       // `RunCursor` deserializes with every OTHER field present but that one
       // `undefined` — `parseJson` casts the stored JSON to `RunCursor`
@@ -277,6 +294,7 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
     },
 
     async saveStep(runId, record) {
+      assertWritableCheckpointRecord('step', record);
       await store.set(keys.step(runId, record.step), JSON.stringify(record));
     },
 
@@ -301,7 +319,18 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
           await store.get(key),
           strictKeyFor(options, key),
         ) as StepRecord | null;
-        if (record) records.push(record);
+        if (record === null) continue;
+        // COR-713: as for the cursor, an older record fails and a malformed current one is skipped
+        // (tolerant) or rejected (strict).
+        if (!isCurrentCheckpointRecord('step', record)) {
+          if (options?.strict === true) {
+            throw new Error(
+              `Persisted checkpoint data at "${key}" is a step record without its parts.`,
+            );
+          }
+          continue;
+        }
+        records.push(record);
       }
       return records;
     },
@@ -318,9 +347,12 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
         // (a pre-AB-221 `RunCursor` missing `lastAppliedConfigVersion`); a
         // missing cursor (no run persisted yet) gets the full zeroed default.
         cursor: cursor ?? {
+          schemaVersion: CHECKPOINT_RECORD_SCHEMA_VERSION,
           step: 0,
           totalUsage: { prompt: 0, completion: 0, total: 0 },
           lastContent: '',
+          lastParts: [],
+          finalRowIsReplacement: false,
           schemaAttempts: 0,
           lastAppliedConfigVersion: 0,
         },

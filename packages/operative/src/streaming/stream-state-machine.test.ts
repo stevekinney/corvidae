@@ -270,3 +270,375 @@ describe('createStreamStateMachine', () => {
     expect(state.usage).toEqual({ prompt: 20, completion: 10, total: 30 });
   });
 });
+
+describe('createStreamStateMachine parts', () => {
+  const messageId = 'row-1';
+  const asset = { kind: 'managed-asset', assetId: 'asset-1', revision: 1 } as const;
+
+  function startText(machine: ReturnType<typeof createStreamStateMachine>, partIndex = 0): void {
+    machine.process({ type: 'part-start', messageId, partIndex, kind: 'text' });
+  }
+
+  it('starts with no parts', () => {
+    expect(createStreamStateMachine().getState().parts).toEqual([]);
+  });
+
+  it('tracks a text part from start through delta to complete', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'Hel' },
+    });
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 2,
+      delta: { kind: 'text', text: 'lo' },
+    });
+    const streaming = machine.getState().parts[0];
+    expect(streaming).toMatchObject({ messageId, partIndex: 0, kind: 'text', status: 'streaming' });
+    expect(streaming?.text).toBe('Hello');
+
+    const state = machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'text', text: 'Hello' },
+    });
+    expect(state.parts[0]).toMatchObject({
+      status: 'complete',
+      part: { type: 'text', text: 'Hello' },
+    });
+  });
+
+  it('keeps parts in part-index order whatever order they start in', () => {
+    const machine = createStreamStateMachine();
+    machine.process({ type: 'part-start', messageId, partIndex: 1, kind: 'text' });
+    machine.process({ type: 'part-start', messageId, partIndex: 0, kind: 'thinking' });
+    expect(machine.getState().parts.map((part) => [part.partIndex, part.kind])).toEqual([
+      [0, 'thinking'],
+      [1, 'text'],
+    ]);
+  });
+
+  it('accumulates thinking deltas on a thinking part', () => {
+    const machine = createStreamStateMachine();
+    machine.process({ type: 'part-start', messageId, partIndex: 0, kind: 'thinking' });
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'thinking', thinking: 'Plan' },
+    });
+    expect(machine.getState().parts[0]?.text).toBe('Plan');
+  });
+
+  it('treats a duplicate delta (same part, same sequence) as a no-op that leaves the snapshot unchanged', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'Hi' },
+    });
+    const before = machine.getState();
+
+    const after = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'Hi' },
+    });
+
+    expect(after).toEqual(before);
+    expect(after.parts[0]?.text).toBe('Hi');
+  });
+
+  it('treats a delta with an older sequence as a no-op too', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 3,
+      delta: { kind: 'text', text: 'A' },
+    });
+    const before = machine.getState();
+    const after = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 2,
+      delta: { kind: 'text', text: 'B' },
+    });
+    expect(after).toEqual(before);
+  });
+
+  it('accepts a gap in the sequence', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'A' },
+    });
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 5,
+      delta: { kind: 'text', text: 'B' },
+    });
+    expect(machine.getState().parts[0]?.text).toBe('AB');
+    expect(machine.getState().parts[0]?.lastSequence).toBe(5);
+  });
+
+  it('treats a delta arriving after its part completed as a no-op that leaves the snapshot unchanged', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'Hi' },
+    });
+    machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'text', text: 'Hi' },
+    });
+    const before = machine.getState();
+
+    const after = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 2,
+      delta: { kind: 'text', text: ' late' },
+    });
+
+    expect(after).toEqual(before);
+  });
+
+  it('ignores a delta for a part that was never started', () => {
+    const machine = createStreamStateMachine();
+    const before = machine.getState();
+    const after = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 4,
+      sequence: 1,
+      delta: { kind: 'text', text: 'x' },
+    });
+    expect(after).toEqual(before);
+  });
+
+  it('gives a media part byte progress, never a string delta', () => {
+    const machine = createStreamStateMachine();
+    machine.process({
+      type: 'part-start',
+      messageId,
+      partIndex: 0,
+      kind: 'image',
+      mimeType: 'image/png',
+    });
+    const before = machine.getState();
+
+    const afterDelta = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'AAAA' },
+    });
+    expect(afterDelta).toEqual(before);
+
+    const state = machine.process({
+      type: 'part-progress',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      receivedBytes: 512,
+      totalBytes: 2048,
+    });
+    expect(state.parts[0]).toMatchObject({
+      kind: 'image',
+      mimeType: 'image/png',
+      receivedBytes: 512,
+      totalBytes: 2048,
+    });
+    expect(state.parts[0]?.text).toBeUndefined();
+  });
+
+  it('ignores byte progress on a text part', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    const before = machine.getState();
+    const after = machine.process({
+      type: 'part-progress',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      receivedBytes: 10,
+    });
+    expect(after).toEqual(before);
+  });
+
+  it('links and then confirms a media asset, setting the final part only when it is available', () => {
+    const machine = createStreamStateMachine();
+    machine.process({
+      type: 'part-start',
+      messageId,
+      partIndex: 0,
+      kind: 'image',
+      mimeType: 'image/png',
+    });
+    const completed = machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'image', mimeType: 'image/png', byteLength: 4 } as never,
+    });
+    expect(completed.parts[0]).toMatchObject({ status: 'complete' });
+    expect(completed.parts[0]?.part).toBeUndefined();
+
+    const linked = machine.process({
+      type: 'part-link-asset',
+      messageId,
+      partIndex: 0,
+      source: asset,
+    });
+    expect(linked.parts[0]?.asset).toEqual({ status: 'linked', source: asset });
+    expect(linked.parts[0]?.part).toBeUndefined();
+
+    const available = machine.process({
+      type: 'part-asset-available',
+      messageId,
+      partIndex: 0,
+      source: asset,
+    });
+    expect(available.parts[0]?.asset).toEqual({ status: 'available', source: asset });
+    expect(available.parts[0]?.part).toMatchObject({ type: 'image', source: asset });
+  });
+
+  it('fails a media part between completion and asset availability', () => {
+    const machine = createStreamStateMachine();
+    machine.process({ type: 'part-start', messageId, partIndex: 0, kind: 'image' });
+    machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'image' } as never,
+    });
+    machine.process({ type: 'part-link-asset', messageId, partIndex: 0, source: asset });
+
+    const failed = machine.process({
+      type: 'part-fail',
+      messageId,
+      partIndex: 0,
+      error: new Error('cancelled'),
+    });
+    expect(failed.parts[0]?.status).toBe('failed');
+    expect(failed.parts[0]?.error).toBeInstanceOf(Error);
+
+    // A late availability notice cannot resurrect a failed part.
+    const after = machine.process({
+      type: 'part-asset-available',
+      messageId,
+      partIndex: 0,
+      source: asset,
+    });
+    expect(after).toEqual(failed);
+  });
+
+  it('fails a streaming part and ignores everything after', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    const failed = machine.process({
+      type: 'part-fail',
+      messageId,
+      partIndex: 0,
+      error: new Error('boom'),
+    });
+    expect(failed.parts[0]?.status).toBe('failed');
+    const after = machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'text', text: 'x' },
+    });
+    expect(after).toEqual(failed);
+  });
+
+  it('does not fail a part whose asset is already available', () => {
+    const machine = createStreamStateMachine();
+    machine.process({ type: 'part-start', messageId, partIndex: 0, kind: 'image' });
+    machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'image' } as never,
+    });
+    machine.process({ type: 'part-asset-available', messageId, partIndex: 0, source: asset });
+    const before = machine.getState();
+    const after = machine.process({
+      type: 'part-fail',
+      messageId,
+      partIndex: 0,
+      error: new Error('late'),
+    });
+    expect(after).toEqual(before);
+  });
+
+  it('keeps usage and completion alongside parts', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.process({
+      type: 'part-complete',
+      messageId,
+      partIndex: 0,
+      part: { type: 'text', text: '' },
+    });
+    machine.process({ type: 'set-usage', usage: { prompt: 1, completion: 2, total: 3 } });
+    const state = machine.process({ type: 'complete' });
+    expect(state.complete).toBe(true);
+    expect(state.usage).toEqual({ prompt: 1, completion: 2, total: 3 });
+    expect(state.parts).toHaveLength(1);
+  });
+
+  it('keeps the legacy text content in step with text part deltas', () => {
+    const machine = createStreamStateMachine();
+    machine.process({ type: 'part-start', messageId, partIndex: 0, kind: 'thinking' });
+    machine.process({
+      type: 'part-delta',
+      messageId,
+      partIndex: 0,
+      sequence: 1,
+      delta: { kind: 'thinking', thinking: 'plan' },
+    });
+    // Thinking is not answer text.
+    expect(machine.getState().textContent).toBe('');
+  });
+
+  it('resets parts with the rest of the state', () => {
+    const machine = createStreamStateMachine();
+    startText(machine);
+    machine.reset();
+    expect(machine.getState().parts).toEqual([]);
+  });
+});

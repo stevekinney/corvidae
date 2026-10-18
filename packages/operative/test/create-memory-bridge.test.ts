@@ -29,6 +29,8 @@ function createStepContext(conversation: Conversation, step: number = 0): StepCo
 
 function createStepResult(conversation: Conversation, overrides?: Partial<StepResult>): StepResult {
   return {
+    parts: [],
+    messageId: undefined,
     step: 0,
     conversation,
     content: 'Final response.',

@@ -4,7 +4,9 @@ import type {
   RuntimeServices,
 } from '@lostgradient/lifecycle';
 
+import { GeneratedMediaNotAdmittedError, ResponsePartsMismatchError } from './errors';
 import { GenerateRetryEvent } from './events';
+import { isProviderContractError } from './providers/errors';
 import { addJitter } from './retry/jitter';
 import type { EventDispatcher } from './run-step';
 import type {
@@ -149,6 +151,19 @@ export async function evaluateStopConditions(
   return false;
 }
 
+/**
+ * Errors that name a defect in the response or the run's media policy, not a transient fault: a
+ * provider block the adapter has no mapping for, a refused generated-media admission, and a
+ * response whose parts disagree with its content. A retry would reproduce each.
+ */
+export function isNonRetryableGenerateError(error: unknown): boolean {
+  return (
+    isProviderContractError(error) ||
+    error instanceof GeneratedMediaNotAdmittedError ||
+    error instanceof ResponsePartsMismatchError
+  );
+}
+
 export async function callGenerateWithRetry(
   generate: RunOptions['generate'],
   context: GenerateContext,
@@ -191,6 +206,10 @@ export async function callGenerateWithRetry(
 
       if (attempt >= retry.attempts) break;
 
+      // COR-713: the same request produces the same unmapped block, the same refused media and the
+      // same stale parts, so these are never retried, whether or not `shouldRetry` is set.
+      if (isNonRetryableGenerateError(error)) break;
+
       if (retry.shouldRetry) {
         const shouldContinue = await retry.shouldRetry(error, attempt);
         if (!shouldContinue) break;
@@ -207,7 +226,11 @@ export async function callGenerateWithRetry(
           // retry loop started with (`context.steering`, the step's original
           // boundary read) so a mutator that omits or replaces it can never
           // make a later attempt within the same step ignore the override.
-          currentContext = { ...mutatedContext, steering: context.steering };
+          currentContext = {
+            ...mutatedContext,
+            steering: context.steering,
+            generatedMediaAdmitter: context.generatedMediaAdmitter,
+          };
           if (admitMutated) currentContext = await admitMutated(currentContext);
           mutated = true;
           mutationDescription = `Context mutated on attempt ${attempt}`;

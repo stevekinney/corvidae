@@ -1,11 +1,12 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { workflow } from '@lostgradient/weft';
-import { Conversation, isConversation } from 'conversationalist';
+import { Conversation, isConversation, type MultiModalContent } from 'conversationalist';
 
 import { appendAgentInput } from '../agent-input';
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
 import { buildStepDeps } from '../loop';
+import { deriveParts, runWideParts } from '../response-parts';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import { createStepMediaAdmission } from '../run-step-media';
 import type { FinishReason } from '../types';
@@ -252,6 +253,11 @@ export function createRunWorkflow(
         // `lastHumanWaitSignal`'s contract exactly.
         let lastWakeupNote: string | undefined;
 
+        // COR-713 — every completed step's parts, in step order, rebuilt on replay from the
+        // memoized step records exactly as `cursor` is. The terminal result's run-wide `parts` is
+        // these, followed by the `onMaximumSteps` replacement row's parts when there is one.
+        const stepParts: MultiModalContent[] = [];
+
         // AB-44/AB-45 — outer resume loop. AB-41's decision record: a delivered
         // signal (this issue) or a fired wakeup (AB-45) CONTINUES the same run
         // with one more agent generation step, never merely delaying terminal
@@ -269,6 +275,8 @@ export function createRunWorkflow(
               totalUsage: cursor.totalUsage,
               cost: cursor.cost,
               lastContent: cursor.lastContent,
+              lastParts: cursor.lastParts,
+              finalRowIsReplacement: cursor.finalRowIsReplacement,
               schemaAttempts: cursor.schemaAttempts,
               lastAppliedConfigVersion: cursor.lastAppliedConfigVersion,
             };
@@ -337,6 +345,7 @@ export function createRunWorkflow(
             );
             if (stepResult.record !== null) {
               yield* ctx.run('recordStep', { runId, record: stepResult.record });
+              stepParts.push(...stepResult.record.parts);
             }
 
             const { outcome } = stepResult;
@@ -474,7 +483,12 @@ export function createRunWorkflow(
 
             if (tail.kind === 'content') {
               snapshot = tail.conversationSnapshot;
-              cursor = { ...cursor, lastContent: tail.finalContent };
+              cursor = {
+                ...cursor,
+                lastContent: tail.finalContent,
+                lastParts: deriveParts(tail.finalContent),
+                finalRowIsReplacement: true,
+              };
               yield* ctx.run('saveConversation', { runId, snapshot });
               yield* ctx.run('saveCursor', { runId, cursor });
             } else if (tail.kind === 'error') {
@@ -528,6 +542,11 @@ export function createRunWorkflow(
           runId,
           steps: cursor.step,
           content: cursor.lastContent,
+          parts: runWideParts({
+            steps: [{ parts: stepParts }],
+            lastParts: cursor.lastParts,
+            finalRowIsReplacement: cursor.finalRowIsReplacement,
+          }),
           finishReason,
           ...(errorMessage !== undefined ? { errorMessage } : {}),
           ...(errorKind !== undefined ? { errorKind } : {}),

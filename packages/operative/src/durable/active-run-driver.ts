@@ -322,6 +322,7 @@ export async function driveDurableRun(
             runId,
             steps: 0,
             content: '',
+            parts: [],
             finishReason: 'aborted',
           },
           runtime,

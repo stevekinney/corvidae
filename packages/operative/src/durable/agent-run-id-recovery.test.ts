@@ -53,6 +53,7 @@ function makeParkingRunWorkflow() {
     yield* ctx.waitForSignal('proceed');
     return {
       schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      parts: [],
       runId: input.runId,
       steps: 1,
       content: 'resumed',

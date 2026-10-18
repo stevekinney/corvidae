@@ -3,13 +3,27 @@ import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
-import { GuardrailTripwireError, MediaAdmissionError } from './errors';
-import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
+import {
+  GeneratedMediaNotAdmittedError,
+  GuardrailTripwireError,
+  MediaAdmissionError,
+  ResponsePartsMismatchError,
+} from './errors';
+import {
+  GenerateErrorEvent,
+  GenerateStartedEvent,
+  ReplayDataDroppedEvent,
+  RunErrorEvent,
+} from './events';
+import type { StepGeneratedMediaAdmitter } from './generated-media';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
-import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
+import { isProviderContractError } from './providers/errors';
+import { readDroppedReplayData } from './providers/shared/replay-data';
+import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
 import type { StepMediaAdmission } from './run-step-media';
-import { createElicit } from './run-step-support';
+import { settleResponse } from './run-step-response';
+import { accumulateUsage, createElicit } from './run-step-support';
 import {
   applyWaterfallHandlerErrorPolicy,
   callGenerateWithRetry,
@@ -21,6 +35,10 @@ import type { GenerateContext, GenerateResponse } from './types';
 
 export interface GenerationDependencies {
   deps: StepDeps;
+  /** Billed usage of a response the loop is about to discard is folded in here (COR-713). */
+  runState: RunState;
+  /** This step's media-admission port: carried on the `GenerateContext`, used to settle every response. */
+  admitter: StepGeneratedMediaAdmitter;
   conversation: Conversation;
   step: number;
   emitter: EventDispatcher | undefined;
@@ -38,6 +56,12 @@ export interface GenerationDependencies {
 
 export interface GenerationResult {
   response: GenerateResponse;
+  /**
+   * The id of the row a streaming wrapper (or a `prepareStep` response claiming
+   * `messageAppended`) already wrote for this step, read from the response `generate` returned,
+   * before any hook could replace it. The commit step reconciles it with the settled response.
+   */
+  streamedRowId: string | undefined;
   stepSkipped: boolean;
   generateDurationMilliseconds: number | undefined;
 }
@@ -47,6 +71,8 @@ export async function executeGeneration(
 ): Promise<GenerationResult | StepOutcome> {
   const {
     deps,
+    runState,
+    admitter,
     conversation,
     step,
     emitter,
@@ -61,6 +87,7 @@ export async function executeGeneration(
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   let response: GenerateResponse = undefined!;
+  let streamedRowId: string | undefined;
   let stepRetryCount = 0;
   let shouldRetryStep: boolean;
   let stepSkipped = false;
@@ -78,6 +105,7 @@ export async function executeGeneration(
   do {
     shouldRetryStep = false;
     generateDurationMilliseconds = undefined;
+    streamedRowId = undefined;
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
@@ -100,7 +128,10 @@ export async function executeGeneration(
       }
 
       if (prepareResult) {
-        response = prepareResult;
+        streamedRowId = streamedRowOf(prepareResult, conversation);
+        // A `prepareStep` response skips `generate`, so it takes the same derivation and media
+        // admission a generated one does.
+        response = await settleResponse(prepareResult, 'prepareStep', { step, admitter });
       } else {
         // beforeGenerate: waterfall that can modify the generate context
         let generateContext: GenerateContext = {
@@ -113,6 +144,7 @@ export async function executeGeneration(
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
           resolvedSources,
+          generatedMediaAdmitter: admitter,
         };
         if (hooks?.has('beforeGenerate')) {
           // Iterate handlers manually (the same reason afterGenerate does,
@@ -137,6 +169,7 @@ export async function executeGeneration(
             signal: stepSignal,
             steering: steeringDesiredState,
             resolvedSources,
+            generatedMediaAdmitter: admitter,
           };
           for (const [index, entry] of handlers.entries()) {
             let handlerResult: GenerateContext | void;
@@ -171,6 +204,8 @@ export async function executeGeneration(
                 ...handlerResult,
                 steering: steeringDesiredState,
                 resolvedSources,
+                // COR-713: the media-admission port is the loop's, like `steering`.
+                generatedMediaAdmitter: admitter,
               };
             }
           }
@@ -307,6 +342,16 @@ export async function executeGeneration(
           throw generateError;
         }
 
+        // COR-713: what `generate` returned, before any hook. A streaming wrapper has already
+        // written the step's row (read now, before a hook can replace the response), the
+        // provider's dropped-replay-data signal is a provider fact no hook may hide, and every
+        // generated media part is admitted as a managed asset here, so no hook, event or row
+        // below ever sees inline bytes.
+        streamedRowId = streamedRowOf(response, conversation);
+        const dropped = readDroppedReplayData(response.metadata);
+        if (dropped.length > 0) emitter?.dispatch(new ReplayDataDroppedEvent(step, dropped));
+        response = await settleResponse(response, 'generate', { step, admitter });
+
         // onLLMOutput: parallel allSettled, read-only, non-blocking
         // Use generateContext (which may have been modified by beforeGenerate)
         // for consistency with onLLMInput — both hooks should report the same
@@ -365,6 +410,8 @@ export async function executeGeneration(
               response = handlerResult;
             }
           }
+          // COR-713: the response the handlers leave is authoritative; see `settleResponse`.
+          response = await settleResponse(response, 'afterGenerate', { step, admitter });
         }
 
         // AB-302: `GenerateCompletedEvent` is no longer dispatched here — see
@@ -374,6 +421,13 @@ export async function executeGeneration(
       }
       backpressure?.onSuccess();
     } catch (error) {
+      // COR-713: a response the loop discards was still billed. Fold its usage in once per thrown
+      // error, before any recovery, so a refused or unmapped response never reports zero cost.
+      const billedUsage = billedUsageOf(error);
+      if (billedUsage !== undefined) {
+        accumulateUsage(runState, emitter, step, billedUsage, deps.costEstimation);
+      }
+
       // A tripwire guardrail (mode: 'tripwire') MUST hard-halt the run — it
       // must not be retried, skipped, or otherwise recovered by a user-supplied
       // `onError` hook, which would silently defeat the tripwire. Bypass onError
@@ -392,6 +446,21 @@ export async function executeGeneration(
         backpressure?.onError(error);
         emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
         return { kind: 'error', error, errorKind: 'policy' };
+      }
+
+      // COR-713: a refused generated-media admission and a parts mismatch are policy and contract
+      // verdicts, the same as a media-admission refusal: not something `onError` may recover. A
+      // cancellation that interrupted an admission is the cancellation, not a verdict.
+      if (
+        error instanceof GeneratedMediaNotAdmittedError ||
+        error instanceof ResponsePartsMismatchError
+      ) {
+        backpressure?.onError(error);
+        if (signal?.aborted) {
+          return { kind: 'abort', reason: explicitAbortReason(signal) };
+        }
+        emitter?.dispatch(new RunErrorEvent(step, error, error.kind));
+        return { kind: 'error', error, errorKind: error.kind };
       }
 
       // onError recovery: sequential, first non-void return wins.
@@ -458,5 +527,29 @@ export async function executeGeneration(
     }
   } while (shouldRetryStep);
 
-  return { response, stepSkipped, generateDurationMilliseconds };
+  return { response, streamedRowId, stepSkipped, generateDurationMilliseconds };
+}
+
+/**
+ * The id of the row a generate function already committed, if it says it did: the row id it
+ * returned, or the conversation's last assistant row for a function that set `messageAppended`
+ * without naming it.
+ */
+function streamedRowOf(response: GenerateResponse, conversation: Conversation): string | undefined {
+  if (!response.messageAppended) return undefined;
+  if (response.messageId !== undefined) return response.messageId;
+  const last = conversation.getMessages().at(-1);
+  return last?.role === 'assistant' ? last.id : undefined;
+}
+
+/** The usage a thrown error carries for a response that was received and then discarded. */
+function billedUsageOf(error: unknown): GenerateResponse['usage'] {
+  if (
+    error instanceof GeneratedMediaNotAdmittedError ||
+    error instanceof ResponsePartsMismatchError ||
+    isProviderContractError(error)
+  ) {
+    return error.usage;
+  }
+  return undefined;
 }

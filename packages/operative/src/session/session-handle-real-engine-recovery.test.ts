@@ -75,6 +75,7 @@ function makeParkingWorkflow(sleepMs: number) {
     yield* ctx.sleep(sleepMs);
     return {
       schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      parts: [],
       runId: '',
       steps: 1,
       content: 'resumed',

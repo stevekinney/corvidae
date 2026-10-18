@@ -49,10 +49,13 @@ export function createCheckpointStoreFixture(
         ...checkpoint,
         runId,
         cursor: {
+          schemaVersion: 2,
           step: 0,
           lastAppliedConfigVersion: 0,
           totalUsage: { prompt: 0, completion: 0, total: 0, ...checkpoint.cursor.totalUsage },
           lastContent: checkpoint.cursor.lastContent,
+          lastParts: [],
+          finalRowIsReplacement: false,
           schemaAttempts: checkpoint.cursor.schemaAttempts,
         },
       };
@@ -120,6 +123,7 @@ export function makeProbeWorkflow() {
       yield* ctx.run('probe', {});
       return {
         schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        parts: [],
         runId: '',
         steps: 1,
         content: 'done',
@@ -133,6 +137,7 @@ export function makeParkingWorkflow(sleepMs: number) {
     yield* ctx.sleep(sleepMs);
     return {
       schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      parts: [],
       runId: '',
       steps: 1,
       content: 'resumed',

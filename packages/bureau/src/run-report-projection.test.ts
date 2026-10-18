@@ -112,6 +112,8 @@ describe('buildPartialRunReport', () => {
       status: 'running' as const,
       steps: [
         {
+          parts: [],
+          messageId: undefined,
           step: 0,
           conversation,
           content: 'working on it',
@@ -171,6 +173,8 @@ describe('buildPartialRunReport', () => {
       status: 'running' as const,
       steps: [
         {
+          parts: [],
+          messageId: undefined,
           step: 0,
           // Both entries point at the SAME live, now-further-mutated instance —
           // exactly the shape a real in-memory RunState has.

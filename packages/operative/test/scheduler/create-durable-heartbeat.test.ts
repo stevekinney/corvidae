@@ -39,6 +39,7 @@ function createAgentRunProbeWorkflow() {
 
 function createRunResult(content = 'heartbeat tick'): RunResult {
   return {
+    parts: [],
     conversation: new Conversation(),
     steps: [],
     content,

@@ -1505,6 +1505,8 @@ export function recordedAgentStep(value: unknown): StepRecord | undefined {
   const step = stepRecord['step'];
   if (!Number.isInteger(step) || (step as number) < 0) return undefined;
   if (typeof stepRecord['content'] !== 'string') return undefined;
+  // COR-713: only a current-version step record counts; an older one carries no parts.
+  if (stepRecord['schemaVersion'] !== 2 || !Array.isArray(stepRecord['parts'])) return undefined;
   if (!Array.isArray(stepRecord['toolCalls'])) return undefined;
   if (!Array.isArray(stepRecord['results'])) return undefined;
   if (typeof stepRecord['final'] !== 'boolean') return undefined;

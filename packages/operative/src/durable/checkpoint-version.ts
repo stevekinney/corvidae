@@ -1,0 +1,64 @@
+/**
+ * The version of the cursor and step records a durable run persists (COR-713).
+ *
+ * Both records were versionless before this: the store cast whatever JSON it found and defaulted
+ * the fields that were missing. Version 2 adds the response parts (`StepRecord.parts`,
+ * `RunCursor.lastParts`), and an older record is not read as a record with empty parts. It fails
+ * with {@link UnsupportedCheckpointRecordVersionError}, in strict and tolerant reads alike, rather
+ * than silently dual-reading or deriving parts from `content`. The version is stamped on every
+ * write, so a record's absence of one identifies it as written by an older build.
+ */
+export const CHECKPOINT_RECORD_SCHEMA_VERSION = 2 as const;
+
+export type CheckpointRecordKind = 'cursor' | 'step';
+
+/**
+ * Raised when a persisted cursor or step record is not at the current version: an in-flight
+ * durable run written by an older build cannot be resumed or read as if it were current.
+ */
+export class UnsupportedCheckpointRecordVersionError extends Error {
+  readonly record: CheckpointRecordKind;
+  /** The stored `schemaVersion`; `undefined` for a record written before records were versioned. */
+  readonly version: unknown;
+
+  constructor(record: CheckpointRecordKind, version: unknown) {
+    super(
+      `Unsupported durable ${record} record version ${version === undefined ? '(none)' : JSON.stringify(version)}: ` +
+        `this build reads version ${CHECKPOINT_RECORD_SCHEMA_VERSION}. A durable run written by an ` +
+        `older build cannot be resumed; start a new run.`,
+    );
+    this.name = 'UnsupportedCheckpointRecordVersionError';
+    this.record = record;
+    this.version = version;
+  }
+}
+
+/**
+ * Checks a parsed record is at the current version and carries its parts. A record at another
+ * version throws {@link UnsupportedCheckpointRecordVersionError}; a current-version record whose
+ * parts are missing is malformed, which is reported as `false` so the caller applies its own strict
+ * or tolerant rule.
+ */
+export function isCurrentCheckpointRecord(
+  kind: CheckpointRecordKind,
+  value: unknown,
+): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Record<string, unknown>;
+  if (record['schemaVersion'] !== CHECKPOINT_RECORD_SCHEMA_VERSION) {
+    throw new UnsupportedCheckpointRecordVersionError(kind, record['schemaVersion']);
+  }
+  const partsField = kind === 'cursor' ? 'lastParts' : 'parts';
+  return Array.isArray(record[partsField]);
+}
+
+/** Throws unless a record about to be written is at the current version and carries its parts. */
+export function assertWritableCheckpointRecord(kind: CheckpointRecordKind, value: unknown): void {
+  if (!isCurrentCheckpointRecord(kind, value)) {
+    const record = (value ?? {}) as Record<string, unknown>;
+    throw new UnsupportedCheckpointRecordVersionError(
+      kind,
+      `${String(record['schemaVersion'])} without parts`,
+    );
+  }
+}

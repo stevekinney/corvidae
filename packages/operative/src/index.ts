@@ -131,12 +131,14 @@ export {
   AsyncDefinitionLoadError,
   BudgetExceededError,
   ElicitationDeniedError,
+  GeneratedMediaNotAdmittedError,
   GuardrailTripwireError,
   MaximumStepsExceededError,
   MediaAdmissionError,
   NonJsonOutputError,
   OutputSchemaConversionError,
   OutputValidationError,
+  ResponsePartsMismatchError,
   SelectionRevalidationError,
   SubagentRunError,
   agentRunErrorToJSON,
@@ -149,7 +151,9 @@ export type {
   AsyncDefinitionLoadCode,
   ClassifiedError,
   ErrorCategory,
+  GeneratedMediaNotAdmittedReason,
   GuardrailTripwireDetail,
+  ResponsePartsMismatchSource,
   SerializedAgentRunError,
 } from './errors';
 export {
@@ -165,6 +169,7 @@ export {
   GenerateErrorEvent,
   GenerateRetryEvent,
   GenerateStartedEvent,
+  ReplayDataDroppedEvent,
   ResponseSchemaFailedEvent,
   ResponseValidatedEvent,
   RunAbortedEvent,
@@ -196,7 +201,29 @@ export type {
   OperativeEventType,
   OperativeEvents,
 } from './events';
+export {
+  admitInlineMedia,
+  admitMediaPart,
+  createStepGeneratedMediaAdmitter,
+} from './generated-media';
+export type {
+  GeneratedMediaAdmission,
+  GeneratedMediaAdmissionRequest,
+  GeneratedMediaAdmitter,
+  GeneratedMediaSettlement,
+  InlineMediaContent,
+  ManagedAssetReference,
+  StepGeneratedMediaAdmitter,
+  StepMediaAdmissionRequest,
+} from './generated-media';
 export * from './generation-profile';
+export {
+  concatenateTextParts,
+  deriveParts,
+  partsMatchContent,
+  rowContentForParts,
+  runWideParts,
+} from './response-parts';
 export * from './runnable-agent';
 export * from './selection-gate';
 // RuntimeServices is part of this package's public execution contract.

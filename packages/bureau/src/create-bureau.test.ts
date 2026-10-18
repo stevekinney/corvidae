@@ -4393,6 +4393,8 @@ describe('createBureau', () => {
 
       emitter.dispatchEvent(
         new StepCompletedEvent({
+          parts: [],
+          messageId: undefined,
           step: 0,
           conversation: new Conversation(),
           content: '',
@@ -6186,6 +6188,8 @@ describe('createBureau effectful hook idempotency (#27)', () => {
 
     // A minimal final StepResult for step 0; only final/content/step are read.
     const stepResult = (content: string) => ({
+      parts: [],
+      messageId: undefined,
       step: 0,
       conversation: new Conversation(),
       content,
@@ -6218,6 +6222,8 @@ describe('createBureau effectful hook idempotency (#27)', () => {
 
     const collection = 'hook-distinct-collection';
     const stepResult = (step: number, content: string) => ({
+      parts: [],
+      messageId: undefined,
       step,
       conversation: new Conversation(),
       content,
@@ -9092,6 +9098,8 @@ describe('createBureau review queue (AB-20)', () => {
     );
     emitter.dispatchEvent(
       new StepCompletedEvent({
+        parts: [],
+        messageId: undefined,
         step: 0,
         conversation: new Conversation(),
         content: '',
@@ -11529,6 +11537,8 @@ describe('createBureau review lifecycle (AB-46)', () => {
       const runId = bureau.store.register(activeRun, 'run-abort-both-kinds');
       emitter.dispatchEvent(
         new StepCompletedEvent({
+          parts: [],
+          messageId: undefined,
           step: 0,
           conversation: new Conversation(),
           content: '',
@@ -12090,6 +12100,8 @@ describe('createBureau review lifecycle event family (AB-224)', () => {
       const runId = bureau.store.register(activeRun, 'run-abort-events');
       emitter.dispatchEvent(
         new StepCompletedEvent({
+          parts: [],
+          messageId: undefined,
           step: 0,
           conversation: new Conversation(),
           content: '',
@@ -23525,6 +23537,8 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
 
   function stepWith(...pending: PendingToolApproval[]): StepResult {
     return {
+      parts: [],
+      messageId: undefined,
       step: 0,
       conversation: new Conversation(),
       content: '',
@@ -23593,6 +23607,8 @@ describe('bureau:pending-approval-persist idempotency under crash replay (COR-12
     );
 
     await hook({
+      parts: [],
+      messageId: undefined,
       step: 0,
       conversation: new Conversation(),
       content: 'done',

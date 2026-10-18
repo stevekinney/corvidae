@@ -1,20 +1,24 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
+import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
 import type { AccumulatedCost } from './cost-estimation';
-import type { AgentRunErrorKind } from './errors';
+import { type AgentRunErrorKind, GeneratedMediaNotAdmittedError } from './errors';
 import {
   GenerateCompletedEvent,
   ResponseValidatedEvent,
   RunErrorEvent,
   StepAbortedEvent,
 } from './events';
+import { createStepGeneratedMediaAdmitter, type GeneratedMediaAdmission } from './generated-media';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
+import { partsOf, settleResponse } from './run-step-response';
+import { commitAssistantRow } from './run-step-row';
 import { accumulateUsage } from './run-step-support';
 import { executeTools } from './run-step-tools';
 import { explicitAbortReason } from './run-step-utilities';
@@ -72,6 +76,11 @@ export interface StepDeps {
   readonly contentSourceResolver: RunOptions['contentSourceResolver'];
   /** The policy for a resolved asset with no safety verdict (COR-716). */
   readonly assetSafety: RunOptions['assetSafety'];
+  /**
+   * Admits generated media as managed assets (COR-713). Bound per step into the
+   * `GenerateContext` the loop hands `generate`.
+   */
+  readonly generatedMediaAdmitter: RunOptions['generatedMediaAdmitter'];
   /** Costs media parts; defaults to a catalog estimator over the generate function's descriptors. */
   readonly mediaCostEstimator: RunOptions['mediaCostEstimator'];
   readonly output: ZodType | undefined;
@@ -148,6 +157,12 @@ export interface StepDeps {
    */
   readonly hookTracker?: ((promise: Promise<unknown>) => void) | undefined;
   /**
+   * COR-713: every media admission a step starts is handed here, as `hookTracker` receives hooks,
+   * so a run's terminal result and `ActiveRun.closed()` wait for each admission to settle instead
+   * of acknowledging cleanup while a generated asset is still pending.
+   */
+  readonly admissionTracker?: ((admission: GeneratedMediaAdmission) => void) | undefined;
+  /**
    * AB-239 — invoked by `runStep` itself ONCE, at step start, with that
    * step's resolved toolbox (`deps.toolbox`, or a `selectTools`
    * replacement), immediately after resolution. The driver (`loop.ts`'s
@@ -181,6 +196,16 @@ export interface RunState {
    */
   cost?: AccumulatedCost | undefined;
   lastContent: string;
+  /**
+   * The parts of the run's final assistant row (COR-713), set wherever `lastContent` is: the last
+   * step's settled parts, or the `onMaximumSteps` replacement row's parts when it replaced it.
+   */
+  lastParts: readonly MultiModalContent[];
+  /**
+   * True when the final row is an `onMaximumSteps` replacement rather than the last step's row, so
+   * the run-wide `RunResult.parts` adds `lastParts` after the steps instead of repeating a step.
+   */
+  finalRowIsReplacement: boolean;
   /** Run-scoped count of structured-output schema retries already consumed. */
   schemaAttempts: number;
   /**
@@ -347,8 +372,18 @@ export async function runStep(
     admission,
   } = preparation;
 
+  const admitter = createStepGeneratedMediaAdmitter({
+    port: deps.generatedMediaAdmitter,
+    runId: deps.runId,
+    step,
+    signal: stepSignal,
+    track: deps.admissionTracker,
+  });
+
   const generation = await executeGeneration({
     deps,
+    runState,
+    admitter,
     conversation,
     step,
     emitter,
@@ -362,7 +397,7 @@ export async function runStep(
     admission,
   });
   if ('kind' in generation) return generation;
-  const { stepSkipped, generateDurationMilliseconds } = generation;
+  const { stepSkipped, generateDurationMilliseconds, streamedRowId } = generation;
   let { response } = generation;
 
   // If the step was skipped via onError recovery, move to the next step
@@ -380,13 +415,20 @@ export async function runStep(
         elicit,
       });
       if (validated !== undefined && validated !== response) {
-        emitter?.dispatch(new ResponseValidatedEvent(step, originalResponse, validated));
-        response = validated;
+        // COR-713: the response the validation hooks leave is authoritative; settle it before the
+        // event or the commit below can see parts the hook did not mean to keep.
+        const settled = await settleResponse(validated, 'validateResponse', { step, admitter });
+        emitter?.dispatch(new ResponseValidatedEvent(step, originalResponse, settled));
+        response = settled;
       }
     } catch (error) {
       // See the comment on the validateResponseHooks catch above — the
       // response has already been billed by the provider.
       accumulateUsage(runState, emitter, step, response.usage, deps.costEstimation);
+      // A cancellation that interrupted a media admission is the cancellation, not an error.
+      if (error instanceof GeneratedMediaNotAdmittedError && signal?.aborted) {
+        return { kind: 'abort', reason: explicitAbortReason(signal) };
+      }
       emitter?.dispatch(new RunErrorEvent(step, error, 'output'));
       return { kind: 'error', error, errorKind: 'output' };
     }
@@ -433,21 +475,22 @@ export async function runStep(
   }
 
   const { content, usage, metadata } = response;
+  const parts = partsOf(response);
   runState.lastContent = content;
+  runState.lastParts = parts;
+  runState.finalRowIsReplacement = false;
   accumulateUsage(runState, emitter, step, usage, deps.costEstimation);
 
-  if (content && !response.messageAppended) {
-    conversation.appendAssistantMessage(content, metadata);
-  }
+  // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
+  // and a tool call has no text and still has a row to keep.
+  const { messageId } = commitAssistantRow({ conversation, parts, metadata, streamedRowId });
 
-  // A response with tool calls and no text appends no assistant message, so its
-  // metadata (the request's media lineage) would otherwise be lost: stamp the
-  // lineage on the step's first tool-call message instead.
+  // A step that committed no row (a response with tool calls and no parts) would otherwise lose
+  // its metadata (the request's media lineage): stamp the lineage on the step's first tool-call
+  // message instead.
   const inputLineage = metadata?.['inputLineage'];
   const lineageOnToolCall =
-    !content && !response.messageAppended && inputLineage !== undefined
-      ? { inputLineage }
-      : undefined;
+    messageId === undefined && inputLineage !== undefined ? { inputLineage } : undefined;
 
   const toolExecution = await executeTools({
     deps,
@@ -474,6 +517,8 @@ export async function runStep(
     step,
     emitter,
     response,
+    parts,
+    messageId,
     materializedToolCalls,
     results,
   });

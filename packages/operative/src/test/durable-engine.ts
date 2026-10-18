@@ -84,6 +84,7 @@ export function createManualDurableEngine(): {
         runId: 'manual-run',
         steps: 0,
         content: 'manual',
+        parts: [{ type: 'text', text: 'manual' }],
         finishReason: 'stop-condition',
       } satisfies AgentRunWorkflowResult),
     rejectResult: (error: unknown) => rejectResult?.(error),
@@ -101,9 +102,12 @@ export function createManualCheckpointStore(): CheckpointStore {
     loadCheckpoint: async (runId: string) => ({
       runId,
       cursor: {
+        schemaVersion: 2,
         step: 0,
         totalUsage: { prompt: 0, completion: 0, total: 0 },
         lastContent: '',
+        lastParts: [],
+        finalRowIsReplacement: false,
         schemaAttempts: 0,
         lastAppliedConfigVersion: 0,
       },

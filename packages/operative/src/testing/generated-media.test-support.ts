@@ -1,0 +1,104 @@
+import type {
+  GeneratedMediaAdmission,
+  GeneratedMediaAdmissionRequest,
+  GeneratedMediaAdmitter,
+  GeneratedMediaSettlement,
+  ManagedAssetReference,
+} from '../generated-media';
+import type { CleanupAcknowledgement, ClosedOptions } from '../types';
+
+/** What a scripted port does with each admission it is handed. */
+export type ScriptedAdmissionMode = 'available' | 'reject' | 'manual';
+
+export interface ScriptedAdmissionRecord {
+  readonly request: GeneratedMediaAdmissionRequest;
+  readonly source: ManagedAssetReference;
+  aborted: boolean;
+  settlement: GeneratedMediaSettlement | undefined;
+  /** Settles a `manual` admission. Ignored once it has settled. */
+  settle(settlement: GeneratedMediaSettlement): void;
+}
+
+export interface ScriptedMediaAdmitter {
+  readonly port: GeneratedMediaAdmitter;
+  readonly admissions: ScriptedAdmissionRecord[];
+}
+
+/**
+ * An in-memory media-admission port for tests. `available` settles each admission at once
+ * with a `managed-asset` source `asset-<n>`; `reject` settles it rejected; `manual` leaves
+ * it pending until the test settles it, and an abort of the request signal settles it
+ * `aborted`, as Bureau's asset service settles an aborted pending record.
+ */
+export function createScriptedMediaAdmitter(
+  options: {
+    mode?: ScriptedAdmissionMode;
+    rejectionCode?: string;
+  } = {},
+): ScriptedMediaAdmitter {
+  const { mode = 'available', rejectionCode = 'per-part-limit-exceeded' } = options;
+  const admissions: ScriptedAdmissionRecord[] = [];
+
+  const port: GeneratedMediaAdmitter = {
+    async admit(request): Promise<GeneratedMediaAdmission> {
+      const source: ManagedAssetReference = {
+        kind: 'managed-asset',
+        assetId: `asset-${admissions.length + 1}`,
+        revision: 1,
+      };
+      let resolveSettlement!: (settlement: GeneratedMediaSettlement) => void;
+      const settled = new Promise<GeneratedMediaSettlement>((resolve) => {
+        resolveSettlement = resolve;
+      });
+      const record: ScriptedAdmissionRecord = {
+        request,
+        source,
+        aborted: false,
+        settlement: undefined,
+        settle(settlement) {
+          if (record.settlement !== undefined) return;
+          record.settlement = settlement;
+          resolveSettlement(settlement);
+        },
+      };
+      admissions.push(record);
+
+      const abort = (reason = 'aborted'): void => {
+        record.aborted = true;
+        record.settle({ outcome: 'aborted', reason });
+      };
+      if (request.signal.aborted) abort();
+      else request.signal.addEventListener('abort', () => abort(), { once: true });
+
+      if (mode === 'available') {
+        record.settle({
+          outcome: 'available',
+          source,
+          mimeType: request.part.mimeType ?? 'application/octet-stream',
+        });
+      } else if (mode === 'reject') {
+        record.settle({ outcome: 'rejected', code: rejectionCode, message: 'refused by policy' });
+      }
+
+      return {
+        source,
+        settled: () => settled,
+        abort,
+        async closed(closeOptions?: ClosedOptions): Promise<CleanupAcknowledgement> {
+          const signal = closeOptions?.signal;
+          if (signal?.aborted) return { status: 'unresolved', reason: 'timed-out' };
+          const abandoned = signal
+            ? new Promise<'timed-out'>((resolve) => {
+                signal.addEventListener('abort', () => resolve('timed-out'), { once: true });
+              })
+            : undefined;
+          const outcome = await (abandoned ? Promise.race([settled, abandoned]) : settled);
+          if (outcome === 'timed-out') return { status: 'unresolved', reason: 'timed-out' };
+          return { status: 'completed' };
+        },
+      };
+    },
+  };
+
+  return { port, admissions };
+}

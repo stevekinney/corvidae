@@ -2,20 +2,22 @@ import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from './providers/backend-descriptor-attachment';
-import { cancelStreamingIfActive } from './streaming/cancel-streaming';
+import { createStreamingRow } from './streaming/streaming-row';
 import type {
   GenerateContext,
   GenerateFunction,
   GenerateResponse,
   StreamingGenerateFunction,
-  StreamingHandle,
 } from './types';
 
 /**
  * Wraps a streaming generate function into a standard GenerateFunction.
  *
  * The wrapper manages the streaming lifecycle on the Conversation:
- * appendStreamingMessage → updateStreamingMessage → finalizeStreamingMessage.
+ * appendStreamingMessage → updateStreamingMessage → finalizeStreamingMessage. The row it
+ * finalizes carries the response's settled parts (thinking, server-tool blocks, generated
+ * media admitted as managed assets), not only its text, and the response it returns names the
+ * row in `messageId`. A response with no parts commits no row.
  *
  * Propagates `fn`'s attached `BackendDescriptor`(s) (AB-64, AB-245) onto the
  * returned wrapper — without this, `createAgent({ generate:
@@ -25,28 +27,13 @@ import type {
  */
 export function withStreaming(fn: StreamingGenerateFunction): GenerateFunction {
   const wrapped: GenerateFunction = async (context: GenerateContext): Promise<GenerateResponse> => {
-    const { conversation } = context;
-
-    const messageId = conversation.appendStreamingMessage('assistant');
-
-    const handle: StreamingHandle = {
-      messageId,
-      update(content: string): void {
-        conversation.updateStreamingMessage(messageId, content);
-      },
-    };
+    const row = createStreamingRow({ conversation: context.conversation, context });
 
     try {
-      const response = await fn({ ...context, streaming: handle });
-
-      conversation.finalizeStreamingMessage(messageId, {
-        ...(response.usage === undefined ? {} : { tokenUsage: response.usage }),
-        ...(response.metadata === undefined ? {} : { metadata: response.metadata }),
-      });
-
-      return { ...response, messageAppended: true };
+      const response = await fn({ ...context, streaming: row.handle });
+      return await row.finish(response);
     } catch (error) {
-      cancelStreamingIfActive(conversation, messageId);
+      await row.abandon();
       throw error;
     }
   };

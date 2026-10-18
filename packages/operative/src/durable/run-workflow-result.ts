@@ -1,3 +1,5 @@
+import type { MultiModalContent } from 'conversationalist';
+
 import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
 import { BudgetExceededError, ElicitationDeniedError, GuardrailTripwireError } from '../errors';
 import {
@@ -8,13 +10,18 @@ import {
 import type { FinishReason } from '../types';
 
 /** Plain, cloneable summary returned when the durable run completes. */
-export const AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION = 2 as const;
+export const AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION = 3 as const;
 
 export interface AgentRunWorkflowResult {
   schemaVersion: typeof AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION;
   runId: string;
   steps: number;
   content: string;
+  /**
+   * Run-wide output parts (COR-713): every step's parts in step order, then the `onMaximumSteps`
+   * replacement row's parts when there is one. Generated media is a managed-asset reference.
+   */
+  parts: readonly MultiModalContent[];
   finishReason: FinishReason;
   /**
    * Serialized message of the error that ended the run, when `finishReason` is
@@ -125,6 +132,9 @@ function assertSummaryShape(summary: Record<string, unknown>): void {
   }
   if (typeof summary['content'] !== 'string') {
     throw new InvalidRunResultError('content must be a string');
+  }
+  if (!Array.isArray(summary['parts'])) {
+    throw new InvalidRunResultError('parts must be an array');
   }
   if (typeof summary['finishReason'] !== 'string' || !FINISH_REASONS.has(summary['finishReason'])) {
     throw new InvalidRunResultError('finishReason must be a valid finish reason');

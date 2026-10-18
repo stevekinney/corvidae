@@ -188,6 +188,7 @@ describe('session.cancel() — durable cancellation', () => {
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId: id,
           steps: 2,
           content: 'checkpoint answer',

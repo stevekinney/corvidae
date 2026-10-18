@@ -8,7 +8,7 @@ import type {
 } from '@lostgradient/lifecycle';
 import type { ToolboxEvents, ToolExecutionResult } from 'armorer';
 import type { ToolCall } from 'armorer/protocol';
-import type { Conversation, ConversationActionType } from 'conversationalist';
+import type { Conversation, ConversationActionType, MultiModalContent } from 'conversationalist';
 
 import type { CostBudgetExceededEvent, CostBudgetThresholdEvent } from './cost-budget-monitor';
 import { estimateCacheHitRate } from './cost-estimation';
@@ -21,6 +21,7 @@ import {
 } from './errors';
 import type { SemanticProgress } from './liveness';
 import type { SelectionOutcomeKind } from './providers/selection';
+import type { DroppedReplayData } from './providers/shared/replay-data';
 import type { Effort } from './providers/types';
 import type { GenerateResponse, RunResult, StepResult, TokenUsage } from './types';
 
@@ -52,17 +53,25 @@ export class StepGeneratedEvent extends Event {
   static readonly type = 'step.generated' as const;
   readonly step: number;
   readonly content: string;
+  /** The step's settled output parts; generated media is a managed-asset reference. */
+  readonly parts: readonly MultiModalContent[];
+  /** The id of the assistant row the step committed; `undefined` when it committed none. */
+  readonly messageId: string | undefined;
   readonly toolCalls: readonly ToolCall[];
   readonly usage?: TokenUsage | undefined;
   constructor(data: {
     step: number;
     content: string;
+    parts: readonly MultiModalContent[];
+    messageId: string | undefined;
     toolCalls: readonly ToolCall[];
     usage?: TokenUsage | undefined;
   }) {
     super(StepGeneratedEvent.type);
     this.step = data.step;
     this.content = data.content;
+    this.parts = data.parts;
+    this.messageId = data.messageId;
     this.toolCalls = data.toolCalls;
     this.usage = data.usage;
   }
@@ -101,6 +110,8 @@ export class StepCompletedEvent extends Event {
   readonly step: number;
   readonly conversation: Conversation;
   readonly content: string;
+  readonly parts: readonly MultiModalContent[];
+  readonly messageId: string | undefined;
   readonly toolCalls: readonly ToolCall[];
   readonly results: readonly ToolExecutionResult[];
   readonly usage?: TokenUsage | undefined;
@@ -111,6 +122,8 @@ export class StepCompletedEvent extends Event {
     this.step = data.step;
     this.conversation = data.conversation;
     this.content = data.content;
+    this.parts = data.parts;
+    this.messageId = data.messageId;
     this.toolCalls = data.toolCalls;
     this.results = data.results;
     this.usage = data.usage;
@@ -125,6 +138,8 @@ export class RunCompletedEvent<O = unknown, H extends boolean = true> extends Ev
   readonly conversation: Conversation;
   readonly steps: readonly StepResult[];
   readonly content: string;
+  /** See {@link RunResult.parts}: run-wide, with generated media as managed-asset references. */
+  readonly parts: readonly MultiModalContent[];
   readonly usage: TokenUsage;
   readonly finishReason: RunResult['finishReason'];
   readonly error?: unknown;
@@ -139,6 +154,7 @@ export class RunCompletedEvent<O = unknown, H extends boolean = true> extends Ev
     this.conversation = data.conversation;
     this.steps = data.steps;
     this.content = data.content;
+    this.parts = data.parts;
     this.usage = data.usage;
     this.finishReason = data.finishReason;
     this.error = data.error;
@@ -347,6 +363,23 @@ export class GenerateCompletedEvent extends Event {
     this.step = step;
     this.response = response;
     this.durationMilliseconds = durationMilliseconds;
+  }
+}
+
+/**
+ * Dispatched when a response carried provider-private replay data the adapter could not
+ * keep (for Gemini 2.5 rows, a part's `thoughtSignature`). The response was returned and
+ * the run continues; this is the non-fatal signal that something was dropped. It is read
+ * from the response `generate` returned, before any hook, so a hook cannot hide it.
+ */
+export class ReplayDataDroppedEvent extends Event {
+  static readonly type = 'generate.replay-data-dropped' as const;
+  readonly step: number;
+  readonly dropped: readonly DroppedReplayData[];
+  constructor(step: number, dropped: readonly DroppedReplayData[]) {
+    super(ReplayDataDroppedEvent.type);
+    this.step = step;
+    this.dropped = dropped;
   }
 }
 
@@ -2112,6 +2145,7 @@ export interface OperativeEventClassMap {
   [StepAbortedEvent.type]: StepAbortedEvent;
   [GenerateStartedEvent.type]: GenerateStartedEvent;
   [GenerateCompletedEvent.type]: GenerateCompletedEvent;
+  [ReplayDataDroppedEvent.type]: ReplayDataDroppedEvent;
   [GenerateErrorEvent.type]: GenerateErrorEvent;
   [GenerateRetryEvent.type]: GenerateRetryEvent;
   [ResponseValidatedEvent.type]: ResponseValidatedEvent;
@@ -2229,6 +2263,7 @@ export const OPERATIVE_EVENT_TYPES = [
   StepAbortedEvent.type,
   GenerateStartedEvent.type,
   GenerateCompletedEvent.type,
+  ReplayDataDroppedEvent.type,
   GenerateErrorEvent.type,
   GenerateRetryEvent.type,
   ResponseValidatedEvent.type,

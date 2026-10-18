@@ -77,6 +77,7 @@ describe('streamEventToFrame', () => {
   it('maps a stream:complete event to a complete frame', () => {
     const state = {
       blocks: [],
+      parts: [],
       activeBlock: undefined,
       textContent: 'done',
       toolCalls: [],

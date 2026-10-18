@@ -46,8 +46,10 @@ export type {
   VoyageEmbedderOptions,
 } from './embeddings/index.ts';
 export {
+  ProviderContractError,
   ProviderError,
   ToolCallParseError,
+  isProviderContractError,
   isToolCallParseError,
   shouldRetryProviderError,
 } from './errors.ts';
@@ -155,6 +157,8 @@ export {
   resolveGeminiModel,
   resolveOpenAIModel,
 } from './shared/model-registry.ts';
+export { REPLAY_DATA_DROPPED_METADATA_KEY, readDroppedReplayData } from './shared/replay-data.ts';
+export type { DroppedReplayData } from './shared/replay-data.ts';
 export { normalizeAnthropicStream, normalizeOpenAIStream } from './streaming/index.ts';
 export {
   toAnthropicToolChoice,

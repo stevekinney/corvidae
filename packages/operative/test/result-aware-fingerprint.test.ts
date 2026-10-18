@@ -4,6 +4,8 @@ import { repeatingToolCalls } from '../src/conditions/predicates';
 import type { StepResult, ToolExecutionResult } from '../src/types';
 
 const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
+  parts: [],
+  messageId: undefined,
   step: 0,
   conversation: {} as any,
   content: '',
