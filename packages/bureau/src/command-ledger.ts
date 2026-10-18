@@ -788,12 +788,51 @@ export function digestCommandPayload(
  * legitimately differ between retries, so none of them belong here.
  */
 export interface RunCreationPayload {
-  readonly message: string;
+  /** Absent when the request appends rows instead, or answers the conversation as it stands. */
+  readonly message?: string | undefined;
+  /**
+   * The rows the request appends, serialized by {@link serializeAppendedMessages};
+   * absent when it appends none.
+   */
+  readonly appendMessages?: string | undefined;
   /** The session the request names, trimmed; absent when it asks for a new one. */
   readonly sessionId?: string | undefined;
   readonly systemPrompt?: string | undefined;
   readonly maximumSteps?: number | undefined;
   readonly maximumTokens?: number | undefined;
+}
+
+/** JSON with every object's keys sorted, so equal values serialize alike. */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === 'object' && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).toSorted(([left], [right]) => (left < right ? -1 : 1)),
+        )
+      : nested,
+  );
+}
+
+/**
+ * The rows a run-creation request appends, as the string its digest covers:
+ * everything about each row except the `createdAt` and `position` that
+ * appending re-stamps, which differ between two builds of the same row. An
+ * empty list serializes as absent, the same as no list.
+ */
+export function serializeAppendedMessages(
+  messages: ReadonlyArray<object> | undefined,
+): string | undefined {
+  if (messages === undefined || messages.length === 0) return undefined;
+  return canonicalJson(
+    messages.map((message) => {
+      const {
+        createdAt: _createdAt,
+        position: _position,
+        ...stable
+      } = message as Record<string, unknown>;
+      return stable;
+    }),
+  );
 }
 
 /**
@@ -804,6 +843,7 @@ export interface RunCreationPayload {
 export function digestRunCreationPayload(payload: RunCreationPayload): string {
   return digestCommandPayload({
     message: payload.message,
+    appendMessages: payload.appendMessages,
     sessionId: payload.sessionId,
     systemPrompt: payload.systemPrompt,
     maximumSteps: payload.maximumSteps,
@@ -914,8 +954,17 @@ export interface LocateRunCreationReceiptInput {
  * run), and `not-found` when the ledger holds no binding for it.
  */
 export type RunCreationReceiptLocation =
-  | { readonly status: 'recorded'; readonly receipt: RunCreationReceipt }
-  | { readonly status: 'pending'; readonly receipt: RunCreationReceipt }
+  | {
+      readonly status: 'recorded';
+      readonly receipt: RunCreationReceipt;
+      /** The session the run was claimed for, so a retry can tell it from another thread's. */
+      readonly sessionId: string;
+    }
+  | {
+      readonly status: 'pending';
+      readonly receipt: RunCreationReceipt;
+      readonly sessionId: string;
+    }
   | { readonly status: 'expired'; readonly requestId: string; readonly expiredAt: string }
   | { readonly status: 'not-found'; readonly requestId: string };
 
@@ -1173,14 +1222,26 @@ export function createRunCreationLedger(
     const { entry } = location;
     if (entry.state === 'completed') {
       await settleIfObserved(entry, await observe(entry.claim));
-      return { status: 'recorded', receipt: entry.result.receipt };
+      return {
+        status: 'recorded',
+        receipt: entry.result.receipt,
+        sessionId: entry.claim.sessionId,
+      };
     }
     if (inFlight.has(entryKey(entry.identity))) {
-      return { status: 'pending', receipt: receiptFor(entry, 'pending') };
+      return {
+        status: 'pending',
+        receipt: receiptFor(entry, 'pending'),
+        sessionId: entry.claim.sessionId,
+      };
     }
     const replayed = await replayPending(entry);
     const receipt = replayed.receipt ?? receiptFor(entry, replayed.status);
-    return { status: replayed.status === 'pending' ? 'pending' : 'recorded', receipt };
+    return {
+      status: replayed.status === 'pending' ? 'pending' : 'recorded',
+      receipt,
+      sessionId: entry.claim.sessionId,
+    };
   }
 
   /**

@@ -29,8 +29,8 @@ describe('sha256Hex', () => {
 });
 
 describe('sha256Hex without SubtleCrypto', () => {
-  // `crypto.subtle` exists only in secure contexts, and `dashboard()` serves
-  // plain HTTP, so the dashboard's activity-hash comparison runs without it.
+  // `crypto.subtle` exists only in secure contexts, and a console served over
+  // plain HTTP computes its activity-hash comparison without it.
   async function withoutSubtle<T>(run: () => Promise<T>): Promise<T> {
     const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
     Object.defineProperty(globalThis, 'crypto', {

@@ -15,12 +15,11 @@
     "packages/bureau :: src/schedule-fire.test.ts :: D6 scheduled-fire path (#109) :: fires a stateless interval schedule and runs the agent with a fresh session per fire",
     "testing/evaluation :: scripts/memory-lifecycle.test.ts :: memory-lifecycle run :: runs the stochastic lane with a fixed, recorded seed",
     "packages/operative :: src/durable/run-workflow-checkpoint-depth.test.ts :: durable agentRun checkpoint nesting :: keeps persisted run state at constant depth across more than 100 steps",
-    "packages/weft :: scripts/build-dashboard.test.ts :: buildDashboard :: writes index.html and hashed JavaScript and CSS into the default dashboard directory (COR-1450)",
     "packages/weft :: src/server/index.test.ts :: concurrent scanner deduplication :: does not double-process an orphaned operationId visible only to reconcileOrphanedRecords",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownAllWorkers shuts down all connected workers",
     "packages/weft :: src/server/index.test.ts :: worker shutdown and cancel propagation :: shutdownWorker sends shutdown message and waits for disconnect",
     "packages/weft :: src/server/remote-activity-integration.test.ts :: remote activity end-to-end integration (COR-152) :: preserves and completes a remote task across a server restart and engine recovery",
-    "packages/weft :: src/ui/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
-    "packages/weft :: src/ui/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges"
+    "applications/interborough :: src/routes/schedules/schedule-detail.test.ts :: ScheduleDetail :: queued runs (weft 0.13+ ScheduleQueuedRun[]) render as links with a queued-at timestamp",
+    "applications/interborough :: src/routes/system/dynamic-source-panel.additional.test.ts :: additional coverage :: never renders a preload outcome under a different key\u2019s identity badges"
   ]
 }

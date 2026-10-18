@@ -1030,15 +1030,6 @@ const CURRENT_BRANCH_COVERAGE_ALLOWANCE_REFRESH = buildAllowanceLayer(
       },
     ],
     [
-      'src/server/dashboard-assets.ts',
-      {
-        reason:
-          'Segment validation rejects empty, parent, and absolute paths before resolution, making the final asset-containment guard defensive. Realigned for corvidae from a fresh coverage/lcov.info (COR coverage-gate adoption), and again when COR-1448 moved the reserved-route checks into serve(): the guard now falls at line 140.',
-        lines: new Set([140]),
-        requireUncoveredLines: true,
-      },
-    ],
-    [
       'src/server/handler/auth-context-principal.ts',
       {
         reason:
@@ -2136,11 +2127,6 @@ export function parseLcov(content: string): CoverageResult {
  * coverage. So the shard applies exactly the exclusion `test` applies, read from the script
  * rather than copied, and the runner modules only those benchmarks exercise are ignored from
  * instrumentation in `bunfig.toml` with their reasons.
- *
- * The script's engine invocation also excludes the UI's trees (`src/ui/**`,
- * `scripts/ui-browser/**`, `scripts/ui-coverage/**`). Its second invocation runs them under
- * `bunfig.ui.toml`, and `scripts/ui-coverage/` gates their coverage with the UI's ratchet, so
- * the engine shard, read from the same exclusions, never runs or measures a UI test.
  */
 export function readTestScriptPathIgnorePatterns(): string[] {
   const script = packageJson.scripts?.test;
@@ -2160,9 +2146,7 @@ export async function listCoverageTestFiles(): Promise<string[]> {
   const repositoryFileOutput = await $`git ls-files --cached --others --exclude-standard`.text();
   const repositoryFiles = repositoryFileOutput.split('\n').filter(Boolean);
   const testFileGlobs = COVERAGE_TEST_FILE_GLOBS.map((pattern) => new Glob(pattern));
-  // Matched as globs, as `bun test` matches them: the benchmark entries name single files, and the
-  // UI's (`src/ui/**`, `scripts/ui-browser/**`, `scripts/ui-coverage/**`) name the trees the UI's
-  // own invocation and ratchet cover, so the engine shard never runs a UI test.
+  // Matched as globs, as `bun test` matches them: the benchmark entries name single files.
   const excludedByTestScript = readTestScriptPathIgnorePatterns().map(
     (pattern) => new Glob(pattern),
   );

@@ -54,6 +54,7 @@ import type {
   ListOptions,
   ObservabilityOptions,
   PaginatedResult,
+  RegistryAgnosticEngine,
   ScheduleFilter,
   ScheduleSummary,
   Storage,
@@ -72,7 +73,7 @@ import type {
   SignedPendingToolApproval,
   ToolRequestContext,
 } from 'armorer';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory, Message } from 'conversationalist';
 
 import type {
   AgentDefinitions,
@@ -354,6 +355,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * register/unregister lifecycle: the map is fixed for the bureau's
    * lifetime, independent of and additive to `createRun`/`generate`/
    * `provider` below (a bureau may use either, both, or neither surface).
+   *
+   * The name `bureau` is reserved for the Bureau-wide default agent that a
+   * `createRun` call without `agentName` runs; an entry called `bureau` is
+   * refused with `BureauError` (`BAD_REQUEST`).
    */
   agents: D;
   /**
@@ -651,15 +656,19 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   flowControl?: FlowControlPolicy;
   /**
-   * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs
-   * (`createRun` only; has no effect without a durable engine composed). When
-   * `true`, bureau adds a `requestHumanInput` tool to each durable run's
-   * toolbox, bound to that run's OWN event emitter and its real `ctx.services`
-   * object — the only wiring under which a `HumanWaitParkedEvent` the tool
-   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners
-   * (including AB-13's flow-control `markParked`) and `listPendingReviews`
-   * (AB-20). Omit (the default) to leave the toolbox as configured — this tool
-   * is opt-in, never an ambient grant.
+   * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs. COR-1577: it is
+   * offered to a durable `createRun` run (a Bureau-wide one, or one of a named catalog agent) and
+   * to a durable `bureau.run()` run of an agent that resolves definitions. It is not offered
+   * without a durable engine, nor to a child run or a goal attempt. When `true`, bureau adds a
+   * `requestHumanInput` tool to the run's toolbox, bound to that run's OWN event emitter and its
+   * real `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
+   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
+   * flow-control `markParked`) and `listPendingReviews` (AB-20). The park is a `human-wait`
+   * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
+   * session, is addressed by its `runId` and resumed through the engine by that id. The agent
+   * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Omit
+   * (the default) to leave the toolbox as configured — this tool is opt-in, never an ambient
+   * grant.
    */
   humanInput?: boolean;
   /**
@@ -955,6 +964,13 @@ export interface PendingToolApprovalReview {
   ageMilliseconds: number;
   /** The review's current lifecycle status (AB-46). See {@link ReviewStatus}. */
   status: ReviewStatus;
+  /**
+   * The supersession round (COR-855): 0 for an approval never superseded,
+   * incremented each time `resolveReview` approves it and the policy gates the
+   * resumed call again, which replaces the approval under the same id. It
+   * separates one supersession's resolution from the next.
+   */
+  round: number;
 }
 
 /**
@@ -967,7 +983,12 @@ export interface PendingHumanWaitReview {
   /** Id for this review, e.g. `human-wait:<runId>:<signalName>:<parkOrdinal>`; distinct per park, stable across restart. */
   id: string;
   runId: string;
-  sessionId: string;
+  /**
+   * The Bureau session the run belongs to. Absent for a run started with `bureau.run()`
+   * (COR-1577), which has no session: the run id is what addresses the review, and
+   * {@link Bureau.resolveReview} resumes it through the engine by that id.
+   */
+  sessionId?: string | undefined;
   agentName: string | undefined;
   signalName: string;
   prompt: string | undefined;
@@ -981,6 +1002,13 @@ export interface PendingHumanWaitReview {
 
 /** A single item in the gateway's review queue (AB-20). */
 export type PendingReview = PendingToolApprovalReview | PendingHumanWaitReview;
+
+/**
+ * A review that belongs to a session: every tool approval, and a human wait of a `createRun`
+ * run. Bureau's session code works in this type; a catalog run's human wait has no session.
+ */
+export type SessionPendingReview =
+  PendingToolApprovalReview | (PendingHumanWaitReview & { readonly sessionId: string });
 
 export interface ResolveReviewInput {
   /** The {@link PendingReview.id} to resolve. */
@@ -1025,6 +1053,12 @@ export interface ResolveReviewResult {
    * splice it into the tool's `ToolExecutionResult`.
    */
   feedback?: string;
+  /**
+   * `tool-approval` approve only: `true` when the policy gated the resumed call
+   * again, so the tool did not run and the review stays pending under the same
+   * id with its {@link PendingToolApprovalReview.round} incremented.
+   */
+  superseded?: true;
 }
 
 /**
@@ -1203,6 +1237,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    */
   readonly hasExplicitId: boolean;
   /**
+   * Whether this bureau has storage and a durable engine. Only such a bureau
+   * keeps run-creation receipts and human-wait parks across a restart, so an
+   * adapter that promises either (the AG-UI mount of `createBureauHandler`)
+   * refuses a bureau without one.
+   */
+  readonly hasDurableEngine: boolean;
+  /**
    * This bureau's own events, as a replay-plus-live feed.
    *
    * The same events `addEventListener`/`subscribe` deliver, but recorded with
@@ -1343,8 +1384,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * COR-424 — where a run-creation request's receipt stands: `recorded`,
    * `pending` (claimed, with no started run), `expired` once its binding's
    * retention window has passed (the same request id then creates a new
-   * run), or `not-found`. Scoped like the ledger key, to the principal and
-   * published agent (`agentName`, default `bureau`). A query that finds the
+   * run), or `not-found`. Scoped like the ledger key, to the principal and to
+   * the agent the run is: the session's, when the request continued an existing session (name it
+   * with `sessionId`), otherwise `agentName`, default `bureau`. A query that finds the
    * run started records its receipt, exactly as a retry would. Rejects
    * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
    * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
@@ -1476,6 +1518,22 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * only at terminal transitions, and a recovered run is otherwise opaque.
    */
   getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
+
+  /**
+   * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
+   * engine that checkpoints and owns this bureau's runs, so a host that serves Weft's own API or
+   * console over the same runs hands out this one rather than building a second engine over the
+   * same storage: a second engine holds no lease on these runs, so its cancel is not fenced by
+   * their owner and its live feed does not see them. The bureau still owns it. The host must not
+   * dispose it, and must not register workflows on it or start its own background tasks.
+   *
+   * This is an admin surface for one local principal. Every operation on the engine, a cancel, a
+   * signal, a start, bypasses the checks `createRun` and the session verbs make on the caller's
+   * ownership of a session or run, so a host that serves it must authenticate its callers
+   * itself. Hand it only to a host that answers to a single trusted caller, such as a local
+   * console.
+   */
+  durableEngine(): RegistryAgnosticEngine | undefined;
 
   /**
    * Waits until a run's durable workflow has reached a terminal state in the durable store, then
@@ -1777,6 +1835,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * delivers `{ __abRejected: true, reason: input.reason }` on the signal.
    * Every resolution is recorded in the audit trail attributed to
    * `input.principal`.
+   *
+   * A `tool-approval` resolution also writes its outcome into the session's
+   * conversation (COR-855): the executed result on approve, an error result
+   * carrying the reason on deny and reject, each replacing the pending
+   * `action_required` tool-result row in place, so the next run started on the
+   * session answers an up-to-date conversation. A resolution the policy gates
+   * again (`superseded`) writes nothing.
    *
    * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
    * currently pending review (including an already-resolved one).
@@ -2306,7 +2371,23 @@ export interface RunDetail extends RunSummary {
 }
 
 export interface CreateRunRequest {
-  message: string;
+  /**
+   * A user message to append to the session's conversation. Optional when
+   * {@link CreateRunRequest.appendMessages} supplies the rows, or when the
+   * conversation already ends in a user or tool-result row (the run answers
+   * it). The conversation the run starts from must end in such a row; else
+   * `BAD_REQUEST`.
+   */
+  message?: string | undefined;
+  /**
+   * Rows to append to the session's conversation, after the conversation and
+   * the system prompt and after `message` when both are given. They are
+   * appended verbatim, with their ids and content parts; an id the session
+   * already holds is `BAD_REQUEST`. The request digest covers them (by
+   * everything but the `createdAt` and `position` the append re-stamps), so an
+   * exact retry digests the same.
+   */
+  appendMessages?: ReadonlyArray<Message> | undefined;
   sessionId?: string;
   systemPrompt?: string | undefined;
   maximumSteps?: number | undefined;
@@ -2316,9 +2397,27 @@ export interface CreateRunRequest {
    */
   maximumTokens?: number;
   /**
-   * The name of the agent to run. When provided, the bureau validates the name
-   * is non-empty. In a multi-agent bureau this is used to select the correct
-   * agent; in a single-agent bureau it is carried through as metadata.
+   * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
+   * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
+   * tools (`requestHumanInput`, `scheduleWakeup`, skills), guardrails and memory around them.
+   * Omitted, the run belongs to the default agent `bureau` and runs the Bureau-wide `generate`
+   * and toolbox, unless it continues a session that already has an agent.
+   *
+   * A session is bound to the agent of the run that created it. A later run may omit this field,
+   * and inherits the session's agent, or name that same agent. Naming another, including naming a
+   * catalog agent on a session bound to `bureau`, is refused with `BAD_REQUEST`. A name that is
+   * not in the catalog is refused with `NOT_FOUND`; both land before anything is persisted. The
+   * default agent `bureau` is always valid.
+   *
+   * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
+   * the agent's value, then the Bureau's default. Stop conditions come from the agent, then the
+   * Bureau. The session's request context governs tool approvals, never the agent's
+   * `executeOptions.requestContext`.
+   *
+   * A named run needs only that agent's `generate`, so a Bureau with no Bureau-wide `generate`
+   * accepts it; an unnamed run on such a Bureau is refused with `NOT_CONFIGURED`. A durable named
+   * run recovers as its agent: one whose agent has left the catalog fails, and one whose
+   * definition revision changed logs a warning and resumes with the current definition.
    *
    * Typed dispatch endpoints (webhook ingress, OpenAI-compat) require this
    * field — callers must name the agent explicitly; there is no default-agent
@@ -2361,8 +2460,18 @@ export interface CreateRunRequest {
 export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;
-  /** The published agent the request addressed. Defaults to `bureau`. */
+  /**
+   * The agent the request ran as. When omitted, it resolves the way `createRun` resolves it: the
+   * agent bound to `sessionId` when that session exists, otherwise `bureau`.
+   */
   agentName?: string | undefined;
+  /**
+   * The session the request continued. A request that omitted `agentName` on an existing
+   * session ran as the session's agent and was keyed under it, so name the session to find it
+   * without knowing the agent. A session that does not exist, or that another principal owns,
+   * binds nothing; one bound to an agent other than `agentName` is refused with `BAD_REQUEST`.
+   */
+  sessionId?: string | undefined;
   runCreationRequestId: string;
 }
 

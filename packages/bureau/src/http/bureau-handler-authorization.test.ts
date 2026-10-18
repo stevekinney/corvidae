@@ -3,6 +3,7 @@
  * every request goes through the handler as a fetch, and every resource is made
  * by a real Bureau. Two principals hold the same scopes and disjoint resources.
  */
+import { EventType } from '@ag-ui/core';
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
   type AuthConfig,
@@ -10,12 +11,26 @@ import {
   principalFromApiKey,
   type AuthorizationScope,
 } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
+import {
+  attachRunRequest,
+  attachThreadRequest,
+  authentication as agUiAuthentication,
+  as as agUiCredentials,
+  cancelRequest,
+  type Harness as AgUiHarness,
+  openHarness as openAgUiHarness,
+  runAgentInput,
+  startRequest,
+} from './ag-ui-fixtures.test-support.ts';
+import { createAgUiMount } from './ag-ui-mount.ts';
+import { bureauMetadata, FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import {
   BUREAU_HANDLER_OPERATIONS,
@@ -822,5 +837,459 @@ describe('transcripts stay inside the Bureau', () => {
       expect(bodies.join('\n')).not.toContain(SENTINEL);
       expect(bodies.join('\n')).toContain(alice.reviewId);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// COR-855 — the AG-UI mount decides with the same predicate, on the same terms.
+// ---------------------------------------------------------------------------
+
+type AgUiOwners = {
+  readonly harness: AgUiHarness;
+  readonly alice: { threadId: string; runId: string; reviewId: string };
+  readonly bob: { threadId: string; runId: string; reviewId: string };
+};
+
+/** Starts a run for `key` on `threadId` that parks on a human wait, and reads its stream to the interrupt. */
+async function startParked(harness: AgUiHarness, key: string, threadId: string, runId: string) {
+  const frames = await readAgUiStream(
+    await harness.handler(startRequest(runAgentInput({ threadId, runId }), agUiCredentials(key))),
+  );
+  const started = frames[0]!.event;
+  const nativeRunId = String(bureauMetadata(started)['runId']);
+  const finished = frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+  return { threadId, runId: nativeRunId, reviewId: finished.outcome.interrupts[0]!.id };
+}
+
+async function withAgUiOwners<T>(body: (context: AgUiOwners) => Promise<T>): Promise<T> {
+  const park = {
+    kind: 'respond' as const,
+    response: {
+      content: '',
+      toolCalls: [
+        {
+          id: 'call-1',
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: 'Approve this?' },
+        },
+      ],
+    },
+  };
+  const harness = await openAgUiHarness({
+    script: [park, park],
+    humanInput: true,
+    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    authentication: agUiAuthentication,
+  });
+  try {
+    const alice = await startParked(harness, 'alice-key', 'thread-alice', 'alice-run');
+    const bob = await startParked(harness, 'bob-key', 'thread-bob', 'bob-run');
+    return await body({ harness, alice, bob });
+  } finally {
+    await harness.dispose();
+  }
+}
+
+/** Every event on a stream, with the ids it was asked about and the clock reading replaced. */
+async function maskedStream(pending: Promise<Response>, requested: string): Promise<string> {
+  const response = await pending;
+  const text = await response.text();
+  return text.replaceAll(requested, '<id>').replace(/"timestamp":\d+/g, '"timestamp":0');
+}
+
+describe('the AG-UI routes owner predicate', () => {
+  it('answers a caller who does not own a thread, run, or interrupt as it answers a random id', async () => {
+    await withAgUiOwners(async ({ harness, alice }) => {
+      const { handler } = harness;
+      const bob = agUiCredentials('bob-key');
+
+      const byThread = await maskedStream(
+        handler(attachThreadRequest(alice.threadId, bob)),
+        alice.threadId,
+      );
+      const byThreadRandom = await maskedStream(
+        handler(attachThreadRequest('thread-that-never-was', bob)),
+        'thread-that-never-was',
+      );
+      const byRun = await maskedStream(handler(attachRunRequest(alice.runId, bob)), alice.runId);
+      const byRunRandom = await maskedStream(
+        handler(attachRunRequest('run-that-never-was', bob)),
+        'run-that-never-was',
+      );
+      const cancelled = await maskedStream(handler(cancelRequest(alice.runId, bob)), alice.runId);
+      const cancelledRandom = await maskedStream(
+        handler(cancelRequest('run-that-never-was', bob)),
+        'run-that-never-was',
+      );
+      const resumed = await maskedStream(
+        handler(
+          startRequest(
+            runAgentInput({
+              threadId: 'thread-bob',
+              runId: 'bob-resume',
+              messages: [],
+              resume: [
+                {
+                  interruptId: alice.reviewId,
+                  status: 'resolved',
+                  payload: { decision: 'approve' },
+                },
+              ],
+            }),
+            bob,
+          ),
+        ),
+        alice.reviewId,
+      );
+      const resumedRandom = await maskedStream(
+        handler(
+          startRequest(
+            runAgentInput({
+              threadId: 'thread-bob',
+              runId: 'bob-resume',
+              messages: [],
+              resume: [
+                {
+                  interruptId: 'human-wait:run-nope:human-response:0',
+                  status: 'resolved',
+                  payload: { decision: 'approve' },
+                },
+              ],
+            }),
+            bob,
+          ),
+        ),
+        'human-wait:run-nope:human-response:0',
+      );
+
+      expect(byThread).toBe(byThreadRandom);
+      expect(byRun).toBe(byRunRandom);
+      expect(cancelled).toBe(cancelledRandom);
+      expect(resumed).toBe(resumedRandom);
+      expect(byThread).toContain('THREAD_NOT_FOUND');
+      expect(byRun).toContain('RUN_NOT_FOUND');
+      expect(resumed).toContain('INTERRUPT_NOT_FOUND');
+    });
+  });
+
+  it('refuses a start on a thread the caller does not own, creates nothing, and writes no audit entry', async () => {
+    await withAgUiOwners(async ({ harness, alice }) => {
+      const runsBefore = harness.bureau.listRuns().length;
+
+      const frames = await readAgUiStream(
+        await harness.handler(
+          startRequest(
+            runAgentInput({
+              threadId: alice.threadId,
+              runId: 'bob-on-alice',
+              messages: [{ id: 'bob-user', role: 'user', content: 'hijack' }],
+            }),
+            agUiCredentials('bob-key'),
+          ),
+        ),
+      );
+
+      expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
+      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
+      const audit = JSON.stringify(await harness.bureau.auditTrail?.query({}));
+      expect(audit).not.toContain('hijack');
+      expect(audit).not.toContain('bob-on-alice');
+      expect(harness.bureau.listPendingReviews()).toHaveLength(2);
+    });
+  });
+
+  it('grants the owner its own resources and the kind’s operator scope everyone’s, one scope per action', async () => {
+    await withAgUiOwners(async ({ harness, alice }) => {
+      const { handler } = harness;
+      const ownerAttach = await readAgUiStream(
+        await handler(attachThreadRequest(alice.threadId, agUiCredentials('alice-key'))),
+      );
+      const readerAttach = await readAgUiStream(
+        await handler(attachRunRequest(alice.runId, agUiCredentials('reader-key'))),
+      );
+      const readerCancel = await handler(cancelRequest(alice.runId, agUiCredentials('reader-key')));
+      const writerAttach = await readAgUiStream(
+        await handler(attachRunRequest(alice.runId, agUiCredentials('writer-key'))),
+      );
+      const writerCancel = await handler(cancelRequest(alice.runId, agUiCredentials('writer-key')));
+
+      expect(ownerAttach.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
+      expect(readerAttach.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
+      // bureau.tasks:read does not cancel; bureau.tasks:write does not attach.
+      expect(readerCancel.status).toBe(404);
+      expect(writerAttach[0]!.event).toMatchObject({ code: 'RUN_NOT_FOUND' });
+      expect(writerCancel.status).toBe(200);
+      // What a writer is told of the run it cancelled is its id and status, nothing of the thread.
+      const cancelled = (await writerCancel.json()) as Record<string, unknown>;
+      expect(Object.keys(cancelled).toSorted()).toEqual(['runId', 'status']);
+    });
+  });
+
+  it('decides every route that names an existing resource through the one predicate', async () => {
+    await withAgUiOwners(async ({ harness, alice }) => {
+      const decisions: Array<Parameters<OwnerAccessPredicate>[0]['operatorScope']> = [];
+      const counting: OwnerAccessPredicate = (request) => {
+        decisions.push(request.operatorScope);
+        return mayAccessOwnedResource(request);
+      };
+      const mount = createAgUiMount(
+        harness.bureau,
+        { mayAccess: counting, ownerOf: (resource) => harness.bureau.getOwner(resource) },
+        ['assistant'],
+        {},
+      );
+      const handler = createOperationHandler({
+        operations: [],
+        host: {} as never,
+        authenticate: createBureauHandlerAuthenticateFor('alice-key'),
+        mounts: [mount],
+      });
+      const asAlice = agUiCredentials('alice-key');
+
+      await readAgUiStream(await handler(attachThreadRequest(alice.threadId, asAlice)));
+      await readAgUiStream(await handler(attachRunRequest(alice.runId, asAlice)));
+      await readAgUiStream(
+        await handler(
+          startRequest(
+            runAgentInput({
+              threadId: alice.threadId,
+              runId: 'alice-resume',
+              messages: [],
+              resume: [{ interruptId: alice.reviewId, status: 'cancelled' }],
+            }),
+            asAlice,
+          ),
+        ),
+      );
+      await handler(cancelRequest(alice.runId, asAlice));
+
+      // The resume is decided on the interrupt's review (write) and then on the thread
+      // (read, which chooses what its stream carries); the cancel on the run; attach
+      // decides on the thread and on the run.
+      expect(decisions).toEqual([
+        'bureau.tasks:read',
+        'bureau.tasks:read',
+        'bureau.tasks:write',
+        'bureau.tasks:read',
+        'bureau.tasks:write',
+      ]);
+    });
+  });
+});
+
+describe('what bureau.tasks:write grants on the AG-UI routes', () => {
+  const chargeOnce = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Charging.',
+      toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+    },
+  };
+  const askHuman = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Asking.',
+      toolCalls: [
+        {
+          id: 'call-1',
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: 'Approve this?' },
+        },
+      ],
+    },
+  };
+  const done = { kind: 'respond' as const, response: { content: 'Done.', toolCalls: [] } };
+
+  function approvalToolbox(charges: number[]) {
+    return createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'write-scope-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as never;
+  }
+
+  const resume = (
+    entries: Array<{ interruptId: string; status: 'resolved'; payload: unknown }>,
+    key: string,
+    threadId = 'thread-1',
+  ) =>
+    startRequest(
+      runAgentInput({ threadId, runId: 'writer-resume', messages: [], resume: entries }),
+      agUiCredentials(key),
+    );
+
+  it('refuses a writer’s answer to another owner’s tool approval before anything runs', async () => {
+    const charges: number[] = [];
+    const harness = await openAgUiHarness({
+      script: [chargeOnce, done],
+      toolbox: approvalToolbox(charges),
+      authentication: agUiAuthentication,
+    });
+    try {
+      const started = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const finished = started.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+      const id = finished.outcome.interrupts[0]!.id;
+      const runsBefore = harness.bureau.listRuns().length;
+
+      const refused = await maskedStream(
+        harness.handler(
+          resume(
+            [{ interruptId: id, status: 'resolved', payload: { decision: 'approve' } }],
+            'writer-key',
+          ),
+        ),
+        id,
+      );
+      const missing = await maskedStream(
+        harness.handler(
+          resume(
+            [
+              {
+                interruptId: 'approval:nope:call-9',
+                status: 'resolved',
+                payload: { decision: 'approve' },
+              },
+            ],
+            'writer-key',
+          ),
+        ),
+        'approval:nope:call-9',
+      );
+
+      expect(refused).toBe(missing);
+      expect(refused).toContain('INTERRUPT_NOT_FOUND');
+      expect(charges).toEqual([]);
+      expect(harness.bureau.listPendingReviews()).toHaveLength(1);
+      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('refuses a writer’s start on another owner’s thread as it refuses a stranger’s, and leaves no trace', async () => {
+    const harness = await openAgUiHarness({
+      script: [done, done],
+      authentication: agUiAuthentication,
+    });
+    try {
+      await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const runsBefore = harness.bureau.listRuns().length;
+      const start = (key: string) =>
+        harness.handler(
+          startRequest(
+            runAgentInput({
+              runId: 'intruder-run',
+              messages: [{ id: 'intruder-user', role: 'user', content: 'butting in' }],
+            }),
+            agUiCredentials(key),
+          ),
+        );
+
+      // A scopeless stranger is refused as a thread that is not theirs; the writer's scope changes nothing.
+      const refused = await maskedStream(start('writer-key'), 'thread-1');
+      const stranger = await maskedStream(start('bob-key'), 'thread-1');
+
+      expect(refused).toBe(stranger);
+      expect(refused).toContain('THREAD_NOT_FOUND');
+      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
+      const audit = JSON.stringify(await harness.bureau.auditTrail?.query({}));
+      expect(audit).not.toContain('intruder');
+      expect(audit).not.toContain('butting in');
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('still lets a writer answer a human wait and cancel another owner’s run', async () => {
+    const harness = await openAgUiHarness({
+      script: [askHuman, done, { kind: 'block', barrier: 'hold' }, done],
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      authentication: agUiAuthentication,
+    });
+    try {
+      const parked = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const finished = parked.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+      const nativeRunId = String(bureauMetadata(parked[0]!.event)['runId']);
+
+      const answered = await readAgUiStream(
+        await harness.handler(
+          resume(
+            [
+              {
+                interruptId: finished.outcome.interrupts[0]!.id,
+                status: 'resolved',
+                payload: { decision: 'approve', answer: 'yes' },
+              },
+            ],
+            'writer-key',
+          ),
+        ),
+      );
+
+      // A writer is told its answer was applied and nothing of the run, which went on with it.
+      expect(answered.map((frame) => frame.event.type)).toEqual([
+        EventType.RUN_STARTED,
+        EventType.RUN_FINISHED,
+      ]);
+      expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      await waitForCondition(
+        () => harness.bureau.getRun(nativeRunId)?.status === 'completed',
+        'the run did not continue with the answer',
+      );
+
+      const second = new FrameReader(
+        await harness.handler(
+          startRequest(
+            runAgentInput({
+              threadId: 'thread-2',
+              runId: 'alice-second',
+              messages: [{ id: 'u2', role: 'user', content: 'again' }],
+            }),
+            agUiCredentials('alice-key'),
+          ),
+        ),
+      );
+      await second.until(EventType.STEP_STARTED);
+      await harness.generate.reached('hold');
+      const secondRunId = harness.bureau.listRuns().find((run) => run.sessionId === 'thread-2')!.id;
+      const cancelled = await harness.handler(
+        cancelRequest(secondRunId, agUiCredentials('writer-key')),
+      );
+      harness.generate.release('hold');
+      await second.rest();
+
+      expect(cancelled.status).toBe(200);
+    } finally {
+      await harness.dispose();
+    }
   });
 });

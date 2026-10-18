@@ -25,7 +25,7 @@
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../create-bureau.ts';
+import { ApprovalOutcomeNotWrittenError, BureauError } from '../create-bureau.ts';
 import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
@@ -49,7 +49,6 @@ const reviewStatusSchema = z.enum([
 const reviewCommonFields = {
   id: z.string(),
   runId: z.string(),
-  sessionId: z.string(),
   agentName: z.string().optional(),
   /** Epoch milliseconds the review was requested. */
   requestedAt: z.number(),
@@ -93,7 +92,14 @@ const toolActionSchema = z.discriminatedUnion('type', [
 
 const toolApprovalReviewSchema = z.object({
   ...reviewCommonFields,
+  sessionId: z.string(),
   kind: z.literal('tool-approval'),
+  /**
+   * How many times the approval was superseded: 0 until a resolution is gated
+   * again, then incremented each time. The review keeps its id across rounds, so
+   * the round is what tells one supersession's resolution from the next.
+   */
+  round: z.number().int().min(0),
   approval: z.object({
     callId: z.string(),
     toolName: z.string(),
@@ -108,6 +114,8 @@ const toolApprovalReviewSchema = z.object({
 
 const humanWaitReviewSchema = z.object({
   ...reviewCommonFields,
+  /** Absent for the park of a `bureau.run()` run, which has no session; its `runId` addresses it. */
+  sessionId: z.string().optional(),
   kind: z.literal('human-wait'),
   signalName: z.string(),
   prompt: z.string().optional(),
@@ -164,7 +172,6 @@ export function projectReview(
   const common = {
     id: review.id,
     runId: review.runId,
-    sessionId: review.sessionId,
     ...(review.agentName === undefined ? {} : { agentName: review.agentName }),
     requestedAt: review.requestedAt,
     ageMilliseconds: review.ageMilliseconds,
@@ -173,7 +180,9 @@ export function projectReview(
   if (review.kind === 'tool-approval') {
     return {
       ...common,
+      sessionId: review.sessionId,
       kind: 'tool-approval',
+      round: review.round ?? 0,
       approval: {
         callId: review.approval.callId,
         toolName: review.approval.toolName,
@@ -188,6 +197,7 @@ export function projectReview(
   }
   return {
     ...common,
+    ...(review.sessionId === undefined ? {} : { sessionId: review.sessionId }),
     kind: 'human-wait',
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),
@@ -217,6 +227,9 @@ const transports = {
   jsonRpcStdio: false,
 } as const;
 
+/** The token a client branches on to tell a decision whose outcome was not written from a lost race. */
+export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
+
 /** A payload key that is not declared is `InvalidParams`, so a client cannot name a `principal`. */
 const unknownKeyPolicy = { http: 'reject', jsonRpc: 'reject' } as const;
 
@@ -238,8 +251,20 @@ export function reviewFault(error: unknown, identifier: string): unknown {
   switch (error.code) {
     case 'NOT_FOUND':
       return reviewNotFound(identifier);
-    case 'CONFLICT':
+    case 'CONFLICT': {
+      // The decision took effect and only the write into the conversation failed,
+      // which a client must not read as another resolver having won. Weft's wire for a
+      // `Conflict` carries `data.reason` and none of the other fields, so the token a
+      // client branches on is the start of the reason: `APPROVAL_OUTCOME_NOT_WRITTEN: `.
+      if (error instanceof ApprovalOutcomeNotWrittenError) {
+        return {
+          code: 'Conflict',
+          message: error.message,
+          data: { reason: `${APPROVAL_OUTCOME_NOT_WRITTEN}: ${error.message}` },
+        };
+      }
       return { code: 'Conflict', message: error.message, data: { reason: error.message } };
+    }
     case 'BAD_REQUEST':
     case 'NOT_CONFIGURED':
     case 'RATE_LIMITED':
@@ -377,7 +402,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: false,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing. A `Conflict` whose `reason` begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,

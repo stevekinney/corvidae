@@ -49,7 +49,6 @@ import {
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
-  type RequestHumanInputResult,
   reservedIdentifierReason,
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
@@ -126,6 +125,10 @@ import {
   createConversationHistory,
   CURRENT_SCHEMA_VERSION,
   isConversationHistory,
+  materializeToolResultAsync,
+  type Message,
+  type MessageInput,
+  resolveToolResult,
 } from 'conversationalist';
 
 import { shutdownThenRethrow } from './composition-failure';
@@ -158,6 +161,7 @@ import {
   type RunCreationAttempt,
   type RunCreationObservation,
   type RunCreationReceiptLocation,
+  serializeAppendedMessages,
 } from './command-ledger';
 import {
   createDurableEventHistory,
@@ -195,6 +199,7 @@ import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
+import { humanWaitDenialPayload } from './human-wait-signal';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
@@ -212,6 +217,7 @@ import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
   ScheduledFireNotice,
+  SessionAgentRun,
 } from './runtime-composition';
 import {
   createRuntimeComposition,
@@ -219,6 +225,8 @@ import {
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
   registerTrailingOnStep,
+  SESSION_AGENT_REVISION_METADATA_KEY,
+  sessionRunMediaOptions,
   wireDurableOptInTools,
 } from './runtime-composition';
 import {
@@ -258,8 +266,15 @@ import {
   resolvePersistedRunOwningPrincipal,
   resolveSessionOwner,
   resolveSessionPreAdmission,
+  SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';
+import { createRunHumanWaits } from './run-human-waits';
+import {
+  countCheckpointParks,
+  humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
+} from './park-ordinals';
+import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
@@ -329,6 +344,7 @@ import type {
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
   PendingReview,
+  SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
   RetentionWindowOption,
@@ -512,6 +528,18 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
  * `bureau` to import.
  */
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
+
+/**
+ * Whether a durable run's status is one it has not settled from: Bureau's own
+ * non-terminal set ({@link DURABLE_FORCIBLY_TERMINABLE_STATUSES}), read by the
+ * AG-UI mount's busy decision so it cannot drift from what `waitForDurableRun` and
+ * `cancelDurableRun` call unsettled. `pending` counts: `createRun` returns once the
+ * durable record commits, and Weft reports the workflow `pending` until its inline
+ * launch runs.
+ */
+export function isDurableRunUnsettled(status: string): boolean {
+  return DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(status);
+}
 
 /**
  * Dependencies {@link resolveCancelDurableRun} needs, factored out for
@@ -743,7 +771,27 @@ class BureauError extends Error {
   }
 }
 
-export { BureauError };
+/**
+ * `resolveReview` resolved a tool approval, and the tool ran or was refused, but
+ * the outcome could not be written into the session's conversation. The review is
+ * resolved and will not be offered again; the conversation still shows it as
+ * pending until a later write replaces the row.
+ *
+ * The decision took effect: only the write into the conversation failed. The code
+ * is `CONFLICT` for lack of a better one, and a management-plane consumer must not
+ * read it as another resolver having won.
+ */
+const APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE =
+  'The decision was recorded, but its outcome could not be written into the conversation, which still shows the approval as pending';
+
+class ApprovalOutcomeNotWrittenError extends BureauError {
+  constructor(message: string) {
+    super(message, 'CONFLICT');
+    this.name = 'ApprovalOutcomeNotWrittenError';
+  }
+}
+
+export { ApprovalOutcomeNotWrittenError, BureauError };
 
 /**
  * Thrown by `createSchedule` when a schedule registers successfully against
@@ -813,13 +861,56 @@ function toScheduleSpec(spec: string): ScheduleSpec {
   return { cron: trimmed };
 }
 
-function validateMessageRequest(request: {
-  message: unknown;
-  maximumSteps?: unknown;
-  maximumTokens?: unknown;
-  systemPrompt?: unknown;
-}): void {
-  if (!request.message || typeof request.message !== 'string') {
+/** The text of the last user row in `rows`, or `''` when there is none. */
+function lastUserTextOf(rows: ReadonlyArray<Message> | undefined): string {
+  const last = rows?.findLast((row) => row.role === 'user');
+  if (last === undefined) return '';
+  if (typeof last.content === 'string') return last.content;
+  return last.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+}
+
+/** Appends a request's rows verbatim, refusing rows the conversation cannot take. */
+function appendRequestRows(
+  conversation: Conversation,
+  rows: ReadonlyArray<Message> | undefined,
+): void {
+  if (rows === undefined || rows.length === 0) return;
+  try {
+    // Built rows keep their ids and content parts; `MessageInput` is the type
+    // the history's `appendMessages` declares, and a built `Message` is the
+    // input it also accepts.
+    conversation.appendMessages(...(rows as unknown as MessageInput[]));
+  } catch (error) {
+    toBadRequest(
+      `"appendMessages" cannot be appended to the session's conversation: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+}
+
+function assertConversationAnswerable(conversation: Conversation): void {
+  const last = conversation.getMessages({ includeHidden: true }).at(-1);
+  if (last?.role !== 'user' && last?.role !== 'tool-result') {
+    toBadRequest(
+      'The conversation a run starts from must end in a user or tool-result message; ' +
+        'pass "message" or "appendMessages", or start from a session that ends in one',
+    );
+  }
+}
+
+function validateMessageRequest(
+  request: {
+    message?: unknown;
+    maximumSteps?: unknown;
+    maximumTokens?: unknown;
+    systemPrompt?: unknown;
+  },
+  options: { readonly messageOptional?: boolean } = {},
+): void {
+  if (request.message === undefined && options.messageOptional === true) {
+    // The caller appends rows instead, or answers the conversation as it stands.
+  } else if (!request.message || typeof request.message !== 'string') {
     toBadRequest('Request must include a "message" string');
   }
 
@@ -849,7 +940,23 @@ function validateMessageRequest(request: {
 }
 
 function validateCreateRunRequest(request: CreateRunRequest): void {
-  validateMessageRequest(request);
+  validateMessageRequest(request, { messageOptional: true });
+
+  if (request.appendMessages !== undefined) {
+    if (
+      !Array.isArray(request.appendMessages) ||
+      !request.appendMessages.every(
+        (row: unknown) =>
+          typeof row === 'object' &&
+          row !== null &&
+          typeof (row as { id?: unknown }).id === 'string' &&
+          (row as { id: string }).id.length > 0 &&
+          typeof (row as { role?: unknown }).role === 'string',
+      )
+    ) {
+      toBadRequest('"appendMessages" must be an array of messages, each with an "id" and a "role"');
+    }
+  }
 
   if (request.sessionId !== undefined) {
     if (typeof request.sessionId !== 'string') {
@@ -1471,6 +1578,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   validateCheckpointRetentionOption(options.checkpointRetention);
   validateRunCreationRetentionOption(options.runCreationTerminalRetentionMs);
   validateChildrenOption(options.children);
+  // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
+  // apart from a catalog agent by name alone, so a catalog entry called `bureau` would be
+  // shadowed there and run under another name on `bureau.run()`. Refused before anything is built.
+  if (Object.hasOwn(options.agents, BUREAU_AGENT_NAME)) {
+    throw new BureauError(
+      `Agent name "${BUREAU_AGENT_NAME}" is reserved for the Bureau-wide default agent, so a ` +
+        `catalog agent cannot use it.`,
+      'BAD_REQUEST',
+    );
+  }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -1784,6 +1901,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        recoveredChild: childContext !== undefined,
       };
       return resolution;
     } catch (error) {
@@ -1889,12 +2007,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       review: PendingReview;
       principal: string;
       reason?: string;
+      /** What the approved tool returned, so a retry can still write the outcome into the conversation. */
+      result?: unknown;
     }
   >();
   const pendingApprovalOverrides = new Map<
     string,
     Extract<PendingReview, { kind: 'tool-approval' }>['approval']
   >();
+  // COR-855: how many times each review's approval has been superseded (the
+  // policy gated the resumed call again), by review id. Absent means round 0.
+  // Persisted beside the override so it survives a restart.
+  const pendingApprovalRounds = new Map<string, number>();
+  function dropPendingApprovalOverride(reviewId: string): void {
+    pendingApprovalOverrides.delete(reviewId);
+    pendingApprovalRounds.delete(reviewId);
+  }
   const terminalReviewSessions = new Map<
     string,
     { sessionId: string; agentName: string; requestedAt: number }
@@ -3375,7 +3503,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
         return grouped;
       },
-      pendingReviews: () => listPendingReviews(),
+      // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
+      // task too, so it holds the task at `input-required` and `respond` can answer it.
+      pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
       currentIncarnation: async (contextId) => {
         const session = await runtime.sessionStore?.load(contextId);
         return session?.incarnation;
@@ -3568,7 +3698,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (cleanup.runId === removedRunId) reviewResolutionCleanupPending.delete(reviewId);
         }
         for (const id of pendingApprovalOverrides.keys()) {
-          if (id.startsWith(`approval:${removedRunId}:`)) pendingApprovalOverrides.delete(id);
+          if (id.startsWith(`approval:${removedRunId}:`)) dropPendingApprovalOverride(id);
         }
         for (const id of invalidApprovalReviewIds) {
           if (id.startsWith(`approval:${removedRunId}:`)) invalidApprovalReviewIds.delete(id);
@@ -3732,6 +3862,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       agentName,
       baseConversationHistory,
       incarnation,
+      runId,
     );
   }
 
@@ -3785,6 +3916,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     if (!runtime.sessionStore) return;
     const serializedApproval = JSON.parse(JSON.stringify(approval)) as JSONValue;
+    const round = pendingApprovalRounds.get(reviewId) ?? 0;
     await runtime.sessionStore.update(sessionId, (session) => ({
       ...session!,
       metadata: {
@@ -3799,6 +3931,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ? session!.metadata['pendingApprovalOverrides']
             : {}),
           [reviewId]: serializedApproval,
+        },
+        // Written with the override in one update, so a round never outlives or
+        // trails the approval it counts.
+        pendingApprovalRounds: {
+          ...(isJsonObject(session!.metadata['pendingApprovalRounds'])
+            ? session!.metadata['pendingApprovalRounds']
+            : {}),
+          [reviewId]: round,
         },
       },
     }));
@@ -3841,10 +3981,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const remainingStarted = Array.isArray(currentStarted)
         ? omitStringsWithPrefix(currentStarted, reviewIdPrefix)
         : currentStarted;
+      const currentRounds = session.metadata['pendingApprovalRounds'];
+      const remainingRounds = isJsonObject(currentRounds)
+        ? omitKeysWithPrefix(currentRounds, reviewIdPrefix)
+        : currentRounds;
       return {
         ...session,
         metadata: {
           ...session.metadata,
+          ...(remainingRounds === undefined ? {} : { pendingApprovalRounds: remainingRounds }),
           ...(remaining === undefined ? {} : { pendingApprovalOverrides: remaining }),
           ...(remainingStarted === undefined
             ? {}
@@ -4324,6 +4469,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         : [],
     );
     if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return;
+    const rounds = metadataRecord?.['pendingApprovalRounds'];
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
       if (resolutionStartedIds.has(reviewId)) continue;
@@ -4333,6 +4479,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           reviewId,
           approval as Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
         );
+        const round =
+          typeof rounds === 'object' && rounds !== null && !Array.isArray(rounds)
+            ? (rounds as Record<string, unknown>)[reviewId]
+            : undefined;
+        if (typeof round === 'number' && Number.isInteger(round) && round > 0) {
+          pendingApprovalRounds.set(reviewId, round);
+        }
       }
     }
   }
@@ -4401,7 +4554,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         } catch (error) {
           if (!isTerminalApprovalBindingError(error)) throw error;
           invalidApprovalReviewIds.add(reviewId);
-          pendingApprovalOverrides.delete(reviewId);
+          dropPendingApprovalOverride(reviewId);
           await prunePersistedInvalidApprovalReviewStateWithRetry(sessionId, runId, reviewId);
           diagnose({
             level: 'warn',
@@ -4414,6 +4567,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
     }
+  }
+
+  /**
+   * COR-1577 — the catalog agent a recovered session run belongs to: `undefined` for the default
+   * agent, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
+   * thrown so one run's lost agent never stops the rest of recovery.
+   */
+  async function resolveRecoveredSessionAgent(
+    agentName: string,
+    runId: string,
+    metadata: Record<string, JSONValue>,
+  ): Promise<SessionAgentRun | undefined | 'unavailable'> {
+    if (agentName === BUREAU_AGENT_NAME) return undefined;
+    const resolution = await runtime.resolveSessionAgentRun(
+      agentName,
+      runId,
+      resolveSessionOwner(metadata),
+    );
+    if (resolution.status === 'resolved') return resolution.run;
+    diagnose({
+      level: 'warn',
+      scope: 'recovery',
+      message:
+        `[bureau] Run "${runId}" belongs to catalog agent "${agentName}", which could not be ` +
+        `resolved (${resolution.status}); its restored state stays unavailable.`,
+    });
+    return 'unavailable';
   }
 
   async function restoreTerminalReviewSession(
@@ -4444,7 +4624,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         for (const reviewId of Object.keys(overrides)) {
           if (!reviewId.startsWith(`approval:${runId}:`)) continue;
           invalidApprovalReviewIds.add(reviewId);
-          pendingApprovalOverrides.delete(reviewId);
+          dropPendingApprovalOverride(reviewId);
           await prunePersistedInvalidApprovalReviewStateWithRetry(session.id, runId, reviewId);
           diagnose({
             level: 'warn',
@@ -4459,6 +4639,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     const recoveredAgentName = requestContext.agentId ?? session.agentName;
+    // COR-1577 — a named run's approvals resume against that agent's own tools.
+    const recoveredSessionAgent = await resolveRecoveredSessionAgent(
+      recoveredAgentName,
+      runId,
+      session.metadata,
+    );
+    if (recoveredSessionAgent === 'unavailable') {
+      terminalReviewSessions.delete(runId);
+      return;
+    }
     const runRuntime = await runtime.createRunRuntime(
       {
         message:
@@ -4470,7 +4660,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         agentName: recoveredAgentName,
         requestContext,
       },
-      { liveStreaming: false },
+      { liveStreaming: false, sessionAgent: recoveredSessionAgent },
     );
     const terminalReviewSession = terminalReviewSessions.get(runId);
     if (terminalReviewSession) {
@@ -4565,9 +4755,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const owner = ownerFromPrincipal(request.principal, toBadRequest);
     assertRunAdmissionOpen('run');
 
-    if (!runtime.ready) {
-      throw new BureauError('No generate function configured', 'NOT_CONFIGURED', 'generate');
-    }
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
@@ -4577,7 +4764,48 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
     const runId = runtimeServices.identifiers.next('run');
-    const agentName = request.agentName ?? BUREAU_AGENT_NAME;
+    // The text that stands for the request where only text fits: flow control,
+    // and the session's `lastUserMessage`.
+    const requestText = request.message ?? lastUserTextOf(request.appendMessages);
+
+    // COR-1577 — which agent this run is. A session is bound to the agent of the run that
+    // created it, so an existing session decides; a new one takes the named agent, or the
+    // default `bureau`. Every refusal here lands before anything is persisted.
+    const { session, conversation } = await loadConversation(sessionId);
+    const baseConversationHistory = conversation.current;
+
+    // COR-718 — a session belongs to the owner of the run that created it. A
+    // different principal starting a run on it is refused exactly as a session
+    // that does not exist is, so an identifier grants nothing.
+    if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
+    const agentName = resolveRunAgentName(sessionId, session, request.agentName);
+    let sessionAgent: SessionAgentRun | undefined;
+    if (agentName === BUREAU_AGENT_NAME) {
+      if (!runtime.ready) {
+        throw new BureauError('No generate function configured', 'NOT_CONFIGURED', 'generate');
+      }
+    } else {
+      const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
+      if (resolution.status === 'missing-agent') {
+        throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
+      }
+      if (resolution.status === 'not-durable-capable') {
+        throw new BureauError(
+          `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
+          'UNSUPPORTED_CAPABILITY',
+        );
+      }
+      if (resolution.status === 'resolver-failed') throw resolution.error;
+      sessionAgent = resolution.run;
+    }
+    // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
+    const effectiveSystemPrompt =
+      request.systemPrompt ?? sessionAgent?.instructions ?? runtime.systemPrompt;
+    const effectiveMaximumSteps =
+      request.maximumSteps ?? sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
+    const effectiveMaximumTokens = request.maximumTokens ?? sessionAgent?.options.maximumTokens;
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -4624,14 +4852,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // exactly the owner the run records, and the caller a receipt replays to
             // is the principal that owns the run. The `''` is unreachable.
             callerId: request.principal ?? '',
+            // The agent the run is, not the one the caller stated: a retry that spells out
+            // the agent an omitted name inherited is the same command, and
+            // `locateRunCreationReceipt` resolves it the same way.
             agentName,
             requestId: request.runCreationRequestId.trim(),
             payloadDigest: digestRunCreationPayload({
               message: request.message,
+              appendMessages: serializeAppendedMessages(request.appendMessages),
               sessionId: request.sessionId?.trim(),
-              systemPrompt: request.systemPrompt ?? runtime.systemPrompt,
-              maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
-              maximumTokens: request.maximumTokens,
+              systemPrompt: effectiveSystemPrompt,
+              maximumSteps: effectiveMaximumSteps,
+              maximumTokens: effectiveMaximumTokens,
             }),
             claim: { runId, sessionId },
           });
@@ -4642,7 +4874,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runId,
         agentName,
         source: 'api',
-        message: request.message,
+        message: requestText,
         sessionId,
         ...(request.principal !== undefined ? { principal: request.principal } : {}),
       });
@@ -4674,36 +4906,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let registeredForRecovery = false;
     let created: RunSummary;
     try {
-      const { session, conversation } = await loadConversation(sessionId);
-      const baseConversationHistory = conversation.current;
-
-      // COR-718 — a session belongs to the owner of the run that created it. A
-      // different principal starting a run on it is refused exactly as a session
-      // that does not exist is, so an identifier grants nothing.
-      if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
-        throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-      }
-
       if (!session) {
-        const prompt = request.systemPrompt ?? runtime.systemPrompt;
-        if (prompt) {
-          conversation.appendSystemMessage(prompt);
+        if (effectiveSystemPrompt) {
+          conversation.appendSystemMessage(effectiveSystemPrompt);
         }
       }
 
-      conversation.appendUserMessage(request.message);
+      if (request.message !== undefined) conversation.appendUserMessage(request.message);
+      appendRequestRows(conversation, request.appendMessages);
+      // A run answers the row the conversation ends in: a user message, or a
+      // tool result (the outcome of an approval) with nothing newer.
+      assertConversationAnswerable(conversation);
 
       // AB-54 usage analytics: resolve agentName/principal deterministically now
       // (before `store.register`, so it's in place before any listRuns()/getRun()
       // call can observe this run) rather than relying on the tool-bubble-event
       // heuristic, which cannot see a run that never calls a tool.
       runAttribution.set(runId, { agentName, principal: owner });
-      const runRuntime = await runtime.createRunRuntime({
-        ...request,
-        sessionId,
-        runId,
-        requestContext,
-      });
+      const runRuntime = await runtime.createRunRuntime(
+        {
+          ...request,
+          agentName,
+          sessionId,
+          runId,
+          requestContext,
+        },
+        { sessionAgent },
+      );
       runRequestContexts.set(runId, requestContext);
 
       const disposeStreamListeners: Array<() => void> = [];
@@ -4726,13 +4955,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ...(durableSteeringStore() === undefined
             ? {}
             : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
-          lastUserMessage: request.message,
+          lastUserMessage: requestText,
           // Always write these keys (null when absent) so a reused session never
           // inherits a stale cap from a previous run. A conditional spread would leave
           // the old value in place when the request omits the field; null is treated as
           // "unset" by buildRunDepsFromSession (it gates on typeof === 'number'),
           // so null is a safe sentinel for "caller did not specify a cap" (PRRT_kwDORvupsc6MZ1Mb).
           lastMaximumTokens: request.maximumTokens ?? null,
+          // COR-1577 — the definition the named agent had when this run started, so recovery can
+          // tell when the catalog's has moved on. Null for the default agent, which has none.
+          [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
           // Persist the per-request step cap too, so a recovered run honours the
           // caller's maximumSteps instead of falling back to the bureau default
           // (PRRT_kwDORvupsc6MZfl5 — mirror of the maximumTokens recovery fix).
@@ -4798,9 +5030,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // stored owner when the session already has one.
           [SESSION_OWNER_METADATA_KEY]: owner,
         },
-        // Stamp the session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
-        // is not always recorded as the house default 'bureau'.
-        request.agentName,
+        // Stamp a new session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
+        // is not always recorded as the house default 'bureau'. An existing session keeps the
+        // agent it was created for.
+        agentName,
         baseConversationHistory,
       );
 
@@ -4996,12 +5229,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             generate: runRuntime.generate,
             toolbox: runToolbox,
             conversation,
+            // COR-1577 — the named agent's own options (stop conditions, structured output and
+            // its retries, …), before the ones Bureau sets below, which win.
+            ...copyAgentOwnedRunOptions(sessionAgent?.options),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
-            ...runtime.mediaOptionsFor(owner),
-            maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
-            maximumTokens: request.maximumTokens,
-            stopWhen: options.stopWhen,
+            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner)),
+            maximumSteps: effectiveMaximumSteps,
+            maximumTokens: effectiveMaximumTokens,
+            // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
+            stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
             // AB-260: the bureau's single composed RuntimeServices instance,
             // snapshotted into every run it starts.
             runtime: runtimeServices,
@@ -5027,8 +5264,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   persistPendingApprovalOverrideWithRetry,
                 ),
               ),
+              // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
+              sessionAgent?.options.hooks,
             ),
-            executeOptions: requestContext === undefined ? {} : { requestContext },
+            executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
             // Thread agentName and runId so curated tool.* bubble events are stamped
             // with {agentName, runId, step} metadata (C3) and durable launch input
             // carries the owning agent for audit/recovery attribution (F2). Fall back
@@ -5202,7 +5441,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   ? { lastError: serializeUnknownError(event.error) }
                   : {}),
               },
-              request.agentName,
+              agentName,
               baseConversationHistory,
             ),
           {
@@ -5273,7 +5512,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 lastFinishReason: 'aborted',
                 lastError: serializeUnknownError(event.error),
               },
-              request.agentName,
+              agentName,
               baseConversationHistory,
             ),
           {
@@ -5398,10 +5637,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // recover, so there is nothing for a retry to observe.
       // COR-718: a save that lost the race to create the session is refused as a
       // session that is not there, exactly as the preflight check refuses one.
+      // COR-1577: a save that lost the race to bind the session to an agent is refused as the
+      // preflight check refuses a run naming another agent, before the run executes.
       const rejection =
         error instanceof SessionOwnerConflictError
           ? new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND')
-          : error;
+          : error instanceof SessionAgentConflictError
+            ? new BureauError(
+                // A run that named no agent started on the default one before it saw the
+                // session, so it must not be told it named `bureau`.
+                request.agentName === undefined
+                  ? `Session "${sessionId}" was bound to agent "${error.boundAgentName}" by ` +
+                      `another run while this run, which named no agent, was starting on the ` +
+                      `default agent "${error.requestedAgentName}". Retry to continue the session.`
+                  : error.message,
+                'BAD_REQUEST',
+              )
+            : error;
       await releaseRunCreationClaim(ledgerClaim, rejection);
       throw rejection;
     }
@@ -5412,6 +5664,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // executing; the claim stays pending, and a retry observes the run and
     // records its receipt.
     return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+  }
+
+  /**
+   * COR-1577 — which agent a run is. A session is bound to the agent of the run that created it,
+   * so an existing session decides, and a run that names another agent is refused; a new session
+   * takes the named agent, or the default `bureau`. Starting a run and locating its
+   * run-creation receipt both resolve the agent here, so the two cannot disagree on the ledger key.
+   */
+  function resolveRunAgentName(
+    sessionId: string,
+    session: AgentSession | undefined,
+    statedAgentName: string | undefined,
+  ): string {
+    if (
+      session !== undefined &&
+      statedAgentName !== undefined &&
+      statedAgentName !== session.agentName
+    ) {
+      throw new BureauError(
+        `Session "${sessionId}" belongs to agent "${session.agentName}", so a run cannot name ` +
+          `agent "${statedAgentName}".`,
+        'BAD_REQUEST',
+      );
+    }
+    return session?.agentName ?? statedAgentName ?? BUREAU_AGENT_NAME;
   }
 
   /**
@@ -5442,9 +5719,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       typeof request.runCreationRequestId === 'string' ? request.runCreationRequestId.trim() : '';
     if (principal.trim().length === 0) toBadRequest('"principal" must be a non-empty string');
     if (requestId.length === 0) toBadRequest('"runCreationRequestId" must be a non-empty string');
-    return requireRunCreationLedger().locate({
+    const ledger = requireRunCreationLedger();
+    // A request that continued a session was keyed under the session's agent, so naming the
+    // session resolves it the way starting the run did. A session that is not there, or is
+    // another principal's, binds nothing, exactly as it would not have for the run.
+    let agentName = request.agentName;
+    const sessionId = request.sessionId?.trim();
+    if (sessionId !== undefined && sessionId.length > 0) {
+      const { session } = await loadConversation(sessionId);
+      const owner = ownerFromPrincipal(principal, toBadRequest);
+      const visible =
+        session !== undefined && isSessionAuthorityAuthorized(session.metadata, owner)
+          ? session
+          : undefined;
+      agentName = resolveRunAgentName(sessionId, visible, request.agentName);
+    }
+    return ledger.locate({
       callerId: principal,
-      agentName: request.agentName ?? BUREAU_AGENT_NAME,
+      agentName: agentName ?? BUREAU_AGENT_NAME,
       requestId,
     });
   }
@@ -5473,18 +5765,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Type guard for a `requestHumanInput` tool result whose park was never
-   * consumed (AB-336) — narrows `ToolExecutionResult.result` (`unknown`)
-   * rather than casting, since the value round-tripped through a persisted
-   * checkpoint's JSON serialization.
-   */
-  function isParkedRequestHumanInputResult(value: unknown): value is RequestHumanInputResult {
-    if (typeof value !== 'object' || value === null) return false;
-    const candidate = value as { parked?: unknown; signalName?: unknown };
-    return candidate.parked === true && typeof candidate.signalName === 'string';
-  }
-
-  /**
    * Per run: parks already committed to the durable checkpoint by a previous
    * process, seeded by `reconstructHumanWaitReviewIfParked` on recovery. The
    * live action log only holds this process's parks, so the ordinal of the
@@ -5507,30 +5787,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runId: string,
     actions: readonly { type: string; detail: unknown }[],
   ): number {
-    let ordinal = (humanWaitParkBaseline.get(runId) ?? 0) - 1;
-    let previous: { index: number; signalName: unknown } | undefined;
-    actions.forEach((action, index) => {
-      if (action.type !== HumanWaitParkedEvent.type) return;
-      const detail =
-        action.detail !== null && typeof action.detail === 'object'
-          ? (action.detail as Record<string, unknown>)
-          : undefined;
-      const seeded = detail?.['parkOrdinal'];
-      const signalName = detail?.['signalName'];
-      if (typeof seeded === 'number') {
-        ordinal = seeded;
-      } else if (
-        previous !== undefined &&
-        previous.signalName === signalName &&
-        !actions.slice(previous.index + 1, index).some((entry) => entry.type === 'step.started')
-      ) {
-        // Duplicate record of the same park: same ordinal.
-      } else {
-        ordinal += 1;
-      }
-      previous = { index, signalName };
-    });
-    return ordinal;
+    return sharedHumanWaitParkOrdinal(actions, humanWaitParkBaseline.get(runId) ?? 0);
   }
 
   /**
@@ -5585,44 +5842,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
       return;
     }
-    const lastStep = steps[steps.length - 1];
-    if (!lastStep) return;
-    // Counts distinct parks in one step the way `humanWaitParkOrdinal` does
-    // live: consecutive parked results on the same signal within a step (for
-    // example parallel `requestHumanInput` calls) are one park.
-    const parksIn = (step: StepRecord): number => {
-      let count = 0;
-      let previousSignal: string | undefined;
-      for (const result of step.results) {
-        if (result.toolName !== 'requestHumanInput') continue;
-        if (!isParkedRequestHumanInputResult(result.result)) continue;
-        if (previousSignal !== result.result.signalName) count += 1;
-        previousSignal = result.result.signalName;
-      }
-      return count;
-    };
-    // Parks committed to the checkpoint before the last step. A reconstructed
-    // park carries the resulting ordinal so the review id matches the one the
-    // pre-crash process minted (and persisted in `resolvedReviewIds`).
-    let priorParks = 0;
-    for (const step of steps) {
-      if (step === lastStep) break;
-      priorParks += parksIn(step);
-    }
+    const parks = countCheckpointParks(steps);
     // Always seed the baseline so a recovery landing mid-step (last step not a
     // park) still numbers its first live park after every committed one.
-    humanWaitParkBaseline.set(runId, priorParks + parksIn(lastStep));
-    for (const result of lastStep.results) {
-      if (result.toolName !== 'requestHumanInput') continue;
-      if (!isParkedRequestHumanInputResult(result.result)) continue;
-      store.recordAction(runId, HumanWaitParkedEvent.type, {
-        signalName: result.result.signalName,
-        runId,
-        parkOrdinal: priorParks,
-        ...(result.result.prompt !== undefined ? { prompt: result.result.prompt } : {}),
-      });
-      return;
-    }
+    if (steps.length > 0) humanWaitParkBaseline.set(runId, parks.baseline);
+    if (parks.outstanding === undefined) return;
+    store.recordAction(runId, HumanWaitParkedEvent.type, {
+      signalName: parks.outstanding.signalName,
+      runId,
+      parkOrdinal: parks.outstanding.ordinal,
+      ...(parks.outstanding.prompt !== undefined ? { prompt: parks.outstanding.prompt } : {}),
+    });
   }
 
   /**
@@ -6152,6 +6382,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (catalogRecovery.attribution) {
         runAttribution.set(info.workflowId, catalogRecovery.attribution);
       }
+      // COR-1577 — a recovered `bureau.run()` run that was parked on `requestHumanInput` is a
+      // review again, under the id it had, and the parks it makes from here on are heard.
+      await runHumanWaits.restore(info.workflowId, info.input.agentName);
+      runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
+      void info.handle.result().then(
+        () => runHumanWaits.forget(info.workflowId),
+        () => runHumanWaits.forget(info.workflowId),
+      );
       void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
       return;
     }
@@ -6594,39 +6832,56 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 recoveredAgentName,
                 runtimeServices.clock.now,
               );
-              const runRuntime = await runtime.createRunRuntime(
-                {
-                  message:
-                    typeof fullSession.metadata['lastUserMessage'] === 'string'
-                      ? fullSession.metadata['lastUserMessage']
-                      : '',
-                  sessionId: ownedSessionId,
-                  runId: handle.id,
-                  agentName: recoveredAgentName,
-                  requestContext,
-                },
-                { liveStreaming: false },
+              const reattachedSessionAgent = await resolveRecoveredSessionAgent(
+                recoveredAgentName,
+                handle.id,
+                fullSession.metadata,
               );
-              recoveredServices = {
-                toolbox: runRuntime.toolbox,
-                getStepMetadata: emptyRecoveredStepMetadata,
-                options: {
-                  generate: runRuntime.generate,
+              if (reattachedSessionAgent !== 'unavailable') {
+                const runRuntime = await runtime.createRunRuntime(
+                  {
+                    message:
+                      typeof fullSession.metadata['lastUserMessage'] === 'string'
+                        ? fullSession.metadata['lastUserMessage']
+                        : '',
+                    sessionId: ownedSessionId,
+                    runId: handle.id,
+                    agentName: recoveredAgentName,
+                    requestContext,
+                  },
+                  { liveStreaming: false, sessionAgent: reattachedSessionAgent },
+                );
+                recoveredServices = {
                   toolbox: runRuntime.toolbox,
-                  conversation: new Conversation(fullSession.conversationHistory),
-                  ...runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata)),
-                  // AB-260: the bureau's single composed RuntimeServices
-                  // instance, snapshotted into every run it starts — including
-                  // a mocked/custom-engine reattach.
-                  runtime: runtimeServices,
-                  sessionId: ownedSessionId,
-                  // COR-1265 — the Bureau tier, snapshotted.
-                  hooks: mergeHookRegistries(runRuntime.hooks),
-                  executeOptions: requestContext === undefined ? {} : { requestContext },
-                  agentName: recoveredAgentName,
-                  runId: handle.id,
-                },
-              };
+                  getStepMetadata: emptyRecoveredStepMetadata,
+                  options: {
+                    generate: runRuntime.generate,
+                    toolbox: runRuntime.toolbox,
+                    conversation: new Conversation(fullSession.conversationHistory),
+                    ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
+                    ...sessionRunMediaOptions(
+                      reattachedSessionAgent,
+                      runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata)),
+                    ),
+                    // AB-260: the bureau's single composed RuntimeServices
+                    // instance, snapshotted into every run it starts — including
+                    // a mocked/custom-engine reattach.
+                    runtime: runtimeServices,
+                    sessionId: ownedSessionId,
+                    // COR-1265 — the Bureau tier, snapshotted.
+                    hooks: mergeHookRegistries(
+                      runRuntime.hooks,
+                      reattachedSessionAgent?.options.hooks,
+                    ),
+                    executeOptions: sessionExecuteOptions(
+                      reattachedSessionAgent?.options,
+                      requestContext,
+                    ),
+                    agentName: recoveredAgentName,
+                    runId: handle.id,
+                  },
+                };
+              }
             }
           }
           if (recoveredServices) {
@@ -7214,6 +7469,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         requestedAt: 0,
         ageMilliseconds: 0,
         status: 'pending',
+        round: pendingApprovalRounds.get(reviewId) ?? 0,
       });
     }
 
@@ -7259,7 +7515,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runSessionIncarnations.delete(id);
     runRequestContexts.delete(id);
     for (const reviewId of pendingApprovalOverrides.keys()) {
-      if (reviewId.startsWith(`approval:${id}:`)) pendingApprovalOverrides.delete(reviewId);
+      if (reviewId.startsWith(`approval:${id}:`)) dropPendingApprovalOverride(reviewId);
     }
     for (const reviewId of invalidApprovalReviewIds) {
       if (reviewId.startsWith(`approval:${id}:`)) invalidApprovalReviewIds.delete(reviewId);
@@ -7298,6 +7554,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function getDurableRun(runId: string) {
     if (!runtime.durable) return undefined;
     return runtime.durable.engine.get(runId);
+  }
+
+  /**
+   * The durable engine this bureau composed — see the {@link Bureau.durableEngine} doc comment.
+   */
+  function durableEngine() {
+    return runtime.durable?.engine;
   }
 
   /**
@@ -9523,7 +9786,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           principal: 'system:session-deletion',
         });
         for (const reviewId of pendingApprovalOverrides.keys()) {
-          if (reviewId.startsWith(`approval:${runId}:`)) pendingApprovalOverrides.delete(reviewId);
+          if (reviewId.startsWith(`approval:${runId}:`)) dropPendingApprovalOverride(reviewId);
         }
         for (const reviewId of invalidApprovalReviewIds) {
           if (reviewId.startsWith(`approval:${runId}:`)) invalidApprovalReviewIds.delete(reviewId);
@@ -11090,9 +11353,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
   }
 
-  function listPendingReviews(): PendingReview[] {
+  function listPendingReviews(): SessionPendingReview[] {
     const now = runtimeServices.clock.now();
-    const reviews: PendingReview[] = [];
+    const reviews: SessionPendingReview[] = [];
     const { runs } = store.getState();
 
     for (const [runId, runState] of runs) {
@@ -11132,6 +11395,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             requestedAt,
             ageMilliseconds: now - requestedAt,
             status: 'pending',
+            round: pendingApprovalRounds.get(id) ?? 0,
           });
         }
       }
@@ -11215,6 +11479,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           requestedAt: terminalReview.requestedAt,
           ageMilliseconds: now - terminalReview.requestedAt,
           status: 'pending',
+          round: pendingApprovalRounds.get(reviewId) ?? 0,
         });
       }
     }
@@ -11231,6 +11496,115 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
     recoveredRunIds.delete(runId);
+  }
+
+  /** Whether this process holds the run and it has not recorded its end. */
+  function isRunStillGoing(runId: string): boolean {
+    const runState = store.getRun(runId);
+    if (runState === undefined) return false;
+    return (
+      (runState.status === 'running' || runState.status === 'aborting') &&
+      terminalActionTimestamp(runState.actions) === undefined
+    );
+  }
+
+  /**
+   * COR-855 — writes the outcome of a resolved tool approval into the session's
+   * conversation, replacing the pending `action_required` tool-result row in
+   * place (its id and position stay). Bureau settles a run whose tool call needs
+   * approval and runs the approved tool out of band, so nothing else ever
+   * replaces that row, and the next run started on the session would be shown
+   * the approval as still pending.
+   *
+   * The tool has already run (or been refused) by now, so a failure here cannot
+   * undo the resolution: it is retried like every other post-resolution write,
+   * then returned for `resolveReview` to throw once the decision is recorded.
+   * Reporting success would let the next run start from the stale
+   * `action_required` row and ask for the approval again. A Bureau with no
+   * session store has no conversation to write.
+   *
+   * A run that is still going when its approval is resolved (one without
+   * `stopWhen: pendingApproval()`) can write its own copy of the conversation
+   * over this one at its terminal save, so a host serving approvals configures it.
+   */
+  async function writeApprovalOutcomeToSession(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    input: ResolveReviewInput,
+    result: unknown,
+  ): Promise<ApprovalOutcomeNotWrittenError | undefined> {
+    const sessionStore = runtime.sessionStore;
+    if (!sessionStore) return undefined;
+    const callId = review.approval.callId;
+    const refusal = input.decision === 'reject' ? 'Tool call rejected' : 'Tool call denied';
+    const message = input.reason === undefined ? refusal : `${refusal}: ${input.reason}`;
+    const outcome =
+      input.decision === 'approve'
+        ? (result as Parameters<typeof materializeToolResultAsync>[0])
+        : {
+            callId,
+            toolCallId: callId,
+            toolName: review.approval.toolName,
+            outcome: 'error' as const,
+            content: message,
+            result: message,
+          };
+    let lastError: unknown;
+    try {
+      // Collected before the write: a resumed tool may stream its output.
+      const toolResult = await materializeToolResultAsync(outcome);
+      // The run's own terminal save is in flight when its approval is resolved
+      // at once; the row to replace is not stored until it lands.
+      await sessionPersistence.drain();
+      // Read after the drain: a run that has not settled has not stored its
+      // conversation, so a missing row says nothing about whether the row exists.
+      const stillGoing = isRunStillGoing(review.runId);
+      for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
+        try {
+          let missing = false;
+          await sessionStore.update(review.sessionId, (session) => {
+            if (session === undefined) return undefined;
+            const history = session.conversationHistory;
+            const holdsRow = history.ids.some(
+              (id) => history.messages[id]?.toolResult?.callId === callId,
+            );
+            if (!holdsRow) {
+              missing = true;
+              return undefined;
+            }
+            return {
+              ...session,
+              conversationHistory: resolveToolResult(history, callId, toolResult),
+            };
+          });
+          if (!missing) return undefined;
+          // A conversation that never held a row for the call (a review restored
+          // from persisted metadata alone) shows no approval as pending, so there is
+          // nothing stale to replace. A run that is still going is different: its
+          // row is not stored yet, and the terminal save would put the stale one
+          // there, so the outcome is lost unless the caller is told.
+          if (!stillGoing) return undefined;
+          lastError = new Error(
+            'the run is still going and has not stored the conversation the row is in',
+          );
+          break;
+        } catch (error) {
+          lastError = error;
+          if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
+            await sessionPersistenceSleep(sessionPersistenceRetryDelayMilliseconds);
+          }
+        }
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    diagnose({
+      level: 'error',
+      scope: 'session-persistence',
+      message: `[bureau] Could not write the outcome of review "${review.id}" into session "${review.sessionId}": ${serializeUnknownError(lastError)}. The conversation still shows the approval as pending.`,
+    });
+    // A fixed sentence: it reaches a client's screen, and the storage error's text
+    // (which can name keys and paths) stays in the diagnostic above.
+    return new ApprovalOutcomeNotWrittenError(APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE);
   }
 
   async function resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
@@ -11300,6 +11674,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               });
             }
           }
+          // The first attempt ran the tool but could not persist the decision, so it
+          // never wrote the outcome either: write it now, as that attempt would have.
+          const cleanupOutcomeNotWritten =
+            cleanup.review.kind === 'tool-approval'
+              ? await writeApprovalOutcomeToSession(
+                  cleanup.review,
+                  {
+                    id: input.id,
+                    decision: cleanup.decision,
+                    principal: cleanup.principal,
+                    ...(cleanup.reason !== undefined ? { reason: cleanup.reason } : {}),
+                  },
+                  cleanup.result,
+                )
+              : undefined;
           await recordReviewDecision(
             cleanup.review,
             cleanup.decision,
@@ -11307,6 +11696,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cleanup.reason,
             { auditAlreadyAppended: cleanupAuditAppended },
           );
+          if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
           return {
             id: input.id,
             kind: cleanup.kind,
@@ -11458,6 +11848,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               // keeping it in memory after a persistence failure would make a
               // later retry reuse an invalid approval.
               pendingApprovalOverrides.set(review.id, replacementApproval);
+              pendingApprovalRounds.set(review.id, review.round + 1);
               await persistPendingApprovalOverrideWithRetry(
                 review.sessionId,
                 review.id,
@@ -11548,10 +11939,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // `review.signalName` or the parked run stays `running` forever
         // (the exact defect this record fixes). Both sentinels are
         // delivered on the identical channel `approve` already uses.
-        const denialPayload: Record<string, unknown> =
-          input.decision === 'reject'
-            ? { __abRejected: true, reason: input.reason }
-            : { __abDenied: true, ...(input.reason !== undefined ? { reason: input.reason } : {}) };
+        const denialPayload = humanWaitDenialPayload(input.decision, input.reason);
         await bureau.signalSession(review.sessionId, review.signalName, denialPayload);
       }
     } catch (error) {
@@ -11567,7 +11955,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!keepPending) {
       resolvedReviewIds.add(review.id);
       if (review.kind === 'tool-approval') {
-        pendingApprovalOverrides.delete(review.id);
+        dropPendingApprovalOverride(review.id);
         if (
           !Array.from(pendingApprovalOverrides.keys()).some((reviewId) =>
             reviewId.startsWith(`approval:${review.runId}:`),
@@ -11616,6 +12004,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             review,
             principal: input.principal,
             ...(input.reason !== undefined ? { reason: input.reason } : {}),
+            ...(result === undefined ? {} : { result }),
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -11646,9 +12035,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // COR-855: the outcome the run's conversation has to show before the next
+    // run starts from it. A resolution the policy gated again executed nothing.
+    const outcomeNotWritten =
+      review.kind === 'tool-approval' && !keepPending
+        ? await writeApprovalOutcomeToSession(review, input, result)
+        : undefined;
+
     await recordReviewDecision(review, input.decision, input.principal, input.reason, {
       auditAlreadyAppended,
     });
+
+    if (outcomeNotWritten !== undefined) throw outcomeNotWritten;
 
     return {
       id: review.id,
@@ -11658,6 +12056,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...(review.kind === 'tool-approval' && input.decision === 'reject'
         ? { feedback: input.reason }
         : {}),
+      ...(keepPending ? { superseded: true as const } : {}),
     };
   }
 
@@ -11743,12 +12142,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     } else {
       emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
     }
-    await restoreRunOwnershipAfterEvent(
-      review.runId,
-      review.sessionId,
-      runAttribution.get(review.runId)?.principal,
-      runSessionIncarnations.get(review.runId),
-    );
+    // COR-1577: a catalog run's review has no session whose ownership could need restoring.
+    if (review.sessionId !== undefined) {
+      await restoreRunOwnershipAfterEvent(
+        review.runId,
+        review.sessionId,
+        runAttribution.get(review.runId)?.principal,
+        runSessionIncarnations.get(review.runId),
+      );
+    }
   }
 
   /**
@@ -11835,12 +12237,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
         break;
     }
-    await restoreRunOwnershipAfterEvent(
-      review.runId,
-      review.sessionId,
-      runAttribution.get(review.runId)?.principal,
-      runSessionIncarnations.get(review.runId),
-    );
+    // COR-1577: a catalog run's review has no session whose ownership could need restoring.
+    if (review.sessionId !== undefined) {
+      await restoreRunOwnershipAfterEvent(
+        review.runId,
+        review.sessionId,
+        runAttribution.get(review.runId)?.principal,
+        runSessionIncarnations.get(review.runId),
+      );
+    }
   }
 
   /**
@@ -11852,6 +12257,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<(PendingReview & { status: ReviewStatus }) | undefined> {
     const pending = listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) return pending;
+    // COR-1577: the park of a `bureau.run()` run, which no session holds.
+    const runWait = runHumanWaits.find(id);
+    if (runWait) return runWait;
     if (!auditTrailInstance) return undefined;
 
     // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkOrdinal}`
@@ -11874,8 +12282,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     if (!match) return undefined;
 
+    // A record written before `round` existed has none at runtime, whatever the type says.
     const reviewDetail = (match.detail as Record<string, unknown>)['review'] as PendingReview;
-    return { ...reviewDetail, status: reviewStatusFromAuditType(match.type) };
+    return {
+      ...reviewDetail,
+      ...(reviewDetail.kind === 'tool-approval' ? { round: reviewDetail.round ?? 0 } : {}),
+      status: reviewStatusFromAuditType(match.type),
+    };
   }
 
   /**
@@ -11918,6 +12331,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             requestedAt,
             ageMilliseconds: effectiveNow - requestedAt,
             status: 'expired',
+            round: pendingApprovalRounds.get(id) ?? 0,
           };
           await recordReviewStatusTransition(review, 'expired', EXPIRY_ACTOR);
         }
@@ -13190,10 +13604,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     detachBestEffortPromise(
       activeRun.result.finally(() => {
         detachRunEventFeed();
+        runHumanWaits.forget(runId);
         if (store.getRun(runId)?.activeRun === activeRun) store.removeRun(runId);
       }),
     );
   }
+
+  // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
+  // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it
+  // was; the wrappers on the Bureau object below add them to the public list and to resolution.
+  const runHumanWaits = createRunHumanWaits({
+    store,
+    catalogRunIds,
+    runAttribution,
+    engine: () => runtime.durable?.engine,
+    checkpointSteps: async (runId) =>
+      (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
+    now: runtimeServices.clock.now,
+    recordDecision: async (review, decision, principal, reason) => {
+      await auditTrailInstance?.record(
+        buildReviewDecisionAuditRecord(review, decision, principal, reason),
+      );
+      if (decision === 'approve') {
+        emitter.dispatch(new ReviewApprovedEvent(review.id, review.runId, principal, review.kind));
+      } else if (decision === 'reject') {
+        emitter.dispatch(new ReviewRejectedEvent(review.id, review.runId, principal, review.kind));
+      } else {
+        emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
+      }
+    },
+    createError: (message, code) => new BureauError(message, code),
+    durableNotConfigured: () =>
+      new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable'),
+    diagnose,
+  });
 
   const { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun } =
     createCatalogDispatcher({
@@ -13247,6 +13691,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           })(),
         );
       },
+      // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
+      humanInput: options.humanInput === true && runtime.durable !== undefined,
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
       // is a cancelled parent like any other. Once shutdown has begun, dispose
       // — not the policy — ends every live run, and boot recovery applies the
@@ -13377,6 +13823,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const bureau: Bureau<D> = {
     id: bureauId,
     hasExplicitId: options.id !== undefined,
+    hasDurableEngine: runCreationLedger !== undefined,
     eventFeed,
     runEventFeeds,
     store,
@@ -13471,6 +13918,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listAbortingRuns,
     deleteRun,
     getDurableRun,
+    durableEngine,
     waitForDurableRun,
     cancelDurableRun,
     listDurableRuns,
@@ -13488,9 +13936,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // handlers, so `update`/`query` are unsupported today regardless of
     // configuration. `signal` has a real delivery path (`signalSession`).
     sessionVerbCapabilities: { signal: true, update: false, query: false },
-    listPendingReviews,
+    // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
+    // resolves through the engine by run id. Every other review resolves exactly as before.
+    listPendingReviews: (): PendingReview[] => [...listPendingReviews(), ...runHumanWaits.list()],
     getReview,
-    resolveReview,
+    resolveReview: (input: ResolveReviewInput) =>
+      runHumanWaits.has(input.id) ? runHumanWaits.resolve(input) : resolveReview(input),
     sweepExpiredReviews,
     issueGrant,
     revokeGrant,

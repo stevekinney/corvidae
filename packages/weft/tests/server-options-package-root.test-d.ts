@@ -3,7 +3,6 @@ import {
   createFleetEventFeed,
   createMetricsCollectorExporter,
   createWorkflowEventFeed,
-  dashboard,
   Engine,
   handleRequest,
   serve,
@@ -13,7 +12,6 @@ import {
   type AlertStateSnapshot,
   type AuthConfig,
   type Cursor,
-  type DashboardOptions,
   type DiscoveryInfo,
   type EventEnvelope,
   type FleetEventEnvelope,
@@ -70,32 +68,6 @@ const invalidPackageRootRoutesServeOptions: ServeOptions = {
   routes: { '/status': { shell: true } },
 };
 void invalidPackageRootRoutesServeOptions;
-
-const removedPackageRootDashboardServeOptions: ServeOptions = {
-  engine: packageRootEngine,
-  // @ts-expect-error `dashboard` is no longer a server option; dashboard() mounts the dashboard.
-  dashboard: new Response('<html></html>'),
-};
-void removedPackageRootDashboardServeOptions;
-
-// dashboard() accepts every ServeOptions field plus distDir, and returns the
-// same WeftServer handle serve() does.
-const packageRootDashboardOptions: DashboardOptions = {
-  ...packageRootRoutesServeOptions,
-  distDir: './dashboard',
-};
-async function verifyPackageRootDashboardReturnsWeftServer(): Promise<void> {
-  await using dashboardServer: WeftServer = dashboard(packageRootDashboardOptions);
-  void dashboardServer;
-}
-void verifyPackageRootDashboardReturnsWeftServer;
-
-const invalidPackageRootDashboardOptions: DashboardOptions = {
-  engine: packageRootEngine,
-  // @ts-expect-error distDir is a directory path.
-  distDir: 42,
-};
-void invalidPackageRootDashboardOptions;
 
 const removedMetricsCollectorServeOptions: ServeOptions = {
   engine: packageRootEngine,

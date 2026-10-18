@@ -90,7 +90,6 @@ export type {
   BuiltInAuthorizationScope,
   PackageAuthorizationScope,
 } from './server/authorization-scope.ts';
-export { dashboard, type DashboardOptions } from './server/dashboard.ts';
 export * from './server/handler.ts';
 export { handleRequest } from './server/handler.ts';
 /*

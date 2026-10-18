@@ -98,6 +98,7 @@ import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from './agent-catalog';
 import type { AuditRecord } from './audit-trail';
 import * as auditTrailModule from './audit-trail';
 import {
@@ -107,6 +108,7 @@ import {
   classifyRecoveredRunDetailed,
   createBureau,
   createDefaultSessionPersistenceSleep,
+  ApprovalOutcomeNotWrittenError,
   createPendingApprovalPersistHook,
   dedupeRecoveryPerRunFailures,
   detachBestEffortPromise,
@@ -967,13 +969,18 @@ describe('createBureau', () => {
     // A generate function that calls the `next` tool on step 0 so a tool.started
     // event fires, then completes on step 1. The toolbox must be a real createToolbox
     // (not empty) so toolbox addEventListener is wired and the event bubbles.
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) =>
-        step === 0
-          ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] },
-      toolbox: createToolbox([createNextTool()]),
+    const callsNextThenFinishes: GenerateFunction = async ({ step }) =>
+      step === 0
+        ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
+        : { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        'audit-agent': createAgent({
+          generate: callsNextThenFinishes,
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       stopWhen: stopWhen.noToolCalls(),
     });
 
@@ -1041,10 +1048,16 @@ describe('createBureau', () => {
   it('stamps the session record with the dispatched agentName, not always bureau (regression PRRT_kwDORvupsc6MbUsN)', async () => {
     // Regression: createRunFromRequest stamped the run with request.agentName but
     // saveSession always created/kept the session as agentName:'bureau', so session
-    // APIs/persistence never reflected the dispatched agent. Now the session is
-    // stamped with (or promoted to) the named agent.
-    const bureau = await createBureau({
-      agents: {},
+    // APIs/persistence never reflected the dispatched agent. Now a new session is
+    // stamped with the named agent.
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        researcher: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       persistence: textValueStore(new MemoryStorage()),
@@ -3545,14 +3558,20 @@ describe('createBureau', () => {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
       let bureauAReachedStep1 = false;
       const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+        agents: {
+          'recovery-agent': createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
+        generate: async () => ({ content: 'unused', toolCalls: [] }),
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
@@ -3581,13 +3600,19 @@ describe('createBureau', () => {
       // during resume carries {agentName:'recovery-agent', runId}.
       const capturedStamps: Array<{ agentName: string; runId: string }> = [];
       const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 1) {
-            return { content: 'B resume', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          return { content: `B step ${step}`, toolCalls: [] };
+        agents: {
+          'recovery-agent': createAgent({
+            generate: async ({ step }) => {
+              if (step === 1) {
+                return { content: 'B resume', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              return { content: `B step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
+        generate: async () => ({ content: 'unused', toolCalls: [] }),
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
@@ -8783,7 +8808,12 @@ describe('createBureau review queue (AB-20)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -8861,7 +8891,20 @@ describe('createBureau review queue (AB-20)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+        'older-run-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+        'newest-run-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -10407,6 +10450,137 @@ describe('createBureau review queue (AB-20)', () => {
     }
   });
 
+  it('writes the outcome into the conversation when a retried resolution finishes the cleanup (COR-855)', async () => {
+    const backingStore = textValueStore(new MemoryStorage());
+    let failedSessionUpdatesRemaining = 0;
+    const persistence = createTextStoreProxy(backingStore, {
+      async conditionalBatch(conditions, operations) {
+        if (
+          failedSessionUpdatesRemaining > 0 &&
+          operations.some((operation) => operation.key.startsWith('agent-session:')) &&
+          JSON.stringify(operations).includes('resolvedReviewIds')
+        ) {
+          failedSessionUpdatesRemaining -= 1;
+          throw new Error('override cleanup unavailable');
+        }
+        return backingStore.conditionalBatch(conditions, operations);
+      },
+    });
+    const charges: number[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([
+        {
+          content: '',
+          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+        },
+      ]),
+      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+      stopWhen: stopWhen.toolOutcome('action_required'),
+      persistence,
+      onDiagnostic: () => undefined,
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Charge despite cleanup storage failure' });
+      await waitForRunCompletion(bureau, run.id);
+      const [review] = bureau.listPendingReviews();
+      failedSessionUpdatesRemaining = 3;
+      const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
+      await bureau.resolveReview(input).then(
+        () => undefined,
+        () => undefined,
+      );
+      failedSessionUpdatesRemaining = 0;
+
+      await bureau.resolveReview(input);
+
+      const history = (await bureau.getSession(run.sessionId))!.conversationHistory;
+      const row = history.ids
+        .map((id) => history.messages[id]!)
+        .find((message) => message.toolResult?.callId === 'cleanup-call');
+      expect(charges).toEqual([425]);
+      // The tool ran on the first attempt; the retry is what puts its result in the conversation.
+      expect(row?.toolResult?.outcome).toBe('success');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('rejects a retried resolution whose outcome cannot be written, rather than reporting success (COR-855)', async () => {
+    const backingStore = textValueStore(new MemoryStorage());
+    let failedSessionUpdatesRemaining = 0;
+    const persistence = createTextStoreProxy(backingStore, {
+      async conditionalBatch(conditions, operations) {
+        if (
+          failedSessionUpdatesRemaining > 0 &&
+          operations.some((operation) => operation.key.startsWith('agent-session:')) &&
+          JSON.stringify(operations).includes('resolvedReviewIds')
+        ) {
+          failedSessionUpdatesRemaining -= 1;
+          throw new Error('override cleanup unavailable');
+        }
+        return backingStore.conditionalBatch(conditions, operations);
+      },
+    });
+    const charges: number[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([
+        {
+          content: '',
+          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+        },
+      ]),
+      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+      stopWhen: stopWhen.toolOutcome('action_required'),
+      persistence,
+      sessionPersistenceRetryDelayMilliseconds: 0,
+      onDiagnostic: () => undefined,
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Charge despite cleanup storage failure' });
+      await waitForRunCompletion(bureau, run.id);
+      const [review] = bureau.listPendingReviews();
+      failedSessionUpdatesRemaining = 3;
+      const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
+      await bureau.resolveReview(input).then(
+        () => undefined,
+        () => undefined,
+      );
+      failedSessionUpdatesRemaining = 0;
+      // The retry's write of the outcome into the conversation fails too.
+      const store = bureau.sessionStore!;
+      const update = store.update.bind(store);
+      spyOn(store, 'update').mockImplementation((id, updater, options) =>
+        update(
+          id,
+          async (session) => {
+            const next = await updater(session);
+            if (
+              session !== undefined &&
+              next !== undefined &&
+              next.conversationHistory !== session.conversationHistory
+            ) {
+              throw new Error('disk full');
+            }
+            return next;
+          },
+          options,
+        ),
+      );
+
+      const retried = await bureau.resolveReview(input).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(retried).toBeInstanceOf(ApprovalOutcomeNotWrittenError);
+      expect(charges).toEqual([425]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('retries an initial approval binding persistence failure before exposing the live review', async () => {
     const backingStore = textValueStore(new MemoryStorage());
     let failedApprovalPersistence = false;
@@ -11295,6 +11469,44 @@ describe('createBureau review lifecycle (AB-46)', () => {
       }
     });
 
+    it('reads a resolved approval recorded before reviews had a round as round 0', async () => {
+      const bureau = await createBureau({
+        agents: {},
+        generate: createMockGenerate(),
+        toolbox: createEmptyToolbox(),
+        persistence: textValueStore(new MemoryStorage()),
+      });
+
+      try {
+        const id = 'approval:run-legacy:call-legacy';
+        // The shape the audit trail held before COR-855: no `round` on the review.
+        await bureau.auditTrail!.record({
+          runId: 'run-legacy',
+          type: 'review.approved',
+          principal: 'operator-legacy',
+          detail: {
+            review: {
+              kind: 'tool-approval',
+              id,
+              runId: 'run-legacy',
+              sessionId: 'session-legacy',
+              agentName: undefined,
+              approval: { callId: 'call-legacy', toolName: 'charge-card', arguments: {} },
+              requestedAt: 0,
+              ageMilliseconds: 0,
+              status: 'pending',
+            },
+          },
+        });
+
+        const found = await bureau.getReview(id);
+
+        expect(found).toMatchObject({ id, kind: 'tool-approval', status: 'approved', round: 0 });
+      } finally {
+        bureau.dispose();
+      }
+    });
+
     it('returns undefined for an id it has never seen', async () => {
       const bureau = await createBureau({
         agents: {},
@@ -11502,7 +11714,12 @@ describe('createBureau review lifecycle (AB-46)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -12375,7 +12592,10 @@ describe('createBureau flow control (AB-13)', () => {
   it('isolates the concurrency cap per agent by default', async () => {
     const { generate } = createBlockingGenerate();
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'agent-a': createAgent({ generate, toolbox: createEmptyToolbox() }),
+        'agent-b': createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       generate,
       toolbox: createEmptyToolbox(),
       flowControl: { concurrency: { limit: 1 } },
@@ -18334,7 +18554,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           const updateSpy = spyOn(sessionStore, 'update');
           try {
             await bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'operator' });
-            expect(updateSpy.mock.calls.length).toBe(2);
+            // The resolution's own two writes, plus COR-855's one: the denial
+            // replaces the pending tool result in the session's conversation.
+            expect(updateSpy.mock.calls.length).toBe(3);
           } finally {
             updateSpy.mockRestore();
           }
@@ -21293,7 +21515,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       const sessionStore = bureau.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
-      const deleted = await sessionStore.delete(review.sessionId);
+      const deleted = await sessionStore.delete(review.sessionId!);
       expect(deleted).toBe(true);
 
       const outcome = await bureau.resolveReview({
@@ -21496,7 +21718,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21605,7 +21827,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21665,7 +21887,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // losing call that had actually reached `resumeApproval` and gotten
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
-      const persistedSession = await bureau.getSession(review.sessionId);
+      const persistedSession = await bureau.getSession(review.sessionId!);
       expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
         review.id,
       );

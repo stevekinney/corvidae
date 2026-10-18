@@ -37,6 +37,27 @@ export class SessionOwnerConflictError extends Error {
 }
 
 /**
+ * Thrown from inside a session's atomic update when a run that names an agent saves into a
+ * session another run already bound to a different one (COR-1577). Two runs can create one new
+ * session at once; the first save decides the session's agent, and this refuses the later one
+ * before its run executes anything, so a run is never persisted into a session bound to another
+ * agent.
+ */
+export class SessionAgentConflictError extends Error {
+  constructor(
+    readonly sessionId: string,
+    readonly boundAgentName: string,
+    readonly requestedAgentName: string,
+  ) {
+    super(
+      `Session "${sessionId}" belongs to agent "${boundAgentName}", so a run cannot name ` +
+        `agent "${requestedAgentName}".`,
+    );
+    this.name = 'SessionAgentConflictError';
+  }
+}
+
+/**
  * Whether `principal` is the owner of a session recording the given metadata.
  * Every resource has an owner, so a session with nothing recorded belongs to
  * `ANONYMOUS_LOCAL_OWNER` and admits no one else; AB-42's "open session"

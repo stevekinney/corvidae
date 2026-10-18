@@ -18,7 +18,7 @@ A pool that has been `ensurePool`d but currently tracks no realms (an active rev
 
 ### Console: one route, existing conventions, no new abstraction
 
-The Console's System route (`src/ui/routes/system/`) already has one tab per bounded diagnostics surface (Registry, Health, Discovery, ...), each following the same shape: a pure row-projection module (`*-view.ts`) plus a `createQuery`-backed `.svelte` component using Cinder's `Table`/`Badge`/`EmptyState`. The Realms tab (`realms-tab.svelte` + `realms-view.ts`) follows that convention exactly rather than introducing a new pattern, and reuses Cinder components throughout (no bespoke table, badge, or empty-state markup).
+The Console's System route (`applications/interborough/src/routes/system/`) already has one tab per bounded diagnostics surface (Registry, Health, Discovery, ...), each following the same shape: a pure row-projection module (`*-view.ts`) plus a `createQuery`-backed `.svelte` component using Cinder's `Table`/`Badge`/`EmptyState`. The Realms tab (`realms-tab.svelte` + `realms-view.ts`) follows that convention exactly rather than introducing a new pattern, and reuses Cinder components throughout (no bespoke table, badge, or empty-state markup).
 
 ### `bun --watch`: coarse, but consistent, because it reloads uniformly
 
@@ -54,10 +54,10 @@ bun scripts/generate-operation-client.ts
 bun test scripts/generate-operation-client.test.ts
 ```
 
-For the UI, from `packages/weft`:
+For the console, from `applications/interborough`:
 
 ```bash
-bun --config=./bunfig.ui.toml test --conditions browser --conditions svelte src/ui/routes/system/realms-view.test.ts src/ui/routes/system/realms-tab.test.ts src/ui/routes/system/index.test.ts
+bun --config=./bunfig.ui.toml test --conditions browser --conditions svelte src/routes/system/realms-view.test.ts src/routes/system/realms-tab.test.ts src/routes/system/index.test.ts
 ```
 
 From the repository root, `bunx turbo run typecheck lint test --filter=@lostgradient/weft` covers the engine and the UI, and `bun run validate` is the repository-level gate for a full delivery.

@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
@@ -288,6 +289,71 @@ describe('session input carrying a managed asset (COR-716)', () => {
     expect([...(step.resolvedSources ?? [])]).toEqual([
       [
         `${delivered!.id}:1`,
+        expect.objectContaining({
+          outcome: 'resolved',
+          source: { kind: 'inline', data: base64Of(bytes), encoding: 'base64' },
+        }),
+      ],
+    ]);
+  });
+
+  it('does the same on a session run of a named catalog agent, under the bureau’s unverified-asset policy (COR-1577)', async () => {
+    const seen: GenerateContext[] = [];
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const fixture = createMemoryAssetStorageFixture({});
+    cleanups.push(() => fixture.dispose());
+    const agentGenerate = withBackendDescriptors(async (context: GenerateContext) => {
+      seen.push(context);
+      if (context.step === 0) {
+        stepZeroStarted.resolve();
+        await releaseStepZero.promise;
+        return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+      }
+      return { content: 'done', toolCalls: [] };
+    }, anthropicDescriptors);
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        echo: createAgent({
+          generate: agentGenerate,
+          toolbox: createToolbox([nextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'memory' },
+      durableExecution: true,
+      assets: { storage: fixture.storage },
+      guardrails: { input: { detectors: [], assetSafety: { unknown: 'allow' } } },
+    });
+    cleanups.push(async () => {
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    });
+
+    const run = await bureau.createRun({
+      message: 'Start',
+      principal: alice.id,
+      agentName: 'echo',
+    });
+    await stepZeroStarted.promise;
+    const { source, bytes } = await admitImage(bureau);
+    const payload = [{ type: 'image', source }] as const;
+    const admitted = await bureau.submitSessionInput(run.sessionId, {
+      id: 'input-named',
+      principal: alice.id,
+      deliveryMode: 'steer',
+      payload,
+    });
+    expect(admitted.outcome).toBe('admitted');
+    releaseStepZero.resolve();
+    await bureau.waitForDurableRun(run.id);
+    await yieldToPortableEventLoop();
+
+    const step = seen.find((context) => context.step === 1)!;
+    // The resolver reached the named agent's run, resolving as the run's owner.
+    expect([...(step.resolvedSources ?? [])]).toEqual([
+      [
+        expect.any(String),
         expect.objectContaining({
           outcome: 'resolved',
           source: { kind: 'inline', data: base64Of(bytes), encoding: 'base64' },

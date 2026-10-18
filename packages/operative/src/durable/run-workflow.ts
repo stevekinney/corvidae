@@ -5,7 +5,9 @@ import { Conversation, isConversation } from 'conversationalist';
 import { appendAgentInput } from '../agent-input';
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
+import { countHumanWaitParks } from '../human-wait-parks';
 import { buildStepDeps } from '../loop';
+import { appendFinalAssistantMessage } from '../message-identifiers';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import { createStepMediaAdmission } from '../run-step-media';
 import type { FinishReason } from '../types';
@@ -243,6 +245,12 @@ export function createRunWorkflow(
         // park on this signal"), not a live-park indicator, so it is reported
         // regardless of how the run eventually terminates.
         let lastHumanWaitSignal: string | undefined;
+        // How many human-wait parks the run's steps hold so far, by the one counting
+        // rule (`human-wait-parks.ts`); the pending park's ordinal is the last of them.
+        // It names the answer's row and is the count the park's review id carries.
+        let humanWaitParks = 0;
+        let humanWaitParkOrdinal: number | undefined;
+        let settleAfterAnswer = false;
 
         // AB-45 — the note from a `scheduleWakeup` park this run genuinely
         // slept on and woke from, kept for the FINAL result's `wakeupNote`
@@ -301,9 +309,15 @@ export function createRunWorkflow(
               pendingWakeup = stepResult.pendingWakeup;
               pendingHumanWait = undefined;
             }
+            humanWaitParks += countHumanWaitParks(stepResult.record?.results ?? []);
             if (stepResult.pendingHumanWait !== undefined) {
               pendingHumanWait = stepResult.pendingHumanWait;
               pendingWakeup = undefined;
+              humanWaitParkOrdinal = Math.max(0, humanWaitParks - 1);
+              settleAfterAnswer =
+                stepResult.record?.results.some(
+                  (result) => result.outcome === 'action_required',
+                ) === true;
             }
 
             // === Durable commits — all plain data. Order: transcript, then the
@@ -453,7 +467,7 @@ export function createRunWorkflow(
                   resolvedSources: media.resolvedSources,
                 });
                 if (typeof finalContent !== 'string') return { kind: 'noop' as const };
-                conversation.appendAssistantMessage(finalContent);
+                appendFinalAssistantMessage(conversation, finalContent, runId, finalStep);
                 return {
                   kind: 'content' as const,
                   finalContent,
@@ -499,6 +513,8 @@ export function createRunWorkflow(
             pendingHumanWait,
             lastWakeupNote,
             lastHumanWaitSignal,
+            humanWaitParkOrdinal,
+            settleAfterAnswer,
             runId,
           };
           const continued = yield* runWorkflowPark(ctx, parkState);

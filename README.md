@@ -23,13 +23,13 @@ bun run --filter=@lostgradient/playground dev
 bun run --filter=@lostgradient/playground build
 ```
 
-Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@lostgradient/weft test:ui-browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
+Run the cross-component browser suite with `bun run test:browser`, or use `bun run test:browser:preview` to exercise production compilation. Run the operator suite with `bun run --filter=@lostgradient/interborough test:browser`. Both use [Playwright](https://playwright.dev/). `bun run dev:browser-fixtures` starts the Bun fixture host for local inspection.
 
 ## Workspace boundaries
 
 Browser component libraries live in `components/`: Cinder, Chat, and Editor. Other libraries live in `packages/`: the agent runtimes, the Weft execution engine and its operator UI, and Markdown processing. Verification tooling lives in `testing/`: the shared test infrastructure and the [evaluator](./testing/evaluation/README.md) that scores completed agent runs against versioned rubrics. No library or component may depend on a `testing/` workspace at runtime. Repository configuration lives in `internal/`, including the `@lostgradient/typescript` presets. Every workspace uses the `@lostgradient/*` namespace.
 
-The playground is the application under `applications/`: `bun run --filter=@lostgradient/playground dev` starts the component playground, and `bun run --filter=@lostgradient/playground build` exports it as a static site. The `weft` package owns its `weft` and `weft-mcp` source executables. Weft owns its UI's browser integration host under `packages/weft/scripts/ui-browser`. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Both test hosts compile Svelte and serve their assets with Bun. No workspace uses Vite.
+The playground is the application under `applications/`: `bun run --filter=@lostgradient/playground dev` starts the component playground, and `bun run --filter=@lostgradient/playground build` exports it as a static site. The `weft` package owns its `weft` and `weft-mcp` source executables. Interborough, under `applications/interborough`, serves the Weft operator console and a Bureau on one loopback origin (`bun run --filter=@lostgradient/interborough dev`), and owns the console's browser tests. Tests spanning Cinder, Chat, and Editor live under `scripts/browser-fixtures`; they need a real browser page, but have no application or package identity. Those hosts compile Svelte and serve their assets with Bun. No workspace uses Vite.
 
 Every source library exposes exactly one package entry:
 
