@@ -3,12 +3,7 @@
  * `run.*` events, so its stream is the snapshot alone; its human wait is a review of the
  * task; and an abort through its own handle leaves a cleanup the cancel operation reports.
  */
-import {
-  createAgent,
-  type GenerateContext,
-  type GenerateFunction,
-  stopWhen,
-} from '@lostgradient/operative';
+import { createAgent, type GenerateContext, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -39,7 +34,7 @@ const holder = createAgent({ name: 'holder', generate: parkingUntilAborted });
 
 /** An agent that asks a human, parks, and thanks them once answered. */
 const asker = createAgent({
-  generate: (async (context: GenerateContext) =>
+  generate: async (context: GenerateContext) =>
     context.step === 0
       ? {
           content: '',
@@ -51,7 +46,7 @@ const asker = createAgent({
             },
           ],
         }
-      : { content: 'thanks', toolCalls: [] }) as GenerateFunction,
+      : { content: 'thanks', toolCalls: [] },
   toolbox: createToolbox([]),
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 });

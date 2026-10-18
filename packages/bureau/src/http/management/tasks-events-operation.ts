@@ -366,7 +366,8 @@ export const tasksEventsOperation = defineOperation<
     }
     const task = await host.tasks.get(taskId);
     if (task === undefined) throw resourceNotFound('task', taskId);
-    const catalog = (await host.tasks.record(taskId))?.incarnation === '';
+    const stored = await host.tasks.record(taskId);
+    const catalog = stored?.incarnation === '';
     const owner = { kind: 'run', id: taskId } as const;
     const history = host.taskHistory;
     // A resume is probed here, so a Bureau with no durable history to follow answers
