@@ -106,9 +106,11 @@ function toSdkImageBlock(
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
   if (block.source.type === 'file')
-    throw new TypeError(
-      'Anthropic SDK image file sources cannot be submitted through this adapter.',
-    );
+    return {
+      type: 'image',
+      source: { type: 'file', file_id: block.source.file_id },
+      ...(cacheControl ? { cache_control: cacheControl } : {}),
+    };
   if (!isAnthropicImageMediaType(block.source.media_type))
     throw new TypeError(
       `Anthropic SDK does not support image media type ${block.source.media_type}.`,
@@ -142,9 +144,19 @@ function toSdkDocumentBlock(
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
   }
-  throw new TypeError(
-    `Anthropic SDK document ${block.source.type} sources cannot be submitted through this adapter.`,
-  );
+  if (block.source.type === 'text')
+    return {
+      type: 'document',
+      source: { type: 'text', media_type: 'text/plain', data: block.source.data },
+      ...(block.title === undefined ? {} : { title: block.title }),
+      ...(cacheControl ? { cache_control: cacheControl } : {}),
+    };
+  return {
+    type: 'document',
+    source: { type: 'file', file_id: block.source.file_id },
+    ...(block.title === undefined ? {} : { title: block.title }),
+    ...(cacheControl ? { cache_control: cacheControl } : {}),
+  };
 }
 function toSdkToolUseBlock(
   block: Extract<AnthropicContentBlock, { type: 'tool_use' }>,

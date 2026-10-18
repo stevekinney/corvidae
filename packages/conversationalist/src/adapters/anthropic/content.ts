@@ -86,15 +86,21 @@ function toAnthropicMedia(
     return wrap({ type: 'file', file_id: source.providerFileId });
   }
   if (source.kind === 'inline' && source.encoding === 'utf8' && part.type === 'document') {
-    // Anthropic takes plain-text documents natively; no base64 round trip.
+    // Anthropic takes plain-text documents natively; no base64 round trip. A
+    // text document source's `media_type` is always "text/plain"
+    // (https://platform.claude.com/docs/en/api/messages/create, PlainTextSource,
+    // checked 2026-10-17), so the part's own type, if different, goes in lineage.
     recordLineage(context, partIndex, part, effective, {
       to: 'inline',
       transform: 'passthrough',
+      ...(effective.mimeType !== undefined && effective.mimeType !== 'text/plain'
+        ? { originalMimeType: effective.mimeType }
+        : {}),
     });
     return {
       type: 'document',
       ...title,
-      source: { type: 'text', media_type: effective.mimeType ?? 'text/plain', data: source.data },
+      source: { type: 'text', media_type: 'text/plain', data: source.data },
     };
   }
   const payload = toBase64Payload(source);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { fromAnthropicMessages } from '../src/adapters/anthropic/inbound';
 import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import { resolvedSourceKey, type ResolvedMediaSources } from '../src/adapters/media';
@@ -13,6 +14,7 @@ import type {
   MultiModalContent,
 } from '../src/multi-modal';
 import type { ConversationHistory, MessageRole } from '../src/types';
+import { getOrderedMessages } from '../src/utilities/message-store';
 
 /**
  * COR-716: the cross-provider modality, source, role, and rejection matrix.
@@ -415,7 +417,7 @@ describe('provider conversion matrix: lineage and wire shape', () => {
     ]);
   });
 
-  it('delivers a plain-text document to Anthropic as a text source', () => {
+  it('delivers a plain-text document to Anthropic as a text/plain source, keeps the original type in lineage, and round-trips', () => {
     const conversation = conversationOf('user', [
       {
         type: 'document',
@@ -424,13 +426,30 @@ describe('provider conversion matrix: lineage and wire shape', () => {
         source: { kind: 'inline', data: '# Notes', encoding: 'utf8' },
       },
     ]);
-    const { messages } = toAnthropicMessages(conversation);
-    expect(messages[0]?.content).toEqual([
+    const exported = toAnthropicMessages(conversation);
+    // https://platform.claude.com/docs/en/api/messages/create: a text document
+    // source's `media_type` is always "text/plain".
+    expect(exported.messages[0]?.content).toEqual([
       {
         type: 'document',
         title: 'notes.md',
-        source: { type: 'text', media_type: 'text/markdown', data: '# Notes' },
+        source: { type: 'text', media_type: 'text/plain', data: '# Notes' },
       },
     ]);
+    expect(exported.lineage[0]).toMatchObject({
+      transform: 'passthrough',
+      originalMimeType: 'text/markdown',
+    });
+
+    const imported = fromAnthropicMessages(exported);
+    expect(getOrderedMessages(imported)[0]?.content).toEqual([
+      {
+        type: 'document',
+        name: 'notes.md',
+        mimeType: 'text/plain',
+        source: { kind: 'inline', data: '# Notes', encoding: 'utf8' },
+      },
+    ]);
+    expect(toAnthropicMessages(imported).messages).toEqual(exported.messages);
   });
 });

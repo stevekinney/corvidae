@@ -171,7 +171,6 @@ describe('Anthropic SDK validation', () => {
         type: 'document',
         source: { type: 'base64', media_type: 'text/plain', data: 'dGV4dA==' },
       },
-      { type: 'document', source: { type: 'file', file_id: 'file-1' } },
       { type: 'server_tool_use', id: 'server-1', name: 'code_execution', input: {} },
       { type: 'code_execution_tool_result', tool_use_id: 'server-1', content: {} },
       { type: 'bash_code_execution_tool_result', tool_use_id: 'server-1', content: {} },

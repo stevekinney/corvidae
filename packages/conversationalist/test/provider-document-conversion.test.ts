@@ -137,7 +137,7 @@ describe('provider document conversion', () => {
     ]);
   });
 
-  it('downgrades Anthropic text document sources to text content', () => {
+  it('keeps Anthropic text document sources as inline text documents', () => {
     const conversation = fromAnthropicMessages({
       messages: [
         {
@@ -158,7 +158,14 @@ describe('provider document conversion', () => {
     });
     const messages = getOrderedMessages(conversation);
 
-    expect(messages[0]?.content).toBe('# Notes\n\nPlain document text.');
+    expect(messages[0]?.content).toEqual([
+      {
+        type: 'document',
+        name: 'notes.md',
+        mimeType: 'text/markdown',
+        source: { kind: 'inline', data: '# Notes\n\nPlain document text.', encoding: 'utf8' },
+      },
+    ]);
   });
 
   it('delivers or rejects a document for providers without document blocks, never marker prose', () => {

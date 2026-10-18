@@ -837,11 +837,28 @@ describe('select: input media filters incompatible backends before ranking (COR-
       baseRequest({
         inputMedia: [{ modality: 'image', sourceForm: 'inline', count: 101 }],
       }),
+      baseOptions(catalogOf([haiku45, anthropic, openai])),
+    );
+    // A 200k-token window caps images at 100; a 1M-token window allows 600.
+    const excluded = plan.candidates.filter((c) => !c.eligible);
+    expect(excluded.map((c) => c.model)).toEqual(['claude-haiku-4-5']);
+    expect(excluded[0]?.exclusionReason).toContain('at most 100 image parts');
+    const overSixHundred = select(
+      baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'inline', count: 601 }] }),
       baseOptions(catalogOf([anthropic, openai])),
     );
-    expect(plan.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
-    expect(plan.candidates.find((c) => c.provider === 'anthropic')?.exclusionReason).toContain(
-      'at most 100 image parts',
+    expect(overSixHundred.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+  });
+
+  it('excludes a backend that does not fetch remote URLs itself', () => {
+    const gemini20 = descriptor('gemini', 'gemini-2.0-flash');
+    const plan = select(
+      baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'remote-url', count: 1 }] }),
+      baseOptions(catalogOf([gemini20, gemini])),
+    );
+    expect(plan.selected).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' });
+    expect(plan.candidates.find((c) => c.model === 'gemini-2.0-flash')?.exclusionReason).toContain(
+      'does not fetch remote URLs itself',
     );
   });
 
@@ -849,7 +866,7 @@ describe('select: input media filters incompatible backends before ranking (COR-
     const plan = select(
       baseRequest({
         inputMedia: [
-          { modality: 'image', sourceForm: 'inline', byteLength: 6 * 1024 * 1024, count: 1 },
+          { modality: 'image', sourceForm: 'inline', byteLength: 11 * 1024 * 1024, count: 1 },
         ],
       }),
       baseOptions(catalogOf([anthropic, openai])),

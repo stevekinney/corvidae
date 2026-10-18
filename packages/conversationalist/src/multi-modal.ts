@@ -346,6 +346,8 @@ export interface ContentPartLineage {
   readonly to: ContentSource['kind'];
   readonly transform: ContentTransform;
   readonly providerFileId?: string | undefined;
+  /** The part's own media type, recorded when the wire carried a different one. */
+  readonly originalMimeType?: string | undefined;
   readonly assetId?: string | undefined;
   readonly revision?: number | undefined;
 }

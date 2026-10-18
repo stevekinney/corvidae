@@ -416,12 +416,44 @@ describe('createModelCatalog: catalog invariants', () => {
       for (const limit of row.mediaLimits) {
         expect(row.modalities[limit.modality].input).toBe(true);
       }
-      // A backend that lists `remote-url` for any modality fetches it itself.
-      const listsRemoteUrl = Object.values(row.modalities).some((entry) =>
-        entry.sourceForms.includes('remote-url'),
-      );
-      if (listsRemoteUrl) expect(row.providerFetchesRemoteUrls).toBe(true);
     }
+  });
+
+  it('carries the documented media limits: per-image bytes, and per-request image counts by context window', () => {
+    const catalog = createModelCatalog({ now: fixedNow });
+    const TEN_MEGABYTES = 10 * 1024 * 1024;
+    const imageCount = (row: (typeof catalog.descriptors)[number]) =>
+      row.mediaCounts.find((count) => count.modality === 'image')?.maxPerRequest;
+    for (const row of catalog.descriptors) {
+      if (row.provider === 'anthropic') {
+        // https://platform.claude.com/docs/en/build-with-claude/vision, "Request limits"
+        expect(imageCount(row)).toBe(row.contextWindowTokens === 200_000 ? 100 : 600);
+        expect(row.mediaLimits).toEqual([
+          { scope: 'per-part', modality: 'image', maxBytes: TEN_MEGABYTES },
+        ]);
+      } else if (row.provider === 'openai') {
+        expect(imageCount(row)).toBe(1500);
+      } else {
+        expect(imageCount(row)).toBe(3600);
+      }
+    }
+    // Both window classes exist among the seed rows.
+    const anthropicCounts = new Set(
+      catalog.descriptors.filter((row) => row.provider === 'anthropic').map(imageCount),
+    );
+    expect([...anthropicCounts].toSorted()).toEqual([100, 600]);
+  });
+
+  it('has Gemini fetch remote URLs itself only on models that support external URLs', () => {
+    // https://ai.google.dev/gemini-api/docs/file-input-methods: public HTTPS URLs
+    // are accepted for external URLs, but "Gemini 2.0 models don't support this method".
+    const catalog = createModelCatalog({ now: fixedNow });
+    const gemini = catalog.descriptors.filter((row) => row.provider === 'gemini');
+    expect(gemini.map((row) => [row.model, row.providerFetchesRemoteUrls])).toEqual([
+      ['gemini-2.5-pro', true],
+      ['gemini-2.5-flash', true],
+      ['gemini-2.0-flash', false],
+    ]);
   });
 
   it("is deeply frozen one level into a descriptor's own nested values", () => {

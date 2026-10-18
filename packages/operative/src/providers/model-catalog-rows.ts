@@ -181,24 +181,31 @@ const ACCESS_RESTRICTED_ANTHROPIC_MODELS: ReadonlySet<string> = new Set([
 ]);
 
 // Per-provider media caps. A modality with no entry has no known cap; an
-// absent figure is "unknown", never "unlimited". Each is read from the provider
-// documentation named beside it and is not reconfirmed on every release.
+// absent figure is "unknown", never "unlimited". Each figure was checked against
+// the page named beside it on 2026-10-17. Request-total caps (Anthropic 32 MB,
+// OpenAI 512 MB, Gemini 20 MB inline) span every modality and `MediaLimits` has
+// no whole-request field, so they are not modelled.
 //
-// Anthropic: https://platform.claude.com/docs/en/build-with-claude/vision lists
-// up to 5 MB per image and up to 100 images per `messages` request.
+// Anthropic: https://platform.claude.com/docs/en/build-with-claude/vision
+// ("Request limits"): up to 100 images per request when the model's context
+// window is 200k tokens, 600 for every other model; 10 MB per image
+// (base64-encoded) on the Claude API directly. These rows target the direct
+// Messages API; Amazon Bedrock and Google Cloud cap an image at 5 MB.
 const ANTHROPIC_MEDIA_LIMITS: readonly MediaLimits[] = deepFreeze([
-  { scope: 'per-part', modality: 'image', maxBytes: 5 * 1024 * 1024 },
+  { scope: 'per-part', modality: 'image', maxBytes: 10 * 1024 * 1024 },
 ]);
-const ANTHROPIC_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
-  { modality: 'image', maxPerRequest: 100 },
-]);
-// OpenAI: https://developers.openai.com/api/docs/guides/images-vision lists up
-// to 500 image inputs per request.
+function anthropicMediaCounts(contextWindowTokens: number): readonly MediaCount[] {
+  return deepFreeze([
+    { modality: 'image', maxPerRequest: contextWindowTokens === 200_000 ? 100 : 600 },
+  ]);
+}
+// OpenAI: https://developers.openai.com/api/docs/guides/images-vision: "Up to
+// 1,500 images per request" (with up to 512 MB total payload per request).
 const OPENAI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
-  { modality: 'image', maxPerRequest: 500 },
+  { modality: 'image', maxPerRequest: 1500 },
 ]);
-// Gemini: https://ai.google.dev/gemini-api/docs/image-understanding lists up to
-// 3,600 image files per request.
+// Gemini: https://ai.google.dev/gemini-api/docs/image-understanding: "a maximum
+// of 3,600 image files per request".
 const GEMINI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
   { modality: 'image', maxPerRequest: 3600 },
 ]);
@@ -216,7 +223,7 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
     modalities: requireModalities('anthropic', model),
     mimeFamilies: ['text', 'image', 'document'],
     mediaLimits: ANTHROPIC_MEDIA_LIMITS,
-    mediaCounts: ANTHROPIC_MEDIA_COUNTS,
+    mediaCounts: anthropicMediaCounts(limits.contextWindowTokens),
     providerFetchesRemoteUrls: true,
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
@@ -299,7 +306,11 @@ export function buildGeminiRow(model: string, freshness: string): BackendDescrip
     mimeFamilies: ['text', 'image', 'document', 'audio', 'video'],
     mediaLimits: [],
     mediaCounts: GEMINI_MEDIA_COUNTS,
-    providerFetchesRemoteUrls: true,
+    // https://ai.google.dev/gemini-api/docs/file-input-methods: a public HTTPS
+    // URL is accepted as an external URL (up to 15 MB per file, fetched per
+    // request), but "Gemini 2.0 models don't support this method"; on those the
+    // host fetches the bytes through the resolver.
+    providerFetchesRemoteUrls: !model.startsWith('gemini-2.0'),
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
     streaming: true,

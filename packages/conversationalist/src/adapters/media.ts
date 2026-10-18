@@ -123,6 +123,7 @@ export function recordLineage(
     to: ContentSource['kind'];
     transform: ContentTransform;
     providerFileId?: string | undefined;
+    originalMimeType?: string | undefined;
   },
 ): void {
   const original = part.source;
@@ -135,6 +136,9 @@ export function recordLineage(
     to: delivered.to,
     transform: effective.resolved ? 'resolved' : delivered.transform,
     ...(delivered.providerFileId !== undefined ? { providerFileId: delivered.providerFileId } : {}),
+    ...(delivered.originalMimeType !== undefined
+      ? { originalMimeType: delivered.originalMimeType }
+      : {}),
     ...(original.kind === 'managed-asset'
       ? {
           assetId: original.assetId,

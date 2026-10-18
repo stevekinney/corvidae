@@ -119,7 +119,13 @@ function toDocumentPart(
       mimeType: source.media_type,
     });
   }
-  if (source.type === 'text') return { type: 'text', text: source.data };
+  if (source.type === 'text') {
+    return createMediaPart(
+      'document',
+      { kind: 'inline', data: source.data, encoding: 'utf8' },
+      { ...name, mimeType: source.media_type },
+    );
+  }
   if (source.type === 'url') return createMediaPart('document', sourceFromUrl(source.url), name);
   return createMediaPart(
     'document',
