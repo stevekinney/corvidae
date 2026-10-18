@@ -317,6 +317,13 @@ export interface CommandLedger<TClaim, TResult> {
 
 export interface CreateCommandLedgerOptions<TClaim = unknown, TResult = unknown> {
   readonly kv: ConditionalTextValueStore;
+  /**
+   * The key prefix this ledger's entries and conflict records live under.
+   * Defaults to the run-creation ledger's. A ledger for another command gives
+   * its own, so neither ledger's pruning, claim listing, or reads see the
+   * other's entries.
+   */
+  readonly keyPrefix?: string | undefined;
   /** The runtime clock: every timestamp the ledger records, and every expiry it decides. */
   readonly clock: Pick<RuntimeClock, 'now' | 'nowISO'>;
   /** Mints the id of each recorded conflict. */
@@ -345,15 +352,9 @@ function identityKeySuffix(identity: CommandLedgerIdentity): string {
 }
 
 const ENTRY_KEY_PREFIX = `${COMMAND_LEDGER_KEY_PREFIX}:entry:`;
-const CONFLICT_KEY_PREFIX = `${COMMAND_LEDGER_KEY_PREFIX}:conflict:`;
 
 function entryKey(identity: CommandLedgerIdentity): string {
   return `${ENTRY_KEY_PREFIX}${identityKeySuffix(identity)}`;
-}
-
-function conflictKeyPrefix(identity: CommandLedgerIdentity): string {
-  // The trailing delimiter keeps `request-1` from listing `request-10`'s conflicts.
-  return `${CONFLICT_KEY_PREFIX}${identityKeySuffix(identity)}:`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -464,6 +465,18 @@ export function createCommandLedger<TClaim, TResult>(
   options: CreateCommandLedgerOptions<TClaim, TResult>,
 ): CommandLedger<TClaim, TResult> {
   const { kv, clock, nextConflictId, retentionStart } = options;
+  // Two ledgers over one store (run creation and the AG-UI resume command) must
+  // never read each other's entries: prune, listClaims, and the read paths all
+  // scan by prefix, and a claim of another shape handed to this ledger's
+  // retention and observation callbacks would be misread.
+  const keyPrefix = options.keyPrefix ?? COMMAND_LEDGER_KEY_PREFIX;
+  const entryPrefix = `${keyPrefix}:entry:`;
+  const conflictPrefix = `${keyPrefix}:conflict:`;
+  const entryKeyOf = (identity: CommandLedgerIdentity): string =>
+    `${entryPrefix}${identityKeySuffix(identity)}`;
+  // The trailing delimiter keeps `request-1` from listing `request-10`'s conflicts.
+  const conflictKeyPrefixOf = (identity: CommandLedgerIdentity): string =>
+    `${conflictPrefix}${identityKeySuffix(identity)}:`;
   const terminalRetentionMs = validateTerminalRetentionMs(options.terminalRetentionMs);
   type Entry = CommandLedgerEntry<TClaim, TResult>;
   type Completed = CommandLedgerCompletedEntry<TClaim, TResult>;
@@ -501,7 +514,7 @@ export function createCommandLedger<TClaim, TResult>(
   async function conflictDeletions(
     identity: CommandLedgerIdentity,
   ): Promise<TextValueStoreBatchOperation[]> {
-    const keys = await kv.list(conflictKeyPrefix(identity));
+    const keys = await kv.list(conflictKeyPrefixOf(identity));
     return keys.map((key) => ({ type: 'delete', key }));
   }
 
@@ -512,7 +525,7 @@ export function createCommandLedger<TClaim, TResult>(
   ): Promise<string> {
     for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
       const conflictId = nextConflictId();
-      const key = `${conflictKeyPrefix(identity)}${encodeStorageKeyComponent(conflictId)}`;
+      const key = `${conflictKeyPrefixOf(identity)}${encodeStorageKeyComponent(conflictId)}`;
       const record: CommandLedgerConflictEntry = {
         state: 'failed',
         identity,
@@ -554,7 +567,7 @@ export function createCommandLedger<TClaim, TResult>(
   async function locate(
     identity: CommandLedgerIdentity,
   ): Promise<CommandLedgerLocation<TClaim, TResult>> {
-    const stored = await readStored(entryKey(identity));
+    const stored = await readStored(entryKeyOf(identity));
     if (stored === undefined) return { state: 'not-found' };
     const closed = await expiredAt(stored.entry);
     if (closed === undefined) return { state: 'retained', entry: stored.entry };
@@ -580,7 +593,7 @@ export function createCommandLedger<TClaim, TResult>(
 
   /** Whether the binding `conflict` was recorded against still exists; an unreadable one counts. */
   async function isBound(conflict: CommandLedgerConflictEntry): Promise<boolean> {
-    const key = entryKey(conflict.identity);
+    const key = entryKeyOf(conflict.identity);
     const raw = await kv.get(key);
     if (raw === null) return false;
     const entry = readable(() => parseEntry<TClaim, TResult>(key, raw));
@@ -593,7 +606,7 @@ export function createCommandLedger<TClaim, TResult>(
    */
   async function pruneOrphanedConflicts(): Promise<number> {
     let pruned = 0;
-    for (const key of await kv.list(CONFLICT_KEY_PREFIX)) {
+    for (const key of await kv.list(conflictPrefix)) {
       const raw = await kv.get(key);
       const conflict = readable(() => parseConflict(key, raw));
       if (raw === null || conflict === undefined || (await isBound(conflict))) continue;
@@ -606,7 +619,7 @@ export function createCommandLedger<TClaim, TResult>(
 
   return {
     async claim(identity, payloadDigest, claim) {
-      const key = entryKey(identity);
+      const key = entryKeyOf(identity);
       for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
         const stored = await readStored(key);
         const entry: CommandLedgerPendingEntry<TClaim> = {
@@ -637,7 +650,7 @@ export function createCommandLedger<TClaim, TResult>(
     },
 
     async complete(entry, result, completion = {}) {
-      const key = entryKey(entry.identity);
+      const key = entryKeyOf(entry.identity);
       const completedAt = clock.nowISO();
       const completed: Completed = {
         ...entry,
@@ -665,7 +678,7 @@ export function createCommandLedger<TClaim, TResult>(
     },
 
     async settle(entry, settledAt) {
-      const key = entryKey(entry.identity);
+      const key = entryKeyOf(entry.identity);
       for (let attempt = 0; attempt < COMMAND_LEDGER_MAX_CAS_ATTEMPTS; attempt += 1) {
         const stored = await readStored(key);
         if (stored?.entry.state !== 'completed' || !isSameClaim(stored.entry, entry)) {
@@ -687,7 +700,7 @@ export function createCommandLedger<TClaim, TResult>(
     },
 
     async release(entry) {
-      const key = entryKey(entry.identity);
+      const key = entryKeyOf(entry.identity);
       return kv.conditionalBatch(
         [{ key, expectedValue: JSON.stringify(entry) }],
         [{ type: 'delete', key }, ...(await conflictDeletions(entry.identity))],
@@ -695,7 +708,7 @@ export function createCommandLedger<TClaim, TResult>(
     },
 
     async read(identity) {
-      const stored = await readStored(entryKey(identity));
+      const stored = await readStored(entryKeyOf(identity));
       return stored?.entry;
     },
 
@@ -705,7 +718,7 @@ export function createCommandLedger<TClaim, TResult>(
       const location = await locate(identity);
       if (location.state !== 'retained') return [];
       const conflicts: CommandLedgerConflictEntry[] = [];
-      for (const key of await kv.list(conflictKeyPrefix(identity))) {
+      for (const key of await kv.list(conflictKeyPrefixOf(identity))) {
         const conflict = parseConflict(key, await kv.get(key));
         if (conflict?.originalClaimedAt === location.entry.claimedAt) conflicts.push(conflict);
       }
@@ -714,7 +727,7 @@ export function createCommandLedger<TClaim, TResult>(
 
     async listClaims() {
       const claims: TClaim[] = [];
-      for (const key of await kv.list(ENTRY_KEY_PREFIX)) {
+      for (const key of await kv.list(entryPrefix)) {
         const raw = await kv.get(key);
         // Deleted between the listing and the read: no longer a binding.
         if (raw !== null) claims.push(parseEntry<TClaim, TResult>(key, raw).claim);
@@ -725,7 +738,7 @@ export function createCommandLedger<TClaim, TResult>(
     async prune() {
       let entries = 0;
       let conflicts = 0;
-      for (const key of await kv.list(ENTRY_KEY_PREFIX)) {
+      for (const key of await kv.list(entryPrefix)) {
         const raw = await kv.get(key);
         // An unreadable entry fails closed here too: it is kept, never pruned.
         const entry =

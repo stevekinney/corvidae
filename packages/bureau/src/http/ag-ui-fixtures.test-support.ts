@@ -18,7 +18,7 @@ import type { RunAgentInput } from '@ag-ui/core';
 
 import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau, BureauDiagnostic } from '../types.ts';
 import type { AgUiOptions } from './ag-ui-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
@@ -44,6 +44,8 @@ export type HarnessOptions = {
   readonly agUi?: AgUiOptions;
   /** Serve with these credentials instead of the one anonymous local caller. */
   readonly authentication?: AuthConfig;
+  /** Receives the Bureau's diagnostics. */
+  readonly onDiagnostic?: (diagnostic: BureauDiagnostic) => void;
 };
 
 /** Keys the suites present, by name, with the scopes each holds. */
@@ -86,6 +88,7 @@ export async function openHarness(options: HarnessOptions): Promise<Harness> {
     storage: fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
     ...(options.humanInput === true ? { humanInput: true } : {}),
+    ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
   });
   const handler = createBureauHandler(bureau, {

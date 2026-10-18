@@ -440,6 +440,37 @@ describe('a resume after a supersession', () => {
   });
 });
 
+describe('the resume command ledger', () => {
+  it('leaves the Bureau’s own maintenance of run-creation receipts alone', async () => {
+    const diagnostics: string[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox([]),
+        storage: 'sqlite',
+        onDiagnostic: (diagnostic) =>
+          diagnostics.push(`${diagnostic.scope}: ${diagnostic.message}`),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        await readAgUiStream(await handler(resumeRequest([resolved(first.interruptIds[0]!)])));
+
+        const ran = await bureau.runDurableMaintenance();
+
+        expect(ran).toBe(true);
+        expect(diagnostics).toEqual([]);
+        // The receipt for the run the first start created is still there.
+        const located = await bureau.locateRunCreationReceipt({
+          principal: 'anonymous:local',
+          agentName: 'assistant',
+          runCreationRequestId: 'client-run-1',
+        });
+        expect(located.status).toBe('recorded');
+      },
+    );
+  });
+});
+
 describe('resuming a human wait', () => {
   it('continues the same native run, delivering the answer, and ends the new stream when the run does', async () => {
     await withHarness(

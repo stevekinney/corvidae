@@ -130,6 +130,7 @@ export function createResume(context: ResumeContext) {
   const { bureau, environment, runtime } = context;
   const ledger: CommandLedger<ResumeClaim, ResumeResult> = createCommandLedger({
     kv: bureau.kv!,
+    keyPrefix: 'command-ledger:ag-ui-resume:v1',
     clock: runtime.clock,
     nextConflictId: () => runtime.identifiers.next('ag-ui-resume-conflict'),
   });
@@ -350,7 +351,13 @@ export function createResume(context: ResumeContext) {
           runCreationRequestId: `ag-ui-resume:${threadId}:${interruptKey([...reviews.values()])}`,
         });
       } catch {
-        return refuse('RUN_FAILED', 'The run could not be started from the resolved approvals');
+        // The approvals are resolved and their outcomes are in the conversation, so
+        // a retry of this resume finds nothing pending. The thread is not stuck: a
+        // start with a new message continues from the conversation as it stands.
+        return refuse(
+          'RUN_FAILED',
+          'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
+        );
       }
       result = { runId: created.id, mode: 'created', outcomes };
     } else {
