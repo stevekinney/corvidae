@@ -2041,7 +2041,14 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   `not-found` (no committed events at all): AB-87's retention/deletion
    *   posture is that deleting the owner record never deletes its
    *   history, so the events remain queryable through this same call
-   *   rather than requiring a second one.
+   *   rather than requiring a second one. That outcome is for a trusted
+   *   caller, one that states no principal (COR-718): a caller that states
+   *   one is told `not-found` for a session that no longer exists, because
+   *   history is keyed by id alone and a deleted session has no owner left to
+   *   compare. For a session id that has since been recreated, a caller that
+   *   states a principal must own the live session and sees only the events
+   *   after the latest `session.deleted` marker, which are the live
+   *   session's own, whatever `since` and `limit` it passes.
    */
   eventHistory(
     owner: DurableEventOwner,

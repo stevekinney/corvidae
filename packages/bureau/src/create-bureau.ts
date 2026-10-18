@@ -11613,9 +11613,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    *   `resolveEventHistory`).
    * - goal: only a principal `bureau.goals.get` shows the goal to.
    * - session: `isSessionHistoryReadAuthorized`: only the session's owner, and
-   *   everyone when the session does not exist (its history is then a deleted
-   *   aggregate, which `resolveEventHistory` classifies). A malformed owner is
-   *   closed.
+   *   no one when the session does not exist (its history is then a deleted
+   *   aggregate, readable only by a caller that states no principal). A malformed
+   *   owner is closed.
    * - schedule: the schedule's owner (`ScheduledAgentRunInput.principal`).
    *
    * Read fresh on every call, because ownership is not stable for a live feed:
@@ -11631,9 +11631,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       case 'goal':
         return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
       case 'session': {
-        if (!runtime.sessionStore) return true;
+        // A session that does not exist is closed, not open: its history is
+        // readable only without a principal (see `resolveEventHistory`).
+        if (!runtime.sessionStore) return false;
         const session = await runtime.sessionStore.load(owner.id);
-        return !session || isSessionHistoryReadAuthorized(session.metadata, principal);
+        return session !== undefined && isSessionHistoryReadAuthorized(session.metadata, principal);
       }
       case 'schedule':
         return (await scheduleOwner(owner.id)) === principal;
@@ -11662,7 +11664,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     subscribeOptions: DurableEventHistorySubscribeOptions | undefined,
   ): Subscription {
     let delivery: Promise<void> = Promise.resolve();
+    // COR-718 — a session id's history holds every incarnation of the id, each ended
+    // by a `session.deleted` marker, and the live session's owner is not an earlier
+    // incarnation's owner. Only events after the latest marker are the live
+    // session's, so everything at or before it is dropped. The marker is found once,
+    // when the first event arrives, and then raised by every marker the stream
+    // itself delivers, which it does in order.
+    let floor: Promise<number> | undefined;
     const deliver = async (event: DurableEventEnvelope): Promise<void> => {
+      if (owner.kind === 'session') {
+        floor ??= history
+          .latestDeletionMarker(owner)
+          .then((marker) => marker?.sequence ?? -1)
+          .catch(() => Number.POSITIVE_INFINITY);
+        const settledFloor = await floor;
+        if (event.sequence <= settledFloor) return;
+        if (event.kind === 'session.deleted') {
+          floor = Promise.resolve(event.sequence);
+          return;
+        }
+      }
       let readable = false;
       try {
         readable = await ownerReadableBy(owner, principal);
@@ -11881,7 +11902,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `isSessionHistoryReadAuthorized`'s own documented rule.
     if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
       const preSession = await runtime.sessionStore.load(owner.id);
-      if (preSession && !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
+      // COR-718: a caller that states a principal reads only a live session it owns.
+      // History is keyed by session id alone, so a deleted session has no owner left
+      // to compare, and its former owner is no exception; only a trusted caller
+      // (no principal) reads a deleted session's history.
+      if (!preSession || !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
         return { outcome: 'not-found' };
       }
     }
@@ -11920,11 +11945,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // branch, since a gap returns before reaching it).
       if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
         const gapSession = await runtime.sessionStore.load(owner.id);
-        if (gapSession && !isSessionHistoryReadAuthorized(gapSession.metadata, principal)) {
+        if (!gapSession || !isSessionHistoryReadAuthorized(gapSession.metadata, principal)) {
           return { outcome: 'not-found' };
         }
       }
       return page; // a DurableEventGap
+    }
+
+    // COR-718 — a principal-stated read of a session sees the live session's own
+    // incarnation only. The id's history also holds every earlier incarnation's
+    // events, each ended by a `session.deleted` marker, and the live session's owner
+    // is not those incarnations' owner. So the page starts after the latest marker,
+    // however the caller's `since` and `limit` fall around it, and the live session
+    // is read again once the page is in hand, because the id can be deleted or
+    // recreated while the page is read.
+    if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
+      let marker = page.events.findLast((event) => event.kind === 'session.deleted');
+      if (!(requestOptions?.since === undefined && !page.hasMore)) {
+        const latest = await history.latestDeletionMarker(owner);
+        if (latest !== undefined && (marker === undefined || latest.sequence > marker.sequence)) {
+          marker = latest;
+        }
+      }
+      const first = page.events[0];
+      const current =
+        marker !== undefined && first !== undefined && first.sequence <= marker.sequence
+          ? await history.page(owner, { ...requestOptions, since: marker.cursor })
+          : page;
+      const liveSession = await runtime.sessionStore.load(owner.id);
+      if (!liveSession || !isSessionHistoryReadAuthorized(liveSession.metadata, principal)) {
+        return { outcome: 'not-found' };
+      }
+      return current;
     }
 
     // AB-385 — evidence-based, independent of `options.since`/`options.limit`.
@@ -11972,18 +12024,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // ordinary page gains nothing from this extra `sessionStore.load`, so
     // skip it rather than pay for a lookup no branch below will use.
     const liveSession =
-      owner.kind === 'session' &&
-      runtime.sessionStore &&
-      (principal !== undefined || hasDeletionMarker)
+      owner.kind === 'session' && runtime.sessionStore && hasDeletionMarker
         ? await runtime.sessionStore.load(owner.id)
         : undefined;
-    if (
-      liveSession &&
-      principal !== undefined &&
-      !isSessionHistoryReadAuthorized(liveSession.metadata, principal)
-    ) {
-      return { outcome: 'not-found' };
-    }
 
     // A currently-live session record is authoritative over a stale
     // deletion marker from a PRIOR incarnation of a recreated id — this
