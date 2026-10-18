@@ -213,7 +213,7 @@ describe('OpenAI provider conversion', () => {
     expect(messages[2]?.content).toBe('Single text part');
     expect(messages[3]?.content).toEqual([
       { type: 'text', text: 'See this image' },
-      { type: 'image', url: 'https://example.com/weather-map.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/weather-map.png' } },
     ]);
     expect(toolCalls[0]?.toolCall).toEqual({
       id: 'call-invalid',

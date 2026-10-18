@@ -20,6 +20,7 @@ export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
 export { createSessionTaintTracker } from './session-taint';
 export type {
+  AssetSafetyPolicy,
   DetectionResult,
   DetectorContext,
   GuardrailHooks,

@@ -1,16 +1,13 @@
 import type { ConversationHistory as Conversation } from '../../types';
 import { appendOpenAIMessages, fromOpenAIMessages } from './inbound';
 import { toOpenAIMessages, toOpenAIMessagesGrouped } from './outbound';
-import type { OpenAIConversationExportOptions, OpenAIMessage } from './types';
+import type { OpenAIConversationExportOptions, OpenAIExport, OpenAIMessage } from './types';
 
 export const openAIConversationAdapter = {
-  export(
-    conversation: Conversation,
-    options: OpenAIConversationExportOptions = {},
-  ): OpenAIMessage[] {
+  export(conversation: Conversation, options: OpenAIConversationExportOptions = {}): OpenAIExport {
     return options.groupToolCalls === false
-      ? toOpenAIMessages(conversation)
-      : toOpenAIMessagesGrouped(conversation);
+      ? toOpenAIMessages(conversation, options)
+      : toOpenAIMessagesGrouped(conversation, options);
   },
   import(messages: ReadonlyArray<OpenAIMessage>): Conversation {
     return fromOpenAIMessages(messages);

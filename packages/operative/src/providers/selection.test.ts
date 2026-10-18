@@ -13,6 +13,7 @@ import { describe, expect, it } from 'bun:test';
 import { type BackendDescriptor, createModelCatalog, type ModelCatalog } from './model-catalog.ts';
 import type { UserModelConfiguration } from './policy.ts';
 import {
+  describeInputMedia,
   type EffectiveGenerationResult,
   recordEffectiveGeneration,
   select,
@@ -761,5 +762,167 @@ describe('select: exactOverride merges a standing user override with a requested
     const plan = select(request, baseOptions(catalogOf([anthropic, openai]), { user }));
     expect(plan.outcome).toBe('selected');
     expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+  });
+});
+
+describe('select: input media filters incompatible backends before ranking (COR-716)', () => {
+  const oneAudio = describeInputMedia([
+    { type: 'audio', source: { kind: 'inline', data: 'QUJD', encoding: 'base64' } },
+  ]);
+
+  it('derives one requirement per media part, in order, with source form, family, and size', () => {
+    expect(
+      describeInputMedia([
+        { type: 'text', text: 'ignored' },
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/a.png' } },
+        {
+          type: 'document',
+          mimeType: 'application/pdf',
+          source: { kind: 'inline', data: 'QUJDREVGRw==', encoding: 'base64' },
+        },
+      ]),
+    ).toEqual([
+      { modality: 'image', sourceForm: 'remote-url', count: 1 },
+      {
+        modality: 'document',
+        sourceForm: 'inline',
+        mimeFamily: 'document',
+        byteLength: 7,
+        count: 1,
+      },
+    ]);
+  });
+
+  it('excludes a backend with no audio input as incompatible-modality, and selects one that has it', () => {
+    const plan = select(
+      baseRequest({ inputMedia: oneAudio }),
+      baseOptions(catalogOf([anthropic, openai, gemini])),
+    );
+    expect(plan.outcome).toBe('selected');
+    expect(plan.selected).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' });
+    const excluded = plan.candidates.filter((candidate) => !candidate.eligible);
+    expect(excluded.map((candidate) => [candidate.provider, candidate.exclusionCode])).toEqual([
+      ['anthropic', 'incompatible-modality'],
+      ['openai', 'incompatible-modality'],
+    ]);
+    // Excluded candidates carry no ranking inputs: media filtering ran first.
+    expect(excluded.every((candidate) => candidate.rankingInputs === undefined)).toBe(true);
+  });
+
+  it('reports no-candidate with the shared exclusion code when nothing can take the media', () => {
+    const plan = select(
+      baseRequest({ inputMedia: oneAudio }),
+      baseOptions(catalogOf([anthropic, openai])),
+    );
+    expect(plan.outcome).toBe('no-candidate');
+    expect(plan.failure?.exclusionCode).toBe('incompatible-modality');
+  });
+
+  it('excludes a backend that does not list the source form', () => {
+    const plan = select(
+      baseRequest({
+        inputMedia: [{ modality: 'document', sourceForm: 'managed-asset', count: 1 }],
+      }),
+      baseOptions(catalogOf([anthropic, gemini])),
+    );
+    expect(plan.outcome).toBe('no-candidate');
+    expect(plan.candidates.map((candidate) => candidate.exclusionCode)).toEqual([
+      'incompatible-modality',
+      'incompatible-modality',
+    ]);
+  });
+
+  it('excludes a backend whose per-request part count the request would exceed', () => {
+    const plan = select(
+      baseRequest({
+        inputMedia: [{ modality: 'image', sourceForm: 'inline', count: 101 }],
+      }),
+      baseOptions(catalogOf([haiku45, anthropic, openai])),
+    );
+    // A 200k-token window caps images at 100; a 1M-token window allows 600.
+    const excluded = plan.candidates.filter((c) => !c.eligible);
+    expect(excluded.map((c) => c.model)).toEqual(['claude-haiku-4-5']);
+    expect(excluded[0]?.exclusionReason).toContain('at most 100 image parts');
+    const overSixHundred = select(
+      baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'inline', count: 601 }] }),
+      baseOptions(catalogOf([anthropic, openai])),
+    );
+    expect(overSixHundred.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+  });
+
+  it('keeps the provider of a provider-file part and excludes backends of another provider', () => {
+    const requirements = describeInputMedia([
+      {
+        type: 'document',
+        source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file_1' },
+      },
+    ]);
+    expect(requirements).toEqual([
+      { modality: 'document', sourceForm: 'provider-file', provider: 'anthropic', count: 1 },
+    ]);
+    const plan = select(
+      baseRequest({ inputMedia: requirements }),
+      baseOptions(catalogOf([anthropic, gemini])),
+    );
+    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(plan.candidates.find((c) => c.provider === 'gemini')).toMatchObject({
+      eligible: false,
+      exclusionCode: 'incompatible-modality',
+    });
+  });
+
+  it('excludes a backend that does not fetch remote URLs itself', () => {
+    const gemini20 = descriptor('gemini', 'gemini-2.0-flash');
+    const plan = select(
+      baseRequest({ inputMedia: [{ modality: 'image', sourceForm: 'remote-url', count: 1 }] }),
+      baseOptions(catalogOf([gemini20, gemini])),
+    );
+    expect(plan.selected).toEqual({ provider: 'gemini', model: 'gemini-2.5-pro' });
+    expect(plan.candidates.find((c) => c.model === 'gemini-2.0-flash')?.exclusionReason).toContain(
+      'does not fetch remote URLs itself',
+    );
+  });
+
+  it('excludes a backend whose per-part byte limit the part exceeds', () => {
+    const plan = select(
+      baseRequest({
+        inputMedia: [
+          { modality: 'image', sourceForm: 'inline', byteLength: 11 * 1024 * 1024, count: 1 },
+        ],
+      }),
+      baseOptions(catalogOf([anthropic, openai])),
+    );
+    expect(plan.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+  });
+
+  it('excludes a backend whose aggregate byte limit the known sizes sum past', () => {
+    const capped: BackendDescriptor = {
+      ...anthropic,
+      model: 'capped-model',
+      mediaLimits: [{ scope: 'aggregate', modality: 'image', maxBytes: 10 }],
+    };
+    const image = { modality: 'image', sourceForm: 'inline', byteLength: 6, count: 1 } as const;
+    const twice = select(
+      baseRequest({ inputMedia: [image, image] }),
+      baseOptions(catalogOf([capped, openai])),
+    );
+    expect(twice.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(twice.candidates.find((c) => c.model === 'capped-model')).toMatchObject({
+      eligible: false,
+      exclusionCode: 'incompatible-modality',
+    });
+    expect(twice.candidates.find((c) => c.model === 'capped-model')?.exclusionReason).toContain(
+      'at most 10 bytes across image parts',
+    );
+
+    const once = select(baseRequest({ inputMedia: [image] }), baseOptions(catalogOf([capped])));
+    expect(once.selected).toEqual({ provider: 'anthropic', model: 'capped-model' });
+  });
+
+  it('is a no-op for a request that carries no media', () => {
+    const withMedia = select(baseRequest({ inputMedia: [] }), baseOptions(catalogOf([anthropic])));
+    const without = select(baseRequest(), baseOptions(catalogOf([anthropic])));
+    expect(withMedia.outcome).toBe(without.outcome);
+    expect(withMedia.selected).toEqual(without.selected);
   });
 });

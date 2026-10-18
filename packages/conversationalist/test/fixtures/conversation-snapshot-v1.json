@@ -1,6 +1,6 @@
 {
   "snapshotFormatVersion": 1,
-  "conversationSchemaVersion": 5,
+  "conversationSchemaVersion": 6,
   "controllerRevision": 14,
   "conversationId": "test-id-1",
   "currentBranchId": "test-id-1:14",
@@ -9,7 +9,7 @@
     "revision": 0,
     "parentId": null,
     "conversation": {
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "id": "test-id-1",
       "status": "active",
       "metadata": {},
@@ -24,7 +24,7 @@
         "revision": 1,
         "parentId": "test-id-1:0",
         "conversation": {
-          "schemaVersion": 5,
+          "schemaVersion": 6,
           "id": "test-id-1",
           "status": "active",
           "metadata": {},
@@ -49,7 +49,7 @@
             "revision": 2,
             "parentId": "test-id-1:1",
             "conversation": {
-              "schemaVersion": 5,
+              "schemaVersion": 6,
               "id": "test-id-1",
               "status": "active",
               "metadata": {},
@@ -85,7 +85,7 @@
                 "revision": 3,
                 "parentId": "test-id-1:2",
                 "conversation": {
-                  "schemaVersion": 5,
+                  "schemaVersion": 6,
                   "id": "test-id-1",
                   "status": "active",
                   "metadata": {},
@@ -121,7 +121,7 @@
                     "revision": 4,
                     "parentId": "test-id-1:3",
                     "conversation": {
-                      "schemaVersion": 5,
+                      "schemaVersion": 6,
                       "id": "test-id-1",
                       "status": "active",
                       "metadata": {},
@@ -157,7 +157,7 @@
                         "revision": 5,
                         "parentId": "test-id-1:4",
                         "conversation": {
-                          "schemaVersion": 5,
+                          "schemaVersion": 6,
                           "id": "test-id-1",
                           "status": "active",
                           "metadata": {},
@@ -191,7 +191,7 @@
                             "revision": 6,
                             "parentId": "test-id-1:5",
                             "conversation": {
-                              "schemaVersion": 5,
+                              "schemaVersion": 6,
                               "id": "test-id-1",
                               "status": "active",
                               "metadata": {},
@@ -241,7 +241,7 @@
                                 "revision": 7,
                                 "parentId": "test-id-1:6",
                                 "conversation": {
-                                  "schemaVersion": 5,
+                                  "schemaVersion": 6,
                                   "id": "test-id-1",
                                   "status": "active",
                                   "metadata": {},
@@ -307,7 +307,7 @@
                                     "revision": 8,
                                     "parentId": "test-id-1:7",
                                     "conversation": {
-                                      "schemaVersion": 5,
+                                      "schemaVersion": 6,
                                       "id": "test-id-1",
                                       "status": "active",
                                       "metadata": {},
@@ -388,7 +388,7 @@
                                         "revision": 9,
                                         "parentId": "test-id-1:8",
                                         "conversation": {
-                                          "schemaVersion": 5,
+                                          "schemaVersion": 6,
                                           "id": "test-id-1",
                                           "status": "active",
                                           "metadata": {},
@@ -469,7 +469,7 @@
                                             "revision": 10,
                                             "parentId": "test-id-1:9",
                                             "conversation": {
-                                              "schemaVersion": 5,
+                                              "schemaVersion": 6,
                                               "id": "test-id-1",
                                               "status": "active",
                                               "metadata": {},
@@ -561,7 +561,7 @@
                                             "revision": 12,
                                             "parentId": "test-id-1:9",
                                             "conversation": {
-                                              "schemaVersion": 5,
+                                              "schemaVersion": 6,
                                               "id": "test-id-1",
                                               "status": "active",
                                               "metadata": {},
@@ -652,7 +652,7 @@
                                                 "revision": 13,
                                                 "parentId": "test-id-1:12",
                                                 "conversation": {
-                                                  "schemaVersion": 5,
+                                                  "schemaVersion": 6,
                                                   "id": "test-id-1",
                                                   "status": "active",
                                                   "metadata": {},
@@ -686,7 +686,7 @@
                                                     "revision": 14,
                                                     "parentId": "test-id-1:13",
                                                     "conversation": {
-                                                      "schemaVersion": 5,
+                                                      "schemaVersion": 6,
                                                       "id": "test-id-1",
                                                       "status": "active",
                                                       "metadata": {},
@@ -761,6 +761,6 @@
   },
   "integrity": {
     "algorithm": "fnv1a-64",
-    "digest": "d8e77d7f34e096cf"
+    "digest": "df425ad6dad204da"
   }
 }

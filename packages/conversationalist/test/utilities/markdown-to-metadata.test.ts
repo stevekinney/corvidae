@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { toMarkdown } from '../../src';
 import type { AssistantMessage, ConversationHistory, Message } from '../../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationMessage = Message | AssistantMessage;
 
@@ -26,7 +27,7 @@ describe('toMarkdown', () => {
     const baseIds = ids ?? baseMessages.map((message) => message.id);
 
     return {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conv-1',
       status: 'active',
       metadata: {},
@@ -216,7 +217,11 @@ describe('toMarkdown', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Check this:' },
-            { type: 'image', url: 'https://example.com/img.png', mimeType: 'image/png' },
+            {
+              type: 'image',
+              source: { kind: 'remote-url', url: 'https://example.com/img.png' },
+              mimeType: 'image/png',
+            },
           ],
           position: 0,
           createdAt: '2024-01-15T10:00:00.000Z',

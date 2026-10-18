@@ -3,6 +3,12 @@ import { CompletableEventTarget, ForwardedEvent } from '@lostgradient/lifecycle'
 import type { ConversationHistory } from 'conversationalist';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
+import {
+  appendAgentInput,
+  assertAgentInput,
+  isConversationInput,
+  snapshotPayload,
+} from '../agent-input';
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';
 import type { RunRef } from '../agent-session';
@@ -12,6 +18,8 @@ import type { ActiveRun } from '../create-run';
 import { createActiveRun } from '../create-run';
 import type { CheckpointStore } from '../durable/checkpoint-store';
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
+import type { SessionInputPayload } from '../durable/types';
+import { AgentContractError } from '../errors';
 import type { CombinedOperativeEventMap } from '../events';
 import { HumanWaitParkedEvent } from '../events';
 import type {
@@ -58,7 +66,7 @@ export interface SessionRunDependencies {
 }
 export function createSessionRun(
   dependencies: SessionRunDependencies,
-): (input: string) => AgentRun {
+): (input: SessionInputPayload) => AgentRun {
   const {
     sessionId,
     store,
@@ -73,8 +81,21 @@ export function createSessionRun(
     pauseSessionWatchdogForWait,
     resumeSessionWatchdogAfterWait,
   } = dependencies;
-  return (input: string): AgentRun => {
+  return (input: SessionInputPayload): AgentRun => {
     if (!runOptions) throw new MissingRunOptionsError();
+    // An empty or non-admissible part list is rejected here, synchronously,
+    // before anything is reserved or persisted. A session run appends its input to the
+    // session's own conversation, so `{ conversation }` (which belongs to `agent.run`)
+    // is refused here with the same typed error rather than failing later in the append.
+    assertAgentInput(input);
+    if (isConversationInput(input)) {
+      throw new AgentContractError(
+        'A session run takes a string or a list of content parts; { conversation } is an agent.run input',
+      );
+    }
+    // Snapshot now, synchronously: the reservation below is asynchronous, and a
+    // caller-owned part array mutated in between must not reach the run.
+    const payload = snapshotPayload(input);
     const configuredRunOptions = runOptions;
     // A shared emitter that bridges the outer ActiveRun surface (returned
     // synchronously) with the real inner run's events (created after session
@@ -143,7 +164,7 @@ export function createSessionRun(
           historyOrEmpty(session.conversationHistory, runtime),
           { runtime },
         );
-        seededConversation.appendUserMessage(input);
+        appendAgentInput(seededConversation, payload);
         const userMessageId = seededConversation.current.ids.at(-1);
         if (!userMessageId) {
           throw new Error(`Failed to identify the user message for run "${runId}".`);

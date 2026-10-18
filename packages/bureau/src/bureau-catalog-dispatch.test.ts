@@ -67,6 +67,7 @@ function durableRuntime(claimed: boolean): RuntimeComposition {
   return {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
+    mediaOptionsFor: () => ({}),
     claimCatalogRunRecoveryRecord: async () => claimed,
     persistCatalogRunRecoveryRecord: () => {
       throw new Error('a child never overwrites a recovery record');
@@ -118,7 +119,10 @@ describe('createCatalogDispatcher — startChildRun', () => {
 
   it('gives a process-local child handle the id the topology recorded for it (COR-1302)', async () => {
     const dispatcher = createDispatcher(false, {
-      runtime: { createBureauInvariantHooks: () => undefined } as unknown as RuntimeComposition,
+      runtime: {
+        createBureauInvariantHooks: () => undefined,
+        mediaOptionsFor: () => ({}),
+      } as unknown as RuntimeComposition,
     });
 
     const run = dispatcher.startChildRun({ ...start, agentName: 'worker' });
@@ -178,6 +182,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
+      mediaOptionsFor: () => ({}),
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -230,6 +235,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine: {}, checkpointStore: {} },
       createBureauInvariantHooks: () => undefined,
+      mediaOptionsFor: () => ({}),
       claimCatalogRunRecoveryRecord: async () => true,
       persistCatalogRunRecoveryRecord: async () => {},
     } as unknown as RuntimeComposition;
@@ -300,6 +306,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        mediaOptionsFor: () => ({}),
         claimCatalogRunRecoveryRecord: async () => true,
         persistCatalogRunRecoveryRecord: async () => {},
         ...runtimeOverrides,
@@ -424,6 +431,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        mediaOptionsFor: () => ({}),
         claimCatalogRunRecoveryRecord: async () => false,
         loadCatalogRunRecoveryRecord: async () =>
           record === undefined
@@ -527,6 +535,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const fenceTargets: unknown[] = [];
       const runtime = {
         durable: { engine, checkpointStore },
+        mediaOptionsFor: () => ({}),
         // What the runtime composition does for a goal attempt's run.
         createBureauInvariantHooks: (goalAttempt?: { goalRunId: string }) => {
           const hooks = new HookRegistry<OperativeHookMap>({ source: 'bureau' });
@@ -636,6 +645,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        mediaOptionsFor: () => ({}),
         claimCatalogRunRecoveryRecord: async (runId: string, record: Record<string, unknown>) => {
           if (records.has(runId)) return false;
           records.set(runId, { schemaVersion: 1, ...record });
@@ -772,6 +782,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         runtime: {
           durable: { engine, checkpointStore: {} },
           createBureauInvariantHooks: () => undefined,
+          mediaOptionsFor: () => ({}),
           claimCatalogRunRecoveryRecord: async () => false,
           loadCatalogRunRecoveryRecord: async () => ({ status: 'found', record: claimed }),
           persistCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
@@ -850,6 +861,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        mediaOptionsFor: () => ({}),
         claimCatalogRunRecoveryRecord: async (_id: string, record: unknown) => {
           claims.push(record);
           return true;

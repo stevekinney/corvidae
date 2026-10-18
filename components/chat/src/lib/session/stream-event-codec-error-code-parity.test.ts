@@ -72,6 +72,7 @@ const codesByKind: Record<ChatAgentRunErrorCode, ChatAgentRunErrorKind> = {
   INVALID_AGENT_HANDLE: 'contract',
   INVALID_OUTPUT: 'output',
   MAXIMUM_STEPS: 'policy',
+  MEDIA_NOT_ADMITTED: 'policy',
   NON_JSON_OUTPUT: 'output',
   OUTPUT_SCHEMA_CONVERSION_FAILED: 'contract',
   SELECTION_REVALIDATION_FAILED: 'policy',

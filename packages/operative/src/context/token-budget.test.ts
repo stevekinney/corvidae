@@ -125,3 +125,38 @@ describe('createTokenBudget', () => {
     expect(budget.compactionThreshold).toBe(7000);
   });
 });
+
+describe('createTokenBudget: media costing (COR-716)', () => {
+  const part = {
+    type: 'image' as const,
+    source: { kind: 'remote-url' as const, url: 'https://example.com/a.png' },
+  };
+  const position = { messageId: 'm-1', partIndex: 3 };
+
+  it('never prices media at zero: without an estimator every part is unbounded', () => {
+    expect(createTokenBudget({ maxTokens: 1000 }).estimateMedia(part, position)).toEqual({
+      ...position,
+      outcome: 'unbounded',
+      modality: 'image',
+      reason: 'no-estimator',
+    });
+  });
+
+  it('delegates to the configured estimator', () => {
+    const budget = createTokenBudget({
+      maxTokens: 1000,
+      mediaCostEstimator: (media, where) => ({
+        ...where,
+        modality: media.type,
+        outcome: 'estimated',
+        tokens: 85,
+        basis: 'provider-count',
+      }),
+    });
+    expect(budget.estimateMedia(part, position)).toMatchObject({
+      outcome: 'estimated',
+      tokens: 85,
+      basis: 'provider-count',
+    });
+  });
+});

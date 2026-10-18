@@ -1,4 +1,5 @@
 import type { AnyToolbox } from 'armorer';
+import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
@@ -13,6 +14,11 @@ import {
   StepStartedEvent,
 } from './events';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
+import {
+  createStepMediaAdmission,
+  describeStepInputMedia,
+  type StepMediaAdmission,
+} from './run-step-media';
 import { createElicit } from './run-step-support';
 import { awaitResumeOrAbort, explicitAbortReason } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
@@ -32,6 +38,14 @@ export interface StepPreparationResult {
   elicit: ReturnType<typeof createElicit> | undefined;
   stepToolbox: AnyToolbox;
   stepToolChoice: ToolChoice | undefined;
+  /**
+   * The step boundary's derivation of the media sources, handed to the
+   * `prepareStep` hooks (the input guardrail reads it). Every `generate` call
+   * derives its own through `admission` (COR-716).
+   */
+  resolvedSources: ResolvedMediaSources | undefined;
+  /** This step's media admission; `executeGeneration` derives from it before each call. */
+  admission: StepMediaAdmission;
 }
 
 export async function prepareStep(
@@ -106,6 +120,25 @@ export async function prepareStep(
     return { kind: 'abort', reason: explicitAbortReason(signal) };
   }
 
+  // COR-716 — the step boundary's derivation of the media: resolve sources a
+  // provider cannot take directly, cost every part, apply the safety verdict,
+  // and refuse (typed, before generation) any part that cannot be admitted. A
+  // conversation with no media skips all of it. It sits ahead of selection
+  // because selection judges each part by the form its source takes once
+  // resolved, and ahead of the input guardrail, which inspects the resolved
+  // bodies. It is a preview: the call to `generate` derives again from the
+  // conversation it receives, through the same memoized `admission`, so what
+  // the guardrail inspected and what is sent are the same bytes.
+  const admission = createStepMediaAdmission({ deps, step, emitter });
+  const media = await admission.admit(conversation);
+  if ('kind' in media) return media;
+  // Resolving an asset awaits a resolver, so a cancellation can land inside it.
+  // COR-104: the run ends as aborted, before selection or any provider call.
+  if (signal?.aborted) {
+    return { kind: 'abort', reason: explicitAbortReason(signal) };
+  }
+  const { resolvedSources, mediaTokens } = media;
+
   // AB-64/AB-250 selection boundary: revalidate a previously planned
   // backend selection against the CURRENT catalog/policy/availability
   // snapshot, at the same shared entry point as the steering boundary above
@@ -126,7 +159,12 @@ export async function prepareStep(
   const selectionGate = deps.selection;
   if (selectionGate) {
     const supersededPlan = selectionGate.getPlan();
-    const revalidatedPlan = selectionGate.revalidate();
+    // COR-716: the step's media goes with the revalidation, so a backend that cannot accept
+    // it is excluded here, typed, rather than failing at the provider.
+    const inputMedia = describeStepInputMedia(conversation, media.resolvedSources);
+    const revalidatedPlan = selectionGate.revalidate(
+      inputMedia === undefined ? undefined : { inputMedia },
+    );
     if (revalidatedPlan.outcome !== 'selected') {
       const error = new SelectionRevalidationError(revalidatedPlan, supersededPlan);
       emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
@@ -175,9 +213,13 @@ export async function prepareStep(
   // Context management: compact if over token threshold
   if (deps.contextManagement) {
     const contextManagement = deps.contextManagement;
-    const tokensBefore = contextManagement.tokenEstimator
-      ? contextManagement.tokenEstimator(conversation)
-      : conversation.estimateTokens();
+    // Media is costed by the media estimator, not by the text estimator, so its
+    // tokens are added to whatever the configured estimator reports.
+    const estimateConversationTokens = (): number =>
+      (contextManagement.tokenEstimator
+        ? contextManagement.tokenEstimator(conversation)
+        : conversation.estimateTokens()) + mediaTokens;
+    const tokensBefore = estimateConversationTokens();
 
     // Emit budget warning when remaining tokens fall below warningThreshold
     const warningThreshold =
@@ -226,6 +268,7 @@ export async function prepareStep(
           estimate(text: string) {
             return Math.ceil(text.length / 4);
           },
+          estimateMedia: media.estimate,
         },
       })) !== false;
     if (tokensBefore > compactionThreshold) {
@@ -254,9 +297,7 @@ export async function prepareStep(
             abortStep,
             elicit,
           });
-          const tokensAfter = contextManagement.tokenEstimator
-            ? contextManagement.tokenEstimator(conversation)
-            : conversation.estimateTokens();
+          const tokensAfter = estimateConversationTokens();
           const messagesAfter = conversation.getMessages().length;
           emitter?.dispatch(new ContextCompactedEvent(step, tokensBefore, tokensAfter));
 
@@ -336,5 +377,7 @@ export async function prepareStep(
     elicit,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
+    admission,
   };
 }

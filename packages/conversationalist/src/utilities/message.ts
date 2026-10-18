@@ -1,5 +1,10 @@
 import type { MultiModalContent } from '../multi-modal';
-import { copyContent, renderDocumentReferenceText } from '../multi-modal';
+import {
+  contentSourceDisplayUrl,
+  copyContent,
+  isMediaContent,
+  renderMediaPlaceholder,
+} from '../multi-modal';
 import type { AssistantMessage, Message, MessageInput } from '../types';
 import { normalizeContent } from './content';
 import { toReadonly } from './type-helpers';
@@ -234,8 +239,13 @@ export function messageToString(message: Message): string {
   return messageParts(message)
     .map((part): string | null => {
       if (part.type === 'text') return part.text;
-      if (part.type === 'image') return `![${part.text ?? ''}](${part.url})`;
-      if (part.type === 'document') return renderDocumentReferenceText(part);
+      if (part.type === 'image') {
+        const imageUrl = contentSourceDisplayUrl(part.source);
+        return imageUrl === undefined
+          ? renderMediaPlaceholder(part)
+          : `![${part.alt ?? ''}](${imageUrl})`;
+      }
+      if (isMediaContent(part)) return renderMediaPlaceholder(part);
       // Structural blocks carry no plain-text prose — drop them so they leave
       // no blank paragraphs in the joined output.
       return null;

@@ -22,6 +22,12 @@ import type { RuntimeServices, Subscription } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { Conversation } from 'conversationalist';
 
+import {
+  appendAgentInput,
+  assertAgentInput,
+  isConversationInput,
+  snapshotAgentInput,
+} from './agent-input';
 import type { AgentRun, RunEvent, UnwrappedValue } from './agent-run';
 import { CompletedRunIterationError } from './agent-run';
 import type { AgentSkillDescriptor } from './agent-skill-descriptor';
@@ -132,12 +138,12 @@ function zeroUsage(): TokenUsage {
 }
 
 function buildFallbackConversation(input: AgentInput): Conversation {
-  if (typeof input === 'string') {
-    const conversation = new Conversation();
-    conversation.appendUserMessage(input);
-    return conversation;
+  if (isConversationInput(input)) {
+    return new Conversation(structuredClone(input.conversation));
   }
-  return new Conversation(structuredClone(input.conversation));
+  const conversation = new Conversation();
+  appendAgentInput(conversation, input);
+  return conversation;
 }
 
 function isCallable(value: unknown): value is (...args: never[]) => unknown {
@@ -378,10 +384,8 @@ export function createDeferredAgentRun<O, H extends boolean>(
   // caller's `ConversationHistory` object would be read only later (once the
   // underlying agent loads and its own `run()` clones it), so a mutation made
   // during the load-wait window would leak into this run.
-  const input: AgentInput =
-    typeof rawInput === 'string'
-      ? rawInput
-      : { conversation: structuredClone(rawInput.conversation) };
+  assertAgentInput(rawInput);
+  const input: AgentInput = snapshotAgentInput(rawInput);
 
   // Shallow-copy `context` too, for the same reason: `agentName`,
   // `traceContext`, and `withTraceContext` are otherwise read only once the
@@ -1099,10 +1103,8 @@ export function createLazyAgent<O = never, H extends boolean = false>(
     // `run()` would build). Without this, a caller mutating its
     // `ConversationHistory` while the load is pending would leak into the
     // resolved options.
-    const input: AgentInput =
-      typeof rawInput === 'string'
-        ? rawInput
-        : { conversation: structuredClone(rawInput.conversation) };
+    assertAgentInput(rawInput);
+    const input: AgentInput = snapshotAgentInput(rawInput);
     // Shallow-copy `context` too, before the loader is awaited — same
     // reasoning as `createDeferredAgentRun`'s own context copy. Without
     // this, a caller mutating `signal`/`agentName`/`traceContext`/

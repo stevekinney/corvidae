@@ -47,6 +47,12 @@ export interface EffortSupport {
   readonly degradesTo: Readonly<Partial<Record<Effort, Effort | undefined>>>;
 }
 
+/** A per-request cap on how many parts of one modality a backend accepts. */
+export interface MediaCount {
+  readonly modality: Modality;
+  readonly maxPerRequest: number;
+}
+
 export interface GeneratedAssetBehavior {
   readonly modality: Modality;
   readonly synchronous: boolean;
@@ -69,6 +75,18 @@ export interface BackendDescriptor {
   readonly modalities: ModalityMatrix;
   readonly mimeFamilies: readonly MimeFamily[];
   readonly mediaLimits: readonly MediaLimits[];
+  /**
+   * Per-request part-count caps, by modality; a modality absent here has no
+   * known count cap. Selection excludes a backend a request's part count would
+   * exceed.
+   */
+  readonly mediaCounts: readonly MediaCount[];
+  /**
+   * `true` when the provider fetches a `remote-url` source itself at request
+   * time (bureau's `fetchedBy: 'provider'`). `false` when a remote URL must be
+   * fetched by the host and delivered as bytes.
+   */
+  readonly providerFetchesRemoteUrls: boolean;
   readonly generatedAssetBehavior?: readonly GeneratedAssetBehavior[] | undefined;
   readonly contextWindowTokens: number;
   readonly maxOutputTokens: number;

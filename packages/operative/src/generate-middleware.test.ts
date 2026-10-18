@@ -164,3 +164,17 @@ describe('createFallbackGenerate — backend-descriptor propagation', () => {
     expect(result.content).toBe('primary');
   });
 });
+
+describe('composeGenerate keeps the base backend descriptors (COR-716)', () => {
+  it('re-attaches the base descriptors when a middleware returns a bare wrapper', () => {
+    const base: GenerateFunction = withBackendDescriptors(
+      async () => ({ content: '', toolCalls: [] }),
+      [descriptorFor('anthropic')],
+    );
+    const bare: GenerateMiddleware = (next) => async (context) => next(context);
+
+    const composed = composeGenerate(base, bare);
+
+    expect(readBackendDescriptors(composed)).toEqual(readBackendDescriptors(base));
+  });
+});

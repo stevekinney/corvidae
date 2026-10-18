@@ -37,14 +37,17 @@ describe('toMultiModalArray', () => {
   });
 
   it('wraps a single content item in an array', () => {
-    const image: MultiModalContent = { type: 'image', url: 'https://example.test/a.png' };
+    const image: MultiModalContent = {
+      type: 'image',
+      source: { kind: 'remote-url', url: 'https://example.test/a.png' },
+    };
     expect(toMultiModalArray(image)).toEqual([image]);
   });
 
   it('returns an array as-is', () => {
     const parts: MultiModalContent[] = [
       { type: 'text', text: 'a' },
-      { type: 'image', url: 'https://example.test/b.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.test/b.png' } },
     ];
     expect(toMultiModalArray(parts)).toBe(parts);
   });
@@ -79,7 +82,10 @@ describe('getMessageText', () => {
           role: 'assistant',
           content: [
             { type: 'text', text: 'first' },
-            { type: 'image', url: 'https://example.test/image.png' },
+            {
+              type: 'image',
+              source: { kind: 'remote-url', url: 'https://example.test/image.png' },
+            },
             { type: 'text', text: 'second' },
           ],
         }),
@@ -92,7 +98,12 @@ describe('getMessageText', () => {
       getMessageText(
         message({
           role: 'assistant',
-          content: [{ type: 'image', url: 'https://example.test/image.png' }],
+          content: [
+            {
+              type: 'image',
+              source: { kind: 'remote-url', url: 'https://example.test/image.png' },
+            },
+          ],
         }),
       ),
     ).toBe('');

@@ -9,6 +9,7 @@ import {
   type AgentRun,
   type ChildSignalPort,
   defineChildSignals,
+  digestDelegationArtifact,
   type DelegationGrant,
   revokeDelegationGrant,
   verifyDelegationGrant,
@@ -1737,6 +1738,56 @@ describe('delegation grants', () => {
     const conversationGrant = await grantOf(fixture, 'child-b');
     expect(conversationGrant.objective).toBe('conversation');
     expect(conversationGrant.artifactDigest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('binds a part-array input to the grant by a digest over its parts, media included', async () => {
+    const fixture = createFixture({ delegation });
+    const parts = (assetId: string) => [
+      { type: 'text', text: 'read this' },
+      { type: 'document', source: { kind: 'managed-asset', assetId, revision: 1 } },
+    ];
+    for (const [childRunId, assetId] of [
+      ['child-a', 'asset-1'],
+      ['child-b', 'asset-1'],
+      ['child-c', 'asset-2'],
+    ] as const) {
+      await fixture.topology.children.dispatch({
+        parentRunId: 'parent-1',
+        agentName: 'worker',
+        input: parts(assetId) as never,
+        childRunId,
+        authority: { budget: { concurrentChildren: 3 } },
+      });
+    }
+
+    const [first, same, other] = await Promise.all([
+      grantOf(fixture, 'child-a'),
+      grantOf(fixture, 'child-b'),
+      grantOf(fixture, 'child-c'),
+    ]);
+    expect(first.objective).toBe('content-parts');
+    expect(first.artifactDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(same.artifactDigest).toBe(first.artifactDigest);
+    expect(other.artifactDigest).not.toBe(first.artifactDigest);
+  });
+
+  it('binds the grant to the input as submitted, not as the caller edits its array afterward', async () => {
+    const fixture = createFixture({ delegation });
+    const parts: Array<{ type: 'text'; text: string }> = [{ type: 'text', text: 'read this' }];
+    const expected = digestDelegationArtifact(structuredClone(parts));
+
+    const pending = fixture.topology.children.dispatch({
+      parentRunId: 'parent-1',
+      agentName: 'worker',
+      input: parts,
+      childRunId: 'child-a',
+      authority: { budget: { concurrentChildren: 1 } },
+    });
+    parts[0]!.text = 'mutated';
+    await pending;
+
+    const grant = await grantOf(fixture, 'child-a');
+    expect(grant.artifactDigest).toBe(expected);
   });
 
   it('attenuates a nested grant from its parent’s and reserves its budget in the ledger', async () => {

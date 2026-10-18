@@ -135,7 +135,9 @@ messages:
       - type: text
         text: 'Check this:'
       - type: image
-        url: 'https://example.com/img.png'
+        source:
+          kind: remote-url
+          url: 'https://example.com/img.png'
         mimeType: image/png
 ---
 

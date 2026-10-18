@@ -5,6 +5,7 @@ import { Conversation } from '../src/history';
 import { appendUserMessage, createConversationHistory } from '../src/index';
 import type { ConversationSnapshot } from '../src/types';
 import { deepFreeze } from '../src/utilities/type-helpers';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 describe('Conversation state integrity', () => {
   it('deeply freezes public state and preserves cached snapshot identity until a commit', () => {
@@ -58,7 +59,7 @@ describe('Conversation state integrity', () => {
     const snapshot = conversation.snapshot();
 
     expect(snapshot.snapshotFormatVersion).toBe(2);
-    expect(snapshot.conversationSchemaVersion).toBe(5);
+    expect(snapshot.conversationSchemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(snapshot.controllerRevision).toBe(1);
     expect(Object.isFrozen(snapshot)).toBe(true);
     expect(Object.isFrozen(snapshot.nodes[0])).toBe(true);

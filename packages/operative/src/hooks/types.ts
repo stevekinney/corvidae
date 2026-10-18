@@ -34,7 +34,11 @@ export interface AfterGenerateContext {
   duration: number;
 }
 
-/** Context passed to onLLMInput hooks. */
+/**
+ * Context passed to onLLMInput hooks. `conversation` is a snapshot copy of the
+ * conversation the call sends (COR-716): the hook is read-only and runs after
+ * media admission derived the request, so a write to the copy never reaches it.
+ */
 export interface LLMInputContext {
   conversation: Conversation;
   step: number;

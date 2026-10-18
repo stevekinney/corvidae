@@ -14,10 +14,13 @@ import {
   type AgentRun,
   createAgent,
   createLazyAgent,
+  createModelCatalog,
   createSubagentTool,
   type DefinitionResolvingAgent,
+  type GenerateContext,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type RunnableAgent,
+  withBackendDescriptors,
 } from '@lostgradient/operative';
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -101,6 +104,63 @@ describe('bureau.run', () => {
     } finally {
       await bureau.dispose();
     }
+  });
+
+  describe('a part-array input (COR-716)', () => {
+    const parts = [
+      { type: 'text', text: 'look at this' },
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+      },
+      { type: 'text', text: 'and say what it is' },
+    ] as const;
+
+    function recordingAgent(seen: GenerateContext[]) {
+      const descriptors = createModelCatalog().descriptors.filter(
+        (descriptor) => descriptor.provider === 'anthropic',
+      );
+      return createAgent({
+        generate: withBackendDescriptors(async (context: GenerateContext) => {
+          seen.push(context);
+          return { content: 'ok', toolCalls: [] };
+        }, descriptors),
+      });
+    }
+
+    it('delivers the parts to the agent as one user message, in order', async () => {
+      const seen: GenerateContext[] = [];
+      const bureau = await createBureau({ agents: { echo: recordingAgent(seen) } });
+      try {
+        await bureau.run('echo', parts).result();
+        const user = seen[0]?.conversation.getMessages().find((m) => m.role === 'user');
+        expect(user?.content).toEqual(parts);
+      } finally {
+        await bureau.dispose();
+      }
+    });
+
+    it.each([
+      ['an empty list', []],
+      ['a part that fails the content schema', [{ type: 'image' }]],
+      ['a provider-generated part', [{ type: 'thinking', thinking: 'x', signature: 's' }]],
+      ['text carrying citations', [{ type: 'text', text: 'x', citations: [] }]],
+    ])('throws BureauError BAD_REQUEST synchronously for %s', async (_label, input) => {
+      const bureau = await createBureau({ agents: { echo: recordingAgent([]) } });
+      try {
+        let thrown: unknown;
+        try {
+          bureau.run('echo', input as never);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(BureauError);
+        expect((thrown as BureauError).code).toBe('BAD_REQUEST');
+      } finally {
+        await bureau.dispose();
+      }
+    });
   });
 
   it('throws BureauError BAD_REQUEST when options is an array (typeof [] === "object" does not make it a valid options bag)', async () => {

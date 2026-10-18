@@ -402,6 +402,79 @@ describe('createModelCatalog: catalog invariants', () => {
     }
   });
 
+  it('declares media counts and provider fetch behavior on every row, consistent with the modality matrix', () => {
+    const catalog = createModelCatalog({ now: fixedNow });
+    for (const row of catalog.descriptors) {
+      expect(row.descriptorVersion).toBe(2);
+      expect(typeof row.providerFetchesRemoteUrls).toBe('boolean');
+      expect(Object.isFrozen(row.mediaCounts)).toBe(true);
+      // A cap on a modality the backend takes no input for would never apply.
+      for (const count of row.mediaCounts) {
+        expect(row.modalities[count.modality].input).toBe(true);
+        expect(count.maxPerRequest).toBeGreaterThan(0);
+      }
+      for (const limit of row.mediaLimits) {
+        expect(row.modalities[limit.modality].input).toBe(true);
+      }
+    }
+  });
+
+  it('carries the documented media limits: per-image bytes, and per-request image counts by context window', () => {
+    const catalog = createModelCatalog({ now: fixedNow });
+    const TEN_MEGABYTES = 10 * 1024 * 1024;
+    const imageCount = (row: (typeof catalog.descriptors)[number]) =>
+      row.mediaCounts.find((count) => count.modality === 'image')?.maxPerRequest;
+    for (const row of catalog.descriptors) {
+      if (row.provider === 'anthropic') {
+        // https://platform.claude.com/docs/en/build-with-claude/vision, "Request limits"
+        expect(imageCount(row)).toBe(row.contextWindowTokens === 200_000 ? 100 : 600);
+        expect(row.mediaLimits).toEqual([
+          { scope: 'per-part', modality: 'image', maxBytes: TEN_MEGABYTES },
+        ]);
+      } else if (row.provider === 'openai') {
+        expect(imageCount(row)).toBe(1500);
+      } else {
+        expect(imageCount(row)).toBe(3600);
+      }
+    }
+    // Both window classes exist among the seed rows.
+    const anthropicCounts = new Set(
+      catalog.descriptors.filter((row) => row.provider === 'anthropic').map(imageCount),
+    );
+    expect([...anthropicCounts].toSorted((a, b) => (a ?? 0) - (b ?? 0))).toEqual([100, 600]);
+  });
+
+  it('bounds every Gemini input modality per part, so a remote URL of unknown size can be costed', () => {
+    // https://ai.google.dev/gemini-api/docs/file-input-methods: inline data is capped by the
+    // 20 MB request total, so no single inline part can exceed it.
+    const TWENTY_MEGABYTES = 20 * 1024 * 1024;
+    const catalog = createModelCatalog({ now: fixedNow });
+    const gemini = catalog.descriptors.filter((row) => row.provider === 'gemini');
+    expect(gemini.length).toBeGreaterThan(0);
+    for (const row of gemini) {
+      for (const modality of ['image', 'document', 'audio', 'video'] as const) {
+        if (!row.modalities[modality].input) continue;
+        expect(row.mediaLimits).toContainEqual({
+          scope: 'per-part',
+          modality,
+          maxBytes: TWENTY_MEGABYTES,
+        });
+      }
+    }
+  });
+
+  it('has Gemini fetch remote URLs itself only on models that support external URLs', () => {
+    // https://ai.google.dev/gemini-api/docs/file-input-methods: public HTTPS URLs
+    // are accepted for external URLs, but "Gemini 2.0 models don't support this method".
+    const catalog = createModelCatalog({ now: fixedNow });
+    const gemini = catalog.descriptors.filter((row) => row.provider === 'gemini');
+    expect(gemini.map((row) => [row.model, row.providerFetchesRemoteUrls])).toEqual([
+      ['gemini-2.5-pro', true],
+      ['gemini-2.5-flash', true],
+      ['gemini-2.0-flash', false],
+    ]);
+  });
+
   it("is deeply frozen one level into a descriptor's own nested values", () => {
     const catalog = createModelCatalog({ now: fixedNow });
     for (const row of catalog.descriptors) {

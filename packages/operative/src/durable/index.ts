@@ -116,7 +116,7 @@ export type {
   SessionInputDeliveryStore,
   SessionInputDeliveryStoreOptions,
 } from './session-input-delivery-store';
-export { parseSessionInputPayload } from './session-input-payload';
+export { isSessionInputPayload, parseSessionInputPayload } from './session-input-payload';
 export { createStorageActivities } from './storage-activities';
 export {
   createToolCallLivenessWatchdog,

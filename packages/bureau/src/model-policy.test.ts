@@ -277,3 +277,56 @@ describe('createModelPolicyPlanner: createSelectionGateFor', () => {
     expect(revalidated.outcome).not.toBe('selected');
   });
 });
+
+describe('createModelPolicyPlanner: the request’s input media (COR-716)', () => {
+  const audio = [{ modality: 'audio', sourceForm: 'inline', count: 1 }] as const;
+
+  function plannerOver(agents: AgentDefinitions) {
+    const { service } = makeMustNeverRefreshCatalogService();
+    return createModelPolicyPlanner({
+      agents,
+      modelCatalog: service,
+      now,
+      newPlanId: freshNewPlanId(),
+    });
+  }
+
+  it('planSelection excludes a candidate that cannot accept the request’s media, typed', () => {
+    const planner = plannerOver({ fixed: fixedAgent('fixed') } satisfies AgentDefinitions);
+
+    const plan = planner.planSelection({ agentName: 'fixed', inputMedia: audio });
+
+    // The fixed Agent’s one backend takes no audio.
+    expect(plan.outcome).toBe('no-candidate');
+    expect(plan.candidates[0]).toMatchObject({
+      eligible: false,
+      exclusionCode: 'incompatible-modality',
+    });
+    expect(plan.request.inputMedia).toEqual(audio);
+  });
+
+  it('a gate carries the media of each revalidation into the request it selects with', () => {
+    const planner = plannerOver({ fixed: fixedAgent('fixed') } satisfies AgentDefinitions);
+    const gate = planner.createSelectionGateFor({ agentName: 'fixed' });
+    const initial = gate.getPlan();
+    expect(initial?.outcome).toBe('selected');
+
+    const withAudio = gate.revalidate({ inputMedia: audio });
+
+    expect(withAudio.outcome).toBe('no-candidate');
+    expect(withAudio.request.inputMedia).toEqual(audio);
+    // The superseded plan is untouched.
+    expect(initial?.selected?.provider).toBe('anthropic');
+    // And a step with no media goes back to the media-free request.
+    expect(gate.revalidate().request.inputMedia).toBeUndefined();
+  });
+
+  it('a request that names no media plans exactly as before', () => {
+    const planner = plannerOver({ fixed: fixedAgent('fixed') } satisfies AgentDefinitions);
+
+    const plan = planner.planSelection({ agentName: 'fixed' });
+
+    expect(plan.outcome).toBe('selected');
+    expect(plan.request.inputMedia).toBeUndefined();
+  });
+});

@@ -3,6 +3,8 @@ import type {
   MessageParam,
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
+import { baseMimeType } from '../../media-types';
+import type { ContentPartLineage } from '../../multi-modal';
 import type { ConversationHistory as Conversation } from '../../types';
 import { toAnthropicMessages } from './outbound';
 import {
@@ -19,6 +21,7 @@ import type {
 export interface AnthropicSdkConversation {
   system?: string | TextBlockParam[];
   messages: MessageParam[];
+  lineage: readonly ContentPartLineage[];
 }
 
 /** Converts a neutral Anthropic conversation to the official SDK request shapes. */
@@ -43,6 +46,7 @@ export function toAnthropicMessagesForSdk(
                     : {}),
                 })),
         }),
+    lineage: neutral.lineage,
     messages: neutral.messages.map((message): MessageParam => ({
       role: message.role,
       content:
@@ -102,6 +106,12 @@ function toSdkImageBlock(
       source: { type: 'url', url: block.source.url },
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
+  if (block.source.type === 'file')
+    return {
+      type: 'image',
+      source: { type: 'file', file_id: block.source.file_id },
+      ...(cacheControl ? { cache_control: cacheControl } : {}),
+    };
   if (!isAnthropicImageMediaType(block.source.media_type))
     throw new TypeError(
       `Anthropic SDK does not support image media type ${block.source.media_type}.`,
@@ -124,7 +134,7 @@ function toSdkDocumentBlock(
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
   if (block.source.type === 'base64') {
-    if (block.source.media_type !== 'application/pdf')
+    if (baseMimeType(block.source.media_type) !== 'application/pdf')
       throw new TypeError(
         `Anthropic SDK documents require application/pdf, got ${block.source.media_type}.`,
       );
@@ -135,9 +145,19 @@ function toSdkDocumentBlock(
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
   }
-  throw new TypeError(
-    `Anthropic SDK document ${block.source.type} sources cannot be submitted through this adapter.`,
-  );
+  if (block.source.type === 'text')
+    return {
+      type: 'document',
+      source: { type: 'text', media_type: 'text/plain', data: block.source.data },
+      ...(block.title === undefined ? {} : { title: block.title }),
+      ...(cacheControl ? { cache_control: cacheControl } : {}),
+    };
+  return {
+    type: 'document',
+    source: { type: 'file', file_id: block.source.file_id },
+    ...(block.title === undefined ? {} : { title: block.title }),
+    ...(cacheControl ? { cache_control: cacheControl } : {}),
+  };
 }
 function toSdkToolUseBlock(
   block: Extract<AnthropicContentBlock, { type: 'tool_use' }>,

@@ -83,6 +83,7 @@ export type {
   CreateModelCatalogOptions,
   EffortSupport,
   GeneratedAssetBehavior,
+  MediaCount,
   ModelAlias,
   ModelCatalog,
 } from './model-catalog.ts';
@@ -119,9 +120,15 @@ export type {
   RoutingStrategy,
   StepBasedStrategyOptions,
 } from './routing/index.ts';
-export { recordEffectiveGeneration, select } from './selection.ts';
+export {
+  describeInputMedia,
+  evaluateInputMedia,
+  recordEffectiveGeneration,
+  select,
+} from './selection.ts';
 export type {
   EffectiveGenerationResult,
+  InputMediaRequirement,
   RevalidationInput,
   SelectOptions,
   SelectionCandidate,

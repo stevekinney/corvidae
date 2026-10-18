@@ -4,6 +4,7 @@ import {
   resolveConversationEnvironment,
 } from '../environment';
 import { createInvalidPositionError } from '../errors';
+import { copyContent, type MultiModalContent } from '../multi-modal';
 import type { ConversationHistory as Conversation, Message } from '../types';
 import { createMessage, toReadonly } from '../utilities';
 import { redactToolResult } from '../utilities/tool-results';
@@ -11,6 +12,12 @@ import { ensureConversationSafe } from './validation';
 
 export interface RedactMessageOptions {
   placeholder?: string;
+  /**
+   * Replaces the message content with these parts instead of the placeholder
+   * string, so a caller redacting the prose of a multimodal message keeps its
+   * media parts in order rather than collapsing the message to text.
+   */
+  content?: ReadonlyArray<MultiModalContent>;
   redactToolArguments?: boolean;
   redactToolResults?: boolean;
   clearToolMetadata?: boolean;
@@ -20,6 +27,7 @@ const isRedactMessageOptions = (value: unknown): value is RedactMessageOptions =
   if (!value || typeof value !== 'object') return false;
   return (
     'placeholder' in value ||
+    'content' in value ||
     'redactToolArguments' in value ||
     'redactToolResults' in value ||
     'clearToolMetadata' in value
@@ -103,7 +111,10 @@ export function redactMessageAtPosition(
   const redacted: Message = createMessage({
     id: original.id,
     role: original.role,
-    content: resolved.placeholder,
+    content:
+      resolved.options.content === undefined
+        ? resolved.placeholder
+        : copyContent(resolved.options.content),
     position: original.position,
     createdAt: original.createdAt,
     metadata: { ...original.metadata },

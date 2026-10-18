@@ -5,6 +5,7 @@ import {
   validateConversationHistoryIntegrity as validateConversationIntegrity,
 } from '../src/conversation/index';
 import type { ConversationHistory as Conversation, Message } from '../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 const createMessage = (overrides: Partial<Message>): Message => ({
   id: 'msg-1',
@@ -18,7 +19,7 @@ const createMessage = (overrides: Partial<Message>): Message => ({
 });
 
 const baseConversation = (): Conversation => ({
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   id: 'conv-1',
   status: 'active',
   metadata: {},

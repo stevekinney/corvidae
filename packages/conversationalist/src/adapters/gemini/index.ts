@@ -1,10 +1,10 @@
 import type { ConversationHistory as Conversation } from '../../types';
 import { appendGeminiMessages, fromGeminiMessages } from './inbound';
 import { toGeminiMessages } from './outbound';
-import type { GeminiConversation } from './types';
+import type { GeminiConversation, GeminiExport } from './types';
 
 export const geminiConversationAdapter = {
-  export(conversation: Conversation): GeminiConversation {
+  export(conversation: Conversation): GeminiExport {
     return toGeminiMessages(conversation);
   },
   import(payload: GeminiConversation): Conversation {

@@ -1,14 +1,20 @@
-import { type MultiModalContent, renderDocumentReferenceText } from '../../multi-modal';
+import { isMediaContent, type MediaContent, type MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { Message, ToolCall, ToolResult } from '../../types';
+import {
+  createMediaExportContext,
+  effectiveSource,
+  recordLineage,
+  rejectPart,
+  toBase64Payload,
+  type MediaExportContext,
+} from '../media';
 import type {
   GeminiContent,
   GeminiFunctionCallPart,
   GeminiFunctionResponsePart,
   GeminiPart,
 } from './types';
-
-const DEFAULT_FILE_MIME_TYPE = 'application/octet-stream';
 
 const MIME_TYPE_BY_EXTENSION: Record<string, string> = {
   bmp: 'image/bmp',
@@ -30,10 +36,6 @@ function inferMimeType(url: string): string | undefined {
   }
   const extension = trimmed.slice(dotIndex + 1).toLowerCase();
   return MIME_TYPE_BY_EXTENSION[extension];
-}
-
-function resolveMimeType(url: string, explicit?: string): string {
-  return explicit ?? inferMimeType(url) ?? DEFAULT_FILE_MIME_TYPE;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -60,42 +62,88 @@ function normalizeGeminiResponse(toolResult: ToolResult): Record<string, unknown
 }
 
 /**
- * Converts internal multi-modal content to Gemini parts.
+ * Converts internal multi-modal content to Gemini parts. A media part the
+ * context's role cannot carry (system instructions) is rejected, never dropped.
  */
-export function toGeminiParts(content: string | ReadonlyArray<MultiModalContent>): GeminiPart[] {
+export function toGeminiParts(
+  content: string | ReadonlyArray<MultiModalContent>,
+  context: MediaExportContext,
+): GeminiPart[] {
   if (typeof content === 'string') {
     return content ? [{ text: content }] : [];
   }
 
   const parts: GeminiPart[] = [];
-  for (const part of content) {
-    switch (part.type) {
-      case 'text':
-        if (part.text) {
-          parts.push({ text: part.text });
-        }
-        break;
-      case 'document':
-        parts.push({ text: renderDocumentReferenceText(part) });
-        break;
-      case 'image': {
-        const converted = toGeminiImagePart(part.url ?? '', part.mimeType);
-        if (converted) parts.push(converted);
-        break;
-      }
+  content.forEach((part, partIndex) => {
+    if (part.type === 'text') {
+      if (part.text) parts.push({ text: part.text });
+      return;
     }
-  }
+    if (isMediaContent(part)) {
+      if (context.role === 'system' || context.role === 'developer') {
+        rejectPart(context, partIndex, part, 'role-not-accepted');
+      }
+      parts.push(toGeminiMediaPart(part, partIndex, context));
+      return;
+    }
+    // `container_upload` is an upload reference with no Gemini wire form.
+    if (part.type === 'container_upload') {
+      rejectPart(context, partIndex, part, 'part-type-not-accepted');
+    }
+    // Thinking, server-tool, and tool-result blocks are Anthropic-private
+    // replay data, not user input; they stay out of a Gemini request.
+  });
 
   return parts;
 }
 
-function toGeminiImagePart(url: string, mimeType?: string): GeminiPart | undefined {
-  if (url.startsWith('data:')) {
-    const matches = url.match(/^data:([^;]+);base64,(.+)$/);
-    if (!matches?.[1] || !matches[2]) return undefined;
-    return { inlineData: { mimeType: matches[1], data: matches[2] } };
+function toGeminiMediaPart(
+  part: MediaContent,
+  partIndex: number,
+  context: MediaExportContext,
+): GeminiPart {
+  if (part.type === 'file') {
+    return rejectPart(context, partIndex, part, 'modality-not-accepted', part.source.kind);
   }
-  return { fileData: { fileUri: url, mimeType: resolveMimeType(url, mimeType) } };
+  const effective = effectiveSource(context, partIndex, part);
+  const { source } = effective;
+  if (source.kind === 'remote-url' || source.kind === 'provider-file') {
+    const uri = source.kind === 'remote-url' ? source.url : source.providerFileId;
+    if (source.kind === 'provider-file' && source.provider !== 'gemini') {
+      return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+    }
+    const mimeType = effective.mimeType ?? inferMimeType(uri);
+    if (mimeType === undefined) {
+      return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
+    }
+    recordLineage(
+      context,
+      partIndex,
+      part,
+      effective,
+      source.kind === 'remote-url'
+        ? { to: 'remote-url', transform: 'remote-url-delegated' }
+        : {
+            to: 'provider-file',
+            transform: 'provider-file-reference',
+            providerFileId: source.providerFileId,
+          },
+    );
+    return { fileData: { mimeType, fileUri: uri } };
+  }
+  const payload = toBase64Payload(source);
+  if (payload === undefined) {
+    return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+  }
+  const mimeType = effective.mimeType;
+  if (mimeType === undefined) {
+    return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
+  }
+  recordLineage(context, partIndex, part, effective, {
+    to: 'inline',
+    transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
+  });
+  return { inlineData: { mimeType, data: payload.data } };
 }
 
 /**
@@ -165,7 +213,9 @@ export function extractSystemInstruction(
 
   const parts: GeminiPart[] = [];
   for (const msg of systemMessages) {
-    parts.push(...toGeminiParts(msg.content));
+    parts.push(
+      ...toGeminiParts(msg.content, createMediaExportContext('gemini', msg, [], undefined)),
+    );
   }
 
   if (parts.length === 0) {

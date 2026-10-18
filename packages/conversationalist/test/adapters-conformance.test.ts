@@ -81,7 +81,7 @@ describe('Cross-adapter conformance', () => {
 
   it('preserves shape through OpenAI export/import', () => {
     const original = buildConversation();
-    const roundTripped = fromOpenAIMessages(toOpenAIMessagesGrouped(original));
+    const roundTripped = fromOpenAIMessages(toOpenAIMessagesGrouped(original).messages);
     expect(normalize(roundTripped)).toEqual(normalize(original));
   });
 
@@ -101,7 +101,7 @@ describe('Cross-adapter conformance', () => {
     );
 
     const throughAnthropic = fromAnthropicMessages(toAnthropicMessages(original));
-    const throughOpenAI = fromOpenAIMessages(toOpenAIMessagesGrouped(original));
+    const throughOpenAI = fromOpenAIMessages(toOpenAIMessagesGrouped(original).messages);
     const throughGemini = fromGeminiMessages(toGeminiMessages(original));
 
     expect(systemOf(throughAnthropic)?.cacheBoundary).toBe(true);

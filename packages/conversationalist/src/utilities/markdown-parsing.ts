@@ -2,6 +2,7 @@ import { load } from 'js-yaml';
 
 import { assertConversationSafe } from '../conversation/validation';
 import { type ConversationRuntime, defaultConversationRuntime } from '../environment';
+import { createUnsupportedSchemaVersionError } from '../errors';
 import { conversationSchema } from '../schemas';
 import { type ConversationHistory, type Message, CURRENT_SCHEMA_VERSION } from '../types';
 import { getRoleFromLabel } from './markdown-roles';
@@ -136,6 +137,14 @@ function parseMarkdownWithMetadata(markdown: string): unknown {
   const { metadata, body } = readFrontmatter(markdown);
   if (!metadata['id']) {
     throw new MarkdownParseError('Invalid frontmatter: missing required field "id"');
+  }
+  // A frontmatter naming another schema version is refused the way every other
+  // reader refuses it; there is no dual reader.
+  if (
+    metadata['schemaVersion'] !== undefined &&
+    metadata['schemaVersion'] !== CURRENT_SCHEMA_VERSION
+  ) {
+    throw createUnsupportedSchemaVersionError(metadata['schemaVersion'], CURRENT_SCHEMA_VERSION);
   }
   const pattern = /^### ([\w\s]+) \(([^)]+)\)\n\n([\s\S]*?)(?=\n\n### |\n*$)/gm;
   const messages = [...body.matchAll(pattern)].map((match) => readMetadataMessage(match, metadata));

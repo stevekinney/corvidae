@@ -3,7 +3,7 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GeminiPart } from 'armorer';
 import { parseGeminiToolCalls } from 'armorer';
-import type { ConversationHistory } from 'conversationalist';
+import type { ContentPartLineage, ConversationHistory } from 'conversationalist';
 import { toGeminiMessages } from 'conversationalist';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
@@ -12,6 +12,7 @@ import { createModelCatalog } from './model-catalog.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveGeminiEffort } from './shared/effort.ts';
 import { resolveGeminiApiKey } from './shared/gemini-api-key.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveGeminiModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import { toGeminiResponseFormat } from './structured-output/response-format-adapters.ts';
@@ -131,10 +132,12 @@ interface GeminiRequestContent {
    * Absent whenever the provider created no cache for this request.
    */
   cacheKey: string | undefined;
+  /** One lineage entry per media part this request delivers (COR-716). */
+  lineage: readonly ContentPartLineage[];
 }
 
 /** The lowered stable prefix a `caches.create` call is built from. */
-type GeminiCachePayload = ReturnType<typeof toGeminiMessages>;
+type GeminiCachePayload = Omit<ReturnType<typeof toGeminiMessages>, 'lineage'>;
 
 /** One provider-created cache resource, with what is known about its lifetime. */
 interface ManagedCache {
@@ -410,7 +413,12 @@ function createGeminiContentResolver(input: {
   const { options, resolvedModel, runtime } = input;
   const cacheAwareAssembly =
     options.assembler && options.contextBudget
-      ? createCacheAwareAssembly(options.assembler, options.contextBudget, options.pinnedMessages)
+      ? createCacheAwareAssembly(
+          options.assembler,
+          options.contextBudget,
+          options.pinnedMessages,
+          geminiDescriptorsFor(resolvedModel),
+        )
       : undefined;
 
   /** Prefix digest to in-flight-or-settled creation. Insertion order is LRU order. */
@@ -521,28 +529,49 @@ function createGeminiContentResolver(input: {
 
     async resolve(context: GenerateContext): Promise<GeminiRequestContent> {
       if (!cacheAwareAssembly) {
-        const { systemInstruction, contents } = toGeminiMessages(context.conversation.current);
+        const { systemInstruction, contents, lineage } = toGeminiMessages(
+          context.conversation.current,
+          { sources: context.resolvedSources },
+        );
         assertTailOnlyConversation(systemInstruction, options.cachedContent);
         return {
           systemInstruction,
           contents,
           cachedContent: options.cachedContent,
           cacheKey: undefined,
+          lineage,
         };
       }
 
       const assembled = cacheAwareAssembly(context);
       const split = splitAtCacheBoundary(assembled);
       if (!split) {
-        const { systemInstruction, contents } = toGeminiMessages(assembled);
-        return { systemInstruction, contents, cachedContent: undefined, cacheKey: undefined };
+        const { systemInstruction, contents, lineage } = toGeminiMessages(assembled, {
+          sources: context.resolvedSources,
+        });
+        return {
+          systemInstruction,
+          contents,
+          cachedContent: undefined,
+          cacheKey: undefined,
+          lineage,
+        };
       }
 
-      const payload = toGeminiMessages(split.prefix);
+      const prefix = toGeminiMessages(split.prefix, { sources: context.resolvedSources });
+      // Lineage names message ids and parts, not the cached bytes, so it is
+      // kept out of the cache key and the `caches.create` payload.
+      const { lineage: prefixLineage, ...payload } = prefix;
       const cacheKey = sha256HexSync(JSON.stringify(payload));
       const cachedContent = await acquireCache(cacheKey, payload);
-      const { contents } = toGeminiMessages(split.tail);
-      return { systemInstruction: undefined, contents, cachedContent, cacheKey };
+      const tail = toGeminiMessages(split.tail, { sources: context.resolvedSources });
+      return {
+        systemInstruction: undefined,
+        contents: tail.contents,
+        cachedContent,
+        cacheKey,
+        lineage: [...prefixLineage, ...tail.lineage],
+      };
     },
   };
 }
@@ -738,10 +767,16 @@ async function importGeminiClient(options: {
  * than misreport an endpoint it never invokes; see
  * `providers/gemini.ts`'s streaming factory below.
  */
-function geminiDescriptorsFor(model: string) {
-  return createModelCatalog().descriptors.filter(
+function geminiDescriptorsFor(model: string, endpoint?: 'generateContentStream') {
+  const rows = createModelCatalog().descriptors.filter(
     (descriptor) => descriptor.provider === 'gemini' && descriptor.model === model,
   );
+  // The seed row describes `models.generateContent`; the streaming factory calls
+  // `models.generateContentStream`, whose model, modalities, limits, and pricing
+  // are the same, so the streaming descriptor is that row under the operation it
+  // actually invokes (COR-716: without a descriptor, media admission has nothing
+  // to cost against and refuses every part).
+  return endpoint === undefined ? rows : rows.map((row) => ({ ...row, endpoint }));
 }
 
 /**
@@ -840,15 +875,18 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
         const usageMetadata = result.usageMetadata;
         const usage = usageMetadata ? buildGeminiUsage(usageMetadata) : undefined;
 
-        return {
-          content: textParts.join(''),
-          toolCalls,
-          usage,
-          metadata: {
-            effectiveModel: resolvedModel,
-            effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+        return withInputLineage(
+          {
+            content: textParts.join(''),
+            toolCalls,
+            usage,
+            metadata: {
+              effectiveModel: resolvedModel,
+              effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+            },
           },
-        };
+          content.lineage,
+        );
       },
     });
   };
@@ -972,27 +1010,26 @@ export function createGeminiProviderStream(
 
         const usage = latestUsageMetadata ? buildGeminiUsage(latestUsageMetadata) : undefined;
 
-        return {
-          content: accumulatedText,
-          toolCalls,
-          usage,
-          metadata: {
-            effectiveModel: resolvedModel,
-            effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+        return withInputLineage(
+          {
+            content: accumulatedText,
+            toolCalls,
+            usage,
+            metadata: {
+              effectiveModel: resolvedModel,
+              effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
+            },
           },
-        };
+          content.lineage,
+        );
       },
     });
   };
 
-  // The seed catalog's Gemini row describes `models.generateContent`
-  // (`geminiDescriptorsFor`'s own doc comment), not the distinct
-  // `models.generateContentStream` operation this factory actually calls.
-  // Attaching that row here would misreport an endpoint this function never
-  // invokes, so this stream factory is left opaque (no descriptor attached)
-  // until the seed catalog (mod-02a, out of this issue's scope) gains a
-  // stream-specific row. See the review thread on PR #433.
-  return generate;
+  return withBackendDescriptors(
+    generate,
+    geminiDescriptorsFor(resolvedModel, 'generateContentStream'),
+  );
 }
 
 /**
