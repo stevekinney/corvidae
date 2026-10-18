@@ -2015,24 +2015,20 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * comment for exactly which events, and why a `schedule.created`/
    * `paused`/`resumed`/`cancelled` definition event is not among them).
    *
-   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'` (schedule
-   * owners are unaffected — no ownership/authorization concept exists for
-   * them yet):
+   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'`, and COR-718
+   * extends the first to `'goal'` and `'schedule'` owners:
    *
-   * - `options.principal`, when provided, is checked against the run's
-   *   recorded `principal` (`AgentRun`'s own attribution). For a session,
-   *   `isSessionHistoryReadAuthorized` (COR-1382) allows whoever the
-   *   session's recorded request authority names (AB-42's precedent) and
-   *   every principal that owned a run on the session
-   *   (`lastRunOwningPrincipals`), and fails closed on malformed authority
-   *   metadata. A caller whose principal does not match an owner with a
-   *   RECORDED principal gets `{ outcome: 'not-found' }` — the same
+   * - `options.principal`, when provided, is checked against the owner of
+   *   record of the run, session, goal, or schedule (see
+   *   {@link Bureau.getOwner}): only that owner reads its history. A resource
+   *   created with no principal, or recorded before owners existed, belongs to
+   *   `anonymous:local`, and a malformed session owner fails closed. A caller
+   *   whose principal is not the owner gets `{ outcome: 'not-found' }` — the same
    *   not-found-shaped denial `submitSessionInput` (AB-194) uses, so an
    *   unauthorized caller cannot distinguish "wrong id" from "exists, not
-   *   yours." An owner with NO recorded principal is open (matches every
-   *   existing session verb's "no recorded authority" rule); omitting
-   *   `options.principal` entirely skips the check (an internal/trusted
-   *   caller, or a gateway request from a privileged connection).
+   *   yours." Omitting `options.principal` entirely skips the check (an
+   *   internal/trusted caller, or a gateway request from a privileged
+   *   connection).
    * - When the owner's live Bureau record is gone (the session was
    *   deleted, or the run's record was removed via `deleteRun`) but this
    *   store still holds committed events for it, this returns

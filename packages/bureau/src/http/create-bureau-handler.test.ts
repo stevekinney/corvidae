@@ -173,7 +173,7 @@ describe('createBureauHandler options', () => {
     });
   });
 
-  it('serves the local caller under allow with every built-in Weft scope and every Bureau scope', async () => {
+  it('serves the local caller under allow with exactly the built-in Weft scopes and the Bureau scopes', async () => {
     await withBureau({}, async (bureau) => {
       const mount: OperationHandlerMount = {
         pathPrefix: '/adapter',
@@ -198,9 +198,7 @@ describe('createBureauHandler options', () => {
 
       expect(body.method).toBe('unauthenticated-local');
       expect(body.subject).toBeUndefined();
-      for (const scope of [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES]) {
-        expect(body.scopes).toContain(scope);
-      }
+      expect(new Set(body.scopes)).toEqual(new Set([...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES]));
     });
   });
 

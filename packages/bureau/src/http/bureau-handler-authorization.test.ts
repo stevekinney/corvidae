@@ -124,6 +124,12 @@ async function call(handler: Handler, method: string, params: unknown, key: stri
   return (await response.json()) as RpcBody;
 }
 
+/** A request with no credential header at all, as an uncredentialed caller sends it. */
+async function callWithoutCredentials(handler: Handler, method: string, params: unknown) {
+  const response = await handler(rpc(method, params));
+  return (await response.json()) as RpcBody;
+}
+
 /** Reads a Server-Sent Events response until `text` appears, then stops it. */
 async function readUntil(response: Response, text: string): Promise<string> {
   const reader = response.body!.getReader();
@@ -569,12 +575,10 @@ describe('the local caller under allow', () => {
       const { run, reviewId } = await parkRun(bureau, undefined);
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 
-      const resolved = await call(
-        handler,
-        'bureau.reviews.resolve',
-        { id: reviewId, decision: 'approve' },
-        'ignored',
-      );
+      const resolved = await callWithoutCredentials(handler, 'bureau.reviews.resolve', {
+        id: reviewId,
+        decision: 'approve',
+      });
 
       expect(resolved.result).toMatchObject({ id: reviewId, receipt: 'applied' });
       expect(await bureau.getOwner({ kind: 'run', id: run.id })).toBe('anonymous:local');
@@ -596,8 +600,8 @@ describe('the local caller under allow', () => {
       const second = await parkRun(bureau, undefined, 'second');
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 
-      const listedByOne = await call(handler, 'bureau.reviews.list', {}, 'caller-one');
-      const listedByTwo = await call(handler, 'bureau.reviews.list', {}, 'caller-two');
+      const listedByOne = await callWithoutCredentials(handler, 'bureau.reviews.list', {});
+      const listedByTwo = await callWithoutCredentials(handler, 'bureau.reviews.list', {});
 
       expect(reviewIds(listedByOne)).toEqual([first.reviewId, second.reviewId].toSorted());
       expect(reviewIds(listedByTwo)).toEqual(reviewIds(listedByOne));

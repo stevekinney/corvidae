@@ -252,3 +252,74 @@ describe('the owner of a schedule (COR-718)', () => {
     }
   });
 });
+
+describe('durable history follows the owner of record (COR-718)', () => {
+  async function openDurableBureau() {
+    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-owners-'));
+    const bureau = await createBureau({
+      id: 'owner-history-owners',
+      agents: {},
+      generate,
+      storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    return { bureau, directory };
+  }
+
+  const verdict = (result: object) => ('outcome' in result ? String(result.outcome) : 'page');
+
+  it('reads a run created with no principal as owned by anonymous:local, and by no one else', async () => {
+    const { bureau, directory } = await openDurableBureau();
+    try {
+      const run = await bureau.createRun({ message: 'no principal' });
+      await settle(bureau, run.id);
+
+      const asLocal = await bureau.eventHistory(
+        { kind: 'run', id: run.id },
+        { principal: 'anonymous:local' },
+      );
+      const asStranger = await bureau.eventHistory(
+        { kind: 'run', id: run.id },
+        { principal: 'api-key:bob' },
+      );
+
+      expect([verdict(asLocal), verdict(asStranger)]).toEqual(['page', 'not-found']);
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('lets only a schedule’s owner read its history, including after it is cancelled', async () => {
+    const { bureau, directory } = await openDurableBureau();
+    try {
+      const owned = await bureau.createSchedule({
+        agentName: 'worker',
+        input: 'tick',
+        spec: '1h',
+        principal: 'api-key:alice',
+      });
+      const unowned = await bureau.createSchedule({
+        agentName: 'worker',
+        input: 'tick',
+        spec: '1h',
+      });
+      await bureau.cancelSchedule(owned!.id);
+      const read = async (id: string, principal: string) =>
+        verdict(await bureau.eventHistory({ kind: 'schedule', id }, { principal }));
+
+      expect([
+        await read(owned!.id, 'api-key:alice'),
+        await read(owned!.id, 'api-key:bob'),
+        await read(owned!.id, 'anonymous:local'),
+        await read(unowned!.id, 'anonymous:local'),
+        await read(unowned!.id, 'api-key:alice'),
+      ]).toEqual(['page', 'not-found', 'not-found', 'page', 'not-found']);
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});

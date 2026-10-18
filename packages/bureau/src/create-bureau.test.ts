@@ -16674,7 +16674,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         // Corrupt `lastRequestAuthorities` into a non-record shape — a
         // scalar, exactly the "present but malformed" shape
-        // `lookupSessionAuthority` already distinguishes from absence
+        // the pruner distinguishes from absence
         // elsewhere in this module — while the run's own ownership entry
         // is still a normal candidate once retention advances.
         const sessionStore = bureau.sessionStore;
@@ -16814,7 +16814,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
         // Corrupt `lastRequestAuthorities` to a non-record shape (a bare
         // string) — present, not absent, the same "recorded but corrupted"
-        // shape `lookupSessionAuthority` fails closed on elsewhere in this
+        // shape the pruner fails closed on elsewhere in this
         // file. The run's own `lastRequestAuthorities` entry was already
         // cleared by its terminal transition, so nothing here recreates it
         // — this replaces the WHOLE map with a malformed value.

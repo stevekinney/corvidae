@@ -3849,8 +3849,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       request.runCreationRequestId === undefined
         ? undefined
         : await requireRunCreationLedger().begin({
-            // Keyed exactly as the run records its owner, so the caller a
-            // receipt replays to is the principal that owns the run.
+            // A run creation request id requires an explicit `principal`, so this is
+            // exactly the owner the run records, and the caller a receipt replays to
+            // is the principal that owns the run. The `''` is unreachable.
             callerId: request.principal ?? '',
             agentName,
             requestId: request.runCreationRequestId.trim(),
@@ -4011,20 +4012,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 : {}),
             },
           },
-          // AB-359 — persist the run's OWNING principal (`request.principal`,
-          // never `requestContext.authority.principalId`: that field always
-          // carries a value, synthesized as `run:${runId}` when the caller
-          // omitted one, per `normalizeRunRequestContext` above — using it
-          // here would make an unattributed run readable by anyone who
-          // guessed that synthesized id, and would contradict AB-313's
-          // fail-closed rule for a run with no recorded principal) so a
-          // recovered run's real owner can still authorize against durable
-          // `eventHistory` after a process restart, when `runAttribution`
-          // (AB-54's in-memory-only map) has been lost. Conditionally
-          // written, exactly like `runAttribution.set` below: an
-          // unattributed run writes no entry at all, so a restart leaves it
-          // exactly as unresolved as it was live (denied to every
-          // principal, per AB-313), never silently open.
+          // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
+          // `anonymous:local` when it states none), never
+          // `requestContext.authority.principalId`: that is tool-execution
+          // authority, and it is synthesized as `run:${runId}` when the caller
+          // omitted a principal, per `normalizeRunRequestContext` above. Persisting
+          // it lets a recovered run's real owner authorize against durable
+          // `eventHistory` after a process restart, when `runAttribution` (AB-54's
+          // in-memory-only map) has been lost. Written unconditionally, like
+          // `runAttribution.set` above: every run has an owner, so a restart
+          // reads the same owner the run had live.
           lastRunOwningPrincipals: { [runId]: owner },
           // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
           // stored owner when the session already has one.
@@ -6803,10 +6800,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // closed for the WHOLE session, not just the run it would have
             // named (Codex review, PR #568, "Preserve owners when the
             // authority map is malformed") — this module elsewhere (see
-            // `lookupSessionAuthority`'s own doc comment above) already
-            // distinguishes malformed from absent for the identical
-            // reason: treating malformed as "no live runs" would let a
-            // still-live or pending-approval owner get deleted here.
+            // the session-owner check) already distinguishes malformed from
+            // absent for the identical reason: treating malformed as "no live
+            // runs" would let a still-live or pending-approval owner get
+            // deleted here.
             if (currentAuthorities !== undefined && !isPlainAuthorityRecord(currentAuthorities)) {
               return undefined;
             }
@@ -8896,10 +8893,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // which run this command actually targets — the caller's own explicit
     // `runId`, or the session's sole live run when omitted — lets
     // authorization consult THAT run's own `lastRequestAuthorities` entry
-    // directly, rather than `lookupSessionAuthority`'s single-run default
-    // (`metadata['lastRunId']`), which a DIFFERENT concurrent run's more
-    // recent terminal transition can leave pointing at an unrelated,
-    // uncorrelated entry — see `lookupSessionAuthority`'s own doc comment.
+    // directly, rather than a single-run default (`metadata['lastRunId']`),
+    // which a DIFFERENT concurrent run's more recent terminal transition can
+    // leave pointing at an unrelated, uncorrelated entry. COR-718: authorization
+    // now compares the session's owner, which every run on it shares; the
+    // targeting is kept for the liveness computation that follows.
     // This computation touches only the internal run registry, never
     // anything derived from `request.principal`, so it leaks nothing to an
     // unauthorized caller ahead of the `not-found` check below.
@@ -11474,24 +11472,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * rule `eventHistory()` and `subscribeEventHistory()` both apply, so a feed
    * that cannot be paged by a stranger cannot be tailed by one either.
    *
-   * - run: only the principal `runAttribution` records for it, failing closed
-   *   when none is recorded (see `resolveEventHistory`).
-   * - goal: only a principal `bureau.goals.get` shows the goal to, failing closed
-   *   for a goal that cannot be read, so an id cannot be probed.
-   * - session: `isSessionHistoryReadAuthorized`, the rule `resolveEventHistory`
-   *   applies (COR-1382): whoever the recorded authority names and every
-   *   principal that owned a run on the session; open with no recorded
-   *   authority, closed on malformed authority metadata.
-   * - schedule: no ownership concept exists, so open.
+   * Each kind compares the caller with that kind's owner of record, read the way
+   * {@link Bureau.getOwner} reads it (COR-718), and fails closed when there is
+   * none to read, so an id cannot be probed:
+   *
+   * - run: the owner `runAttribution` records for it (`anonymous:local` for a
+   *   record with none), and no one once the run is deleted (see
+   *   `resolveEventHistory`).
+   * - goal: only a principal `bureau.goals.get` shows the goal to.
+   * - session: `isSessionHistoryReadAuthorized`: only the session's owner, and
+   *   everyone when the session does not exist (its history is then a deleted
+   *   aggregate, which `resolveEventHistory` classifies). A malformed owner is
+   *   closed.
+   * - schedule: the schedule's owner (`ScheduledAgentRunInput.principal`).
    *
    * Read fresh on every call, because ownership is not stable for a live feed:
-   * a goal or run may not exist yet when a subscription starts, and a session
-   * id can be recreated under another authority.
+   * a goal, run, or schedule may not exist yet when a subscription starts, and a
+   * session id can be recreated under another owner.
    */
   async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
     switch (owner.kind) {
-      case 'run':
-        return runAttribution.get(owner.id)?.principal === principal;
+      case 'run': {
+        const attribution = runAttribution.get(owner.id);
+        return attribution !== undefined && ownerOrLocal(attribution.principal) === principal;
+      }
       case 'goal':
         return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
       case 'session': {
@@ -11500,7 +11504,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         return !session || isSessionHistoryReadAuthorized(session.metadata, principal);
       }
       case 'schedule':
-        return true;
+        return (await scheduleOwner(owner.id)) === principal;
     }
   }
 
@@ -11609,8 +11613,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * minted, never reused, so `run.removed` evidence is never stale in the
    * same way.
    *
-   * Schedule owners have no ownership/authorization or deletion concept in
-   * this codebase today, so they pass straight through to `page()`.
+   * A schedule owner is authorized the way a goal's is (COR-718): only the
+   * schedule's owner of record reads its history. Schedule owners have no
+   * deletion concept in this codebase today, so they go on to `page()`.
    *
    * AB-385 (coordinator ruling, 2026-09-08, closing the KNOWN LIMITATION
    * this comment used to document — Codex review finding, PR #580, "Detect
@@ -11675,6 +11680,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // owner-write wait is observable to a caller who may not see the goal.
     if (
       owner.kind === 'goal' &&
+      principal !== undefined &&
+      !(await ownerReadableBy(owner, principal))
+    ) {
+      return { outcome: 'not-found' };
+    }
+
+    // COR-718 — a schedule's history is as private as the schedule: only its owner
+    // reads it, and one that cannot be read at all (never created) fails closed
+    // for the same reason a run with unverifiable ownership does.
+    if (
+      owner.kind === 'schedule' &&
       principal !== undefined &&
       !(await ownerReadableBy(owner, principal))
     ) {

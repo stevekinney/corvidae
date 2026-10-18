@@ -387,6 +387,8 @@ An owner is a string. An API-key caller served by `createBureauHandler` owns as 
 - **review**: its run's owner.
 - **audit entry**: derived from its `runId`, never stored. A run id gives that run's owner, `schedule:<id>` the schedule's, and `session:<id>` the session's while the session exists. A run reattached after a restart keeps its owner and records one `run.recovered` entry with `principal: 'system:recovery'`; an expired review keeps its run's owner and records `principal: 'system:expiry'`.
 
+An in-process host must restate the session's owner on every later `createRun`: an omitted `principal` is a trusted call for children and goals, but for `createRun` it means `anonymous:local`, which is refused on a session another principal owns.
+
 Session-scoped memory, transcripts, and events belong to their session or run. Agent-, skill-, and experience-scoped memory, delivery records, delegation grants, the steering log, the command ledger, session-input identity, asset upload sessions, and skills and proposals have no owner of record.
 
 ### Parent-child topology (COR-772)
