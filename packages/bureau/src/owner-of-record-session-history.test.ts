@@ -252,6 +252,59 @@ describe('the history of a deleted session (COR-718)', () => {
     }
   });
 
+  it('delivers the gap event to the owner of a live session whose cursor fell below the retention floor, and nothing to a stranger', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      await settled(bureau, ALICE, 'retained-live');
+      const own = eventsOf(await read(bureau, 'retained-live', { principal: ALICE }));
+      const adminStorage = await resolveStorage({
+        type: 'sqlite',
+        path: join(directory, 'bureau.sqlite'),
+      });
+      const adminFeed = createFleetEventFeed(adminStorage);
+      try {
+        // Retire the first of Alice's events, so a replay from the start opens with a gap
+        // and then continues with the rest.
+        await adminFeed.retain({ beforeSequence: own[0]!.sequence + 1 });
+      } finally {
+        adminFeed.dispose();
+        adminStorage[Symbol.dispose]();
+      }
+
+      const asAlice: DurableEventEnvelope[] = [];
+      const asBob: DurableEventEnvelope[] = [];
+      const alice = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'retained-live' },
+        (event) => {
+          asAlice.push(event);
+        },
+        { principal: ALICE },
+      );
+      const bob = bureau.subscribeEventHistory(
+        { kind: 'session', id: 'retained-live' },
+        (event) => {
+          asBob.push(event);
+        },
+        { principal: BOB },
+      );
+      try {
+        await waitForCondition(
+          () => asAlice.length >= own.length,
+          "the owner's replay never arrived",
+        );
+        expect(asAlice[0]?.kind).toBe('history.gap');
+        expect(sequences(asAlice.slice(1))).toEqual(sequences(own.slice(1)));
+        expect(asBob).toEqual([]);
+      } finally {
+        alice.unsubscribe();
+        bob.unsubscribe();
+      }
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it('never delivers a backlog queued under the former owner when the id is deleted and recreated mid-authorization', async () => {
     const { bureau, directory } = await openBureau();
     try {

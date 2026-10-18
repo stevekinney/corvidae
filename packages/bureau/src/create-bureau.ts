@@ -149,6 +149,7 @@ import {
   createDurableEventHistory,
   createDurableEventProducer,
   deletionMarkerKindFor,
+  DURABLE_HISTORY_GAP_KIND,
   type DurableEventHistory,
   type DurableEventHistoryPageOptions,
   type DurableEventHistorySubscribeOptions,
@@ -11715,13 +11716,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // recorded for that very incarnation. An event recorded for none is never
     // delivered to a principal. Nothing else separates the incarnations: not a
     // marker between them, which an expiry never writes, and not the state of the
-    // outbox.
+    // outbox. The one exception is the gap event the stream synthesizes when
+    // retention has passed the subscriber (COR-1477): it is not a recorded event
+    // of any incarnation, carries nothing owner-scoped, and is the owner's only
+    // way to learn that history was lost, so it reaches an owner of the live session.
     const deliver = async (event: DurableEventEnvelope, incarnation: string | undefined) => {
       if (owner.kind === 'session') {
         try {
           const live = await runtime.sessionStore?.load(owner.id);
           if (!live || !isSessionHistoryReadAuthorized(live.metadata, principal)) return;
-          if (incarnation === undefined || incarnation !== live.incarnation) return;
+          if (
+            event.kind !== DURABLE_HISTORY_GAP_KIND &&
+            (incarnation === undefined || incarnation !== live.incarnation)
+          ) {
+            return;
+          }
         } catch (error) {
           // Only the event in hand is lost; the next event loads the session afresh.
           diagnose({
