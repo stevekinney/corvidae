@@ -183,7 +183,7 @@ describe('two principals racing to create one new session (COR-718)', () => {
       expect(transcript).toContain(winner);
       expect(transcript).not.toContain(loser);
       expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
-        [winners[0]!.value.id]: String(owner),
+        [winners[0]!.value.id]: typeof owner === 'string' ? owner : '',
       });
     } finally {
       await bureau.dispose();

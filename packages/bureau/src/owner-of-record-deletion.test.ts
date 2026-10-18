@@ -105,10 +105,10 @@ describe('the owner of a deleted session’s audit entry (COR-718)', () => {
       await bureau.runDurableMaintenance();
       await deletionEntries(bureau, 'tidy-session', 1);
 
-      await waitForCondition(
-        async () => (await bureau.kv?.list(SIDE_RECORD_PREFIX))?.length === 0,
-        'the side record outlived the audit entry',
-      );
+      await waitForCondition(async () => {
+        const remaining = await bureau.kv?.list(SIDE_RECORD_PREFIX);
+        return remaining?.length === 0;
+      }, 'the side record outlived the audit entry');
     } finally {
       await bureau.dispose();
     }

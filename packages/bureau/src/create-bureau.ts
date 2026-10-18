@@ -8484,15 +8484,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   async function recordSessionDeletionOwner(session: AgentSession): Promise<void> {
-    const store = runtime.kv;
-    if (!auditTrailInstance || !store) return;
+    const kvStore = runtime.kv;
+    if (!auditTrailInstance || !kvStore) return;
     const owner = resolveSessionOwner(session.metadata);
     // A malformed owner names no one, so the entry is left without one.
     if (owner === undefined) return;
     const key = sessionDeletionOwnerKey(session.id, session.incarnation);
     sessionDeletionOwners.set(key, owner);
     try {
-      await store.set(key, owner);
+      await kvStore.set(key, owner);
     } catch (error: unknown) {
       diagnose({
         level: 'error',
@@ -8505,12 +8505,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /** Reads the owner record back into memory before the deletion event is dispatched. */
   async function loadSessionDeletionOwner(sessionId: string, incarnation: string): Promise<void> {
-    const store = runtime.kv;
-    if (!store) return;
+    const kvStore = runtime.kv;
+    if (!kvStore) return;
     const key = sessionDeletionOwnerKey(sessionId, incarnation);
     if (sessionDeletionOwners.has(key)) return;
     try {
-      const owner = await store.get(key);
+      const owner = await kvStore.get(key);
       if (owner !== null) sessionDeletionOwners.set(key, owner);
     } catch (error: unknown) {
       diagnose({
