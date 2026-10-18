@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { consolidateProjections } from '../src/consolidate-projections';
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
-import { rebuildDerivedIndexes } from '../src/derived-indexes';
+import { EmbeddingMismatchError, rebuildDerivedIndexes } from '../src/derived-indexes';
 import {
   type EvidenceProjectionStorage,
   ProjectionRevisionConflictError,
@@ -218,6 +218,90 @@ for (const [label, makeBackend] of BACKENDS) {
         embed: () => Promise.resolve({ model: 'm', vector: [1, 0] }),
       });
       expect(summary.embedding).toEqual({ model: 'm', vector: [1, 0] });
+    });
+  });
+  describe(`consolidateProjections embeddings (${label})`, () => {
+    const embedded = (id: string, vector: number[]) =>
+      makeFact(id, [id === 'g1' ? e1 : e2], {
+        payload: { statement: `Statement ${id}`, entities: [] },
+        embedding: { model: 'm', vector },
+      });
+    const g1 = embedded('g1', [1, 0, 0]);
+    const g2 = embedded('g2', [0, 1, 0]);
+
+    async function withEmbeddings(): Promise<EvidenceProjectionStorage> {
+      const storage = makeBackend();
+      await storage.commit({ tenantId: TENANT, evidence: [e1, e2], projections: [g1, g2] });
+      return storage;
+    }
+
+    function consolidateWith(
+      storage: EvidenceProjectionStorage,
+      outcome: 'supersede' | 'demote',
+      embedding: { model: string; vector: number[] },
+    ) {
+      return consolidateProjections({
+        storage,
+        tenantId: TENANT,
+        namespace: NAMESPACE,
+        candidates: [{ id: 'g1', revision: 1 }],
+        outcome,
+        summarize: () => Promise.resolve('A summary'),
+        summaryId: 's3',
+        projectorRevision: 'consolidator:1',
+        policyRevision: 'policy:1',
+        now: () => NOW,
+        embed: () => Promise.resolve(embedding),
+      });
+    }
+
+    async function stillBuilds(storage: EvidenceProjectionStorage): Promise<void> {
+      const indexes = await rebuildDerivedIndexes({
+        storage,
+        tenantId: TENANT,
+        namespace: NAMESPACE,
+        authority: makeAuthority(),
+      });
+      expect(indexes.vector.entryCount).toBeGreaterThan(0);
+    }
+
+    it('[c2 item 8] refuses a demotion summary whose embedding has another dimension', async () => {
+      const storage = await withEmbeddings();
+      const error = await rejectionOf(
+        consolidateWith(storage, 'demote', { model: 'm', vector: [1, 0] }),
+      );
+      expect(error).toBeInstanceOf(EmbeddingMismatchError);
+      expect((error as EmbeddingMismatchError).reason).toBe('dimension');
+      expect(await storage.getProjection(TENANT, NAMESPACE, 's3')).toBeUndefined();
+      const untouched = await storage.getProjection(TENANT, NAMESPACE, 'g1');
+      expect(untouched?.status).toBe('active');
+      await stillBuilds(storage);
+    });
+
+    it('[c2 item 8] refuses a demotion summary whose embedding comes from another model', async () => {
+      const storage = await withEmbeddings();
+      const error = await rejectionOf(
+        consolidateWith(storage, 'demote', { model: 'other', vector: [1, 0, 0] }),
+      );
+      expect((error as EmbeddingMismatchError).reason).toBe('model');
+      expect(await storage.getProjection(TENANT, NAMESPACE, 's3')).toBeUndefined();
+      await stillBuilds(storage);
+    });
+
+    it('[c2 item 8] refuses a superseding summary that mismatches the projections that remain', async () => {
+      const storage = await withEmbeddings();
+      const error = await rejectionOf(
+        consolidateWith(storage, 'supersede', { model: 'm', vector: [1, 0] }),
+      );
+      expect(error).toBeInstanceOf(EmbeddingMismatchError);
+      await stillBuilds(storage);
+    });
+
+    it('[c2 item 8] accepts an embedding of the same model and dimension', async () => {
+      const storage = await withEmbeddings();
+      const result = await consolidateWith(storage, 'demote', { model: 'm', vector: [0, 0, 1] });
+      expect(result.summary.embedding?.vector).toEqual([0, 0, 1]);
+      await stillBuilds(storage);
     });
   });
 }

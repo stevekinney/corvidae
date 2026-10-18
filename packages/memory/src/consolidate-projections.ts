@@ -1,3 +1,4 @@
+import { EmbeddingMismatchError } from './derived-indexes';
 import {
   type EvidenceProjectionRecord,
   type ProjectionReference,
@@ -26,6 +27,7 @@ export interface ConsolidateProjectionsOptions {
   readonly projectorRevision: string;
   readonly policyRevision: string;
   readonly now: () => number;
+  /** Embeds the summary. Its model and dimension must match the embeddings that stay recallable. */
   readonly embed?: (text: string) => Promise<{ model: string; vector: number[] }>;
 }
 
@@ -51,6 +53,40 @@ async function loadCandidates(
 }
 
 /**
+ * Refuses a summary embedding that the namespace's index could not hold beside
+ * the embeddings that stay recallable: a vector index takes one model and one
+ * dimension, so a mismatch would make the next build throw. A demoted candidate
+ * stays recallable and is compared with; a superseded one is not.
+ */
+async function assertEmbeddingFits(
+  options: ConsolidateProjectionsOptions,
+  embedding: { model: string; vector: number[] },
+): Promise<void> {
+  const { storage, tenantId, namespace, outcome } = options;
+  const retired = new Set(outcome === 'supersede' ? options.candidates.map((c) => c.id) : []);
+  const recallable = await storage.listProjections({
+    tenantId,
+    namespace,
+    status: ['active', 'demoted'],
+  });
+  for (const record of recallable) {
+    if (record.embedding === undefined || retired.has(record.id)) continue;
+    if (record.embedding.model !== embedding.model) {
+      throw new EmbeddingMismatchError(
+        'model',
+        `The summary embedding is from model "${embedding.model}", but "${record.id}" stays recallable with "${record.embedding.model}".`,
+      );
+    }
+    if (record.embedding.vector.length !== embedding.vector.length) {
+      throw new EmbeddingMismatchError(
+        'dimension',
+        `The summary embedding has ${embedding.vector.length} dimensions, but "${record.id}" stays recallable with ${record.embedding.vector.length}.`,
+      );
+    }
+  }
+}
+
+/**
  * The projection-based successor of in-place consolidation. It never rewrites a
  * record: one commit adds a summary projection that covers the candidates and
  * carries the union of their evidence sources, and writes a new `superseded`
@@ -66,6 +102,7 @@ export async function consolidateProjections(
   const at = options.now();
   const text = await options.summarize(candidates.map(projectionText));
   const embedding = options.embed === undefined ? undefined : await options.embed(text);
+  if (embedding !== undefined) await assertEmbeddingFits(options, embedding);
 
   const sources = new Map<string, ProjectionSource>();
   for (const candidate of candidates) {

@@ -21,10 +21,17 @@ import { computeBM25Scores } from './text-search';
  * yields the same `inputFingerprint`, `entryCount`, and query results.
  */
 
+/**
+ * One retrieval hit. `rawScore` is the relevance the hit was filtered on: the
+ * cosine similarity (which a `threshold` is compared with) or the BM25 score,
+ * before any status weight. `rankingScore` is what the hit was ordered by: the
+ * raw score with the demotion weight applied (see {@link DEMOTED_SCORE_WEIGHT}).
+ */
 export interface ProjectionHit {
   readonly id: string;
   readonly revision: number;
-  readonly score: number;
+  readonly rawScore: number;
+  readonly rankingScore: number;
 }
 
 export interface IndexSummary {
@@ -103,7 +110,11 @@ export class EmbeddingMismatchError extends Error {
   }
 }
 
-/** The evidence, marker, and projection reads kept straddling a concurrent commit. */
+/**
+ * The evidence, marker, and projection reads kept changing under concurrent
+ * commits for every attempt. This is a liveness outcome of steady ingestion, not
+ * corruption: callers must handle it, typically by trying again shortly.
+ */
 export class DerivedIndexConsistencyError extends Error {
   readonly code = 'inconsistent-read';
 
@@ -116,9 +127,22 @@ export class DerivedIndexConsistencyError extends Error {
 }
 
 /**
- * The weight a `demoted` projection's lexical and vector scores are multiplied
- * by: a demoted projection stays recallable, at lower weight than an
- * equivalent active one.
+ * How far a `demoted` projection is pushed down the ranking. A demoted
+ * projection stays recallable: a relevance cutoff (the vector `threshold`) is
+ * compared with the raw score, so demotion never hides a match. Only the order
+ * changes, by one rule in both scored indexes:
+ *
+ * - `rankingScore` is `rawScore` for an active projection;
+ * - for a demoted projection it is `rawScore * DEMOTED_SCORE_WEIGHT` when
+ *   `rawScore` is positive, and `rawScore` unchanged otherwise;
+ * - hits are ordered by `rankingScore` descending, then active before demoted,
+ *   then by id.
+ *
+ * The rule is monotone in the raw score for each status, and a demoted
+ * projection never outranks an active one with the same raw score. A ranking
+ * score stays inside the range of its raw score (so cosine stays in [-1, 1]).
+ * A non-positive raw score is not relevant enough for a weight to mean
+ * anything, so it is left alone and only the tie-break demotes it.
  */
 export const DEMOTED_SCORE_WEIGHT = 0.5;
 
@@ -158,12 +182,13 @@ function assertSourceDigests(
 
 /** Evidence ids repeat across tenants, so every lookup by id is qualified by its tenant. */
 function tenantQualified(record: { tenantId: string; id: string }): string {
-  return `${record.tenantId}\0${record.id}`;
+  // A tuple, not a delimited string: ids may contain any character, so no delimiter is safe.
+  return JSON.stringify([record.tenantId, record.id]);
 }
 
-function admitEvidence(input: BuildDerivedIndexesInput): EvidenceRecord[] {
+/** Evidence the authority may `search`, whether or not a later record superseded it. */
+function searchableEvidence(input: BuildDerivedIndexesInput): EvidenceRecord[] {
   return input.evidence
-    .filter((record) => !input.supersessions.has(record.id))
     .filter(
       (record) =>
         decideMemoryAccess(input.authority, 'search', {
@@ -181,13 +206,26 @@ function admitEvidence(input: BuildDerivedIndexesInput): EvidenceRecord[] {
     .toSorted((left, right) => compareText(left.id, right.id));
 }
 
-function admitProjections(
+/** Projections of this tenant that rest only on evidence the authority may search, any status. */
+function visibleProjections(
   projections: readonly EvidenceProjectionRecord[],
-  admittedEvidence: ReadonlySet<string>,
+  searchable: ReadonlySet<string>,
   tenantId: string,
 ): EvidenceProjectionRecord[] {
   return projections
     .filter((record) => record.tenantId === tenantId)
+    .filter((record) =>
+      record.sources.every((source) =>
+        searchable.has(tenantQualified({ tenantId: record.tenantId, id: source.evidenceId })),
+      ),
+    );
+}
+
+function admitProjections(
+  visible: readonly EvidenceProjectionRecord[],
+  admittedEvidence: ReadonlySet<string>,
+): EvidenceProjectionRecord[] {
+  return visible
     .filter((record) => record.status === 'active' || record.status === 'demoted')
     .filter((record) =>
       record.sources.every((source) =>
@@ -213,14 +251,27 @@ function fingerprintOf(
   return `sha256:${sha256HexSync(JSON.stringify(input))}`;
 }
 
-/** Demoted projections stay recallable at lower weight; a negative score is pushed further down. */
-function weighted(score: number, status: EvidenceProjectionRecord['status']): number {
-  if (status !== 'demoted') return score;
-  return score >= 0 ? score * DEMOTED_SCORE_WEIGHT : score / DEMOTED_SCORE_WEIGHT;
+interface ScoredHit {
+  readonly hit: ProjectionHit;
+  readonly demoted: boolean;
 }
 
-function byScoreThenId(left: ProjectionHit, right: ProjectionHit): number {
-  return right.score - left.score || compareText(left.id, right.id);
+function scored(record: EvidenceProjectionRecord, rawScore: number): ScoredHit {
+  const demoted = record.status === 'demoted';
+  const rankingScore = demoted && rawScore > 0 ? rawScore * DEMOTED_SCORE_WEIGHT : rawScore;
+  return { hit: { id: record.id, revision: record.revision, rawScore, rankingScore }, demoted };
+}
+
+function rank(entries: readonly ScoredHit[], limit: number): ProjectionHit[] {
+  return entries
+    .toSorted(
+      (left, right) =>
+        right.hit.rankingScore - left.hit.rankingScore ||
+        Number(left.demoted) - Number(right.demoted) ||
+        compareText(left.hit.id, right.hit.id),
+    )
+    .slice(0, limit)
+    .map((entry) => entry.hit);
 }
 
 function buildLexical(
@@ -233,18 +284,12 @@ function buildLexical(
     entryCount: projections.length,
     query(text, options) {
       const scores = computeBM25Scores(text, documents);
-      const hits: ProjectionHit[] = [];
+      const hits: ScoredHit[] = [];
       for (const [index, score] of scores) {
         const record = projections[index];
-        if (record !== undefined && score > 0) {
-          hits.push({
-            id: record.id,
-            revision: record.revision,
-            score: weighted(score, record.status),
-          });
-        }
+        if (record !== undefined && score > 0) hits.push(scored(record, score));
       }
-      return hits.toSorted(byScoreThenId).slice(0, options.limit);
+      return rank(hits, options.limit);
     },
   };
 }
@@ -277,16 +322,15 @@ function buildVector(
     entryCount: embedded.length,
     model,
     query(vector, options) {
-      const hits = embedded.map((entry): ProjectionHit => ({
-        id: entry.record.id,
-        revision: entry.record.revision,
-        score: weighted(cosineSimilarity(vector, entry.embedding.vector), entry.record.status),
-      }));
+      const hits = embedded.map((entry) =>
+        scored(entry.record, cosineSimilarity(vector, entry.embedding.vector)),
+      );
+      // A threshold is a relevance cutoff on the raw similarity; demotion only reorders.
       const kept =
         options.threshold === undefined
           ? hits
-          : hits.filter((hit) => hit.score >= options.threshold!);
-      return kept.toSorted(byScoreThenId).slice(0, options.limit);
+          : hits.filter((entry) => entry.hit.rawScore >= options.threshold!);
+      return rank(kept, options.limit);
     },
   };
 }
@@ -340,20 +384,39 @@ function buildEntity(
   };
 }
 
+/** What the authority may see: an edge is emitted only when both of its ends are in these sets. */
+interface GraphVisibility {
+  readonly tenantId: string;
+  /** Evidence ids the authority may search, superseded or not. */
+  readonly evidence: ReadonlySet<string>;
+  /** Ids of projections that rest only on such evidence, whatever their status. */
+  readonly projections: ReadonlySet<string>;
+}
+
 function edgesOf(
   evidence: readonly EvidenceRecord[],
   projections: readonly EvidenceProjectionRecord[],
+  visibility: GraphVisibility,
 ): GraphEdge[] {
   const edges: GraphEdge[] = [];
   const evidenceNode = (id: string): string => `evidence:${id}`;
   const projectionNode = (id: string): string => `projection:${id}`;
+  const push = (edge: GraphEdge, visible: boolean): void => {
+    if (visible) edges.push(edge);
+  };
+  const seesEvidence = (id: string): boolean =>
+    visibility.evidence.has(tenantQualified({ tenantId: visibility.tenantId, id }));
+  const seesProjection = (id: string): boolean => visibility.projections.has(id);
   for (const record of evidence) {
     for (const predecessor of record.supersedes ?? []) {
-      edges.push({
-        from: evidenceNode(record.id),
-        to: evidenceNode(predecessor),
-        kind: 'evidence-supersession',
-      });
+      push(
+        {
+          from: evidenceNode(record.id),
+          to: evidenceNode(predecessor),
+          kind: 'evidence-supersession',
+        },
+        seesEvidence(predecessor),
+      );
     }
   }
   for (const record of projections) {
@@ -364,30 +427,33 @@ function edgesOf(
     const { transition } = record;
     if (transition.kind === 'created') {
       for (const predecessor of transition.supersedes ?? []) {
-        edges.push({ from, to: projectionNode(predecessor.id), kind: 'projection-supersession' });
+        push(
+          { from, to: projectionNode(predecessor.id), kind: 'projection-supersession' },
+          seesProjection(predecessor.id),
+        );
       }
     }
     if (transition.kind === 'superseded') {
-      edges.push({
-        from,
-        to: projectionNode(transition.supersededBy.id),
-        kind: 'projection-supersession',
-      });
+      push(
+        { from, to: projectionNode(transition.supersededBy.id), kind: 'projection-supersession' },
+        seesProjection(transition.supersededBy.id),
+      );
     }
     if (transition.kind === 'demoted') {
-      edges.push({
-        from,
-        to: projectionNode(transition.demotedBy.id),
-        kind: 'projection-demotion',
-      });
+      push(
+        { from, to: projectionNode(transition.demotedBy.id), kind: 'projection-demotion' },
+        seesProjection(transition.demotedBy.id),
+      );
     }
     if (record.kind === 'summary') {
       for (const covered of record.payload.covers) {
-        edges.push({ from, to: projectionNode(covered.id), kind: 'covers' });
+        push({ from, to: projectionNode(covered.id), kind: 'covers' }, seesProjection(covered.id));
       }
     }
   }
-  const unique = new Map(edges.map((edge) => [`${edge.kind}\0${edge.from}\0${edge.to}`, edge]));
+  const unique = new Map(
+    edges.map((edge) => [JSON.stringify([edge.kind, edge.from, edge.to]), edge]),
+  );
   return [...unique.entries()]
     .toSorted(([left], [right]) => compareText(left, right))
     .map(([, edge]) => edge);
@@ -396,9 +462,10 @@ function edgesOf(
 function buildGraph(
   evidence: readonly EvidenceRecord[],
   projections: readonly EvidenceProjectionRecord[],
+  visibility: GraphVisibility,
   inputFingerprint: string,
 ): GraphIndex {
-  const edges = edgesOf(evidence, projections);
+  const edges = edgesOf(evidence, projections, visibility);
   return {
     inputFingerprint,
     entryCount: edges.length,
@@ -422,23 +489,33 @@ function buildGraph(
  *   its sources is admitted evidence, so a projection whose evidence was
  *   superseded, deleted, or is not this authority's to see vanishes from
  *   retrieval without an error.
+ *
+ * A graph edge is emitted only when both of its ends are visible to the
+ * authority: evidence it may search (superseded or not, so a correction can be
+ * traced back to what it replaced) and projections that rest only on such
+ * evidence (whatever their status). An edge never names an id the authority
+ * cannot search.
  */
 export function buildDerivedIndexes(input: BuildDerivedIndexesInput): DerivedIndexes {
   assertSourceDigests(input.evidence, input.projections);
-  const evidence = admitEvidence(input);
-  const projections = admitProjections(
-    input.projections,
-    new Set(evidence.map(tenantQualified)),
-    input.authority.tenantId,
-  );
+  const searchable = searchableEvidence(input);
+  const searchableIds = new Set(searchable.map(tenantQualified));
+  const evidence = searchable.filter((record) => !input.supersessions.has(record.id));
+  const visible = visibleProjections(input.projections, searchableIds, input.authority.tenantId);
+  const projections = admitProjections(visible, new Set(evidence.map(tenantQualified)));
   const inputFingerprint = fingerprintOf(evidence, projections);
+  const visibility: GraphVisibility = {
+    tenantId: input.authority.tenantId,
+    evidence: searchableIds,
+    projections: new Set(visible.map((record) => record.id)),
+  };
   return {
     inputFingerprint,
     lexical: buildLexical(projections, inputFingerprint),
     vector: buildVector(projections, inputFingerprint),
     temporal: buildTemporal(projections, inputFingerprint),
     entity: buildEntity(projections, inputFingerprint),
-    graph: buildGraph(evidence, projections, inputFingerprint),
+    graph: buildGraph(evidence, projections, visibility, inputFingerprint),
   };
 }
 
@@ -465,7 +542,7 @@ async function readOnce(
 
 function signatureOf(read: StorageRead): string {
   return JSON.stringify([
-    read.evidence.map((record) => `${record.id}\0${record.digest}`).toSorted(compareText),
+    read.evidence.map((record) => JSON.stringify([record.id, record.digest])).toSorted(compareText),
     [...read.supersessions.keys()].toSorted(compareText),
     read.projections.map((record) => `${record.id}@${record.revision}`).toSorted(compareText),
   ]);
@@ -478,11 +555,37 @@ function signatureOf(read: StorageRead): string {
  * The three reads are not one snapshot, and a correction commits evidence, a
  * marker, and projections atomically: a read that straddled it could see the
  * old evidence with the new projections, and drop both the old projection and
- * its replacement. Evidence and markers only ever grow, and a correction always
- * adds evidence, so reading twice and comparing detects any commit that landed
- * between the first read's evidence and the end of the pass. The read is
- * repeated until two passes agree, up to three attempts, then fails with
- * {@link DerivedIndexConsistencyError}. This adds no persisted state.
+ * its replacement. So the reads are done twice, in the same order (evidence,
+ * markers, projections), and the build runs only when both passes return the
+ * same signature.
+ *
+ * Why equal signatures mean a consistent read. Each signature element names
+ * immutable content: an evidence id with its digest, a marker's id, a
+ * projection id with its revision. Stored state therefore only grows, and a
+ * component that read the same in both passes did not change between its two
+ * reads. The passes are sequential, so the span from each component's first
+ * read to its second contains the span from the first pass's projection read
+ * to the second pass's evidence read. At any instant in that span the stored
+ * state was exactly what was read.
+ *
+ * That argument rests on three premises, and breaks without any of them:
+ * - no key is ever deleted and then written again with different bytes under
+ *   the same name, so physical deletion of evidence (the governance and
+ *   deletion work) must either keep a tombstone or change what a signature
+ *   names;
+ * - every signature element names immutable content, so a signature element
+ *   cannot stay equal while its content changes;
+ * - reads of one key are linearizable, which `Storage` provides.
+ *
+ * It does not need every commit to add evidence: a commit that adds only
+ * projection revisions changes the projection component, which the signature
+ * covers.
+ *
+ * The read is repeated up to three times. Under steady ingestion, where every
+ * pass finds something new, it can fail with {@link DerivedIndexConsistencyError}.
+ * That is a liveness outcome, not corruption: nothing is wrong with storage,
+ * and callers should treat it as "try again shortly" and handle it. This adds
+ * no persisted state.
  */
 export async function rebuildDerivedIndexes(options: {
   readonly storage: EvidenceProjectionStorage;

@@ -460,25 +460,52 @@ export function registerProjectionContractTests(options: {
   });
 
   describe('batch size', () => {
-    it('[item 19] refuses a commit past the batch cap with the same typed error and writes nothing', async () => {
-      const projections = Array.from({ length: 5001 }, (_, index) =>
-        makeFact(`bulk-${index}`, [evidence]),
-      );
-      const error = await rejection(
-        storage.commit({ tenantId: TENANT, projections }),
+    it('[c2 item 5] accepts a commit of exactly the cap and refuses one condition past it', async () => {
+      // Each new projection conditions on its current and its first history key (2), and the one
+      // stored source adds two more: 4999 projections need exactly 10,000 conditions.
+      const make = (count: number, prefix: string) =>
+        Array.from({ length: count }, (_, index) => makeFact(`${prefix}-${index}`, [evidence]));
+      const refused = await rejection(
+        storage.commit({ tenantId: TENANT, projections: make(5000, 'over') }),
         EvidenceProjectionBatchLimitError,
       );
-      expect(error.cap).toBe(10_000);
-      expect(error.count).toBeGreaterThan(10_000);
-      expect(await storage.getProjection(TENANT, NAMESPACE, 'bulk-0')).toBeUndefined();
+      expect(refused.target).toBe('conditions');
+      expect(refused.count).toBe(10_002);
+      expect(refused.cap).toBe(10_000);
+      expect(await storage.getProjection(TENANT, NAMESPACE, 'over-0')).toBeUndefined();
+
+      const accepted = await storage.commit({ tenantId: TENANT, projections: make(4999, 'under') });
+      expect(accepted.projections).toHaveLength(4999);
+      expect(await storage.getProjection(TENANT, NAMESPACE, 'under-4998')).toBeDefined();
+    });
+  });
+
+  describe('addresses', () => {
+    it('[c2 item 7] treats (a, b\\0c) and (a\\0b, c) as different projections', async () => {
+      const left = makeFact('b\0c', [evidence], { namespace: 'a' });
+      const right = makeFact('c', [evidence], { namespace: 'a\0b' });
+      const result = await storage.commit({ tenantId: TENANT, projections: [left, right] });
+      expect(result.projections.map((entry) => entry.outcome)).toEqual(['written', 'written']);
+      expect(await storage.getProjection(TENANT, 'a', 'b\0c')).toEqual(left);
+      expect(await storage.getProjection(TENANT, 'a\0b', 'c')).toEqual(right);
     });
 
-    it('[item 19] accepts a commit just inside the cap', async () => {
-      const projections = Array.from({ length: 4000 }, (_, index) =>
-        makeFact(`bulk-${index}`, [evidence]),
-      );
-      const result = await storage.commit({ tenantId: TENANT, projections });
-      expect(result.projections).toHaveLength(4000);
+    it('[c2 item 7] does not read a reference to a stored projection as one to a colliding new address', async () => {
+      // Joined with NUL, Q's reference to (a, "b\0c") would equal R's own address, and R's
+      // reference to (a\0b, "X") would equal Q's: a false cycle, and neither would be checked
+      // against the stored projections they really name.
+      const targetOne = makeFact('b\0c', [evidence], { namespace: 'a' });
+      const targetTwo = makeFact('X', [evidence], { namespace: 'a\0b' });
+      await storage.commit({ tenantId: TENANT, projections: [targetOne, targetTwo] });
+      const supersedes = (id: string) => ({
+        kind: 'created',
+        at: FIXED_AT,
+        supersedes: [{ id, revision: 1 }],
+      });
+      const q = makeFact('b\0X', [evidence], { namespace: 'a', transition: supersedes('b\0c') });
+      const r = makeFact('c', [evidence], { namespace: 'a\0b', transition: supersedes('X') });
+      const result = await storage.commit({ tenantId: TENANT, projections: [q, r] });
+      expect(result.projections.map((entry) => entry.outcome)).toEqual(['written', 'written']);
     });
   });
 

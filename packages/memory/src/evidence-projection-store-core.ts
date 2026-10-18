@@ -124,8 +124,13 @@ function digestMismatch(detail: string): never {
   throw new MemoryEvidenceValidationError('digest-mismatch', 'projection', detail);
 }
 
+/**
+ * A projection revision's address within a commit. A tuple, not a delimited
+ * string: namespaces and ids may contain any character, so no delimiter keeps
+ * (`a`, `b\0c`) apart from (`a\0b`, `c`).
+ */
 function addressOf(record: { namespace: string; id: string; revision: number }): string {
-  return `${record.namespace}\0${record.id}\0${record.revision}`;
+  return JSON.stringify([record.namespace, record.id, record.revision]);
 }
 
 /**
@@ -372,7 +377,7 @@ export function createEvidenceProjectionStoreCore(options: {
     inCommit: ReadonlySet<string>,
   ): Promise<void> {
     for (const reference of referencesOf(record)) {
-      const address = `${record.namespace}\0${reference.id}\0${reference.revision}`;
+      const address = addressOf({ namespace: record.namespace, ...reference });
       if (inCommit.has(address)) continue;
       const stored = await reader.get(
         keys.history(record.tenantId, record.namespace, reference.id, reference.revision),
@@ -425,9 +430,7 @@ export function createEvidenceProjectionStoreCore(options: {
     projections: readonly EvidenceProjectionRecord[],
     appended: ReadonlyMap<string, EvidenceRecord>,
   ): Promise<EvidenceProjectionCommitResult['projections']> {
-    const inCommit = new Set(
-      projections.map((record) => `${record.namespace}\0${record.id}\0${record.revision}`),
-    );
+    const inCommit = new Set(projections.map(addressOf));
     const supersededNow = new Set(
       [...appended.values()].flatMap((record) => record.supersedes ?? []),
     );
@@ -485,7 +488,7 @@ export function createEvidenceProjectionStoreCore(options: {
     if (evidence.length === 0 && projections.length === 0) invalid('The commit is empty.');
     const evidenceIds = new Set(evidence.map((record) => record.id));
     if (evidenceIds.size !== evidence.length) invalid('The commit repeats an evidence id.');
-    const addresses = projections.map((record) => `${record.namespace}\0${record.id}`);
+    const addresses = projections.map((record) => JSON.stringify([record.namespace, record.id]));
     if (new Set(addresses).size !== projections.length) {
       invalid('The commit writes one projection twice.');
     }

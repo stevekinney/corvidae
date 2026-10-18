@@ -350,45 +350,99 @@ describe('demotion', () => {
   const indexes = buildDerivedIndexes({
     evidence: [e1],
     supersessions: new Map(),
-    projections: [demoted, active],
+    // The summary the projection was demoted by must be visible too: an edge needs both ends.
+    projections: [demoted, active, makeFact('s9', [e1])],
     authority: makeAuthority(),
   });
 
   it('[item 6] ranks a demoted projection below an equivalent active one in the lexical index', () => {
     const hits = indexes.lexical.query('green tea', { limit: 10 });
     expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
-    expect(hits[1]!.score).toBeLessThan(hits[0]!.score);
-    expect(hits[1]!.score).toBeCloseTo(hits[0]!.score * DEMOTED_SCORE_WEIGHT, 10);
+    expect(hits[0]!.rawScore).toBe(hits[1]!.rawScore);
+    expect(hits[1]!.rankingScore).toBeCloseTo(hits[0]!.rankingScore * DEMOTED_SCORE_WEIGHT, 10);
   });
 
   it('[item 6] ranks a demoted projection below an equivalent active one in the vector index', () => {
     const hits = indexes.vector.query([1, 0, 0], { limit: 10 });
     expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
-    expect(hits[1]!.score).toBeCloseTo(hits[0]!.score * DEMOTED_SCORE_WEIGHT, 10);
+    expect(hits.map((hit) => hit.rawScore)).toEqual([1, 1]);
+    expect(hits[1]!.rankingScore).toBeCloseTo(DEMOTED_SCORE_WEIGHT, 10);
   });
 
-  it('[item 6] applies the threshold to the weighted score', () => {
+  it('[c2 item 1] applies a threshold to the raw similarity, so a demoted match is still returned', () => {
     const hits = indexes.vector.query([1, 0, 0], { limit: 10, threshold: 0.9 });
-    expect(hits.map((hit) => hit.id)).toEqual(['b-active']);
+    expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
+    expect(hits[1]!.rawScore).toBeGreaterThanOrEqual(0.9);
+    expect(hits[1]!.rankingScore).toBeLessThan(0.9);
   });
 
-  it('[item 6] keeps the order of a negative score when it is weighted', () => {
-    const opposed = buildDerivedIndexes({
+  it('[c2 item 1] still drops a hit whose raw similarity is below the threshold', () => {
+    expect(indexes.vector.query([0, 1, 0], { limit: 10, threshold: 0.5 })).toEqual([]);
+  });
+
+  it('[c2 item 1] returns a demoted exact match at a threshold of 0.8', () => {
+    const alone = buildDerivedIndexes({
       evidence: [e1],
       supersessions: new Map(),
-      projections: [
-        makeFact('b-active', [e1], { embedding: embedded([-1, 0, 0]) }),
-        nextRevision(makeFact('a-demoted', [e1], { embedding: embedded([-1, 0, 0]) }), {
-          status: 'demoted',
-          transition: { kind: 'demoted', at: FIXED_AT + 5, demotedBy: { id: 's9', revision: 1 } },
-        }),
-      ],
+      projections: [demoted],
       authority: makeAuthority(),
     });
-    expect(opposed.vector.query([1, 0, 0], { limit: 10 }).map((hit) => hit.id)).toEqual([
-      'b-active',
-      'a-demoted',
-    ]);
+    expect(
+      alone.vector.query([1, 0, 0], { limit: 5, threshold: 0.8 }).map((hit) => hit.id),
+    ).toEqual(['a-demoted']);
+  });
+
+  const opposed = buildDerivedIndexes({
+    evidence: [e1],
+    supersessions: new Map(),
+    projections: [
+      makeFact('b-active', [e1], { embedding: embedded([-1, 0, 0]) }),
+      nextRevision(makeFact('a-demoted', [e1], { embedding: embedded([-1, 0, 0]) }), {
+        status: 'demoted',
+        transition: { kind: 'demoted', at: FIXED_AT + 5, demotedBy: { id: 's9', revision: 1 } },
+      }),
+    ],
+    authority: makeAuthority(),
+  });
+
+  it('[c2 item 1] never ranks a demoted projection above an active one with the same raw score', () => {
+    const hits = opposed.vector.query([1, 0, 0], { limit: 10 });
+    expect(hits.map((hit) => hit.id)).toEqual(['b-active', 'a-demoted']);
+    expect(hits.map((hit) => hit.rawScore)).toEqual([-1, -1]);
+  });
+
+  it('[c2 item 1] keeps every ranking score inside the cosine range', () => {
+    for (const hit of opposed.vector.query([1, 0, 0], { limit: 10 })) {
+      expect(hit.rankingScore).toBeGreaterThanOrEqual(-1);
+      expect(hit.rankingScore).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('[c2 item 1] ranks by a score that never reorders two raw scores of one status', () => {
+    const mixed = buildDerivedIndexes({
+      evidence: [e1],
+      supersessions: new Map(),
+      projections: [0.8, 0.2, -0.3, -0.9].map((x, index) =>
+        nextRevision(
+          makeFact(`d${index}`, [e1], {
+            embedding: embedded([x, Math.sqrt(1 - x * x), 0]),
+          }),
+          {
+            status: 'demoted',
+            transition: {
+              kind: 'demoted',
+              at: FIXED_AT + 5,
+              demotedBy: { id: 's9', revision: 1 },
+            },
+          },
+        ),
+      ),
+      authority: makeAuthority(),
+    });
+    const hits = mixed.vector.query([1, 0, 0], { limit: 10 });
+    expect(hits.map((hit) => hit.rawScore)).toEqual(
+      hits.map((hit) => hit.rawScore).toSorted((a, b) => b - a),
+    );
   });
 
   it('[item 5] records a demotion as a demotion edge, never as a supersession', () => {
@@ -499,5 +553,165 @@ describe('one consistent read', () => {
     const error = await rejectionOf(rebuild(churning));
     expect(error).toBeInstanceOf(DerivedIndexConsistencyError);
     expect((error as DerivedIndexConsistencyError).attempts).toBe(3);
+  });
+});
+
+describe('a correction that straddles a later pass', () => {
+  const original = makeInlineEvidence('e1', { text: 'The user lives in Boston.' });
+  const correction = makeInlineEvidence('e2', {
+    text: 'The user lives in Denver.',
+    kind: 'operator',
+    supersedes: ['e1'],
+  });
+  const stale = makeFact('p1', [original], {
+    payload: { statement: 'The user lives in Boston.', entities: ['Boston'] },
+  });
+  const corrected = makeFact('p2', [correction], {
+    transition: { kind: 'created', at: FIXED_AT + 10, supersedes: [{ id: 'p1', revision: 1 }] },
+    payload: { statement: 'The user lives in Denver.', entities: ['Denver'] },
+  });
+
+  async function correct(storage: EvidenceProjectionStorage): Promise<void> {
+    await storage.commit({
+      tenantId: TENANT,
+      evidence: [correction],
+      projections: [corrected, supersededRevision(stale, { id: 'p2', revision: 1 })],
+    });
+  }
+
+  /** Lands the correction right after the read of call number `on` of one list method. */
+  function landingAfter(
+    inner: EvidenceProjectionStorage,
+    method: 'listEvidence' | 'listEvidenceSupersessions',
+    on: number,
+    commit: (storage: EvidenceProjectionStorage) => Promise<void> = correct,
+  ): EvidenceProjectionStorage {
+    let calls = 0;
+    const land = async (): Promise<void> => {
+      calls += 1;
+      if (calls === on) await commit(inner);
+    };
+    return {
+      ...inner,
+      async listEvidence(filter) {
+        const read = await inner.listEvidence(filter);
+        if (method === 'listEvidence') await land();
+        return read;
+      },
+      async listEvidenceSupersessions(filter) {
+        const read = await inner.listEvidenceSupersessions(filter);
+        if (method === 'listEvidenceSupersessions') await land();
+        return read;
+      },
+    };
+  }
+
+  for (const [label, makeBackend] of BACKENDS) {
+    it(`[c2 item 3] detects a correction landing after the second pass's evidence read (${label})`, async () => {
+      const inner = makeBackend();
+      await inner.commit({ tenantId: TENANT, evidence: [original], projections: [stale] });
+      const indexes = await rebuild(landingAfter(inner, 'listEvidence', 2));
+      expect(indexes.lexical.query('Denver', { limit: 5 }).map((hit) => hit.id)).toEqual(['p2']);
+    });
+
+    it(`[c2 item 3] detects an evidence-only correction landing after the second pass's evidence read (${label})`, async () => {
+      // Only the marker component sees this one: evidence and projections read as before.
+      const inner = makeBackend();
+      await inner.commit({ tenantId: TENANT, evidence: [original], projections: [stale] });
+      const indexes = await rebuild(
+        landingAfter(inner, 'listEvidence', 2, async (storage) => {
+          await storage.commit({ tenantId: TENANT, evidence: [correction] });
+        }),
+      );
+      expect(indexes.graph.query({ from: 'evidence:e2' })).toEqual([
+        { from: 'evidence:e2', to: 'evidence:e1', kind: 'evidence-supersession' },
+      ]);
+    });
+
+    it(`[c2 item 3] detects a correction landing after the second pass's marker read (${label})`, async () => {
+      const inner = makeBackend();
+      await inner.commit({ tenantId: TENANT, evidence: [original], projections: [stale] });
+      const indexes = await rebuild(landingAfter(inner, 'listEvidenceSupersessions', 2));
+      expect(indexes.lexical.query('Denver', { limit: 5 }).map((hit) => hit.id)).toEqual(['p2']);
+    });
+  }
+});
+
+describe('graph edges reveal only what the authority may search', () => {
+  const foreign = makeInlineEvidence('e-foreign', {
+    ownerId: 'owner-2',
+    text: "Someone else's note.",
+  });
+  const mine = makeInlineEvidence('e-mine', { supersedes: ['e-foreign'] });
+
+  it('[c2 item 6] emits no supersession edge to evidence the authority cannot search', () => {
+    const indexes = buildDerivedIndexes({
+      evidence: [foreign, mine],
+      supersessions: new Map([
+        ['e-foreign', { schemaVersion: 1, supersededBy: 'e-mine', at: FIXED_AT }],
+      ]),
+      projections: [makeFact('f-mine', [mine])],
+      authority: makeAuthority(),
+    });
+    expect(indexes.graph.query({ from: 'evidence:e-mine' })).toEqual([]);
+    expect(indexes.graph.query({ to: 'evidence:e-foreign' })).toEqual([]);
+  });
+
+  it('[c2 item 6] still emits the edge to superseded evidence the authority may search', () => {
+    const ownPredecessor = makeInlineEvidence('e-old');
+    const successor = makeInlineEvidence('e-new', { supersedes: ['e-old'] });
+    const indexes = buildDerivedIndexes({
+      evidence: [ownPredecessor, successor],
+      supersessions: new Map([
+        ['e-old', { schemaVersion: 1, supersededBy: 'e-new', at: FIXED_AT }],
+      ]),
+      projections: [],
+      authority: makeAuthority(),
+    });
+    expect(indexes.graph.query({ from: 'evidence:e-new' })).toEqual([
+      { from: 'evidence:e-new', to: 'evidence:e-old', kind: 'evidence-supersession' },
+    ]);
+  });
+
+  it('[c2 item 6] emits no projection-reference edge to a projection the authority cannot search', () => {
+    const hidden = makeFact('f-hidden', [foreign]);
+    const summary = {
+      ...makeFact('s-mine', [mine]),
+      kind: 'summary',
+      payload: { text: 'Covers a hidden fact', covers: [{ id: 'f-hidden', revision: 1 }] },
+    } as EvidenceProjectionRecord;
+    const supersedingHidden = makeFact('f-new', [mine], {
+      transition: { kind: 'created', at: FIXED_AT, supersedes: [{ id: 'f-hidden', revision: 1 }] },
+    });
+    const indexes = buildDerivedIndexes({
+      evidence: [foreign, mine],
+      supersessions: new Map(),
+      projections: [hidden, summary, supersedingHidden],
+      authority: makeAuthority(),
+    });
+    const edges = [
+      ...indexes.graph.query({ from: 'projection:s-mine' }),
+      ...indexes.graph.query({ from: 'projection:f-new' }),
+    ];
+    expect(edges.map((edge) => edge.to)).not.toContain('projection:f-hidden');
+    expect(edges.map((edge) => edge.kind).toSorted()).toEqual(['lineage', 'lineage']);
+  });
+
+  it('[c2 item 6] emits an edge to a projection that is visible but no longer active', () => {
+    const old = makeFact('f-old', [mine]);
+    const next = makeFact('f-next', [mine], {
+      transition: { kind: 'created', at: FIXED_AT, supersedes: [{ id: 'f-old', revision: 1 }] },
+    });
+    const indexes = buildDerivedIndexes({
+      evidence: [mine, foreign],
+      supersessions: new Map(),
+      projections: [supersededRevision(old, { id: 'f-next', revision: 1 }), next],
+      authority: makeAuthority(),
+    });
+    expect(indexes.graph.query({ from: 'projection:f-next' })).toContainEqual({
+      from: 'projection:f-next',
+      to: 'projection:f-old',
+      kind: 'projection-supersession',
+    });
   });
 });

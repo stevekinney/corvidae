@@ -263,6 +263,54 @@ export { MemoryGovernancePolicyError } from './governance/policy';
 export { decideMemoryAccess } from './governance/predicate';
 export { collectionNamespace } from './governance/record-governance';
 // Derived record kinds and the governance metadata key are public constants.
+export {
+  DERIVED_RECORD_KINDS,
+  MEMORY_GOVERNANCE_METADATA_KEY,
+} from './governance/record-governance';
+export { provenanceForMemoryEntry, scanMemoryContent } from './guardrail';
+export { createMemoryHooks } from './hooks';
+export { chunkHtml } from './html-chunking';
+export { mergeHybridResults } from './hybrid-search';
+export { createHyDEGenerator, withHyDE } from './hyde';
+export {
+  acceptSoulUpdate,
+  createIdentityToolbox,
+  createPersonaCreateTool,
+  createPersonaDeleteTool,
+  createPersonaListTool,
+  createPersonaUpdateTool,
+  createPersonaViewTool,
+  createSoulAcceptTool,
+  createSoulDiffTool,
+  createSoulDistillationTask,
+  createSoulPinTool,
+  createSoulRejectTool,
+  createSoulSeed,
+  createSoulViewTool,
+  createStaticIdentityProvider,
+  createStorageIdentityProvider,
+  getSoulDiff,
+  pinSoulItem,
+  rejectSoulUpdate,
+  resolveIdentity,
+  unpinSoulItem,
+} from './identity';
+export { CHUNK_INDEX_KEY, ingest } from './ingest';
+// The source-document key is public for ingestion metadata.
+export { SOURCE_DOCUMENT_KEY } from './ingest';
+export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
+export { MemoryRecordVersionConflictError } from './memory-record-storage';
+export { withNamespaceIsolation } from './namespace-isolation';
+export { extractKeywords, isStopWord } from './query-expansion';
+export { createReflectionHook } from './reflection';
+export { getMemoryStatus } from './status';
+export { applyTemporalDecay, computeTemporalDecay } from './temporal-decay';
+export { filterByValidity, isValidAtTimestamp, stampSupersession } from './temporal-validity';
+export { createInMemoryMemoryRecordStorage, createMockEmbedder } from './test/index';
+export { computeBM25Scores, tokenize } from './text-search';
+export { createMemoryForgetTool, createMemoryRecallTool, createMemoryStoreTool } from './tools';
+
+// Immutable evidence, versioned projections, and the indexes derived from them.
 export { consolidateProjections } from './consolidate-projections';
 export { createInMemoryEvidenceProjectionStorage } from './create-in-memory-evidence-projection-storage';
 export { createWeftEvidenceProjectionStorage } from './create-weft-evidence-projection-storage';
@@ -302,50 +350,4 @@ export {
   encodeEvidenceRecord,
   evidenceRecordSchema,
 } from './evidence-schema';
-export {
-  DERIVED_RECORD_KINDS,
-  MEMORY_GOVERNANCE_METADATA_KEY,
-} from './governance/record-governance';
-export { provenanceForMemoryEntry, scanMemoryContent } from './guardrail';
-export { createMemoryHooks } from './hooks';
-export { chunkHtml } from './html-chunking';
-export { mergeHybridResults } from './hybrid-search';
-export { createHyDEGenerator, withHyDE } from './hyde';
-export {
-  acceptSoulUpdate,
-  createIdentityToolbox,
-  createPersonaCreateTool,
-  createPersonaDeleteTool,
-  createPersonaListTool,
-  createPersonaUpdateTool,
-  createPersonaViewTool,
-  createSoulAcceptTool,
-  createSoulDiffTool,
-  createSoulDistillationTask,
-  createSoulPinTool,
-  createSoulRejectTool,
-  createSoulSeed,
-  createSoulViewTool,
-  createStaticIdentityProvider,
-  createStorageIdentityProvider,
-  getSoulDiff,
-  pinSoulItem,
-  rejectSoulUpdate,
-  resolveIdentity,
-  unpinSoulItem,
-} from './identity';
-export { CHUNK_INDEX_KEY, ingest } from './ingest';
-// The source-document key is public for ingestion metadata.
-export { SOURCE_DOCUMENT_KEY } from './ingest';
-export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
-export { MemoryRecordVersionConflictError } from './memory-record-storage';
-export { withNamespaceIsolation } from './namespace-isolation';
 export { projectAssetChunks } from './project-asset-chunks';
-export { extractKeywords, isStopWord } from './query-expansion';
-export { createReflectionHook } from './reflection';
-export { getMemoryStatus } from './status';
-export { applyTemporalDecay, computeTemporalDecay } from './temporal-decay';
-export { filterByValidity, isValidAtTimestamp, stampSupersession } from './temporal-validity';
-export { createInMemoryMemoryRecordStorage, createMockEmbedder } from './test/index';
-export { computeBM25Scores, tokenize } from './text-search';
-export { createMemoryForgetTool, createMemoryRecallTool, createMemoryStoreTool } from './tools';
