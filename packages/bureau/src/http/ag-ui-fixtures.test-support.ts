@@ -59,6 +59,8 @@ export type HarnessOptions = {
   readonly agUi?: AgUiOptions;
   /** The runtime the Bureau itself runs on (its clock included), where a test must move it. */
   readonly bureauRuntime?: RuntimeServices;
+  /** `'manual'` keeps the Bureau from sweeping on its own timers, so state a test leaves stale stays stale. */
+  readonly durableBackgroundTasks?: 'automatic' | 'manual';
   /** Serve with these credentials instead of the one anonymous local caller. */
   readonly authentication?: AuthConfig;
   /** Receives the Bureau's diagnostics. */
@@ -114,6 +116,9 @@ async function build(
     durableExecution: true,
     sessionPersistenceRetryDelayMilliseconds: 0,
     ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
+    ...(options.durableBackgroundTasks === undefined
+      ? {}
+      : { durableBackgroundTasks: options.durableBackgroundTasks }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),

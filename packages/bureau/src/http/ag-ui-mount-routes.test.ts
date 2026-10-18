@@ -565,6 +565,41 @@ describe('whether a thread is busy, decided from what the store holds', () => {
     );
   });
 
+  it('is freed by the mount’s own expiry rule when nothing has swept the expired approval away', async () => {
+    const later = createManualRuntimeServices({ origin: new Date().toISOString() });
+    await withHarness(
+      {
+        script: [chargeOnce],
+        toolbox: approvalToolbox(),
+        storage: 'sqlite',
+        bureauRuntime: later,
+        // Bureau does no expiry work of its own, so only the mount's rule can free the thread.
+        durableBackgroundTasks: 'manual',
+      },
+      async (harness) => {
+        const peer = await harness.peer([say('B done.')], { runtime: later });
+        try {
+          await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+          await settled(harness);
+          const approvalId = harness.bureau.listPendingReviews()[0]!.id;
+          const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
+          await later.advance(400 * 24 * 60 * 60 * 1000);
+          const stale = await peer.bureau.getSession('thread-1');
+          const overrides = stale?.metadata['pendingApprovalOverrides'] as Record<string, unknown>;
+          // The expired approval is still in the session: nothing removed it.
+          expect(Object.keys(overrides)).toContain(approvalId);
+
+          const after = await readAgUiStream(await peer.handler(startWithMessage('run-c')));
+
+          expect(before[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+          expect(after.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+
   it('is held by an approval that carries no binding, which never expires, until it is cancelled', async () => {
     const later = createManualRuntimeServices({ origin: new Date().toISOString() });
     // No approval secret: the approval is unsigned, so nothing binds it to a lifetime.
@@ -790,6 +825,14 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           await waitForCondition(save.landed, 'run A’s terminal save never landed');
           const afterSave = await harness.bureau.getSession('thread-1');
           expect(afterSave?.metadata['lastRunId']).toBe(runB);
+          // A's own leftovers are released although B holds the marker.
+          const leftovers = afterSave?.metadata;
+          expect(
+            Object.keys((leftovers?.['lastRequestAuthorities'] ?? {}) as object),
+          ).not.toContain(runA);
+          expect(Object.keys((leftovers?.['steeringStartingRuns'] ?? {}) as object)).not.toContain(
+            runA,
+          );
           expect(runA).not.toBe(runB);
 
           const c = await readAgUiStream(
