@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { toOpenAIMessagesGrouped } from '../src/adapters/openai/outbound';
+import { toOpenAIMessages, toOpenAIMessagesGrouped } from '../src/adapters/openai/outbound';
 import {
   appendMessages,
   createConversationHistory as createConversation,
@@ -93,6 +93,57 @@ describe('OpenAI Adapter', () => {
 
       const messages = toOpenAIMessagesGrouped(conv).messages;
       expect(messages).toHaveLength(1);
+    });
+
+    it('skips an assistant row that projects to no text and carries no tool call', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Think, then act' },
+        {
+          role: 'assistant',
+          content: [{ type: 'thinking', thinking: 'Plan the call.', signature: 'sig-1' }],
+        },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: 'call-1', name: 'tool_one', arguments: '{}' },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: 'call-1', outcome: 'success', content: 'ok' },
+        },
+        testEnvironment,
+      );
+
+      for (const messages of [
+        toOpenAIMessagesGrouped(conv).messages,
+        toOpenAIMessages(conv).messages,
+      ]) {
+        expect(messages.map((message) => message.role)).toEqual(['user', 'assistant', 'tool']);
+        const assistant = messages[1];
+        expect(assistant?.role === 'assistant' && assistant.tool_calls).toHaveLength(1);
+      }
+    });
+
+    it('keeps an assistant row that carries text next to its thinking', () => {
+      let conv = createConversation({ id: 'test' }, testEnvironment);
+      conv = appendMessages(
+        conv,
+        { role: 'user', content: 'Hi' },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' },
+            { type: 'text', text: 'Hello' },
+          ],
+        },
+        testEnvironment,
+      );
+
+      const messages = toOpenAIMessagesGrouped(conv).messages;
+      expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
     });
   });
 });

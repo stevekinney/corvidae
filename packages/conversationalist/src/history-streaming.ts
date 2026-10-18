@@ -1,13 +1,15 @@
 import type { ConversationEnvironment } from './environment';
 import type { ConversationActionType } from './events';
+import type { MultiModalContent } from './multi-modal';
 import {
   appendStreamingMessage,
   cancelStreamingMessage,
   finalizeStreamingMessage,
   getStreamingMessage,
   updateStreamingMessage,
+  type FinalizeStreamingOptions,
 } from './streaming';
-import type { ConversationHistory, JSONValue, Message, TokenUsage } from './types';
+import type { ConversationHistory, JSONValue, Message } from './types';
 
 export type StreamingHooks = {
   readonly current: () => ConversationHistory;
@@ -27,10 +29,13 @@ export type StreamingActions = {
     role: 'assistant' | 'user',
     metadata?: Record<string, JSONValue>,
   ) => string;
-  readonly updateStreamingMessage: (messageId: string, content: string) => void;
+  readonly updateStreamingMessage: (
+    messageId: string,
+    content: string | MultiModalContent[],
+  ) => void;
   readonly finalizeStreamingMessage: (
     messageId: string,
-    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, JSONValue> },
+    options?: FinalizeStreamingOptions,
   ) => void;
   readonly cancelStreamingMessage: (messageId: string) => void;
 };
@@ -55,7 +60,7 @@ export class HistoryStreaming {
     return result.messageId;
   }
 
-  update(messageId: string, content: string, hooks: StreamingHooks): void {
+  update(messageId: string, content: string | MultiModalContent[], hooks: StreamingHooks): void {
     hooks.assertOpen();
     const next = updateStreamingMessage(hooks.current(), messageId, content, hooks.environment);
     if (next === hooks.current()) return;
@@ -69,7 +74,7 @@ export class HistoryStreaming {
 
   finalize(
     messageId: string,
-    options: { tokenUsage?: TokenUsage; metadata?: Record<string, JSONValue> } | undefined,
+    options: FinalizeStreamingOptions | undefined,
     hooks: StreamingHooks,
   ): void {
     hooks.assertOpen();

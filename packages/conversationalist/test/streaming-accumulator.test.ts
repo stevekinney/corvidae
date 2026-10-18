@@ -331,4 +331,11 @@ describe('C4 — createStreamingAccumulator (multi-part accumulation)', () => {
       },
     ]);
   });
+
+  it('accumulates a container_upload block (file id seeded at openBlock)', () => {
+    const acc = createStreamingAccumulator();
+    acc.openBlock(0, { type: 'container_upload', file_id: 'file-123' });
+
+    expect(contentOf(acc.finalize())).toEqual([{ type: 'container_upload', file_id: 'file-123' }]);
+  });
 });

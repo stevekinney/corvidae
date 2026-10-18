@@ -15,6 +15,9 @@ export type BlockAccumulatorState =
   // redacted_thinking carries its encrypted payload in `data` (seeded at
   // content_block_start), not a streamed signature.
   | { type: 'redacted_thinking'; data: string }
+  // container_upload references a file uploaded into a code-execution container
+  // by id; like the result blocks below it arrives whole in content_block_start.
+  | { type: 'container_upload'; file_id: string }
   | { type: 'tool_use'; id: string; name: string; inputBuffer: string }
   | { type: 'server_tool_use'; id: string; name: string; inputBuffer: string }
   // Server-tool result blocks (web search, code execution) arrive with their
@@ -230,6 +233,8 @@ function finalizeContentState(
       return { type: 'thinking', thinking: state.buffer, signature: state.signature };
     case 'redacted_thinking':
       return { type: 'redacted_thinking', data: state.data };
+    case 'container_upload':
+      return { type: 'container_upload', file_id: state.file_id };
     case 'web_search_tool_result':
       return {
         type: 'web_search_tool_result',
