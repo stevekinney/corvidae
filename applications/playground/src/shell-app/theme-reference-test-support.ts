@@ -9,6 +9,7 @@
  * test's time budget.
  */
 
+import { CINDER_BASE } from '@lostgradient/cinder/tokens/runtime';
 import { afterEach, beforeEach, expect } from 'bun:test';
 import { flushSync, mount, tick, unmount, type Component } from 'svelte';
 
@@ -18,9 +19,6 @@ import { editableState, type JsonObject } from './theme-draft-types.ts';
 import { fixtureDraft, SOURCE_TOKENS } from './theme-reference-fixtures.ts';
 import { createRuntimeEvaluator } from './theme-runtime-evaluator.ts';
 import { ThemeWorkbenchState } from './theme-workbench-state.svelte.ts';
-
-const real = createRuntimeEvaluator();
-const remembered = new Map<string, Promise<ThemeEvaluation>>();
 
 /**
  * Replayed results are shared between tests, so they are frozen: the consumers treat them as
@@ -35,21 +33,42 @@ function freezeEvaluation(evaluation: ThemeEvaluation): ThemeEvaluation {
 }
 
 /**
- * The real runtime evaluator, remembered by the content of the editable state and the context.
- * The runtime is deterministic in those inputs, and the evaluator it wraps remembers only per
- * envelope object, which every controller start and commit makes anew. Only the revision differs
- * between equal states, so it is stamped on the replayed result.
+ * An evaluator that remembers the real one by everything an evaluation reads: the base's source
+ * digest, the overrides, the CSS-only overrides, and the context (COR-1572). The runtime is
+ * deterministic in those inputs, and the evaluator it wraps remembers only per envelope object,
+ * which every controller start and commit makes anew. Only the revision differs between equal
+ * states, so it is stamped on the replayed result.
+ *
+ * The digest stands for the base's resolver and documents only when they are the ones this
+ * build of Cinder ships, so an envelope whose base is not `CINDER_BASE`'s is never remembered:
+ * it goes to the real evaluator every time.
  */
-export const memoEvaluator: ThemeEvaluator = {
-  evaluate(source, revision, context) {
-    const key = JSON.stringify([source.overrides, source.cssOverrides, context]);
-    const known = remembered.get(key);
-    if (known !== undefined) return known.then((value) => ({ ...value, revision }));
-    const pending = real.evaluate(source, revision, context).then(freezeEvaluation);
-    remembered.set(key, pending);
-    return pending;
-  },
-};
+export function createMemoEvaluator(
+  real: ThemeEvaluator = createRuntimeEvaluator(),
+): ThemeEvaluator {
+  const remembered = new Map<string, Promise<ThemeEvaluation>>();
+  return {
+    evaluate(source, revision, context) {
+      const { base } = source;
+      if (base.documents !== CINDER_BASE.documents || base.resolver !== CINDER_BASE.resolver) {
+        return real.evaluate(source, revision, context);
+      }
+      const key = JSON.stringify([
+        base.sourceDigest,
+        source.overrides,
+        source.cssOverrides,
+        context,
+      ]);
+      const known = remembered.get(key);
+      if (known !== undefined) return known.then((value) => ({ ...value, revision }));
+      const pending = real.evaluate(source, revision, context).then(freezeEvaluation);
+      remembered.set(key, pending);
+      return pending;
+    },
+  };
+}
+
+export const memoEvaluator: ThemeEvaluator = createMemoEvaluator();
 
 /** The fixture tokens with `extra` members added under `fx`. */
 export function overlayTokens(extra: JsonObject): JsonObject {
