@@ -9167,6 +9167,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
 
+  function assertSessionInputAdmissionOpen(): void {
+    if (runAdmissionClosed) {
+      throw new BureauError('Cannot submit session input: Bureau is shutting down.', 'CONFLICT');
+    }
+  }
+
   async function submitSessionInput(
     sessionId: string,
     request: SessionInputAdmissionRequest,
@@ -9176,6 +9182,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // ephemeral bureau (no persistence/storage) is a supported configuration,
     // and every sessionId is necessarily unknown in it — the correct outcome
     // per this method's own contract is `not-found`, not a throw.
+    // A durable admission reads the engine and the log from its first await to
+    // its last, so shutdown waits for the whole of it before it disposes
+    // either; once shutdown starts, none begins, as for steering.
+    assertSessionInputAdmissionOpen();
     const sessionStoreForInput = runtime.sessionStore;
     const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
     // `session` truthy implies `sessionStoreForInput` was truthy above, but
@@ -9200,10 +9210,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
     // resource (over 256 bytes) is a deployment limit, so it answers
     // `unsupported-capability` like a bureau with no mailbox rather than throwing.
+    // Admission needs the whole durable delivery composition, not only a
+    // mailbox to write to: without the durable engine, the delivery store, and
+    // the settlement, an admitted input would have no run, record, or sweep to
+    // ever move its receipt past `accepted`.
     const sessionMailbox = tryGetSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
     const kv = runtime.kv;
-    if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
+    if (
+      sessionMailbox === undefined ||
+      storage === undefined ||
+      kv === undefined ||
+      runtime.durable === undefined ||
+      sessionInputDeliveryStore === undefined ||
+      sessionInputSettlement === undefined
+    ) {
       return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
     }
 
@@ -9224,8 +9245,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // sweep's index; the admission commits BEFORE liveness is read below, and the
     // ending run reads the mailbox only after its own not-live write, so one side
     // always sees the other. A failure writing the marker refuses the admission.
+    // Checked again after the awaits above: a shutdown that started during them
+    // must not find a new admission outside its drain.
+    assertSessionInputAdmissionOpen();
     const admission = (async () => {
-      await sessionInputSettlement?.markOpen(sessionId);
+      await sessionInputSettlement.markOpen(sessionId);
       return admitSessionInput({
         storage,
         kv,
@@ -11828,8 +11852,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             runtimeServices.timers.clearInterval(poller.timer);
           }
           steeringPollers.clear();
+          // COR-1476 — session-input admissions in flight read the engine and
+          // the log the same way, and are closed with `runAdmissionClosed` too.
           await Promise.allSettled([
             ...inFlightSteeringSubmissions,
+            ...inFlightSessionInputAdmissions.values(),
             ...inFlightSteeringPolls,
             ...steeringQueues.values(),
           ]);

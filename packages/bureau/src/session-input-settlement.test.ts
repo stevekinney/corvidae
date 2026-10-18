@@ -353,6 +353,39 @@ describe('a deleted session over a lease a gone holder left behind (COR-1476)', 
   });
 });
 
+describe('a session that no longer exists (COR-1476)', () => {
+  it('has its open input cancelled by the sweep, and its marker removed', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000);
+    const settlement = createSessionInputSettlement({
+      kv,
+      // Admitted against an incarnation that was deleted before the admission
+      // committed, by a process that died right after: deletion's own
+      // retirement pass never saw it.
+      incarnationOf: () => Promise.resolve(undefined),
+      liveRunIds: () => Promise.resolve([]),
+      mailboxOf: () => mailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID);
+    await mailbox.admit({
+      caller: 'alice',
+      target: SESSION_ID,
+      kind: 'session-input:steer',
+      payload: { form: 'inline', value: { incarnation: 'incarnation-gone', payload: 'x' } },
+      idempotencyKey: 'input-x',
+    });
+
+    await settlement.sweep();
+
+    const [receipt] = await mailbox.list({ limit: 10 });
+    expect(receipt?.state).toBe('cancelled');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
+  });
+});
+
 describe('backlog paging (COR-1476)', () => {
   it('cancels a backlog deeper than one batch in full', async () => {
     const f = fixture();

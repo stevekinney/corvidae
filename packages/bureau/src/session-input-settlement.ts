@@ -250,8 +250,10 @@ export function createSessionInputSettlement(
     const incarnation = await dependencies.incarnationOf(sessionId);
     const mailbox = dependencies.mailboxOf(sessionId);
     if (incarnation === undefined) {
-      // Deleting the session retired its input; only the marker is left.
-      if (mailbox !== undefined) await removeMarkerIfIdle(sessionId, mailbox);
+      // Deleting the session retired its input once, but an admission that
+      // loaded the old incarnation can commit after that pass, so whatever is
+      // open now belongs to nobody: cancel it, then drop the marker.
+      await cancelUndelivered(sessionId, new Set());
       return;
     }
     if (mailbox === undefined || dependencies.isClosed()) return;
