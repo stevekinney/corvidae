@@ -291,6 +291,7 @@ export {
   createRunMemoryAuthority,
   createRuntimeComposition,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
+  resolveProviderGenerate,
 } from './runtime-composition';
 export {
   serializeActionDetail,
