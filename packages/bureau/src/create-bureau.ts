@@ -1792,7 +1792,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // to; its terminal `run.completed`/`run.aborted` listener's `saveSession`
   // call would otherwise recreate the just-deleted record via its own
   // `existingSession ?? createAgentSession(...)` fallback. Every runId
-  // still live at the moment its session is deleted is marked here;
+  // still live at the moment its session is deleted, or expired through the
+  // store's own `cleanup()` (COR-718), is marked here;
   // `saveSession` below checks this set (via `metadata['lastRunId']`, the
   // field every terminal listener already passes) and skips the write
   // entirely for an orphaned run's own terminal transition. Consumed
