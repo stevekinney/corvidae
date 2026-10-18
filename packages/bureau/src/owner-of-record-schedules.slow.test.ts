@@ -185,4 +185,52 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('refuses a fire that built its services before another owner created its recurring session', async () => {
+    const release = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const bureau = await createBureau({
+      agents: {},
+      generate: async ({ conversation }) => {
+        if (JSON.stringify(conversation.getMessages()).includes('racing tick')) {
+          entered.resolve();
+          await release.promise;
+        }
+        return { content: 'acknowledged', toolCalls: [] };
+      },
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      const failed: string[] = [];
+      bureau.addEventListener('schedule.failed', (event) => failed.push(event.runId));
+      const summary = await bureau.createSchedule({
+        agentName: 'researcher',
+        input: 'racing tick',
+        spec: '1s',
+        sessionId: 'raced-recurring',
+        principal: 'api-key:alice',
+      });
+      // The fire has built its services and is waiting in generate, and the session does not exist.
+      await entered.promise;
+      await bureau.cancelSchedule(summary!.id);
+      const created = await bureau.createRun({
+        message: 'bob got there first',
+        sessionId: 'raced-recurring',
+        principal: 'api-key:bob',
+      });
+      expect(created.sessionId).toBe('raced-recurring');
+      release.resolve();
+
+      expect(await waitForReal(() => failed.length >= 1)).toBe(true);
+      const session = await bureau.getSession('raced-recurring');
+      expect(session?.metadata[SESSION_OWNER_METADATA_KEY]).toBe('api-key:bob');
+      expect(JSON.stringify(session?.conversationHistory)).not.toContain('racing tick');
+    } finally {
+      release.resolve();
+      await bureau.dispose();
+    }
+  });
 });

@@ -136,6 +136,7 @@ import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
   SESSION_OWNER_METADATA_KEY,
+  SessionOwnerConflictError,
 } from './session-authority';
 import type {
   BureauMemoryAuthorityOptions,
@@ -3014,6 +3015,12 @@ async function buildRuntimeComposition(
           existing?.metadata['lastRunStatus'] === 'running' &&
           typeof existing.metadata['lastRunId'] === 'string' &&
           existing.metadata['lastRunId'] !== runId;
+        // Decided inside the atomic update: a fire that built its services while the
+        // session did not exist must not append to a session another owner has
+        // created since, or one that a concurrent fire created for another owner.
+        if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
+          throw new SessionOwnerConflictError(sessionId);
+        }
         const next =
           existing ??
           createAgentSession({

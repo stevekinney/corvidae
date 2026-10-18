@@ -161,3 +161,32 @@ describe('the owner of a run and of its session (COR-718)', () => {
     }
   });
 });
+
+describe('two principals racing to create one new session (COR-718)', () => {
+  it('lets the first save own the session and refuses the other as a session that is not there', async () => {
+    const bureau = await openBureau();
+    try {
+      const outcomes = await Promise.allSettled([
+        bureau.createRun({ message: 'from alice', sessionId: 'raced', principal: 'api-key:alice' }),
+        bureau.createRun({ message: 'from bob', sessionId: 'raced', principal: 'api-key:bob' }),
+      ]);
+
+      const winners = outcomes.filter((outcome) => outcome.status === 'fulfilled');
+      const losers = outcomes.filter((outcome) => outcome.status === 'rejected');
+      expect([winners.length, losers.length]).toEqual([1, 1]);
+      expect(losers[0]?.reason).toMatchObject({ code: 'NOT_FOUND' });
+      const session = await bureau.getSession('raced');
+      const owner = session?.metadata[SESSION_OWNER_METADATA_KEY];
+      const transcript = JSON.stringify(session?.conversationHistory);
+      const winner = owner === 'api-key:alice' ? 'from alice' : 'from bob';
+      const loser = owner === 'api-key:alice' ? 'from bob' : 'from alice';
+      expect(transcript).toContain(winner);
+      expect(transcript).not.toContain(loser);
+      expect(session?.metadata['lastRunOwningPrincipals']).toEqual({
+        [winners[0]!.value.id]: String(owner),
+      });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});

@@ -225,6 +225,7 @@ import {
   resolveSessionOwner,
   resolveSessionPreAdmission,
   SESSION_OWNER_METADATA_KEY,
+  SessionOwnerConflictError,
 } from './session-authority';
 import {
   admitSessionInput,
@@ -4594,8 +4595,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // retry starts afresh. That includes a run registered here whose
       // durable start then failed: the engine holds no record of it to
       // recover, so there is nothing for a retry to observe.
-      await releaseRunCreationClaim(ledgerClaim, error);
-      throw error;
+      // COR-718: a save that lost the race to create the session is refused as a
+      // session that is not there, exactly as the preflight check refuses one.
+      const rejection =
+        error instanceof SessionOwnerConflictError
+          ? new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND')
+          : error;
+      await releaseRunCreationClaim(ledgerClaim, rejection);
+      throw rejection;
     }
     // COR-424: the ledger records the run only once it is durably started,
     // so a retry never replays a run that a restart could not recover. When

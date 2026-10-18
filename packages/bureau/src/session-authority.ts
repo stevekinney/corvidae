@@ -32,6 +32,20 @@ export function resolveSessionOwner(metadata: Record<string, JSONValue>): string
 }
 
 /**
+ * Thrown from inside a session's atomic update when the save names an owner other
+ * than the one the stored session already has. The preflight ownership check reads
+ * the session before the save, so two principals racing to create one new session
+ * can both pass it; this is the check that holds when the stored session is
+ * decided, and it refuses the later save before its messages are appended.
+ */
+export class SessionOwnerConflictError extends Error {
+  constructor(sessionId: string) {
+    super(`Session "${sessionId}" belongs to another owner`);
+    this.name = 'SessionOwnerConflictError';
+  }
+}
+
+/**
  * Whether `principal` is the owner of a session recording the given metadata.
  * Every resource has an owner, so a session with nothing recorded belongs to
  * {@link ANONYMOUS_LOCAL_OWNER} and admits no one else; AB-42's "open session"
