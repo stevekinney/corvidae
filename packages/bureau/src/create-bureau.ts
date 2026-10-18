@@ -127,6 +127,7 @@ import {
   isConversationHistory,
 } from 'conversationalist';
 
+import { shutdownThenRethrow } from './composition-failure';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { createAssetService } from './assets/asset-service';
 import { createAssetContentSourceResolver } from './assets/content-source-resolver';
@@ -1619,11 +1620,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await handler(info);
       },
     },
-  ).catch(async (error: unknown) => {
-    // The composition failed after the asset service started; stop its work.
-    await assetServiceInstance?.shutdown();
-    throw error;
-  });
+  ).catch((error: unknown) =>
+    // The composition failed after the asset service started; stop its work,
+    // and report the composition error even if stopping fails.
+    shutdownThenRethrow(error, async () => assetServiceInstance?.shutdown()),
+  );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
   // terminal `schedule.completed`/`schedule.failed` has nowhere else to

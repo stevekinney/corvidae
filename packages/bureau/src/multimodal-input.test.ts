@@ -127,7 +127,13 @@ describe('bureau.run with a managed asset in the input (COR-716)', () => {
       .run('echo', [{ type: 'image', source }], { principal: alice.id })
       .result();
 
-    expect(blocked.content).toContain('blocked');
+    // Admission applies the policy at the step boundary, before the guardrail
+    // runs: the run ends as a typed policy error and generate is never called.
+    expect(blocked.finishReason).toBe('error');
+    expect(blocked.error).toBeInstanceOf(MediaAdmissionError);
+    expect((blocked.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+      reason: 'asset-unverified',
+    });
     expect(seen).toHaveLength(0);
   });
 

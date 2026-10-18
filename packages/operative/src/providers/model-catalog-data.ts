@@ -67,6 +67,9 @@ const OPENAI_MODALITIES: ModalityMatrix = Object.freeze({
 // 2.5/2.0 family this seed covers. Neither page documents audio or video
 // *output* on `generateContent` (that is a separate Live/TTS surface), so
 // both stay output: false.
+// `remote-url` is listed for every Gemini model: on a Gemini 2.0 row it is the
+// `providerFetchesRemoteUrls: false` flag (`model-catalog-rows.ts`), not this
+// list, that refuses a remote URL, so the host resolves it instead.
 const GEMINI_MODALITIES: ModalityMatrix = Object.freeze({
   text: { input: true, output: true, sourceForms: ['inline'] },
   image: {

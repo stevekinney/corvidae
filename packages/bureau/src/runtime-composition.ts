@@ -64,6 +64,7 @@ import {
   isScheduledAgentRunInput,
   isSessionInputPayload,
   payloadText,
+  readBackendDescriptors,
   reservedIdentifierReason,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
@@ -72,6 +73,7 @@ import {
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
+  withBackendDescriptors,
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
@@ -122,6 +124,7 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  messageText,
 } from 'conversationalist';
 
 import { createSkillGuardrailOptions } from './agent-skills';
@@ -1036,16 +1039,17 @@ export function createMemoryRecallHook(
       return;
     }
 
+    // The current prompt, whatever its shape: a string, or the text parts of a
+    // part array (COR-716). Recall never runs against an older message because
+    // the current one carries media, and a prompt with no text recalls nothing.
     const messages = context.conversation.getMessages();
-    const latestUserMessage = messages
-      .toReversed()
-      .find((message) => message.role === 'user' && typeof message.content === 'string');
-
-    if (!latestUserMessage || typeof latestUserMessage.content !== 'string') {
+    const latestUserMessage = messages.findLast((message) => message.role === 'user');
+    const query = latestUserMessage === undefined ? '' : messageText(latestUserMessage);
+    if (query.trim() === '') {
       return;
     }
 
-    const bundle = await memory.recallForModel(authority, latestUserMessage.content, {
+    const bundle = await memory.recallForModel(authority, query, {
       collection: sessionId,
       limit: 5,
       contextId: authority.principal.id,
@@ -1228,15 +1232,21 @@ export function createRoutingStrategy(configuration: RoutingConfiguration): Rout
   }
 }
 
-function withUsageTracking(
+/**
+ * Reports each response's usage to `onUsage`. The wrapper carries the inner
+ * function's backend descriptors (COR-716): media admission costs parts against
+ * them, and a wrapper that dropped them would refuse every part as `no-estimator`.
+ */
+export function withUsageTracking(
   generate: GenerateFunction,
   onUsage: (usage: { total: number } | undefined) => void,
 ): GenerateFunction {
-  return async (context) => {
+  const tracked: GenerateFunction = async (context) => {
     const response = await generate(context);
     onUsage(response.usage);
     return response;
   };
+  return withBackendDescriptors(tracked, readBackendDescriptors(generate));
 }
 
 export function applyCache(
