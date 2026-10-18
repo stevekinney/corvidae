@@ -7,13 +7,13 @@ import {
   type GenerateFunction,
   ScheduleCompletedEvent,
   stopWhen,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import { createConversationHistory } from 'conversationalist';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
-import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 
 // A schedule fire is driven by Weft's poller on real elapsed time, which is why
 // this file is a slow lane: nothing here can run faster than the schedule's

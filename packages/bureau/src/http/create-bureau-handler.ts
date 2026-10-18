@@ -51,6 +51,8 @@ import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts'
 import {
   type BureauContextsOperationHost,
   contextsDeleteOperation,
+  contextsGetOperation,
+  contextsListOperation,
 } from './management/contexts-operations.ts';
 import {
   agentsListOperation,
@@ -101,6 +103,7 @@ export type BureauHandlerSource = Pick<
   | 'subscribeEventHistory'
   | 'getSession'
   | 'deleteSession'
+  | 'listSessions'
   | 'sessionStore'
   | 'waitForRecovery'
 > & {
@@ -273,6 +276,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   tasksCancelOperation,
   tasksEventsOperation,
   tasksRespondOperation,
+  contextsListOperation,
+  contextsGetOperation,
   contextsDeleteOperation,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,

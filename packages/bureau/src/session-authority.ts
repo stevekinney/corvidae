@@ -1,6 +1,4 @@
-import type { JSONValue } from '@lostgradient/operative';
-
-import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
+import { type JSONValue, sessionOwnerOf } from '@lostgradient/operative';
 
 /** Whether `value` is a plain object, the shape every persisted authority and owner map decodes as. */
 export function isPlainAuthorityRecord(
@@ -10,25 +8,18 @@ export function isPlainAuthorityRecord(
 }
 
 /**
- * The session metadata key holding the session's owner of record. Written once,
- * when the session is created, with the owner of the run that created it. It is
- * a key of its own, not derived from `lastRunOwningPrincipals`, because that map
- * is pruned once a run's history falls below the retention floor, and a session
- * must not change owner when it is.
- */
-export const SESSION_OWNER_METADATA_KEY = 'sessionOwner';
-
-/**
  * The owner of record a session's metadata names: the stored owner, or
- * {@link ANONYMOUS_LOCAL_OWNER} for a session written before owners existed (a
+ * `ANONYMOUS_LOCAL_OWNER` for a session written before owners existed (a
  * read rule, not a migration). `undefined` means the key is present but not a
  * string, which no principal can match: a corrupted record fails closed rather
  * than reading as the local owner's.
+ *
+ * The key and the rule live in Operative (`SESSION_OWNER_METADATA_KEY`,
+ * `sessionOwnerOf`), because its session store records the owner in the summary
+ * index; this is that rule in Bureau's vocabulary.
  */
 export function resolveSessionOwner(metadata: Record<string, JSONValue>): string | undefined {
-  const stored = metadata[SESSION_OWNER_METADATA_KEY];
-  if (stored === undefined) return ANONYMOUS_LOCAL_OWNER;
-  return typeof stored === 'string' ? stored : undefined;
+  return sessionOwnerOf(metadata) ?? undefined;
 }
 
 /**
@@ -48,7 +39,7 @@ export class SessionOwnerConflictError extends Error {
 /**
  * Whether `principal` is the owner of a session recording the given metadata.
  * Every resource has an owner, so a session with nothing recorded belongs to
- * {@link ANONYMOUS_LOCAL_OWNER} and admits no one else; AB-42's "open session"
+ * `ANONYMOUS_LOCAL_OWNER` and admits no one else; AB-42's "open session"
  * rule is gone. A principal that is not the owner gets the verdict a session that
  * does not exist gets, so a caller cannot tell the two apart.
  *

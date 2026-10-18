@@ -12,8 +12,7 @@ import {
   type AgentInput,
   type AgentRun,
   type AgentSession,
-  type ChildSignalContract,
-  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  type ChildSignalContract, // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
@@ -92,6 +91,7 @@ import {
   TaskCancelledEvent,
   TaskDispatchedEvent,
   TaskPreemptedEvent,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -258,7 +258,6 @@ import {
   resolvePersistedRunOwningPrincipal,
   resolveSessionOwner,
   resolveSessionPreAdmission,
-  SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
 import {

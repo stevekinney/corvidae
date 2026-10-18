@@ -9,6 +9,12 @@ import type { OperativeEventMap } from '../events';
  */
 export interface SessionListOptions {
   agentName?: string | undefined;
+  /**
+   * Only the sessions this owner created (`SessionSummary.owner`). Applied to the
+   * summary index before `offset` and `limit`, so a page is full of this owner's
+   * sessions and another owner's cost it no slot.
+   */
+  owner?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   sortBy?: ('createdAt' | 'updatedAt') | undefined;
@@ -22,6 +28,25 @@ export interface SessionListOptions {
 export interface SessionSummary {
   id: string;
   agentName: string;
+  /**
+   * The first visible user message's text, trimmed and cut to 80 characters, or
+   * `null` before one exists. Computed when the session is saved and kept in the
+   * summary index, so a listing reads it without opening a body.
+   */
+  title: string | null;
+  /**
+   * The latest visible user or assistant message that has text, trimmed and cut to
+   * 120 characters, or `null` before one exists. Kept in the summary index like
+   * `title`.
+   */
+  lastMessagePreview: string | null;
+  /**
+   * The owner of record, read from the session's metadata when it is saved (see
+   * `SESSION_OWNER_METADATA_KEY`): the stored owner, the local owner for a
+   * session that records none, or `null` for a malformed record, which no owner
+   * filter matches.
+   */
+  owner: string | null;
   messageCount: number;
   createdAt: string;
   updatedAt: string;

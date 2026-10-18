@@ -77,6 +77,7 @@ import {
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -143,7 +144,6 @@ import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
   resolveSessionOwner,
-  SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
 import type {

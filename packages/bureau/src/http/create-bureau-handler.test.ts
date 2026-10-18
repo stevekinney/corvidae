@@ -435,6 +435,8 @@ describe('createBureauHandler catalog', () => {
       expect(document.methods.map((method) => method.name).toSorted()).toEqual([
         'bureau.agents.list',
         'bureau.contexts.delete',
+        'bureau.contexts.get',
+        'bureau.contexts.list',
         'bureau.deployment.get',
         'bureau.reviews.get',
         'bureau.reviews.list',
@@ -594,6 +596,7 @@ describe('the Bureau scope list', () => {
       'bureau.schedules:write',
       'bureau.goals:read',
       'bureau.goals:write',
+      'bureau.contexts:read',
       'bureau.contexts:write',
       'bureau.events:observe-all',
     ]);

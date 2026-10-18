@@ -96,11 +96,14 @@ function withForcedGetOrder(backing: BackingStore, slowKey: string, fastKey: str
 
 function summaryIndexPayload(id: string): string {
   return JSON.stringify({
-    formatVersion: 1,
+    formatVersion: 2,
     summaries: {
       [id]: {
         id,
         agentName: 'test-agent',
+        title: null,
+        lastMessagePreview: null,
+        owner: 'anonymous:local',
         messageCount: 0,
         createdAt: '2025-01-01T00:00:00.000Z',
         updatedAt: '2025-01-01T00:00:00.000Z',
@@ -859,7 +862,7 @@ describe('createSessionStore', () => {
 
     expect(await store.list()).toEqual([]);
     expect(await rawStore.get(SUMMARY_INDEX_KEY)).toBe(
-      JSON.stringify({ formatVersion: 1, summaries: {} }),
+      JSON.stringify({ formatVersion: 2, summaries: {} }),
     );
 
     const retained = makeSession({ id: 'after-orphan-repair' });
@@ -985,11 +988,14 @@ describe('createSessionStore', () => {
     await rawStore.set(
       SUMMARY_INDEX_KEY,
       JSON.stringify({
-        formatVersion: 1,
+        formatVersion: 2,
         summaries: {
           [session.id]: {
             id: session.id,
             agentName: session.agentName,
+            title: null,
+            lastMessagePreview: null,
+            owner: 'anonymous:local',
             messageCount: 0,
             createdAt: session.createdAt,
             updatedAt: session.updatedAt,
@@ -2642,5 +2648,230 @@ describe('duplicate legacy and v2 bodies during summary rebuilds', () => {
     await mismatched.set(encodedKey, JSON.stringify(makeSession({ id: 'someone-else' })));
     await mismatched.set(SUMMARY_INDEX_KEY, '[]');
     expect(await createSessionStore(mismatched).list()).toEqual([]);
+  });
+});
+
+describe('session summaries carry a title, a last-message preview and an owner (COR-1553)', () => {
+  /** A session whose conversation holds `turns` as (role, text) rows, in order. */
+  function sessionWith(
+    id: string,
+    turns: ReadonlyArray<readonly ['user' | 'assistant', string]>,
+    metadata: Record<string, JSONValue> = {},
+    hidden: ReadonlyArray<number> = [],
+  ) {
+    const session = makeSession({ id });
+    const conversation = new Conversation(session.conversationHistory);
+    for (const [index, [role, text]] of turns.entries()) {
+      conversation.appendMessages({ role, content: text, hidden: hidden.includes(index) });
+    }
+    return { ...session, conversationHistory: conversation.current, metadata };
+  }
+
+  it('is null for both before any message exists', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(sessionWith('empty', []));
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({ id: 'empty', title: null, lastMessagePreview: null });
+  });
+
+  it('takes the title from the first user message, trimmed, and the preview from the latest message', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(
+      sessionWith('chat', [
+        ['user', '  plan my trip to Lisbon  '],
+        ['assistant', 'Sure. When do you leave?'],
+        ['user', '  next Friday  '],
+      ]),
+    );
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({
+      title: 'plan my trip to Lisbon',
+      lastMessagePreview: 'next Friday',
+      messageCount: 3,
+    });
+  });
+
+  it('updates the preview on every save and keeps the title the first user message gave', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(sessionWith('grows', [['user', 'first question']]));
+    const loaded = await store.load('grows');
+    const conversation = new Conversation(loaded!.conversationHistory);
+    conversation.appendAssistantMessage('the answer');
+    await store.save({ ...loaded!, conversationHistory: conversation.current });
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({ title: 'first question', lastMessagePreview: 'the answer' });
+  });
+
+  it('cuts the title to 80 and the preview to 120 characters, never splitting a surrogate pair', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const face = '\u{1F600}';
+    await store.save(
+      sessionWith('long', [
+        ['user', `${'a'.repeat(79)}${face}${'b'.repeat(20)}`],
+        ['assistant', `${'c'.repeat(119)}${face}${'d'.repeat(20)}`],
+      ]),
+    );
+
+    const [summary] = await store.list();
+
+    expect(Array.from(summary!.title!)).toHaveLength(80);
+    expect(summary!.title).toBe(`${'a'.repeat(79)}${face}`);
+    expect(Array.from(summary!.lastMessagePreview!)).toHaveLength(120);
+    expect(summary!.lastMessagePreview).toBe(`${'c'.repeat(119)}${face}`);
+  });
+
+  it('ignores hidden messages and rows with no text, so a tool turn never blanks the preview', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(
+      sessionWith(
+        'quiet',
+        [
+          ['user', 'HIDDEN-SYSTEM-NOTE'],
+          ['user', 'the real question'],
+          ['assistant', 'the visible answer'],
+          ['assistant', '   '],
+          ['assistant', 'HIDDEN-REASONING'],
+        ],
+        {},
+        [0, 4],
+      ),
+    );
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({
+      title: 'the real question',
+      lastMessagePreview: 'the visible answer',
+    });
+  });
+
+  it('serves title and preview from the index, reading no body beyond the existence check of a page', async () => {
+    const backing = textValueStore(new MemoryStorage());
+    const store = createSessionStore(backing);
+    for (const [index, id] of ['one', 'two', 'three'].entries()) {
+      await store.save({
+        ...sessionWith(id, [['user', `question ${id}`]]),
+        createdAt: `2026-10-18T00:00:0${index}.000Z`,
+        updatedAt: `2026-10-18T00:00:0${index}.000Z`,
+      });
+    }
+    const reads: string[] = [];
+    const counting = new Proxy(backing, {
+      get(target, property) {
+        if (property === 'get') {
+          return async (key: string) => {
+            reads.push(key);
+            return target.get(key);
+          };
+        }
+        const member = Reflect.get(target, property, target);
+        return typeof member === 'function' ? member.bind(target) : member;
+      },
+    });
+    const reading = createSessionStore(counting);
+
+    const page = await reading.list({ limit: 2, sortBy: 'createdAt', sortOrder: 'asc' });
+
+    expect(page.map((summary) => summary.title)).toEqual(['question one', 'question two']);
+    const bodyReads = reads.filter((key) => key.startsWith(BODY_PREFIX));
+    // Exactly the existence check of each visited entry: one read per row of the page.
+    expect(bodyReads).toHaveLength(2);
+    expect(reads.filter((key) => key === SUMMARY_INDEX_KEY)).toHaveLength(1);
+  });
+
+  it('rebuilds a version 1 index once, so a session saved before this change lists with its title', async () => {
+    const rawStore = textValueStore(new MemoryStorage());
+    const store = createSessionStore(rawStore);
+    const old = sessionWith('before', [
+      ['user', 'a question asked before the change'],
+      ['assistant', 'and its answer'],
+    ]);
+    await store.save(old);
+    // The index as the previous version wrote it: no title, preview or owner.
+    await rawStore.set(
+      SUMMARY_INDEX_KEY,
+      JSON.stringify({
+        formatVersion: 1,
+        summaries: {
+          before: {
+            id: 'before',
+            agentName: 'test-agent',
+            messageCount: 2,
+            createdAt: old.createdAt,
+            updatedAt: old.updatedAt,
+            metadata: {},
+          },
+        },
+      }),
+    );
+
+    const [summary] = await store.list();
+
+    expect(summary).toMatchObject({
+      id: 'before',
+      title: 'a question asked before the change',
+      lastMessagePreview: 'and its answer',
+      owner: 'anonymous:local',
+    });
+    const rewritten = JSON.parse((await rawStore.get(SUMMARY_INDEX_KEY))!) as {
+      formatVersion: number;
+    };
+    expect(rewritten.formatVersion).toBe(2);
+    // And it is rebuilt once: a second list reads the version 2 index as it stands.
+    const second = await store.list();
+    expect(second[0]).toEqual(summary);
+  });
+
+  it('records the owner from the session’s metadata when it is written, and filters by it before paging', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const clock = (second: number) => `2026-10-18T00:00:0${second}.000Z`;
+    for (const [id, owner, second] of [
+      ['a-1', 'api-key:alice', 1],
+      ['b-1', 'api-key:bob', 2],
+      ['a-2', 'api-key:alice', 3],
+      ['b-2', 'api-key:bob', 4],
+      ['a-3', 'api-key:alice', 5],
+    ] as const) {
+      await store.save({
+        ...sessionWith(id, [['user', id]], { sessionOwner: owner }),
+        createdAt: clock(second),
+        updatedAt: clock(second),
+      });
+    }
+
+    const pages: string[][] = [];
+    for (let offset = 0; offset < 3; offset += 1) {
+      const page = await store.list({ owner: 'api-key:alice', limit: 1, offset, sortOrder: 'asc' });
+      pages.push(page.map((summary) => summary.id));
+    }
+    const beyond = await store.list({ owner: 'api-key:alice', limit: 1, offset: 3 });
+    const everyone = await store.list({ limit: 10 });
+
+    // Every page is full: the other owner's sessions cost it no slot.
+    expect(pages).toEqual([['a-1'], ['a-2'], ['a-3']]);
+    expect(beyond).toEqual([]);
+    expect(everyone).toHaveLength(5);
+    expect(everyone.find((summary) => summary.id === 'b-1')?.owner).toBe('api-key:bob');
+  });
+
+  it('reads a session that records no owner as the local owner, and a malformed owner as nobody', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(sessionWith('unowned', [['user', 'x']]));
+    await store.save(sessionWith('malformed', [['user', 'y']], { sessionOwner: 7 }));
+
+    const listed = await store.list({ limit: 10 });
+    const local = await store.list({ owner: 'anonymous:local' });
+
+    expect(Object.fromEntries(listed.map((summary) => [summary.id, summary.owner]))).toEqual({
+      unowned: 'anonymous:local',
+      malformed: null,
+    });
+    expect(local.map((summary) => summary.id)).toEqual(['unowned']);
   });
 });

@@ -782,8 +782,9 @@ describe('transcripts stay inside the Bureau', () => {
           id: alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
-          // Not alice's own context: deleting it here would remove what the rest of the loop reads.
-          contextId: 'no-such-context',
+          // Not alice's own context for the one operation that would remove what the rest reads.
+          contextId:
+            operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.sessionId,
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
@@ -798,6 +799,13 @@ describe('transcripts stay inside the Bureau', () => {
         if (operation.name === 'bureau.reviews.get') {
           expect(status).toBe(200);
           expect(await response.clone().text()).toContain(alice.reviewId);
+        }
+        if (operation.name === 'bureau.contexts.list' || operation.name === 'bureau.contexts.get') {
+          // The title is the first user message, the one place a context carries its text.
+          const text = await response.text();
+          expect(text).toContain(`alice ${SENTINEL}`);
+          bodies.push(text.replaceAll(`alice ${SENTINEL}`, '<title>'));
+          continue;
         }
         bodies.push(
           operation.transports.jsonRpcHttp

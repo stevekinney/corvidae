@@ -2,12 +2,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  type GenerateFunction,
+  stopWhen,
+  SESSION_OWNER_METADATA_KEY,
+} from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
-import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 import {
   answering,
   createCheckValidator,
