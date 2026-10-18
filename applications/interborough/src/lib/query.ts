@@ -59,6 +59,10 @@ export const queryKeys = {
     list: () => ['queues', 'list'] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
+  conformance: {
+    /** `weft.conformance.targets` (COR-160): the worker commands the server can run. */
+    targets: () => ['conformance', 'targets'] as const,
+  },
   /** Diagnostics narrowed by provenance filters; extends `diagnostics()` so one prefix invalidates both. */
   diagnosticsFiltered: (filters: Readonly<Record<string, string | undefined>>) =>
     ['diagnostics', 'filtered', filters] as const,

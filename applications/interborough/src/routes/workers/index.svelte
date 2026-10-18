@@ -30,7 +30,7 @@
    * `weft.workers.list` snapshot; nothing here ever synthesizes a
    * client-side "disconnected" row).
    */
-  import { EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
+  import { Button, EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -48,6 +48,7 @@
   import type { DrainTarget } from './drain-dialog.svelte';
   import DrainDialog from './drain-dialog.svelte';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
+  import ConformancePanel from './conformance-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
   import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
@@ -55,6 +56,7 @@
   import QueueListView from './queue-list-view.svelte';
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
+  import { countByTransport } from './worker-presentation.ts';
   import WorkersLiveStatus from './workers-live-status.svelte';
   import {
     hasProvenanceFilters,
@@ -155,13 +157,14 @@
     }
   });
 
-  type TabId = 'fleet' | 'list' | 'queues' | 'diagnostics';
-  const TAB_IDS: readonly TabId[] = ['fleet', 'list', 'queues', 'diagnostics'];
+  type TabId = 'fleet' | 'list' | 'queues' | 'diagnostics' | 'conformance';
+  const TAB_IDS: readonly TabId[] = ['fleet', 'list', 'queues', 'diagnostics', 'conformance'];
   const TAB_LABELS: Readonly<Record<TabId, string>> = {
     fleet: 'Fleet overview',
     list: 'Workers',
     queues: 'Task queues',
     diagnostics: 'Diagnostics',
+    conformance: 'Conformance',
   };
 
   function isTabId(value: string | null): value is TabId {
@@ -258,6 +261,9 @@
   // ---------------------------------------------------------------------
   // Derived view slices
   // ---------------------------------------------------------------------
+  const longPollWorkerCount = $derived(
+    countByTransport(workersQuery.data?.items ?? [])['long-poll'],
+  );
   const selectedWorker = $derived(
     selectedWorkerId
       ? ((workersQuery.data?.items ?? []).find((worker) => worker.id === selectedWorkerId) ?? null)
@@ -308,7 +314,7 @@
 <div class="weft-workers-route">
   <div class="weft-workers-route__header">
     <h1 class="weft-workers-route__title">Workers</h1>
-    <WorkersLiveStatus {locked} />
+    <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
   </div>
 
   {#if locked}
@@ -389,6 +395,20 @@
             registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
             registryError={registryQuery.error ?? null}
           />
+        {:else if selectedWorkerId}
+          <EmptyState
+            title="Worker closed"
+            description={`No worker with the id ${selectedWorkerId} is registered with the server. It has closed, or it never connected here.`}
+          >
+            {#snippet action()}
+              <Button
+                variant="secondary"
+                size="sm"
+                label="Back to all workers"
+                onclick={() => selectTab('list')}
+              />
+            {/snippet}
+          </EmptyState>
         {:else}
           <WorkerListView workers={workersQuery.data?.items ?? []} />
         {/if}
@@ -502,6 +522,10 @@
             />
           {/await}
         {/if}
+      </TabPanel>
+
+      <TabPanel value="conformance">
+        <ConformancePanel />
       </TabPanel>
     </Tabs>
   {/if}

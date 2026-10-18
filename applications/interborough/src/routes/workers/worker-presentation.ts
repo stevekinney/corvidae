@@ -154,6 +154,34 @@ export function presentationStatusDotStatus(
   return variant === 'success' ? 'online' : variant;
 }
 
+export type WorkerTransport = WorkerSummary['transport'];
+
+/** How a transport reads in the console: spelled out, never a bare code. */
+export const TRANSPORT_LABEL: Readonly<Record<WorkerTransport, string>> = {
+  websocket: 'WebSocket',
+  'long-poll': 'HTTP long-poll',
+};
+
+/** The behavioral limit that makes a long-poll worker different from a WebSocket one, in one sentence. */
+export const LONG_POLL_LIMITATION =
+  'HTTP long-poll workers have no server push: new work reaches them only when they poll, and a cancellation reaches them on their next activity heartbeat, so this view shows them as of their last poll or heartbeat rather than live.';
+
+/** Workers per transport, so a fleet that mixes both says so. */
+export function countByTransport(
+  workers: readonly Pick<WorkerSummary, 'transport'>[],
+): Readonly<Record<WorkerTransport, number>> {
+  const counts: Record<WorkerTransport, number> = { websocket: 0, 'long-poll': 0 };
+  for (const worker of workers) counts[worker.transport] += 1;
+  return counts;
+}
+
+/** `WebSocket`, `HTTP long-poll`, or `WebSocket, HTTP long-poll` for a deployment that serves both. */
+export function formatTransports(transports: readonly WorkerTransport[]): string {
+  return transports.length === 0
+    ? 'No transport'
+    : transports.map((t) => TRANSPORT_LABEL[t]).join(', ');
+}
+
 /** Narrows generated-client nullable metadata fields to display strings. */
 export function asDisplayString(value: unknown, fallback = '—'): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback;

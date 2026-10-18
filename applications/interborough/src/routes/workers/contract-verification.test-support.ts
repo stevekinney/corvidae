@@ -41,6 +41,7 @@ export function workerManifest(
     instance: {
       workerId: overrides.workerId ?? 'worker-a',
       queue: 'payments',
+      transport: 'websocket',
       health: 'active',
       connectedAt: 1,
       startedAt: 1,

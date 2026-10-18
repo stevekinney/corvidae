@@ -235,3 +235,24 @@ describe('QueueDetailView — workers on this queue', () => {
     expect(queryByText('No connected workers are polling this queue.')).toBeNull();
   });
 });
+
+describe('QueueDetailView — workers on the queue (COR-160)', () => {
+  test('shows each worker’s transport, whichever it uses', () => {
+    const { getByText } = render(QueueDetailView, {
+      props: {
+        queue: queue(),
+        routingPolicy: 'least-loaded',
+        workersOnQueue: [
+          worker({ id: 'wkr_ws', transport: 'websocket' }),
+          worker({ id: 'wkr_lp', transport: 'long-poll' }),
+        ],
+        deadLetteredItems: [],
+        adminGate: OPEN_GATE,
+        onClearDeadLetter: () => {},
+      },
+    });
+
+    expect(getByText('WebSocket')).not.toBeNull();
+    expect(getByText('HTTP long-poll')).not.toBeNull();
+  });
+});

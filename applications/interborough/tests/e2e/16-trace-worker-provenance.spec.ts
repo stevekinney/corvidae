@@ -64,9 +64,10 @@ test('filtering Diagnostics by build ID finds the task and deep-links to its wor
 
   // The retry storm names the worker holding the current attempt.
   await expect(page.getByText('Retry storm', { exact: false }).first()).toBeVisible();
-  // Other seeded tasks can also be on this build; the link to the storm's current worker is one of them.
-  const workerLink = page.locator(`a[href*="worker=${E2E_CROSS_BUILD_WORKER_ID}"]`);
-  await expect(workerLink).toHaveCount(1);
+  // Other seeded tasks can also be on this build, and one task can be reported under more than
+  // one diagnostic kind; every link to the storm's current worker goes to the same place.
+  const workerLink = page.locator(`a[href*="worker=${E2E_CROSS_BUILD_WORKER_ID}"]`).first();
+  await expect(workerLink).toBeVisible();
   await checkA11y('workers—diagnostics filtered by build');
 
   await workerLink.click();

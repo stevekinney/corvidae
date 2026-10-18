@@ -33,6 +33,7 @@ import {
 
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
+import { parseConformanceReport, parseConformanceTargets } from './conformance-evidence.ts';
 import { parseRegistrySnapshot } from './registry-snapshot-guard.ts';
 import { parseDeadLetter, parseTaskDeliveries } from './task-delivery-evidence.ts';
 import { isTaskLedgerDetail } from './task-ledger-validation.ts';
@@ -118,6 +119,25 @@ export function deadLetterQuery(
       ),
     enabled: enabled() && operationId().length > 0,
     retry: false,
+  }));
+}
+
+/** The worker conformance targets this server can run (`weft.conformance.targets`, `system:read`). */
+export function conformanceTargetsQuery(client: WorkersOperations) {
+  return createQuery(() => ({
+    queryKey: queryKeys.conformance.targets(),
+    queryFn: async () =>
+      parseConformanceTargets(await client.operations['weft.conformance.targets']({})),
+    retry: false,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  }));
+}
+
+/** Runs one target's conformance checks in a private sandbox (`weft.conformance.report`, `system:admin`). */
+export function runConformanceMutation(client: WorkersOperations) {
+  return createMutation(() => ({
+    mutationFn: async (target: string) =>
+      parseConformanceReport(await client.operations['weft.conformance.report']({ target })),
   }));
 }
 

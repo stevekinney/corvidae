@@ -20,7 +20,7 @@
     TaskQueueHealth,
     WorkerSummary,
   } from './worker-catalog-types.ts';
-  import { workerHealthPresentation } from './worker-presentation.ts';
+  import { TRANSPORT_LABEL, workerHealthPresentation } from './worker-presentation.ts';
 
   interface QueueDetailViewProps {
     readonly queue: TaskQueueHealth;
@@ -145,6 +145,9 @@
           <li class="weft-queue-workers-list__row">
             <span class="weft-workers-id">{truncateId(worker.id)}</span>
             <Badge variant={presentation.variant} size="sm">{presentation.label}</Badge>
+            <span class="weft-queue-workers-list__transport"
+              >{TRANSPORT_LABEL[worker.transport]}</span
+            >
             <span class="weft-workers-mono weft-queue-workers-list__inflight"
               >{worker.inFlight}/{worker.concurrency}</span
             >

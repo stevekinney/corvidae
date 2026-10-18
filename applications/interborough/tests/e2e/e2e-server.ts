@@ -17,7 +17,7 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import { Engine, RemoteWorker } from '@lostgradient/weft';
+import { Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,6 +30,9 @@ import { startHost } from '../../src/host/host.ts';
 import {
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
+  E2E_LONG_POLL_BUILD_ID,
+  E2E_LONG_POLL_DEPLOYMENT_NAME,
+  E2E_LONG_POLL_QUEUE,
   E2E_PORT,
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
@@ -105,6 +108,22 @@ const fleetWorker = new RemoteWorker({
 
 await fleetWorker.connect();
 
+// COR-160: one worker on the HTTP long-poll transport, so the Workers surfaces show both
+// transports in one fleet. It advertises no workflow and its queue has no task, so it only
+// polls and heartbeats, which is the session state the spec reads.
+const longPollWorker = new LongPollWorker({
+  serverUrl: `http://127.0.0.1:${E2E_PORT}`,
+  deploymentName: E2E_LONG_POLL_DEPLOYMENT_NAME,
+  buildId: E2E_LONG_POLL_BUILD_ID,
+  queue: E2E_LONG_POLL_QUEUE,
+  workflows: {},
+  pollTimeout: 5_000,
+  heartbeatIntervalMs: 2_000,
+});
+longPollWorker.start();
+for (let wait = 0; wait < 200 && !longPollWorker.ready; wait += 1) await Bun.sleep(25);
+if (!longPollWorker.ready) throw new Error('The E2E long-poll worker did not register.');
+
 await server.dispatchTask({
   operationId: E2E_TASK_OPERATION_ID,
   workflowId: 'e2e-ledger-workflow',
@@ -146,6 +165,7 @@ process.stdout.write(
 
 async function shutDown(): Promise<void> {
   for (const ledgerWorker of ledgerWorkers) ledgerWorker[Symbol.dispose]();
+  await longPollWorker.stop();
   await fleetWorker.disconnect();
   await host.close();
   await rm(scratch, { recursive: true, force: true });

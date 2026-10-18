@@ -62,6 +62,16 @@ export const E2E_CURRENT_BUILD_ID = 'e2e-ledger-build-1';
 /** Reconnect grace period the E2E host uses, short so the seeded requeues take a fraction of a second. */
 export const E2E_RECONNECT_GRACE_PERIOD_MS = 250;
 
+/**
+ * COR-160: a real HTTP long-poll worker registered on its own deployment and
+ * queue. It advertises no workflow, so it never claims work and never joins a
+ * workflow's contract verification; it exists to give the Workers surfaces a
+ * long-poll session to read.
+ */
+export const E2E_LONG_POLL_DEPLOYMENT_NAME = 'long-poll-fleet';
+export const E2E_LONG_POLL_QUEUE = 'long-poll-evidence';
+export const E2E_LONG_POLL_BUILD_ID = 'e2e-long-poll-build-1';
+
 export const E2E_CANCELLATION_REASON = 'operator stopped the e2e ledger run';
 
 /** Weft's maximum cancellation grace period (`serve-internals.ts`). */

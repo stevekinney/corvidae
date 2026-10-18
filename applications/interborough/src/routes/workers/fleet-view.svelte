@@ -13,11 +13,14 @@
     WorkerRegistrationRejection,
   } from './worker-manifest-diagnostics.ts';
   import {
+    countByTransport,
     deploymentHealthPresentation,
     formatDeploymentIdentity,
     formatDeploymentName,
+    formatTransports,
     presentationStatusDotStatus,
     summarizeFleet,
+    TRANSPORT_LABEL,
   } from './worker-presentation.ts';
 
   interface FleetViewProps {
@@ -47,6 +50,7 @@
   }: FleetViewProps = $props();
 
   const totals = $derived(summarizeFleet(workers));
+  const transportCounts = $derived(countByTransport(workers));
 </script>
 
 <div class="weft-fleet-view">
@@ -60,6 +64,15 @@
       <span class="weft-workers-stat-card__value"
         >{totals.activeWorkers}<span class="weft-workers-stat-card__value-secondary">
           / {totals.drainingWorkers}</span
+        ></span
+      >
+    </div>
+    <div class="weft-workers-stat-card">
+      <span class="weft-workers-stat-card__label">Transports</span>
+      <span class="weft-workers-stat-card__value weft-fleet-view__transports"
+        >{transportCounts.websocket}
+        {TRANSPORT_LABEL.websocket}<span class="weft-workers-stat-card__value-secondary"
+          >{' / '}{transportCounts['long-poll']} {TRANSPORT_LABEL['long-poll']}</span
         ></span
       >
     </div>
@@ -108,6 +121,7 @@
           <div class="weft-deployment-row__identity">
             <span class="weft-deployment-row__name">{formatDeploymentName(deployment)}</span>
             <span class="weft-deployment-row__meta">{formatDeploymentIdentity(deployment)}</span>
+            <span class="weft-deployment-row__meta">{formatTransports(deployment.transports)}</span>
           </div>
           <Badge variant={presentation.variant} size="sm">{presentation.label}</Badge>
           <span class="weft-deployment-row__count">{deployment.workers} workers</span>
