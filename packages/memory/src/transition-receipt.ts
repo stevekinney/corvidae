@@ -34,6 +34,7 @@ const evidenceOutcomeSchema = z
     id: nonEmpty,
     /** The evidence record's own content digest: the value a projection's `sources` names. */
     digest: digestSchema,
+    /** What the batch that carried this receipt did with the record: `duplicate` when the identical record was already stored. */
     outcome: z.enum(['appended', 'duplicate']),
     supersedes: z.array(nonEmpty).min(1).optional(),
   })
@@ -47,6 +48,7 @@ const projectionOutcomeSchema = z
     /** `sha256:` over the canonical bytes of the stored revision. */
     recordDigest: digestSchema,
     transition: z.enum(PROJECTION_TRANSITION_KINDS),
+    /** What the batch that carried this receipt did with the revision; never a prediction. */
     outcome: z.enum(['written', 'duplicate']),
     supersedes: z.array(projectionReferenceSchema).min(1).optional(),
     supersededBy: projectionReferenceSchema.optional(),

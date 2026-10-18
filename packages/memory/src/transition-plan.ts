@@ -30,9 +30,20 @@ export interface RevisionPlan {
   readonly changeKind: ProposedRevision['change']['kind'];
   readonly request: ProposedRevision;
   readonly current: EvidenceProjectionRecord | undefined;
+  /**
+   * The revision the proposal expected, read from history; the current revision
+   * when the expected one does not exist, and `undefined` when the projection
+   * does not exist at all. Every check reads this, so a proposal that is both
+   * invalid and stale is refused for what is invalid.
+   */
+  readonly base: EvidenceProjectionRecord | undefined;
   /** Why the expected revision is not the current one, or `undefined` when it is. */
   readonly stale: string | undefined;
-  /** The stored record the revision would write; `undefined` when stale. */
+  /**
+   * The record the revision would write, laid over `base`; `undefined` only when
+   * the projection does not exist. A stale revision still has one, so the checks
+   * run, and the engine reports the staleness once they pass.
+   */
   readonly next: EvidenceProjectionRecord | undefined;
 }
 
@@ -197,18 +208,20 @@ async function planRevision(
   if (current === undefined) {
     return {
       ...shared,
+      base: undefined,
       stale: `${projectionLabel(request)} has no stored revision; the proposal expected revision ${expectedRevision}.`,
       next: undefined,
     };
   }
-  if (current.revision !== expectedRevision) {
-    return {
-      ...shared,
-      stale: `${projectionLabel(request)} is at revision ${current.revision}; the proposal expected revision ${expectedRevision}.`,
-      next: undefined,
-    };
-  }
-  return { ...shared, stale: undefined, next: stampRevision(current, request, policyRevision, at) };
+  const base =
+    current.revision === expectedRevision
+      ? current
+      : ((await reader.projectionRevision(namespace, id, expectedRevision)) ?? current);
+  const stale =
+    current.revision === expectedRevision
+      ? undefined
+      : `${projectionLabel(request)} is at revision ${current.revision}; the proposal expected revision ${expectedRevision}.`;
+  return { ...shared, base, stale, next: stampRevision(base, request, policyRevision, at) };
 }
 
 /** The revisions a consolidation asks for: each candidate is retired in favour of the summary. */
@@ -242,7 +255,8 @@ function buildSummary(
       if (!sources.has(source.evidenceId)) sources.set(source.evidenceId, source);
     }
   }
-  const covers = candidates.map(({ id, revision }) => ({ id, revision }));
+  // The revisions the proposal names, not the ones a stale read found, so both sides agree.
+  const covers = proposal.candidates.map(({ id, revision }) => ({ id, revision }));
   const { summary } = proposal;
   return {
     schemaVersion: PROJECTION_SCHEMA_VERSION,
@@ -326,7 +340,7 @@ export async function buildTransitionPlan(
         ),
       );
       const candidates = revisions.flatMap((revision) =>
-        revision.current === undefined || revision.stale !== undefined ? [] : [revision.current],
+        revision.base === undefined ? [] : [revision.base],
       );
       if (candidates.length !== revisions.length) {
         return {

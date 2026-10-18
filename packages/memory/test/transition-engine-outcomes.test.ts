@@ -374,7 +374,8 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
           signal: controller.signal,
         });
         expect(result).toEqual({ outcome: 'canceled' });
-        expect(harness.recorder.kinds()).toEqual(['requested', 'validation-started', 'canceled']);
+        expect(harness.recorder.kinds()).toEqual(['requested', 'canceled']);
+        expect(harness.clock.reads).toBe(1);
       });
 
       it('commits when the abort comes after the batch', async () => {

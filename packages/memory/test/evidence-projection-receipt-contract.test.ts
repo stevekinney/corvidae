@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createInMemoryEvidenceProjectionStorage } from '../src/create-in-memory-evidence-projection-storage';
+import { createEvidenceProjectionKeys } from '../src/evidence-projection-keys';
+import type { EvidenceProjectionStorage } from '../src/evidence-projection-storage';
 import {
   EvidenceProjectionBatchLimitError,
   EvidenceProjectionCommitError,
@@ -11,9 +13,9 @@ import { makeFact, makeInlineEvidence, NAMESPACE, TENANT } from './evidence-proj
 import { failFirstBatch, recordBatches, TRANSITION_BACKENDS } from './transition-backends';
 
 /**
- * The receipt put on `commit()`: an opaque `{ key, value }` written in the same
+ * The receipt put on `commit()`: an opaque `{ key, build }` receipt written in the same
  * batch as the records and conditioned on its key being absent. The store never
- * reads the value, so these tests use raw bytes.
+ * reads the bytes `build` returns, so these tests use raw bytes.
  */
 
 const KEY = 'app:test:receipt:one';
@@ -28,7 +30,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       await storage.commit({
         tenantId: TENANT,
         evidence: [e1],
-        receipt: { key: KEY, value: bytes('receipt') },
+        receipt: { key: KEY, build: () => bytes('receipt') },
       });
       expect(recorder.batches).toHaveLength(1);
       const batch = recorder.batches[0]!;
@@ -47,7 +49,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       const request = {
         tenantId: TENANT,
         evidence: [e1],
-        receipt: { key: KEY, value: bytes('receipt') },
+        receipt: { key: KEY, build: () => bytes('receipt') },
       };
       expect((await rejectionOf(storage.commit(request))) as Error).toBeInstanceOf(Error);
       expect(await storage.getEvidence(TENANT, 'e1')).toBeUndefined();
@@ -65,7 +67,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         storage.commit({
           tenantId: TENANT,
           evidence: [e1],
-          receipt: { key: KEY, value: bytes('receipt') },
+          receipt: { key: KEY, build: () => bytes('receipt') },
         }),
       );
       expect(await storage.getEvidence(TENANT, 'e1')).toEqual(e1);
@@ -78,13 +80,13 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       await storage.commit({
         tenantId: TENANT,
         evidence: [e1],
-        receipt: { key: KEY, value: bytes('first') },
+        receipt: { key: KEY, build: () => bytes('first') },
       });
       const error = await rejectionOf(
         storage.commit({
           tenantId: TENANT,
           evidence: [makeInlineEvidence('e2')],
-          receipt: { key: KEY, value: bytes('second') },
+          receipt: { key: KEY, build: () => bytes('second') },
         }),
       );
       expect(error).toBeInstanceOf(EvidenceProjectionCommitError);
@@ -102,7 +104,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       const result = await storage.commit({
         tenantId: TENANT,
         evidence: [e1],
-        receipt: { key: KEY, value: bytes('receipt') },
+        receipt: { key: KEY, build: () => bytes('receipt') },
       });
       expect(result.evidence).toEqual([{ id: 'e1', outcome: 'duplicate' }]);
       expect(recorder.batches).toHaveLength(2);
@@ -120,13 +122,63 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
     it('refuses a commit that has only a receipt, and an empty key or value', async () => {
       const storage = makeBackend();
       for (const request of [
-        { tenantId: TENANT, receipt: { key: KEY, value: bytes('r') } },
-        { tenantId: TENANT, evidence: [e1], receipt: { key: '', value: bytes('r') } },
-        { tenantId: TENANT, evidence: [e1], receipt: { key: KEY, value: new Uint8Array() } },
+        { tenantId: TENANT, receipt: { key: KEY, build: () => bytes('r') } },
+        { tenantId: TENANT, evidence: [e1], receipt: { key: '', build: () => bytes('r') } },
+        { tenantId: TENANT, evidence: [e1], receipt: { key: KEY, build: () => new Uint8Array() } },
       ]) {
         const error = await rejectionOf(storage.commit(request));
         expect((error as EvidenceProjectionCommitError).code).toBe('invalid-commit');
       }
+    });
+
+    it('builds the receipt from the outcomes of the attempt that carries it, once per attempt', async () => {
+      let storage: EvidenceProjectionStorage | undefined;
+      let interposed = false;
+      storage = makeBackend((apply) => async (batch) => {
+        if (!interposed) {
+          interposed = true;
+          // Another writer appends the same record after this attempt was planned.
+          await storage?.appendEvidence(e1);
+        }
+        return apply(batch);
+      });
+      const seen: string[][] = [];
+      await storage.commit({
+        tenantId: TENANT,
+        evidence: [e1],
+        receipt: {
+          key: KEY,
+          build: (outcomes) => {
+            seen.push(outcomes.evidence.map((entry) => `${entry.id}:${entry.outcome}`));
+            return bytes(seen.at(-1)!.join());
+          },
+        },
+      });
+      expect(seen).toEqual([['e1:appended'], ['e1:duplicate']]);
+      expect(await storage.getReceipt(KEY)).toEqual(bytes('e1:duplicate'));
+    });
+
+    it('refuses a receipt key that is also a record key in the same batch', async () => {
+      const storage = makeBackend();
+      const keys = createEvidenceProjectionKeys();
+      for (const key of [
+        keys.evidence(TENANT, 'e1'),
+        keys.current(TENANT, NAMESPACE, 'p1'),
+        keys.supersession(TENANT, 'e0'),
+        keys.history(TENANT, NAMESPACE, 'p1', 1),
+        `${keys.evidencePrefix}t:elsewhere:e:anything`,
+      ]) {
+        const error = await rejectionOf(
+          storage.commit({
+            tenantId: TENANT,
+            evidence: [e1],
+            projections: [makeFact('p1', [e1])],
+            receipt: { key, build: () => bytes('receipt') },
+          }),
+        );
+        expect((error as EvidenceProjectionCommitError).code).toBe('invalid-commit');
+      }
+      expect(await storage.getEvidence(TENANT, 'e1')).toBeUndefined();
     });
 
     it('counts the receipt toward the batch cap', async () => {
@@ -139,7 +191,7 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         storage.commit({
           tenantId: TENANT,
           evidence,
-          receipt: { key: KEY, value: bytes('receipt') },
+          receipt: { key: KEY, build: () => bytes('receipt') },
         }),
       );
       expect(error).toBeInstanceOf(EvidenceProjectionBatchLimitError);
@@ -159,7 +211,7 @@ describe('commit receipt (in-memory bounds)', () => {
       tenantId: TENANT,
       evidence: [e1],
       projections: [projection],
-      receipt: { key: KEY, value: bytes('receipt') },
+      receipt: { key: KEY, build: () => bytes('receipt') },
     });
     expect(await storage.getProjection(TENANT, NAMESPACE, 'p1')).toEqual(projection);
   });

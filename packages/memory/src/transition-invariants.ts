@@ -1,11 +1,11 @@
 import { type EvidenceProjectionRecord } from './evidence-projection-schema';
+import type { TransitionRefusal } from './transition-outcome';
 import {
   plannedProjections,
   projectionLabel,
   type TransitionPlan,
   type TransitionValidationContext,
 } from './transition-plan';
-import type { TransitionRefusal } from './transition-validator';
 
 /**
  * Check 7: one invariant set per projection kind, plus an embedding-fit

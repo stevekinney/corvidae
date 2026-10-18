@@ -495,8 +495,8 @@ export function createEvidenceProjectionStoreCore(options: {
     };
     if (evidence.length === 0 && projections.length === 0) invalid('The commit is empty.');
     const { receipt } = commit;
-    if (receipt !== undefined && (receipt.key.length === 0 || receipt.value.length === 0)) {
-      invalid('The commit receipt needs a non-empty key and value.');
+    if (receipt !== undefined && receipt.key.length === 0) {
+      invalid('The commit receipt needs a non-empty key.');
     }
     const evidenceIds = new Set(evidence.map((record) => record.id));
     if (evidenceIds.size !== evidence.length) invalid('The commit repeats an evidence id.');
@@ -515,6 +515,24 @@ export function createEvidenceProjectionStoreCore(options: {
     return { evidence, projections };
   }
 
+  /** A receipt key that another write of the same batch uses, or that lies in a record family, would overwrite a record. */
+  function planReceipt(
+    builder: BatchPlan,
+    receipt: NonNullable<EvidenceProjectionCommit['receipt']>,
+  ): void {
+    const collides =
+      builder.conditions.has(receipt.key) ||
+      builder.operations.some((operation) => operation.key === receipt.key) ||
+      receipt.key.startsWith(keys.evidencePrefix) ||
+      receipt.key.startsWith(keys.projectionPrefix);
+    if (collides) {
+      throw new EvidenceProjectionCommitError(
+        'invalid-commit',
+        `The commit receipt key "${receipt.key}" collides with a record key.`,
+      );
+    }
+  }
+
   async function planCommit(request: EvidenceProjectionCommit): Promise<{
     batch: PlannedBatch;
     result: EvidenceProjectionCommitResult;
@@ -524,21 +542,24 @@ export function createEvidenceProjectionStoreCore(options: {
     const planned = await planEvidence(builder, request.tenantId, evidence);
     const projectionOutcomes = await planProjections(builder, projections, planned.appended);
     const { receipt } = request;
+    const result = { evidence: planned.outcomes, projections: projectionOutcomes };
     if (receipt !== undefined) {
-      // Refusing here, not losing the batch, keeps a lost receipt race from burning every attempt.
+      planReceipt(builder, receipt);
       if ((await reader.get(receipt.key)) !== null) {
+        // Refusing here, not losing the batch, keeps a lost receipt race from burning every attempt.
         throw new EvidenceProjectionCommitError(
           'receipt-exists',
           `A receipt is already stored under "${receipt.key}".`,
         );
       }
+      const value = receipt.build(result);
+      if (value.length === 0) {
+        throw new EvidenceProjectionCommitError('invalid-commit', 'The commit receipt is empty.');
+      }
       builder.require(receipt.key, null);
-      builder.put(receipt.key, receipt.value);
+      builder.put(receipt.key, value);
     }
-    return {
-      batch: builder.toBatch(),
-      result: { evidence: planned.outcomes, projections: projectionOutcomes },
-    };
+    return { batch: builder.toBatch(), result };
   }
 
   async function executeCommit(

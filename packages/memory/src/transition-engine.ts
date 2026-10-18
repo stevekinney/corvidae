@@ -1,7 +1,4 @@
-import type {
-  EvidenceProjectionCommitResult,
-  EvidenceProjectionStorage,
-} from './evidence-projection-storage';
+import type { EvidenceProjectionStorage } from './evidence-projection-storage';
 import { MemoryEvidenceValidationError } from './evidence-schema';
 import type {
   TransitionEvent,
@@ -22,12 +19,9 @@ import {
   DEFAULT_TRANSITION_KEY_PREFIX,
   encodeTransitionReceipt,
   type TransitionReceipt,
+  type TransitionValidationCheck,
 } from './transition-receipt';
-import {
-  buildReceipt,
-  predictOutcomes,
-  type PredictedOutcomes,
-} from './transition-receipt-builder';
+import { buildReceipt } from './transition-receipt-builder';
 import { validateTransition } from './transition-validator';
 
 export interface TransitionEngineHookContext {
@@ -42,7 +36,11 @@ export interface CreateTransitionEngineOptions {
   readonly sink: TransitionEventSink;
   /** The clock. A submission reads it twice, or once when it finds an existing receipt. */
   readonly now: () => number;
-  /** Defaults to `DEFAULT_TRANSITION_KEY_PREFIX`; a caller with custom storage prefixes keeps them disjoint. */
+  /**
+   * Defaults to `DEFAULT_TRANSITION_KEY_PREFIX`. A custom prefix must lie inside
+   * that family and end with `:`, which keeps it disjoint from the evidence,
+   * projection, record, and governance families.
+   */
   readonly receiptKeyPrefix?: string;
   /**
    * Test-only barriers at the engine's own write boundaries. The store's batch
@@ -95,16 +93,6 @@ export class TransitionIdentifierConflictError extends Error {
       `Operation "${operationId}" already committed a different proposal (${storedDigest}); this one is ${submittedDigest}.`,
     );
     this.name = 'TransitionIdentifierConflictError';
-  }
-}
-
-/** The commit applied, but not in the way its receipt says it would. */
-class TransitionReceiptMismatchError extends Error {
-  readonly code = 'receipt-mismatch';
-
-  constructor(detail: string) {
-    super(detail);
-    this.name = 'TransitionReceiptMismatchError';
   }
 }
 
@@ -182,7 +170,16 @@ async function requestedSources(
 
 export function createTransitionEngine(options: CreateTransitionEngineOptions): TransitionEngine {
   const { storage, sink, now, hooks } = options;
-  const keys = createTransitionKeys(options.receiptKeyPrefix ?? DEFAULT_TRANSITION_KEY_PREFIX);
+  const receiptKeyPrefix = options.receiptKeyPrefix ?? DEFAULT_TRANSITION_KEY_PREFIX;
+  if (
+    !receiptKeyPrefix.startsWith(DEFAULT_TRANSITION_KEY_PREFIX) ||
+    !receiptKeyPrefix.endsWith(':')
+  ) {
+    throw new RangeError(
+      `receiptKeyPrefix must lie inside the receipt key family "${DEFAULT_TRANSITION_KEY_PREFIX}" and end with ":".`,
+    );
+  }
+  const keys = createTransitionKeys(receiptKeyPrefix);
 
   async function readReceipt(
     tenantId: string,
@@ -200,6 +197,8 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
     const digest = digestOfParsedProposal(proposal);
     const { tenantId, operationId, authority } = proposal;
     const signal = submitOptions?.signal;
+    // A call, not a property read, so no narrowing hides a signal that aborts between awaits.
+    const isAborted = (): boolean => signal?.aborted === true;
     const requestedAt = now();
     const reader = createTransitionReader(storage, tenantId);
     let eventAt = requestedAt;
@@ -286,25 +285,48 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
       return { outcome: 'canceled' };
     }
 
-    /** Applies the batch. Resolves to the commit's report, or to the result that ends the submission. */
+    /**
+     * Applies the batch with the receipt the store builds for the attempt that
+     * lands. The receipt is built from that attempt's own outcomes, so it records
+     * what the batch carrying it did. Resolves to the receipt as built, or to the
+     * result that ends the submission.
+     */
     async function apply(
       plan: TransitionPlan,
-      receiptBytes: Uint8Array,
-    ): Promise<{ done: TransitionResult } | { report: EvidenceProjectionCommitResult }> {
+      checks: readonly TransitionValidationCheck[],
+      committedAt: number,
+    ): Promise<{ done: TransitionResult } | { receipt: TransitionReceipt; bytes: Uint8Array }> {
+      let built: { receipt: TransitionReceipt; bytes: Uint8Array } | undefined;
       try {
         await runHook(hooks?.beforeBatch);
-        if (signal?.aborted === true) return { done: await canceled() };
-        const report = await storage.commit({
+        if (isAborted()) return { done: await canceled() };
+        await storage.commit({
           tenantId,
           evidence: plan.evidence,
           projections: plannedProjections(plan),
-          receipt: { key: keys.receipt(tenantId, operationId), value: receiptBytes },
+          receipt: {
+            key: keys.receipt(tenantId, operationId),
+            build: (outcomes) => {
+              const receipt = buildReceipt({
+                proposal,
+                plan,
+                digest,
+                checks,
+                outcomes,
+                requestedAt,
+                committedAt,
+              });
+              built = { receipt, bytes: encodeTransitionReceipt(receipt) };
+              return built.bytes;
+            },
+          },
         });
         await runHook(hooks?.afterBatch);
-        return { report };
       } catch (error) {
         return { done: await afterFailure(error) };
       }
+      if (built === undefined) throw new Error('The commit applied without building its receipt.');
+      return built;
     }
 
     try {
@@ -317,12 +339,14 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
       const existing = await readReceipt(tenantId, operationId);
       if (existing !== undefined) return await settleAgainst(existing);
 
+      if (isAborted()) return await canceled();
       await emit({ kind: 'validation-started' });
       const committedAt = now();
       eventAt = committedAt;
 
       const validation = await validateTransition({ proposal, reader, at: committedAt });
       if (!validation.ok) {
+        if (isAborted()) return await canceled();
         await emit({ kind: 'rejected', reason: validation.reason, detail: validation.detail });
         return { outcome: 'rejected', reason: validation.reason, detail: validation.detail };
       }
@@ -331,41 +355,20 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
         revision.stale === undefined ? [] : [revision.stale],
       );
       if (stale.length > 0) {
+        if (isAborted()) return await canceled();
         const detail = stale.join(' ');
         await emit({ kind: 'conflicted', reason: 'stale-revision', detail });
         return { outcome: 'conflicted', reason: 'stale-revision', detail };
       }
 
-      const predicted: PredictedOutcomes = await predictOutcomes(plan, reader);
-      const receipt = buildReceipt({
-        proposal,
-        plan,
-        digest,
-        checks: validation.checks,
-        predicted,
-        requestedAt,
-        committedAt,
-      });
-      const receiptBytes = encodeTransitionReceipt(receipt);
-
-      if (signal?.aborted === true) return await canceled();
-      const applied = await apply(plan, receiptBytes);
+      if (isAborted()) return await canceled();
+      const applied = await apply(plan, validation.checks, committedAt);
       if ('done' in applied) return applied.done;
 
-      const reported = [...applied.report.evidence, ...applied.report.projections].map(
-        (entry) => entry.outcome,
-      );
-      const expected = [...predicted.evidence, ...predicted.projections];
-      if (reported.join() !== expected.join()) {
-        throw new TransitionReceiptMismatchError(
-          'The commit reported different outcomes than its receipt records.',
-        );
-      }
+      // A defensive check: the receipt this batch wrote must still be there, byte for byte.
       const stored = await storage.getReceipt(keys.receipt(tenantId, operationId));
-      if (stored === null || !bytesEqual(stored, receiptBytes)) {
-        throw new TransitionReceiptMismatchError(
-          'The stored receipt is missing or differs from the one written.',
-        );
+      if (stored === null || !bytesEqual(stored, applied.bytes)) {
+        throw new Error('The stored receipt is missing or differs from the one written.');
       }
 
       try {
@@ -373,8 +376,8 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
       } catch (error) {
         return await afterFailure(error);
       }
-      await emitCommitted(receipt, plan);
-      return { outcome: 'committed', receipt, replayed: false };
+      await emitCommitted(applied.receipt, plan);
+      return { outcome: 'committed', receipt: applied.receipt, replayed: false };
     } catch (error) {
       if (error instanceof TransitionIdentifierConflictError) throw error;
       return unknown(error);

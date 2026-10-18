@@ -15,7 +15,7 @@ import {
 } from './transition-test-support';
 
 /**
- * A `correct-evidence` proposal is COR-1546's one-batch correction: a successor
+ * A `correct-evidence` proposal is a one-batch correction: a successor
  * evidence record, the supersession marker, a projection created from the
  * successor, the revision that supersedes the old projection, and the receipt.
  * Interrupted at each step, it converges to one of exactly two states: nothing

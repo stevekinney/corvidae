@@ -101,6 +101,28 @@ const proposedCreatedProjectionSchema = z
 
 const confidenceSchema = z.number().min(0).max(1);
 
+/** Deepest nesting a rebuilt payload may have; a payload this deep is not a record of memory. */
+const MAXIMUM_PAYLOAD_DEPTH = 64;
+
+/**
+ * Whether a value survives a JSON round trip unchanged: plain objects and
+ * arrays of strings, finite numbers, booleans, and null, with no cycles. A
+ * `rebuilt` payload is `unknown` until the engine narrows it, so this is the
+ * check that keeps a `bigint` or a cyclic object from escaping as a raw
+ * `TypeError` when the proposal is digested.
+ */
+function isJsonValue(value: unknown, ancestors: readonly object[] = []): boolean {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  if (ancestors.includes(value) || ancestors.length >= MAXIMUM_PAYLOAD_DEPTH) return false;
+  const path = [...ancestors, value];
+  if (Array.isArray(value)) return value.every((item) => isJsonValue(item, path));
+  const prototype: unknown = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  return Object.values(value).every((member) => isJsonValue(member, path));
+}
+
 /**
  * A revision of one projection, at the revision the proposer expects it to be
  * at. `rebuilt.payload` is `unknown` here because the stored `kind` is not known
@@ -121,7 +143,10 @@ const proposedRevisionSchema = z
         .object({
           kind: z.literal('rebuilt'),
           sources: z.array(sourceSchema).min(1),
-          payload: z.unknown().refine((value) => value !== undefined, 'a rebuild needs a payload'),
+          payload: z
+            .unknown()
+            .refine((value) => value !== undefined, 'a rebuild needs a payload')
+            .refine(isJsonValue, 'a rebuilt payload must be plain JSON, without cycles'),
           embedding: embeddingSchema.optional(),
           confidence: confidenceSchema.optional(),
           projectorRevision: nonEmpty.optional(),
@@ -309,7 +334,8 @@ function canonicalJson(value: unknown): string {
 
 /**
  * The idempotency digest: `sha256:` over the canonical JSON of the parsed
- * proposal. Parsing first drops absent optionals and rejects unknown keys. The
+ * proposal, where canonical means every object's keys sorted and arrays left in
+ * order. Parsing first drops absent optionals and rejects unknown keys. The
  * proposal carries none of the fields the engine stamps from its clock
  * (`writtenAt`, `transition.at`, and a `validity` bound derived from `now()`),
  * so two submissions of one proposal under different clocks share a digest.
@@ -322,5 +348,13 @@ export function transitionDigest(proposal: unknown): string {
 
 /** {@link transitionDigest} for a proposal that has already been parsed. */
 export function digestOfParsedProposal(proposal: TransitionProposal): string {
-  return `sha256:${sha256HexSync(canonicalJson(proposal))}`;
+  let canonical: string;
+  try {
+    canonical = canonicalJson(proposal);
+  } catch (error) {
+    throw new MemoryTransitionProposalError(
+      `it has no canonical form: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return `sha256:${sha256HexSync(canonical)}`;
 }

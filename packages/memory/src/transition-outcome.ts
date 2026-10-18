@@ -39,6 +39,12 @@ export type TransitionRejectionReason =
   | 'batch-limit'
   | 'capacity';
 
+/** A check's refusal: the reason code and a detail naming the record and the rule. */
+export type TransitionRefusal = {
+  readonly reason: TransitionRejectionReason;
+  readonly detail: string;
+};
+
 export type TransitionConflictReason =
   | 'stale-revision'
   /** `ProjectionRevisionConflictError`. */
@@ -47,7 +53,12 @@ export type TransitionConflictReason =
   | 'projection-terminal'
   | 'evidence-immutable';
 
-/** The five outcomes. Every submission that passes its schema ends in exactly one. */
+/**
+ * The five outcomes. Every submission that passes its schema ends in exactly
+ * one. `replayed` means the result was settled from a stored receipt, whichever
+ * submission wrote it: an exact retry, or a lost batch that turned out to have
+ * landed. It does not mean another caller committed the transition.
+ */
 export type TransitionResult =
   | {
       readonly outcome: 'committed';

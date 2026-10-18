@@ -213,7 +213,7 @@ export async function seedCorrectionState(storage: EvidenceProjectionStorage): P
 }
 
 /**
- * COR-1546's one-batch correction: a successor evidence record, a projection
+ * A one-batch correction: a successor evidence record, a projection
  * created from it, and the revision that supersedes the old projection.
  */
 export function correctionProposal(

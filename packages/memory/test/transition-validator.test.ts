@@ -29,6 +29,9 @@ import {
  * rejected.
  */
 
+/** An instant well after every fixture, used where a payload must not precede the clock. */
+const CLOCK_AFTER = FIXED_AT + 10_000_000;
+
 const authority = makeWriteAuthority();
 const base = { operationId: 'operation-1', tenantId: TENANT, authority };
 const e1 = makeInlineEvidence('e1');
@@ -503,5 +506,3 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
     });
   });
 }
-
-const CLOCK_AFTER = FIXED_AT + 10_000_000;

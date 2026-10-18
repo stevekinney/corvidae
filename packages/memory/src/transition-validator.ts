@@ -11,7 +11,7 @@ import {
 } from './governance/authority';
 import { decideMemoryAccess, type MemoryResourceDescriptor } from './governance/predicate';
 import { checkTypeInvariants } from './transition-invariants';
-import type { TransitionRejectionReason } from './transition-outcome';
+import type { TransitionRefusal, TransitionRejectionReason } from './transition-outcome';
 import {
   buildTransitionPlan,
   plannedProjections,
@@ -23,11 +23,6 @@ import {
 } from './transition-plan';
 import type { ProposedEvidence, TransitionProposal } from './transition-proposal';
 import type { TransitionValidationCheck } from './transition-receipt';
-
-export type TransitionRefusal = {
-  readonly reason: TransitionRejectionReason;
-  readonly detail: string;
-};
 
 export type ValidationResult =
   | {
@@ -94,16 +89,25 @@ async function sourceClaims({
   if (proposal.kind === 'revise-projection' || proposal.kind === 'correct-evidence') {
     for (const revision of proposal.revisions ?? []) {
       const { change } = revision;
-      const current =
-        change.kind === 'rebuilt'
-          ? undefined
-          : await reader.projection(revision.namespace, revision.id);
+      const operation = change.kind === 'revoked' ? 'revoke' : 'write';
+      const current = await reader.projection(revision.namespace, revision.id);
+      // Every change is authorized against the sources of the projection it replaces. A rebuild
+      // is authorized against the sources it brings as well; otherwise anyone could take over a
+      // projection by pointing it at evidence of their own.
       claims.push({
         label: projectionLabel(revision),
-        operation: change.kind === 'revoked' ? 'revoke' : 'write',
-        sources: change.kind === 'rebuilt' ? change.sources : (current?.sources ?? []),
-        supplied: change.kind === 'rebuilt',
+        operation,
+        sources: current?.sources ?? [],
+        supplied: false,
       });
+      if (change.kind === 'rebuilt') {
+        claims.push({
+          label: projectionLabel(revision),
+          operation,
+          sources: change.sources,
+          supplied: true,
+        });
+      }
     }
   }
   if (proposal.kind === 'consolidate') {
@@ -131,12 +135,22 @@ async function resolveEvidence(
   );
 }
 
-/** The operations a proposal needs: `write` for everything, plus `revoke` for a revoking revision. */
+/**
+ * The operations a proposal needs. A revocation is the control operation, so a
+ * proposal made only of revocations needs `revoke` alone; anything else it
+ * carries (evidence, a created projection, another kind of revision, a
+ * consolidation) needs `write`.
+ */
 function requiredOperations(proposal: TransitionProposal): MemoryOperation[] {
-  const revokes =
-    (proposal.kind === 'revise-projection' || proposal.kind === 'correct-evidence') &&
-    (proposal.revisions ?? []).some((revision) => revision.change.kind === 'revoked');
-  return revokes ? ['write', 'revoke'] : ['write'];
+  const revisions =
+    proposal.kind === 'revise-projection' || proposal.kind === 'correct-evidence'
+      ? (proposal.revisions ?? [])
+      : [];
+  const revokes = revisions.some((revision) => revision.change.kind === 'revoked');
+  const writes =
+    proposal.kind !== 'revise-projection' ||
+    revisions.some((revision) => revision.change.kind !== 'revoked');
+  return [...(writes ? (['write'] as const) : []), ...(revokes ? (['revoke'] as const) : [])];
 }
 
 /**
@@ -278,13 +292,12 @@ async function checkPriorState(
   plan: TransitionPlan,
 ): Promise<TransitionRefusal | undefined> {
   for (const revision of plan.revisions) {
-    if (revision.next === undefined) continue;
-    const { transition } = revision.next;
+    const { change } = revision.request;
     const successor =
-      transition.kind === 'superseded'
-        ? transition.supersededBy
-        : transition.kind === 'demoted'
-          ? transition.demotedBy
+      change.kind === 'superseded'
+        ? change.supersededBy
+        : change.kind === 'demoted'
+          ? change.demotedBy
           : undefined;
     if (
       successor !== undefined &&
@@ -292,7 +305,7 @@ async function checkPriorState(
     ) {
       return refuse(
         'prior-state-not-preserved',
-        `${projectionLabel(revision)} would be ${transition.kind} by ${projectionLabel({ namespace: revision.namespace, ...successor })}, which is not active after the proposal.`,
+        `${projectionLabel(revision)} would be ${change.kind} by ${projectionLabel({ namespace: revision.namespace, ...successor })}, which is not active after the proposal.`,
       );
     }
   }
@@ -300,12 +313,23 @@ async function checkPriorState(
     if (record.transition.kind !== 'created') continue;
     for (const reference of record.transition.supersedes ?? []) {
       const retired = revisionOf(plan, record.namespace, reference.id);
+      const change = retired?.request.change;
       const retires =
-        retired?.changeKind === 'superseded' && retired.expectedRevision === reference.revision;
+        change?.kind === 'superseded' && retired?.expectedRevision === reference.revision;
       if (!retires) {
         return refuse(
           'prior-state-not-preserved',
           `${projectionLabel(record)} supersedes ${projectionLabel({ namespace: record.namespace, ...reference })}, which the proposal does not supersede.`,
+        );
+      }
+      // Both sides name each other: the retirement must name this very record as its successor.
+      if (
+        change.supersededBy.id !== record.id ||
+        change.supersededBy.revision !== record.revision
+      ) {
+        return refuse(
+          'prior-state-not-preserved',
+          `${projectionLabel(record)} supersedes ${projectionLabel({ namespace: record.namespace, ...reference })}, but that revision is superseded by ${projectionLabel({ namespace: record.namespace, ...change.supersededBy })}.`,
         );
       }
     }
@@ -333,12 +357,12 @@ async function checkTemporal(
   plan: TransitionPlan,
 ): Promise<TransitionRefusal | undefined> {
   for (const revision of plan.revisions) {
-    const { current, next } = revision;
-    if (current === undefined || next === undefined) continue;
-    if (next.transition.at < current.transition.at) {
+    const { base, next } = revision;
+    if (base === undefined || next === undefined) continue;
+    if (next.transition.at < base.transition.at) {
       return refuse(
         'temporal-inconsistency',
-        `${projectionLabel(revision)} would be stamped ${next.transition.at}, before the revision it follows (${current.transition.at}).`,
+        `${projectionLabel(revision)} would be stamped ${next.transition.at}, before the revision it follows (${base.transition.at}).`,
       );
     }
     const { validFrom, validUntil } = next.validity;
@@ -351,6 +375,13 @@ async function checkTemporal(
   }
   for (const record of plan.created) {
     if (record.transition.kind !== 'created') continue;
+    const { validFrom, validUntil } = record.validity;
+    if (validUntil !== undefined && validUntil <= validFrom) {
+      return refuse(
+        'temporal-inconsistency',
+        `${projectionLabel(record)} would be valid until ${validUntil}, not after it begins (${validFrom}).`,
+      );
+    }
     for (const reference of record.transition.supersedes ?? []) {
       const predecessor = await context.reader.projectionRevision(
         record.namespace,
@@ -370,9 +401,10 @@ async function checkTemporal(
 
 /**
  * Check 6, the `duration` rule only: evidence is expired when
- * `writtenAt + milliseconds <= the transition time`. It applies to evidence in
- * the proposal and to the source evidence of created and rebuilt projections.
- * Enforcing the other rules belongs to the governance work.
+ * `writtenAt + milliseconds <= the transition time`. It applies to the stored
+ * source evidence of created and rebuilt projections. Evidence in the proposal is
+ * stamped with the transition time itself, so it cannot be expired, and the other
+ * rules are not checked here; enforcing them belongs to the governance work.
  */
 async function checkRetention(
   context: TransitionValidationContext,
@@ -381,19 +413,13 @@ async function checkRetention(
   const { at } = context;
   const expired = (record: EvidenceRecord): boolean =>
     record.retention.kind === 'duration' && record.writtenAt + record.retention.milliseconds <= at;
-  for (const record of plan.evidence) {
-    if (expired(record)) {
-      return refuse('retention-expired', `Evidence "${record.id}" is already past its retention.`);
-    }
-  }
   const rebuilt = plan.revisions.flatMap((revision) =>
     revision.changeKind === 'rebuilt' && revision.next !== undefined ? [revision.next] : [],
   );
   for (const projection of [...plan.created, ...rebuilt]) {
     for (const source of projection.sources) {
-      const evidence =
-        plan.evidence.find((record) => record.id === source.evidenceId) ??
-        (await context.reader.evidence(source.evidenceId));
+      if (plan.evidence.some((record) => record.id === source.evidenceId)) continue;
+      const evidence = await context.reader.evidence(source.evidenceId);
       if (evidence !== undefined && expired(evidence)) {
         return refuse(
           'retention-expired',
@@ -440,9 +466,13 @@ const CHECKS: ReadonlyArray<
  * reason decides the outcome. Authorization, coverage, and faithfulness read the
  * proposal and the store; the plan is built after them, so a rebuilt payload that
  * fits no kind is refused after they pass; the remaining four read the plan.
- * The stale-revision comparison is the engine's, and runs only once every check
- * here has passed, so a proposal both invalid and stale is refused, not
- * conflicted.
+ * A revision that expects an older (or unknown) revision is planned over the
+ * revision it expected, or the current one when that is not in history, so every
+ * check still runs. The stale-revision comparison is the engine's, and runs only
+ * once every check here has passed, so a proposal both invalid and stale is
+ * refused, not conflicted. The one exception is a revision of a projection that
+ * does not exist at all: there is nothing to plan over, so the checks that need its
+ * record are skipped for it and the engine reports it as stale.
  */
 export async function validateTransition(
   context: TransitionValidationContext,
@@ -474,7 +504,8 @@ export async function validateTransition(
       return { ok: false, ...refuse(error.reason, error.detail) };
     throw error;
   }
-  // A consolidation with a stale candidate has no summary to check; the engine reports the conflict.
+  // A consolidation naming a candidate that does not exist has no summary to check; the engine
+  // reports the conflict. A candidate that exists at another revision is planned and checked.
   if (proposal.kind === 'consolidate' && plan.consolidation === undefined) {
     return { ok: true, plan, checks };
   }

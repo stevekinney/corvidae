@@ -13,10 +13,22 @@ export interface EvidenceProjectionCommit {
   readonly projections?: readonly EvidenceProjectionRecord[];
   /**
    * An opaque record written in the same batch, conditioned on `key` being
-   * absent. The store never reads or decodes it; the transition engine writes
-   * its receipt here so a transition is applied with its receipt or not at all.
+   * absent. The store never reads or decodes what `build` returns; the
+   * transition engine writes its receipt here so a transition is applied with its
+   * receipt or not at all.
+   *
+   * `build` runs once for every planning attempt, with that attempt's per-record
+   * outcomes, and the bytes it returns ride in the batch that attempt hands to
+   * the backend. A batch that is lost and re-planned therefore builds the
+   * receipt again over what the store now holds, so a receipt records exactly
+   * what the batch that carries it did, never a prediction. The key must not be
+   * any key the commit's records write, nor lie in the evidence or projection
+   * key families; the commit is `invalid-commit` otherwise.
    */
-  readonly receipt?: { readonly key: string; readonly value: Uint8Array };
+  readonly receipt?: {
+    readonly key: string;
+    readonly build: (outcomes: EvidenceProjectionCommitResult) => Uint8Array;
+  };
 }
 
 export interface EvidenceProjectionCommitResult {

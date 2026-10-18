@@ -123,6 +123,78 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
     });
   });
 
+  describe(`two principals, every change kind (${label})`, () => {
+    const CHANGES = {
+      demoted: { kind: 'demoted', demotedBy: { id: 'p1', revision: 1 } },
+      superseded: { kind: 'superseded', supersededBy: { id: 'p1', revision: 1 } },
+      revoked: { kind: 'revoked', reasonCode: 'mine now' },
+      rebuilt: {
+        kind: 'rebuilt',
+        sources: [] as Array<{ evidenceId: string; digest: string }>,
+        payload: { statement: 'Overwritten.', entities: [] },
+      },
+    } as const;
+    const own = proposedEvidence('e7', { ownerId: 'owner-2', text: 'Intruder text.' });
+
+    async function seededWithIntruderEvidence() {
+      const harness = createHarness(makeBackend);
+      await seedCorrectionState(harness.storage);
+      expectCommitted(
+        await harness.engine.submit({
+          kind: 'append-evidence',
+          operationId: 'seed-intruder',
+          tenantId: TENANT,
+          authority: intruder,
+          evidence: [own],
+        }),
+      );
+      return harness;
+    }
+
+    for (const kind of ['demoted', 'superseded', 'revoked', 'rebuilt'] as const) {
+      const change = () =>
+        kind === 'rebuilt'
+          ? { ...CHANGES.rebuilt, sources: [{ evidenceId: 'e7', digest: own.digest }] }
+          : CHANGES[kind];
+
+      it(`refuses a ${kind} revision of another owner's projection in a revise-projection`, async () => {
+        const harness = await seededWithIntruderEvidence();
+        const result = expectRefused(
+          await harness.engine.submit({
+            kind: 'revise-projection',
+            operationId: `revise-${kind}`,
+            tenantId: TENANT,
+            authority: intruder,
+            revisions: [{ namespace: NAMESPACE, id: 'p1', expectedRevision: 1, change: change() }],
+          }),
+          'rejected',
+        );
+        expect(result.reason).toBe('unauthorized');
+        const untouched = await harness.storage.getProjection(TENANT, NAMESPACE, 'p1');
+        expect(untouched?.revision).toBe(1);
+      });
+
+      it(`refuses a ${kind} revision of another owner's projection in a correct-evidence`, async () => {
+        const harness = await seededWithIntruderEvidence();
+        const result = expectRefused(
+          await harness.engine.submit({
+            kind: 'correct-evidence',
+            operationId: `correct-${kind}`,
+            tenantId: TENANT,
+            authority: intruder,
+            successor: proposedEvidence('e8', { ownerId: 'owner-2', supersedes: ['e7'] }),
+            revisions: [{ namespace: NAMESPACE, id: 'p1', expectedRevision: 1, change: change() }],
+          }),
+          'rejected',
+        );
+        expect(result.reason).toBe('unauthorized');
+        const untouched = await harness.storage.getProjection(TENANT, NAMESPACE, 'p1');
+        expect(untouched?.revision).toBe(1);
+        expect(await harness.storage.getEvidence(TENANT, 'e8')).toBeUndefined();
+      });
+    }
+  });
+
   describe(`two tenants (${label})`, () => {
     it("does not return tenant B's receipt for tenant A's id", async () => {
       const harness = createHarness(makeBackend);
