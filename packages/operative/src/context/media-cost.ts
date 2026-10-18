@@ -7,8 +7,11 @@
  * typed {@link MediaCostOutcome}: `estimated` admits the part; `unsupported`
  * and `unbounded` do not.
  *
- * The token figure is a conservative upper bound derived from the part's byte
- * length and a per-modality rate, not a provider count. A caller with a
+ * The token figure is an estimate derived from the part's byte length and a
+ * per-modality rate, not a provider count, and it is not an upper bound: a
+ * text-heavy document costs far more tokens per byte than the rate assumes. An
+ * underestimate surfaces as a typed provider context-overflow error, which the
+ * overflow mutator recovers from by compacting. A caller with a
  * provider counter supplies its own {@link MediaCostEstimator} (and reports
  * `basis: 'provider-count'`); this catalog estimator never claims that basis.
  */
@@ -24,9 +27,10 @@ import type { BackendDescriptor } from '../providers/model-catalog';
 import type { MediaCostEstimator, MediaCostOutcome, MediaPartPosition } from './types';
 
 /**
- * Upper-bound tokens per KiB of media bytes, by modality. Deliberately
- * pessimistic: an overestimate triggers compaction or rejection early, an
- * underestimate would admit a request the provider then refuses.
+ * Estimated tokens per KiB of media bytes, by modality. Images and audio are
+ * priced by the provider per image or per second rather than per byte, so these
+ * rates lean high for them; documents are the weak spot, because a PDF of dense
+ * text costs more tokens per byte than 3.
  */
 export const MEDIA_TOKENS_PER_KIBIBYTE = Object.freeze({
   image: 2,
@@ -86,9 +90,13 @@ export interface CatalogMediaCostEstimatorOptions {
 }
 
 /**
- * Costs media against `descriptors`: the backends the run can call. A part must
- * be acceptable to every descriptor that accepts its modality at all (the run
- * may be served by any of them); the cost is the highest across them.
+ * Costs media against `descriptors`: the backends the run can call. Only the
+ * descriptors that accept the part's modality at all are consulted, and the
+ * part is refused as `modality-not-accepted` only when none does. The part must
+ * be acceptable to every consulted descriptor (the run may be served by any of
+ * them). A part of unknown size is costed at the per-part byte cap its
+ * modality carries, and is `size-unknown` only when a consulted descriptor
+ * declares no such cap.
  */
 export function createCatalogMediaCostEstimator(
   descriptors: readonly BackendDescriptor[],
@@ -104,7 +112,7 @@ export function createCatalogMediaCostEstimator(
       return { ...base, outcome: 'unbounded', reason: 'no-estimator' };
     }
     const accepting = descriptors.filter((descriptor) => descriptor.modalities[part.type].input);
-    if (accepting.length < descriptors.length) {
+    if (accepting.length === 0) {
       return { ...base, outcome: 'unsupported', reason: 'modality-not-accepted' };
     }
     if (
@@ -122,7 +130,11 @@ export function createCatalogMediaCostEstimator(
       return { ...base, outcome: 'unsupported', reason: 'mime-family-not-accepted' };
     }
 
-    const byteLength = resolved?.byteLength ?? sourceByteLength(source);
+    const knownByteLength = resolved?.byteLength ?? sourceByteLength(source);
+    const caps = accepting.map((descriptor) => perPartByteCap(descriptor, part.type));
+    const byteLength =
+      knownByteLength ??
+      (caps.every((cap): cap is number => cap !== undefined) ? Math.max(...caps) : undefined);
     if (byteLength === undefined) {
       return { ...base, outcome: 'unbounded', reason: 'size-unknown' };
     }
@@ -144,6 +156,17 @@ export function createCatalogMediaCostEstimator(
     );
     return { ...base, outcome: 'estimated', tokens, basis: 'catalog-estimate' };
   };
+}
+
+/** The smallest per-part byte cap a descriptor declares for a modality, if any. */
+function perPartByteCap(
+  descriptor: BackendDescriptor,
+  modality: MediaContent['type'],
+): number | undefined {
+  const caps = descriptor.mediaLimits
+    .filter((limit) => limit.modality === modality && limit.scope === 'per-part')
+    .flatMap((limit) => (limit.maxBytes === undefined ? [] : [limit.maxBytes]));
+  return caps.length === 0 ? undefined : Math.min(...caps);
 }
 
 function dataUrlMimeType(source: ContentSource): string | undefined {

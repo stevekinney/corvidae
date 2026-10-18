@@ -8,6 +8,7 @@ import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './event
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
+import { admitStepMedia, mediaFingerprint } from './run-step-media';
 import { createElicit } from './run-step-support';
 import {
   applyWaterfallHandlerErrorPolicy,
@@ -99,6 +100,9 @@ export async function executeGeneration(
         response = prepareResult;
       } else {
         // beforeGenerate: waterfall that can modify the generate context
+        // What admission saw. A `beforeGenerate` handler may append to or replace
+        // the conversation, so the media it ends with is checked again below.
+        const admittedMedia = mediaFingerprint(conversation);
         let generateContext: GenerateContext = {
           conversation,
           step,
@@ -171,6 +175,21 @@ export async function executeGeneration(
             }
           }
           generateContext = beforeGenContext;
+        }
+
+        // Re-admit when the effective conversation's media differs from what
+        // admission saw: resolve, cost, and count it, and refuse a flagged asset,
+        // so a handler cannot add media that skipped all of it.
+        if (mediaFingerprint(generateContext.conversation) !== admittedMedia) {
+          const readmitted = await admitStepMedia({
+            deps,
+            conversation: generateContext.conversation,
+            step,
+            emitter,
+            refuseFlagged: true,
+          });
+          if ('kind' in readmitted) return readmitted;
+          generateContext = { ...generateContext, resolvedSources: readmitted.resolvedSources };
         }
 
         // onLLMInput: parallel allSettled, read-only, non-blocking. AB-204:

@@ -26,7 +26,7 @@ export function isConversationInput(
  * Throws an `AgentContractError` for an input that cannot start a run: an empty
  * part list, or a part that is not user-admissible (provider-generated blocks,
  * text carrying citations, or a part that fails the content schema). A
- * `{ conversation }` input is validated by the `Conversation` constructor.
+ * `{ conversation }` input must hold a `ConversationHistory`.
  */
 export function assertAgentInput(input: unknown): asserts input is AgentInput {
   if (typeof input === 'string') return;
@@ -34,7 +34,15 @@ export function assertAgentInput(input: unknown): asserts input is AgentInput {
     assertPartList(input);
     return;
   }
-  if (typeof input === 'object' && input !== null && 'conversation' in input) return;
+  if (typeof input === 'object' && input !== null && 'conversation' in input) {
+    // Shallow on purpose: the `Conversation` constructor validates the history
+    // in full when the run starts. This only refuses a value that cannot be one.
+    const { conversation } = input;
+    if (typeof conversation !== 'object' || conversation === null || Array.isArray(conversation)) {
+      throw new AgentContractError('Agent input { conversation } must hold a ConversationHistory');
+    }
+    return;
+  }
   throw new AgentContractError(
     'Agent input must be a string, an array of content parts, or { conversation }',
   );
@@ -68,6 +76,11 @@ export function snapshotAgentInput(input: AgentInput): AgentInput {
   if (typeof input === 'string') return input;
   if (isConversationInput(input)) return { conversation: structuredClone(input.conversation) };
   return structuredClone(input);
+}
+
+/** Snapshots a session payload: a string is immutable, a part array is cloned. */
+export function snapshotPayload(input: SessionInputPayload): SessionInputPayload {
+  return typeof input === 'string' ? input : structuredClone(input);
 }
 
 /** Appends a payload to a conversation as exactly one `user` message, parts in order. */

@@ -87,12 +87,32 @@ describe('createCatalogMediaCostEstimator', () => {
     ).toMatchObject({ outcome: 'unsupported', reason: 'mime-family-not-accepted' });
   });
 
-  it('cannot bound a part whose bytes are not carried', () => {
+  it('costs a part of unknown size at the per-part cap every backend declares for its modality', () => {
     const remote: MediaContent = {
       type: 'image',
       source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     };
-    expect(createCatalogMediaCostEstimator([anthropic])(remote, position)).toMatchObject({
+    const cap = anthropic.mediaLimits.find((entry) => entry.modality === 'image')!.maxBytes!;
+    expect(createCatalogMediaCostEstimator([anthropic])(remote, position)).toEqual({
+      ...position,
+      modality: 'image',
+      outcome: 'estimated',
+      tokens: (cap / 1024) * MEDIA_TOKENS_PER_KIBIBYTE.image,
+      basis: 'catalog-estimate',
+    });
+  });
+
+  it('cannot bound a part of unknown size when any backend declares no cap for its modality', () => {
+    const remote: MediaContent = {
+      type: 'image',
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
+    };
+    // Gemini declares an image count but no per-image byte limit.
+    expect(createCatalogMediaCostEstimator([gemini])(remote, position)).toMatchObject({
+      outcome: 'unbounded',
+      reason: 'size-unknown',
+    });
+    expect(createCatalogMediaCostEstimator([anthropic, gemini])(remote, position)).toMatchObject({
       outcome: 'unbounded',
       reason: 'size-unknown',
     });
@@ -140,14 +160,29 @@ describe('createCatalogMediaCostEstimator', () => {
     });
   });
 
-  it('must satisfy every backend the run may be served by', () => {
+  it('considers only the backends that accept the modality, and refuses only when none does', () => {
     const part = inline('audio', base64Of(1024), 'audio/mpeg');
     expect(createCatalogMediaCostEstimator([gemini])(part, position)).toMatchObject({
       outcome: 'estimated',
     });
+    // A mixed fleet: Anthropic takes no audio, so it is not consulted for it.
     expect(createCatalogMediaCostEstimator([gemini, anthropic])(part, position)).toMatchObject({
+      outcome: 'estimated',
+    });
+    expect(createCatalogMediaCostEstimator([anthropic, openai])(part, position)).toMatchObject({
       outcome: 'unsupported',
       reason: 'modality-not-accepted',
+    });
+  });
+
+  it('must satisfy the source form and MIME family of every backend that accepts the modality', () => {
+    const managed: MediaContent = {
+      type: 'image',
+      source: { kind: 'managed-asset', assetId: 'a' },
+    };
+    expect(createCatalogMediaCostEstimator([anthropic, gemini])(managed, position)).toMatchObject({
+      outcome: 'unsupported',
+      reason: 'source-form-not-accepted',
     });
   });
 });

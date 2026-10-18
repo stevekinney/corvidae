@@ -30,6 +30,7 @@ import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from '
 import { MediaAdmissionError } from './errors';
 import { RunErrorEvent } from './events';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
+import type { BackendDescriptor } from './providers/model-catalog';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 
 /** The source kinds a provider adapter can carry without a resolver. */
@@ -66,6 +67,47 @@ function locateMedia(conversation: Conversation): LocatedMedia[] {
   return located;
 }
 
+/**
+ * Refuses the parts past a backend's per-request cap on a modality. Counted in
+ * conversation order across every located part, against the smallest cap among
+ * the backends that accept the modality (the run may be served by any of them).
+ */
+function overCountParts(
+  located: readonly LocatedMedia[],
+  descriptors: readonly BackendDescriptor[],
+): Map<string, UnadmittedMediaCost> {
+  const refusals = new Map<string, UnadmittedMediaCost>();
+  const seen = new Map<MediaContent['type'], number>();
+  for (const { part, messageId, partIndex } of located) {
+    const caps = descriptors
+      .filter((descriptor) => descriptor.modalities[part.type].input)
+      .flatMap((descriptor) =>
+        descriptor.mediaCounts
+          .filter((count) => count.modality === part.type)
+          .map((count) => count.maxPerRequest),
+      );
+    const count = (seen.get(part.type) ?? 0) + 1;
+    seen.set(part.type, count);
+    if (caps.length > 0 && count > Math.min(...caps)) {
+      refusals.set(`${messageId}:${partIndex}`, {
+        messageId,
+        partIndex,
+        modality: part.type,
+        outcome: 'unsupported',
+        reason: 'media-count-exceeded',
+      });
+    }
+  }
+  return refusals;
+}
+
+/** A stable fingerprint of every media part and where it sits, to notice a change. */
+export function mediaFingerprint(conversation: Conversation): string {
+  return JSON.stringify(
+    locateMedia(conversation).map(({ part, messageId, partIndex }) => [messageId, partIndex, part]),
+  );
+}
+
 /** Whether `conversation` holds any media part a step must admit. */
 export function conversationHasMedia(conversation: Conversation): boolean {
   return locateMedia(conversation).length > 0;
@@ -80,8 +122,14 @@ export async function admitStepMedia(input: {
   readonly conversation: Conversation;
   readonly step: number;
   readonly emitter: EventDispatcher | undefined;
+  /**
+   * Also refuse an asset the safety gate `flagged`. Set when re-admitting media
+   * a `beforeGenerate` handler changed, which never reached the input guardrail
+   * that otherwise owns that verdict.
+   */
+  readonly refuseFlagged?: boolean | undefined;
 }): Promise<StepMedia | StepOutcome> {
-  const { deps, conversation, step, emitter } = input;
+  const { deps, conversation, step, emitter, refuseFlagged = false } = input;
   const located = locateMedia(conversation);
   const descriptors = readBackendDescriptors(deps.generate);
 
@@ -106,7 +154,15 @@ export async function admitStepMedia(input: {
         return { kind: 'error', error, errorKind: 'policy' };
       }
       const key = `${messageId}:${partIndex}`;
-      if (result.outcome === 'resolved') {
+      if (result.outcome === 'resolved' && refuseFlagged && result.safety === 'flagged') {
+        unavailable.set(key, {
+          messageId,
+          partIndex,
+          modality: part.type,
+          outcome: 'unsupported',
+          reason: 'asset-flagged',
+        });
+      } else if (result.outcome === 'resolved') {
         resolved.set(key, result);
       } else {
         unavailable.set(key, {
@@ -124,10 +180,13 @@ export async function admitStepMedia(input: {
 
   const estimate =
     deps.mediaCostEstimator ?? createCatalogMediaCostEstimator(descriptors, { resolvedSources });
-  const outcomes: MediaCostOutcome[] = located.map(
-    ({ part, messageId, partIndex }) =>
-      unavailable.get(`${messageId}:${partIndex}`) ?? estimate(part, { messageId, partIndex }),
-  );
+  const countRefusals = overCountParts(located, descriptors);
+  const outcomes: MediaCostOutcome[] = located.map(({ part, messageId, partIndex }) => {
+    const key = `${messageId}:${partIndex}`;
+    return (
+      unavailable.get(key) ?? countRefusals.get(key) ?? estimate(part, { messageId, partIndex })
+    );
+  });
 
   const refused = outcomes.filter(
     (outcome): outcome is UnadmittedMediaCost => outcome.outcome !== 'estimated',

@@ -4,6 +4,7 @@
  * generation. Each row ends in a no-silent-loss assertion: the parts reach
  * `generate` equal to what went in, in order, or a typed error names why not.
  */
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -34,6 +35,7 @@ import { createActiveRun } from '../src/create-run';
 import { createSubagentTool } from '../src/create-subagent-tool';
 import type { UserAdmissibleContent } from '../src/durable/types';
 import { AgentContractError, MediaAdmissionError } from '../src/errors';
+import type { OperativeHookMap } from '../src/hooks';
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
 import { createGeminiProvider } from '../src/providers/gemini.ts';
@@ -186,6 +188,16 @@ describe('Agent.run: ordered parts as input', () => {
     expect(contexts).toHaveLength(0);
   });
 
+  it('rejects a { conversation } input whose conversation is not a ConversationHistory', () => {
+    const { generate, contexts } = recorder();
+    const agent = createAgent({ generate });
+
+    for (const conversation of [undefined, null, 'x', 7, []]) {
+      expect(() => agent.run({ conversation } as never)).toThrow(AgentContractError);
+    }
+    expect(contexts).toHaveLength(0);
+  });
+
   it('keeps the string shorthand and the { conversation } form working', async () => {
     const { generate, histories } = recorder();
     const agent = createAgent({ generate, mediaCostEstimator: estimate });
@@ -246,6 +258,32 @@ describe('SessionHandle.run: ordered parts as input', () => {
     expect(userContents(histories[0])).toEqual([parts()]);
     const stored = await store.load('session-parts');
     const persisted = stored?.conversationHistory;
+    expect(userContents(persisted)).toEqual([parts()]);
+  });
+
+  it('snapshots the caller’s array before the reservation, so later mutation cannot reach the run', async () => {
+    await yieldToPortableEventLoop();
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const { generate, histories } = recorder();
+    const handle = createSessionHandle('session-snapshot', {
+      store,
+      agentName: 'agent',
+      runOptions: {
+        generate,
+        toolbox: createToolbox([]),
+        stopWhen: () => true,
+        mediaCostEstimator: estimate,
+      },
+    });
+    const input = parts();
+
+    const run = handle.run(input);
+    input.length = 0;
+    input.push({ type: 'text', text: 'mutated' });
+    await run.result();
+
+    expect(userContents(histories[0])).toEqual([parts()]);
+    const persisted = (await store.load('session-snapshot'))?.conversationHistory;
     expect(userContents(persisted)).toEqual([parts()]);
   });
 
@@ -451,13 +489,21 @@ describe('media admission: a part is delivered or refused before generation', ()
   });
 
   it('refuses a part whose size it cannot bound, rather than pricing it at zero', async () => {
-    const { seen, result } = run([image()], { mediaCostEstimator: undefined });
+    // Gemini declares no per-image byte cap, so an unsized remote image has no bound.
+    const geminiRow = catalog.descriptors.find((d) => d.provider === 'gemini')!;
+    const { seen, result } = run([image()], {}, [geminiRow]);
     const outcome = await result;
     expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
       outcome: 'unbounded',
       reason: 'size-unknown',
     });
     expect(seen.contexts).toHaveLength(0);
+  });
+
+  it('costs an unsized remote image at the backend’s per-image cap, and admits it', async () => {
+    const { seen, result } = run([image()], {});
+    expect((await result).finishReason).toBe('stop-condition');
+    expect(seen.contexts).toHaveLength(1);
   });
 
   it('refuses every media part when the generate function carries no descriptors and no estimator', async () => {
@@ -491,6 +537,117 @@ describe('media admission: a part is delivered or refused before generation', ()
     const outcome = await result;
     expect(outcome.finishReason).toBe('stop-condition');
     expect(seen.contexts).toHaveLength(1);
+  });
+
+  it('refuses a request over a backend’s per-request media count, naming the parts past the cap', async () => {
+    const haiku = catalog.descriptors.find((d) => d.model === 'claude-haiku-4-5')!;
+    const inlineImage = (): MediaContent => ({
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+    });
+    const { seen, result } = run(Array.from({ length: 101 }, inlineImage), {}, [haiku]);
+    const outcome = await result;
+    expect((outcome.error as MediaAdmissionError).outcomes).toEqual([
+      expect.objectContaining({
+        outcome: 'unsupported',
+        reason: 'media-count-exceeded',
+        partIndex: 100,
+        modality: 'image',
+      }),
+    ]);
+    expect(seen.contexts).toHaveLength(0);
+
+    // At the cap it is admitted; a 1M-token window allows 600.
+    const atCap = run(Array.from({ length: 100 }, inlineImage), {}, [haiku]);
+    expect((await atCap.result).finishReason).toBe('stop-condition');
+    const sonnet = catalog.descriptors.find((d) => d.model === 'claude-sonnet-5-5')!;
+    const wide = run(Array.from({ length: 101 }, inlineImage), {}, [sonnet]);
+    expect((await wide.result).finishReason).toBe('stop-condition');
+  });
+
+  describe('a beforeGenerate handler cannot add media past admission', () => {
+    function withHook(
+      handler: (context: GenerateContext) => GenerateContext | void,
+      overrides: Partial<RunOptionsBase> = {},
+    ) {
+      const hooks = new HookRegistry<OperativeHookMap>();
+      hooks.on('beforeGenerate', async (context) => handler(context));
+      return run([{ type: 'text', text: 'plain' }], { hooks, ...overrides });
+    }
+
+    it('re-admits media a handler appended: an unresolvable asset fails the step before generate', async () => {
+      const { seen, result } = withHook((context) => {
+        context.conversation.appendUserMessage([managed]);
+      });
+      const outcome = await result;
+      expect(outcome.error).toBeInstanceOf(MediaAdmissionError);
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    it('re-admits a replaced conversation, costing its media against the backend', async () => {
+      const { seen, result } = withHook((context) => {
+        const replacement = new Conversation();
+        replacement.appendUserMessage([
+          { type: 'audio', source: { kind: 'inline', data: BYTES, encoding: 'base64' } },
+        ]);
+        return { ...context, conversation: replacement };
+      }, {});
+      const outcome = await result;
+      expect(outcome.error).toBeInstanceOf(MediaAdmissionError);
+      expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+        reason: 'modality-not-accepted',
+      });
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    it('refuses an appended asset the safety gate flagged', async () => {
+      const { seen, result } = withHook(
+        (context) => {
+          context.conversation.appendUserMessage([managed]);
+        },
+        {
+          contentSourceResolver: async () => ({
+            outcome: 'resolved',
+            source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+            byteLength: 7,
+            safety: 'flagged',
+          }),
+        },
+      );
+      const outcome = await result;
+      expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+        reason: 'asset-flagged',
+      });
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    it('hands generate the resolved sources of media a handler appended', async () => {
+      const { seen, result } = withHook(
+        (context) => {
+          context.conversation.appendUserMessage([managed]);
+        },
+        {
+          contentSourceResolver: async () => ({
+            outcome: 'resolved',
+            source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+            byteLength: 7,
+            safety: 'clean',
+          }),
+        },
+      );
+      await result;
+      const appended = seen.histories[0]!.ids.at(-1)!;
+      expect(seen.contexts[0]?.resolvedSources?.get(`${appended}:0`)).toMatchObject({
+        outcome: 'resolved',
+      });
+    });
+
+    it('leaves a handler that changes no media alone', async () => {
+      const { seen, result } = withHook(() => undefined);
+      expect((await result).finishReason).toBe('stop-condition');
+      expect(seen.contexts).toHaveLength(1);
+    });
   });
 
   it('counts media tokens toward the compaction threshold', async () => {

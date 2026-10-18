@@ -3,7 +3,7 @@ import { CompletableEventTarget, ForwardedEvent } from '@lostgradient/lifecycle'
 import type { ConversationHistory } from 'conversationalist';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
-import { appendAgentInput, assertAgentInput } from '../agent-input';
+import { appendAgentInput, assertAgentInput, snapshotPayload } from '../agent-input';
 import type { AgentRun, RunEvent } from '../agent-run';
 import { createAgentRun } from '../agent-run';
 import type { RunRef } from '../agent-session';
@@ -80,6 +80,9 @@ export function createSessionRun(
     // An empty or non-admissible part list is rejected here, synchronously,
     // before anything is reserved or persisted.
     assertAgentInput(input);
+    // Snapshot now, synchronously: the reservation below is asynchronous, and a
+    // caller-owned part array mutated in between must not reach the run.
+    const payload = snapshotPayload(input);
     const configuredRunOptions = runOptions;
     // A shared emitter that bridges the outer ActiveRun surface (returned
     // synchronously) with the real inner run's events (created after session
@@ -148,7 +151,7 @@ export function createSessionRun(
           historyOrEmpty(session.conversationHistory, runtime),
           { runtime },
         );
-        appendAgentInput(seededConversation, input);
+        appendAgentInput(seededConversation, payload);
         const userMessageId = seededConversation.current.ids.at(-1);
         if (!userMessageId) {
           throw new Error(`Failed to identify the user message for run "${runId}".`);

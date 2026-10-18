@@ -78,7 +78,11 @@ export type MediaCostOutcome =
       readonly outcome: 'unsupported';
       readonly modality: Modality;
       readonly reason:
-        'modality-not-accepted' | 'source-form-not-accepted' | 'mime-family-not-accepted';
+        | 'modality-not-accepted'
+        | 'source-form-not-accepted'
+        | 'mime-family-not-accepted'
+        | 'media-count-exceeded'
+        | 'asset-flagged';
     })
   | (MediaPartPosition & {
       readonly outcome: 'unbounded';
