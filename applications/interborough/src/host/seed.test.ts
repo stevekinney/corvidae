@@ -92,14 +92,30 @@ describe('the seeded agents', () => {
     expect(internal.content).toBe('Internal bookkeeping is done. This reply is scripted.');
   });
 
-  test('request-human-input, dispatched without a session, ends on its unanswered request', async () => {
+  test('request-human-input, dispatched without a session, parks and resumes by its run id', async () => {
     const host = await start();
-    const result = await host.bureau.run('request-human-input', 'Ship it').result();
-    // A catalog dispatch is not offered `requestHumanInput`, so the call goes unanswered.
-    expect(result.content).toBe('');
-    expect(result.steps.flatMap((step) => step.results.map((outcome) => outcome.toolName))).toEqual(
-      ['requestHumanInput'],
-    );
+    const run = host.bureau.run('request-human-input', 'Ship it');
+
+    const review = await waitForReview(host, run.id);
+    expect(review).toMatchObject({
+      kind: 'human-wait',
+      runId: run.id,
+      agentName: 'request-human-input',
+      signalName: HUMAN_INPUT_SIGNAL,
+      prompt: HUMAN_INPUT_PROMPT,
+    });
+    // A catalog run has no session; the run id addresses its review.
+    expect(review.sessionId).toBeUndefined();
+
+    await host.bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: 'anonymous:local',
+      payload: { environment: 'staging' },
+    });
+    const result = await run.result();
+    expect(result.content).toBe('Thanks, the release will go to the environment you named.');
+    expect(host.bureau.listPendingReviews()).toEqual([]);
   });
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {

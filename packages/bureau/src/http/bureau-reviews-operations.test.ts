@@ -105,6 +105,61 @@ function serve(
   return createOperationHandler({ operations: bureauReviewsOperations, host, authenticate });
 }
 
+function runHumanWaitReview(overrides: Partial<PendingReview> = {}): PendingReview {
+  return {
+    kind: 'human-wait',
+    id: 'human-wait:run-2:answer:0',
+    runId: 'run-2',
+    agentName: 'asker',
+    signalName: 'answer',
+    prompt: 'Which environment?',
+    requestedAt: 2_000,
+    ageMilliseconds: 10,
+    status: 'pending',
+    ...overrides,
+  } as PendingReview;
+}
+
+describe('a human wait of a run with no session (COR-1577)', () => {
+  it('projects without a sessionId key, and a session’s human wait keeps its sessionId', () => {
+    const run = projectReview({ ...runHumanWaitReview(), status: 'pending' });
+    const session = projectReview({
+      ...runHumanWaitReview({ sessionId: 'session-1' }),
+      status: 'pending',
+    });
+
+    expect('sessionId' in run).toBe(false);
+    expect(run).toMatchObject({ kind: 'human-wait', runId: 'run-2', signalName: 'answer' });
+    expect(session).toMatchObject({ kind: 'human-wait', sessionId: 'session-1' });
+  });
+
+  it('is listed to the run’s owner, hidden from another caller, and open to an operator', async () => {
+    const owned = {
+      reviews: stubHost({ listPendingReviews: () => [runHumanWaitReview()] }).reviews,
+      ownership: {
+        runOwner: async (runId: string) => (runId === 'run-2' ? 'api-key:other' : undefined),
+        mayAccess: mayAccessOwnedResource,
+      },
+    };
+    const operator = createOperationHandlerAuthenticator(
+      {
+        ...authentication,
+        resolveApiKeyPrincipal: async (key: string) =>
+          key === API_KEY
+            ? principalFromApiKey({ subject: 'tester', scopes: ['bureau.reviews:read'] })
+            : null,
+      },
+      { additionalScopes: BUREAU_SCOPES },
+    );
+
+    const hidden = await call(serve(owned), 'bureau.reviews.list', {});
+    const visible = await call(serve(owned, operator), 'bureau.reviews.list', {});
+
+    expect(hidden.result).toEqual({ reviews: [] });
+    expect(visible.result).toMatchObject({ reviews: [{ id: 'human-wait:run-2:answer:0' }] });
+  });
+});
+
 describe('bureau.reviews.list', () => {
   it('returns the pending reviews without the approval token, binding, or metadata', async () => {
     const handler = serve(stubHost());

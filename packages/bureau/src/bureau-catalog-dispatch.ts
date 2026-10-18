@@ -1,6 +1,12 @@
-import { mergeHookRegistries, type RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  CompletableEventTarget,
+  mergeHookRegistries,
+  type RuntimeServices,
+} from '@lostgradient/lifecycle';
 import type {
   ActiveRun,
+  CombinedOperativeEventMap,
+  DurableRunDeps,
   AgentInput,
   AgentRun,
   AgentRunContext,
@@ -29,7 +35,11 @@ import {
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
 import { ownerOrLocal } from './owner-of-record';
-import { type RuntimeComposition, unsetMediaOptions } from './runtime-composition';
+import {
+  type RuntimeComposition,
+  unsetMediaOptions,
+  wireDurableOptInTools,
+} from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import type { BureauRunOptions } from './types';
 
@@ -71,6 +81,11 @@ export interface CatalogDispatcherDependencies {
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
    */
   readonly guardrails?: GuardrailsOptions | false | undefined;
+  /**
+   * COR-1577 — `BureauOptions.humanInput`: offer `requestHumanInput` to a durable `bureau.run()`
+   * run. Not to a child or a goal attempt, whose park nothing would be listening for.
+   */
+  readonly humanInput?: boolean | undefined;
 }
 
 /**
@@ -221,6 +236,7 @@ export function createCatalogDispatcher({
   validateBureauRunOptions,
   onDurableRunAborted,
   guardrails,
+  humanInput,
   registerCatalogRun,
 }: CatalogDispatcherDependencies): {
   runAgent: (
@@ -457,10 +473,29 @@ export function createCatalogDispatcher({
     // COR-1367 — read once: the agent applies its own guardrails, so Bureau's
     // tier carries none for it (see `inheritedGuardrailsContext`).
     const agentResolvesGuardrails = resolvesOwnGuardrails(agent);
+    // COR-1577 — `requestHumanInput` on a `bureau.run()` run, wired as the session path wires it:
+    // the tool parks the workflow through the run's own `ctx.services`, captured by `onServices`
+    // as the engine starts it, and announces the park on the emitter the run's `ActiveRun` uses.
+    const offersHumanInput =
+      humanInput === true && runIdOverride === undefined && goalAttempt === undefined;
+    const humanInputServices: { current?: DurableRunDeps } = {};
+    const humanInputEmitter = offersHumanInput
+      ? new CompletableEventTarget<CombinedOperativeEventMap>()
+      : undefined;
     const composeResolvedOptions = (resolved: RunOptions): RunOptions => {
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
       return {
         ...withRuntime,
+        ...(humanInputEmitter === undefined
+          ? {}
+          : {
+              toolbox: wireDurableOptInTools(withRuntime.toolbox, humanInputServices, {
+                humanInput: true,
+                wakeup: false,
+                runId,
+                humanInputEmitter,
+              }),
+            }),
         // COR-716 — the dispatching principal's asset resolver, unless the agent
         // supplied its own.
         ...unsetMediaOptions(withRuntime, runtime.mediaOptionsFor(ownerOrLocal(principal))),
@@ -616,6 +651,14 @@ export function createCatalogDispatcher({
           checkpointStore: durable.checkpointStore,
           runId,
           sessionId: runOptions?.sessionId ?? runId,
+          ...(humanInputEmitter === undefined
+            ? {}
+            : {
+                emitter: humanInputEmitter,
+                onServices: (services: DurableRunDeps) => {
+                  humanInputServices.current = services;
+                },
+              }),
         },
         // AB-241 — thread the caller-supplied principal into
         // `LivenessSnapshot.owner`, matching `createRunFromRequest`'s own

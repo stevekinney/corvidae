@@ -147,6 +147,7 @@ import {
   SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
+import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import type {
   BureauMemoryAuthorityOptions,
   BureauOptions,
@@ -934,6 +935,11 @@ export type CatalogAgentRunOptionsResolution =
        * the run's fresh dispatch did not.
        */
       agentResolvesGuardrails?: boolean;
+      /**
+       * COR-1577 — the run is a recovered child of another run (its resolver found a topology
+       * record), which is never offered `requestHumanInput`.
+       */
+      recoveredChild?: boolean;
     }
   | { status: 'missing-agent' }
   /**
@@ -3161,6 +3167,7 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runToolbox,
         conversation: new Conversation(session.conversationHistory),
+        ...copyAgentOwnedRunOptions(sessionAgent?.options),
         // COR-1577 — the request's cap persisted at the start, then the named agent's, then the
         // Bureau's default; a run with no named agent keeps the Bureau's.
         // The run's owner of record, not its per-run service principal: a managed asset
@@ -3186,7 +3193,7 @@ async function buildRuntimeComposition(
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
         runtime: runtimeServices,
-        ...(requestContext ? { executeOptions: { requestContext } } : {}),
+        executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
         // Thread agentName and runId so curated tool.* bubble events stamped by
         // the resumed run carry the same {agentName, runId, step} metadata as the
         // pre-crash run (C3 parity). Without them, recovered runs emit blank ids.
@@ -3650,19 +3657,42 @@ async function buildRuntimeComposition(
           },
       { agentResolvesGuardrails: resolution.agentResolvesGuardrails === true },
     );
-    return {
-      status: 'available',
-      services: {
-        options: {
-          ...resolution.options,
-          // The run's owner of record resolves its assets and holds the same
-          // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
-          ...unsetMediaOptions(resolution.options, mediaOptionsFor(ownerOrLocal(record.principal))),
-          hooks: mergeHookRegistries(invariants, resolution.options.hooks),
-        },
-        toolbox: resolution.options.toolbox,
+    // COR-1577 — a recovered `bureau.run()` run is offered `requestHumanInput` again, exactly
+    // when its fresh dispatch was: the option is on, the engine is durable, and it is neither a
+    // child nor a goal attempt. The tool parks through the services object being returned, so
+    // that object is captured once it exists, as `buildRunDepsFromSession` does.
+    const offersHumanInput =
+      options.humanInput === true &&
+      durable !== undefined &&
+      record.goalAttempt === undefined &&
+      resolution.recoveredChild !== true;
+    const humanInputServices: { current?: DurableRunDeps } = {};
+    const toolbox = offersHumanInput
+      ? wireDurableOptInTools(resolution.options.toolbox, humanInputServices, {
+          humanInput: true,
+          wakeup: false,
+          runId,
+          humanInputEmitter: {
+            dispatchEvent: (event: Event) => {
+              const target = humanInputServices.current?.emitter;
+              return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+            },
+          },
+        })
+      : resolution.options.toolbox;
+    const services: DurableRunDeps = {
+      options: {
+        ...resolution.options,
+        // The run's owner of record resolves its assets and holds the same
+        // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
+        ...unsetMediaOptions(resolution.options, mediaOptionsFor(ownerOrLocal(record.principal))),
+        toolbox,
+        hooks: mergeHookRegistries(invariants, resolution.options.hooks),
       },
+      toolbox,
     };
+    humanInputServices.current = services;
+    return { status: 'available', services };
   }
 
   async function loadScheduleIdForRecoveredRun(

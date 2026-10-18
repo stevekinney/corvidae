@@ -650,17 +650,19 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   flowControl?: FlowControlPolicy;
   /**
-   * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs
-   * (`createRun` only; has no effect without a durable engine composed). COR-1577: it is added
-   * to a run of a named catalog agent as well as to a Bureau-wide one, and it is left out of both
-   * when the Bureau has no durable engine. When
-   * `true`, bureau adds a `requestHumanInput` tool to each durable run's
-   * toolbox, bound to that run's OWN event emitter and its real `ctx.services`
-   * object — the only wiring under which a `HumanWaitParkedEvent` the tool
-   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners
-   * (including AB-13's flow-control `markParked`) and `listPendingReviews`
-   * (AB-20). Omit (the default) to leave the toolbox as configured — this tool
-   * is opt-in, never an ambient grant.
+   * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs. COR-1577: it is
+   * offered to a durable `createRun` run (a Bureau-wide one, or one of a named catalog agent) and
+   * to a durable `bureau.run()` run of an agent that resolves definitions. It is not offered
+   * without a durable engine, nor to a child run or a goal attempt. When `true`, bureau adds a
+   * `requestHumanInput` tool to the run's toolbox, bound to that run's OWN event emitter and its
+   * real `ctx.services` object — the only wiring under which a `HumanWaitParkedEvent` the tool
+   * dispatches actually reaches `subscribeLiveFrames`/`store` listeners (including AB-13's
+   * flow-control `markParked`) and `listPendingReviews` (AB-20). The park is a `human-wait`
+   * review: a `createRun` run's carries its `sessionId`, and a `bureau.run()` run's, which has no
+   * session, is addressed by its `runId` and resumed through the engine by that id. The agent
+   * must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Omit
+   * (the default) to leave the toolbox as configured — this tool is opt-in, never an ambient
+   * grant.
    */
   humanInput?: boolean;
   /**
@@ -968,7 +970,12 @@ export interface PendingHumanWaitReview {
   /** Id for this review, e.g. `human-wait:<runId>:<signalName>:<parkOrdinal>`; distinct per park, stable across restart. */
   id: string;
   runId: string;
-  sessionId: string;
+  /**
+   * The Bureau session the run belongs to. Absent for a run started with `bureau.run()`
+   * (COR-1577), which has no session: the run id is what addresses the review, and
+   * {@link Bureau.resolveReview} resumes it through the engine by that id.
+   */
+  sessionId?: string | undefined;
   agentName: string | undefined;
   signalName: string;
   prompt: string | undefined;
@@ -982,6 +989,13 @@ export interface PendingHumanWaitReview {
 
 /** A single item in the gateway's review queue (AB-20). */
 export type PendingReview = PendingToolApprovalReview | PendingHumanWaitReview;
+
+/**
+ * A review that belongs to a session: every tool approval, and a human wait of a `createRun`
+ * run. Bureau's session code works in this type; a catalog run's human wait has no session.
+ */
+export type SessionPendingReview =
+  PendingToolApprovalReview | (PendingHumanWaitReview & { readonly sessionId: string });
 
 export interface ResolveReviewInput {
   /** The {@link PendingReview.id} to resolve. */

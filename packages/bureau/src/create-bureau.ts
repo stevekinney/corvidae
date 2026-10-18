@@ -50,7 +50,6 @@ import {
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
-  type RequestHumanInputResult,
   reservedIdentifierReason,
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
@@ -254,8 +253,15 @@ import {
   resolveSessionOwner,
   resolveSessionPreAdmission,
   SESSION_OWNER_METADATA_KEY,
+  SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';
+import { createRunHumanWaits } from './run-human-waits';
+import {
+  countCheckpointParks,
+  humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
+} from './park-ordinals';
+import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
@@ -324,6 +330,7 @@ import type {
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
   PendingReview,
+  SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
   RetentionWindowOption,
@@ -1779,6 +1786,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        recoveredChild: childContext !== undefined,
       };
       return resolution;
     } catch (error) {
@@ -4862,6 +4870,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             generate: runRuntime.generate,
             toolbox: runToolbox,
             conversation,
+            // COR-1577 — the named agent's own options (stop conditions, structured output and
+            // its retries, …), before the ones Bureau sets below, which win.
+            ...copyAgentOwnedRunOptions(sessionAgent?.options),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
             ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner)),
@@ -4897,7 +4908,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
               sessionAgent?.options.hooks,
             ),
-            executeOptions: requestContext === undefined ? {} : { requestContext },
+            executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
             // Thread agentName and runId so curated tool.* bubble events are stamped
             // with {agentName, runId, step} metadata (C3) and durable launch input
             // carries the owning agent for audit/recovery attribution (F2). Fall back
@@ -5266,10 +5277,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // recover, so there is nothing for a retry to observe.
       // COR-718: a save that lost the race to create the session is refused as a
       // session that is not there, exactly as the preflight check refuses one.
+      // COR-1577: a save that lost the race to bind the session to an agent is refused as the
+      // preflight check refuses a run naming another agent, before the run executes.
       const rejection =
         error instanceof SessionOwnerConflictError
           ? new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND')
-          : error;
+          : error instanceof SessionAgentConflictError
+            ? new BureauError(error.message, 'BAD_REQUEST')
+            : error;
       await releaseRunCreationClaim(ledgerClaim, rejection);
       throw rejection;
     }
@@ -5341,18 +5356,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Type guard for a `requestHumanInput` tool result whose park was never
-   * consumed (AB-336) — narrows `ToolExecutionResult.result` (`unknown`)
-   * rather than casting, since the value round-tripped through a persisted
-   * checkpoint's JSON serialization.
-   */
-  function isParkedRequestHumanInputResult(value: unknown): value is RequestHumanInputResult {
-    if (typeof value !== 'object' || value === null) return false;
-    const candidate = value as { parked?: unknown; signalName?: unknown };
-    return candidate.parked === true && typeof candidate.signalName === 'string';
-  }
-
-  /**
    * Per run: parks already committed to the durable checkpoint by a previous
    * process, seeded by `reconstructHumanWaitReviewIfParked` on recovery. The
    * live action log only holds this process's parks, so the ordinal of the
@@ -5375,30 +5378,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runId: string,
     actions: readonly { type: string; detail: unknown }[],
   ): number {
-    let ordinal = (humanWaitParkBaseline.get(runId) ?? 0) - 1;
-    let previous: { index: number; signalName: unknown } | undefined;
-    actions.forEach((action, index) => {
-      if (action.type !== HumanWaitParkedEvent.type) return;
-      const detail =
-        action.detail !== null && typeof action.detail === 'object'
-          ? (action.detail as Record<string, unknown>)
-          : undefined;
-      const seeded = detail?.['parkOrdinal'];
-      const signalName = detail?.['signalName'];
-      if (typeof seeded === 'number') {
-        ordinal = seeded;
-      } else if (
-        previous !== undefined &&
-        previous.signalName === signalName &&
-        !actions.slice(previous.index + 1, index).some((entry) => entry.type === 'step.started')
-      ) {
-        // Duplicate record of the same park: same ordinal.
-      } else {
-        ordinal += 1;
-      }
-      previous = { index, signalName };
-    });
-    return ordinal;
+    return sharedHumanWaitParkOrdinal(actions, humanWaitParkBaseline.get(runId) ?? 0);
   }
 
   /**
@@ -5453,44 +5433,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
       return;
     }
-    const lastStep = steps[steps.length - 1];
-    if (!lastStep) return;
-    // Counts distinct parks in one step the way `humanWaitParkOrdinal` does
-    // live: consecutive parked results on the same signal within a step (for
-    // example parallel `requestHumanInput` calls) are one park.
-    const parksIn = (step: StepRecord): number => {
-      let count = 0;
-      let previousSignal: string | undefined;
-      for (const result of step.results) {
-        if (result.toolName !== 'requestHumanInput') continue;
-        if (!isParkedRequestHumanInputResult(result.result)) continue;
-        if (previousSignal !== result.result.signalName) count += 1;
-        previousSignal = result.result.signalName;
-      }
-      return count;
-    };
-    // Parks committed to the checkpoint before the last step. A reconstructed
-    // park carries the resulting ordinal so the review id matches the one the
-    // pre-crash process minted (and persisted in `resolvedReviewIds`).
-    let priorParks = 0;
-    for (const step of steps) {
-      if (step === lastStep) break;
-      priorParks += parksIn(step);
-    }
+    const parks = countCheckpointParks(steps);
     // Always seed the baseline so a recovery landing mid-step (last step not a
     // park) still numbers its first live park after every committed one.
-    humanWaitParkBaseline.set(runId, priorParks + parksIn(lastStep));
-    for (const result of lastStep.results) {
-      if (result.toolName !== 'requestHumanInput') continue;
-      if (!isParkedRequestHumanInputResult(result.result)) continue;
-      store.recordAction(runId, HumanWaitParkedEvent.type, {
-        signalName: result.result.signalName,
-        runId,
-        parkOrdinal: priorParks,
-        ...(result.result.prompt !== undefined ? { prompt: result.result.prompt } : {}),
-      });
-      return;
-    }
+    if (steps.length > 0) humanWaitParkBaseline.set(runId, parks.baseline);
+    if (parks.outstanding === undefined) return;
+    store.recordAction(runId, HumanWaitParkedEvent.type, {
+      signalName: parks.outstanding.signalName,
+      runId,
+      parkOrdinal: parks.outstanding.ordinal,
+      ...(parks.outstanding.prompt !== undefined ? { prompt: parks.outstanding.prompt } : {}),
+    });
   }
 
   /**
@@ -6020,6 +5973,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (catalogRecovery.attribution) {
         runAttribution.set(info.workflowId, catalogRecovery.attribution);
       }
+      // COR-1577 — a recovered `bureau.run()` run that was parked on `requestHumanInput` is a
+      // review again, under the id it had, and the parks it makes from here on are heard.
+      await runHumanWaits.restore(info.workflowId, info.input.agentName);
+      runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
+      void info.handle.result().then(
+        () => runHumanWaits.forget(info.workflowId),
+        () => runHumanWaits.forget(info.workflowId),
+      );
       void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
       return;
     }
@@ -6488,6 +6449,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                     generate: runRuntime.generate,
                     toolbox: runRuntime.toolbox,
                     conversation: new Conversation(fullSession.conversationHistory),
+                    ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
                     ...sessionRunMediaOptions(
                       reattachedSessionAgent,
                       runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata)),
@@ -6502,7 +6464,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                       runRuntime.hooks,
                       reattachedSessionAgent?.options.hooks,
                     ),
-                    executeOptions: requestContext === undefined ? {} : { requestContext },
+                    executeOptions: sessionExecuteOptions(
+                      reattachedSessionAgent?.options,
+                      requestContext,
+                    ),
                     agentName: recoveredAgentName,
                     runId: handle.id,
                   },
@@ -10952,9 +10917,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
   }
 
-  function listPendingReviews(): PendingReview[] {
+  function listPendingReviews(): SessionPendingReview[] {
     const now = runtimeServices.clock.now();
-    const reviews: PendingReview[] = [];
+    const reviews: SessionPendingReview[] = [];
     const { runs } = store.getState();
 
     for (const [runId, runState] of runs) {
@@ -11605,12 +11570,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     } else {
       emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
     }
-    await restoreRunOwnershipAfterEvent(
-      review.runId,
-      review.sessionId,
-      runAttribution.get(review.runId)?.principal,
-      runSessionIncarnations.get(review.runId),
-    );
+    // COR-1577: a catalog run's review has no session whose ownership could need restoring.
+    if (review.sessionId !== undefined) {
+      await restoreRunOwnershipAfterEvent(
+        review.runId,
+        review.sessionId,
+        runAttribution.get(review.runId)?.principal,
+        runSessionIncarnations.get(review.runId),
+      );
+    }
   }
 
   /**
@@ -11697,12 +11665,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
         break;
     }
-    await restoreRunOwnershipAfterEvent(
-      review.runId,
-      review.sessionId,
-      runAttribution.get(review.runId)?.principal,
-      runSessionIncarnations.get(review.runId),
-    );
+    // COR-1577: a catalog run's review has no session whose ownership could need restoring.
+    if (review.sessionId !== undefined) {
+      await restoreRunOwnershipAfterEvent(
+        review.runId,
+        review.sessionId,
+        runAttribution.get(review.runId)?.principal,
+        runSessionIncarnations.get(review.runId),
+      );
+    }
   }
 
   /**
@@ -11714,6 +11685,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<(PendingReview & { status: ReviewStatus }) | undefined> {
     const pending = listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) return pending;
+    // COR-1577: the park of a `bureau.run()` run, which no session holds.
+    const runWait = runHumanWaits.find(id);
+    if (runWait) return runWait;
     if (!auditTrailInstance) return undefined;
 
     // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkOrdinal}`
@@ -13052,10 +13026,40 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     detachBestEffortPromise(
       activeRun.result.finally(() => {
         detachRunEventFeed();
+        runHumanWaits.forget(runId);
         if (store.getRun(runId)?.activeRun === activeRun) store.removeRun(runId);
       }),
     );
   }
+
+  // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
+  // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it
+  // was; the wrappers on the Bureau object below add them to the public list and to resolution.
+  const runHumanWaits = createRunHumanWaits({
+    store,
+    catalogRunIds,
+    runAttribution,
+    engine: () => runtime.durable?.engine,
+    checkpointSteps: async (runId) =>
+      (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
+    now: runtimeServices.clock.now,
+    recordDecision: async (review, decision, principal, reason) => {
+      await auditTrailInstance?.record(
+        buildReviewDecisionAuditRecord(review, decision, principal, reason),
+      );
+      if (decision === 'approve') {
+        emitter.dispatch(new ReviewApprovedEvent(review.id, review.runId, principal, review.kind));
+      } else if (decision === 'reject') {
+        emitter.dispatch(new ReviewRejectedEvent(review.id, review.runId, principal, review.kind));
+      } else {
+        emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
+      }
+    },
+    createError: (message, code) => new BureauError(message, code),
+    durableNotConfigured: () =>
+      new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable'),
+    diagnose,
+  });
 
   const { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun } =
     createCatalogDispatcher({
@@ -13072,6 +13076,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // COR-1367 — handed down to each catalog agent as its inherited policy.
       guardrails: options.guardrails,
       registerCatalogRun,
+      // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
+      humanInput: options.humanInput === true && runtime.durable !== undefined,
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
       // is a cancelled parent like any other. Once shutdown has begun, dispose
       // — not the policy — ends every live run, and boot recovery applies the
@@ -13310,9 +13316,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // handlers, so `update`/`query` are unsupported today regardless of
     // configuration. `signal` has a real delivery path (`signalSession`).
     sessionVerbCapabilities: { signal: true, update: false, query: false },
-    listPendingReviews,
+    // COR-1577: a `bureau.run()` run's park joins the session reviews in the public list, and
+    // resolves through the engine by run id. Every other review resolves exactly as before.
+    listPendingReviews: (): PendingReview[] => [...listPendingReviews(), ...runHumanWaits.list()],
     getReview,
-    resolveReview,
+    resolveReview: (input: ResolveReviewInput) =>
+      runHumanWaits.has(input.id) ? runHumanWaits.resolve(input) : resolveReview(input),
     sweepExpiredReviews,
     issueGrant,
     revokeGrant,

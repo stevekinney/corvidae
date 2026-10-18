@@ -17,8 +17,9 @@
  *   run's id and the session's request context signs the approval. `bureau.run('tool-runner')`
  *   has no session, so it signs with {@link LOCAL_REQUEST_CONTEXT} instead.
  * - `request-human-input`: calls `requestHumanInput` with its question and parks until an
- *   operator answers the review, then thanks them. Only a session run offers that tool: a
- *   catalog dispatch (`bureau.run`) does not yet, so there it ends on the unanswered call.
+ *   operator answers the review, then thanks them. Through a session run the review carries the
+ *   session's id; through `bureau.run('request-human-input')` there is no session, so the review
+ *   is addressed by its run id and resolves the same way.
  * - `internal`: a plain agent the host does not publish.
  *
  * What these agents do not cover: a schedule's fire and a goal's attempt pass their agent name

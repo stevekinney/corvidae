@@ -331,6 +331,81 @@ describe('a session’s agent', () => {
   });
 });
 
+/** `agent`, whose resolution waits at `barrier` until every run racing on it has reached it. */
+function withResolveBarrier<TAgent extends AgentDefinitions[string]>(
+  agent: TAgent,
+  barrier: { arrive(): Promise<void> },
+): TAgent {
+  const resolve = Reflect.get(agent, OPERATIVE_RESOLVE_RUN_OPTIONS) as (
+    ...args: unknown[]
+  ) => Promise<Record<string, unknown>>;
+  return {
+    ...agent,
+    [OPERATIVE_RESOLVE_RUN_OPTIONS]: async (...args: unknown[]) => {
+      await barrier.arrive();
+      return resolve.apply(agent, args);
+    },
+  };
+}
+
+function barrierOf(parties: number) {
+  let arrived = 0;
+  let open!: () => void;
+  const opened = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return {
+    async arrive() {
+      arrived += 1;
+      if (arrived >= parties) open();
+      await opened;
+    },
+  };
+}
+
+describe('two runs creating one new session', () => {
+  it('lets the first agent bind it and refuses the other before it executes', async () => {
+    const barrier = barrierOf(2);
+    const calls = { alpha: 0, beta: 0 };
+    const counting = (name: 'alpha' | 'beta'): GenerateFunction => {
+      return async () => {
+        calls[name] += 1;
+        return { content: `${name} speaking`, toolCalls: [] };
+      };
+    };
+    const bureau = await start({
+      agents: {
+        alpha: withResolveBarrier(createAgent({ generate: counting('alpha') }), barrier),
+        beta: withResolveBarrier(createAgent({ generate: counting('beta') }), barrier),
+      },
+    });
+
+    const outcomes = await Promise.allSettled([
+      bureau.createRun({ message: 'a', agentName: 'alpha', sessionId: 'shared-session' }),
+      bureau.createRun({ message: 'b', agentName: 'beta', sessionId: 'shared-session' }),
+    ]);
+
+    const [first, second] = outcomes;
+    const winnerIndex = first?.status === 'fulfilled' ? 0 : 1;
+    const winnerName = winnerIndex === 0 ? 'alpha' : 'beta';
+    const loserName = winnerIndex === 0 ? 'beta' : 'alpha';
+    const winner = outcomes[winnerIndex];
+    const loser = outcomes[1 - winnerIndex];
+    expect(winner?.status).toBe('fulfilled');
+    expect(loser?.status).toBe('rejected');
+    expect(((loser as PromiseRejectedResult).reason as BureauError).code).toBe('BAD_REQUEST');
+    await finish(bureau, (winner as PromiseFulfilledResult<{ id: string }>).value.id);
+
+    // Only the winner's run exists, the session is bound to the winner, and the loser never ran.
+    expect(bureau.listRuns()).toHaveLength(1);
+    const stored = await bureau.getSession('shared-session');
+    expect(stored?.agentName).toBe(winnerName);
+    expect(calls[winnerName]).toBe(1);
+    expect(calls[loserName]).toBe(0);
+    expect(second).toBeDefined();
+  });
+});
+
 describe('run settings', () => {
   const tick = createTool({
     name: 'tick',

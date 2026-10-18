@@ -21343,7 +21343,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       const sessionStore = bureau.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
-      const deleted = await sessionStore.delete(review.sessionId);
+      const deleted = await sessionStore.delete(review.sessionId!);
       expect(deleted).toBe(true);
 
       const outcome = await bureau.resolveReview({
@@ -21546,7 +21546,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21655,7 +21655,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21715,7 +21715,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // losing call that had actually reached `resumeApproval` and gotten
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
-      const persistedSession = await bureau.getSession(review.sessionId);
+      const persistedSession = await bureau.getSession(review.sessionId!);
       expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
         review.id,
       );
