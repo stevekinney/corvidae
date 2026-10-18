@@ -78,6 +78,33 @@ type RpcBody = {
   error?: { code: number; message?: string; data?: { httpStatus?: number; weftCode?: string } };
 };
 
+type CatalogOperation = (typeof BUREAU_HANDLER_OPERATIONS)[number];
+
+/**
+ * The parameters to send an operation: only the keys its own schema declares,
+ * taken from `candidates`. Every operation rejects an undeclared key as
+ * `InvalidParams` before it runs, so an extra key would make a request pass or
+ * match for the wrong reason.
+ */
+function paramsFor(
+  operation: CatalogOperation,
+  candidates: Record<string, string>,
+): Record<string, string> {
+  const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
+  return Object.fromEntries(
+    Object.keys(shape)
+      .filter((key) => key in candidates)
+      .map((key) => [key, candidates[key]!]),
+  );
+}
+
+/** What the caller was told: a JSON-RPC fault rides in a 200 envelope, so read its own status. */
+async function effectiveStatus(response: Response): Promise<number> {
+  if (!response.headers.get('content-type')?.includes('application/json')) return response.status;
+  const body = (await response.clone().json()) as RpcBody;
+  return body.error?.data?.httpStatus ?? response.status;
+}
+
 async function statusOf(pending: Promise<Response>): Promise<number> {
   const response = await pending;
   return response.status;
@@ -488,12 +515,22 @@ describe('credentials', () => {
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
-        const params = { id: 'x', runId: 'x', bureauId: bureau.id, decision: 'approve' };
+        const params = paramsFor(operation, {
+          id: 'x',
+          runId: 'x',
+          bureauId: bureau.id,
+          decision: 'approve',
+        });
         const response = operation.transports.jsonRpcHttp
-          ? await handler(rpc(operation.name, operation.name.endsWith('.list') ? {} : params))
-          : await handler(subscribe(operation.name, { bureauId: bureau.id, runId: 'x' }, {}));
-        expect([operation.name, [401, 403].includes(response.status)]).toEqual([
+          ? await handler(rpc(operation.name, params))
+          : await handler(subscribe(operation.name, params, {}));
+        const status = await effectiveStatus(response);
+        // A missing id is a 404 and a bad request a 400: only the two
+        // authentication faults are ruled out, and a request that was malformed
+        // would rule them out for the wrong reason.
+        expect([operation.name, status === 401 || status === 403, status === 400]).toEqual([
           operation.name,
+          false,
           false,
         ]);
         await response.body?.cancel();
@@ -592,19 +629,27 @@ describe('identifiers grant nothing', () => {
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         for (const parameter of idParameters(operation)) {
           const send = async (requested: string) => {
-            const params = { [parameter]: requested, decision: 'approve' };
+            const params = paramsFor(operation, { [parameter]: requested, decision: 'approve' });
             const request = operation.transports.jsonRpcHttp
               ? rpc(operation.name, params, as('alice-key'))
-              : subscribe(operation.name, { [parameter]: requested }, as('alice-key'));
+              : subscribe(operation.name, params, as('alice-key'));
             const response = await handler(request);
+            const status = await effectiveStatus(response);
             const text = await maskedText(Promise.resolve(response), requested);
-            return { status: response.status, text };
+            return { status, text };
           };
 
           const real = await send(realIds[parameter] ?? 'unmapped');
           const random = await send(`random-${crypto.randomUUID()}`);
 
           expect([operation.name, parameter, real]).toEqual([operation.name, parameter, random]);
+          // The request reached the operation and was refused there: not a 400
+          // for a malformed request, and not a success.
+          expect([operation.name, parameter, [403, 404].includes(real.status)]).toEqual([
+            operation.name,
+            parameter,
+            true,
+          ]);
           probed += 1;
         }
       }
@@ -713,13 +758,23 @@ describe('transcripts stay inside the Bureau', () => {
       const bodies: string[] = [];
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
-        const params = { id: alice.reviewId, runId: alice.run.id, bureauId: bureau.id };
+        const params = paramsFor(operation, {
+          id: alice.reviewId,
+          runId: alice.run.id,
+          bureauId: bureau.id,
+          decision: 'approve',
+        });
         const response = operation.transports.jsonRpcHttp
-          ? await handler(
-              rpc(operation.name, operation.name.endsWith('.list') ? {} : params, as('k')),
-            )
+          ? await handler(rpc(operation.name, params, as('k')))
           : await handler(subscribe(operation.name, params, as('k')));
-        expect(response.status).toBe(200);
+        // The resolved review is still readable, and resolving it again is a 404:
+        // either way the request reached the operation, and the body is scanned.
+        const status = await effectiveStatus(response);
+        expect([operation.name, status === 400]).toEqual([operation.name, false]);
+        if (operation.name === 'bureau.reviews.get') {
+          expect(status).toBe(200);
+          expect(await response.clone().text()).toContain(alice.reviewId);
+        }
         bodies.push(
           operation.transports.jsonRpcHttp
             ? await response.text()

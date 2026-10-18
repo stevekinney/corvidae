@@ -1,5 +1,9 @@
 import { createAgent, createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
-import { type OperationHandlerMount, principalFromApiKey } from '@lostgradient/weft';
+import {
+  AUTHORIZATION_SCOPES,
+  type OperationHandlerMount,
+  principalFromApiKey,
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
@@ -166,6 +170,37 @@ describe('createBureauHandler options', () => {
 
       expect(response.status).toBe(200);
       expect(await response.json()).toEqual({ method: 'api-key', subject: 'tester' });
+    });
+  });
+
+  it('serves the local caller under allow with every built-in Weft scope and every Bureau scope', async () => {
+    await withBureau({}, async (bureau) => {
+      const mount: OperationHandlerMount = {
+        pathPrefix: '/adapter',
+        fetch: async (_request, context) =>
+          Response.json({
+            method: context.principal.method,
+            subject: 'subject' in context.principal ? context.principal.subject : 'none',
+            scopes: 'scopes' in context.principal ? [...context.principal.scopes] : [],
+          }),
+      };
+      const handler = createBureauHandler(bureau, {
+        unauthenticatedAccess: 'allow',
+        mounts: [mount],
+      });
+
+      const response = await handler(get('/adapter/ping'));
+      const body = (await response.json()) as {
+        method: string;
+        subject?: string;
+        scopes: string[];
+      };
+
+      expect(body.method).toBe('unauthenticated-local');
+      expect(body.subject).toBeUndefined();
+      for (const scope of [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES]) {
+        expect(body.scopes).toContain(scope);
+      }
     });
   });
 
