@@ -72,7 +72,8 @@
 
   interface TimelineTabProps {
     readonly client: Pick<HttpClient, 'getTimeline'> & {
-      readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION>;
+      readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION> &
+        Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>>;
       readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;

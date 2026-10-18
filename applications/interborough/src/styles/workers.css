@@ -21,6 +21,11 @@
   text-decoration: none;
 }
 
+/* A link inside running text is distinguished by more than color. */
+.weft-diagnostic-card__evidence .weft-workers-id-link {
+  text-decoration: underline;
+}
+
 @media (hover: hover) {
   .weft-workers-id-link:hover {
     text-decoration: underline;
@@ -684,6 +689,12 @@
   flex-basis: 100%;
 }
 
+.weft-task-attempts__identity-change {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--cinder-text-default);
+}
+
 /* ---------------------------------------------------------------------- */
 /* Drain dialog                                                           */
 /* ---------------------------------------------------------------------- */
@@ -778,4 +789,18 @@
   .weft-fleet-view__stats {
     grid-template-columns: 1fr;
   }
+}
+
+.weft-diagnostics-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--cinder-space-3);
+  align-items: end;
+  margin-bottom: var(--cinder-space-4);
+}
+
+.weft-diagnostics-filters__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
 }

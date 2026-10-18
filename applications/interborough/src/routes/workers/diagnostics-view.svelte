@@ -6,7 +6,9 @@
   import { Badge, Button, EmptyState } from '@lostgradient/cinder';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
+  import { workerDeepLink } from './provenance-filters.ts';
   import type { TaskDiagnosticItem, TaskDiagnosticsSummary } from './worker-catalog-types.ts';
 
   interface DiagnosticsViewProps {
@@ -14,9 +16,25 @@
     readonly summary: TaskDiagnosticsSummary;
     readonly now: number;
     readonly onInspectTask?: (operationId: string) => void;
+    /**
+     * A provenance filter is applied, so the server already narrowed the list:
+     * every returned item is shown (not the first three per kind), each with a
+     * link to the worker the diagnostics report for it.
+     */
+    readonly filtered?: boolean;
   }
 
-  let { items, summary, now, onInspectTask = () => {} }: DiagnosticsViewProps = $props();
+  let {
+    items,
+    summary,
+    now,
+    onInspectTask = () => {},
+    filtered = false,
+  }: DiagnosticsViewProps = $props();
+
+  function workerIdOf(item: TaskDiagnosticItem): string | undefined {
+    return 'workerId' in item ? item.workerId : undefined;
+  }
 
   interface DiagnosticGroup {
     readonly kind: TaskDiagnosticItem['kind'];
@@ -53,7 +71,9 @@
 {#if totalDiagnostics === 0}
   <EmptyState
     title="No diagnostics"
-    description="Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or dead-lettered right now."
+    description={filtered
+      ? 'No task matches these provenance filters. Clear them to see every diagnostic.'
+      : 'Nothing delayed, stuck, stale, retrying, at capacity, unadopted, or dead-lettered right now.'}
   />
 {:else}
   <div class="weft-diagnostics-view">
@@ -75,7 +95,8 @@
           {guidance.guidance}
         </p>
         <ul class="weft-diagnostic-card__evidence">
-          {#each group.items.slice(0, 3) as item (item.operationId ?? item.workflowId ?? item.queue)}
+          {#each filtered ? group.items : group.items.slice(0, 3) as item (item.operationId ?? item.workflowId ?? item.queue)}
+            {@const workerId = workerIdOf(item)}
             <li>
               {#if item.workflowId}
                 <span class="weft-workers-id">{truncateId(item.workflowId)}</span>
@@ -83,6 +104,17 @@
                 <span class="weft-workers-id">{truncateId(item.operationId)}</span>
               {/if}
               {item.evidence[0]}
+              {#if workerId}
+                <a
+                  class="weft-workers-id-link"
+                  href={router.href(workerDeepLink(workerId))}
+                  title={workerId}
+                  onclick={(event) => {
+                    event.preventDefault();
+                    router.navigate(workerDeepLink(workerId));
+                  }}>Worker {truncateId(workerId)}</a
+                >
+              {/if}
               {#if item.operationId}
                 <Button
                   variant="ghost"

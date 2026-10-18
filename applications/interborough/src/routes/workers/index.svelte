@@ -48,12 +48,21 @@
   import type { DrainTarget } from './drain-dialog.svelte';
   import DrainDialog from './drain-dialog.svelte';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
+  import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
   import QueueListView from './queue-list-view.svelte';
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
   import WorkersLiveStatus from './workers-live-status.svelte';
-  import { TASK_HEARTBEAT_STALE_AFTER_MS } from './worker-catalog-types.ts';
+  import {
+    hasProvenanceFilters,
+    readProvenanceFilters,
+    writeProvenanceFilters,
+  } from './provenance-filters.ts';
+  import {
+    TASK_HEARTBEAT_STALE_AFTER_MS,
+    type TaskProvenanceFilters,
+  } from './worker-catalog-types.ts';
   import {
     clearDeadLetterMutation,
     drainDeploymentMutation,
@@ -102,6 +111,10 @@
   const workersQuery = workersListQuery(client);
   const queuesQuery = taskQueuesListQuery(client);
   const diagnosticsQuery = taskDiagnosticsQuery(client);
+  // The Diagnostics tab alone honors the URL's provenance filters; the queue and dead-letter
+  // views keep reading the unfiltered fleet-wide report. With no filter both share one cache entry.
+  const provenanceFilters = $derived(readProvenanceFilters(router.search));
+  const diagnosticsTabQuery = taskDiagnosticsQuery(client, () => provenanceFilters);
   const selectedTaskId = $derived(router.search.get('task') ?? '');
   const taskDetailQuery = taskLedgerDetailQuery(client, () => selectedTaskId);
   const workerIds = $derived(
@@ -132,6 +145,7 @@
       isForbidden(workersQuery.error) ||
       isForbidden(queuesQuery.error) ||
       isForbidden(diagnosticsQuery.error) ||
+      isForbidden(diagnosticsTabQuery.error) ||
       isForbidden(manifestQuery.error) ||
       isForbidden(rejectionsQuery.error)
     ) {
@@ -161,6 +175,11 @@
   function selectTab(next: string): void {
     const params = new URLSearchParams();
     params.set('tab', next);
+    router.navigate(`/workers?${params.toString()}`);
+  }
+
+  function applyProvenanceFilters(filters: TaskProvenanceFilters): void {
+    const params = writeProvenanceFilters(new URLSearchParams({ tab: 'diagnostics' }), filters);
     router.navigate(`/workers?${params.toString()}`);
   }
 
@@ -280,8 +299,8 @@
   const fleetError = $derived(workersQuery.error ?? null);
   const queuesLoading = $derived(queuesQuery.isPending);
   const queuesError = $derived(queuesQuery.error ?? null);
-  const diagnosticsLoading = $derived(diagnosticsQuery.isPending);
-  const diagnosticsErrorValue = $derived(diagnosticsQuery.error ?? null);
+  const diagnosticsLoading = $derived(diagnosticsTabQuery.isPending);
+  const diagnosticsErrorValue = $derived(diagnosticsTabQuery.error ?? null);
 </script>
 
 <div class="weft-workers-route">
@@ -415,6 +434,13 @@
       </TabPanel>
 
       <TabPanel value="diagnostics">
+        {#if !selectedTaskId}
+          <DiagnosticsFilterBar
+            filters={provenanceFilters}
+            onApply={applyProvenanceFilters}
+            onClear={() => applyProvenanceFilters({})}
+          />
+        {/if}
         {#if diagnosticsLoading}
           <div
             class="weft-workers-route__skeleton"
@@ -452,8 +478,9 @@
             </div>
           {:then { default: DiagnosticsView }}
             <DiagnosticsView
-              items={diagnosticsQuery.data?.items ?? []}
-              summary={diagnosticsQuery.data?.summary ?? {
+              filtered={hasProvenanceFilters(provenanceFilters)}
+              items={diagnosticsTabQuery.data?.items ?? []}
+              summary={diagnosticsTabQuery.data?.summary ?? {
                 stuckQueued: 0,
                 staleInflight: 0,
                 retryStorms: 0,

@@ -39,6 +39,7 @@ import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
   type TaskDiagnosticsOutput,
   type TaskLedgerDetail,
+  type TaskProvenanceFilters,
   type WorkersListOutput,
 } from './worker-catalog-types.ts';
 import {
@@ -101,15 +102,30 @@ export function taskQueuesListQuery(client: WorkersOperations) {
   }));
 }
 
-/** `GET /v1/tasks/diagnostics` (`system:read`), server-mirrored default thresholds. */
+/**
+ * `GET /v1/tasks/diagnostics` (`system:read`), server-mirrored default
+ * thresholds. Provenance filters (deployment, build, artifact digest, worker,
+ * workflow revision) are passed to the server, which matches them against the
+ * identity recorded on each task's attempts; an unfiltered read keeps the key
+ * the Dashboard's alerts share.
+ */
 export function taskDiagnosticsQuery(
   client: WorkersOperations,
+  filters: () => TaskProvenanceFilters = () => ({}),
 ): CreateQueryResult<TaskDiagnosticsOutput> {
-  return createQuery(() => ({
-    queryKey: queryKeys.diagnostics(),
-    queryFn: () => client.operations['weft.tasks.diagnostics'](DEFAULT_TASK_DIAGNOSTICS_INPUT),
-    refetchInterval: REFETCH_INTERVAL_MS,
-  }));
+  return createQuery(() => {
+    const active = filters();
+    const filtered = Object.keys(active).length > 0;
+    return {
+      queryKey: filtered ? queryKeys.diagnosticsFiltered(active) : queryKeys.diagnostics(),
+      queryFn: () =>
+        client.operations['weft.tasks.diagnostics']({
+          ...DEFAULT_TASK_DIAGNOSTICS_INPUT,
+          ...active,
+        }),
+      refetchInterval: REFETCH_INTERVAL_MS,
+    };
+  });
 }
 
 /** Runtime-validated canonical manifest detail for one connected worker. */

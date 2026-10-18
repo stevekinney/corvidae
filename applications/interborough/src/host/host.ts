@@ -107,7 +107,10 @@ export type HostOptions = {
   /** Replaces the scripted generate the Bureau's own runs use. For tests that need a run to stay in flight. */
   readonly generate?: GenerateFunction;
   /** The few Weft server settings a host may tune for the engine API it relays. */
-  readonly engineServer?: Pick<ServeOptions, 'cancellationGracePeriodMs'>;
+  readonly engineServer?: Pick<
+    ServeOptions,
+    'cancellationGracePeriodMs' | 'workerReconnectGracePeriodMs'
+  >;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
 };

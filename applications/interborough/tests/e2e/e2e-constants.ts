@@ -45,6 +45,23 @@ export const E2E_CANCELLING_TASK_OPERATION_ID = 'e2e-ledger-cancel-requested';
 /** Task whose cancellation the owning attempt acknowledged with a cancelled result. */
 export const E2E_CANCELLED_TASK_OPERATION_ID = 'e2e-ledger-cancel-acknowledged';
 
+/**
+ * COR-281: a task that crossed a build boundary and then a retry storm. Three
+ * workers on the previous build (`E2E_PREVIOUS_BUILD_ID`) claim it and
+ * disappear, and a fourth on the current ledger build holds attempt 4. It runs
+ * on its own queue so the three ledger tasks above keep their two-attempt
+ * histories, and the retry storm (three requeues) makes it a Diagnostics item
+ * that names its current worker.
+ */
+export const E2E_CROSS_BUILD_TASK_OPERATION_ID = 'e2e-ledger-cross-build-storm';
+export const E2E_CROSS_BUILD_QUEUE = 'provenance-evidence';
+export const E2E_CROSS_BUILD_WORKER_ID = 'provenance-evidence-worker-1';
+export const E2E_PREVIOUS_BUILD_ID = 'e2e-ledger-build-0';
+export const E2E_CURRENT_BUILD_ID = 'e2e-ledger-build-1';
+
+/** Reconnect grace period the E2E host uses, short so the seeded requeues take a fraction of a second. */
+export const E2E_RECONNECT_GRACE_PERIOD_MS = 250;
+
 export const E2E_CANCELLATION_REASON = 'operator stopped the e2e ledger run';
 
 /** Weft's maximum cancellation grace period (`serve-internals.ts`). */

@@ -31,6 +31,7 @@ import {
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
   E2E_PORT,
+  E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
@@ -53,7 +54,10 @@ const host = await startHost({
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => (fixtureEngine = await createFixtureEngine()),
-  engineServer: { cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS },
+  engineServer: {
+    cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS,
+    workerReconnectGracePeriodMs: E2E_RECONNECT_GRACE_PERIOD_MS,
+  },
 });
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
@@ -128,18 +132,20 @@ for (let attempt = 0; attempt < 5; attempt += 1) {
 // COR-124: a leased task on its second, heartbeating attempt, plus requested
 // and acknowledged cancellations, all produced by a real worker against this
 // server's real task ledger. See `ledger-evidence-seed.ts`.
-await seedLedgerEvidence(server);
+const ledgerWorkers = await seedLedgerEvidence(server);
 
 process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
+    'Seeded COR-281 cross-build retry storm',
     'Registered dynamic workflow sources for invoice-reconciliation',
   ].join('\n') + '\n',
 );
 
 async function shutDown(): Promise<void> {
+  for (const ledgerWorker of ledgerWorkers) ledgerWorker[Symbol.dispose]();
   await fleetWorker.disconnect();
   await host.close();
   await rm(scratch, { recursive: true, force: true });
