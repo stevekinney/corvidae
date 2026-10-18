@@ -14,9 +14,9 @@
  *   calls and no text;
  * - the `tool-result` row for call `c` of step `n` is `<runId>:step:<n>:result:<c>`;
  * - the `user` row a delivered human-wait signal appends is
- *   `<runId>:signal:<signalName>:<n>`, `n` counting the rows that signal has already
- *   appended to this run, so a client that watched the run resume shows the
- *   answer under the id a later snapshot holds it by.
+ *   `<runId>:signal:<signalName>:<n>`, `n` counting the run's human-wait parks
+ *   from zero, so a client that watched the run resume shows the answer under
+ *   the id a later snapshot holds it by.
  *
  * A run without an id (a bare `executeLoop` call) mints ids as it always did.
  *
@@ -84,8 +84,9 @@ export function appendFinalAssistantMessage(
  * which the conversation refuses. The earlier attempt's row is the last in the
  * conversation, because nothing after generation has run, so it is taken out
  * and the retry's row replaces it: the rejected response is not part of the
- * history the client is shown. If that row is somewhere else, the retry takes a
- * minted id, as a run without ids always has.
+ * history the client is shown. A row under that id anywhere else is a broken
+ * invariant (nothing but the retried step appends under it), and fails loudly
+ * rather than minting an id the client could not match.
  */
 export function assistantRowIdentifierForAttempt(
   conversation: Conversation,
@@ -95,23 +96,26 @@ export function assistantRowIdentifierForAttempt(
   const rows = conversation.getMessages({ includeHidden: true });
   const held = rows.findIndex((row) => row.id === id);
   if (held === -1) return id;
-  if (held !== rows.length - 1) return undefined;
+  if (held !== rows.length - 1) {
+    throw new Error(
+      `Row "${id}" is already in the conversation and is not its last row, so a retried step cannot replace it`,
+    );
+  }
   conversation.rewindBeforeMessage(id);
   return id;
 }
 
 /**
- * The id of the row the next delivery of `signalName` appends to a conversation
- * holding `rowIdentifiers`, or `undefined` for a run with no id. Counts the rows
- * this run's earlier deliveries of the same signal left, so a run that waits on
- * one signal twice names both answers.
+ * The id of the row the `ordinal`th human-wait delivery of a run appends, or
+ * `undefined` for a run with no id. The ordinal counts the run's human-wait parks
+ * from zero (the same count the park's review id carries), so it only grows: a
+ * conversation that is compacted afterwards cannot make a later delivery reuse an
+ * id, and a client that is told the park knows the id before the answer lands.
  */
 export function signalMessageIdentifier(
-  rowIdentifiers: ReadonlyArray<string>,
   runId: string | undefined,
   signalName: string,
+  ordinal: number,
 ): string | undefined {
-  if (runId === undefined) return undefined;
-  const prefix = `${runId}:signal:${signalName}:`;
-  return `${prefix}${rowIdentifiers.filter((id) => id.startsWith(prefix)).length}`;
+  return runId === undefined ? undefined : `${runId}:signal:${signalName}:${ordinal}`;
 }

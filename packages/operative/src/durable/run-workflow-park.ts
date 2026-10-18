@@ -42,6 +42,8 @@ export interface WorkflowParkState {
   pendingHumanWait?: PendingHumanWait | undefined;
   lastWakeupNote?: string | undefined;
   lastHumanWaitSignal?: string | undefined;
+  /** How many human-wait parks this run has been released from. */
+  humanWaitDeliveries: number;
   runId: string;
 }
 
@@ -112,15 +114,15 @@ export function* runWorkflowPark(
     const renderedMessage = renderSignalContinuation(
       buildSignalContinuationInput(signalName, payload, deliveredAt),
     );
+    // The run's own count of the parks it has been released from, not a count of
+    // the rows the conversation holds, which a compaction can shrink.
+    const deliveryOrdinal = state.humanWaitDeliveries;
+    state.humanWaitDeliveries += 1;
     state.snapshot = (() => {
       const resumedConversation = Conversation.from(state.snapshot, {
         runtime: runDepsFrom(ctx.services).options.runtime ?? createDefaultRuntimeServices(),
       });
-      const id = signalMessageIdentifier(
-        resumedConversation.getMessages({ includeHidden: true }).map((row) => row.id),
-        state.runId,
-        signalName,
-      );
+      const id = signalMessageIdentifier(state.runId, signalName, deliveryOrdinal);
       if (id === undefined) resumedConversation.appendUserMessage(renderedMessage);
       else
         resumedConversation.appendMessages(

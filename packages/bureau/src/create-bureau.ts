@@ -739,6 +739,10 @@ class BureauError extends Error {
  * the outcome could not be written into the session's conversation. The review is
  * resolved and will not be offered again; the conversation still shows it as
  * pending until a later write replaces the row.
+ *
+ * The decision took effect: only the write into the conversation failed. The code
+ * is `CONFLICT` for lack of a better one, and a management-plane consumer must not
+ * read it as another resolver having won.
  */
 class ApprovalOutcomeNotWrittenError extends BureauError {
   constructor(message: string) {
@@ -1918,6 +1922,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       review: PendingReview;
       principal: string;
       reason?: string;
+      /** What the approved tool returned, so a retry can still write the outcome into the conversation. */
+      result?: unknown;
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -11045,6 +11051,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredRunIds.delete(runId);
   }
 
+  /** Whether this process holds the run and it has not recorded its end. */
+  function isRunStillGoing(runId: string): boolean {
+    const runState = store.getRun(runId);
+    if (runState === undefined) return false;
+    return (
+      (runState.status === 'running' || runState.status === 'aborting') &&
+      terminalActionTimestamp(runState.actions) === undefined
+    );
+  }
+
   /**
    * COR-855 — writes the outcome of a resolved tool approval into the session's
    * conversation, replacing the pending `action_required` tool-result row in
@@ -11092,25 +11108,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The run's own terminal save is in flight when its approval is resolved
       // at once; the row to replace is not stored until it lands.
       await sessionPersistence.drain();
+      // Read after the drain: a run that has not settled has not stored its
+      // conversation, so a missing row says nothing about whether the row exists.
+      const stillGoing = isRunStillGoing(review.runId);
       for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
         try {
+          let missing = false;
           await sessionStore.update(review.sessionId, (session) => {
             if (session === undefined) return undefined;
-            // A conversation that never held a row for the call (a review restored
-            // from persisted metadata alone) shows no approval as pending, so there is
-            // nothing stale to replace; only a row that is there and cannot be written
-            // is a failure.
             const history = session.conversationHistory;
             const holdsRow = history.ids.some(
               (id) => history.messages[id]?.toolResult?.callId === callId,
             );
-            if (!holdsRow) return undefined;
+            if (!holdsRow) {
+              missing = true;
+              return undefined;
+            }
             return {
               ...session,
               conversationHistory: resolveToolResult(history, callId, toolResult),
             };
           });
-          return undefined;
+          if (!missing) return undefined;
+          // A conversation that never held a row for the call (a review restored
+          // from persisted metadata alone) shows no approval as pending, so there is
+          // nothing stale to replace. A run that is still going is different: its
+          // row is not stored yet, and the terminal save would put the stale one
+          // there, so the outcome is lost unless the caller is told.
+          if (!stillGoing) return undefined;
+          lastError = new Error(
+            'the run is still going and has not stored the conversation the row is in',
+          );
+          break;
         } catch (error) {
           lastError = error;
           if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
@@ -11198,6 +11227,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               });
             }
           }
+          // The first attempt ran the tool but could not persist the decision, so it
+          // never wrote the outcome either: write it now, as that attempt would have.
+          const cleanupOutcomeNotWritten =
+            cleanup.review.kind === 'tool-approval'
+              ? await writeApprovalOutcomeToSession(
+                  cleanup.review,
+                  {
+                    id: input.id,
+                    decision: cleanup.decision,
+                    principal: cleanup.principal,
+                    ...(cleanup.reason !== undefined ? { reason: cleanup.reason } : {}),
+                  },
+                  cleanup.result,
+                )
+              : undefined;
           await recordReviewDecision(
             cleanup.review,
             cleanup.decision,
@@ -11205,6 +11249,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cleanup.reason,
             { auditAlreadyAppended: cleanupAuditAppended },
           );
+          if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
           return {
             id: input.id,
             kind: cleanup.kind,
@@ -11512,6 +11557,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             review,
             principal: input.principal,
             ...(input.reason !== undefined ? { reason: input.reason } : {}),
+            ...(result === undefined ? {} : { result }),
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -11780,8 +11826,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     if (!match) return undefined;
 
+    // A record written before `round` existed has none at runtime, whatever the type says.
     const reviewDetail = (match.detail as Record<string, unknown>)['review'] as PendingReview;
-    return { ...reviewDetail, status: reviewStatusFromAuditType(match.type) };
+    return {
+      ...reviewDetail,
+      ...(reviewDetail.kind === 'tool-approval' ? { round: reviewDetail.round ?? 0 } : {}),
+      status: reviewStatusFromAuditType(match.type),
+    };
   }
 
   /**

@@ -1,7 +1,12 @@
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, defineMessagePlugin, type MessageInput } from 'conversationalist';
+import {
+  Conversation,
+  defineMessagePlugin,
+  type MessageInput,
+  withMessageId,
+} from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';
@@ -9,6 +14,7 @@ import type { OperativeHookMap } from './hooks';
 import { executeLoop } from './loop';
 import {
   assistantMessageIdentifier,
+  assistantRowIdentifierForAttempt,
   signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
@@ -27,25 +33,43 @@ function rowIds(conversation: Conversation): string[] {
   return conversation.getMessages({ includeHidden: true }).map((message) => message.id);
 }
 
-describe('signalMessageIdentifier', () => {
-  it('names each delivery of a signal by how many its run has already appended', () => {
-    expect(signalMessageIdentifier(['user-1'], 'run-1', 'human-response')).toBe(
-      'run-1:signal:human-response:0',
-    );
-    expect(
-      signalMessageIdentifier(
-        ['user-1', 'run-1:signal:human-response:0', 'run-1:signal:approval:0'],
-        'run-1',
-        'human-response',
-      ),
-    ).toBe('run-1:signal:human-response:1');
+describe('assistantRowIdentifierForAttempt', () => {
+  const assistant = (conversation: Conversation, id: string) =>
+    conversation.appendMessages(withMessageId({ role: 'assistant', content: 'first attempt' }, id));
+
+  it('keeps an id nothing holds, and replaces the earlier attempt’s row when it is the last', () => {
+    const conversation = new Conversation();
+    expect(assistantRowIdentifierForAttempt(conversation, 'run-1:step:0')).toBe('run-1:step:0');
+    assistant(conversation, 'run-1:step:0');
+
+    expect(assistantRowIdentifierForAttempt(conversation, 'run-1:step:0')).toBe('run-1:step:0');
+    expect(rowIds(conversation)).toEqual([]);
+    expect(assistantRowIdentifierForAttempt(conversation, undefined)).toBeUndefined();
   });
 
-  it('does not count another run’s rows, and names nothing for a run with no id', () => {
-    expect(
-      signalMessageIdentifier(['run-2:signal:human-response:0'], 'run-1', 'human-response'),
-    ).toBe('run-1:signal:human-response:0');
-    expect(signalMessageIdentifier([], undefined, 'human-response')).toBeUndefined();
+  it('fails loudly when the row is held anywhere but last, rather than minting an id', () => {
+    const conversation = new Conversation();
+    assistant(conversation, 'run-1:step:0');
+    conversation.appendUserMessage('and then something else');
+
+    expect(() => assistantRowIdentifierForAttempt(conversation, 'run-1:step:0')).toThrow(
+      'is not its last row',
+    );
+  });
+});
+
+describe('signalMessageIdentifier', () => {
+  it('names a delivery by the run, the signal, and the run’s count of parks', () => {
+    expect(signalMessageIdentifier('run-1', 'human-response', 0)).toBe(
+      'run-1:signal:human-response:0',
+    );
+    expect(signalMessageIdentifier('run-1', 'human-response', 3)).toBe(
+      'run-1:signal:human-response:3',
+    );
+  });
+
+  it('names nothing for a run with no id', () => {
+    expect(signalMessageIdentifier(undefined, 'human-response', 0)).toBeUndefined();
   });
 });
 

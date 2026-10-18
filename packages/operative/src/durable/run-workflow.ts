@@ -241,6 +241,9 @@ export function createRunWorkflow(
         // park on this signal"), not a live-park indicator, so it is reported
         // regardless of how the run eventually terminates.
         let lastHumanWaitSignal: string | undefined;
+        // How many human-wait parks the run has been released from; the ordinal the
+        // answer's row is named by, and the count the park's review id carries.
+        let humanWaitDeliveries = 0;
 
         // AB-45 — the note from a `scheduleWakeup` park this run genuinely
         // slept on and woke from, kept for the FINAL result's `wakeupNote`
@@ -490,6 +493,7 @@ export function createRunWorkflow(
             pendingHumanWait,
             lastWakeupNote,
             lastHumanWaitSignal,
+            humanWaitDeliveries,
             runId,
           };
           const continued = yield* runWorkflowPark(ctx, parkState);
@@ -507,6 +511,7 @@ export function createRunWorkflow(
             pendingHumanWait,
             lastWakeupNote,
             lastHumanWaitSignal,
+            humanWaitDeliveries,
           } = parkState);
           if (continued) continue;
           break;

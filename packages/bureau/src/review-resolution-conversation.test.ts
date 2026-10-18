@@ -9,14 +9,20 @@
  * it now, for every caller: these tests drive it directly, never through an
  * adapter.
  */
-import { stopWhen, type Toolbox, waitForRunState } from '@lostgradient/operative';
+import {
+  createScriptedGenerate,
+  stopWhen,
+  type Toolbox,
+  waitForCondition,
+  waitForRunState,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import type { Message } from 'conversationalist';
 import { z } from 'zod';
 
-import { BureauError, createBureau } from './create-bureau';
+import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from './create-bureau';
 import type { Bureau } from './types';
 
 const APPROVAL_SECRET = 'review-resolution-secret';
@@ -288,6 +294,56 @@ describe('when the outcome cannot be written into the session', () => {
       const row = resultRow(await sessionRows(bureau, run.sessionId), 'call-1');
       expect(row.toolResult?.outcome).toBe('action_required');
     } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('an approval resolved while its run is still going', () => {
+  it('rejects, because the conversation the row is in has not been stored yet and the terminal save would put the stale row there', async () => {
+    const charges: number[] = [];
+    const generate = createScriptedGenerate([
+      {
+        kind: 'respond',
+        response: {
+          content: 'Charging.',
+          toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+        },
+      },
+      { kind: 'block', barrier: 'next-step' },
+      { kind: 'respond', response: { content: 'Carried on.', toolCalls: [] } },
+    ]);
+    // No `pendingApproval()`: the run goes on past the gated call.
+    const bureau = await createBureau({
+      id: 'running-approval',
+      agents: {},
+      generate,
+      toolbox: approvalToolbox(charges),
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+      sessionPersistenceRetryDelayMilliseconds: 0,
+      onDiagnostic: () => undefined,
+    });
+    try {
+      const run = await bureau.createRun({ message: 'charge it', principal: 'alice' });
+      await generate.reached('next-step');
+      await waitForCondition(() => bureau.listPendingReviews().length === 1, 'no review listed');
+      const [review] = bureau.listPendingReviews();
+
+      const outcome = await bureau
+        .resolveReview({ id: review!.id, decision: 'approve', principal: 'alice' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      generate.release('next-step');
+      await waitForRunState(bureau, run.id);
+
+      expect(outcome).toBeInstanceOf(ApprovalOutcomeNotWrittenError);
+      expect(charges).toEqual([500]);
+    } finally {
+      generate.release('next-step');
       await bureau.dispose();
     }
   });

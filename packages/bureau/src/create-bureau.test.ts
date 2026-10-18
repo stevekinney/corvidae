@@ -10407,6 +10407,62 @@ describe('createBureau review queue (AB-20)', () => {
     }
   });
 
+  it('writes the outcome into the conversation when a retried resolution finishes the cleanup (COR-855)', async () => {
+    const backingStore = textValueStore(new MemoryStorage());
+    let failedSessionUpdatesRemaining = 0;
+    const persistence = createTextStoreProxy(backingStore, {
+      async conditionalBatch(conditions, operations) {
+        if (
+          failedSessionUpdatesRemaining > 0 &&
+          operations.some((operation) => operation.key.startsWith('agent-session:')) &&
+          JSON.stringify(operations).includes('resolvedReviewIds')
+        ) {
+          failedSessionUpdatesRemaining -= 1;
+          throw new Error('override cleanup unavailable');
+        }
+        return backingStore.conditionalBatch(conditions, operations);
+      },
+    });
+    const charges: number[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([
+        {
+          content: '',
+          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+        },
+      ]),
+      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+      stopWhen: stopWhen.toolOutcome('action_required'),
+      persistence,
+      onDiagnostic: () => undefined,
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Charge despite cleanup storage failure' });
+      await waitForRunCompletion(bureau, run.id);
+      const [review] = bureau.listPendingReviews();
+      failedSessionUpdatesRemaining = 3;
+      const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
+      await bureau.resolveReview(input).then(
+        () => undefined,
+        () => undefined,
+      );
+      failedSessionUpdatesRemaining = 0;
+
+      await bureau.resolveReview(input);
+
+      const history = (await bureau.getSession(run.sessionId))!.conversationHistory;
+      const row = history.ids
+        .map((id) => history.messages[id]!)
+        .find((message) => message.toolResult?.callId === 'cleanup-call');
+      expect(charges).toEqual([425]);
+      // The tool ran on the first attempt; the retry is what puts its result in the conversation.
+      expect(row?.toolResult?.outcome).toBe('success');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('retries an initial approval binding persistence failure before exposing the live review', async () => {
     const backingStore = textValueStore(new MemoryStorage());
     let failedApprovalPersistence = false;
