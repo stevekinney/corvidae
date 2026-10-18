@@ -35,6 +35,11 @@ describe('the transition path', () => {
     expect(typeof memory.createTransitionEngine).toBe('function');
     expect(typeof memory.consolidateProjections).toBe('function');
     expect(typeof memory.transitionDigest).toBe('function');
+    expect(memory.EMBEDDING_PROFILE_SCHEMA_VERSION).toBe(1);
+    expect(
+      memory.embeddingProfileSchema.safeParse({ schemaVersion: 1, model: 'm', dimensions: 2 })
+        .success,
+    ).toBe(true);
     expect(memory.TRANSITION_EVENT_KINDS).toHaveLength(9);
     expect(memory.TRANSITION_PROPOSAL_KINDS).toHaveLength(5);
     expect(new memory.MemoryTransitionProposalError('x').code).toBe('malformed');

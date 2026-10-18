@@ -25,6 +25,7 @@ export type {
 export type { DualNamespaceMemoryOptions } from './dual-namespace-memory';
 export type { CachedEmbedder, EmbeddingCacheOptions } from './embedding-cache';
 export type {
+  EmbeddingProfile,
   EvidenceProjectionRecord,
   ProjectionKind,
   ProjectionReference,
@@ -319,6 +320,7 @@ export {
   rebuildDerivedIndexes,
 } from './derived-indexes';
 export {
+  EMBEDDING_PROFILE_SCHEMA_VERSION,
   MAX_PROJECTION_REVISION,
   PROJECTION_KINDS,
   PROJECTION_SCHEMA_VERSION,
@@ -326,6 +328,7 @@ export {
   PROJECTION_TRANSITION_KINDS,
   TRANSFORMATION_STEPS,
   decodeEvidenceProjectionRecord,
+  embeddingProfileSchema,
   encodeEvidenceProjectionRecord,
   evidenceProjectionRecordSchema,
   projectionText,

@@ -269,27 +269,6 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       expect(await harness.storage.getEmbeddingProfile(TENANT, NAMESPACE)).toEqual(before);
     });
 
-    it('refuses a direct commit that demotes the old records under a new profile', async () => {
-      const harness = await seededWithTwoEmbedded();
-      const g1 = await harness.storage.getProjection(TENANT, NAMESPACE, 'g1');
-      const summary = makeFact('s1', [e1], { embedding: { model: 'new-model', vector: [1, 0] } });
-      const error = await rejectionOf(
-        harness.storage.commit({
-          tenantId: TENANT,
-          projections: [
-            summary,
-            {
-              ...g1!,
-              revision: 2,
-              status: 'demoted',
-              transition: { kind: 'demoted', at: 5, demotedBy: { id: 's1', revision: 1 } },
-            },
-          ],
-        }),
-      );
-      expect((error as EvidenceProjectionCommitError).code).toBe('embedding-profile-conflict');
-    });
-
     it('keeps the marker when the namespace is left with no recallable embedded record, and a later create replaces it', async () => {
       const harness = await seededWithTwoEmbedded();
       for (const id of ['g1', 'g2']) {

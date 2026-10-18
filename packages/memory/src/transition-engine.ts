@@ -376,14 +376,14 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
       } catch (error) {
         return await afterFailure(error);
       }
-      await emitCommitted(applied.receipt, plan);
+      await emitCommitted(applied.receipt);
       return { outcome: 'committed', receipt: applied.receipt, replayed: false };
     } catch (error) {
       if (error instanceof TransitionIdentifierConflictError) throw error;
       return unknown(error);
     }
 
-    async function emitCommitted(receipt: TransitionReceipt, plan: TransitionPlan): Promise<void> {
+    async function emitCommitted(receipt: TransitionReceipt): Promise<void> {
       await emit({
         kind: 'committed',
         evidence: receipt.evidence
@@ -398,31 +398,35 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
             revision: entry.revision,
           })),
       });
-      const successor = plan.evidence[0];
-      for (const id of plan.supersededEvidence) {
-        const predecessor = await reader.evidence(id);
-        if (predecessor === undefined || successor === undefined) continue;
-        await emit({
-          kind: 'superseded',
-          subject: { kind: 'evidence', id, digest: predecessor.digest },
-          successor: { kind: 'evidence', id: successor.id, digest: successor.digest },
-        });
+      // Supersessions follow what this batch did, as the receipt records it. A record that was
+      // already stored byte for byte was superseded by whichever operation stored it.
+      for (const entry of receipt.evidence) {
+        if (entry.outcome !== 'appended') continue;
+        for (const id of entry.supersedes ?? []) {
+          const predecessor = await reader.evidence(id);
+          if (predecessor === undefined) continue;
+          await emit({
+            kind: 'superseded',
+            subject: { kind: 'evidence', id, digest: predecessor.digest },
+            successor: { kind: 'evidence', id: entry.id, digest: entry.digest },
+          });
+        }
       }
-      for (const revision of plan.revisions) {
-        const transition = revision.next?.transition;
-        if (transition?.kind !== 'superseded') continue;
+      for (const entry of receipt.projections) {
+        if (entry.outcome !== 'written' || entry.transition !== 'superseded') continue;
+        if (entry.supersededBy === undefined) continue;
         await emit({
           kind: 'superseded',
           subject: {
             kind: 'projection',
-            namespace: revision.namespace,
-            id: revision.id,
-            revision: revision.expectedRevision,
+            namespace: entry.namespace,
+            id: entry.id,
+            revision: entry.revision - 1,
           },
           successor: {
             kind: 'projection',
-            namespace: revision.namespace,
-            ...transition.supersededBy,
+            namespace: entry.namespace,
+            ...entry.supersededBy,
           },
         });
       }
