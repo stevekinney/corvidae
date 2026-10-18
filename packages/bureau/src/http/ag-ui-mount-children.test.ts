@@ -25,7 +25,12 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { bureauMetadata, FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
+import {
+  bureauMetadata,
+  FrameReader,
+  readAgUiStream,
+  typesOf,
+} from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 
 type Handler = ReturnType<typeof createBureauHandler>;
@@ -154,6 +159,47 @@ describe('child runs', () => {
 
       expect(stranger.status).toBe(404);
       expect(strangerText).toBe(randomText.replaceAll('child-run-never-was', childId));
+    });
+  });
+
+  it('stream their result under their own row id when they settle while attached', async () => {
+    await withParentAndChild(async ({ handler, childId, script }) => {
+      const attached = new FrameReader(await handler(attachRunRequest(childId, as('alice-key'))));
+      const opening = await attached.until(EventType.STATE_SNAPSHOT);
+
+      script.release('child-hold');
+      const tail = await attached.rest();
+
+      const snapshot = opening.find((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)!
+        .event as unknown as { messages: unknown[] };
+      expect(snapshot.messages).toEqual([]);
+      expect(typesOf(tail)).toEqual([
+        EventType.TEXT_MESSAGE_START,
+        EventType.TEXT_MESSAGE_CONTENT,
+        EventType.TEXT_MESSAGE_END,
+        EventType.RUN_FINISHED,
+      ]);
+      expect(tail[0]!.event).toMatchObject({ messageId: `${childId}:step:0`, role: 'assistant' });
+      expect(tail[1]!.event).toMatchObject({ delta: 'Child done.' });
+      expect(tail.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+    });
+  });
+
+  it('carry their result in the snapshot of a stream that attaches after they settled', async () => {
+    await withParentAndChild(async ({ bureau, handler, parentRunId, childId, script }) => {
+      script.release('child-hold');
+      await bureau.children.wait({ parentRunId, childRunId: childId });
+
+      const frames = await readAgUiStream(
+        await handler(attachRunRequest(childId, as('alice-key'))),
+      );
+
+      const snapshot = frames.find((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)!
+        .event as unknown as { messages: unknown[] };
+      expect(snapshot.messages).toEqual([
+        { id: `${childId}:step:0`, role: 'assistant', content: 'Child done.' },
+      ]);
+      expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
     });
   });
 
