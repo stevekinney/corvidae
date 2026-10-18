@@ -17,8 +17,9 @@ import { encodeStorageKeyComponent } from '@lostgradient/weft';
  * live, it only releases what it held: that run's end cancels what is left.
  *
  * `submitSessionInput` runs the mirror image: it writes the marker below, commits
- * the admission, catches up steering, and reads liveness; with no run live or
- * starting it cancels its own input and returns the re-read receipt. The two
+ * the admission, writes the marker again, catches up steering, and reads
+ * liveness; with no run live or starting it cancels its own input and returns
+ * the re-read receipt. The two
  * orderings make one side always see the other: the ending run reads the mailbox
  * only after its not-live write is acknowledged, and the submit side reads
  * liveness only after its admission committed, so an input admitted before the
@@ -30,11 +31,16 @@ import { encodeStorageKeyComponent } from '@lostgradient/weft';
  * `session-input-open:v1:{sessionId}` is the sweep's index of sessions that may
  * have open input. The submit side bumps it, with a compare-and-set that gives
  * every write a fresh version, BEFORE it admits, so admitted input is never
- * missing from the index; a crash between the marker and the admission leaves a
- * marker over an empty mailbox, which the sweep removes. Removing a marker is
- * conditional (read its version, read the mailbox, delete only if the mailbox is
- * idle and the version is unchanged), so a marker is never deleted over input
- * admitted after it was read.
+ * missing from the index, and again AFTER the admission commits; a crash between
+ * the first bump and the admission leaves a marker over an empty mailbox, which
+ * the sweep removes. Removing a marker is conditional (read its version, read
+ * the mailbox's open count, delete only if nothing is open and the version is
+ * unchanged), but that alone does not protect input admitted between the
+ * remover's two reads and its delete: the remover then deletes the bumped marker
+ * over a mailbox that just became non-empty. The second bump is what closes
+ * that window. The open count is the mailbox's own exhaustive counter, not a
+ * listing, because a listing stops at a scan ceiling and an empty page does not
+ * prove an empty mailbox.
  *
  * The boot sweep and the periodic sweep visit every marked session and cancel
  * its open input only when `liveSessionRunIdsEverywhere` reports no run at all:
@@ -123,12 +129,16 @@ function parseMarker(raw: string | null): MarkerRecord | undefined {
 
 /**
  * Applies `action` to every cancellable open receipt of a mailbox, in admission
- * order and in bounded batches, until none is left or a batch makes no
+ * order and in bounded batches, until none is listed or a batch makes no
  * progress. A backlog deeper than one batch is handled in full: `list` cannot
  * be paged, so each batch is re-listed after the last one's commands left the
  * listed states. Commands already in `cancellation-requested` are not listed,
  * because nothing here can move them, so a backlog whose head is a page of
- * them still reaches what waits behind it.
+ * them still reaches what waits behind it. A listing walks at most a fixed
+ * number of index entries (`Mailbox`'s scan ceiling), so an empty page is not
+ * proof that nothing is open: that decision belongs to the mailbox's exhaustive
+ * open count, which the marker removal reads, and a command the listing could
+ * not reach stays open, with its marker, for a later pass.
  */
 export async function forEachOpenReceipt(
   mailbox: Mailbox,
@@ -193,17 +203,17 @@ export function createSessionInputSettlement(
   }
 
   /**
-   * Removes the marker only if the mailbox has no open input and the marker has
-   * not changed since it was read. Losing the delete means the session changed
-   * under it, so it decides again from what it reads next.
+   * Removes the marker only if the mailbox's exhaustive open count is zero and
+   * the marker has not changed since it was read. Losing the delete means the
+   * session changed under it, so it decides again from what it reads next.
    */
   async function removeMarkerIfIdle(sessionId: string, mailbox: Mailbox): Promise<boolean> {
     const key = markerKey(sessionId);
     for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
       const raw = await kv.get(key);
       if (raw === null) return true;
-      const open = await mailbox.list({ states: OPEN_SESSION_INPUT_STATES, limit: 1 });
-      if (open.length > 0) return false;
+      const capacity = await mailbox.capacity();
+      if (capacity.open > 0) return false;
       if (await kv.conditionalBatch([{ key, expectedValue: raw }], [{ type: 'delete', key }])) {
         return true;
       }

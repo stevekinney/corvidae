@@ -296,7 +296,8 @@ async function deliverSessionInputs(
   }
   const deliveries: SessionInputDelivery[] = [];
   for (const input of await gate.claimPending()) {
-    const messages = conversation.getMessages();
+    // Hidden messages count: a hidden turn still holds its command and its id.
+    const messages = conversation.getMessages({ includeHidden: true });
     const existing = messages.find(
       (message) => message.metadata?.['sessionInputCommandId'] === input.commandId,
     );

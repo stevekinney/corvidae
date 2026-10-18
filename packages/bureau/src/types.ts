@@ -1596,7 +1596,10 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * step boundary appends its user turn to the conversation: before the run's
    * next step generates, or once more after its last step generated while the
    * run has a step left. The turn is appended at most once, in admission order
-   * within a run, keyed by the mailbox command so a reused `id` is a new input,
+   * within a run, keyed by the mailbox command so a reused `id` is a new input
+   * (an `id` must therefore be unique for the life of the session: the turn
+   * carries it as its message id, and a second turn under the same `id` takes
+   * a fresh message id instead),
    * under the input's own `id` as its message id, and the promotion commits in
    * the write that saves the turn, whatever that step's outcome. It reads
    * `canceled` when the input was not appended before its run ended, however

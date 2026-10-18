@@ -359,6 +359,21 @@ export function logsRunEnded(operations: readonly BatchOperation[]): boolean {
   );
 }
 
+/** A write that acknowledges a session input command: its record moves to `applied` and joins the terminal index. */
+export function acknowledgesSessionInput(operations: readonly BatchOperation[]): boolean {
+  return (
+    operations.some(
+      (operation) => operation.type === 'put' && operation.key.startsWith('appterm:'),
+    ) &&
+    operations.some(
+      (operation) =>
+        operation.type === 'put' &&
+        operation.key.startsWith('appcmd:') &&
+        textOf(operation).includes('applied'),
+    )
+  );
+}
+
 /** A write that appends a run's `promoted` entry to its session's steering log. */
 export function logsRunPromoted(operations: readonly BatchOperation[]): boolean {
   return operations.some(

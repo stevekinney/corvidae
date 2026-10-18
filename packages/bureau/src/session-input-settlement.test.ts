@@ -170,6 +170,70 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
     expect(await f.markers()).toHaveLength(0);
   });
 
+  it('cancels open input with no marker at all: a missing marker is never a reason to return early', async () => {
+    const f = fixture();
+    // The marker was removed between a submit's bump and its admission.
+    await f.admitOnly('input-x');
+    expect(await f.markers()).toHaveLength(0);
+
+    const cancelled = await f.settlement.cancelUndelivered(SESSION_ID, new Set());
+
+    expect(cancelled).toHaveLength(1);
+    expect(await f.states()).toEqual([['input-x', 'cancelled']]);
+  });
+
+  it('keeps the marker when the listing is empty but the mailbox counts open input', async () => {
+    const f = fixture();
+    await f.admit('input-x');
+    // A listing stops at a scan ceiling: here it finds nothing, while the
+    // mailbox's own open count still says one command is open.
+    const original = f.mailbox.list.bind(f.mailbox);
+    f.mailbox.list = async () => [];
+    try {
+      await f.settlement.sweep();
+    } finally {
+      f.mailbox.list = original;
+    }
+
+    expect(await f.markers()).toHaveLength(1);
+    expect(await f.states()).toEqual([['input-x', 'open']]);
+  });
+
+  it('keeps an input listed when a remover deletes the marker between the submit bump and the admission', async () => {
+    const f = fixture();
+    // The submit's first bump.
+    await f.settlement.markOpen(SESSION_ID);
+    // A remover reads the bumped marker and an empty mailbox; the admission
+    // commits right after its emptiness read; its conditional delete then
+    // succeeds, because the marker's version has not changed.
+    const originalCapacity = f.mailbox.capacity.bind(f.mailbox);
+    let admitted = false;
+    f.mailbox.capacity = async () => {
+      const result = await originalCapacity();
+      if (!admitted) {
+        admitted = true;
+        await f.admitOnly('input-x');
+      }
+      return result;
+    };
+    try {
+      await f.settlement.sweep();
+    } finally {
+      f.mailbox.capacity = originalCapacity;
+    }
+    expect(admitted).toBe(true);
+    expect(await f.markers()).toHaveLength(0);
+    expect(await f.states()).toEqual([['input-x', 'open']]);
+
+    // The submit's second bump, after its admission committed, lists it again,
+    // and the next sweep settles it.
+    await f.settlement.markOpen(SESSION_ID);
+    expect(await f.markers()).toHaveLength(1);
+    await f.settlement.sweep();
+    expect(await f.states()).toEqual([['input-x', 'cancelled']]);
+    expect(await f.markers()).toHaveLength(0);
+  });
+
   it('does not remove a marker over input admitted after the marker was read', async () => {
     const f = fixture();
     await f.settlement.markOpen(SESSION_ID);

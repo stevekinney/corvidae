@@ -11,7 +11,7 @@ import {
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory, type MessageInput } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -868,6 +868,46 @@ describe('promotion commits with the step that appends (COR-1476)', () => {
       const records = await store.read(SESSION_ID);
       expect(records[second]?.promotion?.conversationMessageId).toBe(delivered[1]?.messageId);
       expect(await openCount(mailbox)).toBe(0);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('counts a hidden message under the input id, and takes a fresh id for the turn', async () => {
+    const storage = new MemoryStorage();
+    const mailbox = newMailbox(storage);
+    const store = deliveryStoreOver(storage);
+    const command = await admit(mailbox, 'input-a', 'visible now');
+    const transcript = new Conversation();
+    transcript.appendUserMessage('Start');
+    const hidden: MessageInput & { readonly id: string } = {
+      role: 'user',
+      content: 'hidden',
+      hidden: true,
+      id: 'input-a',
+    };
+    transcript.appendMessages(hidden);
+
+    const { engine, checkpointStore } = await buildEngine(storage);
+    try {
+      const services = makeServices(
+        async () => ({ content: 'answered', toolCalls: [] }),
+        gateOver(mailbox, store),
+      );
+      services.options = { ...services.options, conversation: transcript };
+      const handle = await engine.start(
+        'agentRun',
+        { runId: RUN_ID, sessionId: SESSION_ID, agentName: '' },
+        { id: RUN_ID, services },
+      );
+      await handle.result();
+
+      const saved = await transcriptOf(checkpointStore);
+      const [delivered] = sessionInputMessages(saved);
+      expect(delivered?.id).toBe('input-a');
+      expect(delivered?.messageId).not.toBe('input-a');
+      const records = await store.read(SESSION_ID);
+      expect(records[command]?.promotion?.conversationMessageId).toBe(delivered?.messageId);
     } finally {
       engine[Symbol.dispose]();
     }

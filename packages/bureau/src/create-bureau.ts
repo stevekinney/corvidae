@@ -9235,9 +9235,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (outcome.outcome !== 'admitted') return outcome;
         const { receipt, commandId } = outcome;
         const admitted: SessionInputAdmissionOutcome = { outcome: 'admitted', receipt };
+        if (sessionInputSettlement === undefined) return admitted;
+        // The marker written before the admission can be removed in between by
+        // a sweep that read it, found the mailbox still empty, and deleted it
+        // after the admission committed. Bumping it again now, with the input
+        // durable, keeps the session listed whatever happened to the first bump.
+        try {
+          await sessionInputSettlement.markOpen(sessionId);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not re-mark session "${sessionId}" as having open input after admitting "${id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
         // Shutdown releases open input rather than cancelling it; the next
         // boot's recovered run delivers it, or the sweep cancels it.
-        if (sessionInputSettlement === undefined || isSessionInputClosed()) return admitted;
+        if (isSessionInputClosed()) return admitted;
         // COR-1476 — the admission above is committed. Only now is liveness
         // read, after catching up the steering log, so a run whose `run-ended`
         // entry another process wrote is not counted live. No run live or

@@ -20,6 +20,7 @@ import { createBureau } from './create-bureau';
 import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
 import { appendSteeringLogEvent } from './steering-log';
 import {
+  acknowledgesSessionInput,
   deferred,
   logsRunEnded,
   logsRunPromoted,
@@ -574,6 +575,95 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
   });
 });
 
+describe('a promoted input whose command was never acknowledged (COR-1476)', () => {
+  it('is spared by the run that ends, because its turn is in the transcript, and retired by the sweep once its lease lapses, still promoted', async () => {
+    const origin = '2026-10-17T12:00:00.000Z';
+    const runtime = createManualRuntimeServices({ origin });
+    const real = new MemoryStorage();
+    const seam = seamStorage(real);
+    // The one acknowledgement fails: the command stays leased, promoted.
+    let remaining = 1;
+    const failing = seam.failWrites((operations) => {
+      if (!acknowledgesSessionInput(operations) || remaining === 0) return false;
+      remaining -= 1;
+      return true;
+    }, new Error('the mailbox is unavailable'));
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const prompts: string[][] = [];
+    const bureau = await openBureau(
+      seam.storage,
+      async (context: GenerateContext) => {
+        prompts.push(userTexts(context.conversation));
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        return { content: 'done', toolCalls: [] };
+      },
+      { runtime },
+    );
+    const holds: Array<{ release: () => void }> = [];
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 2 });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-x', 'delivered'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
+      // The run's settlement reads the marker only after it has decided what
+      // to cancel: held there, it shows what it left alone.
+      const atMarkerRead = seam.holdRead(
+        (key) => key.startsWith('session-input-open:v1:'),
+        seam.awaitWriteCommitted(logsRunEnded),
+      );
+      holds.push(atMarkerRead);
+      releaseStepZero.resolve();
+      await bureau.waitForDurableRun(run.id);
+      expect(prompts[1]).toEqual(['First', 'delivered']);
+      expect(failing.attempts()).toBe(1);
+
+      // The run's end spares the command, whose turn its transcript holds: it
+      // stays leased and promoted, and the session stays listed.
+      const mailbox = createSessionInputMailbox(real, run.sessionId, 100, () =>
+        runtime.clock.now(),
+      );
+      const state = async () => {
+        const [receipt] = await mailbox.list({ limit: 10 });
+        return receipt?.state;
+      };
+      await atMarkerRead.reached;
+      expect(await state()).toBe('claimed');
+      atMarkerRead.release();
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'completed';
+      });
+      expect(await markers(real)).toHaveLength(1);
+      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+        'promoted',
+      );
+
+      // The sweep requests the cancellation of what no run will acknowledge,
+      // and settles it once the lease lapses; the promotion stands.
+      await bureau.runDurableMaintenance();
+      expect(await state()).toBe('cancellation-requested');
+      expect(await markers(real)).toHaveLength(1);
+      runtime.setTime(Date.parse(origin) + 31_000);
+      await bureau.runDurableMaintenance();
+      expect(await state()).toBe('cancelled');
+      expect(await receiptState(real, run.sessionId, incarnation, 'input-x', 'delivered')).toBe(
+        'promoted',
+      );
+      expect(await markers(real)).toHaveLength(0);
+    } finally {
+      holds.forEach((hold) => hold.release());
+      failing.stop();
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+});
+
 describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
   it('retries the run-ended write until it is acknowledged, then cancels what was left open', async () => {
     const seam = seamStorage(new MemoryStorage());
@@ -814,6 +904,7 @@ describe('a run promoted but never started (COR-1476)', () => {
           lastRunId: 'run-ghost',
           lastRunStatus: 'running',
           steeringStartingRuns: { 'run-ghost': origin },
+          sessionOwner: 'alice',
         },
         runtime,
       }),
