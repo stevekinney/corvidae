@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
-import { getInternals } from '../../core/engine/internals.ts';
+import { listWorkflowSources } from '../../core/engine/source-listing.ts';
 import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { query, signal, update, workflow, type WorkflowDefinition } from '../../core/types.ts';
@@ -183,8 +183,10 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
   it('reports a source whose only waiter gave up but whose load finished as ready, with its contract', async () => {
     engine = createOperationTestEngine();
     const definition = trivial('orphaned', 'Loaded after its waiter left');
+    const started = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const orphaned = await sourceFor(definition, async () => {
+      started.resolve();
       await release.promise;
       return { w: definition };
     });
@@ -193,20 +195,20 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
     const preload = engine.workflows.preload('orphaned', orphaned.descriptor.revision, {
       signal: waiter.signal,
     });
-    await waitForCondition(
-      async () => getInternals(engine!).sources.diagnostics.get('orphaned')?.size === 1,
-      { label: 'orphaned load to start' },
-    );
+    await started.promise;
     waiter.abort();
     expect(await throwingRejectionOf(preload)).toThrow();
     release.resolve();
-    await waitForCondition(
-      async () => getInternals(engine!).sources.resolved.get('orphaned')?.size === 1,
-      { label: 'orphaned load to finish' },
-    );
-    const diagnostic = getInternals(engine).sources.diagnostics.get('orphaned');
-    expect(diagnostic?.get(orphaned.descriptor.revision)?.state).toBe('cancelled');
 
+    // The catalog's own source listing still reports the abandoned load as cancelled.
+    expect(listWorkflowSources(engine)[0]?.state).toBe('cancelled');
+    await waitForCondition(
+      async () => {
+        const body = (await listDefinitions(engine)) as { definitions: { state: string }[] };
+        return body.definitions[0]?.state === 'ready';
+      },
+      { label: 'the finished load to be reported ready' },
+    );
     const body = (await listDefinitions(engine)) as { definitions: Record<string, unknown>[] };
 
     expect(body.definitions).toEqual([

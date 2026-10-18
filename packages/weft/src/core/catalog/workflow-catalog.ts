@@ -13,9 +13,7 @@
  *
  * - {@link WorkflowCatalog.activateRegistered} — unconditional, used by
  *   `engine.register()`'s drain path (`core/engine/catalog-readiness.ts`) and
- *   by `activateRegisteredSourceRevision` (`core/engine/source-activation.ts`),
- *   which activates a host-supplied `registerSource()` revision such as a
- *   workflow document. Never consults
+ *   `activateRegisteredSourceRevision` (`core/engine/source-activation.ts`). Never consults
  *   `checkWorkflowCompatibility`; always wins via a bounded 5-attempt CAS
  *   retry loop, since registering a different version of an
  *   already-registered workflow must never hard-fail construction or

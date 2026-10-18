@@ -96,6 +96,18 @@ function resolveRevision(
   return Promise.resolve(getInternals(engine).registeredCatalogRevisions.get(name) ?? null);
 }
 
+/** A source's load state and failure category, from its diagnostics for `revision`. */
+function sourceLoadState(
+  engine: Engine,
+  name: string,
+  revision: string,
+): Pick<WorkflowDefinitionSummary, 'state' | 'lastFailureCategory'> {
+  const diagnostics = getInternals(engine).sources.diagnostics.get(name)?.get(revision);
+  const state = diagnostics?.state ?? 'idle';
+  const category = state === 'failed' ? diagnostics?.lastFailureCategory : undefined;
+  return { state, lastFailureCategory: category ?? null };
+}
+
 /**
  * A code type is always `ready`. A source reports the load state of the
  * revision that would run, except that one already resolved in this process is
@@ -108,18 +120,11 @@ function resolveState(
   origin: WorkflowDefinitionOrigin,
   revision: string | null,
 ): Pick<WorkflowDefinitionSummary, 'state' | 'lastFailureCategory'> {
-  if (origin === 'code') return { state: 'ready', lastFailureCategory: null };
+  const ready = { state: 'ready', lastFailureCategory: null } as const;
+  if (origin === 'code') return ready;
   if (revision === null) return { state: 'idle', lastFailureCategory: null };
-  const { sources } = getInternals(engine);
-  if (sources.resolved.get(name)?.get(revision) !== undefined) {
-    return { state: 'ready', lastFailureCategory: null };
-  }
-  const diagnostics = sources.diagnostics.get(name)?.get(revision);
-  const state = diagnostics?.state ?? 'idle';
-  return {
-    state,
-    lastFailureCategory: state === 'failed' ? (diagnostics?.lastFailureCategory ?? null) : null,
-  };
+  const resolved = getInternals(engine).sources.resolved.get(name)?.get(revision);
+  return resolved === undefined ? sourceLoadState(engine, name, revision) : ready;
 }
 
 type ContractFields = Pick<
