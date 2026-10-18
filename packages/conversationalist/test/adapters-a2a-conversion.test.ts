@@ -397,6 +397,15 @@ describe('unsupported A2A content', () => {
     expect(error.kind).toBe('part');
   });
 
+  it('rejects an inbound URL part whose scheme is not http, https, or data', () => {
+    const error = captureMappingError(() =>
+      fromA2APart({ url: 's3://bucket/report.pdf', mediaType: 'application/pdf' }),
+    );
+
+    expect(error.kind).toBe('part');
+    expect(error.message).toContain('s3://bucket/report.pdf');
+  });
+
   it('rejects an inbound part that sets more than one content field', () => {
     const error = captureMappingError(() =>
       fromA2APart({ text: 'hello', url: 'https://example.com' } as unknown as A2APart),

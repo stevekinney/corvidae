@@ -68,6 +68,12 @@ export type {
 } from './delegation-grant';
 
 export {
+  appendAgentInput,
+  assertAgentInput,
+  isConversationInput,
+  payloadText,
+} from './agent-input';
+export {
   AGENT_POLICY_HOOK_SOURCE,
   AGENT_POLICY_PINNED_LAST_PRIORITY,
   OPERATIVE_RESOLVES_GUARDRAILS,

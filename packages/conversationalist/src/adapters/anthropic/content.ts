@@ -111,11 +111,40 @@ function toAnthropicMedia(
   if (mimeType === undefined) {
     return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
   }
+  if (part.type === 'document' && mimeType.toLowerCase().startsWith('text/')) {
+    // A base64 document source accepts only application/pdf. Text bytes go as a
+    // text source, so a text document that arrived as base64 or a data URL is
+    // decoded here, or rejected before the client call when it is not UTF-8.
+    const text = decodeUtf8Base64(payload.data);
+    if (text === undefined) {
+      return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+    }
+    recordLineage(context, partIndex, part, effective, {
+      to: 'inline',
+      transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
+      ...(mimeType !== 'text/plain' ? { originalMimeType: mimeType } : {}),
+    });
+    return {
+      type: 'document',
+      ...title,
+      source: { type: 'text', media_type: 'text/plain', data: text },
+    };
+  }
   recordLineage(context, partIndex, part, effective, {
     to: 'inline',
     transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
   });
   return wrap({ type: 'base64', media_type: mimeType, data: payload.data });
+}
+
+function decodeUtf8Base64(data: string): string | undefined {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(atob(data), (character) => character.charCodeAt(0)),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function toAnthropicSimplePart(part: MultiModalContent): AnthropicContentBlock | undefined {

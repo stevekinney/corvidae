@@ -24,6 +24,7 @@ import type { MediaCostEstimator } from './context/types';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
+import type { AssetSafetyPolicy } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RetryMutator } from './retry/types';
@@ -584,6 +585,15 @@ export interface RunOptionsBase {
    * and the step fails with a `MediaAdmissionError`; nothing is dropped.
    */
   contentSourceResolver?: ContentSourceResolver | undefined;
+  /**
+   * What to do with a resolved asset no safety gate gave a verdict (`unknown`)
+   * (COR-716). Applied to the media a `beforeGenerate` handler adds, which never
+   * reaches the input guardrail that otherwise owns the policy. A flagged asset is
+   * always refused; `'allow'` (the default) admits unverified assets, `'block'`
+   * refuses them. `createAgent` takes it from the agent's input guardrail
+   * declaration when this is not set.
+   */
+  assetSafety?: AssetSafetyPolicy | undefined;
   /**
    * Costs media parts against the backend. Defaults to a catalog estimator built
    * from the descriptors the `generate` function carries; with neither, every

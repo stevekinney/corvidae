@@ -15,7 +15,7 @@ import { Conversation, isConversation } from 'conversationalist';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';
 import { createDurableActiveRun } from './durable/active-run-create';
-import type { DurableRunDeps } from './durable/types';
+import type { DurableRunDeps, SessionInputPayload } from './durable/types';
 import type {
   CombinedOperativeEventMap,
   CombinedOperativeEventType,
@@ -772,8 +772,8 @@ export interface DurableRunRouting extends DurableActiveRunContext {
    * process sharing the store.
    */
   tags?: readonly string[] | undefined;
-  /** First user message to seed a brand-new run. */
-  prompt?: string | undefined;
+  /** First user message to seed a brand-new run: text, or ordered text and media parts. */
+  prompt?: SessionInputPayload | undefined;
   /**
    * A pre-built emitter for this run's event surface. Threaded through to
    * {@link createDurableActiveRun} — see `DurableActiveRunOptions.emitter` for

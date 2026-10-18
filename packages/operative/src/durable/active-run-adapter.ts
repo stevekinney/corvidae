@@ -3,7 +3,7 @@ import type { StallWatchdogClock } from '../liveness';
 import type { CleanupAcknowledgement, RunOptions } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import type { RegistryAgnosticEngine } from './create-run-engine';
-import type { DurableRunDeps } from './types';
+import type { DurableRunDeps, SessionInputPayload } from './types';
 
 /**
  * A composer-owned cleanup step run once a durable run has reached its
@@ -46,7 +46,7 @@ export interface DurableActiveRunOptions {
   tags?: readonly string[] | undefined;
   agentName?: string | undefined;
   options: RunOptions;
-  prompt?: string | undefined;
+  prompt?: SessionInputPayload | undefined;
   emitter?: OperativeEventEmitter | undefined;
   onServices?: ((services: DurableRunDeps) => void) | undefined;
   livenessClock?: StallWatchdogClock | undefined;

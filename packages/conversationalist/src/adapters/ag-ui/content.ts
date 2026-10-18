@@ -248,7 +248,11 @@ function fromAGUISource(part: Extract<ContentPart, { source: PartSource }>): Con
     }
     return { kind: 'provider-file', provider: source.provider, providerFileId: source.value };
   }
-  return source.type === 'url' ? sourceFromUrl(source.value) : inlineBase64Source(source.value);
+  return source.type === 'url'
+    ? sourceFromUrl(source.value, (url) =>
+        unsupportedAGUIContent(part.type, `its URL "${url}" is not an http, https, or data URL.`),
+      )
+    : inlineBase64Source(source.value);
 }
 
 function fromAGUIMediaPart(

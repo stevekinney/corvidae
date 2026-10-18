@@ -7,6 +7,7 @@ import {
   type SessionInputGate,
 } from '@lostgradient/operative';
 import type { ApplicationCommandClaim, Mailbox } from '@lostgradient/weft';
+import { createUnsupportedSchemaVersionError, CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
 import { decodeSessionInputKind, type PersistedSessionInput } from './session-input-durability';
 
@@ -53,6 +54,9 @@ export function decodeSessionInputCommand(
     throw new TypeError('A session input must be stored as an object.');
   }
   const persisted = value as Partial<Record<keyof PersistedSessionInput, unknown>>;
+  if (persisted.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+    throw createUnsupportedSchemaVersionError(persisted.schemaVersion, CURRENT_SCHEMA_VERSION);
+  }
   if (typeof persisted.incarnation !== 'string') {
     throw new TypeError('A session input must record the session incarnation it was admitted to.');
   }

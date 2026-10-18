@@ -70,6 +70,8 @@ export interface StepDeps {
   readonly contextManagement: ContextManagementOptions | undefined;
   /** Projects media parts to a source form the provider accepts (COR-716). */
   readonly contentSourceResolver: RunOptions['contentSourceResolver'];
+  /** The policy for a resolved asset with no safety verdict (COR-716). */
+  readonly assetSafety: RunOptions['assetSafety'];
   /** Costs media parts; defaults to a catalog estimator over the generate function's descriptors. */
   readonly mediaCostEstimator: RunOptions['mediaCostEstimator'];
   readonly output: ZodType | undefined;

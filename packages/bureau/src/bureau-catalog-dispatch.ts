@@ -28,7 +28,7 @@ import {
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
 import { ownerOrLocal } from './owner-of-record';
-import type { RuntimeComposition } from './runtime-composition';
+import { type RuntimeComposition, unsetMediaOptions } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import type { BureauRunOptions } from './types';
 
@@ -460,6 +460,9 @@ export function createCatalogDispatcher({
       const withRuntime: RunOptions = { runtime: runtimeServices, ...resolved };
       return {
         ...withRuntime,
+        // COR-716 — the dispatching principal's asset resolver, unless the agent
+        // supplied its own.
+        ...unsetMediaOptions(withRuntime, runtime.mediaOptionsFor(ownerOrLocal(principal))),
         // A goal attempt's run is also fenced against its goal: it takes no step
         // once the goal ended or its own claim was tombstoned, and none until the
         // goal's record shows this attempt opened as running (goal-attempt-fence.ts).
@@ -1091,6 +1094,7 @@ export function createCatalogDispatcher({
 
     const merged: RunOptions = {
       ...resolvedOptions,
+      ...unsetMediaOptions(resolvedOptions, runtime.mediaOptionsFor(ownerOrLocal(principal))),
       // Bureau first, so it wins `runFirst` and — being pinned last — still
       // wins the waterfall. Only the invariants that close over nothing
       // run-specific travel here; see `createBureauInvariantHooks`.

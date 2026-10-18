@@ -895,6 +895,30 @@ describe('select: input media filters incompatible backends before ranking (COR-
     expect(plan.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
   });
 
+  it('excludes a backend whose aggregate byte limit the known sizes sum past', () => {
+    const capped: BackendDescriptor = {
+      ...anthropic,
+      model: 'capped-model',
+      mediaLimits: [{ scope: 'aggregate', modality: 'image', maxBytes: 10 }],
+    };
+    const image = { modality: 'image', sourceForm: 'inline', byteLength: 6, count: 1 } as const;
+    const twice = select(
+      baseRequest({ inputMedia: [image, image] }),
+      baseOptions(catalogOf([capped, openai])),
+    );
+    expect(twice.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
+    expect(twice.candidates.find((c) => c.model === 'capped-model')).toMatchObject({
+      eligible: false,
+      exclusionCode: 'incompatible-modality',
+    });
+    expect(twice.candidates.find((c) => c.model === 'capped-model')?.exclusionReason).toContain(
+      'at most 10 bytes across image parts',
+    );
+
+    const once = select(baseRequest({ inputMedia: [image] }), baseOptions(catalogOf([capped])));
+    expect(once.selected).toEqual({ provider: 'anthropic', model: 'capped-model' });
+  });
+
   it('is a no-op for a request that carries no media', () => {
     const withMedia = select(baseRequest({ inputMedia: [] }), baseOptions(catalogOf([anthropic])));
     const without = select(baseRequest(), baseOptions(catalogOf([anthropic])));

@@ -187,6 +187,7 @@ export async function executeGeneration(
             step,
             emitter,
             refuseFlagged: true,
+            refuseUnverified: deps.assetSafety?.unknown === 'block',
           });
           if ('kind' in readmitted) return readmitted;
           generateContext = { ...generateContext, resolvedSources: readmitted.resolvedSources };

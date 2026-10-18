@@ -15,7 +15,7 @@ import type {
   Message,
   MultiModalContent,
 } from 'conversationalist';
-import { isMediaContent } from 'conversationalist';
+import { isMediaContent, parseDataUrl } from 'conversationalist';
 
 /** One piece of text a detector inspects, and how a sanitized value would replace it. */
 export interface InspectableField {
@@ -79,7 +79,7 @@ export function inspectContent(content: Message['content']): InspectableContent 
     }
     // Locators name where bytes live; a detector reads them, but a sanitized
     // value cannot replace one, so they are not replaceable.
-    const locator = sourceLocator(part.source);
+    const locator = sourceLocator(part);
     if (locator !== undefined) {
       add(
         { label: `${part.type}.${locator.label}`, text: locator.text, replaceable: false },
@@ -113,8 +113,50 @@ export function inspectContent(content: Message['content']): InspectableContent 
   };
 }
 
-function sourceLocator(source: ContentSource): { label: string; text: string } | undefined {
+/** Media types whose bytes are text a detector can read once decoded. */
+function isTextMimeType(mimeType: string | undefined): boolean {
+  if (mimeType === undefined) return false;
+  const base = mimeType.split(';')[0]?.trim().toLowerCase() ?? '';
+  return (
+    base.startsWith('text/') ||
+    base === 'application/json' ||
+    base === 'application/xml' ||
+    base.endsWith('+json') ||
+    base.endsWith('+xml')
+  );
+}
+
+function decodeBase64Text(data: string): string | undefined {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(atob(data), (character) => character.charCodeAt(0)),
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+function sourceLocator(part: MediaContent): { label: string; text: string } | undefined {
+  const source: ContentSource = part.source;
   switch (source.kind) {
+    case 'data-url': {
+      const parsed = parseDataUrl(source.url);
+      if (parsed === undefined || !isTextMimeType(parsed.mimeType ?? part.mimeType))
+        return undefined;
+      const decoded = decodeBase64Text(parsed.data);
+      return decoded === undefined || decoded === '' ? undefined : { label: 'data', text: decoded };
+    }
+    case 'inline': {
+      // A provider receives inline text verbatim, so it is content, not an opaque
+      // payload. UTF-8 data is read as is, and base64 data is read when the part
+      // declares a text media type. Opaque bytes carry nothing a detector can read.
+      if (source.encoding === 'utf8') {
+        return source.data === '' ? undefined : { label: 'data', text: source.data };
+      }
+      if (!isTextMimeType(part.mimeType)) return undefined;
+      const decoded = decodeBase64Text(source.data);
+      return decoded === undefined || decoded === '' ? undefined : { label: 'data', text: decoded };
+    }
     case 'remote-url':
       return { label: 'url', text: source.url };
     case 'mcp-resource':
@@ -126,7 +168,7 @@ function sourceLocator(source: ContentSource): { label: string; text: string } |
     case 'provider-file':
       return { label: 'providerFileId', text: source.providerFileId };
     default:
-      // Bytes (`inline`, `data-url`) and opaque ids (`upload`, `managed-asset`)
+      // Bytes (`data-url`) and opaque ids (`upload`, `managed-asset`)
       // carry nothing a text detector can usefully read.
       return undefined;
   }

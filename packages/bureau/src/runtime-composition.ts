@@ -12,6 +12,7 @@ import type {
   AgentRunContext,
   AgentSession,
   CheckpointStore,
+  ContentSourceResolver,
   DurableRunDeps,
   GenerateFunction,
   GuardrailHooks,
@@ -35,6 +36,7 @@ import type {
   StreamEventMap,
 } from '@lostgradient/operative';
 import {
+  appendAgentInput,
   createAgentSession,
   createAnthropicProvider,
   createAnthropicProviderStream,
@@ -60,6 +62,7 @@ import {
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
+  payloadText,
   reservedIdentifierReason,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
@@ -135,6 +138,7 @@ import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
+  resolveSessionOwner,
   SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
@@ -1294,6 +1298,15 @@ export type RuntimeCompositionDependencies = {
    * responsible for recording once.
    */
   onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
+  /**
+   * COR-716 — the {@link ContentSourceResolver} a run owned by `principalId` is
+   * given, so a managed asset in its input reaches a provider as bytes or a
+   * provider-fetched URL. `createBureau` supplies one over its asset service; a
+   * composition with none leaves such a part to fail admission, typed, before any
+   * provider call. Late-bound by the caller: the asset service is built after this
+   * composition, and a run resolves it only when it starts.
+   */
+  contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledFire} is told about one fire. */
@@ -1310,6 +1323,25 @@ const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   resolveProviderGenerate,
   createSessionStore,
 };
+
+/** The run options through which Bureau governs the media a run carries (COR-716). */
+export type MediaRunOptions = Pick<RunOptions, 'contentSourceResolver' | 'assetSafety'>;
+
+/**
+ * The media options Bureau contributes to a run that already has its own: whichever of
+ * the two the run left unset. An agent that supplied its own resolver or its own
+ * unverified-asset policy keeps it.
+ */
+export function unsetMediaOptions(run: MediaRunOptions, bureau: MediaRunOptions): MediaRunOptions {
+  return {
+    ...(run.contentSourceResolver === undefined && bureau.contentSourceResolver !== undefined
+      ? { contentSourceResolver: bureau.contentSourceResolver }
+      : {}),
+    ...(run.assetSafety === undefined && bureau.assetSafety !== undefined
+      ? { assetSafety: bureau.assetSafety }
+      : {}),
+  };
+}
 
 function messagesAreEqual(
   left: ConversationHistory['messages'][string],
@@ -1736,6 +1768,15 @@ export interface RuntimeComposition {
    * per-read.
    */
   clearCatalogRunRecoveryCache(): void;
+  /**
+   * COR-716 — how a run owned by `principalId` handles the media it carries: the
+   * resolver that projects a managed asset to something a provider takes (absent when no
+   * asset service is composed), and the policy for an asset no safety gate verified,
+   * taken from this bureau's input guardrail. Every path that starts or resumes a run
+   * spreads it into the run's options, so a managed-asset part resolves, and is judged,
+   * the same on a fresh start, a recovery, and a scheduled fire.
+   */
+  mediaOptionsFor(principalId: string | undefined): MediaRunOptions;
   ready: boolean;
   provider: RedactedProviderConfiguration | undefined;
   providers: RedactedProviderRouteConfiguration[];
@@ -2474,6 +2515,16 @@ async function buildRuntimeComposition(
     return resolved === false ? undefined : resolved;
   }
 
+  /** {@link RuntimeComposition.mediaOptionsFor}. */
+  function mediaOptionsFor(principalId: string | undefined): MediaRunOptions {
+    const resolver = dependencies.contentSourceResolverFor?.(principalId);
+    const assetSafety = resolveGuardrailsConfiguration()?.input?.assetSafety;
+    return {
+      ...(resolver === undefined ? {} : { contentSourceResolver: resolver }),
+      ...(assetSafety === undefined ? {} : { assetSafety }),
+    };
+  }
+
   /**
    * The Bureau invariants that do not close over a run (COR-1265 criterion 3b,
    * owner ruling 2026-09-20).
@@ -2957,6 +3008,9 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runToolbox,
         conversation: new Conversation(session.conversationHistory),
+        // The run's owner of record, not its per-run service principal: a managed asset
+        // resolves for whoever owns the session, as it did before the crash.
+        ...mediaOptionsFor(resolveSessionOwner(session.metadata)),
         maximumSteps: recoveredMaximumSteps,
         stopWhen: options.stopWhen,
         // COR-1269 — stamped onto this run's hook-plan observations.
@@ -3653,7 +3707,7 @@ async function buildRuntimeComposition(
       }
     }
     const baseConversationHistory = conversation.current;
-    conversation.appendUserMessage(scheduledInput.input, { scheduledFireRunId: runId });
+    appendAgentInput(conversation, scheduledInput.input, { scheduledFireRunId: runId });
 
     // Same runtime a normal run builds (generate/toolbox/memory/skills/guardrails),
     // wired to this fire's session + per-fire runId, with live streaming off (no
@@ -3666,7 +3720,7 @@ async function buildRuntimeComposition(
     const requestContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
 
     const runRuntime = await createRunRuntime(
-      { message: scheduledInput.input, sessionId, runId, agentName, requestContext },
+      { message: payloadText(scheduledInput.input), sessionId, runId, agentName, requestContext },
       { liveStreaming: false, initialActiveSkillRecords },
     );
 
@@ -3679,6 +3733,7 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runRuntime.toolbox,
         conversation,
+        ...mediaOptionsFor(owner),
         maximumSteps,
         stopWhen: options.stopWhen,
         // AB-260: the bureau's single composed RuntimeServices instance,
@@ -4011,6 +4066,7 @@ async function buildRuntimeComposition(
     isCatalogRecoveredRun,
     classifyCatalogRecoveredRun,
     clearCatalogRunRecoveryCache,
+    mediaOptionsFor,
     ready:
       options.generate !== undefined ||
       options.provider !== undefined ||

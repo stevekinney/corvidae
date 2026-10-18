@@ -6,6 +6,7 @@ import {
 } from '@lostgradient/operative';
 import { type Mailbox, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
 import {
   admitSessionInput,
@@ -48,7 +49,11 @@ function fixture() {
     id,
     principal: 'alice',
     deliveryMode: 'steer' as const,
-    payload: { incarnation: 'incarnation-1', payload: 'hello' },
+    payload: {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
+      incarnation: 'incarnation-1',
+      payload: 'hello',
+    },
     principalBacklogLimit: 100,
     sessionBacklogLimitForCrossSessionRead: 100,
     nowMs: now,
@@ -94,7 +99,11 @@ describe('the identity index (COR-1476)', () => {
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
-      payload: { incarnation: 'incarnation-1', payload: 'hello' },
+      payload: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        incarnation: 'incarnation-1',
+        payload: 'hello',
+      },
       principalBacklogLimit: 100,
       sessionBacklogLimitForCrossSessionRead: 100,
       nowMs: now(),
@@ -264,7 +273,11 @@ describe('the identity index (COR-1476)', () => {
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
-      payload: { incarnation: 'incarnation-1', payload: 'hello' },
+      payload: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        incarnation: 'incarnation-1',
+        payload: 'hello',
+      },
       principalBacklogLimit: limit,
       sessionBacklogLimitForCrossSessionRead: 5000,
       nowMs: now,
@@ -435,7 +448,11 @@ describe("the principal's open count against admissions landing mid-walk (COR-14
       id: 'input-f',
       principal: 'alice',
       deliveryMode: 'steer',
-      payload: { incarnation: 'incarnation-1', payload: 'f' },
+      payload: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        incarnation: 'incarnation-1',
+        payload: 'f',
+      },
       principalBacklogLimit: 2,
       sessionBacklogLimitForCrossSessionRead: 100,
       nowMs: now,
@@ -461,7 +478,7 @@ describe('the identity across incarnations of one session (COR-1476)', () => {
       id: 'input-shared',
       principal: 'alice',
       deliveryMode: 'steer' as const,
-      payload: { incarnation, payload: 'hello' },
+      payload: { schemaVersion: CURRENT_SCHEMA_VERSION, incarnation, payload: 'hello' },
       principalBacklogLimit: 100,
       sessionBacklogLimitForCrossSessionRead: 100,
       nowMs: START,

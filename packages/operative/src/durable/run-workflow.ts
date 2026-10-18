@@ -2,6 +2,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { workflow } from '@lostgradient/weft';
 import { Conversation, isConversation } from 'conversationalist';
 
+import { appendAgentInput } from '../agent-input';
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
@@ -175,7 +176,7 @@ export function createRunWorkflow(
           // (and ScheduledAgentRunInput has no `prompt` field), so appending again
           // would duplicate the user turn.
           if (!scheduled && input.prompt !== undefined) {
-            seeded.appendUserMessage(input.prompt);
+            appendAgentInput(seeded, input.prompt);
           }
           return seeded.snapshot();
         })();

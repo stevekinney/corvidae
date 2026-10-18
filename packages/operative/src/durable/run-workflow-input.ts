@@ -1,4 +1,5 @@
-import type { DurableRunDeps, RunCursor } from './types';
+import { isSessionInputPayload } from './session-input-payload';
+import type { DurableRunDeps, RunCursor, SessionInputPayload } from './types';
 
 /** Input to the durable agent-run workflow. */
 export interface AgentRunWorkflowInput {
@@ -21,8 +22,11 @@ export interface AgentRunWorkflowInput {
    * agentName on each workflow uniquely identifies which agent ran each run.
    */
   agentName: string;
-  /** The first user message to seed a brand-new run (ignored on resume). */
-  prompt?: string | undefined;
+  /**
+   * The first user message to seed a brand-new run (ignored on resume): text, or
+   * an ordered list of text and media parts, delivered as one user message.
+   */
+  prompt?: SessionInputPayload | undefined;
   /** Safety bound on step count, mirroring `RunOptions.maximumSteps`. */
   maximumSteps?: number | undefined;
 }
@@ -50,7 +54,7 @@ export function isAgentRunWorkflowInput(value: unknown): value is AgentRunWorkfl
   // Validate the optional fields too, so a narrowed value is sound end-to-end
   // (not just for the three correlation fields recovery keys on).
   const prompt = candidate['prompt'];
-  if (prompt !== undefined && typeof prompt !== 'string') return false;
+  if (prompt !== undefined && !isSessionInputPayload(prompt)) return false;
   const maximumSteps = candidate['maximumSteps'];
   if (maximumSteps !== undefined && typeof maximumSteps !== 'number') return false;
   return true;

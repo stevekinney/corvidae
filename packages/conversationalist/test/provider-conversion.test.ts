@@ -367,6 +367,35 @@ describe('provider conversion matrix: lineage and wire shape', () => {
     ]);
   });
 
+  it('prefers the resolver’s media type over a stale one on the stored part', () => {
+    const conversation = conversationOf('user', [
+      {
+        type: 'document',
+        source: { kind: 'managed-asset', assetId: 'asset-7' },
+        mimeType: 'application/octet-stream',
+      },
+    ]);
+    const messageId = conversation.ids[0]!;
+    const sources: ResolvedMediaSources = new Map([
+      [
+        resolvedSourceKey(messageId, 0),
+        {
+          outcome: 'resolved',
+          source: { kind: 'inline', data: PAYLOAD, encoding: 'base64' },
+          mimeType: 'application/pdf',
+          safety: 'clean',
+        },
+      ],
+    ]);
+
+    expect(toAnthropicMessages(conversation, { sources }).messages[0]?.content).toEqual([
+      {
+        type: 'document',
+        source: { type: 'base64', media_type: 'application/pdf', data: PAYLOAD },
+      },
+    ]);
+  });
+
   it('delivers a managed asset only through a resolved source and records the original identity', () => {
     const conversation = conversationOf('user', [
       {

@@ -272,6 +272,19 @@ export function evaluateInputMedia(
     }
     counts.set(requirement.modality, (counts.get(requirement.modality) ?? 0) + requirement.count);
   }
+  // An aggregate limit caps the bytes a request carries for a modality. Only the
+  // sizes the requirements declare count; a part of unknown size adds nothing.
+  for (const limit of descriptor.mediaLimits) {
+    if (limit.scope !== 'aggregate' || limit.maxBytes === undefined) continue;
+    const total = requirements
+      .filter((requirement) => requirement.modality === limit.modality)
+      .reduce((sum, requirement) => sum + (requirement.byteLength ?? 0), 0);
+    if (total > limit.maxBytes) {
+      return refuse(
+        `${label} accepts at most ${limit.maxBytes} bytes across ${limit.modality} parts`,
+      );
+    }
+  }
   for (const cap of descriptor.mediaCounts) {
     const requested = counts.get(cap.modality) ?? 0;
     if (requested > cap.maxPerRequest) {

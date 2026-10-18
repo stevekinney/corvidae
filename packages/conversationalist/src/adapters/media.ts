@@ -7,7 +7,11 @@
  * any part it cannot carry. Nothing here substitutes marker prose, an empty
  * string, or text alone for a part.
  */
-import { UnsupportedContentError, type UnsupportedContentReason } from '../errors';
+import {
+  ConversationalistError,
+  UnsupportedContentError,
+  type UnsupportedContentReason,
+} from '../errors';
 import type {
   ContentPartLineage,
   ContentSource,
@@ -106,7 +110,7 @@ export function effectiveSource(
   if (resolved !== undefined) {
     return {
       source: resolved.source,
-      mimeType: part.mimeType ?? resolved.mimeType,
+      mimeType: resolved.mimeType ?? part.mimeType,
       resolved: true,
     };
   }
@@ -208,10 +212,22 @@ export function inlineBase64Source(data: string): Extract<ContentSource, { kind:
 
 /**
  * Maps a URL a provider reports (or a caller passes) to its `ContentSource`:
- * `data:` becomes `data-url`, anything else `remote-url`.
+ * `data:` becomes `data-url`, `http:` and `https:` become `remote-url`. Any
+ * other scheme (`s3:`, `gs:`, `file:`) is not a URL a `remote-url` source can
+ * hold, so it is refused with `invalid(url)` rather than stored as a source the
+ * content schema would later reject. Adapters pass their own mapping error.
  */
-export function sourceFromUrl(url: string): ContentSource {
-  return url.startsWith('data:') ? { kind: 'data-url', url } : { kind: 'remote-url', url };
+export function sourceFromUrl(
+  url: string,
+  invalid: (url: string) => Error = (rejected) =>
+    new ConversationalistError(
+      'error:validation',
+      `Cannot map the URL "${rejected}": only http, https, and data URLs are media sources.`,
+    ),
+): ContentSource {
+  if (url.startsWith('data:')) return { kind: 'data-url', url };
+  if (/^https?:\/\//i.test(url)) return { kind: 'remote-url', url };
+  throw invalid(url);
 }
 
 /**

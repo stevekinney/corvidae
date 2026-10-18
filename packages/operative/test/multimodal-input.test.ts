@@ -35,7 +35,7 @@ import { createLazyAgent } from '../src/create-lazy-agent';
 import { createActiveRun } from '../src/create-run';
 import { createSubagentTool } from '../src/create-subagent-tool';
 import type { UserAdmissibleContent } from '../src/durable/types';
-import { AgentContractError, MediaAdmissionError } from '../src/errors';
+import { AgentContractError, MediaAdmissionError, SelectionRevalidationError } from '../src/errors';
 import type { OperativeHookMap } from '../src/hooks';
 import { createAnthropicProvider } from '../src/providers/anthropic.ts';
 import { withBackendDescriptors } from '../src/providers/backend-descriptor-attachment';
@@ -56,6 +56,7 @@ import {
   createMockGeminiModel,
   createMockOpenAIClient,
 } from '../src/providers/test/mock-clients.ts';
+import { createSelectionGate } from '../src/selection-gate';
 import { createSessionStore } from '../src/session/create-session-store';
 import { createSessionHandle } from '../src/session/session-handle';
 import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -305,6 +306,54 @@ describe('SessionHandle.run: ordered parts as input', () => {
     });
     expect(() => handle.run([])).toThrow(AgentContractError);
     expect(await store.load('session-empty')).toBeUndefined();
+  });
+});
+
+describe('SessionHandle.fork: media survives a fork (COR-716)', () => {
+  function forkable(sessionId: string) {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const { generate, histories } = recorder();
+    const handle = createSessionHandle(sessionId, {
+      store,
+      agentName: 'agent',
+      runOptions: {
+        generate,
+        toolbox: createToolbox([]),
+        stopWhen: () => true,
+        mediaCostEstimator: estimate,
+      },
+    });
+    return { store, handle, histories };
+  }
+
+  it('copies the history with every part unchanged, and the fork runs on with them intact', async () => {
+    await yieldToPortableEventLoop();
+    const { handle, histories } = forkable('fork-media-source');
+    await handle.run(parts()).result();
+    await yieldToPortableEventLoop();
+
+    const forked = await handle.fork();
+    const forkedSession = await forked.getSession();
+
+    expect(userContents(forkedSession.conversationHistory)).toEqual([parts()]);
+
+    // A new turn on the fork still shows the model the original parts.
+    await forked.run('and now?').result();
+    expect(userContents(histories.at(-1))).toEqual([parts(), 'and now?']);
+  });
+
+  it('forks at a run boundary with the media of the runs up to it', async () => {
+    await yieldToPortableEventLoop();
+    const { handle } = forkable('fork-media-boundary');
+    await handle.run(parts()).result();
+    await yieldToPortableEventLoop();
+    await handle.run('second').result();
+    await yieldToPortableEventLoop();
+
+    const forked = await handle.fork({ throughRun: 0 });
+    const forkedSession = await forked.getSession();
+
+    expect(userContents(forkedSession.conversationHistory)).toEqual([parts()]);
   });
 });
 
@@ -574,6 +623,107 @@ describe('media admission: a part is delivered or refused before generation', ()
     expect(wideOutcome.finishReason).toBe('stop-condition');
   });
 
+  describe('the selection gate sees the step’s media (COR-716)', () => {
+    function gateOver(descriptors: readonly BackendDescriptor[]) {
+      return createSelectionGate({
+        request: (context) => ({
+          agentName: 'agent',
+          catalogRevision: 1,
+          policyRevision: 1,
+          availabilitySnapshotRevision: 1,
+          ...(context?.inputMedia === undefined ? {} : { inputMedia: context.inputMedia }),
+        }),
+        options: () => ({
+          catalog: {
+            revision: 1,
+            descriptors,
+            generatedAt: '2026-09-02T12:00:00.000Z',
+            stale: false,
+            projection: 'privileged',
+          },
+        }),
+      });
+    }
+
+    it('fails a step whose media no candidate accepts with a typed policy error, before generate', async () => {
+      const { seen, result } = run(
+        [{ type: 'audio', source: { kind: 'inline', data: BYTES, encoding: 'base64' } }],
+        { selection: gateOver([anthropicRow]), mediaCostEstimator: estimate },
+        [anthropicRow],
+      );
+
+      const outcome = await result;
+
+      expect(outcome.finishReason).toBe('error');
+      expect(outcome.error).toBeInstanceOf(SelectionRevalidationError);
+      expect((outcome.error as SelectionRevalidationError).plan.candidates[0]?.exclusionCode).toBe(
+        'incompatible-modality',
+      );
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    it('judges a managed asset by the form it resolves to, not the form it is stored as', async () => {
+      const resolver: ContentSourceResolver = async () => ({
+        outcome: 'resolved',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+        mimeType: 'application/pdf',
+        safety: 'clean',
+      });
+      // A managed-asset source is in no backend's accepted forms, so only the resolved
+      // inline form can make the document eligible.
+      const { seen, result } = run(
+        [managed],
+        { selection: gateOver([anthropicRow]), contentSourceResolver: resolver },
+        [anthropicRow],
+      );
+
+      const outcome = await result;
+
+      expect(outcome.finishReason).toBe('stop-condition');
+      expect(seen.contexts).toHaveLength(1);
+    });
+
+    it('leaves a run with no media exactly as it was', async () => {
+      const gate = gateOver([anthropicRow]);
+      const { seen, result } = run([{ type: 'text', text: 'plain' }], { selection: gate }, [
+        anthropicRow,
+      ]);
+
+      const finished = await result;
+      expect(finished.finishReason).toBe('stop-condition');
+      expect(seen.contexts).toHaveLength(1);
+      expect(gate.getPlan()?.request.inputMedia).toBeUndefined();
+    });
+  });
+
+  it('refuses the parts past a backend’s aggregate byte limit on a modality', async () => {
+    const capped: BackendDescriptor = {
+      ...anthropicRow,
+      mediaLimits: [{ scope: 'aggregate', modality: 'image', maxBytes: 15 }],
+    };
+    const image = (): MediaContent => ({
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+    });
+
+    const over = run([image(), image(), image()], {}, [capped]);
+    const outcome = await over.result;
+    expect((outcome.error as MediaAdmissionError).outcomes).toEqual([
+      expect.objectContaining({
+        outcome: 'unbounded',
+        reason: 'media-limit-exceeded',
+        partIndex: 2,
+        modality: 'image',
+      }),
+    ]);
+    expect(over.seen.contexts).toHaveLength(0);
+
+    const within = run([image(), image()], {}, [capped]);
+    const withinOutcome = await within.result;
+    expect(withinOutcome.finishReason).toBe('stop-condition');
+  });
+
   describe('a beforeGenerate handler cannot add media past admission', () => {
     function withHook(
       handler: (context: GenerateContext) => GenerateContext | void,
@@ -626,6 +776,67 @@ describe('media admission: a part is delivered or refused before generation', ()
       const outcome = await result;
       expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
         reason: 'asset-flagged',
+      });
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    const unverified = {
+      contentSourceResolver: (async () => ({
+        outcome: 'resolved',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+        byteLength: 7,
+        safety: 'unknown',
+      })) as ContentSourceResolver,
+    };
+
+    it('applies the run’s unverified-asset policy to an asset a handler appended', async () => {
+      const { seen, result } = withHook(
+        (context) => {
+          context.conversation.appendUserMessage([managed]);
+        },
+        { ...unverified, assetSafety: { unknown: 'block' } },
+      );
+      const outcome = await result;
+      expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+        reason: 'asset-unverified',
+      });
+      expect(seen.contexts).toHaveLength(0);
+    });
+
+    it('lets an unverified appended asset through when the policy allows it, as it does by default', async () => {
+      for (const assetSafety of [undefined, { unknown: 'allow' as const }]) {
+        const { seen, result } = withHook(
+          (context) => {
+            context.conversation.appendUserMessage([managed]);
+          },
+          { ...unverified, ...(assetSafety === undefined ? {} : { assetSafety }) },
+        );
+        const finished = await result;
+        expect(finished.finishReason).toBe('stop-condition');
+        expect(seen.contexts).toHaveLength(1);
+      }
+    });
+
+    it('takes the policy from the agent’s own input guardrail declaration', async () => {
+      const seen = recorder();
+      const agent = createAgent({
+        generate: withBackendDescriptors(seen.generate, [anthropicRow]),
+        guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
+        contentSourceResolver: unverified.contentSourceResolver,
+        mediaCostEstimator: estimate,
+        hooks: (() => {
+          const registry = new HookRegistry<OperativeHookMap>();
+          registry.on('beforeGenerate', async (context) => {
+            context.conversation.appendUserMessage([managed]);
+          });
+          return registry;
+        })(),
+      });
+
+      const outcome = await agent.run('plain').result();
+
+      expect((outcome.error as MediaAdmissionError).outcomes[0]).toMatchObject({
+        reason: 'asset-unverified',
       });
       expect(seen.contexts).toHaveLength(0);
     });

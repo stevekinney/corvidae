@@ -2,10 +2,11 @@ import {
   createAgentSession,
   createSessionInputDeliveryStore,
   createSessionStore,
+  type SessionInputPayload,
 } from '@lostgradient/operative';
 import { type ApplicationCommandClaim, resolveStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
-import { createConversationHistory } from 'conversationalist';
+import { CURRENT_SCHEMA_VERSION, createConversationHistory } from 'conversationalist';
 
 import {
   admitSessionInput,
@@ -29,6 +30,23 @@ const SESSION_ID = 'gate-session';
 const INCARNATION = 'incarnation-1';
 const HOUR_MS = 3_600_000;
 const START = Date.parse('2026-01-01T00:00:00.000Z');
+const SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
+
+const MEDIA_PAYLOAD: SessionInputPayload = [
+  { type: 'text', text: 'look' },
+  {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'remote-url', url: 'https://example.invalid/a.png' },
+  },
+  {
+    type: 'document',
+    name: 'q3.pdf',
+    mimeType: 'application/pdf',
+    source: { kind: 'managed-asset', assetId: 'asset-1', revision: 2 },
+  },
+  { type: 'audio', source: { kind: 'inline', data: 'QUJD', encoding: 'base64' } },
+];
 
 function claimWith(value: unknown, kind = 'session-input:steer'): ApplicationCommandClaim {
   return {
@@ -42,7 +60,7 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
   it('reads a well-formed stored input', () => {
     expect(
       decodeSessionInputCommand(
-        claimWith({ incarnation: INCARNATION, payload: 'hello' }),
+        claimWith({ schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 'hello' }),
         INCARNATION,
       ),
     ).toEqual({ payload: 'hello', deliveryMode: 'steer' });
@@ -50,68 +68,108 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
       decodeSessionInputCommand(
         claimWith(
           {
+            schemaVersion: SCHEMA_VERSION,
             incarnation: INCARNATION,
             expiresAt: '2030-01-01T00:00:00.000Z',
-            payload: [
-              { type: 'text', text: 'look' },
-              { type: 'image', url: 'https://example.invalid/a.png', mimeType: 'image/png' },
-              {
-                type: 'document',
-                name: 'q3.pdf',
-                mimeType: 'application/pdf',
-                source: { kind: 'reference', uri: 'file:///q3.pdf' },
-              },
-            ],
+            payload: MEDIA_PAYLOAD,
           },
           'session-input:queue',
         ),
         INCARNATION,
       ),
-    ).toEqual({
-      deliveryMode: 'queue',
-      payload: [
-        { type: 'text', text: 'look' },
-        { type: 'image', url: 'https://example.invalid/a.png', mimeType: 'image/png' },
-        {
-          type: 'document',
-          name: 'q3.pdf',
-          mimeType: 'application/pdf',
-          source: { kind: 'reference', uri: 'file:///q3.pdf' },
-        },
-      ],
-    });
+    ).toEqual({ deliveryMode: 'queue', payload: MEDIA_PAYLOAD });
   });
 
   it.each([
     ['a non-object value', 'just a string'],
     ['an array value', []],
-    ['a missing incarnation', { payload: 'hello' }],
-    ['a numeric payload', { incarnation: INCARNATION, payload: 42 }],
+    ['a missing incarnation', { schemaVersion: SCHEMA_VERSION, payload: 'hello' }],
+    ['a numeric payload', { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 42 }],
     ['a missing payload', { incarnation: INCARNATION }],
-    ['an object payload', { incarnation: INCARNATION, payload: { text: 'hello' } }],
-    ['a null part', { incarnation: INCARNATION, payload: [null] }],
-    ['a part with no type', { incarnation: INCARNATION, payload: [{ text: 'hello' }] }],
+    [
+      'an object payload',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: { text: 'hello' } },
+    ],
+    ['a null part', { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [null] }],
+    [
+      'a part with no type',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ text: 'hello' }] },
+    ],
     [
       'a provider-generated part',
-      { incarnation: INCARNATION, payload: [{ type: 'thinking', thinking: 'x', signature: 's' }] },
+      {
+        schemaVersion: SCHEMA_VERSION,
+        incarnation: INCARNATION,
+        payload: [{ type: 'thinking', thinking: 'x', signature: 's' }],
+      },
     ],
-    ['a text part with no text', { incarnation: INCARNATION, payload: [{ type: 'text' }] }],
+    [
+      'a text part with no text',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ type: 'text' }] },
+    ],
     [
       'a text part carrying citations',
-      { incarnation: INCARNATION, payload: [{ type: 'text', text: 'x', citations: null }] },
+      {
+        schemaVersion: SCHEMA_VERSION,
+        incarnation: INCARNATION,
+        payload: [{ type: 'text', text: 'x', citations: null }],
+      },
     ],
-    ['an image with no url', { incarnation: INCARNATION, payload: [{ type: 'image' }] }],
+    [
+      'an image with no source',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [{ type: 'image' }] },
+    ],
+    [
+      'an image in the shape before the media schema',
+      {
+        schemaVersion: SCHEMA_VERSION,
+        incarnation: INCARNATION,
+        payload: [{ type: 'image', url: 'https://example.invalid/a.png', mimeType: 'image/png' }],
+      },
+    ],
+    [
+      'an image whose remote-url is not http',
+      {
+        schemaVersion: SCHEMA_VERSION,
+        incarnation: INCARNATION,
+        payload: [{ type: 'image', source: { kind: 'remote-url', url: 's3://bucket/a.png' } }],
+      },
+    ],
+    [
+      'an empty part list',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: [] },
+    ],
+    ['a missing schema version', { incarnation: INCARNATION, payload: 'hello' }],
+    [
+      'a schema version from before this build',
+      { schemaVersion: SCHEMA_VERSION - 1, incarnation: INCARNATION, payload: 'hello' },
+    ],
+    [
+      'a schema version from after this build',
+      { schemaVersion: SCHEMA_VERSION + 1, incarnation: INCARNATION, payload: 'hello' },
+    ],
+    [
+      'a schema version that is not a number',
+      { schemaVersion: String(SCHEMA_VERSION), incarnation: INCARNATION, payload: 'hello' },
+    ],
     [
       'a document with a bad source',
       {
+        schemaVersion: SCHEMA_VERSION,
         incarnation: INCARNATION,
         payload: [
           { type: 'document', name: 'n', mimeType: 'm', source: { kind: 'ftp', host: 'x' } },
         ],
       },
     ],
-    ['a non-string expiresAt', { incarnation: INCARNATION, payload: 'x', expiresAt: 5 }],
-    ['another incarnation', { incarnation: 'incarnation-0', payload: 'hello' }],
+    [
+      'a non-string expiresAt',
+      { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 'x', expiresAt: 5 },
+    ],
+    [
+      'another incarnation',
+      { schemaVersion: SCHEMA_VERSION, incarnation: 'incarnation-0', payload: 'hello' },
+    ],
   ])('refuses %s', (_name, value) => {
     expect(() => decodeSessionInputCommand(claimWith(value), INCARNATION)).toThrow();
   });
@@ -119,7 +177,10 @@ describe('decodeSessionInputCommand (COR-1476)', () => {
   it('refuses a kind it never produced', () => {
     expect(() =>
       decodeSessionInputCommand(
-        claimWith({ incarnation: INCARNATION, payload: 'x' }, 'session-input:other'),
+        claimWith(
+          { schemaVersion: SCHEMA_VERSION, incarnation: INCARNATION, payload: 'x' },
+          'session-input:other',
+        ),
         INCARNATION,
       ),
     ).toThrow();
@@ -161,7 +222,7 @@ describe('session input delivery gate (COR-1476)', () => {
       id,
       principal: 'alice',
       deliveryMode: 'steer',
-      payload: { incarnation, payload: `text of ${id}` },
+      payload: { schemaVersion: SCHEMA_VERSION, incarnation, payload: `text of ${id}` },
       principalBacklogLimit: 100,
       sessionBacklogLimitForCrossSessionRead: 100,
       nowMs: now,

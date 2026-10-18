@@ -230,7 +230,11 @@ function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
   return {
     ...createMediaPart(
       modality,
-      part.raw === undefined ? sourceFromUrl(part.url) : inlineBase64Source(part.raw),
+      part.raw === undefined
+        ? sourceFromUrl(part.url, (url) =>
+            unsupportedA2AContent('part', `its URL "${url}" is not an http, https, or data URL.`),
+          )
+        : inlineBase64Source(part.raw),
       { mimeType: mediaType, name },
     ),
     ...fromA2AMetadata(part.metadata),

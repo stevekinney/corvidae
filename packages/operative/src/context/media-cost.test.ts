@@ -157,6 +157,29 @@ describe('createCatalogMediaCostEstimator', () => {
     });
   });
 
+  it('costs a resolved part by the resolver’s media type, not a stale one on the stored part', () => {
+    const stale: MediaContent = {
+      type: 'image',
+      mimeType: 'application/octet-stream',
+      source: { kind: 'managed-asset', assetId: 'a' },
+    };
+    const estimate = createCatalogMediaCostEstimator([anthropic], {
+      resolvedSources: new Map([
+        [
+          'm-1:0',
+          {
+            outcome: 'resolved',
+            source: { kind: 'remote-url', url: 'https://cdn.example/a.png' },
+            mimeType: 'image/png',
+            byteLength: 4096,
+            safety: 'clean',
+          },
+        ],
+      ]),
+    });
+    expect(estimate(stale, position)).toMatchObject({ outcome: 'estimated' });
+  });
+
   it('refuses a part over a per-part byte limit', () => {
     const limit = anthropic.mediaLimits.find((entry) => entry.modality === 'image')!.maxBytes!;
     expect(

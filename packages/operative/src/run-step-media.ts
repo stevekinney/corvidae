@@ -25,12 +25,13 @@ import type {
 } from 'conversationalist';
 import { isMediaContent } from 'conversationalist';
 
-import { createCatalogMediaCostEstimator } from './context/media-cost';
+import { createCatalogMediaCostEstimator, sourceByteLength } from './context/media-cost';
 import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from './context/types';
 import { MediaAdmissionError } from './errors';
 import { RunErrorEvent } from './events';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
+import { describeInputMedia, type InputMediaRequirement } from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 
 /** The source kinds a provider adapter can carry without a resolver. */
@@ -101,6 +102,81 @@ function overCountParts(
   return refusals;
 }
 
+/**
+ * Refuses the parts past a backend's aggregate byte limit on a modality. The
+ * bytes of every located part whose size is known (a resolved source counts as
+ * its resolved bytes) are summed in conversation order, against the smallest
+ * aggregate cap among the backends that accept the modality. A part of unknown
+ * size adds nothing, so only declared sizes can trip the limit.
+ */
+function overAggregateParts(
+  located: readonly LocatedMedia[],
+  descriptors: readonly BackendDescriptor[],
+  resolved: ReadonlyMap<string, ResolvedMediaSource>,
+): Map<string, UnadmittedMediaCost> {
+  const refusals = new Map<string, UnadmittedMediaCost>();
+  const totals = new Map<MediaContent['type'], number>();
+  for (const { part, messageId, partIndex } of located) {
+    const key = `${messageId}:${partIndex}`;
+    const entry = resolved.get(key);
+    const byteLength = entry?.byteLength ?? sourceByteLength(entry?.source ?? part.source);
+    if (byteLength === undefined) continue;
+    const total = (totals.get(part.type) ?? 0) + byteLength;
+    totals.set(part.type, total);
+    const caps = descriptors
+      .filter((descriptor) => descriptor.modalities[part.type].input)
+      .flatMap((descriptor) =>
+        descriptor.mediaLimits.flatMap((limit) =>
+          limit.modality === part.type &&
+          limit.scope === 'aggregate' &&
+          limit.maxBytes !== undefined
+            ? [limit.maxBytes]
+            : [],
+        ),
+      );
+    if (caps.length > 0 && total > Math.min(...caps)) {
+      refusals.set(key, {
+        messageId,
+        partIndex,
+        modality: part.type,
+        outcome: 'unbounded',
+        reason: 'media-limit-exceeded',
+      });
+    }
+  }
+  return refusals;
+}
+
+/**
+ * The media requirements of a step's conversation, for backend selection: one per
+ * media part, in order, described by the source each part takes once the run's
+ * resolver has projected it (a managed asset is judged as the inline bytes or the
+ * provider-fetched URL it resolves to, with the resolver's media type and size).
+ * `undefined` when the conversation carries no media, which leaves the selection
+ * request exactly as it was before media existed.
+ */
+export function describeStepInputMedia(
+  conversation: Conversation,
+  resolvedSources: ResolvedMediaSources | undefined,
+): readonly InputMediaRequirement[] | undefined {
+  const requirements = locateMedia(conversation).flatMap(({ part, messageId, partIndex }) => {
+    const resolved = resolvedSources?.get(`${messageId}:${partIndex}`);
+    const effective: MediaContent =
+      resolved === undefined
+        ? part
+        : {
+            ...part,
+            source: resolved.source,
+            ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
+          };
+    const described = describeInputMedia([effective]);
+    return resolved?.byteLength === undefined
+      ? described
+      : described.map((requirement) => ({ ...requirement, byteLength: resolved.byteLength }));
+  });
+  return requirements.length === 0 ? undefined : requirements;
+}
+
 /** A stable fingerprint of every media part and where it sits, to notice a change. */
 export function mediaFingerprint(conversation: Conversation): string {
   return JSON.stringify(
@@ -128,8 +204,21 @@ export async function admitStepMedia(input: {
    * that otherwise owns that verdict.
    */
   readonly refuseFlagged?: boolean | undefined;
+  /**
+   * Also refuse an asset with no safety verdict (`unknown`). Set on the same
+   * re-admission, when the run's `assetSafety` policy is `'block'`, so the policy
+   * the guardrail applies to the user's input holds for media a handler added.
+   */
+  readonly refuseUnverified?: boolean | undefined;
 }): Promise<StepMedia | StepOutcome> {
-  const { deps, conversation, step, emitter, refuseFlagged = false } = input;
+  const {
+    deps,
+    conversation,
+    step,
+    emitter,
+    refuseFlagged = false,
+    refuseUnverified = false,
+  } = input;
   const located = locateMedia(conversation);
   const descriptors = readBackendDescriptors(deps.generate);
 
@@ -162,6 +251,14 @@ export async function admitStepMedia(input: {
           outcome: 'unsupported',
           reason: 'asset-flagged',
         });
+      } else if (result.outcome === 'resolved' && refuseUnverified && result.safety === 'unknown') {
+        unavailable.set(key, {
+          messageId,
+          partIndex,
+          modality: part.type,
+          outcome: 'unsupported',
+          reason: 'asset-unverified',
+        });
       } else if (result.outcome === 'resolved') {
         resolved.set(key, result);
       } else {
@@ -181,10 +278,14 @@ export async function admitStepMedia(input: {
   const estimate =
     deps.mediaCostEstimator ?? createCatalogMediaCostEstimator(descriptors, { resolvedSources });
   const countRefusals = overCountParts(located, descriptors);
+  const aggregateRefusals = overAggregateParts(located, descriptors, resolved);
   const outcomes: MediaCostOutcome[] = located.map(({ part, messageId, partIndex }) => {
     const key = `${messageId}:${partIndex}`;
     return (
-      unavailable.get(key) ?? countRefusals.get(key) ?? estimate(part, { messageId, partIndex })
+      unavailable.get(key) ??
+      countRefusals.get(key) ??
+      aggregateRefusals.get(key) ??
+      estimate(part, { messageId, partIndex })
     );
   });
 

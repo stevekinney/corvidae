@@ -16,6 +16,7 @@ export function lineageToJSON(lineage: readonly ContentPartLineage[]): JSONValue
     to: entry.to,
     transform: entry.transform,
     ...(entry.providerFileId !== undefined ? { providerFileId: entry.providerFileId } : {}),
+    ...(entry.originalMimeType !== undefined ? { originalMimeType: entry.originalMimeType } : {}),
     ...(entry.assetId !== undefined ? { assetId: entry.assetId } : {}),
     ...(entry.revision !== undefined ? { revision: entry.revision } : {}),
   }));

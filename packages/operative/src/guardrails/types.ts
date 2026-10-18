@@ -42,7 +42,16 @@ export interface InputGuardrailOptions {
    * default `'allow'` admits unverified assets; `'block'` refuses them. Only a
    * part a `ContentSourceResolver` projected carries a safety state.
    */
-  assetSafety?: { unknown?: ('allow' | 'block') | undefined } | undefined;
+  assetSafety?: AssetSafetyPolicy | undefined;
+}
+
+/**
+ * What to do with a resolved asset the safety gates gave no verdict (`unknown`).
+ * A flagged asset is always refused. The default `'allow'` admits unverified
+ * assets; `'block'` refuses them.
+ */
+export interface AssetSafetyPolicy {
+  unknown?: ('allow' | 'block') | undefined;
 }
 
 /** Context provided to output validators. */

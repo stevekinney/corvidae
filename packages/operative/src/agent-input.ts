@@ -8,7 +8,12 @@
  * substitutes an empty string, keeps only the text, or rewrites a media part as
  * prose.
  */
-import type { Conversation, ConversationHistory, MultiModalContent } from 'conversationalist';
+import type {
+  Conversation,
+  ConversationHistory,
+  JSONValue,
+  MultiModalContent,
+} from 'conversationalist';
 import { isMediaContent, multiModalContentSchema } from 'conversationalist';
 
 import type { SessionInputPayload } from './durable/types';
@@ -83,14 +88,31 @@ export function snapshotPayload(input: SessionInputPayload): SessionInputPayload
   return typeof input === 'string' ? input : structuredClone(input);
 }
 
-/** Appends a payload to a conversation as exactly one `user` message, parts in order. */
-export function appendAgentInput(conversation: Conversation, input: SessionInputPayload): void {
+/**
+ * Appends a payload to a conversation as exactly one `user` message, parts in
+ * order, with optional message `metadata`.
+ */
+export function appendAgentInput(
+  conversation: Conversation,
+  input: SessionInputPayload,
+  metadata?: Record<string, JSONValue>,
+): void {
   if (typeof input === 'string') {
-    conversation.appendUserMessage(input);
+    conversation.appendUserMessage(input, metadata);
     return;
   }
   const parts: MultiModalContent[] = input.map((part): MultiModalContent =>
     part.type === 'text' ? { type: 'text', text: part.text } : structuredClone(part),
   );
-  conversation.appendUserMessage(parts);
+  conversation.appendUserMessage(parts, metadata);
+}
+
+/**
+ * The text a payload carries: the string itself, or the text parts of a part
+ * list joined by a newline. Media contributes nothing. For labelling and
+ * diagnostics only; a run is always given the parts, never this projection.
+ */
+export function payloadText(input: SessionInputPayload): string {
+  if (typeof input === 'string') return input;
+  return input.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 }

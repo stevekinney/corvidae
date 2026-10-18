@@ -19,7 +19,7 @@ import { noToolCalls } from './conditions/predicates';
 import type { MediaCostEstimator } from './context/types';
 import { createActiveRun } from './create-run';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
-import type { GuardrailsOptions } from './guardrails/types';
+import type { AssetSafetyPolicy, GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { ProviderName } from './providers/types';
@@ -127,6 +127,8 @@ export interface CreateAgentOptionsBase {
    * `MediaAdmissionError` before any provider call; nothing is dropped.
    */
   contentSourceResolver?: ContentSourceResolver | undefined;
+  /** What to do with a resolved asset no safety gate gave a verdict; see `RunOptions.assetSafety`. */
+  assetSafety?: AssetSafetyPolicy | undefined;
 
   /**
    * Costs media parts. Defaults to a catalog estimator built from the
@@ -863,6 +865,12 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
       // construction-time value must never be able to override the run's
       // actual caller-supplied principal.
       ...rest,
+      // COR-716: an agent that declares an input guardrail with an unverified-asset policy
+      // holds media a `beforeGenerate` handler adds to the same policy, unless the caller
+      // set `assetSafety` on the agent directly.
+      ...(rest.assetSafety === undefined && runGuardrails?.input?.assetSafety !== undefined
+        ? { assetSafety: runGuardrails.input.assetSafety }
+        : {}),
       // The merged agent-tier plan built above, policy registrations included.
       ...(hooks === undefined ? {} : { hooks }),
       // AB-21: `AgentRunContext` fields translate onto their `RunOptions`

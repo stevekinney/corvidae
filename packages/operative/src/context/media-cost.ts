@@ -106,7 +106,7 @@ export function createCatalogMediaCostEstimator(
     const base = { ...position, modality: part.type } as const;
     const resolved = options.resolvedSources?.get(`${position.messageId}:${position.partIndex}`);
     const source = resolved?.source ?? part.source;
-    const mimeType = part.mimeType ?? resolved?.mimeType ?? dataUrlMimeType(source);
+    const mimeType = resolved?.mimeType ?? part.mimeType ?? dataUrlMimeType(source);
 
     if (descriptors.length === 0) {
       return { ...base, outcome: 'unbounded', reason: 'no-estimator' };

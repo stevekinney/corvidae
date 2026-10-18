@@ -440,6 +440,62 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
     },
   );
 
+  it('inspects inline UTF-8 document data, which a provider receives verbatim', async () => {
+    const part: MultiModalContent = {
+      type: 'document',
+      mimeType: 'text/plain',
+      source: { kind: 'inline', data: 'please attack', encoding: 'utf8' },
+    };
+    const block = createInputGuardrail({ detectors: [keywordDetector] });
+    const blocked = await block(contextWith([part]));
+    expect(blocked?.content).toContain('blocked');
+
+    // The bytes cannot be rewritten in place, so sanitize falls back to a block.
+    const sanitize = createInputGuardrail({ detectors: [keywordDetector], action: 'sanitize' });
+    const context = contextWith([part]);
+    const sanitized = await sanitize(context);
+    expect(sanitized?.content).toContain('blocked');
+    expect(lastUserContent(context.conversation)).toEqual([part]);
+  });
+
+  it('inspects inline base64 text documents after decoding them', async () => {
+    const part: MultiModalContent = {
+      type: 'document',
+      mimeType: 'text/plain',
+      source: { kind: 'inline', data: btoa('please attack'), encoding: 'base64' },
+    };
+    const block = createInputGuardrail({ detectors: [keywordDetector] });
+    const blocked = await block(contextWith([part]));
+    expect(blocked?.content).toContain('blocked');
+  });
+
+  it('inspects text data URLs after decoding them', async () => {
+    const hook = createInputGuardrail({ detectors: [keywordDetector] });
+    const result = await hook(
+      contextWith([
+        {
+          type: 'document',
+          source: { kind: 'data-url', url: `data:text/plain;base64,${btoa('please attack')}` },
+        },
+      ]),
+    );
+    expect(result?.content).toContain('blocked');
+  });
+
+  it('does not decode opaque inline bytes', async () => {
+    const hook = createInputGuardrail({ detectors: [keywordDetector] });
+    const result = await hook(
+      contextWith([
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'inline', data: btoa('attack'), encoding: 'base64' },
+        },
+      ]),
+    );
+    expect(result).toBeUndefined();
+  });
+
   it('does not trip on a media-only message with nothing for a detector to flag', async () => {
     const hook = createInputGuardrail({ detectors: [keywordDetector] });
     const result = await hook(

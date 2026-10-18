@@ -7,6 +7,7 @@ import { SCHEDULER_ORIGIN_TAG } from './active-run-constants';
 import type { RecoveredRunHandle } from './active-run-event-surface';
 import { reconstructRunResult } from './active-run-result-reconstruction';
 import { normalizeAgentRunWorkflowResult } from './run-workflow-result';
+import type { SessionInputPayload } from './types';
 
 export async function resumeDurableRunResult(
   context: DurableActiveRunContext,
@@ -37,7 +38,7 @@ export interface StartDurableRunResultOptions {
   /** The run behavior (generate, toolbox, hooks, stopWhen, …). */
   options: RunOptions;
   /** First user message to seed a brand-new run. */
-  prompt?: string | undefined;
+  prompt?: SessionInputPayload | undefined;
   /** Abort signal for the run (the scheduler's combined signal). */
   signal?: AbortSignal | undefined;
   /**

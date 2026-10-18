@@ -49,6 +49,7 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     hooks: options.hooks,
     contextManagement: options.contextManagement,
     contentSourceResolver: options.contentSourceResolver,
+    assetSafety: options.assetSafety,
     mediaCostEstimator: options.mediaCostEstimator,
     output: options.output,
     responseFormat,

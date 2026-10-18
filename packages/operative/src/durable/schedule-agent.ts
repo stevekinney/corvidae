@@ -21,6 +21,8 @@ import {
 import { reservedIdentifierReason } from '../goal-reserved-identifiers';
 import type { EventDispatcher } from '../run-step';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';
+import { isSessionInputPayload } from './session-input-payload';
+import type { SessionInputPayload } from './types';
 
 /**
  * The overlap policies Agent Bureau exposes on its three schedule-creation
@@ -49,8 +51,11 @@ const SUPPORTED_OVERLAP_POLICIES: ReadonlySet<string> = new Set<AgentScheduleOve
 export interface ScheduledAgentRunInput {
   /** The agent name to dispatch to. Resolved by the bureau at fire time. */
   agentName: string;
-  /** The prompt / message injected into the agent run for each fire. */
-  input: string;
+  /**
+   * The prompt injected into the agent run for each fire: text, or an ordered
+   * list of text and media parts delivered as one user message.
+   */
+  input: SessionInputPayload;
   /**
    * Optional session to append each fire's run into. When present, each
    * scheduled run CONTINUES that session's conversation, accumulating context
@@ -85,7 +90,7 @@ export interface ScheduledAgentRunInput {
 export function isScheduledAgentRunInput(value: unknown): value is ScheduledAgentRunInput {
   if (typeof value !== 'object' || value === null) return false;
   const candidate = value as Record<string, unknown>;
-  if (typeof candidate['agentName'] !== 'string' || typeof candidate['input'] !== 'string') {
+  if (typeof candidate['agentName'] !== 'string' || !isSessionInputPayload(candidate['input'])) {
     return false;
   }
   const sessionId = candidate['sessionId'];
@@ -135,7 +140,7 @@ export interface CreateAgentScheduleOptions {
    * The prompt injected on each scheduled fire (maps to
    * `ScheduledAgentRunInput.input`).
    */
-  input: string;
+  input: SessionInputPayload;
   /** Human-readable operator description stored with the schedule. */
   description?: string | undefined;
   /**
@@ -297,8 +302,8 @@ export interface AgentScheduler {
 export interface AgentScheduleOptions {
   /** Recurrence specification. Exactly one of `cron` or `every`. */
   spec: ScheduleSpec;
-  /** Prompt injected into each scheduled run. */
-  input: string;
+  /** Prompt injected into each scheduled run: text, or ordered text and media parts. */
+  input: SessionInputPayload;
   /** Human-readable operator description stored with the schedule. */
   description?: string | undefined;
   /**
@@ -538,6 +543,13 @@ export async function createAgentSchedule(
   const runtime = options.runtime ?? createDefaultRuntimeServices();
 
   assertSupportedOverlapPolicy(overlap);
+  // Every fire reads this input back, so one that cannot be read is refused now
+  // rather than failing each fire later.
+  if (!isSessionInputPayload(input)) {
+    throw new InvalidScheduleError(
+      'schedule input must be text, or a non-empty list of valid user text and media parts',
+    );
+  }
   if (session !== undefined && session.trim().length === 0) {
     throw new InvalidScheduleError('schedule session must be a non-empty string');
   }

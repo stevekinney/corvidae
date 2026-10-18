@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { fromAnthropicMessages } from '../src/adapters/anthropic/inbound';
 import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
+import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
 import { appendMessages, createConversationHistory } from '../src/conversation';
 import { UnsupportedContentError } from '../src/errors';
@@ -73,6 +74,72 @@ describe('provider document conversion', () => {
         [2, 'provider-file', 'provider-file-reference'],
       ],
     );
+  });
+
+  it.each([
+    [
+      'inline base64',
+      { kind: 'inline', data: btoa('# Notes'), encoding: 'base64' } as const,
+      'text/markdown',
+    ],
+    [
+      'data URL',
+      { kind: 'data-url', url: `data:text/plain;base64,${btoa('# Notes')}` } as const,
+      undefined,
+    ],
+  ])(
+    'decodes a %s text document to an Anthropic text source, which accepts no other text media type',
+    (_label, source, mimeType) => {
+      let conversation = createConversationHistory();
+      conversation = appendMessages(conversation, {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            name: 'notes.md',
+            ...(mimeType !== undefined ? { mimeType } : {}),
+            source,
+          },
+        ],
+      });
+
+      const exported = toAnthropicMessages(conversation);
+
+      expect(exported.messages[0]?.content).toEqual([
+        {
+          type: 'document',
+          title: 'notes.md',
+          source: { type: 'text', media_type: 'text/plain', data: '# Notes' },
+        },
+      ]);
+    },
+  );
+
+  it('rejects a text document whose bytes are not UTF-8 before the client call', () => {
+    let conversation = createConversationHistory();
+    conversation = appendMessages(conversation, {
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          mimeType: 'text/plain',
+          source: { kind: 'inline', data: btoa('\xff\xfe'), encoding: 'base64' },
+        },
+      ],
+    });
+
+    expect(() => toAnthropicMessages(conversation)).toThrow(UnsupportedContentError);
+  });
+
+  it('rejects an imported URL that is not http, https, or data, instead of storing an invalid remote-url', () => {
+    expect(() =>
+      fromOpenAIMessages([
+        {
+          role: 'user',
+          content: [{ type: 'image_url', image_url: { url: 's3://bucket/photo.png' } }],
+        },
+      ]),
+    ).toThrow(/s3:\/\/bucket\/photo\.png/);
   });
 
   it('rejects a document source Anthropic cannot carry instead of writing marker prose', () => {

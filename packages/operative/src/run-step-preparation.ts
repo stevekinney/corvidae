@@ -14,7 +14,7 @@ import {
   StepStartedEvent,
 } from './events';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
-import { admitStepMedia } from './run-step-media';
+import { admitStepMedia, describeStepInputMedia } from './run-step-media';
 import { createElicit } from './run-step-support';
 import { awaitResumeOrAbort, explicitAbortReason } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
@@ -110,6 +110,16 @@ export async function prepareStep(
     return { kind: 'abort', reason: explicitAbortReason(signal) };
   }
 
+  // COR-716 — admit the step's media before the selection boundary, the input
+  // guardrail, context management, or the provider sees it: resolve sources a
+  // provider cannot take directly, cost every part, and refuse (typed, before
+  // generation) any part that cannot be admitted. A conversation with no media
+  // skips all of it. It sits ahead of selection because selection judges each
+  // part by the form its source takes once resolved.
+  const media = await admitStepMedia({ deps, conversation, step, emitter });
+  if ('kind' in media) return media;
+  const { resolvedSources, mediaTokens } = media;
+
   // AB-64/AB-250 selection boundary: revalidate a previously planned
   // backend selection against the CURRENT catalog/policy/availability
   // snapshot, at the same shared entry point as the steering boundary above
@@ -130,7 +140,12 @@ export async function prepareStep(
   const selectionGate = deps.selection;
   if (selectionGate) {
     const supersededPlan = selectionGate.getPlan();
-    const revalidatedPlan = selectionGate.revalidate();
+    // COR-716: the step's media goes with the revalidation, so a backend that cannot accept
+    // it is excluded here, typed, rather than failing at the provider.
+    const inputMedia = describeStepInputMedia(conversation, media.resolvedSources);
+    const revalidatedPlan = selectionGate.revalidate(
+      inputMedia === undefined ? undefined : { inputMedia },
+    );
     if (revalidatedPlan.outcome !== 'selected') {
       const error = new SelectionRevalidationError(revalidatedPlan, supersededPlan);
       emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
@@ -175,14 +190,6 @@ export async function prepareStep(
   const elicit = deps.onElicitation
     ? createElicit(step, deps.onElicitation, conversation, stepSignal, deps.runtime, emitter)
     : undefined;
-
-  // COR-716 — admit the step's media before the input guardrail, context
-  // management, or the provider sees it: resolve sources a provider cannot take
-  // directly, cost every part, and refuse (typed, before generation) any part
-  // that cannot be admitted. A conversation with no media skips all of it.
-  const media = await admitStepMedia({ deps, conversation, step, emitter });
-  if ('kind' in media) return media;
-  const { resolvedSources, mediaTokens } = media;
 
   // Context management: compact if over token threshold
   if (deps.contextManagement) {

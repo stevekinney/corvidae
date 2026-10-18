@@ -888,7 +888,12 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
       agentVersion,
       ...(typeof input === 'string'
         ? { objective: input }
-        : { objective: 'conversation', artifactDigest: digestDelegationArtifact(input) }),
+        : {
+            // A conversation or a list of text and media parts is not free text, so the
+            // grant names it by a digest over its content (media included) instead.
+            objective: Array.isArray(input) ? 'content-parts' : 'conversation',
+            artifactDigest: digestDelegationArtifact(input),
+          }),
       recipientId: childRunId,
       effectiveCapabilities: attenuateDelegationCapabilities(
         parentGrant?.effectiveCapabilities,
