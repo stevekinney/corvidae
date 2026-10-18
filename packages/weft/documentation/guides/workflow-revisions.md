@@ -262,7 +262,7 @@ const diagnostics = await client.operations['weft.realms.diagnostics']({});
 console.log(diagnostics.pools.length, 'realm pool(s)');
 ```
 
-The Console's System tab has a matching **Realms** view (`src/ui/routes/system/realms-tab.svelte`) rendering the same data as a table, one row per realm — or one row for a pool tracking no realms yet, so an active, idle revision is still visible rather than silently absent.
+The Console's System tab has a matching **Realms** view (`applications/interborough/src/routes/system/realms-tab.svelte`) rendering the same data as a table, one row per realm — or one row for a pool tracking no realms yet, so an active, idle revision is still visible rather than silently absent.
 
 ## `bun --watch` in development and coarse production deployment, and why `bun --hot` is rejected for this host
 

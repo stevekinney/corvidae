@@ -49,7 +49,6 @@ const reviewStatusSchema = z.enum([
 const reviewCommonFields = {
   id: z.string(),
   runId: z.string(),
-  sessionId: z.string(),
   agentName: z.string().optional(),
   /** Epoch milliseconds the review was requested. */
   requestedAt: z.number(),
@@ -93,6 +92,7 @@ const toolActionSchema = z.discriminatedUnion('type', [
 
 const toolApprovalReviewSchema = z.object({
   ...reviewCommonFields,
+  sessionId: z.string(),
   kind: z.literal('tool-approval'),
   /**
    * How many times the approval was superseded: 0 until a resolution is gated
@@ -114,6 +114,8 @@ const toolApprovalReviewSchema = z.object({
 
 const humanWaitReviewSchema = z.object({
   ...reviewCommonFields,
+  /** Absent for the park of a `bureau.run()` run, which has no session; its `runId` addresses it. */
+  sessionId: z.string().optional(),
   kind: z.literal('human-wait'),
   signalName: z.string(),
   prompt: z.string().optional(),
@@ -170,7 +172,6 @@ export function projectReview(
   const common = {
     id: review.id,
     runId: review.runId,
-    sessionId: review.sessionId,
     ...(review.agentName === undefined ? {} : { agentName: review.agentName }),
     requestedAt: review.requestedAt,
     ageMilliseconds: review.ageMilliseconds,
@@ -179,6 +180,7 @@ export function projectReview(
   if (review.kind === 'tool-approval') {
     return {
       ...common,
+      sessionId: review.sessionId,
       kind: 'tool-approval',
       round: review.round ?? 0,
       approval: {
@@ -195,6 +197,7 @@ export function projectReview(
   }
   return {
     ...common,
+    ...(review.sessionId === undefined ? {} : { sessionId: review.sessionId }),
     kind: 'human-wait',
     signalName: review.signalName,
     ...(review.prompt === undefined ? {} : { prompt: review.prompt }),

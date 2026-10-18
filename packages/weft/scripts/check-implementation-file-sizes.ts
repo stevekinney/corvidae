@@ -311,14 +311,6 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'lines over the ceiling; splitting by keyspace would fragment a sweep that must stay ' +
       'exhaustive and ordered.',
   },
-  {
-    path: 'src/ui/routes/workflows/detail/checkpoints/fork-dialog.svelte',
-    classification: 'justified-exception',
-    rationale:
-      'One dialog component (script, markup, and scoped styles) three lines over the ceiling. It ' +
-      'came under this check unchanged when the UI moved into Weft (COR-1455), a move that ' +
-      'changes no UI behavior; splitting the dialog is a UI change for a later issue.',
-  },
 ] as const satisfies readonly OversizedImplementationFile[];
 
 type CliArguments = {

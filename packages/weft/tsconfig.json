@@ -5,9 +5,6 @@
     "node_modules",
     "**/*.test-d.ts",
     "src/cli/__fixtures__/**",
-    "src/client/__fixtures__/**",
-    "src/ui/**",
-    "scripts/ui-browser/**",
-    "scripts/ui-coverage/**"
+    "src/client/__fixtures__/**"
   ]
 }
