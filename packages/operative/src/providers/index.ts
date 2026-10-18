@@ -78,6 +78,7 @@ export {
 export { createModelCatalog } from './model-catalog.ts';
 export type {
   BackendDescriptor,
+  MediaCount,
   BackendLifecycleState,
   CatalogProjection,
   CreateModelCatalogOptions,
@@ -119,9 +120,15 @@ export type {
   RoutingStrategy,
   StepBasedStrategyOptions,
 } from './routing/index.ts';
-export { recordEffectiveGeneration, select } from './selection.ts';
+export {
+  describeInputMedia,
+  evaluateInputMedia,
+  recordEffectiveGeneration,
+  select,
+} from './selection.ts';
 export type {
   EffectiveGenerationResult,
+  InputMediaRequirement,
   RevalidationInput,
   SelectOptions,
   SelectionCandidate,

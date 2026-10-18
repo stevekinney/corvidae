@@ -29,7 +29,11 @@ const ANTHROPIC_MODALITIES: ModalityMatrix = Object.freeze({
     output: false,
     sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
   },
-  document: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
+  document: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
   audio: UNSUPPORTED_MODALITY_ENTRY,
   video: UNSUPPORTED_MODALITY_ENTRY,
   file: UNSUPPORTED_MODALITY_ENTRY,
@@ -40,13 +44,15 @@ const ANTHROPIC_MODALITIES: ModalityMatrix = Object.freeze({
 // 2026-09-02: both pages document base64/URL image and file input; neither
 // documents a `file_id` (Files-API) input path for `chat.completions`
 // specifically — that capability is scoped to the Responses API — so
-// `chat.completions` document/image source forms stay inline-only.
+// `chat.completions` takes bytes only: `inline` bytes and a `data-url` for a
+// document (a `file` part holding a base64 data URL), and `remote-url` as well
+// for an image.
 // `chat.completions` has no audio or video input/output and no image or
 // audio generation (that is the Responses/Realtime API's surface).
 const OPENAI_MODALITIES: ModalityMatrix = Object.freeze({
   text: { input: true, output: true, sourceForms: ['inline'] },
   image: { input: true, output: false, sourceForms: ['inline', 'data-url', 'remote-url'] },
-  document: { input: true, output: false, sourceForms: ['inline'] },
+  document: { input: true, output: false, sourceForms: ['inline', 'data-url'] },
   audio: UNSUPPORTED_MODALITY_ENTRY,
   video: UNSUPPORTED_MODALITY_ENTRY,
   file: UNSUPPORTED_MODALITY_ENTRY,
@@ -62,10 +68,26 @@ const OPENAI_MODALITIES: ModalityMatrix = Object.freeze({
 // both stay output: false.
 const GEMINI_MODALITIES: ModalityMatrix = Object.freeze({
   text: { input: true, output: true, sourceForms: ['inline'] },
-  image: { input: true, output: false, sourceForms: ['inline', 'data-url', 'remote-url'] },
-  document: { input: true, output: false, sourceForms: ['inline', 'remote-url'] },
-  audio: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
-  video: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
+  image: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  document: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  audio: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  video: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
   file: UNSUPPORTED_MODALITY_ENTRY,
 });
 

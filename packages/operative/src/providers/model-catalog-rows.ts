@@ -1,6 +1,8 @@
+import type { MediaLimits } from 'conversationalist';
+
 import { getModelPricing } from '../cost-estimation.ts';
 import { requireLimits, requireModalities } from './model-catalog-data.ts';
-import type { BackendDescriptor, EffortSupport, ModelAlias } from './model-catalog.ts';
+import type { BackendDescriptor, EffortSupport, MediaCount, ModelAlias } from './model-catalog.ts';
 import {
   GEMINI_THINKING_MODELS,
   OPENAI_REASONING_MODELS,
@@ -178,11 +180,34 @@ const ACCESS_RESTRICTED_ANTHROPIC_MODELS: ReadonlySet<string> = new Set([
   'claude-mythos-5-1',
 ]);
 
+// Per-provider media caps. A modality with no entry has no known cap; an
+// absent figure is "unknown", never "unlimited". Each is read from the provider
+// documentation named beside it and is not reconfirmed on every release.
+//
+// Anthropic: https://platform.claude.com/docs/en/build-with-claude/vision lists
+// up to 5 MB per image and up to 100 images per `messages` request.
+const ANTHROPIC_MEDIA_LIMITS: readonly MediaLimits[] = deepFreeze([
+  { scope: 'per-part', modality: 'image', maxBytes: 5 * 1024 * 1024 },
+]);
+const ANTHROPIC_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
+  { modality: 'image', maxPerRequest: 100 },
+]);
+// OpenAI: https://developers.openai.com/api/docs/guides/images-vision lists up
+// to 500 image inputs per request.
+const OPENAI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
+  { modality: 'image', maxPerRequest: 500 },
+]);
+// Gemini: https://ai.google.dev/gemini-api/docs/image-understanding lists up to
+// 3,600 image files per request.
+const GEMINI_MEDIA_COUNTS: readonly MediaCount[] = deepFreeze([
+  { modality: 'image', maxPerRequest: 3600 },
+]);
+
 export function buildAnthropicRow(model: string, freshness: string): BackendDescriptor {
   const limits = requireLimits('anthropic', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 1,
+    descriptorVersion: 2,
     provider: 'anthropic',
     endpoint: 'messages',
     model,
@@ -190,7 +215,9 @@ export function buildAnthropicRow(model: string, freshness: string): BackendDesc
     lifecycle: 'stable',
     modalities: requireModalities('anthropic', model),
     mimeFamilies: ['text', 'image', 'document'],
-    mediaLimits: [],
+    mediaLimits: ANTHROPIC_MEDIA_LIMITS,
+    mediaCounts: ANTHROPIC_MEDIA_COUNTS,
+    providerFetchesRemoteUrls: true,
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
     streaming: true,
@@ -219,7 +246,7 @@ export function buildOpenAIRow(
   const limits = requireLimits('openai', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 1,
+    descriptorVersion: 2,
     provider: 'openai',
     endpoint: 'chat.completions',
     model,
@@ -228,6 +255,8 @@ export function buildOpenAIRow(
     modalities: requireModalities('openai', model),
     mimeFamilies: ['text', 'image', 'document'],
     mediaLimits: [],
+    mediaCounts: OPENAI_MEDIA_COUNTS,
+    providerFetchesRemoteUrls: true,
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
     streaming: true,
@@ -260,7 +289,7 @@ export function buildGeminiRow(model: string, freshness: string): BackendDescrip
   const limits = requireLimits('gemini', model);
   const pricingRow = pricingFor(model);
   return {
-    descriptorVersion: 1,
+    descriptorVersion: 2,
     provider: 'gemini',
     endpoint: 'generateContent',
     model,
@@ -269,6 +298,8 @@ export function buildGeminiRow(model: string, freshness: string): BackendDescrip
     modalities: requireModalities('gemini', model),
     mimeFamilies: ['text', 'image', 'document', 'audio', 'video'],
     mediaLimits: [],
+    mediaCounts: GEMINI_MEDIA_COUNTS,
+    providerFetchesRemoteUrls: true,
     contextWindowTokens: limits.contextWindowTokens,
     maxOutputTokens: limits.maxOutputTokens,
     streaming: true,
