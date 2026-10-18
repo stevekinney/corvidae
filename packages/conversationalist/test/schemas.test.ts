@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { z } from 'zod';
 
 import {
+  contentSourceSchema,
   conversationSchema,
   conversationShape,
   jsonValueSchema,
@@ -40,6 +41,28 @@ describe('schemas', () => {
         source: { kind: 'remote-url', url: 'not a url' },
       }).success,
     ).toBeFalse();
+  });
+
+  test('contentSourceSchema pins the scheme of a remote URL to http or https and a data URL to data', () => {
+    for (const url of ['https://example.com/a.png', 'http://example.com/a.png']) {
+      expect(contentSourceSchema.safeParse({ kind: 'remote-url', url }).success).toBeTrue();
+    }
+    for (const url of [
+      'file:///etc/passwd',
+      'ftp://example.com/a.png',
+      'blob:https://x/1',
+      'javascript:alert(1)',
+      'data:image/png;base64,QUJD',
+    ]) {
+      expect(contentSourceSchema.safeParse({ kind: 'remote-url', url }).success).toBeFalse();
+    }
+    expect(
+      contentSourceSchema.safeParse({ kind: 'data-url', url: 'data:image/png;base64,QUJD' })
+        .success,
+    ).toBeTrue();
+    for (const url of ['https://example.com/a.png', 'blob:https://x/1', 'file:///a']) {
+      expect(contentSourceSchema.safeParse({ kind: 'data-url', url }).success).toBeFalse();
+    }
   });
 
   test('multiModalContentSchema rejects the retired url and base64-source shapes', () => {

@@ -147,7 +147,11 @@ function assertGeminiMultimodalConversion(
     },
     {
       type: 'image',
-      source: { kind: 'remote-url', url: 'gs://bucket/system-reference.png' },
+      source: {
+        kind: 'provider-file',
+        provider: 'gemini',
+        providerFileId: 'gs://bucket/system-reference.png',
+      },
       mimeType: 'image/png',
     },
   ]);
@@ -189,7 +193,11 @@ function assertGeminiToolResults(conversation: ReturnType<typeof fromGeminiMessa
   expect(messages[7]?.content).toEqual([
     {
       type: 'image',
-      source: { kind: 'remote-url', url: 'gs://bucket/model-reference.jpg' },
+      source: {
+        kind: 'provider-file',
+        provider: 'gemini',
+        providerFileId: 'gs://bucket/model-reference.jpg',
+      },
       mimeType: 'image/jpeg',
     },
   ]);

@@ -87,7 +87,6 @@
   let unrelatedTooltipTrigger = $state<HTMLButtonElement | null>(null);
   let streaming = $state(false);
   let streamingStatus = $state('');
-  const submittedImageUrls = new Set<string>();
 
   // --- Tool-call controls ---
   let toolName = $state('exports_check');
@@ -460,7 +459,6 @@
   function clearConversation(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
-    revokeSubmittedImageUrls();
     conversation = createConversation({ id: 'harness-cleared' });
     readReceipts = undefined;
     directTypingParticipants = undefined;
@@ -532,14 +530,22 @@
     },
   };
 
-  function createSubmittedImageContent(attachment: {
+  /**
+   * Stores a submitted image as a data URL: a transcript holds only addresses
+   * that survive being persisted, and a `blob:` URL does not.
+   */
+  async function createSubmittedImageContent(attachment: {
     file: File;
-  }): Extract<MultiModalContent, { type: 'image' }> {
-    const url = URL.createObjectURL(attachment.file);
-    submittedImageUrls.add(url);
+  }): Promise<Extract<MultiModalContent, { type: 'image' }>> {
+    const bytes = new Uint8Array(await attachment.file.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
     return {
       type: 'image',
-      source: { kind: 'remote-url', url },
+      source: {
+        kind: 'data-url',
+        url: `data:${attachment.file.type || 'application/octet-stream'};base64,${btoa(binary)}`,
+      },
       mimeType: attachment.file.type,
       alt: attachment.file.name,
     };
@@ -721,11 +727,6 @@
     conversation = appendMessages(conversation, firstCall, secondCall, firstResult, secondResult);
   }
 
-  function revokeSubmittedImageUrls(): void {
-    for (const url of submittedImageUrls) URL.revokeObjectURL(url);
-    submittedImageUrls.clear();
-  }
-
   onMount(() => {
     const harnessWindow = window as ChatHarnessWindow;
     harnessWindow.corvidaeChatHarnessAppendImages = (images) => {
@@ -767,12 +768,14 @@
   });
 
   // --- Chat callbacks ---
-  function handleSubmit(event: ChatSubmitEvent): void {
+  async function handleSubmit(event: ChatSubmitEvent): Promise<void> {
     const content = typeof event.message.content === 'string' ? event.message.content : '';
     record('onSubmit', JSON.stringify({ content, attachments: event.attachments.length }));
-    const imageParts: MultiModalContent[] = event.attachments
-      .filter((attachment) => attachment.kind === 'image')
-      .map((attachment) => createSubmittedImageContent(attachment));
+    const imageParts: MultiModalContent[] = await Promise.all(
+      event.attachments
+        .filter((attachment) => attachment.kind === 'image')
+        .map((attachment) => createSubmittedImageContent(attachment)),
+    );
     const messageContent =
       imageParts.length > 0
         ? [
@@ -830,7 +833,6 @@
   onDestroy(() => {
     cancelPending('destroy');
     cancelPendingHistoryRequest();
-    revokeSubmittedImageUrls();
   });
 
   const surfaceMode = $derived<'default' | 'transparent'>(

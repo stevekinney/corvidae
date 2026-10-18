@@ -1,5 +1,5 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
-import type { MediaContent, MultiModalContent } from '../../multi-modal';
+import type { ContentSource, MediaContent, MultiModalContent } from '../../multi-modal';
 import type {
   ConversationHistory as Conversation,
   JSONValue,
@@ -73,6 +73,19 @@ function toWrappedToolResult(callId: string, value: JSONValue): ToolResult | und
   return { callId, outcome: 'success', content: Object.values(value)[0] ?? null };
 }
 
+/**
+ * A Gemini `fileUri` is a public HTTPS URL, or a handle Gemini itself issued: a
+ * Files API URI or a Cloud Storage URI. Only the first is a `remote-url`; the
+ * others are `provider-file` handles, which `remote-url` (http or https only)
+ * cannot represent.
+ */
+function sourceFromGeminiFileUri(fileUri: string): ContentSource {
+  const isHttp = fileUri.startsWith('https://') || fileUri.startsWith('http://');
+  const isFilesApiUri = fileUri.startsWith('https://generativelanguage.googleapis.com/');
+  if (fileUri.startsWith('data:') || (isHttp && !isFilesApiUri)) return sourceFromUrl(fileUri);
+  return { kind: 'provider-file', provider: 'gemini', providerFileId: fileUri };
+}
+
 function toMediaFromGeminiPart(part: GeminiInlineDataPart | GeminiFileDataPart): MediaContent {
   if ('inlineData' in part) {
     return createMediaPart(
@@ -83,7 +96,7 @@ function toMediaFromGeminiPart(part: GeminiInlineDataPart | GeminiFileDataPart):
   }
   return createMediaPart(
     modalityFromMimeType(part.fileData.mimeType) ?? 'file',
-    sourceFromUrl(part.fileData.fileUri),
+    sourceFromGeminiFileUri(part.fileData.fileUri),
     { mimeType: part.fileData.mimeType },
   );
 }

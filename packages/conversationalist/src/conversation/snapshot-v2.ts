@@ -295,7 +295,7 @@ export function createTableMessageReader(table: readonly unknown[]): TableMessag
     let message = parsed.get(index);
     if (message === undefined) {
       try {
-        message = deepFreeze(parseConversationMessage(table[index], 'current'));
+        message = deepFreeze(parseConversationMessage(table[index]));
       } catch (error) {
         throw snapshotError(
           `invalid message table entry ${index}: ${error instanceof Error ? error.message : String(error)}`,

@@ -55,6 +55,23 @@ export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() => {
 }) satisfies z.ZodType<JSONValue>;
 
 /**
+ * A URL whose scheme is one of `schemes`. `z.url()` alone accepts `file:`,
+ * `javascript:`, and `blob:`, which a persisted source must never name.
+ */
+function urlWithScheme(schemes: readonly string[]) {
+  return z.url().refine(
+    (value) => {
+      try {
+        return schemes.includes(new URL(value).protocol);
+      } catch {
+        return false;
+      }
+    },
+    { message: `expected a URL with scheme ${schemes.join(' or ')}` },
+  );
+}
+
+/**
  * Zod schema for the nine AB-70 `ContentSource` kinds. Mirrors the
  * `ContentSource` type in `multi-modal.ts` exactly.
  */
@@ -64,8 +81,8 @@ export const contentSourceSchema = z.discriminatedUnion('kind', [
     data: z.string().min(1),
     encoding: z.enum(['base64', 'utf8']),
   }),
-  z.object({ kind: z.literal('data-url'), url: z.url() }),
-  z.object({ kind: z.literal('remote-url'), url: z.url() }),
+  z.object({ kind: z.literal('data-url'), url: urlWithScheme(['data:']) }),
+  z.object({ kind: z.literal('remote-url'), url: urlWithScheme(['http:', 'https:']) }),
   z.object({ kind: z.literal('local-file'), path: z.string().min(1) }),
   z.object({ kind: z.literal('upload'), uploadId: z.string().min(1) }),
   z.object({
