@@ -226,7 +226,8 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         expect(result.reason).toBe('consolidation-requires-two-candidates');
       }
       expect(await harness.storage.getProjection(TENANT, NAMESPACE, 's1')).toBeUndefined();
-      expect((await harness.storage.getProjection(TENANT, NAMESPACE, 'f1'))?.revision).toBe(1);
+      const untouched = await harness.storage.getProjection(TENANT, NAMESPACE, 'f1');
+      expect(untouched?.revision).toBe(1);
     });
 
     it('conflicts on a candidate that is no longer current, and writes nothing', async () => {
@@ -338,7 +339,8 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
 
     async function expectUntouched(storage: EvidenceProjectionStorage): Promise<void> {
       expect(await storage.getProjection(TENANT, NAMESPACE, 's3')).toBeUndefined();
-      expect((await storage.getProjection(TENANT, NAMESPACE, 'g1'))?.status).toBe('active');
+      const candidate = await storage.getProjection(TENANT, NAMESPACE, 'g1');
+      expect(candidate?.status).toBe('active');
     }
 
     it('[c2 item 8] refuses a demotion summary whose embedding has another dimension', async () => {

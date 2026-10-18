@@ -14,6 +14,7 @@ import {
 } from '../src/transition-engine';
 import { type TransitionEvent, transitionEventSchema } from '../src/transition-events';
 import type { TransitionProposal } from '../src/transition-proposal';
+import { createTransitionKeys } from '../src/transition-receipt';
 import {
   FIXED_AT,
   makeFact,
@@ -201,4 +202,63 @@ export function expectRefused<Result extends { outcome: string }>(
 ): Extract<Result, { outcome: 'rejected' | 'conflicted' }> {
   expect(result.outcome).toBe(outcome);
   return result as Extract<Result, { outcome: 'rejected' | 'conflicted' }>;
+}
+
+const e1 = makeInlineEvidence('e1');
+const e2 = makeInlineEvidence('e2');
+
+/** The state a correction starts from: evidence `e1` and the fact `p1` resting on it. */
+export async function seedCorrectionState(storage: EvidenceProjectionStorage): Promise<void> {
+  await storage.commit({ tenantId: TENANT, evidence: [e1], projections: [makeFact('p1', [e1])] });
+}
+
+/**
+ * COR-1546's one-batch correction: a successor evidence record, a projection
+ * created from it, and the revision that supersedes the old projection.
+ */
+export function correctionProposal(
+  operationId: string,
+  authority: MemoryAuthority = makeWriteAuthority(),
+): Extract<TransitionProposal, { kind: 'correct-evidence' }> {
+  return {
+    kind: 'correct-evidence',
+    operationId,
+    tenantId: authority.tenantId,
+    authority,
+    successor: proposedEvidence('e2', { supersedes: ['e1'] }),
+    projections: [
+      {
+        ...proposedFact('p2', [{ id: 'e2', digest: e2.digest }]),
+        supersedes: [{ id: 'p1', revision: 1 }],
+      },
+    ],
+    revisions: [
+      {
+        namespace: NAMESPACE,
+        id: 'p1',
+        expectedRevision: 1,
+        change: { kind: 'superseded', supersededBy: { id: 'p2', revision: 1 } },
+      },
+    ],
+  };
+}
+
+/** What a storage holds of the correction, for asserting it is applied whole or not at all. */
+export async function correctionState(storage: EvidenceProjectionStorage, operationId: string) {
+  const retired = await storage.getProjection(TENANT, NAMESPACE, 'p1');
+  return {
+    successor: (await storage.getEvidence(TENANT, 'e2')) !== undefined,
+    marker: (await storage.getEvidenceSupersession(TENANT, 'e1')) !== undefined,
+    createdProjection: (await storage.getProjection(TENANT, NAMESPACE, 'p2')) !== undefined,
+    retiredRevision: retired?.revision,
+    receipt: await storage.getReceipt(createTransitionKeys().receipt(TENANT, operationId)),
+  };
+}
+
+/** A storage whose `commit` fails with `error`, for outcomes the real store only reaches under load. */
+export function storageFailingWith(
+  storage: EvidenceProjectionStorage,
+  error: unknown,
+): EvidenceProjectionStorage {
+  return { ...storage, commit: () => Promise.reject(error) };
 }

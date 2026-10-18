@@ -5,6 +5,7 @@ import {
 import type { EvidenceRecord } from './evidence-schema';
 import {
   assertMemoryAuthority,
+  hasMemoryCapability,
   MemoryAuthorityError,
   type MemoryOperation,
 } from './governance/authority';
@@ -130,6 +131,14 @@ async function resolveEvidence(
   );
 }
 
+/** The operations a proposal needs: `write` for everything, plus `revoke` for a revoking revision. */
+function requiredOperations(proposal: TransitionProposal): MemoryOperation[] {
+  const revokes =
+    (proposal.kind === 'revise-projection' || proposal.kind === 'correct-evidence') &&
+    (proposal.revisions ?? []).some((revision) => revision.change.kind === 'revoked');
+  return revokes ? ['write', 'revoke'] : ['write'];
+}
+
 /**
  * Check 1. The authority is validated whole first: the schema only shape-checks
  * it, and `decideMemoryAccess` trusts `capabilities` without re-reading the
@@ -145,6 +154,13 @@ async function checkAuthorization(
   } catch (error) {
     if (error instanceof MemoryAuthorityError) return refuse('unauthorized', error.message);
     throw error;
+  }
+  // The capability is decided before any resource is looked at, so a caller who holds
+  // none learns nothing about which evidence exists from a coverage refusal.
+  for (const operation of requiredOperations(proposal)) {
+    if (!hasMemoryCapability(proposal.authority, `memory:${operation}`)) {
+      return refuse('unauthorized', `${operation} is denied: missing-capability.`);
+    }
   }
   const deny = (
     operation: MemoryOperation,
