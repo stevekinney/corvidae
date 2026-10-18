@@ -275,7 +275,7 @@ export function createRunWorkflow(
               stepIndex,
               carriedAccumulators,
               runId,
-              { delta: snapshot === lastStepSnapshot },
+              { delta: snapshot === lastStepSnapshot, maximumSteps },
             );
 
             snapshot = conversationAfterStep(snapshot, stepResult);
@@ -308,11 +308,29 @@ export function createRunWorkflow(
             // between commits never advances the cursor past un-persisted state. ===
             // A step that recorded a delta saves the same delta: the transcript
             // the run saved last is that delta's base, the previous step's output.
+            // COR-1476 — every input this step's boundaries appended, before it
+            // generated and in its late drain, is promoted in the SAME atomic
+            // write as the transcript that holds its turn, whatever the step's
+            // outcome: the turn is part of the conversation the moment it is
+            // durable, so a transcript and its promotions can never disagree, and
+            // a run that ends after this write leaves the input `promoted`.
+            const delivered = [
+              ...(stepResult.sessionInputDeliveries ?? []),
+              ...(stepResult.lateSessionInputDeliveries ?? []),
+            ];
+            const promotion =
+              delivered.length === 0
+                ? undefined
+                : { sessionId: delivered[0]!.sessionId, deliveries: delivered };
             yield* ctx.run(
               'saveConversation',
               stepResult.conversationDelta === undefined
-                ? { runId, snapshot }
-                : { runId, delta: stepResult.conversationDelta },
+                ? { runId, snapshot, ...(promotion === undefined ? {} : { promotion }) }
+                : {
+                    runId,
+                    delta: stepResult.conversationDelta,
+                    ...(promotion === undefined ? {} : { promotion }),
+                  },
             );
             if (stepResult.record !== null) {
               yield* ctx.run('recordStep', { runId, record: stepResult.record });
@@ -335,6 +353,21 @@ export function createRunWorkflow(
               ...stepResult.nextAccumulators,
             };
             yield* ctx.run('saveCursor', { runId, cursor });
+
+            // COR-1476 — the step's transcript and its session input promotion
+            // committed in one write above, so nothing durable is left to do for
+            // the inputs but retire their mailbox commands. That is bookkeeping
+            // a later boundary repeats if it is lost, so it never fails the run.
+            // It runs before the terminal breaks below so an input delivered on a
+            // stopping, aborting, or failing step is still retired. The memo exists
+            // only for a step that delivered something, so a run that never
+            // receives session input records no extra operation.
+            if (delivered.length > 0) {
+              yield* ctx.memo(`session-input-retire-${stepIndex}`, async () => {
+                await runDepsFrom(ctx.services).options.sessionInput?.settle(delivered);
+                return { retired: delivered.length };
+              });
+            }
 
             if (outcome.kind === 'stop') {
               finishReason = stepResult.stopFinishReason ?? 'stop-condition';

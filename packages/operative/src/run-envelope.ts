@@ -396,7 +396,11 @@ function now(clock?: () => number): number {
 }
 
 export function createRunStartedFrame(
-  input: { runId: string; sessionId?: string | undefined; agentName?: string | undefined },
+  input: {
+    runId: string;
+    sessionId?: string | undefined;
+    agentName?: string | undefined;
+  },
   clock?: () => number,
 ): RunStartedFrame {
   return {
