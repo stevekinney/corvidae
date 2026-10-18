@@ -183,7 +183,7 @@ export function selectCatalogRows(input: {
         throw new ProviderConfigurationError(
           input.path,
           `providers.${provider}.models[${index}]`,
-          `"${model}" matches no current ${provider} model.`,
+          `the entry matches no current ${provider} model. Its value is not repeated here, because it may be a secret.`,
         );
       }
       for (const row of matches) named.add(row);

@@ -227,6 +227,49 @@ describe('an agent assigned a catalog model', () => {
     });
   });
 
+  test('resolves through Bureau’s own resolver by default, trimming the secret, without a request', async () => {
+    const requests: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = Object.assign(
+      (input: RequestInfo | URL) => {
+        requests.push(input instanceof Request ? input.url : input.toString());
+        return Promise.reject(new Error('Resolving a generate must not touch the network.'));
+      },
+      { preconnect: original.preconnect },
+    );
+    try {
+      const host = await start({
+        configuration: { providers: { anthropic: {} } },
+        secrets: { 'anthropic-api-key': `  ${FIXTURE_KEY}\n` },
+      });
+      // No `resolveProviderGenerate` option: this is the resolver the host ships with.
+      expect(typeof host.generateFor({ provider: 'anthropic', model: 'sonnet' })).toBe('function');
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(requests).toEqual([]);
+  });
+
+  test('hands the resolver the secret without the whitespace around it', async () => {
+    const handed: ProviderConfiguration[] = [];
+    const host = await start(
+      {
+        configuration: { providers: { anthropic: {} } },
+        secrets: { 'anthropic-api-key': `\n  ${FIXTURE_KEY}  \n` },
+      },
+      {
+        resolveProviderGenerate: (provider, streamEventTarget, streaming) => {
+          handed.push(provider);
+          return resolveProviderGenerate(provider, streamEventTarget, streaming);
+        },
+      },
+    );
+    host.generateFor({ provider: 'anthropic', model: 'sonnet' });
+    expect(handed).toHaveLength(1);
+    // Compared, not printed: a failure must not show the value.
+    expect(handed[0]?.apiKey === FIXTURE_KEY).toBe(true);
+  });
+
   test('cannot be given a model the catalog does not hold', async () => {
     const host = await start(
       {

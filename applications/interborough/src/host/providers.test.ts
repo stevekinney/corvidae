@@ -58,6 +58,14 @@ describe('the configuration shape', () => {
     });
   });
 
+  test('ignores keys outside providers, which belong to other parts of the application', () => {
+    const configuration = parseProviderConfiguration(
+      JSON.stringify({ somethingElse: { nested: true }, providers: { gemini: {} }, version: 2 }),
+      PATH,
+    );
+    expect(configuration).toEqual({ providers: { gemini: {} } });
+  });
+
   test('an empty providers object, and an empty file object, mean no providers', () => {
     expect(parseProviderConfiguration('{"providers":{}}', PATH)).toEqual({ providers: {} });
     expect(parseProviderConfiguration('{}', PATH)).toEqual({ providers: {} });
@@ -256,7 +264,8 @@ describe('the catalog rows', () => {
     );
     expect(failure.message).toContain(PATH);
     expect(failure.message).toContain('providers.openai.models[1]');
-    expect(failure.message).toContain('gpt-nonexistent');
+    // The entry might be a secret pasted by mistake, so its value is never echoed.
+    expect(failure.message).not.toContain('gpt-nonexistent');
   });
 
   test('refuse a stale allowlist entry even when the provider has no key', () => {
@@ -331,6 +340,71 @@ describe('loading the providers', () => {
     });
     expect(loaded.rows).toEqual([]);
     expect(warnings).toHaveLength(1);
+  });
+
+  test('never echoes a model entry, which may be a pasted secret, in any startup error', async () => {
+    const pasted = 'fixture-pasted-secret-0000';
+    const path = await configurationAt({ providers: { anthropic: { models: [pasted] } } });
+    const stale = await loadProviders({
+      configurationPath: path,
+      readSecret: () => undefined,
+      warn: () => undefined,
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(stale).toBeInstanceOf(ProviderConfigurationError);
+    expect(String(stale)).toContain(path);
+    expect(String(stale)).toContain('providers.anthropic.models[0]');
+    expect(String(stale)).not.toContain(pasted);
+
+    const directory = await scratch();
+    const broken = join(directory, 'configuration.json');
+    await writeFile(broken, `{"providers":{"anthropic":{"models":["${pasted}"`);
+    const malformed = await readProviderConfiguration(broken).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(malformed).toBeInstanceOf(ProviderConfigurationError);
+    expect(String(malformed)).not.toContain(pasted);
+
+    for (const models of [
+      [1, pasted],
+      [pasted, ''],
+    ]) {
+      const wrong = failureOf(() =>
+        parseProviderConfiguration(JSON.stringify({ providers: { openai: { models } } }), PATH),
+      );
+      expect(wrong.message).not.toContain(pasted);
+    }
+  });
+
+  test('emits no warning when the configuration is refused', async () => {
+    // `anthropic` has no key, so it would warn, but `openai`'s stale entry fails startup first.
+    const path = await configurationAt({
+      providers: { anthropic: {}, openai: { models: ['gpt-nonexistent'] } },
+    });
+    const warnings: string[] = [];
+    const failure = await loadProviders({
+      configurationPath: path,
+      readSecret: () => undefined,
+      warn: (message) => warnings.push(message),
+    }).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
+    expect(warnings).toEqual([]);
+  });
+
+  test('trims whitespace around a secret before it is kept', async () => {
+    const path = await configurationAt({ providers: { anthropic: {} } });
+    const loaded = await loadProviders({
+      configurationPath: path,
+      readSecret: () => `  \n${FIXTURE_VALUE}\n`,
+      warn: () => undefined,
+    });
+    expect(loaded.apiKeys.get('anthropic')).toBe(FIXTURE_VALUE);
   });
 
   test('reads no secret and warns of nothing when no provider is configured', async () => {
