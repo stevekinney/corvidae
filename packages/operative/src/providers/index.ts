@@ -78,12 +78,12 @@ export {
 export { createModelCatalog } from './model-catalog.ts';
 export type {
   BackendDescriptor,
-  MediaCount,
   BackendLifecycleState,
   CatalogProjection,
   CreateModelCatalogOptions,
   EffortSupport,
   GeneratedAssetBehavior,
+  MediaCount,
   ModelAlias,
   ModelCatalog,
 } from './model-catalog.ts';

@@ -122,3 +122,61 @@ describe('mergeSubagentResult', () => {
     expect(lastMessage?.metadata?.['subagentName']).toBe('data-agent');
   });
 });
+
+describe('prepareSubagentContext: multimodal parents (COR-716)', () => {
+  const document = {
+    type: 'document' as const,
+    name: 'spec.pdf',
+    mimeType: 'application/pdf',
+    source: { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 3 },
+  };
+  const image = {
+    type: 'image' as const,
+    source: { kind: 'remote-url' as const, url: 'https://example.com/a.png' },
+    alt: 'diagram',
+  };
+
+  it('carries a recent user message’s text and media parts to the child unchanged and in order', () => {
+    const parent = new Conversation();
+    parent.appendUserMessage([{ type: 'text', text: 'review this' }, document, image]);
+
+    const child = prepareSubagentContext(parent, { instructions: 'Review.' });
+
+    expect(child.getMessages().map((m) => m.content)).toEqual([
+      'Review.',
+      [{ type: 'text', text: 'review this' }, document, image],
+    ]);
+  });
+
+  it('never turns a media-only message into an empty string', () => {
+    const parent = new Conversation();
+    parent.appendUserMessage([document]);
+
+    const child = prepareSubagentContext(parent, { instructions: 'Review.' });
+
+    expect(child.getMessages().map((m) => m.content)).toEqual(['Review.', [document]]);
+  });
+
+  it('skips a message whose only parts are provider-private reasoning, instead of appending an empty one', () => {
+    const parent = new Conversation();
+    parent.appendAssistantMessage([{ type: 'thinking', thinking: 'private', signature: 'sig' }]);
+
+    const child = prepareSubagentContext(parent, { instructions: 'Review.' });
+
+    expect(child.getMessages().map((m) => m.content)).toEqual(['Review.']);
+  });
+
+  it('does not share part objects with the parent', () => {
+    const parent = new Conversation();
+    parent.appendUserMessage([image]);
+
+    const child = prepareSubagentContext(parent, { instructions: 'Review.' });
+
+    const parentContent = parent.getMessages()[0]?.content;
+    const childContent = child.getMessages()[1]?.content;
+    if (typeof parentContent === 'string' || typeof childContent === 'string') {
+      throw new Error('expected parts');
+    }
+    expect(childContent?.[0]).not.toBe(parentContent?.[0]);
+  });
+});

@@ -16,6 +16,7 @@ import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
 import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import { noToolCalls } from './conditions/predicates';
+import type { MediaCostEstimator } from './context/types';
 import { createActiveRun } from './create-run';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
 import type { GuardrailsOptions } from './guardrails/types';
@@ -26,6 +27,7 @@ import type { AgentInput, AgentRunContext, DefinitionResolvingAgent } from './ru
 import { OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 import { toOutputJsonSchema } from './structured-output/response-schema';
 import type {
+  ContentSourceResolver,
   ContextManagementOptions,
   GenerateFunction,
   OperativeExecuteOptions,
@@ -117,6 +119,21 @@ export interface CreateAgentOptionsBase {
 
   /** Context window management (compaction). */
   contextManagement?: ContextManagementOptions | undefined;
+
+  /**
+   * Projects media parts whose source no provider takes directly (a managed
+   * asset, an upload, a local file, an MCP resource, an A2A reference) to a
+   * form one does. Without it such a part fails the step with a
+   * `MediaAdmissionError` before any provider call; nothing is dropped.
+   */
+  contentSourceResolver?: ContentSourceResolver | undefined;
+
+  /**
+   * Costs media parts. Defaults to a catalog estimator built from the
+   * descriptors `generate` carries; a `generate` with no descriptors and no
+   * estimator here cannot admit any media part.
+   */
+  mediaCostEstimator?: MediaCostEstimator | undefined;
 
   /**
    * Zod schema for the validated terminal `output` value (AB-18) — the
@@ -350,6 +367,20 @@ function freezeGenerationPreferences(preferences: AgentPreferences): AgentPrefer
       : {}),
     ...(preferences.minimumContextWindowTokens !== undefined
       ? { minimumContextWindowTokens: preferences.minimumContextWindowTokens }
+      : {}),
+    ...(preferences.requiredInputModalities
+      ? {
+          requiredInputModalities: Object.freeze(
+            preferences.requiredInputModalities.map((required) =>
+              Object.freeze({
+                modality: required.modality,
+                ...(required.sourceForms
+                  ? { sourceForms: Object.freeze([...required.sourceForms]) }
+                  : {}),
+              }),
+            ),
+          ),
+        }
       : {}),
   });
 }

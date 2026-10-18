@@ -402,6 +402,28 @@ describe('createModelCatalog: catalog invariants', () => {
     }
   });
 
+  it('declares media counts and provider fetch behavior on every row, consistent with the modality matrix', () => {
+    const catalog = createModelCatalog({ now: fixedNow });
+    for (const row of catalog.descriptors) {
+      expect(row.descriptorVersion).toBe(2);
+      expect(typeof row.providerFetchesRemoteUrls).toBe('boolean');
+      expect(Object.isFrozen(row.mediaCounts)).toBe(true);
+      // A cap on a modality the backend takes no input for would never apply.
+      for (const count of row.mediaCounts) {
+        expect(row.modalities[count.modality].input).toBe(true);
+        expect(count.maxPerRequest).toBeGreaterThan(0);
+      }
+      for (const limit of row.mediaLimits) {
+        expect(row.modalities[limit.modality].input).toBe(true);
+      }
+      // A backend that lists `remote-url` for any modality fetches it itself.
+      const listsRemoteUrl = Object.values(row.modalities).some((entry) =>
+        entry.sourceForms.includes('remote-url'),
+      );
+      if (listsRemoteUrl) expect(row.providerFetchesRemoteUrls).toBe(true);
+    }
+  });
+
   it("is deeply frozen one level into a descriptor's own nested values", () => {
     const catalog = createModelCatalog({ now: fixedNow });
     for (const row of catalog.descriptors) {

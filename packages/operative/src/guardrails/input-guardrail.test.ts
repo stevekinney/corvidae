@@ -1,6 +1,8 @@
 import { describe, expect, it, mock } from 'bun:test';
+import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { createInputGuardrail } from './input-guardrail';
 import type {
   DetectionResult,
@@ -311,6 +313,221 @@ describe('createInputGuardrail', () => {
       expect(result).toBeUndefined();
       expect(conversation.getMessages()).toHaveLength(1);
       expect(conversation.getMessages()[0]?.content).toBe('No user message here');
+    });
+  });
+});
+
+describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)', () => {
+  /** Triggers when the inspected text contains "attack", and offers a redacted form. */
+  const keywordDetector: InputDetector = {
+    name: 'keyword',
+    detect: async (input) =>
+      input.includes('attack')
+        ? {
+            triggered: true,
+            confidence: 0.9,
+            category: 'keyword',
+            sanitized: input.replaceAll('attack', '[removed]'),
+          }
+        : { triggered: false, confidence: 0, category: 'keyword' },
+  };
+
+  const BYTES = 'QUJD';
+
+  function contextWith(content: MultiModalContent[]) {
+    const conversation = new Conversation();
+    conversation.appendUserMessage(content);
+    return { conversation, step: 1 };
+  }
+
+  const lastUserContent = (conversation: Conversation) =>
+    [...conversation.getMessages()].toReversed().find((m) => m.role === 'user')?.content;
+
+  it.each([
+    ['text part', { type: 'text', text: 'please attack' }],
+    [
+      'name',
+      {
+        type: 'image',
+        name: 'attack.png',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'alt text',
+      {
+        type: 'image',
+        alt: 'an attack',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'caption',
+      {
+        type: 'video',
+        caption: 'attack footage',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'transcript',
+      {
+        type: 'audio',
+        transcript: 'we attack at dawn',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'extracted text',
+      {
+        type: 'document',
+        extractedText: 'attack plan',
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'metadata string',
+      {
+        type: 'file',
+        metadata: { nested: { note: 'attack' } },
+        source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+      },
+    ],
+    [
+      'remote URL',
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/attack.png' } },
+    ],
+  ] satisfies Array<[string, MultiModalContent]>)(
+    'blocks a message whose %s trips a detector, though the message has no plain string',
+    async (_label, part) => {
+      const hook = createInputGuardrail({ detectors: [keywordDetector] });
+
+      const result = await hook(contextWith([part]));
+
+      expect(result?.content).toContain('blocked');
+    },
+  );
+
+  it('does not trip on a media-only message with nothing for a detector to flag', async () => {
+    const hook = createInputGuardrail({ detectors: [keywordDetector] });
+    const result = await hook(
+      contextWith([{ type: 'image', source: { kind: 'inline', data: BYTES, encoding: 'base64' } }]),
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it('inspects each field on its own and names the one that tripped', async () => {
+    const onTriggered = mock((_event: GuardrailTriggeredEvent) => {});
+    const hook = createInputGuardrail({
+      detectors: [keywordDetector],
+      onTriggered,
+      action: 'warn',
+    });
+
+    await hook(
+      contextWith([
+        { type: 'text', text: 'harmless' },
+        {
+          type: 'image',
+          caption: 'attack',
+          source: { kind: 'inline', data: BYTES, encoding: 'base64' },
+        },
+      ]),
+    );
+
+    expect(onTriggered.mock.calls[0]?.[0].input).toBe('attack');
+  });
+
+  it('sanitizes the flagged fields in place and keeps every media part, in order', async () => {
+    const hook = createInputGuardrail({ detectors: [keywordDetector], action: 'sanitize' });
+    const source = { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 4 };
+    const context = contextWith([
+      { type: 'text', text: 'first' },
+      {
+        type: 'document',
+        name: 'plan',
+        caption: 'attack plan',
+        metadata: { note: 'attack' },
+        source,
+      },
+      { type: 'text', text: 'last attack' },
+    ]);
+
+    const result = await hook(context);
+
+    expect(result).toBeUndefined();
+    expect(lastUserContent(context.conversation)).toEqual([
+      { type: 'text', text: 'first' },
+      {
+        type: 'document',
+        name: 'plan',
+        caption: '[removed] plan',
+        metadata: { note: '[removed]' },
+        source,
+      },
+      { type: 'text', text: 'last [removed]' },
+    ]);
+  });
+
+  it('falls back to a block when the flagged field is a URL, which has no sanitized form', async () => {
+    const hook = createInputGuardrail({ detectors: [keywordDetector], action: 'sanitize' });
+    const context = contextWith([
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/attack.png' } },
+    ]);
+
+    const result = await hook(context);
+
+    expect(result?.content).toContain('blocked');
+    expect(lastUserContent(context.conversation)).toEqual([
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/attack.png' } },
+    ]);
+  });
+
+  describe('asset safety state', () => {
+    const managed: MultiModalContent = {
+      type: 'image',
+      source: { kind: 'managed-asset', assetId: 'asset-1' },
+    };
+
+    function withSafety(safety: 'clean' | 'flagged' | 'unknown') {
+      const context = contextWith([managed]);
+      const messageId = context.conversation.current.ids[0]!;
+      return {
+        ...context,
+        resolvedSources: new Map([
+          [
+            `${messageId}:0`,
+            {
+              outcome: 'resolved' as const,
+              source: { kind: 'inline' as const, data: BYTES, encoding: 'base64' as const },
+              safety,
+            },
+          ],
+        ]),
+      };
+    }
+
+    it('refuses an asset the safety gate flagged, whatever the detectors say', async () => {
+      const hook = createInputGuardrail({ detectors: [] });
+      expect((await hook(withSafety('flagged')))?.content).toContain('blocked');
+    });
+
+    it('refuses a flagged asset instead of sanitizing, since sanitizing cannot make bytes safe', async () => {
+      const hook = createInputGuardrail({ detectors: [], action: 'sanitize' });
+      expect((await hook(withSafety('flagged')))?.content).toContain('blocked');
+    });
+
+    it('trips the tripwire for a flagged asset', async () => {
+      const hook = createInputGuardrail({ detectors: [], action: 'tripwire' });
+      expect(await throwingRejectionOf(hook(withSafety('flagged')))).toThrow('asset-safety');
+    });
+
+    it('admits a clean asset, and an unverified one unless the policy says otherwise', async () => {
+      expect(await createInputGuardrail({ detectors: [] })(withSafety('clean'))).toBeUndefined();
+      expect(await createInputGuardrail({ detectors: [] })(withSafety('unknown'))).toBeUndefined();
+      const strict = createInputGuardrail({ detectors: [], assetSafety: { unknown: 'block' } });
+      expect((await strict(withSafety('unknown')))?.content).toContain('blocked');
+      expect(await strict(withSafety('clean'))).toBeUndefined();
     });
   });
 });
