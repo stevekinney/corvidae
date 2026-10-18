@@ -29,6 +29,7 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions, AnyRunnableAgent, BureauAgentCatalog } from './agent-catalog';
+import type { FileAgentRuntime } from './agent-file-runtime';
 import type { ChildTopologyStart } from './child-topology';
 import {
   type GoalAttemptCostEstimation,
@@ -86,6 +87,13 @@ export interface CatalogDispatcherDependencies {
    * run. Not to a child or a goal attempt, whose park nothing would be listening for.
    */
   readonly humanInput?: boolean | undefined;
+  /**
+   * COR-1524 — what a run of a file-based agent needs: its snapshot recorded before it starts,
+   * and its reference settled when it ends. Absent when the Bureau has no agent directory.
+   */
+  readonly fileAgents?:
+    | Pick<FileAgentRuntime, 'agentForRecordedRun' | 'recordRunStart' | 'releaseRun' | 'settleRun'>
+    | undefined;
 }
 
 /**
@@ -238,6 +246,7 @@ export function createCatalogDispatcher({
   guardrails,
   humanInput,
   registerCatalogRun,
+  fileAgents,
 }: CatalogDispatcherDependencies): {
   runAgent: (
     name: string,
@@ -571,6 +580,10 @@ export function createCatalogDispatcher({
       // propagates uncaught, same as every other resolver failure in this
       // function — better to fail this run's start than dispatch a durable
       // run with no way to reattach it later.
+      // COR-1524 — a file agent's definition is stored, and this run tied to it, before the
+      // recovery record that names its hash exists: a record with no snapshot behind it could
+      // never be resumed.
+      const fileBinding = await fileAgents?.recordRunStart(agent, runId);
       const recoveryRecord = {
         agentName: name,
         // Type-level-only correction (mirrors `agent-catalog.ts`'s own
@@ -587,6 +600,7 @@ export function createCatalogDispatcher({
         // `principal`, and `runAttribution` (in-memory only) started
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
+        ...(fileBinding === undefined ? {} : { agentDefinitionHash: fileBinding.hash }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
@@ -594,9 +608,21 @@ export function createCatalogDispatcher({
           ? {}
           : { costEstimation: goalAttemptCostEstimation(resolvedOptions.costEstimation) }),
       };
-      if (runIdOverride === undefined) {
-        await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
-      } else if (!(await runtime.claimCatalogRunRecoveryRecord(runId, recoveryRecord))) {
+      let claimLost = false;
+      try {
+        if (runIdOverride === undefined) {
+          await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
+        } else {
+          claimLost = !(await runtime.claimCatalogRunRecoveryRecord(runId, recoveryRecord));
+        }
+      } catch (error) {
+        // The run never started, so nothing will settle or remove its reference.
+        if (fileBinding !== undefined && runIdOverride === undefined) {
+          await fileAgents?.releaseRun(runId);
+        }
+        throw error;
+      }
+      if (claimLost) {
         if (goalAttempt === undefined) {
           throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
         }
@@ -634,8 +660,16 @@ export function createCatalogDispatcher({
         // catalog holds only the current one); recovery pins it and warns on a
         // drift, and this start is no different.
         const claimed = existing.record;
+        // COR-1524 — the claim's run began on a definition of a file agent that may since have
+        // changed; this execution continues that run, so it is built from the claim's snapshot.
+        let claimedAgent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver = agent;
+        if (claimed.agentDefinitionHash !== undefined && fileAgents !== undefined) {
+          const recorded = await fileAgents.agentForRecordedRun(name, claimed.agentDefinitionHash);
+          claimedAgent = recorded.agent as AnyRunnableAgent & DefinitionResolvingAgentWithResolver;
+          await fileAgents.recordRunStart(claimedAgent, runId);
+        }
         resolvedOptions = composeResolvedOptions(
-          await agent[OPERATIVE_RESOLVE_RUN_OPTIONS](claimed.input, context),
+          await claimedAgent[OPERATIVE_RESOLVE_RUN_OPTIONS](claimed.input, context),
         );
         if (claimed.costEstimation !== undefined) {
           resolvedOptions = {
@@ -691,6 +725,10 @@ export function createCatalogDispatcher({
       const agentRun = createAgentRun<unknown, boolean>(activeRun, {
         hasOutput: resolvedOptions.output !== undefined,
       });
+      if (fileBinding !== undefined) {
+        // The reference stays until the run ends, so a resume always finds its snapshot.
+        detachBestEffortPromise(agentRun.result().finally(() => fileAgents?.settleRun(runId)));
+      }
       return { name, hasOutput: resolvedOptions.output !== undefined, run: () => agentRun };
     };
     // AB-291 (AC4): wraps `resolveDurableAgent` purely to signal
@@ -1140,6 +1178,12 @@ export function createCatalogDispatcher({
     // for a hand-written resolver that omits it.
     resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
 
+    // COR-1524 — a file agent's snapshot is stored, and this run tied to it, before it starts.
+    const fileBinding =
+      context.runId === undefined
+        ? undefined
+        : await fileAgents?.recordRunStart(agent, context.runId);
+
     const merged: RunOptions = {
       ...resolvedOptions,
       ...unsetMediaOptions(resolvedOptions, runtime.mediaOptionsFor(ownerOrLocal(principal))),
@@ -1172,7 +1216,12 @@ export function createCatalogDispatcher({
           principal !== undefined ? { owner: principal } : undefined,
         );
         onActiveRun?.(activeRun);
-        return createAgentRun<unknown, boolean>(activeRun, { hasOutput });
+        const agentRun = createAgentRun<unknown, boolean>(activeRun, { hasOutput });
+        if (fileBinding !== undefined && context.runId !== undefined) {
+          const runId = context.runId;
+          detachBestEffortPromise(agentRun.result().finally(() => fileAgents?.settleRun(runId)));
+        }
+        return agentRun;
       },
     };
   }
