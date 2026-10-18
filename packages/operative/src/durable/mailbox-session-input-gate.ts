@@ -101,9 +101,12 @@ export interface MailboxSessionInputGateOptions {
  * The invariant behind the four hand-offs: every lease the gate acquires ends
  * in exactly one of three states, acknowledged, released, or cancelled, by the
  * time `dispose()` resolves, unless the process dies first. The gate therefore
- * keeps a lease in its table from the claim until the acknowledgement has
- * committed, and rechecks disposal after every awaited claim, releasing a lease
- * it acquired while being disposed.
+ * keeps a lease in its table from the claim until the mailbox call that
+ * settles it (an acknowledgement or a rejection) has committed, and only
+ * `settleLease` removes one: on failure the lease stays and is listed for
+ * retirement, so the next boundary retries it or disposal releases it. The
+ * gate also rechecks disposal after each await that follows a claim, before it
+ * returns anything, and releases what it acquired while being disposed.
  *
  * A cancellation another process requests (a session deleted there) reaches a
  * leaseholder only through the `cancellationRequested` flag its renewal
@@ -138,7 +141,10 @@ export function createMailboxSessionInputGate(
   };
   const renewalIntervalMs = options.renewalIntervalMs ?? MAILBOX_SESSION_INPUT_RENEWAL_INTERVAL_MS;
   const leases = new Map<string, string>();
-  /** Promoted commands whose acknowledgement failed; the next boundary retries them. */
+  /**
+   * Commands whose settlement failed, with the lease still held: the next
+   * boundary retries them with an acknowledgement, or disposal releases them.
+   */
   const awaitingRetirement = new Set<string>();
   let renewal: { readonly handle: RuntimeTimeoutHandle } | undefined;
   let disposed = false;
@@ -166,21 +172,44 @@ export function createMailboxSessionInputGate(
     if (leases.size === 0) stopRenewal();
   }
 
-  /** Retires the commands whose earlier acknowledgement failed. */
+  /**
+   * The one way a lease leaves the table: `call` is the mailbox call that
+   * settles the command, and the lease is deleted only once it has committed.
+   * If it fails the lease stays, listed for retirement, so nothing in the table
+   * ever describes a settlement the mailbox has not recorded. A lease disposal
+   * cleared meanwhile is neither re-added nor deleted.
+   */
+  async function settleLease(
+    commandId: string,
+    call: (attemptToken: string) => Promise<unknown>,
+  ): Promise<void> {
+    const attemptToken = leases.get(commandId);
+    if (attemptToken === undefined) return;
+    try {
+      await call(attemptToken);
+    } catch (error) {
+      onError?.(error);
+      if (leases.get(commandId) === attemptToken) awaitingRetirement.add(commandId);
+      return;
+    }
+    if (leases.get(commandId) === attemptToken) leases.delete(commandId);
+    awaitingRetirement.delete(commandId);
+  }
+
+  /**
+   * Retires the commands whose earlier settlement failed. An acknowledgement
+   * closes a promoted command, and closes a cancellation-requested one as
+   * `cancelled`, so one call settles either.
+   */
   async function retireAwaiting(): Promise<void> {
     for (const commandId of awaitingRetirement) {
-      const attemptToken = leases.get(commandId);
-      if (attemptToken === undefined) {
+      if (!leases.has(commandId)) {
         awaitingRetirement.delete(commandId);
         continue;
       }
-      try {
-        await mailbox.acknowledge({ commandId, attemptToken });
-        leases.delete(commandId);
-        awaitingRetirement.delete(commandId);
-      } catch (error) {
-        onError?.(error);
-      }
+      await settleLease(commandId, (attemptToken) =>
+        mailbox.acknowledge({ commandId, attemptToken }),
+      );
     }
   }
 
@@ -323,13 +352,10 @@ export function createMailboxSessionInputGate(
           // to retire it is never thrown out of this boundary: the lease is kept
           // and the command listed for retirement, so the next boundary retries
           // it, or disposal releases it.
-          try {
-            await mailbox.acknowledge({ commandId, attemptToken: claim.attemptToken });
-          } catch (error) {
-            onError?.(error);
-            leases.set(commandId, claim.attemptToken);
-            awaitingRetirement.add(commandId);
-          }
+          leases.set(commandId, claim.attemptToken);
+          await settleLease(commandId, (attemptToken) =>
+            mailbox.acknowledge({ commandId, attemptToken }),
+          );
         } else if (leases.has(commandId)) {
           // A command this gate already returned and has not settled: its lease
           // lapsed under a step still running and was claimed again. The step in
@@ -351,11 +377,19 @@ export function createMailboxSessionInputGate(
         const acquired = decoded
           .map(({ claim }) => claim)
           .filter((claim) => leases.get(claim.receipt.commandId) === claim.attemptToken);
-        for (const claim of acquired) leases.delete(claim.receipt.commandId);
-        await release(
-          acquired.map((claim) => [claim.receipt.commandId, claim.attemptToken] as const),
-          'the run ended while claiming this input',
-        );
+        for (const claim of acquired) {
+          await settleLease(claim.receipt.commandId, (attemptToken) =>
+            mailbox.reject({
+              commandId: claim.receipt.commandId,
+              attemptToken,
+              failure: {
+                reason: 'application',
+                message: 'the run ended while claiming this input',
+              },
+              retry: true,
+            }),
+          );
+        }
         return [];
       }
       // The only check before the append: a cancellation that landed between
@@ -367,11 +401,8 @@ export function createMailboxSessionInputGate(
           deliverable.push(claimed);
           continue;
         }
-        const attemptToken = leases.get(claimed.commandId);
-        leases.delete(claimed.commandId);
-        if (attemptToken === undefined) continue;
-        try {
-          await mailbox.reject({
+        await settleLease(claimed.commandId, (attemptToken) =>
+          mailbox.reject({
             commandId: claimed.commandId,
             attemptToken,
             failure: {
@@ -379,31 +410,25 @@ export function createMailboxSessionInputGate(
               message: 'the input was cancelled before it was delivered',
             },
             retry: false,
-          });
-        } catch (error) {
-          onError?.(error);
-        }
+          }),
+        );
       }
+      // Disposal landed during the re-reads above: it released and cleared
+      // every lease it found, so nothing here is this gate's to deliver.
+      if (disposed) return [];
       startRenewal();
       return deliverable;
     },
 
     async settle(delivered) {
       for (const { commandId } of delivered) {
-        const attemptToken = leases.get(commandId);
-        if (attemptToken === undefined) continue;
-        try {
-          await mailbox.acknowledge({ commandId, attemptToken });
-          leases.delete(commandId);
-          awaitingRetirement.delete(commandId);
-        } catch (error) {
-          // Promotion already committed with the transcript, so this never
-          // fails the run. The lease stays with the gate and the command is
-          // listed: the next boundary retries the retirement, or disposal
-          // releases it.
-          onError?.(error);
-          awaitingRetirement.add(commandId);
-        }
+        // Promotion already committed with the transcript, so a failure here
+        // never fails the run: the lease stays with the gate and the command
+        // is listed, and the next boundary retries the retirement, or disposal
+        // releases it.
+        await settleLease(commandId, (attemptToken) =>
+          mailbox.acknowledge({ commandId, attemptToken }),
+        );
       }
       if (leases.size === 0) stopRenewal();
     },

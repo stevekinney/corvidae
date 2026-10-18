@@ -1501,6 +1501,100 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     await gate.dispose?.();
   });
 
+  it('keeps a lease whose cancellation it could not settle, and closes it at the next boundary before delivering what follows', async () => {
+    const storage = new MemoryStorage();
+    let now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandA = await admit(real, 'input-a', 'cancel me');
+    // The cancellation lands between the claim and the return, and the
+    // rejection that would settle it fails once.
+    let rejectFailures = 1;
+    const errors: unknown[] = [];
+    const flaky = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'reject') {
+          return async (...args: Parameters<Mailbox['reject']>) => {
+            if (rejectFailures > 0) {
+              rejectFailures -= 1;
+              throw new Error('storage unavailable');
+            }
+            return target.reject(...args);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const gate = createMailboxSessionInputGate({
+      mailbox: flaky,
+      decode,
+      deliveries: {
+        claim: async (ids) => {
+          await newMailbox(storage, () => now).requestCancellation({
+            commandId: commandA,
+            reason: 'elsewhere',
+          });
+          return store.claim(SESSION_ID, RUN_ID, ids, alwaysLive);
+        },
+      },
+      timers: manualTimers().timers,
+      now: () => now,
+      onError: (error) => errors.push(error),
+    });
+    expect(await gate.claimPending()).toEqual([]);
+    expect(errors).toHaveLength(1);
+    expect(await stateOf(real, commandA)).toBe('cancellation-requested');
+
+    // The lease is still the gate's, so the next boundary closes it and then
+    // delivers the input behind it.
+    const commandB = await admit(real, 'input-b', 'second');
+    now += 1_000;
+    const next = await gate.claimPending();
+    expect(await stateOf(real, commandA)).toBe('cancelled');
+    expect(next.map(({ commandId }) => commandId)).toEqual([commandB]);
+    await gate.dispose?.();
+    const receipts = await real.list({ limit: 10 });
+    expect(receipts.map((receipt) => receipt.state)).not.toContain('claimed');
+  });
+
+  it('releases what it leased when disposal lands during its end-of-claim re-read, and returns nothing', async () => {
+    const storage = new MemoryStorage();
+    const now = 1_000_000;
+    const real = newMailbox(storage, () => now);
+    const store = deliveryStoreOver(storage, () => now);
+    const commandA = await admit(real, 'input-a', 'first');
+    const reached = deferred();
+    const held = deferred();
+    const holding = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'receipt') {
+          return async (commandId: string) => {
+            reached.resolve();
+            await held.promise;
+            return target.receipt(commandId);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const gate = createMailboxSessionInputGate({
+      mailbox: holding,
+      decode,
+      deliveries: { claim: (ids) => store.claim(SESSION_ID, RUN_ID, ids, alwaysLive) },
+      timers: manualTimers().timers,
+      now: () => now,
+    });
+    const claiming = gate.claimPending();
+    await reached.promise;
+    await gate.dispose?.();
+    held.resolve();
+
+    expect(await claiming).toEqual([]);
+    expect(await stateOf(real, commandA)).toBe('accepted');
+  });
+
   it('releases a claim it acquired while it was being disposed, and returns nothing', async () => {
     const storage = new MemoryStorage();
     const now = 1_000_000;
@@ -1578,8 +1672,22 @@ describe("the gate's lease lifecycle (COR-1476)", () => {
     ackHeld.resolve();
 
     expect(await claiming).toEqual([]);
-    expect(await stateOf(real, commandA)).toBe('applied');
+    // The lease on A was in the table while its acknowledgement was in flight,
+    // so disposal released it like any other: A is still promoted, and the
+    // next boundary on the session retires it before delivering B.
+    expect(await stateOf(real, commandA)).toBe('accepted');
     expect(await stateOf(real, commandB)).toBe('accepted');
+    now += 1_000;
+    // The ended run is not live, so its delivery claim on B lapses to the next run.
+    const next = gateOver(real, store, 'run-next', {
+      timers: manualTimers().timers,
+      now: () => now,
+      isOwnerLive: () => Promise.resolve(false),
+    });
+    const delivered = await next.claimPending();
+    expect(delivered.map(({ commandId }) => commandId)).toEqual([commandB]);
+    expect(await stateOf(real, commandA)).toBe('applied');
+    await next.dispose?.();
   });
 
   it('retries a failed acknowledgement at its next boundary, so a peer can claim what follows', async () => {
