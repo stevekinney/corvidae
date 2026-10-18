@@ -325,6 +325,7 @@ export {
   MEMORY_CLASSIFICATIONS,
   MemoryEvidenceValidationError,
   decodeEvidenceRecord,
+  digestOfText,
   encodeEvidenceRecord,
   evidenceRecordSchema,
 } from './evidence-schema';
