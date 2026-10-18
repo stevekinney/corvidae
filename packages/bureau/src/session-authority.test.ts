@@ -1,257 +1,63 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { JSONValue } from '@lostgradient/operative';
-
 import {
   isSessionAuthorityAuthorized,
   isSessionHistoryReadAuthorized,
   isSessionRunTerminal,
-  recordedSessionAuthorityPrincipalId,
   resolvePersistedRunOwningPrincipal,
+  resolveSessionOwner,
   resolveSessionPreAdmission,
+  SESSION_OWNER_METADATA_KEY,
 } from './session-authority';
 
-describe('recordedSessionAuthorityPrincipalId / isSessionAuthorityAuthorized (AB-194)', () => {
-  it('returns undefined when the session has recorded no authority at all', () => {
-    expect(recordedSessionAuthorityPrincipalId({})).toBeUndefined();
+describe('resolveSessionOwner / isSessionAuthorityAuthorized (COR-718)', () => {
+  it('reads the owner from the session owner key', () => {
+    expect(resolveSessionOwner({ [SESSION_OWNER_METADATA_KEY]: 'api-key:alice' })).toBe(
+      'api-key:alice',
+    );
   });
 
-  it('reads the per-run principalId from lastRequestAuthorities keyed by lastRunId', () => {
-    const principalId = recordedSessionAuthorityPrincipalId({
-      lastRunId: 'run-1',
-      lastRequestAuthorities: {
-        'run-1': {
-          principalId: 'alice',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-    });
-    expect(principalId).toBe('alice');
+  it('reads a session with no owner as anonymous:local, as a read rule', () => {
+    expect(resolveSessionOwner({})).toBe('anonymous:local');
+    expect(isSessionAuthorityAuthorized({}, 'anonymous:local')).toBe(true);
   });
 
-  it('does NOT fall back to legacy when lastRequestAuthorities is non-empty but uncorrelated to lastRunId (concurrent-run shape) — fails closed instead', () => {
-    // Regression (Codex review, fifth pass): a non-empty map holding some
-    // OTHER run's entry, alongside a legacy field, is exactly the shape two
-    // concurrent runs on one session produce — run B's dispatch overwrites
-    // the singular legacy field with B's authority while A is still running;
-    // A's own terminal cleanup later prunes only A's key, leaving B's
-    // (unrelated) entry and B's legacy authority behind. Trusting legacy
-    // here would authorize B's principal against A's terminal session. This
-    // is checked BEFORE the legacy fallback specifically to prevent that:
-    // a non-empty-but-uncorrelated map fails closed rather than consulting
-    // an unrelated concurrent run's legacy authority.
-    const metadata = {
-      lastRunId: 'run-1',
-      lastRequestAuthorities: {
-        'some-other-run': {
-          principalId: 'someone-else',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-      lastRequestAuthority: {
-        principalId: 'legacy-alice',
-        tenantId: 'bureau',
-        ownerId: 'agent',
-        capabilities: ['tools:execute'],
-        authorizationRevision: 'bureau:1',
-      },
-    };
-    expect(recordedSessionAuthorityPrincipalId(metadata)).toBeUndefined();
-    expect(isSessionAuthorityAuthorized(metadata, 'legacy-alice')).toBe(false);
-    expect(isSessionAuthorityAuthorized(metadata, 'someone-else')).toBe(false);
+  it('no longer treats a session with nothing recorded as open to every principal', () => {
+    expect(isSessionAuthorityAuthorized({}, 'alice')).toBe(false);
+    expect(isSessionAuthorityAuthorized({ lastRunId: 'run-1' }, 'alice')).toBe(false);
   });
 
-  it('falls back to the legacy lastRequestAuthority when lastRequestAuthorities is an empty object', () => {
-    const principalId = recordedSessionAuthorityPrincipalId({
-      lastRunId: 'run-1',
-      lastRequestAuthorities: {},
-      lastRequestAuthority: {
-        principalId: 'legacy-carol',
-        tenantId: 'bureau',
-        ownerId: 'agent',
-        capabilities: ['tools:execute'],
-        authorizationRevision: 'bureau:1',
-      },
-    });
-    expect(principalId).toBe('legacy-carol');
-  });
-
-  it('falls back to the legacy lastRequestAuthority when no lastRunId is recorded', () => {
-    const principalId = recordedSessionAuthorityPrincipalId({
-      lastRequestAuthority: {
-        principalId: 'legacy-bob',
-        tenantId: 'bureau',
-        ownerId: 'agent',
-        capabilities: ['tools:execute'],
-        authorizationRevision: 'bureau:1',
-      },
-    });
-    expect(principalId).toBe('legacy-bob');
-  });
-
-  it('returns undefined when the recorded authority candidate is malformed', () => {
-    expect(
-      recordedSessionAuthorityPrincipalId({
-        lastRunId: 'run-1',
-        lastRequestAuthorities: { 'run-1': 'not-an-object' },
-      }),
-    ).toBeUndefined();
-    expect(
-      recordedSessionAuthorityPrincipalId({
-        lastRequestAuthority: ['not-an-object'],
-      }),
-    ).toBeUndefined();
-    expect(
-      recordedSessionAuthorityPrincipalId({
-        lastRunId: 'run-1',
-        lastRequestAuthorities: { 'run-1': { principalId: 42 } },
-      }),
-    ).toBeUndefined();
-  });
-
-  it('treats a session with no recorded authority as open (every principal authorized)', () => {
-    expect(isSessionAuthorityAuthorized({}, 'anyone')).toBe(true);
-  });
-
-  it('authorizes the exact recorded principal and rejects every other principal', () => {
-    const metadata = {
-      lastRunId: 'run-1',
-      lastRequestAuthorities: {
-        'run-1': {
-          principalId: 'alice',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-    };
+  it('authorizes the owner and rejects every other principal', () => {
+    const metadata = { [SESSION_OWNER_METADATA_KEY]: 'alice' };
     expect(isSessionAuthorityAuthorized(metadata, 'alice')).toBe(true);
-    expect(isSessionAuthorityAuthorized(metadata, 'mallory')).toBe(false);
+    expect(isSessionAuthorityAuthorized(metadata, 'bob')).toBe(false);
+    expect(isSessionAuthorityAuthorized(metadata, '')).toBe(false);
   });
 
-  it('fails closed (denies every principal) when the per-run authority entry is malformed, even with a valid legacy fallback available', () => {
-    // Regression (Codex review): a recorded-but-malformed per-run entry must
-    // NOT be conflated with "no authority recorded at all" (which
-    // isSessionAuthorityAuthorized treats as open) and must NOT silently
-    // fall back to a legacy field that happens to be valid — a corrupted or
-    // partially-written record denies access rather than granting it.
+  it('does not let the recorded tool-execution authority stand in for the owner', () => {
     const metadata = {
+      [SESSION_OWNER_METADATA_KEY]: 'alice',
       lastRunId: 'run-1',
-      lastRequestAuthorities: {
-        'run-1': { principalId: 42 },
-      },
-      lastRequestAuthority: {
-        principalId: 'legacy-alice',
-        tenantId: 'bureau',
-        ownerId: 'agent',
-        capabilities: ['tools:execute'],
-        authorizationRevision: 'bureau:1',
-      },
+      lastRequestAuthorities: { 'run-1': { principalId: 'bob' } },
+      lastRequestAuthority: { principalId: 'bob' },
     };
-    expect(isSessionAuthorityAuthorized(metadata, 'legacy-alice')).toBe(false);
-    expect(isSessionAuthorityAuthorized(metadata, 'anyone-else')).toBe(false);
-    expect(recordedSessionAuthorityPrincipalId(metadata)).toBeUndefined();
+    expect(isSessionAuthorityAuthorized(metadata, 'bob')).toBe(false);
+    expect(isSessionAuthorityAuthorized(metadata, 'alice')).toBe(true);
   });
 
-  it('fails closed (denies every principal) when lastRequestAuthorities itself is a malformed container, even with no legacy fallback at all', () => {
-    // Regression (Codex review, second pass): a PRESENT-but-malformed
-    // lastRequestAuthorities value (an array or string, not a map) is itself
-    // evidence something was recorded and corrupted — it must fail closed
-    // regardless of lastRunId or a legacy field, never be read as "nothing
-    // recorded" (which would authorize any principal).
-    expect(
-      isSessionAuthorityAuthorized(
-        { lastRunId: 'run-1', lastRequestAuthorities: ['not-a-map'] },
-        'anyone',
-      ),
-    ).toBe(false);
-    expect(
-      isSessionAuthorityAuthorized(
-        { lastRunId: 'run-1', lastRequestAuthorities: 'not-a-map' },
-        'anyone',
-      ),
-    ).toBe(false);
-    expect(
-      recordedSessionAuthorityPrincipalId({
-        lastRunId: 'run-1',
-        lastRequestAuthorities: ['not-a-map'],
-      }),
-    ).toBeUndefined();
+  it('fails closed, denying every principal, when the owner key is malformed', () => {
+    for (const malformed of [42, null, ['alice'], { principalId: 'alice' }]) {
+      const metadata = { [SESSION_OWNER_METADATA_KEY]: malformed };
+      expect(resolveSessionOwner(metadata)).toBeUndefined();
+      expect(isSessionAuthorityAuthorized(metadata, 'alice')).toBe(false);
+      expect(isSessionAuthorityAuthorized(metadata, 'anonymous:local')).toBe(false);
+    }
   });
 
-  it('fails closed (denies every principal) when a non-empty lastRequestAuthorities map cannot be correlated to lastRunId and no legacy fallback exists', () => {
-    // Regression (Codex review, third pass): a valid, NON-EMPTY
-    // lastRequestAuthorities map that simply doesn't name an entry for this
-    // lastRunId (missing/corrupt lastRunId, or entries keyed to other runs)
-    // is recorded-but-uncorrelated evidence, not "nothing recorded" — it
-    // must fail closed too, when there is no legacy field to fall back to.
-    const metadataMissingLastRunId = {
-      lastRequestAuthorities: {
-        'some-run': {
-          principalId: 'someone',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-    };
-    expect(isSessionAuthorityAuthorized(metadataMissingLastRunId, 'anyone')).toBe(false);
-    expect(recordedSessionAuthorityPrincipalId(metadataMissingLastRunId)).toBeUndefined();
-
-    const metadataUncorrelatedLastRunId = {
-      lastRunId: 'run-not-in-map',
-      lastRequestAuthorities: {
-        'some-other-run': {
-          principalId: 'someone',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-    };
-    expect(isSessionAuthorityAuthorized(metadataUncorrelatedLastRunId, 'anyone')).toBe(false);
-  });
-
-  it("authorizes against an explicitly targeted run's own entry, not lastRunId, when a different concurrent run's more recent terminal transition left the map uncorrelated to lastRunId (PR #430 review, Codex P2, second wave — 'Authorize against the targeted live run')", () => {
-    // Two concurrent runs, A (still live) and B (completed first). B's own
-    // terminal transition prunes ONLY lastRequestAuthorities[B] (per this
-    // file's own pruning rule near `remainingAuthorities`), leaving
-    // lastRunId: 'run-b' and A's now-uncorrelated 'run-a' entry behind —
-    // exactly the shape the previous test proves fails closed for EVERY
-    // principal under the default (lastRunId-only) lookup.
-    const metadata = {
-      lastRunId: 'run-b',
-      lastRequestAuthorities: {
-        'run-a': {
-          principalId: 'alice',
-          tenantId: 'bureau',
-          ownerId: 'agent',
-          capabilities: ['tools:execute'],
-          authorizationRevision: 'bureau:1',
-        },
-      },
-    };
-    // The default (no targetRunId) lookup still fails closed — unchanged.
-    expect(isSessionAuthorityAuthorized(metadata, 'alice')).toBe(false);
-
-    // A command explicitly targeting the still-live run A resolves against
-    // A's own entry directly, authorizing alice and rejecting anyone else.
+  it('gives the same verdict whichever run a request targets', () => {
+    const metadata = { [SESSION_OWNER_METADATA_KEY]: 'alice', lastRunId: 'run-b' };
     expect(isSessionAuthorityAuthorized(metadata, 'alice', 'run-a')).toBe(true);
-    expect(isSessionAuthorityAuthorized(metadata, 'mallory', 'run-a')).toBe(false);
-
-    // Targeting a run with no entry of its own at all still fails closed —
-    // this is defense against authorizing a run this map says nothing
-    // about, not a general bypass of the uncorrelated-map rule.
-    expect(isSessionAuthorityAuthorized(metadata, 'alice', 'run-c')).toBe(false);
+    expect(isSessionAuthorityAuthorized(metadata, 'bob', 'run-a')).toBe(false);
   });
 });
 
@@ -317,50 +123,27 @@ describe('isSessionRunTerminal with a live-run set (COR-301)', () => {
 });
 
 describe('resolveSessionPreAdmission (COR-301)', () => {
-  const alice = { principalId: 'alice' };
-  const bob = { principalId: 'bob' };
-  const carol = { principalId: 'carol' };
+  const owned = (extra: Record<string, unknown> = {}) => ({
+    [SESSION_OWNER_METADATA_KEY]: 'alice',
+    ...extra,
+  });
 
-  it('targets the sole live run, and keeps the lastRunId fallback otherwise', () => {
-    const metadata = {
-      lastRunId: 'run-b',
-      lastRunStatus: 'completed',
-      lastRequestAuthorities: { 'run-a': alice },
-      lastRequestAuthority: bob,
-    };
-    expect(resolveSessionPreAdmission(metadata, 'alice', [])).toBe('not-found');
-    expect(resolveSessionPreAdmission(metadata, 'bob', [])).toBe('not-found');
+  it('authorizes the owner whichever run is targeted or live, and refuses everyone else', () => {
+    const metadata = owned({ lastRunId: 'run-b', lastRunStatus: 'completed' });
+    expect(resolveSessionPreAdmission(metadata, 'alice', [])).toBe('session-terminal');
     expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a'])).toBe('proceed');
-    expect(resolveSessionPreAdmission(metadata, 'bob', ['run-a'])).toBe('not-found');
-    expect(resolveSessionPreAdmission(metadata, 'mallory', ['run-a'])).toBe('not-found');
-    expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a', 'run-c'])).toBe('not-found');
+    expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a', 'run-c'])).toBe('proceed');
     expect(resolveSessionPreAdmission(metadata, 'alice', ['run-a', 'run-c'], 'run-a')).toBe(
       'proceed',
     );
-    expect(resolveSessionPreAdmission(metadata, 'bob', ['run-a', 'run-c'], 'run-a')).toBe(
-      'not-found',
-    );
-  });
-
-  it('authorizes an explicit run against its own entry when several runs are live', () => {
-    const metadata = {
-      lastRunId: 'run-a',
-      lastRunStatus: 'completed',
-      lastRequestAuthorities: { 'run-a': alice, 'run-c': carol },
-    };
-    const live = ['run-a', 'run-c'];
-    expect(resolveSessionPreAdmission(metadata, 'alice', live)).toBe('proceed');
-    expect(resolveSessionPreAdmission(metadata, 'carol', live)).toBe('not-found');
-    expect(resolveSessionPreAdmission(metadata, 'carol', live, 'run-c')).toBe('proceed');
-    expect(resolveSessionPreAdmission(metadata, 'alice', live, 'run-c')).toBe('not-found');
+    for (const live of [[], ['run-a'], ['run-a', 'run-c']]) {
+      expect(resolveSessionPreAdmission(metadata, 'bob', live)).toBe('not-found');
+      expect(resolveSessionPreAdmission(metadata, 'bob', live, 'run-a')).toBe('not-found');
+    }
   });
 
   it('authorizes before it checks the lifecycle', () => {
-    const terminal = {
-      lastRunId: 'run-1',
-      lastRunStatus: 'completed',
-      lastRequestAuthorities: { 'run-1': alice },
-    };
+    const terminal = owned({ lastRunId: 'run-1', lastRunStatus: 'completed' });
     expect(resolveSessionPreAdmission(terminal, 'alice', [])).toBe('session-terminal');
     expect(resolveSessionPreAdmission(terminal, 'mallory', [])).toBe('not-found');
     expect(resolveSessionPreAdmission({ ...terminal, lastRunStatus: 'running' }, 'alice', [])).toBe(
@@ -368,158 +151,29 @@ describe('resolveSessionPreAdmission (COR-301)', () => {
     );
   });
 
-  it('decides the lifecycle of an open session from the live-run set', () => {
-    const open = { lastRunId: 'run-b', lastRunStatus: 'completed' };
-    expect(resolveSessionPreAdmission(open, 'anyone', ['run-a'])).toBe('proceed');
-    expect(resolveSessionPreAdmission(open, 'anyone', [])).toBe('session-terminal');
+  it('refuses a stranger on a session with nothing recorded, and admits anonymous:local', () => {
+    const unrecorded = { lastRunId: 'run-b', lastRunStatus: 'completed' };
+    expect(resolveSessionPreAdmission(unrecorded, 'anyone', ['run-a'])).toBe('not-found');
+    expect(resolveSessionPreAdmission(unrecorded, 'anonymous:local', ['run-a'])).toBe('proceed');
+    expect(resolveSessionPreAdmission(unrecorded, 'anonymous:local', [])).toBe('session-terminal');
   });
 });
 
-describe('isSessionHistoryReadAuthorized (COR-1382)', () => {
-  const alice = { principalId: 'alice' };
-  const bob = { principalId: 'bob' };
-  const owners = { 'run-a': 'alice', 'run-b': 'bob' };
-
-  function verdicts(metadata: Record<string, JSONValue>, principals: string[]) {
-    return Object.fromEntries(
-      principals.map((principal) => [
-        principal,
-        isSessionHistoryReadAuthorized(metadata, principal),
-      ]),
-    );
-  }
-
-  it('lets every co-owner read once both runs have finished', () => {
-    expect(
-      verdicts(
-        {
-          lastRunId: 'run-b',
-          lastRunStatus: 'completed',
-          lastRequestAuthorities: {},
-          lastRequestAuthority: bob,
-          lastRunOwningPrincipals: owners,
-        },
-        ['alice', 'bob', 'mallory'],
-      ),
-    ).toEqual({ alice: true, bob: true, mallory: false });
-  });
-
-  it('lets every co-owner read while an uncorrelated run is still live', () => {
-    expect(
-      verdicts(
-        {
-          lastRunId: 'run-b',
-          lastRunStatus: 'running',
-          lastRequestAuthorities: { 'run-a': alice },
-          lastRequestAuthority: bob,
-          lastRunOwningPrincipals: owners,
-        },
-        ['alice', 'bob', 'mallory'],
-      ),
-    ).toEqual({ alice: true, bob: true, mallory: false });
-  });
-
-  it('keeps the recorded-authority rule for a legacy record with no owners map', () => {
-    expect(
-      verdicts(
-        {
-          lastRunId: 'run-1',
-          lastRunStatus: 'completed',
-          lastRequestAuthorities: { 'run-1': alice },
-        },
-        ['alice', 'mallory'],
-      ),
-    ).toEqual({ alice: true, mallory: false });
-  });
-
-  it('keeps a session with no recorded authority open', () => {
-    expect(verdicts({}, ['alice', 'mallory'])).toEqual({ alice: true, mallory: true });
-    expect(
-      verdicts({ lastRunOwningPrincipals: { 'run-a': 'alice' } }, ['alice', 'mallory']),
-    ).toEqual({ alice: true, mallory: true });
-  });
-
-  it('fails closed when the authority map or an authority is malformed', () => {
-    const ownedByAlice = { lastRunOwningPrincipals: { 'run-a': 'alice' } };
-    expect(
-      isSessionHistoryReadAuthorized(
-        { ...ownedByAlice, lastRequestAuthorities: 'corrupt' },
-        'alice',
-      ),
-    ).toBe(false);
-    expect(
-      verdicts({ ...ownedByAlice, lastRequestAuthorities: null }, ['alice', 'mallory']),
-    ).toEqual({ alice: false, mallory: false });
-    expect(
-      isSessionHistoryReadAuthorized(
-        {
-          lastRunId: 'run-1',
-          lastRequestAuthorities: { 'run-1': 'garbage' },
-          lastRunOwningPrincipals: { 'run-1': 'alice' },
-        },
-        'alice',
-      ),
-    ).toBe(false);
-    expect(
-      isSessionHistoryReadAuthorized({ ...ownedByAlice, lastRequestAuthority: {} }, 'alice'),
-    ).toBe(false);
-
-    const nullLegacy = { ...ownedByAlice, lastRequestAuthority: null };
-    for (const principal of ['alice', 'mallory']) {
-      expect(isSessionHistoryReadAuthorized(nullLegacy, principal)).toBe(false);
-      expect(isSessionHistoryReadAuthorized(nullLegacy, principal)).toBe(
-        isSessionAuthorityAuthorized(nullLegacy, principal),
-      );
-    }
-  });
-
-  it("fails closed for a co-owner when another run's entry is malformed, but keeps the existing rule", () => {
-    expect(
-      verdicts(
-        {
-          lastRunId: 'run-b',
-          lastRequestAuthorities: { 'run-a': 'garbage', 'run-b': bob },
-          lastRunOwningPrincipals: owners,
-        },
-        ['alice', 'bob', 'mallory'],
-      ),
-    ).toEqual({ alice: false, bob: true, mallory: false });
-  });
-
-  it('never matches through a malformed owners map', () => {
-    const arrayOwners = {
-      lastRunId: 'run-b',
-      lastRequestAuthorities: { 'run-a': alice },
-      lastRunOwningPrincipals: ['alice'],
+describe('isSessionHistoryReadAuthorized (COR-718)', () => {
+  it('lets only the session owner read, whoever else ran on the session', () => {
+    const metadata = {
+      [SESSION_OWNER_METADATA_KEY]: 'alice',
+      lastRunOwningPrincipals: { 'run-1': 'alice', 'run-2': 'bob' },
     };
-    expect(isSessionHistoryReadAuthorized(arrayOwners, 'alice')).toBe(false);
-    expect(isSessionHistoryReadAuthorized(arrayOwners, 'alice')).toBe(
-      isSessionAuthorityAuthorized(arrayOwners, 'alice'),
-    );
-    expect(
-      isSessionHistoryReadAuthorized(
-        {
-          lastRunId: 'run-b',
-          lastRequestAuthorities: { 'run-a': alice },
-          lastRunOwningPrincipals: null,
-        },
-        'alice',
-      ),
-    ).toBe(false);
+    expect(isSessionHistoryReadAuthorized(metadata, 'alice')).toBe(true);
+    expect(isSessionHistoryReadAuthorized(metadata, 'bob')).toBe(false);
   });
 
-  it('matches owner entries only by string equality', () => {
-    expect(
-      verdicts(
-        {
-          lastRunId: 'run-b',
-          lastRunStatus: 'completed',
-          lastRequestAuthorities: {},
-          lastRequestAuthority: bob,
-          lastRunOwningPrincipals: { 'run-a': 7 },
-        },
-        ['bob', 'alice', '7', 'mallory'],
-      ),
-    ).toEqual({ bob: true, alice: false, '7': false, mallory: false });
+  it('reads a session with no owner as anonymous:local, and fails closed on a malformed owner', () => {
+    expect(isSessionHistoryReadAuthorized({}, 'anonymous:local')).toBe(true);
+    expect(isSessionHistoryReadAuthorized({}, 'alice')).toBe(false);
+    expect(isSessionHistoryReadAuthorized({ [SESSION_OWNER_METADATA_KEY]: 7 }, 'alice')).toBe(
+      false,
+    );
   });
 });

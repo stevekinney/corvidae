@@ -283,7 +283,7 @@ describe('documented Bureau memory limits', () => {
       expect(stored?.governance?.attribution.delegationChain.map((link) => link.principal)).toEqual(
         [
           { kind: 'service', id: 'bureau' },
-          { kind: 'service', id: 'service:scheduler' },
+          { kind: 'service', id: 'system:scheduler' },
           { kind: 'run', id: taskId },
         ],
       );

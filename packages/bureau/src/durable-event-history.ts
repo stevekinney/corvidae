@@ -191,6 +191,18 @@ export interface DurableEventRecordOptions {
    * outbox entry").
    */
   emittedAtMs?: number;
+  /**
+   * COR-718 — the session incarnation this event is recorded for. Stamped onto
+   * the stored wrapper (see `StoredDurableEventPayload.incarnation`), never the
+   * caller's payload, and read back by {@link DurableEventHistoryPageOptions.incarnation}
+   * and by the second argument of a subscription's listener. A session's
+   * durable history holds every incarnation of its id, and the live session's
+   * owner is not an earlier incarnation's owner: a principal-stated read keeps
+   * only the events recorded for the live incarnation, so an event recorded
+   * with none is never shown to a principal. An empty string is no incarnation
+   * (`AgentSession.incarnation` reserves `''` for a legacy body).
+   */
+  incarnation?: string | undefined;
 }
 
 /** The reserved storage-key prefix for {@link DurableEventRecordOptions.dedupeKey} markers — never a Weft-reserved prefix (see `WEFT_RESERVED_KEY_PREFIXES`). */
@@ -228,6 +240,13 @@ export interface DurableEventHistoryPageOptions {
    * authorization concern, rather than a second parameter.
    */
   principal?: string;
+  /**
+   * COR-718 — keeps only the events recorded for this incarnation
+   * ({@link DurableEventRecordOptions.incarnation}); an event recorded for
+   * another, or for none, is left out and spends no `limit` slot. Omit to read
+   * every incarnation, as a trusted caller does.
+   */
+  incarnation?: string | undefined;
 }
 
 /**
@@ -411,10 +430,16 @@ export interface DurableEventHistory {
    * independent subscription to the same owner is unaffected, and the
    * underlying `FleetEventFeed` is released only by
    * {@link DurableEventHistory.dispose}.
+   *
+   * COR-718 — `listener` is also told the incarnation each event was recorded
+   * for ({@link DurableEventRecordOptions.incarnation}), `undefined` for an
+   * event recorded for none and for the synthesized gap event, so a
+   * subscriber that judges events against the live session can keep only the
+   * live incarnation's.
    */
   subscribeEventHistory(
     owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
+    listener: (event: DurableEventEnvelope, incarnation: string | undefined) => void,
     options?: DurableEventHistorySubscribeOptions,
   ): Subscription;
   /**
@@ -648,6 +673,14 @@ interface StoredDurableEventPayload {
    * (`findByDedupeKey`), never read by `page()`/`subscribeEventHistory`.
    */
   readonly dedupeKey?: string;
+  /**
+   * COR-718 — {@link DurableEventRecordOptions.incarnation}, stamped onto this
+   * WRAPPER for the same reason `dedupeKey` is: it is the store's own
+   * bookkeeping, never part of the caller's payload. Absent on an event
+   * recorded for no incarnation, including every event stored before this
+   * field existed, which a principal-stated read therefore never sees.
+   */
+  readonly incarnation?: string;
 }
 
 /** The only schema version this slice ever writes. */
@@ -807,6 +840,20 @@ function isStoredDurableEventPayload(value: unknown): value is StoredDurableEven
 }
 
 /**
+ * COR-718 — the incarnation a stored record was recorded for, read off its
+ * wrapper without decoding it, or `undefined` for a record that carries none
+ * (one recorded for no incarnation, one stored before the field existed, or
+ * one that is not a recognized stored payload at all).
+ */
+function recordedIncarnation(envelope: FleetEventEnvelope): string | undefined {
+  const payload = envelope.payload;
+  if (!isStoredDurableEventPayload(payload)) return undefined;
+  return typeof payload.incarnation === 'string' && payload.incarnation !== ''
+    ? payload.incarnation
+    : undefined;
+}
+
+/**
  * Reconstructs a `DurableEventEnvelope` from the underlying
  * `FleetEventEnvelope` plus the `owner` this record was filtered/appended
  * under — `owner` is not re-parsed out of `envelope.workflowId`: both call
@@ -937,8 +984,16 @@ export function createDurableEventHistory(
     if (RESERVED_DURABLE_EVENT_KINDS.has(kind)) throw new ReservedDurableEventKindError(kind);
     const emittedAtMs = options?.emittedAtMs ?? runtime.clock.now();
     const dedupeKey = options?.dedupeKey;
+    const incarnation =
+      options?.incarnation !== undefined && options.incarnation !== ''
+        ? { incarnation: options.incarnation }
+        : {};
     if (dedupeKey === undefined) {
-      const stored: StoredDurableEventPayload = { schemaVersion: CURRENT_SCHEMA_VERSION, payload };
+      const stored: StoredDurableEventPayload = {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        payload,
+        ...incarnation,
+      };
       const appended = await feed.append({
         kind,
         workflowId: encodeOwner(owner),
@@ -951,6 +1006,7 @@ export function createDurableEventHistory(
       schemaVersion: CURRENT_SCHEMA_VERSION,
       payload,
       dedupeKey,
+      ...incarnation,
     };
     const markerKey = dedupeMarkerKey(owner, kind, dedupeKey);
     // Fast pre-check: a redelivery of an entry this store already recorded
@@ -1000,6 +1056,7 @@ export function createDurableEventHistory(
     }
     const since = options?.since;
     const sincePosition = decodeSincePosition(since);
+    const incarnation = options?.incarnation;
 
     const floor = await feed.snapshotRetentionFloor();
     if (sincePosition + 1 < floor) {
@@ -1042,6 +1099,10 @@ export function createDurableEventHistory(
         return { outcome: 'gap', requestedCursor: since ?? '-1', firstRetainedSequence };
       }
       if (envelope.workflowId !== targetWorkflowId) continue;
+      // COR-718 — another incarnation's event, or one recorded for none, is
+      // not this read's at all: left out before it is decoded, and never a
+      // `limit` slot or a `hasMore`, like a corrupt record below.
+      if (incarnation !== undefined && recordedIncarnation(envelope) !== incarnation) continue;
       // AB-313 (AC2): decode BEFORE checking `limit` — a corrupt record
       // (unparseable payload, or a recognized-shape record carrying a
       // `schemaVersion` this build does not know) is skipped with a
@@ -1081,7 +1142,7 @@ export function createDurableEventHistory(
 
   function subscribeEventHistory(
     owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
+    listener: (event: DurableEventEnvelope, incarnation: string | undefined) => void,
     options?: DurableEventHistorySubscribeOptions,
   ): Subscription {
     const since = options?.since;
@@ -1129,6 +1190,7 @@ export function createDurableEventHistory(
             candidate.kind === 'fleet:gap' || candidate.workflowId === targetWorkflowId,
         })) {
           let mapped: DurableEventEnvelope;
+          let incarnation: string | undefined;
           try {
             if (envelope.kind === 'fleet:gap') {
               // What the subscriber continues after: the last thing it was sent,
@@ -1147,6 +1209,7 @@ export function createDurableEventHistory(
               mapped = gap;
             } else {
               mapped = toDurableEventEnvelope(envelope, owner);
+              incarnation = recordedIncarnation(envelope);
             }
           } catch (error) {
             // A corrupt stored record. `Subscription` has no error channel
@@ -1163,7 +1226,7 @@ export function createDurableEventHistory(
           }
           deliveredCursor = mapped.cursor;
           try {
-            listener(mapped);
+            listener(mapped, incarnation);
           } catch (error) {
             // Isolate a throwing listener — one bad observer must not end
             // the subscription or affect any other subscriber (AB-88's
@@ -1662,6 +1725,15 @@ const SESSION_DURABLE_ACTION_TYPES = new Set<string>([
  * action stream (`store.ts` copies the event's own enumerable properties
  * verbatim), so this is a runtime type guard, not a cast.
  */
+/** COR-718 — the `incarnation` string an action's detail states, if it states one. */
+function extractIncarnation(detail: unknown): string | undefined {
+  if (typeof detail !== 'object' || detail === null || !('incarnation' in detail)) {
+    return undefined;
+  }
+  const { incarnation } = detail;
+  return typeof incarnation === 'string' ? incarnation : undefined;
+}
+
 function extractSessionId(detail: unknown): string | undefined {
   if (typeof detail !== 'object' || detail === null) return undefined;
   if (!('sessionId' in detail)) return undefined;
@@ -1893,11 +1965,16 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
         });
         return;
       }
+      // COR-718 — the action's detail is what its producer knew about the
+      // session: the incarnation it states, if any, is the one the event is
+      // recorded for. One that states none is recorded for none, which a
+      // principal never sees.
+      const incarnation = extractIncarnation(action.detail);
       sink(
         { kind: 'session', id: sessionId },
         action.type,
         serializeActionDetail(action.type, action.detail),
-        { emittedAtMs: action.timestamp },
+        { emittedAtMs: action.timestamp, ...(incarnation === undefined ? {} : { incarnation }) },
       );
     }
   };
@@ -2121,6 +2198,8 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
             // event field, rather than through the shared resolver.
             dedupeKey: String(event.ordinal),
             emittedAtMs: event.committedAtMs,
+            // COR-718 — the deleted incarnation's own last event.
+            incarnation: event.incarnation,
           },
         )
         .then(
@@ -2179,7 +2258,11 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
         agentName: event.agentName,
         incarnation: event.incarnation,
       },
-      { dedupeKey: String(event.ordinal), emittedAtMs: event.committedAtMs },
+      {
+        dedupeKey: String(event.ordinal),
+        emittedAtMs: event.committedAtMs,
+        incarnation: event.incarnation,
+      },
     );
   };
   const sessionSavedListener = (event: SessionSavedEvent): void => {
@@ -2192,7 +2275,11 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
         agentName: event.agentName,
         incarnation: event.incarnation,
       },
-      { dedupeKey: String(event.ordinal), emittedAtMs: event.committedAtMs },
+      {
+        dedupeKey: String(event.ordinal),
+        emittedAtMs: event.committedAtMs,
+        incarnation: event.incarnation,
+      },
     );
   };
   bureau.addEventListener('session.created', sessionCreatedListener);

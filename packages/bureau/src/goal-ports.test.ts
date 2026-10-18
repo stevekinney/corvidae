@@ -2128,20 +2128,13 @@ describe("startAttempt when something else already holds one of the goal's deter
         runtime: w.runtime,
       }),
     );
-  const strangerAuthority = {
-    principalId: 'mallory',
-    tenantId: 'bureau',
-    ownerId: 'worker',
-    capabilities: ['tools:execute'],
-    authorizationRevision: 'bureau:1',
-  };
 
   it.each([
     ['a session an ordinary caller created at the id', {}],
     ["another goal's session", { goalRunId: 'g2' }],
     [
       "another principal's session that names this goal",
-      { goalRunId: 'g1', lastRequestAuthority: strangerAuthority },
+      { goalRunId: 'g1', sessionOwner: 'mallory' },
     ],
   ])('refuses %s, and leaves its transcript as it was', async (_label, metadata) => {
     const { starts, startAttemptRun } = refusingStarter();
@@ -2162,7 +2155,7 @@ describe("startAttempt when something else already holds one of the goal's deter
     const w = await world({ startAttemptRun });
     await foreignSession(w, 'goal-g1-s0', {
       goalRunId: 'g1',
-      lastRequestAuthority: { ...strangerAuthority, principalId: 'alice' },
+      sessionOwner: 'alice',
     });
     await w.sessions.update('goal-g1-s0', (session) => ({
       ...session!,
@@ -2192,7 +2185,7 @@ describe("startAttempt when something else already holds one of the goal's deter
       // The trunk is replaced by a foreign session after attempt 0 ran.
       await w.sessions.update('goal-g1-s0', (session) => ({
         ...session!,
-        metadata: { ...session!.metadata, lastRequestAuthority: strangerAuthority },
+        metadata: { ...session!.metadata, sessionOwner: 'mallory' },
       }));
 
       const outcome = await w.ports.startAttempt(startRequest('say done'));

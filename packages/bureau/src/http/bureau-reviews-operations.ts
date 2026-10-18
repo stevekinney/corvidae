@@ -3,7 +3,15 @@
  *
  * Three operations over `Bureau.listPendingReviews`, `Bureau.getReview`, and
  * `Bureau.resolveReview`, served by `createBureauHandler` over JSON-RPC HTTP.
- * Each declares one of the two scopes in {@link BUREAU_SCOPES}.
+ *
+ * Each is declared `authenticated`, because a review belongs to its run's owner
+ * (the decision document's "the requester") and the owner needs no scope to
+ * reach it. A principal sees and acts on the reviews of its own runs only, unless
+ * it holds the operator scope: `bureau.reviews:read` covers list and get,
+ * `bureau.reviews:resolve` covers resolve, and neither implies the other. A list
+ * leaves out other owners' reviews, and a get or resolve of another owner's
+ * review answers exactly as a missing id does, before anything is resolved, so a
+ * denial writes no audit entry.
  *
  * The wire shape is an allowlisted projection of {@link PendingReview}, not the
  * review itself: a tool approval's signed `approvalToken` and binding stay in the
@@ -19,11 +27,13 @@ import { z } from 'zod';
 
 import { BureauError } from '../create-bureau.ts';
 import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
+import type { BureauScope } from './bureau-scopes.ts';
+import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
   readonly reviews: Pick<Bureau, 'listPendingReviews' | 'getReview' | 'resolveReview'>;
-};
+} & BureauOwnershipHost;
 
 const reviewStatusSchema = z.enum([
   'pending',
@@ -238,6 +248,22 @@ function reviewFault(error: unknown, identifier: string): unknown {
   }
 }
 
+/** Whether `principal` may act on the review of `runId`: its run's owner, or the operator scope. */
+async function mayAccessReview(
+  host: BureauReviewsOperationHost,
+  principal: Parameters<BureauOwnershipHost['ownership']['mayAccess']>[0]['principal'],
+  runId: string,
+  operatorScope: BureauScope,
+): Promise<boolean> {
+  // The operator scope needs no owner lookup, and a lookup that finds nothing
+  // (a deleted run) leaves only the scope.
+  const resourceOwner =
+    principal.method !== 'unauthenticated' && principal.hasScope(operatorScope)
+      ? undefined
+      : await host.ownership.runOwner(runId);
+  return host.ownership.mayAccess({ principal, resourceOwner, operatorScope });
+}
+
 export const reviewsListOperation = defineOperation<
   z.ZodObject<Record<string, never>>,
   z.ZodObject<{ reviews: z.ZodArray<typeof bureauReviewSchema> }>,
@@ -247,18 +273,28 @@ export const reviewsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the reviews that are waiting for a decision',
   description:
-    'Returns every pending review, which is what an inbox shows. A resolved review is reached by id with `bureau.reviews.get`. Requires `bureau.reviews:read`.',
+    'Returns the pending reviews of the caller’s own runs, which is what an inbox shows; a caller holding `bureau.reviews:read` sees every owner’s. A resolved review is reached by id with `bureau.reviews.get`.',
   destructive: false,
   tags: ['Reviews'],
   inputSchema: z.object({}),
   outputSchema: z.object({ reviews: z.array(bureauReviewSchema) }),
   producibleFaults: ['InvalidParams'],
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['bureau.reviews:read'] } },
+  access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: ({ host }) =>
-    Promise.resolve({ reviews: host.reviews.listPendingReviews().map(projectReview) }),
+  invoke: async ({ host, principal }) => {
+    const pending = host.reviews.listPendingReviews();
+    const visible = await Promise.all(
+      pending.map(async (review) => {
+        const allowed = await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read');
+        return allowed ? review : undefined;
+      }),
+    );
+    return {
+      reviews: visible.filter((review) => review !== undefined).map(projectReview),
+    };
+  },
 });
 
 export const reviewsGetOperation = defineOperation<
@@ -270,19 +306,24 @@ export const reviewsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one review by id',
   description:
-    'Returns a review, pending or resolved where the Bureau persists resolutions. Requires `bureau.reviews:read`.',
+    'Returns a review of one of the caller’s own runs, pending or resolved where the Bureau persists resolutions; a caller holding `bureau.reviews:read` reads any owner’s. Another owner’s review answers as a missing id does.',
   destructive: false,
   tags: ['Reviews'],
   inputSchema: z.object({ id: z.string().min(1) }),
   outputSchema: bureauReviewSchema,
   producibleFaults: ['InvalidParams', 'NotFound'],
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['bureau.reviews:read'] } },
+  access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ input, host }) => {
+  invoke: async ({ input, host, principal }) => {
     const review = await host.reviews.getReview(input.id);
-    if (review === undefined) throw reviewNotFound(input.id);
+    if (
+      review === undefined ||
+      !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read'))
+    ) {
+      throw reviewNotFound(input.id);
+    }
     return projectReview(review);
   },
 });
@@ -307,15 +348,6 @@ const reviewsResolveOutput = z.object({
   /** `tool-approval` reject only: the reason, for the next run to splice in. */
   feedback: z.string().optional(),
 });
-
-/**
- * The persisted `principal` string for a caller: the credential's namespace, then
- * its subject percent-encoded so no two subjects produce the same string. Only
- * an API key can reach this operation in v1.
- */
-export function reviewerPrincipal(subject: string): string {
-  return `api-key:${encodeURIComponent(subject)}`;
-}
 
 /**
  * The receipt for a resolution that reached the Bureau. A landed `reject` is
@@ -345,25 +377,36 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: false,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review as the authenticated caller; the reviewer is never a payload field. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers 404 until command receipts exist. Requires `bureau.reviews:resolve`.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
   outputSchema: reviewsResolveOutput,
   producibleFaults: ['InvalidParams', 'NotFound', 'Conflict', 'Forbidden', 'Unprocessable'],
-  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['bureau.reviews:resolve'] } },
+  access: { kind: 'authenticated' },
   discoverable: true,
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    // The authentication step already refused an anonymous caller with 401. This
-    // guards the one way past it: a caller that is authenticated but that the
-    // deployment cannot attribute (a credential type v1 does not accept, whose
-    // subject has no namespace to be recorded under). That is 403, not 401.
-    if (principal.method !== 'api-key' || principal.subject === undefined) {
+    // The decision is checked before anything is resolved, and a caller who may
+    // not resolve this review is told exactly what a caller naming a missing id
+    // is told. Resolving writes the audit entry, so a denial writes none.
+    const review = await host.reviews.getReview(input.id);
+    if (
+      review === undefined ||
+      !(await mayAccessReview(host, principal, review.runId, 'bureau.reviews:resolve'))
+    ) {
+      throw reviewNotFound(input.id);
+    }
+    // The actor on the audit entry is the caller's owner string. The authentication
+    // step already refused an anonymous caller with 401; this guards the one way
+    // past it, a caller that is authenticated but that the deployment cannot
+    // attribute (a credential type v1 does not accept). That is 403, not 401.
+    const actor = ownerOfPrincipal(principal);
+    if (actor === undefined) {
       const fault: OperationFault = {
         code: 'Forbidden',
-        message: 'Resolving a review requires an API-key caller',
+        message: 'Resolving a review requires an API-key or local caller',
         data: { reason: 'unsupported credential' },
       };
       throw fault;
@@ -372,7 +415,7 @@ export const reviewsResolveOperation = defineOperation<
       const result = await host.reviews.resolveReview({
         id: input.id,
         decision: input.decision,
-        principal: reviewerPrincipal(principal.subject),
+        principal: actor,
         ...(input.reason === undefined ? {} : { reason: input.reason }),
       });
       return {

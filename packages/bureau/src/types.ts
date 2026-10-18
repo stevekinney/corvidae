@@ -1384,6 +1384,29 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getRun(id: string): RunDetail | undefined;
 
   /**
+   * The owner of record of a resource (COR-718), or `undefined` when no such
+   * resource exists. The owner is the principal that created the resource,
+   * stored once at creation and unchanged afterward; a service principal such as
+   * `system:scheduler` is only ever the actor on an audit entry, never an owner.
+   * A resource created with no stated principal, and a record persisted before
+   * owners existed, read as `anonymous:local`.
+   *
+   * - `run`: the principal the run was created with (`CreateRunRequest.principal`,
+   *   or its schedule's owner for a schedule fire, or its parent's for a child).
+   * - `session`: the owner of the run that created it.
+   * - `goal`: the goal request's `principal`.
+   * - `schedule`: `DurableScheduleDefinition.principal`.
+   * - `review`: its run's owner.
+   * - `audit`: derived from the entry, never stored on it as a field of its own: a
+   *   run id gives that run's owner, `schedule:<id>` the schedule's, and
+   *   `session:<id>` (a `session.deleted` entry) the `owner` its `detail` records.
+   *   Bureau captures that owner at deletion, so the answer never depends on the
+   *   live session, which may be gone or recreated under another owner. An entry
+   *   without one, such as a deletion that bypassed Bureau, has no owner.
+   */
+  getOwner(resource: OwnedResource): Promise<string | undefined>;
+
+  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new
@@ -1750,7 +1773,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * its binding's `expiresAt` that is not already resolved, transitions each
    * to `status: 'expired'`, writes one `review.tool-approval.expired` audit
    * entry per review attributed to the synthetic principal
-   * `'system:expiry-sweep'`, and returns the count swept. Calling it twice in
+   * `'system:expiry'`, and returns the count swept. Calling it twice in
    * a row without new expirations returns `0` the second time. `human-wait`
    * reviews are never swept — their expiry is Weft's own wait timeout.
    * `now` defaults to the bureau's own clock.
@@ -2017,24 +2040,20 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * comment for exactly which events, and why a `schedule.created`/
    * `paused`/`resumed`/`cancelled` definition event is not among them).
    *
-   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'` (schedule
-   * owners are unaffected — no ownership/authorization concept exists for
-   * them yet):
+   * AB-313 adds two outcomes for `owner.kind` `'run'`/`'session'`, and COR-718
+   * extends the first to `'goal'` and `'schedule'` owners:
    *
-   * - `options.principal`, when provided, is checked against the run's
-   *   recorded `principal` (`AgentRun`'s own attribution). For a session,
-   *   `isSessionHistoryReadAuthorized` (COR-1382) allows whoever the
-   *   session's recorded request authority names (AB-42's precedent) and
-   *   every principal that owned a run on the session
-   *   (`lastRunOwningPrincipals`), and fails closed on malformed authority
-   *   metadata. A caller whose principal does not match an owner with a
-   *   RECORDED principal gets `{ outcome: 'not-found' }` — the same
+   * - `options.principal`, when provided, is checked against the owner of
+   *   record of the run, session, goal, or schedule (see
+   *   {@link Bureau.getOwner}): only that owner reads its history. A resource
+   *   created with no principal, or recorded before owners existed, belongs to
+   *   `anonymous:local`, and a malformed session owner fails closed. A caller
+   *   whose principal is not the owner gets `{ outcome: 'not-found' }` — the same
    *   not-found-shaped denial `submitSessionInput` (AB-194) uses, so an
    *   unauthorized caller cannot distinguish "wrong id" from "exists, not
-   *   yours." An owner with NO recorded principal is open (matches every
-   *   existing session verb's "no recorded authority" rule); omitting
-   *   `options.principal` entirely skips the check (an internal/trusted
-   *   caller, or a gateway request from a privileged connection).
+   *   yours." Omitting `options.principal` entirely skips the check (an
+   *   internal/trusted caller, or a gateway request from a privileged
+   *   connection).
    * - When the owner's live Bureau record is gone (the session was
    *   deleted, or the run's record was removed via `deleteRun`) but this
    *   store still holds committed events for it, this returns
@@ -2044,7 +2063,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    *   `not-found` (no committed events at all): AB-87's retention/deletion
    *   posture is that deleting the owner record never deletes its
    *   history, so the events remain queryable through this same call
-   *   rather than requiring a second one.
+   *   rather than requiring a second one. That outcome is for a trusted
+   *   caller, one that states no principal (COR-718): a caller that states
+   *   one is told `not-found` for a session that no longer exists, because
+   *   history is keyed by id alone and a deleted session has no owner left to
+   *   compare. For a session id that has since been recreated, a caller that
+   *   states a principal must own the live session and sees only the events
+   *   recorded for the live session's incarnation, whatever `since` and
+   *   `limit` it passes; an event recorded for no incarnation is never shown
+   *   to such a caller.
    */
   eventHistory(
     owner: DurableEventOwner,
@@ -2130,6 +2157,16 @@ export interface AbortingRun {
   readonly runId: string;
   readonly since: number;
 }
+
+/** A resource whose owner of record {@link Bureau.getOwner} reads. */
+export type OwnedResource =
+  | { readonly kind: 'run' | 'session' | 'goal' | 'schedule' | 'review'; readonly id: string }
+  | {
+      readonly kind: 'audit';
+      readonly runId: string;
+      /** The audit entry's `detail`. A `session.deleted` entry's owner is `detail.owner`. */
+      readonly detail?: unknown;
+    };
 
 export interface RunSummary {
   id: string;
@@ -2248,11 +2285,15 @@ export interface CreateRunRequest {
    */
   agentName?: string;
   /**
-   * The authenticated principal creating this run (e.g. `api-key:<id>` or
-   * `static-token`), for AB-54 usage analytics attribution. The gateway
-   * overwrites any caller-supplied value with the request's own
-   * `x-auth-principal` header before calling `createRun` — never trust this
-   * field verbatim from an untrusted request body.
+   * The owner of record of this run (COR-718), and of the session it creates:
+   * the authenticated principal that started it (e.g. `api-key:<id>`). It is
+   * stored once, when the run is created, and decides who may later read the run,
+   * its session, and its reviews. Omitted, the run is owned by `anonymous:local`.
+   * A host serving outside callers supplies it from the caller's credential,
+   * never from a request payload: `createBureauHandler` does so itself.
+   *
+   * A different principal starting a run on an existing session is refused as a
+   * session that does not exist (`BureauError` `NOT_FOUND`).
    */
   principal?: string;
   /** Authenticated, request-scoped authority forwarded to Armorer tool execution. */
@@ -2447,4 +2488,11 @@ export interface DurableScheduleDefinition {
   sessionId?: string;
   /** Overlap policy when a prior fire is still running. Defaults to `'skip'`. */
   overlap?: 'skip' | 'allow';
+  /**
+   * The schedule's owner of record (COR-718), written once into the schedule's
+   * `ScheduledAgentRunInput.principal`. Every fire's run is owned by it, and the
+   * scheduler is only ever the actor on the fire's `schedule.fired` audit entry.
+   * Omitted, the schedule is owned by `anonymous:local`.
+   */
+  principal?: string;
 }

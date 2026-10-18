@@ -747,14 +747,19 @@ describe('bureau.goals', () => {
 
       // The sweep honors the principal too: it neither recovers nor names a goal the caller cannot see.
       const sweptByMallory = await bureau.goals.recover(undefined, { principal: 'mallory' });
-      expect(sweptByMallory.goals.map((entry) => entry.goalRunId)).toEqual(['g3']);
+      expect(sweptByMallory.goals.map((entry) => entry.goalRunId)).toEqual([]);
       const sweptByAlice = await bureau.goals.recover(undefined, { principal: 'alice' });
-      expect(sweptByAlice.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g1', 'g3']);
+      expect(sweptByAlice.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g1']);
+      const sweptByLocal = await bureau.goals.recover(undefined, { principal: 'anonymous:local' });
+      expect(sweptByLocal.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g3']);
       const swept = await bureau.goals.recover();
       expect(swept.goals.map((entry) => entry.goalRunId).toSorted()).toEqual(['g1', 'g2', 'g3']);
 
-      // A principal sees its own goals and the ones that have no owner.
-      expect(await listedIds(bureau, { principal: 'alice' })).toEqual(['g1', 'g3']);
+      // A principal sees its own goals. A goal created with no principal is owned by anonymous:local.
+      expect(await listedIds(bureau, { principal: 'alice' })).toEqual(['g1']);
+      expect(await listedIds(bureau, { principal: 'anonymous:local' })).toEqual(['g3']);
+      expect(await bureau.getOwner({ kind: 'goal', id: 'g1' })).toBe('alice');
+      expect(await bureau.getOwner({ kind: 'goal', id: 'g3' })).toBe('anonymous:local');
       // Omitting the principal is a trusted, internal call.
       expect(await listedIds(bureau)).toEqual(['g1', 'g2', 'g3']);
       // And the denied cancel changed nothing.

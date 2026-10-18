@@ -593,7 +593,7 @@ describe('createRuntimeComposition', () => {
     const withSession = createSchedulerServiceRequestContext('run-a', 'agent-a', 'session-a');
     expect(withSession.sessionId).toBe('session-a');
     expect(withSession.runId).toBe('run-a');
-    expect(withSession.authority.principalId).toBe('service:scheduler');
+    expect(withSession.authority.principalId).toBe('system:scheduler');
 
     const withoutSession = createSchedulerServiceRequestContext('run-a', 'agent-a');
     expect(withoutSession.sessionId).toBeUndefined();
@@ -2220,7 +2220,7 @@ describe('createRuntimeComposition durable execution', () => {
         agentId: 'researcher',
         runId: 'scheduled-authority-run',
         authority: {
-          principalId: 'service:scheduler',
+          principalId: 'system:scheduler',
           tenantId: 'bureau',
           ownerId: 'researcher',
           capabilities: ['tools:execute'],
@@ -2233,7 +2233,7 @@ describe('createRuntimeComposition durable execution', () => {
         arguments: {},
       });
 
-      expect(result.result).toBe('service:scheduler');
+      expect(result.result).toBe('system:scheduler');
       expect(observedRequestContexts).toHaveLength(1);
       expect(observedRequestContexts[0]).toMatchObject(
         services.options.executeOptions!.requestContext!,
@@ -2492,7 +2492,7 @@ describe('createRuntimeComposition durable execution', () => {
         sessionId: 'caller-chosen-scheduler-task-live',
         requestContext: {
           authority: {
-            principalId: 'service:scheduler',
+            principalId: 'system:scheduler',
             tenantId: 'bureau',
             ownerId: 'bureau',
             capabilities: ['tools:execute'],
@@ -2511,14 +2511,14 @@ describe('createRuntimeComposition durable execution', () => {
       arguments: {},
     });
 
-    expect(result.result).toBe('service:scheduler');
+    expect(result.result).toBe('system:scheduler');
     expect(observedRequestContexts).toHaveLength(1);
     expect(observedRequestContexts[0]).toMatchObject({
       audience: 'operator',
       agentId: 'bureau',
       runId: 'scheduler-task-live',
       authority: {
-        principalId: 'service:scheduler',
+        principalId: 'system:scheduler',
         tenantId: 'bureau',
         ownerId: 'bureau',
         capabilities: ['tools:execute'],

@@ -991,8 +991,8 @@ describe('durable steering across two Bureau processes', () => {
     const engineList = spyOn(engineType, 'list');
     try {
       // An older run's terminal save made the session terminal, while five
-      // newer runs were promoted elsewhere and have no workflow yet. Bob owns
-      // the older run; alice owns the starting ones.
+      // newer runs were promoted elsewhere and have no workflow yet. Alice owns
+      // the session, and so every run on it.
       const kv = writer.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const sessionId = 'session-starting-terminal';
@@ -1006,10 +1006,7 @@ describe('durable steering across two Bureau processes', () => {
           metadata: {
             lastRunId: 'older',
             lastRunStatus: 'completed',
-            lastRequestAuthorities: {
-              older: { principalId: 'bob' },
-              ...Object.fromEntries(starting.map((runId) => [runId, { principalId: 'alice' }])),
-            },
+            sessionOwner: 'alice',
           },
         }),
       );
@@ -1036,7 +1033,7 @@ describe('durable steering across two Bureau processes', () => {
       // Two starting runs settle "ambiguous"; the other three go unread.
       engineGet.mockClear();
       const unscoped = await reader.submitSteeringCommand(sessionId, {
-        principal: 'bob',
+        principal: 'alice',
         requestedValue: { target: 'pause' },
       });
       expect(unscoped.outcome).toBe('rejected');
@@ -1045,8 +1042,7 @@ describe('durable steering across two Bureau processes', () => {
       // Liveness is read twice per admission (before and inside the queue).
       expect(engineGet.mock.calls.length).toBeLessThanOrEqual(4);
 
-      // A backend failure reaches the caller authorized for the run it
-      // named, even though the session's default authority is someone else's.
+      // A backend failure reaches the session's owner.
       engineGet.mockImplementation(() => Promise.reject(new Error('backend unavailable')));
       expect(
         await throwingRejectionOf(
@@ -1057,22 +1053,12 @@ describe('durable steering across two Bureau processes', () => {
           }),
         ),
       ).toThrow('backend unavailable');
-      // ...unless that run's authority was taken from the caller while the
-      // query was failing: then the answer is `not-found`, not the failure.
+      // ...unless the session was handed to someone else while the query was
+      // failing: then the answer is `not-found`, not the failure.
       engineGet.mockImplementation(async () => {
         await store.update(sessionId, (current) => {
           if (current === undefined) return undefined;
-          const authorities = current.metadata['lastRequestAuthorities'] as Record<
-            string,
-            JSONValue
-          >;
-          return {
-            ...current,
-            metadata: {
-              ...current.metadata,
-              lastRequestAuthorities: { ...authorities, 'starting-5': { principalId: 'bob' } },
-            },
-          };
+          return { ...current, metadata: { ...current.metadata, sessionOwner: 'bob' } };
         });
         throw new Error('backend unavailable');
       });
@@ -1092,7 +1078,7 @@ describe('durable steering across two Bureau processes', () => {
           id: appearingSession,
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: appearingSession }),
-          metadata: { lastRunId: 'older', lastRunStatus: 'completed' },
+          metadata: { sessionOwner: 'alice', lastRunId: 'older', lastRunStatus: 'completed' },
         }),
       );
       const appearing = await store.load(appearingSession);
@@ -1126,7 +1112,7 @@ describe('durable steering across two Bureau processes', () => {
           id: foreignSession,
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: foreignSession }),
-          metadata: { lastRunId: 'older', lastRunStatus: 'completed' },
+          metadata: { sessionOwner: 'alice', lastRunId: 'older', lastRunStatus: 'completed' },
         }),
       );
       const foreign = await store.load(foreignSession);
@@ -1159,7 +1145,7 @@ describe('durable steering across two Bureau processes', () => {
           id: outageSession,
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: outageSession }),
-          metadata: { lastRunId: 'named-run', lastRunStatus: 'running' },
+          metadata: { sessionOwner: 'alice', lastRunId: 'named-run', lastRunStatus: 'running' },
         }),
       );
       const outage = await store.load(outageSession);
@@ -1185,7 +1171,7 @@ describe('durable steering across two Bureau processes', () => {
 
       // An unscoped request whose liveness query fails is masked against the
       // session as it stands after the failure: here another process handed
-      // the default run to bob while the query was failing.
+      // the session to bob while the query was failing.
       const revokedSession = 'session-revoked';
       await store.save(
         createAgentSession({
@@ -1195,7 +1181,7 @@ describe('durable steering across two Bureau processes', () => {
           metadata: {
             lastRunId: 'older',
             lastRunStatus: 'running',
-            lastRequestAuthorities: { older: { principalId: 'alice' } },
+            sessionOwner: 'alice',
           },
         }),
       );
@@ -1206,10 +1192,7 @@ describe('durable steering across two Bureau processes', () => {
             ? undefined
             : {
                 ...current,
-                metadata: {
-                  ...current.metadata,
-                  lastRequestAuthorities: { older: { principalId: 'bob' } },
-                },
+                metadata: { ...current.metadata, sessionOwner: 'bob' },
               },
         );
         throw new Error('backend unavailable');
@@ -1370,20 +1353,10 @@ describe('durable steering across two Bureau processes', () => {
       const kv = bureau.kv;
       if (kv === undefined) throw new Error('expected a durable store');
       const store = createSessionStore(kv);
-      const handAuthorityToBob = (sessionId: string, runId: string) =>
+      const handSessionToBob = (sessionId: string) =>
         store.update(sessionId, (current) => {
           if (current === undefined) return undefined;
-          const authorities = current.metadata['lastRequestAuthorities'] as Record<
-            string,
-            JSONValue
-          >;
-          return {
-            ...current,
-            metadata: {
-              ...current.metadata,
-              lastRequestAuthorities: { ...authorities, [runId]: { principalId: 'bob' } },
-            },
-          };
+          return { ...current, metadata: { ...current.metadata, sessionOwner: 'bob' } };
         });
 
       // Two live runs of alice's on one session; a pause bound to the first.
@@ -1404,8 +1377,6 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(paused.outcome).toBe('accepted');
 
-      // Alice loses the first run. Reusing the key through the second, which
-      // she still holds, must not disclose the first run's command.
       // The request is read as it was when submitted: naming a run on the
       // caller's own object afterwards cannot turn an ambiguous unscoped
       // pause into one bound to that run.
@@ -1441,7 +1412,9 @@ describe('durable steering across two Bureau processes', () => {
       if (againstRefusal.outcome !== 'conflict') throw new Error('expected conflict');
       expect(againstRefusal.conflict.original.runId).toBe(second);
 
-      await handAuthorityToBob(sessionId, first);
+      // Alice loses the session. Reusing the key must not disclose the command
+      // she decided there.
+      await handSessionToBob(sessionId);
       expect(
         await bureau.submitSteeringCommand(sessionId, {
           id: 'k-pause',
@@ -1454,16 +1427,19 @@ describe('durable steering across two Bureau processes', () => {
       // A key she decided in a session she holds says nothing about a session
       // she does not: reusing it against bob's session is `not-found`, not a
       // conflict that would confirm bob's session exists.
+      const mine = await startRunningSession(bureau);
+      const mineRun = await lastRunIdOf(mine);
+      if (typeof mineRun !== 'string') throw new Error('expected a run');
       const bobsRun = await bureau.createRun({ message: 'Wait forever', principal: 'bob' });
       for (let attempt = 0; attempt < 200; attempt += 1) {
         const bobs = await bureau.getSession(bobsRun.sessionId);
         if (bobs?.metadata['lastRunStatus'] === 'running') break;
         await Bun.sleep(10);
       }
-      const decidedHere = await bureau.submitSteeringCommand(sessionId, {
+      const decidedHere = await bureau.submitSteeringCommand(mine, {
         id: 'k-mine',
         principal: 'alice',
-        runId: second,
+        runId: mineRun,
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
       });
       expect(decidedHere.outcome).toBe('accepted');
@@ -1485,12 +1461,12 @@ describe('durable steering across two Bureau processes', () => {
         requestedValue: { target: 'model', override: 'claude-sonnet-5' },
       });
       expect(modelInOther.outcome).toBe('accepted');
-      await handAuthorityToBob(other, otherRun);
+      await handSessionToBob(other);
       expect(
-        await bureau.submitSteeringCommand(sessionId, {
+        await bureau.submitSteeringCommand(mine, {
           id: 'k-model',
           principal: 'alice',
-          runId: second,
+          runId: mineRun,
           requestedValue: { target: 'model', override: 'claude-sonnet-5' },
         }),
       ).toEqual({ outcome: 'not-found' });
@@ -1767,6 +1743,7 @@ describe('durable steering across two Bureau processes', () => {
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: gapSession }),
           metadata: {
+            sessionOwner: 'alice',
             lastRunId: 'saved-run',
             lastRunStatus: 'running',
             steeringStartingRuns: { 'saved-run': new Date().toISOString() },
@@ -1791,6 +1768,7 @@ describe('durable steering across two Bureau processes', () => {
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: visibleSession }),
           metadata: {
+            sessionOwner: 'alice',
             lastRunId: 'visible-run',
             lastRunStatus: 'running',
             steeringStartingRuns: { 'visible-run': new Date().toISOString() },
@@ -1826,6 +1804,7 @@ describe('durable steering across two Bureau processes', () => {
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: concurrentSession }),
           metadata: {
+            sessionOwner: 'alice',
             lastRunId: 'saved-named',
             lastRunStatus: 'running',
             steeringStartingRuns: { 'saved-named': new Date().toISOString() },
@@ -1848,9 +1827,9 @@ describe('durable steering across two Bureau processes', () => {
       });
       expect(namedSaved.outcome).toBe('accepted');
 
-      // The sole live run can change while liveness is read, with a new
-      // run saved under its own authority: the caller is checked against
-      // the session as it stands after the read, not before it.
+      // The sole live run can change while liveness is read, with the session
+      // handed to the caller: the caller is checked against the session as it
+      // stands after the read, not before it.
       const changingSession = 'session-sole-run-changes';
       await store.save(
         createAgentSession({
@@ -1858,9 +1837,9 @@ describe('durable steering across two Bureau processes', () => {
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: changingSession }),
           metadata: {
+            sessionOwner: 'bob',
             lastRunId: 'run-b',
             lastRunStatus: 'running',
-            lastRequestAuthorities: { 'run-b': { principalId: 'bob' } },
           },
         }),
       );
@@ -1875,14 +1854,7 @@ describe('durable steering across two Bureau processes', () => {
             ? undefined
             : {
                 ...current,
-                metadata: {
-                  ...current.metadata,
-                  lastRunId: 'run-a',
-                  lastRequestAuthorities: {
-                    'run-b': { principalId: 'bob' },
-                    'run-a': { principalId: 'alice' },
-                  },
-                },
+                metadata: { ...current.metadata, lastRunId: 'run-a', sessionOwner: 'alice' },
               },
         );
         return {
@@ -1913,6 +1885,7 @@ describe('durable steering across two Bureau processes', () => {
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: twoStarts }),
           metadata: {
+            sessionOwner: 'alice',
             lastRunId: 'start-two',
             lastRunStatus: 'running',
             steeringStartingRuns: { 'start-one': startedAt, 'start-two': startedAt },
@@ -1941,7 +1914,7 @@ describe('durable steering across two Bureau processes', () => {
           id: lagging,
           agentName: 'bureau',
           conversationHistory: createConversationHistory({ id: lagging }),
-          metadata: { lastRunId: 'ended-run', lastRunStatus: 'running' },
+          metadata: { sessionOwner: 'alice', lastRunId: 'ended-run', lastRunStatus: 'running' },
         }),
       );
       const laggingSession = await store.load(lagging);
@@ -2092,7 +2065,7 @@ describe('durable steering across two Bureau processes', () => {
       const session = await writer.getSession(sessionId);
       const kv = writer.kv;
       if (session === undefined || kv === undefined) throw new Error('expected a session');
-      // The log can no longer be folded, and alice no longer holds the run.
+      // The log can no longer be folded, and alice no longer owns the session.
       await appendSteeringLogEvent(
         kv,
         sessionId,
@@ -2100,17 +2073,10 @@ describe('durable steering across two Bureau processes', () => {
         await readSteeringLogHead(kv, sessionId, session.incarnation),
         { type: 'run-ended', runId: 'never-promoted', now: new Date().toISOString() },
       );
-      const runId = session.metadata['lastRunId'] as string;
       await createSessionStore(kv).update(sessionId, (current) =>
         current === undefined
           ? undefined
-          : {
-              ...current,
-              metadata: {
-                ...current.metadata,
-                lastRequestAuthorities: { [runId]: { principalId: 'bob' } },
-              },
-            },
+          : { ...current, metadata: { ...current.metadata, sessionOwner: 'bob' } },
       );
       // Her retry of a key bound here skips the up-front checks, so the
       // failed fold is where she must be turned away.
@@ -2211,19 +2177,10 @@ describe('durable steering across two Bureau processes', () => {
         ),
       ).toThrow(/does not name that decision/);
       // ...but only to a caller still authorized there.
-      const firstSession = await bureau.getSession(first);
-      const firstRun = firstSession?.metadata['lastRunId'];
-      if (typeof firstRun !== 'string') throw new Error('expected a run');
       await createSessionStore(kv).update(first, (current) =>
         current === undefined
           ? undefined
-          : {
-              ...current,
-              metadata: {
-                ...current.metadata,
-                lastRequestAuthorities: { [firstRun]: { principalId: 'bob' } },
-              },
-            },
+          : { ...current, metadata: { ...current.metadata, sessionOwner: 'bob' } },
       );
       expect(await bureau.submitSteeringCommand(first, model('k1', 'claude-sonnet-5'))).toEqual({
         outcome: 'not-found',
