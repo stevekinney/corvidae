@@ -14,6 +14,7 @@ export {
   appendUnsafeMessage,
   appendUserMessage,
   prependMessages,
+  withMessageId,
 } from './append';
 
 // Query
@@ -79,6 +80,7 @@ export {
   materializeToolResultsAsync,
 } from './tool-interactions';
 export type {
+  AppendBatchOptions,
   AppendToolCallOptions,
   AppendToolResultOptions,
   MaterializeToolCallOptions,

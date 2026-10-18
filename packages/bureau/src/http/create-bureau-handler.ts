@@ -37,6 +37,7 @@ import {
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
+import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
@@ -60,6 +61,18 @@ export type BureauHandlerSource = Pick<
   | 'getReview'
   | 'resolveReview'
   | 'getOwner'
+  | 'createRun'
+  | 'getRun'
+  | 'abortRun'
+  | 'listRuns'
+  | 'getSession'
+  | 'subscribeLiveFrames'
+  | 'subscribeRunSnapshot'
+  | 'eventHistory'
+  | 'hasDurableEngine'
+  | 'locateRunCreationReceipt'
+  | 'children'
+  | 'getDurableRun'
 > & { readonly agents: { has(name: string): boolean } };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */
@@ -104,16 +117,46 @@ export type BureauHandlerOptions = {
   readonly unauthenticatedAccess?: 'reject' | 'allow';
   /** Protocol adapters, each claiming a path prefix ahead of the catalog. */
   readonly mounts?: readonly OperationHandlerMount[];
+  /**
+   * Mounts the AG-UI adapter (`ag-ui-mount.ts`): four routes under
+   * `agUi.pathPrefix` (default `/ag-ui`) that start or resume a run, attach to
+   * one, and cancel one, as AG-UI 1.0 Server-Sent Events. Omitted, nothing is
+   * mounted and those paths are the handler's ordinary 404.
+   *
+   * Agents are selected from {@link BureauHandlerOptions.publish}. The mount needs
+   * a Bureau with a durable engine, because its human-wait parks and its
+   * run-creation receipts both do, and `createBureauHandler` throws at
+   * construction without one. It is prepended to `mounts`, so Weft still refuses a
+   * prefix that overlaps a catalog route or another mount.
+   */
+  readonly agUi?: AgUiOptions;
 };
 
 /** A published agent name is a URL path segment, so it needs no encoding. */
 export const PUBLISHED_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
+
+/**
+ * Every `agUi` option, as a record keyed by `AgUiOptions`: a key added to the type
+ * and not to this record is a compile error, so the allowlist cannot drift from
+ * what the mount reads. The value says whether the option is a positive integer.
+ */
+const AG_UI_OPTIONS: Readonly<Record<keyof AgUiOptions, 'positive-integer' | 'other'>> = {
+  pathPrefix: 'other',
+  maxStreamDurationMs: 'positive-integer',
+  liveBufferSize: 'positive-integer',
+  keepAliveIntervalMs: 'positive-integer',
+  leaseDurationMs: 'positive-integer',
+  runtime: 'other',
+};
+
+const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set(Object.keys(AG_UI_OPTIONS));
 
 const OPTION_NAMES: ReadonlySet<string> = new Set([
   'publish',
   'authentication',
   'unauthenticatedAccess',
   'mounts',
+  'agUi',
 ]);
 
 function fail(message: string): never {
@@ -181,6 +224,35 @@ function assertPublish(bureau: BureauHandlerSource, publish: readonly string[] |
     if (!bureau.agents.has(entry)) {
       fail(`publish names ${shown}, which is not in the Bureau's agent catalog`);
     }
+  }
+}
+
+function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions): void {
+  const agUi = options.agUi;
+  if (agUi === undefined) return;
+  if (typeof agUi !== 'object' || agUi === null) fail('agUi must be an object');
+  for (const name of Object.keys(agUi)) {
+    if (!AG_UI_OPTION_NAMES.has(name)) {
+      fail(`unknown agUi option "${name}". Accepted: ${[...AG_UI_OPTION_NAMES].join(', ')}`);
+    }
+  }
+  if (agUi.pathPrefix !== undefined && !/^\/[^\s?#]+$/.test(agUi.pathPrefix)) {
+    fail('agUi.pathPrefix must be an absolute path with no query or fragment');
+  }
+  for (const [name, kind] of Object.entries(AG_UI_OPTIONS) as Array<
+    [keyof AgUiOptions, 'positive-integer' | 'other']
+  >) {
+    if (kind !== 'positive-integer') continue;
+    const value = agUi[name] as number | undefined;
+    if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+      fail(`agUi.${name} must be a positive integer`);
+    }
+  }
+  if (!bureau.hasDurableEngine) {
+    fail(
+      'agUi needs a Bureau with a durable engine: its human-wait parks and run-creation receipts ' +
+        'both depend on one. Configure storage and `durableExecution` on createBureau',
+    );
   }
 }
 
@@ -301,6 +373,7 @@ export function createBureauHandler(
   const unauthenticatedAccess = resolveUnauthenticatedAccess(options);
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
+  assertAgUi(bureau, options);
   assertBureauId(bureau);
   assertPersistence(bureau);
 
@@ -322,7 +395,22 @@ export function createBureauHandler(
       options.authentication === undefined
         ? authenticateLocalCaller
         : createApiKeyAuthenticate(options.authentication),
-    mounts: options.mounts ?? [],
+    mounts: [
+      ...(options.agUi === undefined
+        ? []
+        : [
+            createAgUiMount(
+              bureau,
+              {
+                mayAccess: host.ownership.mayAccess,
+                ownerOf: (resource) => bureau.getOwner(resource),
+              },
+              options.publish ?? [],
+              options.agUi,
+            ),
+          ]),
+      ...(options.mounts ?? []),
+    ],
     // Whether a route authenticates is decided by `authentication` alone, so the
     // health route and the documents are no more public than anything else.
     publicPaths: [],

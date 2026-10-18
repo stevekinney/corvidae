@@ -1,3 +1,4 @@
+import { assistantRowIdentifierForAttempt } from './message-identifiers';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -27,7 +28,12 @@ export function withStreaming(fn: StreamingGenerateFunction): GenerateFunction {
   const wrapped: GenerateFunction = async (context: GenerateContext): Promise<GenerateResponse> => {
     const { conversation } = context;
 
-    const messageId = conversation.appendStreamingMessage('assistant');
+    const assistantId = assistantRowIdentifierForAttempt(conversation, context.assistantMessageId);
+    const messageId = conversation.appendStreamingMessage(
+      'assistant',
+      undefined,
+      assistantId === undefined ? undefined : { id: assistantId },
+    );
 
     const handle: StreamingHandle = {
       messageId,

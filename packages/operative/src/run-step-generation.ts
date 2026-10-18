@@ -7,6 +7,7 @@ import { GuardrailTripwireError, MediaAdmissionError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
+import { assistantMessageIdentifier } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import type { StepMediaAdmission } from './run-step-media';
 import { createElicit } from './run-step-support';
@@ -60,6 +61,7 @@ export async function executeGeneration(
     admission,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
+  const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
   let response: GenerateResponse = undefined!;
   let stepRetryCount = 0;
   let shouldRetryStep: boolean;
@@ -112,6 +114,7 @@ export async function executeGeneration(
           responseFormat: deps.responseFormat,
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
+          assistantMessageId,
           resolvedSources,
         };
         if (hooks?.has('beforeGenerate')) {
@@ -136,6 +139,7 @@ export async function executeGeneration(
             responseFormat: deps.responseFormat,
             signal: stepSignal,
             steering: steeringDesiredState,
+            assistantMessageId,
             resolvedSources,
           };
           for (const [index, entry] of handlers.entries()) {
@@ -170,6 +174,7 @@ export async function executeGeneration(
               beforeGenContext = {
                 ...handlerResult,
                 steering: steeringDesiredState,
+                assistantMessageId,
                 resolvedSources,
               };
             }

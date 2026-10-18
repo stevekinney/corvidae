@@ -68,6 +68,12 @@ export function getStreamingMessage(conversation: Conversation): Message | undef
   return getOrderedMessages(conversation).find(isStreamingMessage);
 }
 
+/** Options for {@link appendStreamingMessage}. */
+export interface AppendStreamingMessageOptions {
+  /** The row's id, instead of a minted one. Must be new to the conversation. */
+  readonly id?: string | undefined;
+}
+
 /**
  * Creates a pending/streaming message placeholder and appends it to the conversation.
  * Returns both the updated conversation and the ID of the new streaming message.
@@ -77,8 +83,9 @@ export function appendStreamingMessage(
   role: 'assistant' | 'user',
   metadata?: Record<string, JSONValue>,
   environment?: Partial<ConversationEnvironment>,
+  options?: AppendStreamingMessageOptions,
 ): { conversation: Conversation; messageId: string } {
-  return appendStreamingMessageInternal(conversation, role, metadata, environment, true);
+  return appendStreamingMessageInternal(conversation, role, metadata, environment, true, options);
 }
 
 /**
@@ -101,13 +108,14 @@ const appendStreamingMessageInternal = (
   metadata: Record<string, JSONValue> | Partial<ConversationEnvironment> | undefined,
   environment: Partial<ConversationEnvironment> | undefined,
   validate: boolean,
+  options?: AppendStreamingMessageOptions,
 ): { conversation: Conversation; messageId: string } => {
   const resolvedEnvironment = resolveConversationEnvironment(
     isConversationEnvironmentParameter(metadata) ? metadata : environment,
   );
   const resolvedMetadata = isConversationEnvironmentParameter(metadata) ? undefined : metadata;
   const now = resolvedEnvironment.now();
-  const messageId = resolvedEnvironment.randomId();
+  const messageId = options?.id ?? resolvedEnvironment.randomId();
 
   const newMessage = createMessage({
     id: messageId,
