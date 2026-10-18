@@ -1,3 +1,7 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { type GenerateFunction, ScheduleCompletedEvent, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -137,6 +141,48 @@ describe('the owner of a schedule and of its fires (COR-718)', () => {
       expect(JSON.stringify(session?.conversationHistory)).not.toContain('tick');
     } finally {
       await bureau.dispose();
+    }
+  });
+
+  it('keeps the owner of a fire’s run and session across a restart', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-fire-restart-'));
+    const path = join(directory, 'bureau.sqlite');
+    const open = () =>
+      createBureau({
+        id: 'owner-fire-restart',
+        agents: {},
+        generate,
+        toolbox: createToolbox([], { context: {} }),
+        storage: { type: 'sqlite', path },
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+    const first = await open();
+    let second: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      const completed: ScheduleCompletedEvent[] = [];
+      first.addEventListener(ScheduleCompletedEvent.type, (event) => completed.push(event));
+      const summary = await first.createSchedule({
+        agentName: 'researcher',
+        input: 'tick',
+        spec: '1s',
+        principal: 'api-key:alice',
+      });
+      expect(await waitForReal(() => completed.length >= 1)).toBe(true);
+      await first.cancelSchedule(summary!.id);
+      const fireRunId = completed[0]!.runId;
+      await first.dispose();
+
+      second = await open();
+      expect(await second.getOwner({ kind: 'run', id: fireRunId })).toBe('api-key:alice');
+      expect(await second.getOwner({ kind: 'schedule', id: summary!.id })).toBe('api-key:alice');
+      expect(
+        await second.getOwner({ kind: 'session', id: `sched-${summary!.id}-${fireRunId}` }),
+      ).toBe('api-key:alice');
+      expect(await second.getOwner({ kind: 'audit', runId: fireRunId })).toBe('api-key:alice');
+    } finally {
+      await second?.dispose();
+      await rm(directory, { recursive: true, force: true });
     }
   });
 });
