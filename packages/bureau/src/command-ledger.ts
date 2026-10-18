@@ -954,8 +954,17 @@ export interface LocateRunCreationReceiptInput {
  * run), and `not-found` when the ledger holds no binding for it.
  */
 export type RunCreationReceiptLocation =
-  | { readonly status: 'recorded'; readonly receipt: RunCreationReceipt }
-  | { readonly status: 'pending'; readonly receipt: RunCreationReceipt }
+  | {
+      readonly status: 'recorded';
+      readonly receipt: RunCreationReceipt;
+      /** The session the run was claimed for, so a retry can tell it from another thread's. */
+      readonly sessionId: string;
+    }
+  | {
+      readonly status: 'pending';
+      readonly receipt: RunCreationReceipt;
+      readonly sessionId: string;
+    }
   | { readonly status: 'expired'; readonly requestId: string; readonly expiredAt: string }
   | { readonly status: 'not-found'; readonly requestId: string };
 
@@ -1213,14 +1222,26 @@ export function createRunCreationLedger(
     const { entry } = location;
     if (entry.state === 'completed') {
       await settleIfObserved(entry, await observe(entry.claim));
-      return { status: 'recorded', receipt: entry.result.receipt };
+      return {
+        status: 'recorded',
+        receipt: entry.result.receipt,
+        sessionId: entry.claim.sessionId,
+      };
     }
     if (inFlight.has(entryKey(entry.identity))) {
-      return { status: 'pending', receipt: receiptFor(entry, 'pending') };
+      return {
+        status: 'pending',
+        receipt: receiptFor(entry, 'pending'),
+        sessionId: entry.claim.sessionId,
+      };
     }
     const replayed = await replayPending(entry);
     const receipt = replayed.receipt ?? receiptFor(entry, replayed.status);
-    return { status: replayed.status === 'pending' ? 'pending' : 'recorded', receipt };
+    return {
+      status: replayed.status === 'pending' ? 'pending' : 'recorded',
+      receipt,
+      sessionId: entry.claim.sessionId,
+    };
   }
 
   /**
