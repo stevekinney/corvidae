@@ -7893,8 +7893,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     // COR-718 — the deletion's audit entry carries the owner the session had, which
     // the audit listener reads synchronously, so it is loaded before the dispatch.
-    if (entry.kind === 'session.deleted') {
-      await loadSessionDeletionOwner(entry.sessionId, entry.incarnation);
+    if (
+      entry.kind === 'session.deleted' &&
+      !(await loadSessionDeletionOwner(entry.sessionId, entry.incarnation))
+    ) {
+      return 'stop';
     }
     // AB-389 (Codex P2 review finding, PR #598, "Isolate subscriber
     // exceptions while draining the outbox"): `emitter.dispatch()`
@@ -8503,22 +8506,33 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
-  /** Reads the owner record back into memory before the deletion event is dispatched. */
-  async function loadSessionDeletionOwner(sessionId: string, incarnation: string): Promise<void> {
+  /**
+   * Reads the owner record back into memory before the deletion event is dispatched.
+   * Resolves `true` when the read succeeded, whether it found a record or a definite
+   * miss (a deletion that bypassed Bureau), and `false` when the read itself threw: the
+   * caller must then leave the deletion pending, because acknowledging it would write
+   * the audit entry without an owner and delete the only copy of it.
+   */
+  async function loadSessionDeletionOwner(
+    sessionId: string,
+    incarnation: string,
+  ): Promise<boolean> {
     const kvStore = runtime.kv;
-    if (!kvStore) return;
+    if (!kvStore) return true;
     const key = sessionDeletionOwnerKey(sessionId, incarnation);
-    if (sessionDeletionOwners.has(key)) return;
+    if (sessionDeletionOwners.has(key)) return true;
     try {
       const owner = await kvStore.get(key);
       if (owner !== null) sessionDeletionOwners.set(key, owner);
+      return true;
     } catch (error: unknown) {
       diagnose({
         level: 'error',
         scope: 'durable-maintenance',
-        message: `[bureau] Could not read the recorded owner of deleted session "${sessionId}"; its deletion entry will have none: ${serializeUnknownError(error)}`,
+        message: `[bureau] Could not read the recorded owner of deleted session "${sessionId}"; leaving its deletion pending for a later drain to retry: ${serializeUnknownError(error)}`,
         cause: error,
       });
+      return false;
     }
   }
 
