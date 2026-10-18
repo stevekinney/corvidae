@@ -11094,18 +11094,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await sessionPersistence.drain();
       for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
         try {
-          await sessionStore.update(review.sessionId, (session) =>
-            session === undefined
-              ? undefined
-              : {
-                  ...session,
-                  conversationHistory: resolveToolResult(
-                    session.conversationHistory,
-                    callId,
-                    toolResult,
-                  ),
-                },
-          );
+          await sessionStore.update(review.sessionId, (session) => {
+            if (session === undefined) return undefined;
+            // A conversation that never held a row for the call (a review restored
+            // from persisted metadata alone) shows no approval as pending, so there is
+            // nothing stale to replace; only a row that is there and cannot be written
+            // is a failure.
+            const history = session.conversationHistory;
+            const holdsRow = history.ids.some(
+              (id) => history.messages[id]?.toolResult?.callId === callId,
+            );
+            if (!holdsRow) return undefined;
+            return {
+              ...session,
+              conversationHistory: resolveToolResult(history, callId, toolResult),
+            };
+          });
           return undefined;
         } catch (error) {
           lastError = error;
