@@ -118,6 +118,7 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  getFirstSystemMessage,
 } from 'conversationalist';
 
 import { createSkillGuardrailOptions } from './agent-skills';
@@ -135,6 +136,7 @@ import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
+  resolveSessionOwner,
   SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
@@ -942,6 +944,49 @@ export type CatalogAgentRunOptionsResolver = (
   runId: string,
 ) => Promise<CatalogAgentRunOptionsResolution>;
 
+/**
+ * COR-1577 — a catalog agent resolved for a session run: the run options its own definition
+ * resolves, which a session run reads its `generate`, toolbox, hooks, stop conditions and step
+ * and token caps from, and the system prompt its definition would seed a new conversation with.
+ */
+export interface SessionAgentRun {
+  readonly agentName: string;
+  readonly options: RunOptions;
+  readonly definitionRevision: number;
+  readonly agentResolvesGuardrails: boolean;
+  /** The agent's own system prompt, or `undefined` when its definition declares none. */
+  readonly instructions: string | undefined;
+}
+
+export type SessionAgentRunResolution =
+  | { status: 'resolved'; run: SessionAgentRun }
+  | Exclude<CatalogAgentRunOptionsResolution, { status: 'resolved' }>;
+
+/** The text of the first system message `options.conversation` carries, or `undefined`. */
+function agentInstructionsFromRunOptions(options: RunOptions): string | undefined {
+  const history =
+    options.conversation instanceof Conversation
+      ? options.conversation.current
+      : options.conversation;
+  const content = getFirstSystemMessage(history)?.content;
+  if (typeof content === 'string') return content;
+  if (content === undefined) return undefined;
+  const text = content
+    .map((part) => (part.type === 'text' ? part.text : ''))
+    .join('')
+    .trim();
+  return text.length === 0 ? undefined : text;
+}
+
+/** The input a session run resolves its agent with; the run's own conversation replaces it. */
+const SESSION_AGENT_PLACEHOLDER_INPUT = 'session run';
+
+/** The default agent a run with no `agentName` belongs to; it has no catalog entry. */
+const BUREAU_AGENT_NAME = 'bureau';
+
+/** Session metadata: the definition revision of the named agent the latest run started under. */
+export const SESSION_AGENT_REVISION_METADATA_KEY = 'lastAgentRevision';
+
 type RecoveredScheduleMarker =
   | { status: 'found'; scheduleId: string }
   | { status: 'missing'; sessionId?: string }
@@ -1736,6 +1781,16 @@ export interface RuntimeComposition {
    * per-read.
    */
   clearCatalogRunRecoveryCache(): void;
+  /**
+   * COR-1577 — resolve the catalog agent a session run names, through the same resolver a
+   * catalog dispatch and boot recovery use. The caller checks `agentName` is not the default
+   * agent first: `bureau` has no catalog entry and runs the Bureau-wide runtime.
+   */
+  resolveSessionAgentRun(
+    agentName: string,
+    runId: string,
+    principal?: string,
+  ): Promise<SessionAgentRunResolution>;
   ready: boolean;
   provider: RedactedProviderConfiguration | undefined;
   providers: RedactedProviderRouteConfiguration[];
@@ -1754,6 +1809,12 @@ export interface RuntimeComposition {
        * back under a name somebody once reviewed.
        */
       initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
+      /**
+       * COR-1577 — run the named catalog agent's `generate` and toolbox in place of the
+       * Bureau-wide ones. The Bureau tier (memory, skills, identity, guardrails, opt-in tools)
+       * is composed around them exactly as it is around the Bureau-wide runtime.
+       */
+      sessionAgent?: SessionAgentRun | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -2555,9 +2616,17 @@ async function buildRuntimeComposition(
        * source was revoked or whose content drifted does not come back.
        */
       initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
+
+      /**
+       * COR-1577 — the named catalog agent this session run executes. Its `generate` and toolbox
+       * replace the Bureau-wide ones; everything else the Bureau composes around a run still
+       * applies.
+       */
+      sessionAgent?: SessionAgentRun | undefined;
     },
   ) {
     const liveStreaming = runtimeOptions?.liveStreaming ?? true;
+    const sessionAgent = runtimeOptions?.sessionAgent;
     const requestContext = request.requestContext;
     // AB-40 — the auto-wired default guardrail preset (`options.guardrails ===
     // undefined`) runs its output PII validator in `mode: 'tripwire'` against
@@ -2576,15 +2645,19 @@ async function buildRuntimeComposition(
     const usingDefaultGuardrailsPreset = options.guardrails === undefined;
     const streamEventTarget =
       !liveStreaming ||
+      // A named agent's own `generate` is not wrapped for live token streaming.
+      sessionAgent !== undefined ||
       options.generate !== undefined ||
       options.streaming?.enabled === false ||
       usingDefaultGuardrailsPreset
         ? undefined
         : new TypedEventTarget<StreamEventMap>();
     const generate =
-      streamEventTarget === undefined
-        ? nonStreamingGenerate
-        : composeConfiguredGenerate(streamEventTarget);
+      sessionAgent !== undefined
+        ? sessionAgent.options.generate
+        : streamEventTarget === undefined
+          ? nonStreamingGenerate
+          : composeConfiguredGenerate(streamEventTarget);
 
     if (!generate) {
       throw new Error('No generate function configured');
@@ -2604,12 +2677,17 @@ async function buildRuntimeComposition(
     // always creates a fresh toolbox — so cloning here also means the combined
     // result is based on a per-run clone, which is correct.
     //
+    // COR-1577 — a named agent's resolved toolbox is its own: `createAgent` builds a fresh one
+    // per resolution unless the agent was handed a shared toolbox, which `extend()` clones for
+    // the same cross-run isolation the Bureau-wide toolbox gets.
     let toolbox: AnyToolbox =
-      options.toolbox !== undefined
-        ? baseToolbox.extend()
-        : hasSkillTools
-          ? fallbackToolbox.extend()
-          : createUnavailableToolbox();
+      sessionAgent !== undefined
+        ? sessionAgent.options.toolbox.extend()
+        : options.toolbox !== undefined
+          ? baseToolbox.extend()
+          : hasSkillTools
+            ? fallbackToolbox.extend()
+            : createUnavailableToolbox();
     // COR-567 — one registry per run. Per-run rather than per-composition
     // because these hooks close over this run's session, memory and skill
     // session; a registry shared across runs would leak one run's state into
@@ -2814,7 +2892,9 @@ async function buildRuntimeComposition(
 
     // AB-40 — `undefined` (not configured) wires the enabled-by-default
     // preset; `false` opts out entirely; anything else replaces the preset.
-    if (guardrails) {
+    // COR-1577 — an agent that resolves its own guardrails was handed this bureau's policy as
+    // its inherited one and applies it in its own hook tier, exactly as a catalog dispatch does.
+    if (guardrails && sessionAgent?.agentResolvesGuardrails !== true) {
       // Registered last on `prepareStep`, as the array push order had it, so
       // the input guardrail scans a step context every earlier hook has
       // already contributed to rather than one they then append to.
@@ -2840,6 +2920,39 @@ async function buildRuntimeComposition(
       streamEventTarget,
       getActiveSkillRecords,
     });
+  }
+
+  /**
+   * COR-1577 — resolve the catalog agent a session run names, through the resolver `createBureau`
+   * wires for catalog dispatch and boot recovery, so a session run and a catalog run of the same
+   * agent resolve identically. The placeholder input is discarded: only the run options and the
+   * system prompt the definition would seed are read from the result.
+   */
+  async function resolveSessionAgentRun(
+    agentName: string,
+    runId: string,
+    principal?: string,
+  ): Promise<SessionAgentRunResolution> {
+    if (!catalogAgentRunOptionsResolver) {
+      return { status: 'resolver-failed', error: new Error('No catalog agent resolver is wired.') };
+    }
+    const resolution = await catalogAgentRunOptionsResolver(
+      agentName,
+      SESSION_AGENT_PLACEHOLDER_INPUT,
+      { agentName, ...(principal === undefined ? {} : { principal }) },
+      runId,
+    );
+    if (resolution.status !== 'resolved') return resolution;
+    return {
+      status: 'resolved',
+      run: {
+        agentName,
+        options: resolution.options,
+        definitionRevision: resolution.definitionRevision,
+        agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
+        instructions: agentInstructionsFromRunOptions(resolution.options),
+      },
+    };
   }
 
   /**
@@ -2871,11 +2984,9 @@ async function buildRuntimeComposition(
     const maximumTokens = typeof maximumTokensRaw === 'number' ? maximumTokensRaw : undefined;
     // Restore the per-request step cap from session metadata so a recovered run
     // honours the caller's original maximumSteps rather than the bureau default
-    // (PRRT_kwDORvupsc6MZfl5). Falls back to the default `maximumSteps` closure
-    // value when the run was created without an explicit cap.
+    // (PRRT_kwDORvupsc6MZfl5). Absent that, the named agent's cap, then the default
+    // `maximumSteps` closure value (COR-1577).
     const maximumStepsRaw = session.metadata['lastMaximumSteps'];
-    const recoveredMaximumSteps =
-      typeof maximumStepsRaw === 'number' ? maximumStepsRaw : maximumSteps;
     // Rehydrate the active skill set from the last-written snapshot so the
     // recovered toolbox is aware of skills activated in completed pre-crash steps.
     // Completed steps are memoized by Weft and do not re-run their tool executions,
@@ -2893,6 +3004,10 @@ async function buildRuntimeComposition(
       agentName,
       runtimeServices.clock.now,
     );
+    // COR-1577 — a recovered named run resumes under its agent, by the catalog path's policy: an
+    // agent gone from the catalog fails the run, and a definition that changed since the run
+    // started is logged and the current one runs.
+    const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
     const runRuntime = await createRunRuntime(
       {
         message: typeof message === 'string' ? message : '',
@@ -2904,7 +3019,7 @@ async function buildRuntimeComposition(
         ...(agentName !== undefined ? { agentName } : {}),
         ...(requestContext ? { requestContext } : {}),
       },
-      { liveStreaming: false, initialActiveSkillRecords },
+      { liveStreaming: false, initialActiveSkillRecords, sessionAgent },
     );
 
     // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
@@ -2957,15 +3072,21 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runToolbox,
         conversation: new Conversation(session.conversationHistory),
-        maximumSteps: recoveredMaximumSteps,
-        stopWhen: options.stopWhen,
+        // COR-1577 — the request's cap persisted at the start, then the named agent's, then the
+        // Bureau's default; a run with no named agent keeps the Bureau's.
+        maximumSteps:
+          typeof maximumStepsRaw === 'number'
+            ? maximumStepsRaw
+            : (sessionAgent?.options.maximumSteps ?? maximumSteps),
+        stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
         // COR-1269 — stamped onto this run's hook-plan observations.
         sessionId: session.id,
         // COR-1265 — the completed Bureau tier, snapshotted. A single-tier
         // merge still copies every entry into a fresh registry, so a
         // registration added to `runRuntime.hooks` after this point cannot
-        // reach the run that already holds the copy.
-        hooks: mergeHookRegistries(runRuntime.hooks),
+        // reach the run that already holds the copy. COR-1577 — a named agent's own tier
+        // follows it, as on a catalog dispatch.
+        hooks: mergeHookRegistries(runRuntime.hooks, sessionAgent?.options.hooks),
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
@@ -2978,13 +3099,59 @@ async function buildRuntimeComposition(
         ...(runId !== undefined ? { runId } : {}),
         // Restore the per-request token cap so recovered steps honour the same
         // maximumTokens constraint as the original run (PRRT_kwDORvupsc6MZEri).
-        ...(maximumTokens !== undefined ? { maximumTokens } : {}),
+        ...(maximumTokens !== undefined
+          ? { maximumTokens }
+          : sessionAgent?.options.maximumTokens !== undefined
+            ? { maximumTokens: sessionAgent.options.maximumTokens }
+            : {}),
       },
     };
     if (wantsHumanInput || wantsWakeup) {
       servicesRef.current = services;
     }
     return services;
+  }
+
+  /** The agent a recovered session run belongs to, or `undefined` for the default agent. */
+  async function resolveRecoveredSessionAgent(
+    session: AgentSession,
+    runId: string | undefined,
+    agentName: string | undefined,
+  ): Promise<SessionAgentRun | undefined> {
+    if (agentName === undefined || agentName === BUREAU_AGENT_NAME) return undefined;
+    // A composition with no catalog wired (`createBureau` always wires one) has no named agents,
+    // so the name is only a label and the run is the Bureau-wide runtime's.
+    if (catalogAgentRunOptionsResolver === undefined) return undefined;
+    const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
+    const owner = resolveSessionOwner(session.metadata);
+    const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner);
+    if (resolution.status === 'missing-agent') {
+      throw new Error(`${label}: catalog agent "${agentName}" is no longer in the catalog`);
+    }
+    if (resolution.status === 'not-durable-capable') {
+      throw new Error(
+        `${label}: catalog agent "${agentName}" no longer supports durable definition ` +
+          `resolution (OPERATIVE_RESOLVE_RUN_OPTIONS)`,
+      );
+    }
+    if (resolution.status === 'resolver-failed') {
+      throw new Error(
+        `${label}: catalog agent "${agentName}" could not resolve run options during ` +
+          `recovery: ${serializeUnknownError(resolution.error)}`,
+      );
+    }
+    const startedAt = session.metadata[SESSION_AGENT_REVISION_METADATA_KEY];
+    if (typeof startedAt === 'number' && startedAt !== resolution.run.definitionRevision) {
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          `[bureau] Catalog agent "${agentName}" definition revision changed since ${label} ` +
+          `started (was ${startedAt}, now ${resolution.run.definitionRevision}); ` +
+          `resuming with the current definition.`,
+      });
+    }
+    return resolution.run;
   }
 
   /**
@@ -4031,6 +4198,7 @@ async function buildRuntimeComposition(
     buildScheduledRunServices,
     loadCommittedScheduledActiveSkills,
     createBureauInvariantHooks,
+    resolveSessionAgentRun,
   };
 
   return composition;

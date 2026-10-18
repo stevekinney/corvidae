@@ -1,23 +1,29 @@
 /**
  * What a fresh Interborough has in it: four agents, one schedule, and one goal.
  *
- * Every agent answers from a script (`createScriptedGenerate`), so the host calls no model and
- * reads no provider key. The scripts are long enough for a development session and start over
- * whenever the host does. The agents are code, so {@link createSeededAgents} rebuilds them on
- * every start; the schedule and the goal are Bureau state, so {@link seedBureau} creates each only
- * when the Bureau does not already hold it, and a restart adds nothing.
+ * Every agent answers from a script, so the host calls no model and reads no provider key. The
+ * scripts start over whenever the host does. The agents are code, so {@link createSeededAgents}
+ * rebuilds them on every start; the schedule and the goal are Bureau state, so {@link seedBureau}
+ * creates each only when the Bureau does not already hold it, and a restart adds nothing.
+ *
+ * A session run that names one of these agents (Chat, or `createRun({ agentName })`) runs that
+ * agent's script, tools, and stop conditions. The host sets `humanInput: true`, so the Bureau also
+ * offers every such run its `requestHumanInput` tool.
  *
  * - `assistant`: answers every message with one fixed reply.
  * - `tool-runner`: looks an order up (a read-only tool), then asks to refund it (a mutating tool
  *   the toolbox holds for approval). The run stops on the pending approval, and the refund does
- *   not run until an operator approves it.
- * - `request-human-input`: asks a human a question and waits for the answer. It declares no input
- *   or output schema, so it takes free text and answers with free text. Bureau wires the
- *   `requestHumanInput` tool into the runs it creates itself and not yet into a catalog agent's,
- *   so this agent asks in its reply; it is where the tool call belongs once Bureau supports it.
+ *   not run until an operator approves it. Through a session run the review's `runId` is that
+ *   run's id and the session's request context signs the approval. `bureau.run('tool-runner')`
+ *   has no session, so it signs with {@link LOCAL_REQUEST_CONTEXT} instead.
+ * - `request-human-input`: calls `requestHumanInput` with its question and parks until an
+ *   operator answers the review, then thanks them. Only a session run offers that tool: a
+ *   catalog dispatch (`bureau.run`) does not yet, so there it ends on the unanswered call.
  * - `internal`: a plain agent the host does not publish.
  *
- * There are no users and no webhook receiver.
+ * What these agents do not cover: a schedule's fire and a goal's attempt pass their agent name
+ * into the Bureau-wide runtime, so the seeded schedule and goal run the Bureau's own scripted
+ * default and not `assistant`'s script. There are no users and no webhook receiver.
  */
 
 import type { Bureau } from '@lostgradient/bureau';
@@ -25,6 +31,7 @@ import {
   createAgent,
   createScriptedGenerate,
   stopWhen,
+  type GenerateFunction,
   type GenerateResponse,
   type ScriptedGenerateStep,
   type Validator,
@@ -67,15 +74,35 @@ function call(name: string, argumentsObject: Record<string, unknown>): ScriptedG
   return { kind: 'respond', response };
 }
 
+/** The signal the seeded `request-human-input` agent parks on, and the question it asks. */
+export const HUMAN_INPUT_SIGNAL = 'environment';
+export const HUMAN_INPUT_PROMPT = 'Which environment should the release go to?';
+
+/**
+ * A script that picks its response by the run's step number, so every run starts from its first
+ * response however many runs came before, and a run that parks resumes at the next one. The last
+ * response repeats if a run goes past the end.
+ */
+function byStep(steps: readonly ScriptedGenerateStep[]): GenerateFunction {
+  return async ({ step }) => {
+    const chosen = steps[Math.min(step, steps.length - 1)];
+    if (chosen === undefined || chosen.kind !== 'respond') {
+      throw new Error('A seeded script needs at least one response.');
+    }
+    return chosen.response;
+  };
+}
+
 /** `steps`, one run's worth, repeated so the agent can serve run after run. */
 function repeated(steps: readonly ScriptedGenerateStep[]): ScriptedGenerateStep[] {
   return Array.from({ length: SCRIPT_REPETITIONS }, () => steps).flat();
 }
 
 /**
- * The identity a signed approval binds to: the one local caller, acting through `tool-runner`.
- * Approving a tool call needs a request principal, tenant, audience, agent, and run, and a catalog
- * agent has one caller and one tenant, so they are constants here.
+ * The identity a signed approval binds to when `tool-runner` is dispatched with `bureau.run`: the
+ * one local caller, acting through `tool-runner`. A catalog dispatch has no session to supply a
+ * request context, and approving a tool call needs a request principal, tenant, audience, agent,
+ * and run, so they are constants here. A session run ignores this and uses the session's own.
  */
 const LOCAL_REQUEST_CONTEXT = {
   authority: {
@@ -131,13 +158,11 @@ export function createSeededAgents(approvalSecret: string) {
     'tool-runner': createAgent({
       name: 'tool-runner',
       description: 'Looks an order up, then asks for approval to refund it.',
-      generate: createScriptedGenerate(
-        repeated([
-          call('lookup-order', { orderId: 'order-1001' }),
-          call('issue-refund', { orderId: 'order-1001', cents: 4200 }),
-          reply('Order order-1001 was refunded.'),
-        ]),
-      ),
+      generate: byStep([
+        call('lookup-order', { orderId: 'order-1001' }),
+        call('issue-refund', { orderId: 'order-1001', cents: 4200 }),
+        reply('Order order-1001 was refunded.'),
+      ]),
       toolbox: createToolRunnerToolbox(approvalSecret),
       executeOptions: { requestContext: LOCAL_REQUEST_CONTEXT },
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
@@ -145,10 +170,16 @@ export function createSeededAgents(approvalSecret: string) {
     'request-human-input': createAgent({
       name: 'request-human-input',
       description: 'Asks a human which environment the release should go to.',
-      generate: createScriptedGenerate(
-        repeated([reply('Which environment should the release go to? Reply with its name.')]),
-      ),
-      stopWhen: stopWhen.noToolCalls(),
+      generate: byStep([
+        call('requestHumanInput', {
+          signalName: HUMAN_INPUT_SIGNAL,
+          prompt: HUMAN_INPUT_PROMPT,
+        }),
+        reply('Thanks, the release will go to the environment you named.'),
+      ]),
+      // The run ends on the request so it parks; once an operator answers it continues to the
+      // reply, which has no tool call.
+      stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],
     }),
     internal: createAgent({
       name: 'internal',

@@ -114,6 +114,13 @@ describe('router singleton', () => {
     expect(router.current.params['id']).toBe('~new-link');
   });
 
+  test('the dot-id override applies only to the placeholder path, never to another run', () => {
+    router.navigate('/runs/order-123?__weft_workflow_id=..');
+    expect(router.current.params['id']).toBe('order-123');
+    router.navigate('/runs/_?__weft_workflow_id=..');
+    expect(router.current.params['id']).toBe('..');
+  });
+
   test('navigate() to an unowned path yields no match', () => {
     router.navigate('/does-not-exist');
     expect(router.pathname).toBe('/does-not-exist');

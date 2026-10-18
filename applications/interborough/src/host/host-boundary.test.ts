@@ -128,6 +128,22 @@ describe('a cross-site request', () => {
     expect(response.status).toBe(403);
   });
 
+  test('is refused when only the host name, or only a prefix of it, matches', async () => {
+    const host = await start();
+    const port = Number(host.url.port);
+    for (const origin of [
+      `http://127.0.0.1:${port + 1}`,
+      `http://localhost:${port + 1}`,
+      `http://localhost.attacker.example:${port}`,
+      `http://127.0.0.1.attacker.example:${port}`,
+    ]) {
+      const response = await fetch(new URL('/api/v1/principal', host.url), {
+        headers: { origin },
+      });
+      expect(response.status, origin).toBe(403);
+    }
+  });
+
   test('a WebSocket from another origin is refused, and one from this origin is not', async () => {
     const host = await start();
     expect(await webSocketOutcome(host, 'https://attacker.example')).toBe('refused');

@@ -51,6 +51,9 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   return params;
 }
 
+/** The path segment `workflowDetailPath` emits in place of a dot-only identifier. */
+const DOT_ID_PLACEHOLDER = '_';
+
 /**
  * Builds a workflow detail path. Dot-only identifiers use a query-carried
  * escape because browsers normalize those exact path segments before the
@@ -64,7 +67,7 @@ export function workflowDetailPath(
   const dotOnly = workflowId === '.' || workflowId === '..';
   if (dotOnly) nextSearch.set('__weft_workflow_id', workflowId);
   const query = nextSearch.toString();
-  return `/runs/${dotOnly ? '_' : encodeURIComponent(workflowId)}${query ? `?${query}` : ''}`;
+  return `/runs/${dotOnly ? DOT_ID_PLACEHOLDER : encodeURIComponent(workflowId)}${query ? `?${query}` : ''}`;
 }
 
 interface RouteDefinitionMatch {
@@ -143,8 +146,13 @@ class DashboardRouter {
   get current(): RouteState {
     const found = findRouteDefinition(this.pathname, routes);
     const search = this.search;
+    // The override stands in for a dot-only identifier that cannot be a path segment, and
+    // `workflowDetailPath` pairs it with the placeholder `_`. On any other run's path it would
+    // make the page act on a different run than the one its address names.
     const escapedWorkflowId =
-      found?.definition.pattern === '/runs/:id' ? search.get('__weft_workflow_id') : null;
+      found?.definition.pattern === '/runs/:id' && found.params['id'] === DOT_ID_PLACEHOLDER
+        ? search.get('__weft_workflow_id')
+        : null;
     const params =
       (escapedWorkflowId === '.' || escapedWorkflowId === '..') && found
         ? { ...found.params, id: escapedWorkflowId }

@@ -7,10 +7,11 @@
  * every ledgered scenario here runs a durable bureau over SQLite.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type GenerateFunction, waitForCondition } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, waitForCondition } from '@lostgradient/operative';
 import { createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError, createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
@@ -40,7 +41,10 @@ const REQUEST = {
   runCreationRequestId: 'request-1',
 } as const;
 
-type ExtraOptions = Pick<BureauOptions, 'flowControl' | 'maximumSteps' | 'systemPrompt'>;
+type ExtraOptions = Pick<BureauOptions, 'flowControl' | 'maximumSteps' | 'systemPrompt'> & {
+  /** What the `researcher` catalog agent declares for itself. */
+  readonly researcher?: { readonly instructions?: string; readonly maximumSteps?: number };
+};
 
 /**
  * Runs `body` against a durable bureau over a fresh SQLite file whose runs
@@ -53,9 +57,17 @@ async function withDurableBureau(
   const runtime = createManualRuntimeServices({ origin: ORIGIN });
   const fixture = createSqliteStorageFixture({ runtime });
   const held = heldGenerate();
-  const bureau = await createBureau({
-    ...extra,
-    agents: {},
+  const { researcher, ...bureauOptions } = extra;
+  const bureau = await createBureau<AgentDefinitions>({
+    ...bureauOptions,
+    // `researcher` is the second agent the tests that name one dispatch to.
+    agents: {
+      researcher: createAgent({
+        generate: held.generate,
+        toolbox: createToolbox<readonly Tool[]>([]),
+        ...researcher,
+      }),
+    },
     generate: held.generate,
     toolbox: createToolbox<readonly Tool[]>([]),
     runtime,
@@ -130,6 +142,37 @@ describe('createRun with a run-creation request id', () => {
         expect(conflict).toBeInstanceOf(BureauLedgerConflictError);
       },
       { systemPrompt: 'You keep the books.', maximumSteps: 7 },
+    );
+  });
+
+  it('reads a named run’s defaults from the agent, so the digest holds the values that win', async () => {
+    await withDurableBureau(
+      async (bureau) => {
+        const named = { ...REQUEST, agentName: 'researcher' };
+        const first = await bureau.createRun(named);
+
+        // Spelling out what the agent declares is the same command: the agent's values beat the
+        // Bureau's defaults, so they are what the digest holds.
+        const retry = await bureau.createRun({
+          ...named,
+          systemPrompt: 'You are the researcher.',
+          maximumSteps: 4,
+        });
+        expect(retry.id).toBe(first.id);
+
+        // The Bureau's own defaults lost, so spelling them out is a different command.
+        const bureauPrompt = await rejectionOf(
+          bureau.createRun({ ...named, systemPrompt: 'You keep the books.' }),
+        );
+        expect(bureauPrompt).toBeInstanceOf(BureauLedgerConflictError);
+        const bureauSteps = await rejectionOf(bureau.createRun({ ...named, maximumSteps: 7 }));
+        expect(bureauSteps).toBeInstanceOf(BureauLedgerConflictError);
+      },
+      {
+        systemPrompt: 'You keep the books.',
+        maximumSteps: 7,
+        researcher: { instructions: 'You are the researcher.', maximumSteps: 4 },
+      },
     );
   });
 

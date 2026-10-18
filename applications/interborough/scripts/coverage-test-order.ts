@@ -43,7 +43,6 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/app/shell/critical-alert-strip.test.ts',
   'src/app/shell/auth-mode-banner.test.ts',
   'src/app/shell/notification-bell.test.ts',
-  'src/app/auth/api-key-entry.test.ts',
   'src/routes/dashboard/critical-alerts.test.ts',
   'src/routes/dashboard/health-probe.test.ts',
   'src/routes/dashboard/activity-feed-batcher.test.ts',

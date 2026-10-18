@@ -263,10 +263,9 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
           agentName: agentName ?? BUREAU_AGENT_NAME,
           conversationHistory: conversation.current,
         });
-      const resolvedAgentName =
-        agentName !== undefined && nextSession.agentName === BUREAU_AGENT_NAME
-          ? agentName
-          : nextSession.agentName;
+      // COR-1577 — a session is bound to the agent of the run that created it, so a later save
+      // never changes it: `createRun` refuses a run that names another agent before it reaches here.
+      const resolvedAgentName = nextSession.agentName;
       const mergedMetadata = mergeMetadata(nextSession.metadata, metadata);
       clearCompletedRunMetadata(mergedMetadata, store);
 

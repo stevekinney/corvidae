@@ -26,7 +26,6 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'tests/deployment/service-worker.test.ts',
   'tests/deployment/config-injection.test.ts',
   'tests/deployment/bun-mount.test.ts',
-  'src/app/auth/api-key-entry.test.ts',
   'src/app/shell/critical-alert-strip.test.ts',
   'src/app/shell/notification-bell.test.ts',
   'src/app/shell/auth-mode-banner.test.ts',

@@ -5,7 +5,8 @@
  * between a web page and that caller is what the browser will let the page send. `createBureauHandler`
  * leaves this to the host that binds the port, and these two checks are it:
  *
- * - **Host.** A request must name this listener: `127.0.0.1:<port>` or `localhost:<port>`. A page
+ * - **Host.** A request must name this listener: `127.0.0.1:<port>` or `localhost:<port>`, with the
+ *   port left out only on port 80. A page
  *   on `attacker.example` whose DNS name has been rebound to `127.0.0.1` still sends
  *   `Host: attacker.example`, and is refused.
  * - **Origin.** A browser attaches `Origin` to a cross-site form post, a `fetch`, and a WebSocket
@@ -17,9 +18,17 @@
  * @module request-guard
  */
 
-/** Every `Host` this listener answers to, for the port it ended up on. */
+/** The port a client leaves out of `Host` and `Origin` for plain HTTP. */
+const DEFAULT_HTTP_PORT = 80;
+
+/**
+ * Every `Host` this listener answers to, for the port it ended up on. A client omits the default
+ * port, so a listener on port 80 also answers to the bare names, and only a listener on port 80:
+ * on any other port a bare name means port 80 and is somewhere else.
+ */
 export function allowedHosts(port: number): readonly string[] {
-  return [`127.0.0.1:${port}`, `localhost:${port}`];
+  const names = ['127.0.0.1', 'localhost'];
+  return [...names.map((name) => `${name}:${port}`), ...(port === DEFAULT_HTTP_PORT ? names : [])];
 }
 
 /**

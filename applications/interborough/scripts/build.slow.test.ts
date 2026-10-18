@@ -4,7 +4,7 @@
  * races nothing that builds `build/`. Nothing asserts on how long the build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,5 +71,24 @@ describe('buildApplication', () => {
     // `src/lib/code-highlighter.ts` registers these two languages and two themes.
     expect(emittedModules(metafile, GRAMMAR_MODULE)).toEqual(['json', 'typescript']);
     expect(emittedModules(metafile, THEME_MODULE)).toEqual(['github-dark', 'github-light']);
+  });
+});
+
+describe('buildApplication asset retention', () => {
+  /** A finished build in a scratch directory, with a file from "the build before" planted in it. */
+  async function replacedBuild(development: boolean): Promise<string> {
+    const outdir = join(mkdtempSync(join(scratch, 'retention-')), 'build');
+    await buildApplication({ outdir, development: true });
+    writeFileSync(join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js'), '');
+    await buildApplication({ outdir, development });
+    return join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js');
+  }
+
+  it('keeps the previous build’s assets in development', async () => {
+    expect(existsSync(await replacedBuild(true))).toBe(true);
+  });
+
+  it('keeps nothing of the previous build in production', async () => {
+    expect(existsSync(await replacedBuild(false))).toBe(false);
   });
 });

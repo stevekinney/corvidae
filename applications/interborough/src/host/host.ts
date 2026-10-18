@@ -220,6 +220,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // A run that makes no tool call is finished. Without this the Bureau's own runs, such as a
       // schedule's fire, keep asking the model until the step limit.
       stopWhen: stopWhen.noToolCalls(),
+      // A session run of a seeded agent is offered `requestHumanInput`, which `request-human-input`
+      // calls to park for an operator's answer.
+      humanInput: true,
       validators: createSeededValidators(),
       storage,
     });

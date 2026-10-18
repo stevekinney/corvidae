@@ -650,7 +650,9 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   flowControl?: FlowControlPolicy;
   /**
    * F3 — opt into operative's `requestHumanInput` HITL tool for durable runs
-   * (`createRun` only; has no effect without a durable engine composed). When
+   * (`createRun` only; has no effect without a durable engine composed). COR-1577: it is added
+   * to a run of a named catalog agent as well as to a Bureau-wide one, and it is left out of both
+   * when the Bureau has no durable engine. When
    * `true`, bureau adds a `requestHumanInput` tool to each durable run's
    * toolbox, bound to that run's OWN event emitter and its real `ctx.services`
    * object — the only wiring under which a `HumanWaitParkedEvent` the tool
@@ -1482,6 +1484,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * same storage: a second engine holds no lease on these runs, so its cancel is not fenced by
    * their owner and its live feed does not see them. The bureau still owns it. The host must not
    * dispose it, and must not register workflows on it or start its own background tasks.
+   *
+   * This is an admin surface for one local principal. Every operation on the engine, a cancel, a
+   * signal, a start, bypasses the checks `createRun` and the session verbs make on the caller's
+   * ownership of a session or run, so a host that serves it must authenticate its callers
+   * itself. Hand it only to a host that answers to a single trusted caller, such as a local
+   * console.
    */
   durableEngine(): RegistryAgnosticEngine | undefined;
 
@@ -2286,9 +2294,27 @@ export interface CreateRunRequest {
    */
   maximumTokens?: number;
   /**
-   * The name of the agent to run. When provided, the bureau validates the name
-   * is non-empty. In a multi-agent bureau this is used to select the correct
-   * agent; in a single-agent bureau it is carried through as metadata.
+   * COR-1577 — the catalog agent to run. The run executes that agent's own `generate`, tools,
+   * system prompt and stop conditions, as `bureau.run(name, …)` would, with this Bureau's opt-in
+   * tools (`requestHumanInput`, `scheduleWakeup`, skills), guardrails and memory around them.
+   * Omitted, the run belongs to the default agent `bureau` and runs the Bureau-wide `generate`
+   * and toolbox, unless it continues a session that already has an agent.
+   *
+   * A session is bound to the agent of the run that created it. A later run may omit this field,
+   * and inherits the session's agent, or name that same agent. Naming another, including naming a
+   * catalog agent on a session bound to `bureau`, is refused with `BAD_REQUEST`. A name that is
+   * not in the catalog is refused with `NOT_FOUND`; both land before anything is persisted. The
+   * default agent `bureau` is always valid.
+   *
+   * For the system prompt, `maximumSteps` and `maximumTokens`, the request's own field wins, then
+   * the agent's value, then the Bureau's default. Stop conditions come from the agent, then the
+   * Bureau. The session's request context governs tool approvals, never the agent's
+   * `executeOptions.requestContext`.
+   *
+   * A named run needs only that agent's `generate`, so a Bureau with no Bureau-wide `generate`
+   * accepts it; an unnamed run on such a Bureau is refused with `NOT_CONFIGURED`. A durable named
+   * run recovers as its agent: one whose agent has left the catalog fails, and one whose
+   * definition revision changed logs a warning and resumes with the current definition.
    *
    * Typed dispatch endpoints (webhook ingress, OpenAI-compat) require this
    * field — callers must name the agent explicitly; there is no default-agent

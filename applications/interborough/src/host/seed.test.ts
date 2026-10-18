@@ -5,6 +5,8 @@ import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
 import {
+  HUMAN_INPUT_PROMPT,
+  HUMAN_INPUT_SIGNAL,
   PUBLISHED_AGENT_NAMES,
   SEEDED_AGENT_NAMES,
   SEEDED_GOAL_RUN_IDENTIFIER,
@@ -68,10 +70,10 @@ describe('the seeded agents', () => {
       { preconnect: original.preconnect },
     );
     try {
-      for (const name of ['assistant', 'internal', 'request-human-input'] as const) {
+      for (const name of ['assistant', 'internal', 'tool-runner'] as const) {
         for (let turn = 0; turn < 3; turn += 1) {
           const result = await host.bureau.run(name, `Message ${turn}`).result();
-          expect(result.content.length, name).toBeGreaterThan(0);
+          expect(result.steps.length, name).toBeGreaterThan(0);
         }
       }
     } finally {
@@ -90,10 +92,14 @@ describe('the seeded agents', () => {
     expect(internal.content).toBe('Internal bookkeeping is done. This reply is scripted.');
   });
 
-  test('request-human-input asks its question in plain text, with no schema', async () => {
+  test('request-human-input, dispatched without a session, ends on its unanswered request', async () => {
     const host = await start();
     const result = await host.bureau.run('request-human-input', 'Ship it').result();
-    expect(result.content).toBe('Which environment should the release go to? Reply with its name.');
+    // A catalog dispatch is not offered `requestHumanInput`, so the call goes unanswered.
+    expect(result.content).toBe('');
+    expect(result.steps.flatMap((step) => step.results.map((outcome) => outcome.toolName))).toEqual(
+      ['requestHumanInput'],
+    );
   });
 
   test('tool-runner looks the order up, then stops on a refund waiting for approval', async () => {
@@ -206,5 +212,82 @@ describe('the seeded schedule and goal', () => {
     expect(schedules?.items).toEqual([]);
     expect(await host.bureau.goals.list()).toEqual([]);
     expect(host.bureau.agents.has('assistant')).toBe(true);
+  });
+});
+
+async function waitForReview(host: Host, runId: string) {
+  for (let attempt = 0; attempt < 400; attempt += 1) {
+    const review = host.bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+    if (review !== undefined) return review;
+    await Bun.sleep(5);
+  }
+  throw new Error(`No review was raised for run "${runId}".`);
+}
+
+describe('the seeded agents through session runs', () => {
+  test('request-human-input parks for an operator and continues once answered', async () => {
+    const host = await start();
+    const run = await host.bureau.createRun({
+      message: 'Ship it',
+      agentName: 'request-human-input',
+    });
+
+    const review = await waitForReview(host, run.id);
+    expect(review).toMatchObject({
+      kind: 'human-wait',
+      runId: run.id,
+      sessionId: run.sessionId,
+      agentName: 'request-human-input',
+      signalName: HUMAN_INPUT_SIGNAL,
+      prompt: HUMAN_INPUT_PROMPT,
+    });
+
+    await host.bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: 'anonymous:local',
+      payload: { environment: 'staging' },
+    });
+    const finished = await host.bureau.waitForDurableRun(run.id);
+    expect(finished?.status).toBe('completed');
+    expect(host.bureau.listPendingReviews()).toEqual([]);
+  });
+
+  test('tool-runner raises its refund approval under the session run, and approving runs it', async () => {
+    const host = await start();
+    const run = await host.bureau.createRun({
+      message: 'Refund order-1001',
+      agentName: 'tool-runner',
+    });
+
+    const review = await waitForReview(host, run.id);
+    expect(review.kind).toBe('tool-approval');
+    // The review belongs to the session run itself, not to a constant stand-in for it.
+    expect(review.runId).toBe(run.id);
+    expect(review.sessionId).toBe(run.sessionId);
+    if (review.kind !== 'tool-approval') throw new Error('unreachable');
+    expect(review.approval.toolName).toBe('issue-refund');
+
+    const resolved = await host.bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: 'anonymous:local',
+    });
+    expect(resolved).toMatchObject({ id: review.id, kind: 'tool-approval', decision: 'approve' });
+    expect(host.bureau.listPendingReviews()).toEqual([]);
+  });
+
+  test('a second session run starts from the first response again', async () => {
+    const host = await start();
+    const first = await host.bureau.createRun({ message: 'one', agentName: 'request-human-input' });
+    await waitForReview(host, first.id);
+    const second = await host.bureau.createRun({
+      message: 'two',
+      agentName: 'request-human-input',
+    });
+
+    const review = await waitForReview(host, second.id);
+
+    expect(review).toMatchObject({ kind: 'human-wait', runId: second.id });
   });
 });
