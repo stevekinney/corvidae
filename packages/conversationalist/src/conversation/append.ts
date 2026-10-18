@@ -5,7 +5,6 @@ import {
 } from '../environment';
 import { createIntegrityError, createInvalidInputError } from '../errors';
 import type {
-  AssistantMessage,
   ConversationHistory as Conversation,
   JSONValue,
   Message,
@@ -57,27 +56,41 @@ function requireMessageInput(
 }
 
 /**
- * An already-built `Message` carries the `position` and `createdAt` the
- * builder stamps. A raw input that only names an `id` (a caller choosing the
- * row's identity) is not built yet, so plugins still run over it.
+ * Marks an input that names its own `id` but is new content, so conversation
+ * plugins still run over it. A symbol, so the mark never reaches a message and
+ * survives the object spread plugins commonly return.
  */
-function isBuiltMessage(input: AppendableMessageInput): input is Message | AssistantMessage {
-  return 'id' in input && 'position' in input && 'createdAt' in input;
+const PLUGINS_APPLY = Symbol('conversationalist.pluginsApply');
+
+/**
+ * Names the id a row will be appended under, while leaving conversation plugins
+ * in force over it, as they are over any raw input. Plain `{ id }` inputs mean
+ * something else: an `id` marks an already-built message (or a remote history
+ * being imported), which `appendMessages` takes as it is. Use this when the id
+ * is the caller's to choose, such as a row whose identity a client already saw
+ * on a stream before the row was committed.
+ */
+export function withMessageId(input: MessageInput, id: string): MessageInput {
+  return { ...input, id, [PLUGINS_APPLY]: true } as MessageInput;
 }
 
 /**
- * Runs conversation plugins over a MessageInput. Already-built messages
- * (see `isBuiltMessage`) are passed through untouched — they were
- * presumably already processed once by `buildMessage`, and plugins are typed
- * against `MessageInput`'s mutable shape, which a `Message`'s readonly
- * `content` array isn't structurally assignable to anyway.
+ * Runs conversation plugins over a MessageInput. An input that carries an `id`
+ * is passed through untouched — an already-built message was presumably
+ * processed once by `buildMessage`, and plugins are typed against
+ * `MessageInput`'s mutable shape, which a `Message`'s readonly `content` array
+ * isn't structurally assignable to anyway — unless it was marked by
+ * {@link withMessageId}, which keeps its id through the plugins.
  */
 function applyPlugins(
   input: AppendableMessageInput,
   plugins: ConversationEnvironment['plugins'],
 ): AppendableMessageInput {
-  if (isBuiltMessage(input)) return input;
-  return plugins.reduce((acc, plugin) => plugin(acc), input);
+  if (!('id' in input)) return plugins.reduce((acc, plugin) => plugin(acc), input);
+  if (!(PLUGINS_APPLY in input)) return input;
+  const { id } = input;
+  const processed = plugins.reduce((acc, plugin) => plugin(acc), input as MessageInput);
+  return { ...processed, id };
 }
 
 /**

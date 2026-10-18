@@ -1,6 +1,6 @@
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { Conversation } from 'conversationalist';
+import { Conversation, defineMessagePlugin, type MessageInput } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from './conditions/predicates';
@@ -148,6 +148,29 @@ describe('a run with a run id commits deterministic row ids', () => {
     });
 
     expect(rowIds(conversation).at(-1)).toBe('run-1:step:1');
+  });
+
+  it('still runs conversation plugins over the rows it names', async () => {
+    const shout = defineMessagePlugin(
+      { id: 'shout', revision: 1 },
+      (input: MessageInput): MessageInput => ({
+        ...input,
+        content: typeof input.content === 'string' ? input.content.toUpperCase() : input.content,
+      }),
+    );
+    const conversation = new Conversation(undefined, { plugins: [shout] });
+
+    await executeLoop({
+      generate: async () => ({ content: 'hello', toolCalls: [] }),
+      toolbox: createTestToolbox([]),
+      conversation,
+      stopWhen: noToolCalls(),
+      runId: 'run-1',
+    });
+
+    const [row] = conversation.getMessages({ includeHidden: true });
+    expect(row?.id).toBe('run-1:step:0');
+    expect(row?.content).toBe('HELLO');
   });
 
   it('mints ids as before when the run has no run id', async () => {

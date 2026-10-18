@@ -19,7 +19,7 @@
  * @module message-identifiers
  */
 
-import type { Conversation, MessageInput } from 'conversationalist';
+import { type Conversation, withMessageId } from 'conversationalist';
 
 /** The id of the assistant text row of `step`, or `undefined` for a run with no id. */
 export function assistantMessageIdentifier(
@@ -69,6 +69,5 @@ export function appendFinalAssistantMessage(
     conversation.appendAssistantMessage(content);
     return;
   }
-  const row: MessageInput & { readonly id: string } = { id, role: 'assistant', content };
-  conversation.appendMessages(row);
+  conversation.appendMessages(withMessageId({ role: 'assistant', content }, id));
 }

@@ -9,6 +9,7 @@ import {
   Conversation,
   createConversationHistory as createConversation,
   defineMessagePlugin,
+  withMessageId,
 } from '../src';
 import type { MessageInput } from '../src/types';
 import { getOrderedMessages } from '../src/utilities/message-store';
@@ -39,13 +40,45 @@ describe('caller-chosen row ids', () => {
       }),
     );
     const withPlugin = { ...environment, plugins: [upcase] };
-    const input = { id: 'chosen-id', role: 'assistant', content: 'hello' } as MessageInput;
+    const input = withMessageId({ role: 'assistant', content: 'hello' }, 'chosen-id');
 
     const conversation = appendMessages(createConversation({}, withPlugin), input, withPlugin);
 
     const [message] = getOrderedMessages(conversation);
     expect(message?.id).toBe('chosen-id');
     expect(message?.content).toBe('HELLO');
+  });
+
+  it('keeps the id when a plugin returns an input without it', () => {
+    const forgetful = defineMessagePlugin(
+      { id: 'forgetful', revision: 1 },
+      (input: MessageInput): MessageInput => ({ role: input.role, content: input.content }),
+    );
+    const withPlugin = { ...environment, plugins: [forgetful] };
+
+    const conversation = appendMessages(
+      createConversation({}, withPlugin),
+      withMessageId({ role: 'assistant', content: 'hello' }, 'chosen-id'),
+      withPlugin,
+    );
+
+    expect(conversation.ids).toEqual(['chosen-id']);
+  });
+
+  it('still takes a plain id-bearing input as built, without running plugins over it', () => {
+    const upcase = defineMessagePlugin(
+      { id: 'upcase', revision: 1 },
+      (input: MessageInput): MessageInput => ({
+        ...input,
+        content: typeof input.content === 'string' ? input.content.toUpperCase() : input.content,
+      }),
+    );
+    const withPlugin = { ...environment, plugins: [upcase] };
+    const imported = { id: 'imported-id', role: 'assistant', content: 'hello' } as MessageInput;
+
+    const conversation = appendMessages(createConversation({}, withPlugin), imported, withPlugin);
+
+    expect(getOrderedMessages(conversation)[0]?.content).toBe('hello');
   });
 
   it('refuses a second row under the same id', () => {

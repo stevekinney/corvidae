@@ -25,7 +25,7 @@ import type {
 } from '../types';
 import { getOrderedMessages } from '../utilities/message-store';
 import { pairToolCallsWithResults } from '../utilities/tool-calls';
-import { appendMessages } from './append';
+import { appendMessages, withMessageId } from './append';
 export {
   materializeToolCall,
   materializeToolCalls,
@@ -109,7 +109,7 @@ export function appendToolCalls(
   const messageInputs = materializeToolCalls(toolCalls, {
     generateId: resolvedEnvironment.randomId,
   }).map((toolCall, index) =>
-    withMessageId(createToolCallMessageInput(toolCall, undefined), messageIds?.[index]),
+    withBatchMessageId(createToolCallMessageInput(toolCall, undefined), messageIds?.[index]),
   );
 
   return appendMessages(conversation, ...messageInputs, resolvedEnvironment);
@@ -149,7 +149,7 @@ export function appendToolResults(
   const messageIds = requireBatchMessageIds(batch, toolResults.length, 'appendToolResults');
 
   const messageInputs = materializeToolResults(toolResults).map((toolResult, index) =>
-    withMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
+    withBatchMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);
@@ -194,7 +194,7 @@ export async function appendToolResultsAsync(
   const normalizedToolResults = await materializeToolResultsAsync(toolResults, { signal });
 
   const messageInputs = normalizedToolResults.map((toolResult, index) =>
-    withMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
+    withBatchMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);
@@ -247,9 +247,9 @@ function requireBatchMessageIds(
   return messageIds;
 }
 
-/** An input carrying an explicit row id; `appendMessages` keeps it instead of minting one. */
-function withMessageId(input: MessageInput, id: string | undefined): MessageInput {
-  return id === undefined ? input : ({ ...input, id } as MessageInput);
+/** An input carrying an explicit row id; conversation plugins still run over it. */
+function withBatchMessageId(input: MessageInput, id: string | undefined): MessageInput {
+  return id === undefined ? input : withMessageId(input, id);
 }
 
 function createToolCallMessageInput(

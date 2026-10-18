@@ -141,6 +141,7 @@ export {
   toChatMessages,
   updateMessage,
   validateConversationHistoryIntegrity,
+  withMessageId,
 } from './conversation/index';
 export type {
   AppendBatchOptions,

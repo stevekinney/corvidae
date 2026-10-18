@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
-import { Conversation, type MessageInput } from 'conversationalist';
+import { Conversation, withMessageId } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
@@ -433,13 +433,9 @@ export async function runStep(
       conversation.appendAssistantMessage(content, metadata);
     } else {
       // The row is committed under the id a streaming client was shown.
-      const row: MessageInput & { readonly id: string } = {
-        id: assistantMessageId,
-        role: 'assistant',
-        content,
-        metadata,
-      };
-      conversation.appendMessages(row);
+      conversation.appendMessages(
+        withMessageId({ role: 'assistant', content, metadata }, assistantMessageId),
+      );
     }
   }
 

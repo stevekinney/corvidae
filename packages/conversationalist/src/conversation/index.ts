@@ -14,6 +14,7 @@ export {
   appendUnsafeMessage,
   appendUserMessage,
   prependMessages,
+  withMessageId,
 } from './append';
 
 // Query
