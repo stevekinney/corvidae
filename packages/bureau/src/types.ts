@@ -353,6 +353,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * register/unregister lifecycle: the map is fixed for the bureau's
    * lifetime, independent of and additive to `createRun`/`generate`/
    * `provider` below (a bureau may use either, both, or neither surface).
+   *
+   * The name `bureau` is reserved for the Bureau-wide default agent that a
+   * `createRun` call without `agentName` runs; an entry called `bureau` is
+   * refused with `BureauError` (`BAD_REQUEST`).
    */
   agents: D;
   /**
@@ -1358,8 +1362,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * COR-424 — where a run-creation request's receipt stands: `recorded`,
    * `pending` (claimed, with no started run), `expired` once its binding's
    * retention window has passed (the same request id then creates a new
-   * run), or `not-found`. Scoped like the ledger key, to the principal and
-   * published agent (`agentName`, default `bureau`). A query that finds the
+   * run), or `not-found`. Scoped like the ledger key, to the principal and to
+   * the agent the run is: the session's, when the request continued an existing session (name it
+   * with `sessionId`), otherwise `agentName`, default `bureau`. A query that finds the
    * run started records its receipt, exactly as a retry would. Rejects
    * with `BureauError` (`BAD_REQUEST`) for a blank principal or request id,
    * and (`NOT_CONFIGURED`, subject `durable`) without a durable engine.
@@ -2374,6 +2379,13 @@ export interface LocateRunCreationReceiptRequest {
   principal: string;
   /** The published agent the request addressed. Defaults to `bureau`. */
   agentName?: string | undefined;
+  /**
+   * The session the request continued. A request that omitted `agentName` on an existing
+   * session ran as the session's agent and was keyed under it, so name the session to find it
+   * without knowing the agent. A session that does not exist, or that another principal owns,
+   * binds nothing; one bound to an agent other than `agentName` is refused with `BAD_REQUEST`.
+   */
+  sessionId?: string | undefined;
   runCreationRequestId: string;
 }
 

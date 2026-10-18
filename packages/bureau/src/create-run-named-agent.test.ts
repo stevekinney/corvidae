@@ -404,6 +404,104 @@ describe('two runs creating one new session', () => {
     expect(calls[loserName]).toBe(0);
     expect(second).toBeDefined();
   });
+
+  it('words the refusal of an unnamed run that lost from what the request said', async () => {
+    const calls = { alpha: 0, house: 0 };
+    const base = textValueStore(new MemoryStorage());
+    // The unnamed run's first save to the session waits until the named run's has landed, so it
+    // is the one that finds the session already bound.
+    let alphaSaved!: () => void;
+    const alphaHasSaved = new Promise<void>((resolve) => {
+      alphaSaved = resolve;
+    });
+    const persistence: typeof base = {
+      ...base,
+      conditionalBatch: async (conditions, operations) => {
+        const sessionWrite = operations.find(
+          (operation) =>
+            operation.type === 'set' && operation.key.startsWith('agent-session-v2:body:'),
+        );
+        const writer =
+          sessionWrite?.type === 'set' && sessionWrite.value.includes('"agentName":"bureau"')
+            ? 'unnamed'
+            : 'named';
+        if (sessionWrite !== undefined && writer === 'unnamed') await alphaHasSaved;
+        const applied = await base.conditionalBatch(conditions, operations);
+        if (sessionWrite !== undefined && writer === 'named' && applied) alphaSaved();
+        return applied;
+      },
+    };
+    const bureau = await start({
+      agents: {
+        alpha: createAgent({
+          generate: async () => {
+            calls.alpha += 1;
+            return { content: 'alpha speaking', toolCalls: [] };
+          },
+        }),
+      },
+      generate: async () => {
+        calls.house += 1;
+        return { content: 'house speaking', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      persistence,
+    });
+
+    const outcomes = await Promise.allSettled([
+      bureau.createRun({ message: 'a', agentName: 'alpha', sessionId: 'mixed' }),
+      bureau.createRun({ message: 'b', sessionId: 'mixed' }),
+    ]);
+
+    const [namedOutcome, unnamedOutcome] = outcomes;
+    expect(namedOutcome?.status).toBe('fulfilled');
+    expect(unnamedOutcome?.status).toBe('rejected');
+    const refusal = (unnamedOutcome as PromiseRejectedResult).reason as BureauError;
+    expect(refusal.code).toBe('BAD_REQUEST');
+    // It named no agent, so the refusal must not say it did; it says what happened instead.
+    expect(refusal.message).not.toContain('cannot name');
+    expect(refusal.message).toContain('named no agent');
+    expect(refusal.message).toContain('"alpha"');
+    expect(refusal.message).toContain('"mixed"');
+    await finish(bureau, (namedOutcome as PromiseFulfilledResult<{ id: string }>).value.id);
+    expect(bureau.listRuns()).toHaveLength(1);
+    expect(calls).toEqual({ alpha: 1, house: 0 });
+  });
+});
+
+describe('an agent named bureau', () => {
+  it('is refused at construction, because the name is the Bureau-wide default agent', async () => {
+    const attempt = createBureau<AgentDefinitions>({
+      agents: { bureau: createAgent({ generate: scripted('catalog bureau') }) },
+      generate: scripted('house default'),
+      toolbox: createToolbox([]),
+      persistence: textValueStore(new MemoryStorage()),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    const refusal = await rejectionOf(attempt);
+
+    expect(refusal).toBeInstanceOf(BureauError);
+    expect((refusal as BureauError).code).toBe('BAD_REQUEST');
+    expect((refusal as BureauError).message).toContain('"bureau"');
+    expect((refusal as BureauError).message).toContain('reserved');
+  });
+
+  it('leaves other names, including ones that contain it, alone', async () => {
+    const bureau = await start({
+      agents: {
+        'bureau-2': createAgent({ generate: scripted('second') }),
+        Bureau: createAgent({ generate: scripted('capitalized') }),
+      },
+      generate: scripted('house default'),
+      toolbox: createToolbox([]),
+    });
+
+    const run = await bureau.createRun({ message: 'hi', agentName: 'bureau-2' });
+    await finish(bureau, run.id);
+
+    expect(await replies(bureau, run.sessionId)).toEqual(['second']);
+  });
 });
 
 describe('run settings', () => {

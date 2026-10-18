@@ -1473,6 +1473,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   validateCheckpointRetentionOption(options.checkpointRetention);
   validateRunCreationRetentionOption(options.runCreationTerminalRetentionMs);
   validateChildrenOption(options.children);
+  // COR-1577: `bureau` names the Bureau-wide default agent on the session path, which is told
+  // apart from a catalog agent by name alone, so a catalog entry called `bureau` would be
+  // shadowed there and run under another name on `bureau.run()`. Refused before anything is built.
+  if (Object.hasOwn(options.agents, BUREAU_AGENT_NAME)) {
+    throw new BureauError(
+      `Agent name "${BUREAU_AGENT_NAME}" is reserved for the Bureau-wide default agent, so a ` +
+        `catalog agent cannot use it.`,
+      'BAD_REQUEST',
+    );
+  }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -4433,18 +4443,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
       throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
     }
-    if (
-      session !== undefined &&
-      request.agentName !== undefined &&
-      request.agentName !== session.agentName
-    ) {
-      throw new BureauError(
-        `Session "${sessionId}" belongs to agent "${session.agentName}", so a run cannot name ` +
-          `agent "${request.agentName}".`,
-        'BAD_REQUEST',
-      );
-    }
-    const agentName = session?.agentName ?? request.agentName ?? BUREAU_AGENT_NAME;
+    const agentName = resolveRunAgentName(sessionId, session, request.agentName);
     let sessionAgent: SessionAgentRun | undefined;
     if (agentName === BUREAU_AGENT_NAME) {
       if (!runtime.ready) {
@@ -4516,8 +4515,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // exactly the owner the run records, and the caller a receipt replays to
             // is the principal that owns the run. The `''` is unreachable.
             callerId: request.principal ?? '',
-            // The agent the caller stated, which is how `locateRunCreationReceipt` keys it too.
-            agentName: request.agentName ?? BUREAU_AGENT_NAME,
+            // The agent the run is, not the one the caller stated: a retry that spells out
+            // the agent an omitted name inherited is the same command, and
+            // `locateRunCreationReceipt` resolves it the same way.
+            agentName,
             requestId: request.runCreationRequestId.trim(),
             payloadDigest: digestRunCreationPayload({
               message: request.message,
@@ -5283,7 +5284,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         error instanceof SessionOwnerConflictError
           ? new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND')
           : error instanceof SessionAgentConflictError
-            ? new BureauError(error.message, 'BAD_REQUEST')
+            ? new BureauError(
+                // A run that named no agent started on the default one before it saw the
+                // session, so it must not be told it named `bureau`.
+                request.agentName === undefined
+                  ? `Session "${sessionId}" was bound to agent "${error.boundAgentName}" by ` +
+                      `another run while this run, which named no agent, was starting on the ` +
+                      `default agent "${error.requestedAgentName}". Retry to continue the session.`
+                  : error.message,
+                'BAD_REQUEST',
+              )
             : error;
       await releaseRunCreationClaim(ledgerClaim, rejection);
       throw rejection;
@@ -5295,6 +5305,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // executing; the claim stays pending, and a retry observes the run and
     // records its receipt.
     return ledgerClaim === undefined ? created : ledgerClaim.complete(created);
+  }
+
+  /**
+   * COR-1577 — which agent a run is. A session is bound to the agent of the run that created it,
+   * so an existing session decides, and a run that names another agent is refused; a new session
+   * takes the named agent, or the default `bureau`. Starting a run and locating its
+   * run-creation receipt both resolve the agent here, so the two cannot disagree on the ledger key.
+   */
+  function resolveRunAgentName(
+    sessionId: string,
+    session: AgentSession | undefined,
+    statedAgentName: string | undefined,
+  ): string {
+    if (
+      session !== undefined &&
+      statedAgentName !== undefined &&
+      statedAgentName !== session.agentName
+    ) {
+      throw new BureauError(
+        `Session "${sessionId}" belongs to agent "${session.agentName}", so a run cannot name ` +
+          `agent "${statedAgentName}".`,
+        'BAD_REQUEST',
+      );
+    }
+    return session?.agentName ?? statedAgentName ?? BUREAU_AGENT_NAME;
   }
 
   /**
@@ -5325,9 +5360,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       typeof request.runCreationRequestId === 'string' ? request.runCreationRequestId.trim() : '';
     if (principal.trim().length === 0) toBadRequest('"principal" must be a non-empty string');
     if (requestId.length === 0) toBadRequest('"runCreationRequestId" must be a non-empty string');
-    return requireRunCreationLedger().locate({
+    const ledger = requireRunCreationLedger();
+    // A request that continued a session was keyed under the session's agent, so naming the
+    // session resolves it the way starting the run did. A session that is not there, or is
+    // another principal's, binds nothing, exactly as it would not have for the run.
+    let agentName = request.agentName;
+    const sessionId = request.sessionId?.trim();
+    if (sessionId !== undefined && sessionId.length > 0) {
+      const { session } = await loadConversation(sessionId);
+      const owner = ownerFromPrincipal(principal, toBadRequest);
+      const visible =
+        session !== undefined && isSessionAuthorityAuthorized(session.metadata, owner)
+          ? session
+          : undefined;
+      agentName = resolveRunAgentName(sessionId, visible, request.agentName);
+    }
+    return ledger.locate({
       callerId: principal,
-      agentName: request.agentName ?? BUREAU_AGENT_NAME,
+      agentName: agentName ?? BUREAU_AGENT_NAME,
       requestId,
     });
   }
