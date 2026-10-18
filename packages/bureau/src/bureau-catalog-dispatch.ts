@@ -343,7 +343,7 @@ export function createCatalogDispatcher({
         goalAttemptAttributions.get(held)?.goalRunId === goalAttempt.goalRunId &&
         goalAttemptAttributions.get(held)?.attemptIndex === goalAttempt.attemptIndex &&
         held.agentName === name &&
-        held.principal === principal;
+        held.principal === ownerOrLocal(principal);
       if (held !== undefined && !sameAttempt) {
         throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
       }
