@@ -230,6 +230,7 @@ export async function callGenerateWithRetry(
             ...mutatedContext,
             steering: context.steering,
             generatedMediaAdmitter: context.generatedMediaAdmitter,
+            assistantMessageId: context.assistantMessageId,
           };
           if (admitMutated) currentContext = await admitMutated(currentContext);
           mutated = true;

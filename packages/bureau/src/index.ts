@@ -165,6 +165,7 @@ export type {
   SessionLoadOutcome,
 } from './create-bureau';
 export {
+  ApprovalOutcomeNotWrittenError,
   BureauError,
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,

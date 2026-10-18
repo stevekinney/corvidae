@@ -1277,3 +1277,68 @@ describe('createAgent carries the media-admission port to its runs', () => {
     expect(admitter.admissions).toHaveLength(1);
   });
 });
+
+describe('a run with an id commits parts under the ids a streaming client was shown', () => {
+  const thinkingToolStep: GenerateResponse = {
+    content: '',
+    parts: [thinkingPart],
+    toolCalls: [{ id: 'call-a', name: 'get_weather', arguments: { location: 'Paris' } }],
+  };
+
+  it('names a thinking-only row <runId>:step:<n>, and the first tool call after it', async () => {
+    const result = await run(
+      baseOptions(createMockGenerate([thinkingToolStep, { content: 'Sunny.', toolCalls: [] }]), {
+        runId: 'run-7',
+      }),
+    );
+
+    const ids = result.conversation.getMessages().map((message) => [message.role, message.id]);
+    expect(ids).toEqual([
+      ['assistant', 'run-7:step:0'],
+      ['tool-call', 'run-7:step:0:call:call-a'],
+      ['tool-result', 'run-7:step:0:result:call-a'],
+      ['assistant', 'run-7:step:1'],
+    ]);
+    expect(result.steps.map((step) => step.messageId)).toEqual(['run-7:step:0', 'run-7:step:1']);
+  });
+
+  it('keeps the same row id when a hook replaces a streamed row', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => ({ content: '[redacted]', toolCalls: [] }));
+    const generate = withStreaming(async ({ streaming }) => {
+      streaming.reportPart?.({ type: 'start', partIndex: 0, kind: 'text' });
+      streaming.reportPart?.({
+        type: 'delta',
+        partIndex: 0,
+        sequence: 1,
+        delta: { kind: 'text', text: 'secret' },
+      });
+      streaming.reportPart?.({ type: 'complete', partIndex: 0, part: textPart('secret') });
+      return { content: 'secret', parts: [textPart('secret')], toolCalls: [] };
+    });
+
+    const result = await run(baseOptions(generate, { hooks, runId: 'run-8' }));
+
+    const rows = result.conversation
+      .getMessages()
+      .filter((message) => message.role === 'assistant');
+    expect(rows.map((row) => [row.id, row.content])).toEqual([['run-8:step:0', '[redacted]']]);
+    expect(result.steps[0]?.messageId).toBe('run-8:step:0');
+  });
+
+  it('commits an onMaximumSteps replacement under the next step id and reports it run-wide', async () => {
+    const result = await run(
+      baseOptions(createMockGenerate([{ content: 'One.', toolCalls: [weatherCall()] }]), {
+        runId: 'run-9',
+        maximumSteps: 1,
+        stopWhen: undefined,
+        onMaximumSteps: async () => 'Summary.',
+      }),
+    );
+    const rows = result.conversation
+      .getMessages()
+      .filter((message) => message.role === 'assistant');
+    expect(rows.map((row) => row.id)).toEqual(['run-9:step:0', 'run-9:step:1']);
+    expect(result.parts).toEqual([textPart('One.'), textPart('Summary.')]);
+  });
+});

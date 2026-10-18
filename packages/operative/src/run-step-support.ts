@@ -12,6 +12,7 @@ import {
   ToolSettledBubbleEvent,
   UsageAccumulatedEvent,
 } from './events';
+import { toolResultMessageIdentifier } from './message-identifiers';
 import type { EventDispatcher, RunState, StepDeps } from './run-step';
 import type {
   ElicitationOptions,
@@ -98,6 +99,27 @@ export function createElicit(...parameters: Parameters<typeof createElicitationR
   };
 }
 
+/** What names a step's `tool-result` rows: its run and its step number. */
+export interface ResultRowScope {
+  readonly runId: string | undefined;
+  readonly step: number;
+}
+
+/**
+ * The row ids for appending `results`, derived from the run and step; `undefined`
+ * when the run has no id, so the conversation mints them.
+ */
+export function resultRowBatch(
+  scope: ResultRowScope | undefined,
+  results: ReadonlyArray<{ readonly callId: string }>,
+): { messageIds: string[] } | undefined {
+  if (scope === undefined || scope.runId === undefined) return undefined;
+  const { runId, step } = scope;
+  return {
+    messageIds: results.map((result) => toolResultMessageIdentifier(runId, step, result.callId)!),
+  };
+}
+
 /**
  * Seals the given tool calls with a synthesized error result. Called on
  * every unrecovered error/abort path that runs after
@@ -121,6 +143,7 @@ export async function sealDanglingToolCalls(
   collectAsync: boolean,
   reason: string,
   calls: ReadonlyArray<ToolCall> = conversation.getPendingToolCalls(),
+  rowScope?: ResultRowScope,
 ): Promise<ToolExecutionResult[]> {
   if (calls.length === 0) return [];
 
@@ -133,10 +156,11 @@ export async function sealDanglingToolCalls(
     result: reason,
   }));
 
+  const batch = resultRowBatch(rowScope, danglingResults);
   if (collectAsync) {
-    await conversation.appendToolResultsAsync(danglingResults);
+    await conversation.appendToolResultsAsync(danglingResults, batch);
   } else {
-    conversation.appendToolResults(danglingResults);
+    conversation.appendToolResults(danglingResults, batch);
   }
   return danglingResults;
 }

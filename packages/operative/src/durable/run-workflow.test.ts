@@ -1910,6 +1910,9 @@ describe('durable agentRun workflow', () => {
             message.content.startsWith('[signal:human-response]'),
         );
         expect(continuationMessage?.content).toBe('[signal:human-response] {"approved":true}');
+        // The row is named from the run, so a client that watched the run resume
+        // shows it under the id a later snapshot holds it by (COR-855).
+        expect(continuationMessage?.id).toBe('hitl-run:signal:human-response:0');
         // The original prompt is still present, before the continuation message.
         expect(messages[0]?.content).toBe('start');
       } finally {

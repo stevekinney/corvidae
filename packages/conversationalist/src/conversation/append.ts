@@ -56,18 +56,41 @@ function requireMessageInput(
 }
 
 /**
- * Runs conversation plugins over a MessageInput. Already-built messages
- * (identified by having an `id`) are passed through untouched — they were
- * presumably already processed once by `buildMessage`, and plugins are typed
- * against `MessageInput`'s mutable shape, which a `Message`'s readonly
- * `content` array isn't structurally assignable to anyway.
+ * Marks an input that names its own `id` but is new content, so conversation
+ * plugins still run over it. A symbol, so the mark never reaches a message and
+ * survives the object spread plugins commonly return.
+ */
+const PLUGINS_APPLY = Symbol('conversationalist.pluginsApply');
+
+/**
+ * Names the id a row will be appended under, while leaving conversation plugins
+ * in force over it, as they are over any raw input. Plain `{ id }` inputs mean
+ * something else: an `id` marks an already-built message (or a remote history
+ * being imported), which `appendMessages` takes as it is. Use this when the id
+ * is the caller's to choose, such as a row whose identity a client already saw
+ * on a stream before the row was committed.
+ */
+export function withMessageId(input: MessageInput, id: string): MessageInput {
+  return { ...input, id, [PLUGINS_APPLY]: true } as MessageInput;
+}
+
+/**
+ * Runs conversation plugins over a MessageInput. An input that carries an `id`
+ * is passed through untouched — an already-built message was presumably
+ * processed once by `buildMessage`, and plugins are typed against
+ * `MessageInput`'s mutable shape, which a `Message`'s readonly `content` array
+ * isn't structurally assignable to anyway — unless it was marked by
+ * {@link withMessageId}, which keeps its id through the plugins.
  */
 function applyPlugins(
   input: AppendableMessageInput,
   plugins: ConversationEnvironment['plugins'],
 ): AppendableMessageInput {
-  if ('id' in input) return input;
-  return plugins.reduce((acc, plugin) => plugin(acc), input);
+  if (!('id' in input)) return plugins.reduce((acc, plugin) => plugin(acc), input);
+  if (!(PLUGINS_APPLY in input)) return input;
+  const { id } = input;
+  const processed = plugins.reduce((acc, plugin) => plugin(acc), input as MessageInput);
+  return { ...processed, id };
 }
 
 /**

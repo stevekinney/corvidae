@@ -839,6 +839,21 @@ describe('children.list / get / wait authorization', () => {
     ).toThrow('BAD_REQUEST');
   });
 
+  it('locates a child by its own id alone, for its own principal only', async () => {
+    const fixture = createFixture({
+      parents: { 'parent-1': { agentName: 'planner', principal: 'owner', live: true } },
+    });
+    const child = await startedChild(fixture, { childRunId: 'child-a' });
+    const { locate } = fixture.topology.children;
+
+    expect(await locate('child-a')).toEqual(child);
+    expect(await locate('child-a', { principal: 'owner' })).toEqual(child);
+    expect(await locate('child-a', { principal: 'mallory' })).toBeUndefined();
+    expect(await locate('nobody')).toBeUndefined();
+    expect(await throwingRejectionOf(locate(''))).toThrow('BAD_REQUEST');
+    expect(await throwingRejectionOf(locate('child-a', { principal: '' }))).toThrow('BAD_REQUEST');
+  });
+
   it('gives a child of a parent without a principal to anonymous:local, whoever dispatches it', async () => {
     // `parent-1` has no principal, like a `createRun` or `bureau.run` run started without one.
     const fixture = createFixture();

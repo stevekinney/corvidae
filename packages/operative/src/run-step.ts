@@ -14,6 +14,7 @@ import {
   StepAbortedEvent,
 } from './events';
 import { createStepGeneratedMediaAdmitter, type GeneratedMediaAdmission } from './generated-media';
+import { assistantMessageIdentifier } from './message-identifiers';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
@@ -482,8 +483,15 @@ export async function runStep(
   accumulateUsage(runState, emitter, step, usage, deps.costEstimation);
 
   // COR-713: the row carries the settled parts, not only the text. A step that is a thinking block
-  // and a tool call has no text and still has a row to keep.
-  const { messageId } = commitAssistantRow({ conversation, parts, metadata, streamedRowId });
+  // and a tool call has no text and still has a row to keep. The row takes the id a streaming client
+  // was shown (`<runId>:step:<n>`), or a minted one for a run with no id.
+  const { messageId } = commitAssistantRow({
+    conversation,
+    parts,
+    metadata,
+    streamedRowId,
+    rowId: assistantMessageIdentifier(deps.runId, step),
+  });
 
   // A step that committed no row (a response with tool calls and no parts) would otherwise lose
   // its metadata (the request's media lineage): stamp the lineage on the step's first tool-call

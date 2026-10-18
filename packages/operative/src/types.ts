@@ -243,6 +243,18 @@ export interface GenerateContext {
    */
   steering?: SteeringDesiredState | undefined;
   /**
+   * The id this step's assistant row must be committed under, when the run has
+   * a run id (`<runId>:step:<n>`; see `message-identifiers.ts`). A generate
+   * function that appends the assistant row itself, as `withStreaming` does,
+   * names it with this; one that does not need to read it, because the loop
+   * appends the row under it. `undefined` for a run with no run id, whose rows
+   * are minted.
+   *
+   * NOT hook-overridable, like `steering`: `runStep` re-applies it after
+   * `beforeGenerate` and after a retry mutator.
+   */
+  assistantMessageId?: string | undefined;
+  /**
    * Media sources a {@link ContentSourceResolver} projected to a kind the
    * provider accepts, keyed `${messageId}:${partIndex}`. A provider adapter
    * substitutes them at export time; the conversation itself keeps each part's

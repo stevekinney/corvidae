@@ -5,6 +5,7 @@ import { Conversation, isConversation } from 'conversationalist';
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
 import type { GeneratedMediaAdmission } from './generated-media';
+import { appendFinalAssistantMessage } from './message-identifiers';
 import { deriveParts } from './response-parts';
 import {
   makeAbortResult,
@@ -288,7 +289,8 @@ async function executeLoopBody(
         // COR-713: the replacement is its own row, so the run-wide parts end with it.
         runState.lastParts = deriveParts(finalContent);
         runState.finalRowIsReplacement = true;
-        conversation.appendAssistantMessage(finalContent);
+        // The loop ran steps 0..maximumSteps-1, so the next index is free.
+        appendFinalAssistantMessage(conversation, finalContent, options.runId, maximumSteps);
       }
     } catch (error) {
       emitter?.dispatch(new RunErrorEvent(runState.steps.length, error, 'policy'));

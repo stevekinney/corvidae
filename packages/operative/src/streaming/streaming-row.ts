@@ -6,6 +6,7 @@ import {
   settleMediaAdmission,
   type StepGeneratedMediaAdmitter,
 } from '../generated-media';
+import { assistantRowIdentifierForAttempt } from '../message-identifiers';
 import {
   deriveParts,
   type InlineMediaContent,
@@ -90,7 +91,14 @@ export function createStreamingRow(options: {
   const { conversation, context, observer } = options;
   const machine = options.machine ?? createStreamStateMachine();
   const admitter: StepGeneratedMediaAdmitter | undefined = context.generatedMediaAdmitter;
-  const messageId = conversation.appendStreamingMessage('assistant');
+  // The row takes the id a streaming client is told about (`<runId>:step:<n>`), replacing an earlier
+  // attempt's row of the same step; a run with no id mints one.
+  const assistantId = assistantRowIdentifierForAttempt(conversation, context.assistantMessageId);
+  const messageId = conversation.appendStreamingMessage(
+    'assistant',
+    undefined,
+    assistantId === undefined ? undefined : { id: assistantId },
+  );
 
   const admissions = new Map<number, TrackedAdmission>();
   let updateSequence = 0;

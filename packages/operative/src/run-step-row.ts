@@ -1,4 +1,6 @@
-import type { Conversation, MultiModalContent } from 'conversationalist';
+import { type Conversation, type MultiModalContent, withMessageId } from 'conversationalist';
+
+import { assistantRowIdentifierForAttempt } from './message-identifiers';
 
 import { rowContentForParts } from './response-parts';
 import type { JSONValue } from './types';
@@ -29,8 +31,10 @@ export function commitAssistantRow(input: {
   readonly parts: readonly MultiModalContent[];
   readonly metadata: Record<string, JSONValue> | undefined;
   readonly streamedRowId: string | undefined;
+  /** The id the row is committed under for a run that has an id; `undefined` mints one. */
+  readonly rowId: string | undefined;
 }): CommittedRow {
-  const { conversation, parts, metadata, streamedRowId } = input;
+  const { conversation, parts, metadata, streamedRowId, rowId } = input;
   const content = parts.length === 0 ? undefined : rowContentForParts(parts);
 
   if (streamedRowId !== undefined) {
@@ -44,6 +48,12 @@ export function commitAssistantRow(input: {
   }
 
   if (content === undefined) return { messageId: undefined };
-  conversation.appendAssistantMessage(content, metadata);
+  // A retried step replaces its earlier attempt's row under the same id.
+  const id = assistantRowIdentifierForAttempt(conversation, rowId);
+  conversation.appendMessages(
+    id === undefined
+      ? { role: 'assistant', content, metadata }
+      : withMessageId({ role: 'assistant', content, metadata }, id),
+  );
   return { messageId: conversation.current.ids.at(-1) };
 }

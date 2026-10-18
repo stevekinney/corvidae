@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   type BeginRunCreationInput,
   BureauLedgerConflictError,
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
   type CommandLedgerIdentity,
   createCommandLedger,
   createRunCreationLedger,
@@ -984,5 +985,28 @@ describe('createRunCreationLedger', () => {
     } finally {
       await fixture.dispose();
     }
+  });
+});
+
+describe('two ledgers over one store', () => {
+  it('keep their entries, claims, and pruning apart when they use different key prefixes', async () => {
+    const { kv, runtime, ledger } = memoryLedger();
+    const other = createCommandLedger<{ readonly threadId: string }, TestResult>({
+      kv,
+      keyPrefix: 'command-ledger:other:v1',
+      clock: runtime.clock,
+      nextConflictId: () => runtime.identifiers.next('other-conflict'),
+    });
+    await ledger.claim(identity(), 'digest-a', { runId: 'run-1' });
+    await other.claim(identity({ requestId: 'resume-1' }), 'digest-b', { threadId: 'thread-1' });
+
+    expect(await ledger.listClaims()).toEqual([{ runId: 'run-1' }]);
+    expect(await other.listClaims()).toEqual([{ threadId: 'thread-1' }]);
+    expect(await ledger.read(identity({ requestId: 'resume-1' }))).toBeUndefined();
+
+    // Both entries are past their retention window; only this ledger's is pruned.
+    await runtime.advance(COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS + 1);
+    expect(await ledger.prune()).toEqual({ entries: 1, conflicts: 0 });
+    expect(await other.listClaims()).toEqual([{ threadId: 'thread-1' }]);
   });
 });

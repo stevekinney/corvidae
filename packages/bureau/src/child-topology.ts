@@ -256,6 +256,17 @@ export interface BureauChildren<TName extends string = string> {
     options?: { readonly principal?: string | undefined },
   ): Promise<readonly BureauChildRecord[]>;
   get(reference: BureauChildReference): Promise<BureauChildRecord | undefined>;
+  /**
+   * The record of the child named by its own run identifier, without the parent's.
+   * A caller that holds only a child's id (a client attaching to it) finds the
+   * parent here. `principal` is checked as on `get`: when both it and the record's
+   * principal are present they must match, and a mismatch answers `undefined`, as
+   * an unknown id does.
+   */
+  locate(
+    childRunId: string,
+    options?: { readonly principal?: string | undefined },
+  ): Promise<BureauChildRecord | undefined>;
   wait(
     reference: BureauChildReference,
     options?: { readonly signal?: AbortSignal | undefined },
@@ -1177,6 +1188,18 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
     return principalAllows(reference.principal, record.principal) ? record : undefined;
   }
 
+  async function locate(
+    childRunId: string,
+    options: { readonly principal?: string | undefined } = {},
+  ): Promise<BureauChildRecord | undefined> {
+    requireString(childRunId, 'childRunId');
+    if (options.principal !== undefined) requireString(options.principal, 'principal');
+    const record = await store.get(childRunId);
+    return record !== undefined && principalAllows(options.principal, record.principal)
+      ? record
+      : undefined;
+  }
+
   function validateDispatch(request: BureauChildDispatchRequest): void {
     requireString(request.parentRunId, 'parentRunId');
     requireString(request.agentName, 'agentName');
@@ -1680,7 +1703,7 @@ export function createChildTopology(dependencies: ChildTopologyDependencies): Ch
   }
 
   return {
-    children: { dispatch, list, get: authorized, wait, signal, cancel },
+    children: { dispatch, list, get: authorized, locate, wait, signal, cancel },
     parentCancelled: applyParentCancellation,
     prepareRecovery,
     recoveredRunContext,

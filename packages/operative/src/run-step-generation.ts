@@ -18,6 +18,7 @@ import {
 import type { StepGeneratedMediaAdmitter } from './generated-media';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
+import { assistantMessageIdentifier } from './message-identifiers';
 import { isProviderContractError } from './providers/errors';
 import { readDroppedReplayData } from './providers/shared/replay-data';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
@@ -86,6 +87,7 @@ export async function executeGeneration(
     admission,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
+  const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
   let response: GenerateResponse = undefined!;
   let streamedRowId: string | undefined;
   let stepRetryCount = 0;
@@ -143,6 +145,7 @@ export async function executeGeneration(
           responseFormat: deps.responseFormat,
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
+          assistantMessageId,
           resolvedSources,
           generatedMediaAdmitter: admitter,
         };
@@ -168,6 +171,7 @@ export async function executeGeneration(
             responseFormat: deps.responseFormat,
             signal: stepSignal,
             steering: steeringDesiredState,
+            assistantMessageId,
             resolvedSources,
             generatedMediaAdmitter: admitter,
           };
@@ -203,6 +207,7 @@ export async function executeGeneration(
               beforeGenContext = {
                 ...handlerResult,
                 steering: steeringDesiredState,
+                assistantMessageId,
                 resolvedSources,
                 // COR-713: the media-admission port is the loop's, like `steering`.
                 generatedMediaAdmitter: admitter,
