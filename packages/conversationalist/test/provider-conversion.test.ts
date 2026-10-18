@@ -4,6 +4,7 @@ import { fromAnthropicMessages } from '../src/adapters/anthropic/inbound';
 import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import { resolvedSourceKey, type ResolvedMediaSources } from '../src/adapters/media';
+import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
 import { appendMessages, createConversationHistory } from '../src/conversation';
 import { UnsupportedContentError, type UnsupportedContentReason } from '../src/errors';
@@ -23,6 +24,7 @@ import { getOrderedMessages } from '../src/utilities/message-store';
  * delivered part, or rejects with a typed error before the provider call. It
  * never substitutes marker prose, an empty string, or text alone.
  */
+const BYTES64 = 'QUJD';
 const PAYLOAD = 'JVBERi0xLjQKJcfsj6IKJSVFT0YK';
 const REMOTE_URL = 'https://example.com/assets/probe.bin';
 
@@ -79,7 +81,7 @@ function sourceFor(provider: Provider, kind: SourceKind, type: MediaType): Conte
 const ACCEPTED: Record<Provider, Partial<Record<MediaType, readonly SourceKind[]>>> = {
   openai: {
     image: ['inline', 'data-url', 'remote-url'],
-    document: ['inline', 'data-url'],
+    document: ['inline', 'data-url', 'provider-file'],
   },
   anthropic: {
     image: ['inline', 'data-url', 'remote-url', 'provider-file'],
@@ -451,5 +453,56 @@ describe('provider conversion matrix: lineage and wire shape', () => {
       },
     ]);
     expect(toAnthropicMessages(imported).messages).toEqual(exported.messages);
+  });
+
+  it('sends an OpenAI file id as a file part and imports it back', () => {
+    const conversation = conversationOf('user', [
+      {
+        type: 'document',
+        name: 'spec.pdf',
+        source: { kind: 'provider-file', provider: 'openai', providerFileId: 'file-abc' },
+      },
+    ]);
+    const exported = toOpenAIMessages(conversation);
+    expect(exported.messages[0]?.content).toEqual([
+      { type: 'file', file: { file_id: 'file-abc', filename: 'spec.pdf' } },
+    ]);
+    expect(exported.lineage[0]).toMatchObject({
+      transform: 'provider-file-reference',
+      providerFileId: 'file-abc',
+    });
+    const imported = fromOpenAIMessages(exported.messages);
+    expect(getOrderedMessages(imported)[0]?.content).toEqual([
+      {
+        type: 'document',
+        name: 'spec.pdf',
+        source: { kind: 'provider-file', provider: 'openai', providerFileId: 'file-abc' },
+      },
+    ]);
+    expect(toOpenAIMessages(imported).messages).toEqual(exported.messages);
+  });
+
+  it('records the conversion a non-base64 data URL actually went through, not passthrough', () => {
+    const conversation = conversationOf('user', [
+      { type: 'image', source: { kind: 'data-url', url: 'data:image/svg+xml,%3Csvg%2F%3E' } },
+    ]);
+    const exported = toOpenAIMessages(conversation);
+    const url = (exported.messages[0]?.content as Array<{ image_url: { url: string } }>)[0]!
+      .image_url.url;
+    expect(url).toBe(`data:image/svg+xml;base64,${btoa('<svg/>')}`);
+    expect(exported.lineage[0]?.transform).not.toBe('passthrough');
+  });
+
+  it('rejects a non-PDF document for OpenAI Chat Completions, which takes PDFs only', () => {
+    // https://developers.openai.com/api/docs/guides/pdf-files: "Chat Completions
+    // supports only .pdf (application/pdf) for both file_data and file_id."
+    const conversation = conversationOf('user', [
+      {
+        type: 'document',
+        mimeType: 'text/markdown',
+        source: { kind: 'inline', data: BYTES64, encoding: 'base64' },
+      },
+    ]);
+    expect(() => toOpenAIMessages(conversation)).toThrow(/mime-family-not-accepted/);
   });
 });

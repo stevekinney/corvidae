@@ -71,10 +71,11 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  * {@link toA2APart}.
  *
  * - `text` becomes `text` content, restoring `metadata.citations`.
- * - An unnamed `raw` or `url` part with an `image/*` media type becomes
- *   `image` content (a `raw` image as a base64 data URL), restoring
- *   `metadata.text`. Every other `raw` or `url` part becomes `document`
- *   content, so its filename survives.
+ * - A `raw` or `url` part with an `image/*`, `audio/*`, or `video/*` media type
+ *   becomes `image`, `audio`, or `video` content (a `raw` part as inline
+ *   base64), whether or not it has a filename, which becomes the part's `name`.
+ *   Every other `raw` or `url` part becomes `document` content. Part metadata
+ *   restores `alt` (from `text`), `caption`, `transcript`, and `extractedText`.
  * - `data` becomes a document holding the base64 UTF-8 encoding of
  *   `JSON.stringify(data)`, typed with the part's media type or
  *   `application/json` when it declares none.
@@ -82,11 +83,11 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  * Conversationalist content has fewer fields than an A2A part, so some
  * mappings normalize rather than round-trip exactly:
  *
- * - A file part without a media type becomes a document of type
- *   `application/octet-stream`; an image with no `mimeType` and a non-data URL
- *   therefore comes back as such a document.
- * - An unnamed document with an `image/*` media type comes back as `image`
- *   content.
+ * - A file part without a media type becomes an unnamed-type document with no
+ *   `mimeType`; an image with no `mimeType` and a non-data URL therefore comes
+ *   back as such a document.
+ * - A document with an `image/*`, `audio/*`, or `video/*` media type comes back
+ *   as that modality.
  * - A data part whose media type is exactly `application/json` comes back
  *   without it, because `DocumentContent.mimeType` is required and that is the
  *   default the data part implies.
@@ -223,10 +224,9 @@ function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
   const mediaType = nonEmpty(part.mediaType);
   const name = nonEmpty(part.filename);
   const family = mediaType?.split('/')[0];
+  // The media type decides the modality; a filename never changes it.
   const modality =
-    name === undefined && (family === 'image' || family === 'audio' || family === 'video')
-      ? family
-      : 'document';
+    family === 'image' || family === 'audio' || family === 'video' ? family : 'document';
   return {
     ...createMediaPart(
       modality,

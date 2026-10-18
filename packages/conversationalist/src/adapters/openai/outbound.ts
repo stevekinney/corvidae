@@ -93,11 +93,20 @@ function toOpenAIMediaPart(
       return { type: 'image_url', image_url: { url: source.url } };
     }
     if (source.kind === 'data-url') {
+      // A base64 data URL goes through untouched; any other encoding is rebuilt
+      // as one, and lineage says so.
+      const payload = toBase64Payload(source);
+      const mimeType = payload?.mimeType ?? effective.mimeType;
+      if (payload === undefined || mimeType === undefined) {
+        return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+      }
+      const rebuilt = `data:${mimeType};base64,${payload.data}`;
+      const unchanged = rebuilt === source.url;
       recordLineage(context, partIndex, part, effective, {
         to: 'data-url',
-        transform: 'passthrough',
+        transform: unchanged ? 'passthrough' : 'data-url-split',
       });
-      return { type: 'image_url', image_url: { url: source.url } };
+      return { type: 'image_url', image_url: { url: unchanged ? source.url : rebuilt } };
     }
     if (source.kind === 'inline') {
       const payload = toBase64Payload(source);
@@ -117,8 +126,27 @@ function toOpenAIMediaPart(
     return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
   }
   if (part.type === 'document') {
-    // Chat Completions takes a document as a `file` part holding a base64 data
-    // URL. It has no URL or Files-API form on this endpoint.
+    // https://developers.openai.com/api/docs/guides/pdf-files (checked
+    // 2026-10-17): "Chat Completions supports only .pdf (application/pdf) for
+    // both file_data and file_id." A document is a `file` part holding a base64
+    // data URL or a Files API id; there is no URL form on this endpoint.
+    if (source.kind === 'provider-file') {
+      if (source.provider !== 'openai') {
+        return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+      }
+      recordLineage(context, partIndex, part, effective, {
+        to: 'provider-file',
+        transform: 'provider-file-reference',
+        providerFileId: source.providerFileId,
+      });
+      return {
+        type: 'file',
+        file: {
+          file_id: source.providerFileId,
+          ...(part.name !== undefined ? { filename: part.name } : {}),
+        },
+      };
+    }
     const payload = toBase64Payload(source);
     if (payload === undefined) {
       return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
@@ -127,14 +155,23 @@ function toOpenAIMediaPart(
     if (mimeType === undefined) {
       return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
     }
+    if (mimeType.toLowerCase() !== 'application/pdf') {
+      return rejectPart(context, partIndex, part, 'mime-family-not-accepted', source.kind);
+    }
+    const rebuilt = `data:${mimeType};base64,${payload.data}`;
     recordLineage(context, partIndex, part, effective, {
       to: 'data-url',
-      transform: payload.kind === 'data-url' ? 'passthrough' : 'inline-base64',
+      transform:
+        payload.kind === 'data-url'
+          ? source.kind === 'data-url' && source.url === rebuilt
+            ? 'passthrough'
+            : 'data-url-split'
+          : 'inline-base64',
     });
     return {
       type: 'file',
       file: {
-        file_data: `data:${mimeType};base64,${payload.data}`,
+        file_data: rebuilt,
         ...(part.name !== undefined ? { filename: part.name } : {}),
       },
     };
@@ -152,10 +189,9 @@ function toOpenAITextContent(
 ): string | OpenAITextContentPart[] {
   const converted = toOpenAIContent(content, context, { allowMedia: false });
   if (typeof converted === 'string') return converted;
-  return converted.map((part) => {
-    if (part.type !== 'text') throw new Error('OpenAI text conversion produced a non-text part');
-    return part;
-  });
+  // `allowMedia: false` rejected every media part above, so only text remains.
+  const parts: readonly OpenAIContentPart[] = converted;
+  return parts.filter((part): part is OpenAITextContentPart => part.type === 'text');
 }
 
 /**

@@ -161,19 +161,35 @@ describe('A2A file parts', () => {
     expect(roundTripContent(content)).toEqual(content);
   });
 
-  it('keeps a named image file as document content so its filename survives', () => {
-    const part: A2APart = {
-      url: 'https://example.com/chart.png',
-      filename: 'chart.png',
-      mediaType: 'image/png',
-    };
+  it('classifies a named file by its media type and keeps the filename as the part name', () => {
+    for (const [mediaType, type] of [
+      ['image/png', 'image'],
+      ['audio/mpeg', 'audio'],
+      ['video/mp4', 'video'],
+    ] as const) {
+      const part: A2APart = {
+        url: 'https://example.com/media.bin',
+        filename: 'media.bin',
+        mediaType,
+      };
 
-    expect(fromA2APart(part)).toEqual({
-      type: 'document',
-      name: 'chart.png',
-      mimeType: 'image/png',
-      source: { kind: 'remote-url', url: 'https://example.com/chart.png' },
-    });
+      expect(fromA2APart(part)).toEqual({
+        type,
+        name: 'media.bin',
+        mimeType: mediaType,
+        source: { kind: 'remote-url', url: 'https://example.com/media.bin' },
+      });
+      expect(roundTripPart(part)).toEqual(part);
+    }
+  });
+
+  it('keeps any other named file a document', () => {
+    const part: A2APart = {
+      url: 'https://example.com/a.zip',
+      filename: 'a.zip',
+      mediaType: 'application/zip',
+    };
+    expect(fromA2APart(part)).toMatchObject({ type: 'document', name: 'a.zip' });
     expect(roundTripPart(part)).toEqual(part);
   });
 });
