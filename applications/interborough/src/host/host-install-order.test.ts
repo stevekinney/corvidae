@@ -4,15 +4,20 @@
  * moment the Bureau receives it.
  */
 import { openBungalow } from '@lostgradient/bungalow';
-import * as actual from '@lostgradient/bureau';
-import { afterEach, expect, mock, test } from 'bun:test';
+import { afterAll, afterEach, expect, mock, test } from 'bun:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-// Bun rebinds the imported namespace when a module is mocked, so keep the real function first.
+// Snapshot the real exports before mocking: Bun rebinds a live namespace when its module is
+// mocked, and module mocks are process-wide, so the real module is restored after this file.
+const actual = { ...(await import('@lostgradient/bureau')) };
 const realCreateBureau = actual.createBureau;
 const seenWhenCreated: { revision: number; pairs: string[]; sources: string[] }[] = [];
+
+afterAll(() => {
+  void mock.module('@lostgradient/bureau', () => actual);
+});
 
 void mock.module('@lostgradient/bureau', () => ({
   ...actual,

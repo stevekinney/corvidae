@@ -227,7 +227,7 @@ describe('an agent assigned a catalog model', () => {
     });
   });
 
-  test('resolves through Bureau’s own resolver by default, trimming the secret, without a request', async () => {
+  test('resolves through Bureau’s own resolver by default, without a request until a run generates', async () => {
     const requests: string[] = [];
     const original = globalThis.fetch;
     globalThis.fetch = Object.assign(
@@ -248,6 +248,50 @@ describe('an agent assigned a catalog model', () => {
       globalThis.fetch = original;
     }
     expect(requests).toEqual([]);
+  });
+
+  test('sends the trimmed secret to the provider through the shipped default resolver', async () => {
+    const host = await start({
+      configuration: { providers: { anthropic: {} } },
+      secrets: { 'anthropic-api-key': `  ${FIXTURE_KEY}\n` },
+    });
+    // The fetch stub is installed after the host starts, so it sees only the run's request.
+    const original = globalThis.fetch;
+    const keyMatches: boolean[] = [];
+    globalThis.fetch = Object.assign(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const headers = new Headers(input instanceof Request ? input.headers : init?.headers);
+        // Compared, never printed: a failure must not show the value.
+        keyMatches.push(headers.get('x-api-key') === FIXTURE_KEY);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              id: 'message-1',
+              type: 'message',
+              role: 'assistant',
+              model: 'claude-sonnet-5',
+              content: [{ type: 'text', text: 'stubbed reply' }],
+              stop_reason: 'end_turn',
+              stop_sequence: null,
+              usage: { input_tokens: 1, output_tokens: 1 },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      },
+      { preconnect: original.preconnect },
+    );
+    try {
+      const agent = createAgent({
+        name: 'default-path',
+        generate: host.generateFor({ provider: 'anthropic', model: 'sonnet' }),
+      });
+      const result = await agent.run('Hello').result();
+      expect(result.content).toBe('stubbed reply');
+    } finally {
+      globalThis.fetch = original;
+    }
+    expect(keyMatches).toEqual([true]);
   });
 
   test('hands the resolver the secret without the whitespace around it', async () => {
