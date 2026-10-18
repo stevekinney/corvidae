@@ -67,7 +67,11 @@ describe('message helpers', () => {
       role: 'assistant',
       content: [
         { type: 'text', text: 'hi' },
-        { type: 'image', url: 'https://example.com/x.png', text: 'alt' },
+        {
+          type: 'image',
+          source: { kind: 'remote-url', url: 'https://example.com/x.png' },
+          alt: 'alt',
+        },
       ],
       position: 1,
       createdAt: now,
@@ -90,7 +94,7 @@ describe('message helpers', () => {
           type: 'document',
           name: 'notes.md',
           mimeType: 'text/markdown',
-          source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+          source: { kind: 'local-file', path: '/workspace/notes.md' },
         },
       ],
       position: 0,
@@ -100,7 +104,7 @@ describe('message helpers', () => {
     });
 
     expect(messageToString(msg)).toBe(
-      '[Document: notes.md (text/markdown) at sandbox:/workspace/notes.md]',
+      '[Document: notes.md (text/markdown) at /workspace/notes.md]',
     );
   });
 

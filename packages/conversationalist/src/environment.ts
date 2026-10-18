@@ -4,6 +4,7 @@ import {
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
 
+import type { MediaContent } from './multi-modal';
 import type {
   ConversationHistory,
   Message,
@@ -104,7 +105,7 @@ export function defineMessagePlugin(
 
 /**
  * Approximate serialized character length of a single content part. Text and
- * image-alt count as their text; thinking/tool/result blocks count by the size
+ * a media part's prose (name, alt text, caption, transcript) count as their text; thinking/tool/result blocks count by the size
  * of their payload (reasoning text, encrypted data, tool input/result JSON) so a
  * message made mostly of structural blocks is NOT estimated as near-zero tokens
  * and can still be truncated. This is a rough size proxy, not an exact tokenizer.
@@ -115,9 +116,11 @@ function partCharLength(part: ReturnType<typeof messageParts>[number]): number {
     case 'text':
       return part.text.length + optionalJSONLength(part.citations);
     case 'image':
-      return optionalStringLength(part.text) + optionalStringLength(part.url);
+    case 'audio':
+    case 'video':
     case 'document':
-      return part.name.length + part.mimeType.length + documentSourceLength(part.source);
+    case 'file':
+      return mediaCharLength(part);
     case 'thinking':
       return part.thinking.length + part.signature.length;
     case 'redacted_thinking':
@@ -143,8 +146,22 @@ function optionalStringLength(value: string | undefined): number {
   return value?.length ?? 0;
 }
 
-function documentSourceLength(source: import('./multi-modal').DocumentSource): number {
-  return source.kind === 'base64' ? source.data.length : source.uri.length;
+/**
+ * Character length of the prose a media part carries: its name, alt text,
+ * caption, transcript, extracted text, and metadata. The part's bytes are not
+ * counted here: this estimator prices text. Operative costs media bytes with a
+ * `MediaCostEstimator`, which reports a typed outcome per part instead of a
+ * number, so an uncostable part is refused rather than priced at zero.
+ */
+function mediaCharLength(part: MediaContent): number {
+  return (
+    optionalStringLength(part.name) +
+    optionalStringLength(part.alt) +
+    optionalStringLength(part.caption) +
+    optionalStringLength(part.transcript) +
+    optionalStringLength(part.extractedText) +
+    optionalJSONLength(part.metadata)
+  );
 }
 
 /**

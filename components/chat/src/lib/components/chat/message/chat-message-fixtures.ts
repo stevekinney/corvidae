@@ -341,8 +341,8 @@ export const SINGLE_IMAGE_CONTENT = [
   { type: 'text' as const, text: 'Here is the screenshot you requested:' },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/chat1/800/600',
-    text: 'Screenshot of the application dashboard',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/chat1/800/600' },
+    alt: 'Screenshot of the application dashboard',
   },
 ];
 
@@ -350,13 +350,13 @@ export const MULTIPLE_IMAGES_CONTENT = [
   { type: 'text' as const, text: 'Comparing the before and after states:' },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/before/400/300',
-    text: 'Before: Original design with navigation issues',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/before/400/300' },
+    alt: 'Before: Original design with navigation issues',
   },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/after/400/300',
-    text: 'After: Improved design with clearer navigation',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/after/400/300' },
+    alt: 'After: Improved design with clearer navigation',
   },
 ];
 
@@ -364,18 +364,18 @@ export const THREE_IMAGES_CONTENT = [
   { type: 'text' as const, text: 'Here are the different color variations:' },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/red/300/300',
-    text: 'Red variation',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/red/300/300' },
+    alt: 'Red variation',
   },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/blue/300/300',
-    text: 'Blue variation',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/blue/300/300' },
+    alt: 'Blue variation',
   },
   {
     type: 'image' as const,
-    url: 'https://picsum.photos/seed/green/300/300',
-    text: 'Green variation',
+    source: { kind: 'remote-url' as const, url: 'https://picsum.photos/seed/green/300/300' },
+    alt: 'Green variation',
   },
 ];
 

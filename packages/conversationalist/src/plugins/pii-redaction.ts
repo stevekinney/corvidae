@@ -1,4 +1,6 @@
-import type { MultiModalContent } from '../multi-modal';
+import { ConversationalistError } from '../errors';
+import { readMediaBody } from '../media-body';
+import { isMediaContent, type MediaContent, type MultiModalContent } from '../multi-modal';
 import type { JSONValue, MessageInput, MessagePlugin } from '../types';
 
 /**
@@ -81,9 +83,57 @@ function redactJSONRecord(
   );
 }
 
+/**
+ * Redacts the text a media part carries: its name, alt text, caption,
+ * transcript, extracted text, and metadata strings, and the body of a source a
+ * provider reads as characters (inline UTF-8, inline base64 or a data URL under
+ * a textual media type), re-encoded the way it was stored. A text body that does
+ * not decode is refused: passing it through would send a provider text this
+ * plugin never read. Binary sources and locators identify bytes, not prose, and
+ * stay byte-for-byte intact.
+ */
+function redactMediaFields(
+  part: MediaContent,
+  redact: (text: string) => string,
+  partIndex: number,
+): MediaContent {
+  let redacted: MediaContent = { ...part };
+  for (const field of MEDIA_TEXT_FIELDS) {
+    const value = part[field];
+    if (value !== undefined) redacted[field] = redact(value);
+  }
+  if (part.metadata !== undefined) {
+    const metadata = redactJSONValue(part.metadata, redact);
+    if (typeof metadata === 'object' && metadata !== null && !isJSONArray(metadata)) {
+      redacted.metadata = metadata;
+    }
+  }
+  const body = readMediaBody(part);
+  if (body.status === 'undecodable') {
+    throw new ConversationalistError(
+      'error:validation',
+      `Cannot redact ${part.type} part ${partIndex}: ${body.reason}`,
+      { context: { partIndex, partType: part.type } },
+    );
+  }
+  if (body.status === 'text' && body.body.withText !== undefined) {
+    // Only a changed body is re-encoded: putting an unchanged one back would
+    // alter bytes that had nothing to redact (a byte-order mark, the
+    // percent-encoding of a data URL).
+    const text = redact(body.body.text);
+    if (text !== body.body.text) {
+      redacted = { ...redacted, source: body.body.withText(text).source };
+    }
+  }
+  return redacted;
+}
+
+const MEDIA_TEXT_FIELDS = ['name', 'alt', 'caption', 'transcript', 'extractedText'] as const;
+
 function redactContentPart(
   part: MultiModalContent,
   redact: (text: string) => string,
+  partIndex: number,
 ): MultiModalContent {
   if (part.type === 'text') {
     const text = part.text ? redact(part.text) : part.text;
@@ -96,8 +146,8 @@ function redactContentPart(
   if ('tool_use_id' in part) {
     return { ...part, content: redactJSONValue(part.content, redact) };
   }
+  if (isMediaContent(part)) return redactMediaFields(part, redact, partIndex);
   // Signed thinking payloads must remain byte-for-byte intact for replay.
-  // Images, document references and upload identifiers are unchanged.
   return part;
 }
 
@@ -118,7 +168,7 @@ export function createPIIRedactionPlugin(options: PIIRedactionOptions = {}): Mes
     } else {
       result = {
         ...input,
-        content: input.content.map((part) => redactContentPart(part, redact)),
+        content: input.content.map((part, index) => redactContentPart(part, redact, index)),
       };
     }
 

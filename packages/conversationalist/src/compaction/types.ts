@@ -9,6 +9,14 @@ export interface CompactionPreservePolicy {
   pinned?: boolean | undefined;
   decisions?: boolean | undefined;
   errors?: boolean | undefined;
+  /**
+   * Keep every message that holds a media part verbatim instead of summarizing
+   * it. Default `true`: a summary is prose, so summarizing a message would turn
+   * its image, audio, video, document, or file into whatever text the
+   * summarizer wrote. Set `false` only when the summarizer is meant to read the
+   * media and the loss of the original parts is the caller's explicit choice.
+   */
+  media?: boolean | undefined;
 }
 
 export interface CompactionOptions {

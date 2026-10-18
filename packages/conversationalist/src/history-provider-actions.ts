@@ -1,6 +1,6 @@
-import type { AnthropicConversation } from './adapters/anthropic/types';
-import type { GeminiConversation } from './adapters/gemini/types';
-import type { OpenAIMessage } from './adapters/openai/types';
+import type { AnthropicConversation, AnthropicExport } from './adapters/anthropic/types';
+import type { GeminiConversation, GeminiExport } from './adapters/gemini/types';
+import type { OpenAIExport, OpenAIMessage } from './adapters/openai/types';
 import type { ConversationEnvironment } from './environment';
 import { collectToolCallIds, diffConversationMessages } from './history-messages';
 import { getOpenAIExportOptions, loadConversationAdapter } from './history-providers';
@@ -22,22 +22,22 @@ type ProviderHooks = {
 
 export type ProviderActions = {
   readonly toProvider: {
-    (provider: 'openai', options?: unknown): Promise<OpenAIMessage[]>;
-    (provider: 'anthropic', options?: unknown): Promise<AnthropicConversation>;
-    (provider: 'gemini', options?: unknown): Promise<GeminiConversation>;
+    (provider: 'openai', options?: unknown): Promise<OpenAIExport>;
+    (provider: 'anthropic', options?: unknown): Promise<AnthropicExport>;
+    (provider: 'gemini', options?: unknown): Promise<GeminiExport>;
     (
       provider: ConversationProvider,
       options?: unknown,
-    ): Promise<OpenAIMessage[] | AnthropicConversation | GeminiConversation>;
+    ): Promise<OpenAIExport | AnthropicExport | GeminiExport>;
   };
   readonly appendProvider: (
     provider: ConversationProvider,
     payload: OpenAIMessage[] | AnthropicConversation | GeminiConversation,
   ) => Promise<void>;
-  readonly toOpenAIMessages: () => Promise<OpenAIMessage[]>;
-  readonly toOpenAIMessagesGrouped: () => Promise<OpenAIMessage[]>;
-  readonly toAnthropicMessages: () => Promise<AnthropicConversation>;
-  readonly toGeminiMessages: () => Promise<GeminiConversation>;
+  readonly toOpenAIMessages: () => Promise<OpenAIExport>;
+  readonly toOpenAIMessagesGrouped: () => Promise<OpenAIExport>;
+  readonly toAnthropicMessages: () => Promise<AnthropicExport>;
+  readonly toGeminiMessages: () => Promise<GeminiExport>;
 };
 
 function finishAppend(hooks: ProviderHooks, next: ConversationHistory): void {
@@ -83,20 +83,17 @@ async function appendGemini(hooks: ProviderHooks, payload: GeminiConversation): 
 }
 
 export function createProviderActions(hooks: ProviderHooks): ProviderActions {
-  async function toProvider(provider: 'openai', options?: unknown): Promise<OpenAIMessage[]>;
-  async function toProvider(
-    provider: 'anthropic',
-    options?: unknown,
-  ): Promise<AnthropicConversation>;
-  async function toProvider(provider: 'gemini', options?: unknown): Promise<GeminiConversation>;
+  async function toProvider(provider: 'openai', options?: unknown): Promise<OpenAIExport>;
+  async function toProvider(provider: 'anthropic', options?: unknown): Promise<AnthropicExport>;
+  async function toProvider(provider: 'gemini', options?: unknown): Promise<GeminiExport>;
   async function toProvider(
     provider: ConversationProvider,
     options?: unknown,
-  ): Promise<OpenAIMessage[] | AnthropicConversation | GeminiConversation>;
+  ): Promise<OpenAIExport | AnthropicExport | GeminiExport>;
   async function toProvider(
     provider: ConversationProvider,
     options?: unknown,
-  ): Promise<OpenAIMessage[] | AnthropicConversation | GeminiConversation> {
+  ): Promise<OpenAIExport | AnthropicExport | GeminiExport> {
     const adapter = await loadConversationAdapter(provider);
     return provider === 'openai'
       ? adapter.export(hooks.current(), getOpenAIExportOptions(options))

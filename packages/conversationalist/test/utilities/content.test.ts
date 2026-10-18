@@ -10,14 +10,17 @@ describe('content utilities', () => {
     });
 
     test('wraps single object in array', () => {
-      const single = { type: 'image', url: 'https://example.com/x.png' } as const;
+      const single = {
+        type: 'image',
+        source: { kind: 'remote-url', url: 'https://example.com/x.png' },
+      } as const;
       expect(toMultiModalArray(single)).toEqual([single]);
     });
 
     test('returns array as-is', () => {
       const arr = [
         { type: 'text', text: 'hello' },
-        { type: 'image', url: 'https://example.com/x.png' },
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/x.png' } },
       ] as const;
       expect(toMultiModalArray([...arr])).toEqual([...arr]);
     });

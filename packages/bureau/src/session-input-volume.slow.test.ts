@@ -1,6 +1,7 @@
 import { createSessionInputDeliveryStore } from '@lostgradient/operative';
 import { type Mailbox, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
+import { CURRENT_SCHEMA_VERSION } from 'conversationalist';
 
 import { createSessionInputDeliveryGate } from './session-input-delivery';
 import {
@@ -66,7 +67,7 @@ describe('decisions behind more retained records than one listing reaches (COR-1
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
-      payload: { incarnation: 'incarnation-1', payload: id },
+      payload: { schemaVersion: CURRENT_SCHEMA_VERSION, incarnation: 'incarnation-1', payload: id },
       principalBacklogLimit: 1,
       sessionBacklogLimitForCrossSessionRead: 10_000,
       nowMs: START,
@@ -130,7 +131,7 @@ describe('decisions behind more retained records than one listing reaches (COR-1
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
-      payload: { incarnation: 'incarnation-1', payload: id },
+      payload: { schemaVersion: CURRENT_SCHEMA_VERSION, incarnation: 'incarnation-1', payload: id },
       principalBacklogLimit: 1,
       sessionBacklogLimitForCrossSessionRead: 10_000,
       nowMs: START,

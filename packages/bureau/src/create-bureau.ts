@@ -8,6 +8,7 @@ import {
 } from '@lostgradient/lifecycle';
 import {
   type ActiveRun,
+  AgentContractError,
   type AgentInput,
   type AgentRun,
   type AgentSession,
@@ -17,6 +18,7 @@ import {
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
+  assertAgentInput,
   type CombinedOperativeEventMap,
   createActiveRun,
   createAgentRunEventRegistry,
@@ -44,6 +46,7 @@ import {
   type LivenessSnapshot,
   type OnStepHook,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  parseSessionInputPayload,
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
@@ -79,6 +82,7 @@ import {
   type SessionSummary,
   SteeringAcceptedEvent,
   SteeringAppliedEvent,
+  snapshotPayload,
   type SteeringRequestedValue,
   type StepRecord,
   type Store,
@@ -120,11 +124,14 @@ import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
+  CURRENT_SCHEMA_VERSION,
   isConversationHistory,
 } from 'conversationalist';
 
+import { shutdownThenRethrow } from './composition-failure';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { createAssetService } from './assets/asset-service';
+import { createAssetContentSourceResolver } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
 import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -882,6 +889,18 @@ function validateCreateRunRequest(request: CreateRunRequest): void {
  */
 function validateAgentRunInput(input: unknown): asserts input is AgentInput {
   if (typeof input === 'string') return;
+  if (Array.isArray(input)) {
+    // COR-716: an ordered list of user text and media parts. The same check
+    // every start path makes, so a malformed list is refused here, before any
+    // async work, rather than failing inside a step.
+    try {
+      assertAgentInput(input);
+    } catch (error) {
+      if (error instanceof AgentContractError) toBadRequest(`"input" is invalid: ${error.message}`);
+      throw error;
+    }
+    return;
+  }
   if (
     input !== null &&
     typeof input === 'object' &&
@@ -891,7 +910,7 @@ function validateAgentRunInput(input: unknown): asserts input is AgentInput {
     return;
   }
   toBadRequest(
-    '"input" must be a string or an object with a valid "conversation" ConversationHistory',
+    '"input" must be a string, a non-empty array of text and media parts, or an object with a valid "conversation" ConversationHistory',
   );
 }
 
@@ -1566,9 +1585,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // record an expiring session needs, so the hook waits for the recorder the same way.
   const sessionCleanupHandler =
     Promise.withResolvers<(sessions: readonly AgentSession[]) => Promise<void>>();
+  // COR-794: the managed-asset owner, on this bureau's runtime services so its timers,
+  // identifiers, and deferred cleanup are the bureau's own.
+  //
+  // COR-716: built BEFORE the composition, and handed to it through this holder, because
+  // the composition's scheduler can fire a schedule as soon as the engine exists. A fire
+  // that came first would find no asset service and fail its managed assets, typed but
+  // spuriously. The asset service needs only these options and the runtime services, so
+  // nothing about the composition has to exist first.
+  const assetServiceInstance: AssetService | undefined = options.assets
+    ? await createAssetService({ ...options.assets, runtime: runtimeServices })
+    : undefined;
+  const assetServiceHolder: { current: AssetService | undefined } = {
+    current: assetServiceInstance,
+  };
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
+      contentSourceResolverFor: (principalId) =>
+        assetServiceHolder.current === undefined
+          ? undefined
+          : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
       onScheduledFire: async (fire) => {
@@ -1584,6 +1621,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await handler(info);
       },
     },
+  ).catch((error: unknown) =>
+    // The composition failed after the asset service started; stop its work,
+    // and report the composition error even if stopping fails.
+    shutdownThenRethrow(error, async () => assetServiceInstance?.shutdown()),
   );
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
@@ -4737,6 +4778,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             generate: runRuntime.generate,
             toolbox: runToolbox,
             conversation,
+            // COR-716 — a managed asset in this run's input (or in input admitted to
+            // its session mid-run) resolves as the run's owner.
+            ...runtime.mediaOptionsFor(owner),
             maximumSteps: request.maximumSteps ?? runtime.maximumSteps,
             maximumTokens: request.maximumTokens,
             stopWhen: options.stopWhen,
@@ -6351,6 +6395,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   generate: runRuntime.generate,
                   toolbox: runRuntime.toolbox,
                   conversation: new Conversation(fullSession.conversationHistory),
+                  ...runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata)),
                   // AB-260: the bureau's single composed RuntimeServices
                   // instance, snapshotted into every run it starts — including
                   // a mocked/custom-engine reattach.
@@ -9551,7 +9596,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function submitSessionInput(
     sessionId: string,
-    request: SessionInputAdmissionRequest,
+    callerRequest: SessionInputAdmissionRequest,
   ): Promise<SessionInputAdmissionOutcome> {
     // Unlike signalSession/updateSession/querySession, this does NOT throw
     // BureauError('NOT_CONFIGURED') when no session store is composed: an
@@ -9562,6 +9607,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // its last, so shutdown waits for the whole of it before it disposes
     // either; once shutdown starts, none begins, as for steering.
     assertSessionInputAdmissionOpen();
+    // COR-716: a payload no run could read is refused here, at the contract's own door,
+    // rather than admitted and then rejected without retry when a step boundary decodes it.
+    try {
+      parseSessionInputPayload(callerRequest.payload);
+    } catch (error) {
+      toBadRequest(
+        `"payload" is invalid: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    // The caller owns its payload and may edit it as soon as this call yields, but the
+    // admission awaits the session, its liveness, and the mailbox before it persists.
+    // Copy what was validated, now, and admit the copy.
+    const request: SessionInputAdmissionRequest = {
+      ...callerRequest,
+      payload: snapshotPayload(callerRequest.payload),
+    };
     const sessionStoreForInput = runtime.sessionStore;
     const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
     // `session` truthy implies `sessionStoreForInput` was truthy above, but
@@ -9604,6 +9665,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
 
     const payload: PersistedSessionInput = {
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       incarnation: session.incarnation,
       payload: request.payload,
       ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
@@ -12342,12 +12404,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let auditTrailInstance: AuditTrail | undefined;
   let webhookNotifierInstance: WebhookNotifier | undefined;
   let onlineEvalSamplerInstance: OnlineEvalSampler | undefined;
-  // COR-794: the managed-asset owner, on this bureau's runtime services so
-  // its timers, identifiers, and deferred cleanup are the bureau's own.
-  const assetServiceInstance: AssetService | undefined = options.assets
-    ? await createAssetService({ ...options.assets, runtime: runtimeServices })
-    : undefined;
-
   // The durable event history store (AB-91's `ab91-01` slice, AB-310) —
   // built eagerly (unlike `auditTrailInstance`/`webhookNotifierInstance`
   // below, which need `bureau` itself to subscribe to action events) since

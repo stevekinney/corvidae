@@ -235,19 +235,28 @@ describe('AG-UI adapter: structure', () => {
       role: 'user',
       content: [
         { type: 'text', text: 'Look at these' },
-        { type: 'image', url: 'https://example.com/a.png', mimeType: 'image/png', text: 'a cat' },
-        { type: 'image', url: 'data:image/jpeg;base64,AAAA', mimeType: 'image/jpeg' },
+        {
+          type: 'image',
+          source: { kind: 'remote-url', url: 'https://example.com/a.png' },
+          mimeType: 'image/png',
+          alt: 'a cat',
+        },
+        {
+          type: 'image',
+          source: { kind: 'inline', data: 'AAAA', encoding: 'base64' },
+          mimeType: 'image/jpeg',
+        },
         {
           type: 'document',
           name: 'spec.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'base64', data: 'JVBERi0=' },
+          source: { kind: 'inline', data: 'JVBERi0=', encoding: 'base64' },
         },
         {
           type: 'document',
           name: 'remote.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'reference', uri: 'https://example.com/remote.pdf' },
+          source: { kind: 'remote-url', url: 'https://example.com/remote.pdf' },
         },
       ],
     });
@@ -291,7 +300,9 @@ describe('AG-UI adapter: structure', () => {
   it('rejects a system message with non-text content', () => {
     const conversation = build({
       role: 'system',
-      content: [{ type: 'image', url: 'https://example.com/a.png' }],
+      content: [
+        { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/a.png' } },
+      ],
     });
     expect(() => toAGUIMessages(conversation)).toThrow(AGUIMappingError);
   });
@@ -318,15 +329,58 @@ describe('AG-UI adapter: inbound validation', () => {
     expect(essentials(conversation).map((message) => message.role)).toEqual(['user']);
   });
 
-  it('rejects audio parts, which have no Conversationalist representation', () => {
+  it('maps audio and video parts to audio and video content and back', () => {
     const messages: AGUIMessage[] = [
       {
         id: 'u1',
         role: 'user',
-        content: [{ type: 'audio', source: { type: 'url', value: 'https://example.com/a.mp3' } }],
+        content: [
+          { type: 'audio', source: { type: 'url', value: 'https://example.com/a.mp3' } },
+          { type: 'video', source: { type: 'data', value: 'AAAA', mimeType: 'video/mp4' } },
+        ],
+      },
+    ];
+    const conversation = fromAGUIMessages(messages);
+    expect(essentials(conversation)[0]?.content).toEqual([
+      { type: 'audio', source: { kind: 'remote-url', url: 'https://example.com/a.mp3' } },
+      {
+        type: 'video',
+        source: { kind: 'inline', data: 'AAAA', encoding: 'base64' },
+        mimeType: 'video/mp4',
+      },
+    ]);
+    expect(toAGUIMessages(conversation)).toMatchObject(messages);
+  });
+
+  it('rejects a provider file handle that names no provider', () => {
+    const messages: AGUIMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: [{ type: 'audio', source: { type: 'file', value: 'file-1' } }],
       },
     ];
     expect(() => fromAGUIMessages(messages)).toThrow(AGUIMappingError);
+  });
+
+  it('carries a named provider file handle as a provider-file source', () => {
+    const messages: AGUIMessage[] = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'file', value: 'file-1', provider: 'openai' } },
+        ],
+      },
+    ];
+    const conversation = fromAGUIMessages(messages);
+    expect(essentials(conversation)[0]?.content).toEqual([
+      {
+        type: 'document',
+        source: { kind: 'provider-file', provider: 'openai', providerFileId: 'file-1' },
+      },
+    ]);
+    expect(toAGUIMessages(conversation)).toMatchObject(messages);
   });
 
   it('marks a bare tool error as an error outcome', () => {

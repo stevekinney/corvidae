@@ -1,14 +1,16 @@
 import { assertConversationSafe } from '../../conversation/validation';
+import type { ContentPartLineage } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { ConversationHistory as Conversation, Message } from '../../types';
 import { getOrderedMessages } from '../../utilities/message-store';
+import { createMediaExportContext, type MediaExportOptions } from '../media';
 import {
   extractSystemInstruction,
   toFunctionCallPart,
   toFunctionResponsePart,
   toGeminiParts,
 } from './content';
-import type { GeminiContent, GeminiConversation, GeminiPart } from './types';
+import type { GeminiContent, GeminiExport, GeminiPart } from './types';
 
 /**
  * Converts a conversation to Google Gemini API format.
@@ -35,8 +37,12 @@ import type { GeminiContent, GeminiConversation, GeminiPart } from './types';
  * a per-message annotation, so there is no per-message wire field to
  * translate the mark to.
  */
-export function toGeminiMessages(conversation: Conversation): GeminiConversation {
+export function toGeminiMessages(
+  conversation: Conversation,
+  options?: MediaExportOptions,
+): GeminiExport {
   assertConversationSafe(conversation);
+  const lineage: ContentPartLineage[] = [];
   const ordered = getOrderedMessages(conversation);
   const systemInstruction = extractSystemInstruction(ordered);
 
@@ -66,7 +72,7 @@ export function toGeminiMessages(conversation: Conversation): GeminiConversation
   };
 
   for (const message of ordered) {
-    const converted = convertGeminiMessage(message, toolCallNames);
+    const converted = convertGeminiMessage(message, toolCallNames, lineage, options);
     if (!converted) continue;
     const { role: targetRole, parts } = converted;
 
@@ -86,7 +92,7 @@ export function toGeminiMessages(conversation: Conversation): GeminiConversation
 
   flushCurrent();
 
-  const result: GeminiConversation = { contents };
+  const result: GeminiExport = { contents, lineage };
   if (systemInstruction !== undefined) {
     result.systemInstruction = systemInstruction;
   }
@@ -96,6 +102,8 @@ export function toGeminiMessages(conversation: Conversation): GeminiConversation
 function convertGeminiMessage(
   message: Message,
   toolCallNames: ReadonlyMap<string, string>,
+  lineage: ContentPartLineage[],
+  options: MediaExportOptions | undefined,
 ): { role: 'user' | 'model'; parts: GeminiPart[] } | undefined {
   if (shouldSkipGeminiMessage(message)) return undefined;
   switch (message.role) {
@@ -107,7 +115,10 @@ function convertGeminiMessage(
     case 'assistant':
       return {
         role: message.role === 'user' ? 'user' : 'model',
-        parts: toGeminiParts(message.content),
+        parts: toGeminiParts(
+          message.content,
+          createMediaExportContext('gemini', message, lineage, options),
+        ),
       };
     case 'tool-call':
     case 'tool-result':

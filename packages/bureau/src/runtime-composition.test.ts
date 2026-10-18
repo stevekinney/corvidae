@@ -74,6 +74,7 @@ import {
   removeLastScheduledFireTranscript,
   resolveProviderGenerate,
 } from './runtime-composition';
+import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)
@@ -7057,5 +7058,161 @@ describe('COR-567: bureau composes one inspectable hook plan per run', () => {
 
     const ordered = runRuntime.hooks.getHandlers('onStep').map((entry) => entry.id);
     expect(ordered.at(-1)).toBe('test:write-back');
+  });
+});
+
+/**
+ * COR-716 — a managed asset in a run's input resolves the same on every path that
+ * starts or resumes a run: the resolver is composed per owner, and the media in
+ * the input reaches the run unchanged.
+ */
+describe('content source resolver on a scheduled fire and a recovered run (COR-716)', () => {
+  const mediaInput = [
+    { type: 'text', text: 'summarize' },
+    { type: 'document', source: { kind: 'managed-asset', assetId: 'asset-1', revision: 2 } },
+  ] as const;
+
+  function resolverFor(principals: Array<string | undefined>) {
+    const resolver = async () => ({ outcome: 'unavailable' as const, reason: 'test' });
+    return {
+      resolver,
+      contentSourceResolverFor: (principalId: string | undefined) => {
+        principals.push(principalId);
+        return resolver;
+      },
+    };
+  }
+
+  it('seeds a scheduled fire with the media parts as one user message, and resolves as the schedule owner', async () => {
+    const principals: Array<string | undefined> = [];
+    const { resolver, contentSourceResolverFor } = resolverFor(principals);
+    const runtime = await createRuntimeComposition(
+      {
+        generate: async () => ({ content: 'ok', toolCalls: [] }),
+        toolbox: createToolbox([], { context: {} }),
+        storage: { type: 'memory' },
+        durableExecution: true,
+      },
+      { contentSourceResolverFor },
+    );
+    try {
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'media-scheduled-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: mediaInput,
+            scheduleId: 'media-schedule',
+            sessionId: 'media-scheduled-session',
+            principal: 'api-key:ops',
+          },
+          schedule: { id: 'media-schedule' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      const { options } = resolution.services as DurableRunDeps;
+
+      const conversation = options.conversation;
+      if (!(conversation instanceof Conversation)) throw new Error('expected a live conversation');
+      const user = conversation.getMessages().find((message) => message.role === 'user');
+      expect(user?.content).toEqual(mediaInput);
+      expect(options.contentSourceResolver).toBe(resolver);
+      expect(principals).toEqual(['api-key:ops']);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('gives a recovered run the resolver of its session owner, not its per-run service principal', async () => {
+    const principals: Array<string | undefined> = [];
+    const { resolver, contentSourceResolverFor } = resolverFor(principals);
+    const runtime = await createRuntimeComposition(
+      {
+        generate: async () => ({ content: 'ok', toolCalls: [] }),
+        toolbox: createToolbox([], { context: {} }),
+        storage: { type: 'memory' },
+        durableExecution: true,
+      },
+      { contentSourceResolverFor },
+    );
+    try {
+      const runId = 'media-recovered-run';
+      await saveRecoverableSession(runtime.sessionStore!, runId);
+      const saved = await runtime.sessionStore!.load(runId);
+      await runtime.sessionStore!.save({
+        ...saved!,
+        metadata: { ...saved!.metadata, [SESSION_OWNER_METADATA_KEY]: 'api-key:alice' },
+      });
+
+      const result = await runtime.resolveRunServices({
+        workflowId: runId,
+        workflowType: 'agentRun',
+        input: { runId, sessionId: runId, agentName: 'test-agent' },
+      });
+      if (result.status !== 'available') {
+        throw new Error(`Expected recovered services to be available: ${result.reason}`);
+      }
+
+      expect((result.services as DurableRunDeps).options.contentSourceResolver).toBe(resolver);
+      expect(principals).toEqual(['api-key:alice']);
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('composes no resolver when none is supplied, so a managed asset fails admission typed', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    try {
+      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({});
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('carries the input guardrail’s unverified-asset policy into every run it composes', async () => {
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'ok', toolCalls: [] }),
+      toolbox: createToolbox([], { context: {} }),
+      guardrails: { input: { detectors: [], assetSafety: { unknown: 'block' } } },
+      storage: { type: 'memory' },
+      durableExecution: true,
+    });
+    try {
+      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({
+        assetSafety: { unknown: 'block' },
+      });
+
+      const resolution = await runtime.buildScheduledRunServices(
+        {
+          workflowId: 'media-safety-scheduled-run',
+          workflowType: 'agentRun',
+          input: {
+            agentName: 'researcher',
+            input: 'digest',
+            scheduleId: 'media-safety-schedule',
+            sessionId: 'media-safety-session',
+          },
+          schedule: { id: 'media-safety-schedule' },
+        },
+        runtime.sessionStore!,
+      );
+      if (resolution.status !== 'available') {
+        throw new Error(`Expected scheduled services to be available: ${resolution.reason}`);
+      }
+      expect((resolution.services as DurableRunDeps).options.assetSafety).toEqual({
+        unknown: 'block',
+      });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
   });
 });

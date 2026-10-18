@@ -21,10 +21,13 @@ export {
   createConversationHistory,
   isConversationHistory,
   isJSONValue,
+  isMediaContent,
   isStreamingMessage,
   isTokenUsage,
   isToolResult,
+  mediaDisplayUrl,
   prependMessages,
+  renderMediaPlaceholder,
 } from 'conversationalist';
 
 // Branch-rewind builders — the operation Chat's own `editMessage` adapter

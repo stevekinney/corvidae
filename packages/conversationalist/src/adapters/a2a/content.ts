@@ -1,26 +1,20 @@
-import type {
-  DocumentContent,
-  ImageContent,
-  MultiModalContent,
-  TextContent,
-} from '../../multi-modal';
+import type { MediaContent, MultiModalContent, TextContent } from '../../multi-modal';
 import type { JSONValue } from '../../types';
+import {
+  createMediaPart,
+  effectiveMimeType,
+  encodeUtf8Base64,
+  inlineBase64Source,
+  modalityFromMimeType,
+  parseDataUrl,
+  sourceFromUrl,
+} from '../media';
 import { parseJSONValue, toJSONValue } from '../shared';
 import { A2AMappingError, unsupportedA2AContent } from './errors';
 import type { A2ADataPart, A2APart, A2ARawPart, A2AStruct, A2AUrlPart } from './proto-types';
 
 /** Media type assumed for a `data` part that declares none. */
 const JSON_MEDIA_TYPE = 'application/json';
-/**
- * Document name given to a file or data part that carries no filename, because
- * `DocumentContent.name` must be non-empty; the Anthropic adapter uses the
- * same default. A document with this name maps back to a part with no filename.
- */
-const UNNAMED_DOCUMENT_NAME = 'document';
-/** Media type assumed for a file part that declares none. */
-const OCTET_STREAM_MEDIA_TYPE = 'application/octet-stream';
-
-const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/;
 
 /**
  * Converts one Conversationalist content part to an A2A `Part`.
@@ -42,9 +36,11 @@ export function toA2APart(content: MultiModalContent): A2APart {
     case 'text':
       return toA2ATextPart(content);
     case 'image':
-      return toA2AImagePart(content);
+    case 'audio':
+    case 'video':
     case 'document':
-      return toA2ADocumentPart(content);
+    case 'file':
+      return toA2AMediaPart(content);
     case 'thinking':
     case 'redacted_thinking':
       throw unsupportedA2AContent(content.type, 'A2A parts carry no model reasoning.');
@@ -77,10 +73,11 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  * {@link toA2APart}.
  *
  * - `text` becomes `text` content, restoring `metadata.citations`.
- * - An unnamed `raw` or `url` part with an `image/*` media type becomes
- *   `image` content (a `raw` image as a base64 data URL), restoring
- *   `metadata.text`. Every other `raw` or `url` part becomes `document`
- *   content, so its filename survives.
+ * - A `raw` or `url` part with an `image/*`, `audio/*`, or `video/*` media type
+ *   becomes `image`, `audio`, or `video` content (a `raw` part as inline
+ *   base64), whether or not it has a filename, which becomes the part's `name`.
+ *   Every other `raw` or `url` part becomes `document` content. Part metadata
+ *   restores `alt` (from `text`), `caption`, `transcript`, and `extractedText`.
  * - `data` becomes a document holding the base64 UTF-8 encoding of
  *   `JSON.stringify(data)`, typed with the part's media type or
  *   `application/json` when it declares none.
@@ -88,11 +85,11 @@ export function toA2AParts(content: string | ReadonlyArray<MultiModalContent>): 
  * Conversationalist content has fewer fields than an A2A part, so some
  * mappings normalize rather than round-trip exactly:
  *
- * - A file part without a media type becomes a document of type
- *   `application/octet-stream`; an image with no `mimeType` and a non-data URL
- *   therefore comes back as such a document.
- * - An unnamed document with an `image/*` media type comes back as `image`
- *   content.
+ * - A file part without a media type becomes an unnamed-type document with no
+ *   `mimeType`; an image with no `mimeType` and a non-data URL therefore comes
+ *   back as such a document.
+ * - A document with an `image/*`, `audio/*`, or `video/*` media type comes back
+ *   as that modality.
  * - A data part whose media type is exactly `application/json` comes back
  *   without it, because `DocumentContent.mimeType` is required and that is the
  *   default the data part implies.
@@ -133,64 +130,119 @@ function fromA2ATextPart(text: string, metadata: A2AStruct | undefined): TextCon
   };
 }
 
-function toA2AImagePart(content: ImageContent): A2APart {
-  const metadata = content.text !== undefined ? { metadata: { text: content.text } } : {};
-  const match = DATA_URL_PATTERN.exec(content.url);
-  if (match?.[1] !== undefined && match[2] !== undefined) {
-    return { raw: match[2], mediaType: match[1], ...metadata };
+/** The part metadata keys the A2A mapping owns; `alt` keeps its historic `text` key. */
+function toA2AMetadata(content: MediaContent): { metadata?: Record<string, JSONValue> } {
+  const metadata: Record<string, JSONValue> = {
+    ...(content.alt !== undefined ? { text: content.alt } : {}),
+    ...(content.caption !== undefined ? { caption: content.caption } : {}),
+    ...(content.transcript !== undefined ? { transcript: content.transcript } : {}),
+    ...(content.extractedText !== undefined ? { extractedText: content.extractedText } : {}),
+    ...(content.metadata !== undefined ? { metadata: toJSONValue(content.metadata) } : {}),
+  };
+  return Object.keys(metadata).length > 0 ? { metadata } : {};
+}
+
+function toA2AMediaPart(content: MediaContent): A2APart {
+  const { source } = content;
+  const metadata = toA2AMetadata(content);
+  const filename =
+    content.name === undefined || content.name === '' ? {} : { filename: content.name };
+  if (source.kind === 'remote-url') {
+    return {
+      url: source.url,
+      ...filename,
+      ...(content.mimeType !== undefined ? { mediaType: content.mimeType } : {}),
+      ...metadata,
+    };
+  }
+  if (source.kind !== 'inline' && source.kind !== 'data-url') {
+    throw unsupportedA2AContent(
+      content.type,
+      `a ${source.kind} source has no A2A part representation.`,
+    );
+  }
+  const bytes =
+    source.kind === 'inline'
+      ? { data: source.encoding === 'base64' ? source.data : encodeUtf8Base64(source.data) }
+      : parseDataUrl(source.url);
+  if (bytes === undefined) {
+    throw unsupportedA2AContent(content.type, 'its data URL carries no bytes.');
+  }
+  const mediaType = effectiveMimeType(source, undefined, content.mimeType);
+  const json =
+    mediaType !== undefined && content.type === 'document'
+      ? decodeCanonicalJSON(bytes.data)
+      : undefined;
+  if (mediaType !== undefined && json !== undefined) {
+    return {
+      data: json.value,
+      ...filename,
+      ...(mediaType === JSON_MEDIA_TYPE ? {} : { mediaType }),
+      ...metadata,
+    };
   }
   return {
-    url: content.url,
-    ...(content.mimeType !== undefined ? { mediaType: content.mimeType } : {}),
+    raw: bytes.data,
+    ...filename,
+    ...(mediaType !== undefined ? { mediaType } : {}),
     ...metadata,
   };
 }
 
-function toA2ADocumentPart(content: DocumentContent): A2APart {
-  const filename =
-    content.name === '' || content.name === UNNAMED_DOCUMENT_NAME ? {} : { filename: content.name };
-  if (content.source.kind === 'reference') {
-    return { url: content.source.uri, ...filename, mediaType: content.mimeType };
-  }
-  const data = decodeCanonicalJSON(content.source.data);
-  if (data !== undefined) {
-    return {
-      data: data.value,
-      ...filename,
-      ...(content.mimeType === JSON_MEDIA_TYPE ? {} : { mediaType: content.mimeType }),
-    };
-  }
-  return { raw: content.source.data, ...filename, mediaType: content.mimeType };
-}
-
-function fromA2ADataPart(part: A2ADataPart): DocumentContent {
+function fromA2AMetadata(metadata: A2AStruct | undefined) {
+  const text = metadata?.['text'];
+  const caption = metadata?.['caption'];
+  const transcript = metadata?.['transcript'];
+  const extractedText = metadata?.['extractedText'];
+  const nested = metadata?.['metadata'];
   return {
-    type: 'document',
-    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
-    mimeType: nonEmpty(part.mediaType) ?? JSON_MEDIA_TYPE,
-    source: { kind: 'base64', data: encodeUtf8Base64(JSON.stringify(part.data)) },
+    ...(typeof text === 'string' ? { alt: text } : {}),
+    ...(typeof caption === 'string' ? { caption } : {}),
+    ...(typeof transcript === 'string' ? { transcript } : {}),
+    ...(typeof extractedText === 'string' ? { extractedText } : {}),
+    ...(typeof nested === 'object' && nested !== null && !Array.isArray(nested)
+      ? { metadata: toJSONRecord(nested) }
+      : {}),
   };
 }
 
-function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): ImageContent | DocumentContent {
-  const mediaType = nonEmpty(part.mediaType);
-  if (mediaType?.startsWith('image/') === true && nonEmpty(part.filename) === undefined) {
-    const text = part.metadata?.['text'];
-    return {
-      type: 'image',
-      url: part.raw === undefined ? part.url : `data:${mediaType};base64,${part.raw}`,
-      mimeType: mediaType,
-      ...(typeof text === 'string' ? { text } : {}),
-    };
-  }
+function toJSONRecord(value: object): Record<string, JSONValue> {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, toJSONValue(entry)]));
+}
+
+function fromA2ADataPart(part: A2ADataPart): MediaContent {
+  const name = nonEmpty(part.filename);
   return {
-    type: 'document',
-    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
-    mimeType: mediaType ?? OCTET_STREAM_MEDIA_TYPE,
-    source:
+    ...createMediaPart(
+      'document',
+      inlineBase64Source(encodeUtf8Base64(JSON.stringify(part.data))),
+      { mimeType: nonEmpty(part.mediaType) ?? JSON_MEDIA_TYPE, name },
+    ),
+    ...fromA2AMetadata(part.metadata),
+  };
+}
+
+function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
+  const mediaType = nonEmpty(part.mediaType);
+  const name = nonEmpty(part.filename);
+  // The media type decides the modality, through the shared table; a filename never
+  // changes it. A2A has no generic-file part, so a type the table does not place (or
+  // none) is a document.
+  const classified = modalityFromMimeType(mediaType);
+  const modality = classified === undefined || classified === 'file' ? 'document' : classified;
+  return {
+    ...createMediaPart(
+      modality,
       part.raw === undefined
-        ? { kind: 'reference', uri: part.url }
-        : { kind: 'base64', data: part.raw },
+        ? sourceFromUrl(part.url, (url, reason) =>
+            unsupportedA2AContent('part', `its URL "${url}" cannot be a media source: ${reason}.`),
+          )
+        : inlineBase64Source(part.raw, (reason) =>
+            unsupportedA2AContent('part', `its raw bytes are not base64 that decodes: ${reason}.`),
+          ),
+      { mimeType: mediaType, name },
+    ),
+    ...fromA2AMetadata(part.metadata),
   };
 }
 
@@ -209,12 +261,6 @@ function assertSingleContentMember(part: A2APart): void {
 
 function nonEmpty(value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : value;
-}
-
-function encodeUtf8Base64(text: string): string {
-  let binary = '';
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }
 
 /**

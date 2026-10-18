@@ -41,17 +41,20 @@ const providerGeneratedPayload: ReadonlyArray<{
 const rejectedPayload: SessionInputPayload = providerGeneratedPayload;
 
 // AB-202 — every admissible `MultiModalContent` kind (text without citations,
-// image, document) must still be assignable to `SessionInputPayload`, so the
+// and every media kind) must still be assignable to `SessionInputPayload`, so the
 // allowlist above didn't over-exclude down to `never`.
 const admissiblePayload: SessionInputPayload = [
   { type: 'text', text: 'Summarize this.' },
-  { type: 'image', url: 'https://example.invalid/chart.png' },
+  { type: 'image', source: { kind: 'remote-url', url: 'https://example.invalid/chart.png' } },
   {
     type: 'document',
     name: 'q3.pdf',
     mimeType: 'application/pdf',
-    source: { kind: 'reference', uri: 'file:///q3.pdf' },
+    source: { kind: 'managed-asset', assetId: 'asset-q3', revision: 2 },
   },
+  { type: 'audio', source: { kind: 'provider-file', provider: 'gemini', providerFileId: 'f-1' } },
+  { type: 'video', source: { kind: 'upload', uploadId: 'upload-1' } },
+  { type: 'file', source: { kind: 'inline', data: 'QUJD', encoding: 'base64' } },
 ];
 
 // AB-202 — `container_upload` is response-only in the Anthropic adapter (its

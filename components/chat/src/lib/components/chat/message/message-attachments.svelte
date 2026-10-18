@@ -18,6 +18,7 @@
 
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
+  import { mediaDisplayUrl } from '../builders.ts';
   import { Maximize2 } from '@lostgradient/cinder';
   import ImageLightbox from './image-lightbox.svelte';
 
@@ -60,7 +61,9 @@
    */
   function getImageUrlFromContent(image: MultiModalContent): string {
     if (image.type !== 'image') return '';
-    return image.url;
+    // Only a source a browser can load has a display URL; other kinds (a managed
+    // asset, a provider file) have none and are not rendered here.
+    return mediaDisplayUrl(image) ?? '';
   }
 
   /**
@@ -70,7 +73,7 @@
   function getAltText(image: MultiModalContent, displayIndex: number): string {
     if (image.type !== 'image') return '';
     // ImageContent carries optional descriptive text used as the alt.
-    if (image.text) return image.text;
+    if (image.alt) return image.alt;
     return `Image attachment ${displayIndex}`;
   }
 
@@ -78,12 +81,10 @@
 
   function getImageDimensions(image: MultiModalContent): ImageDimensions {
     if (image.type !== 'image') return undefined;
-    const candidate = image as MultiModalContent & { width?: unknown; height?: unknown };
-    return typeof candidate.width === 'number' &&
-      candidate.width > 0 &&
-      typeof candidate.height === 'number' &&
-      candidate.height > 0
-      ? { width: candidate.width, height: candidate.height }
+    const width = image.metadata?.['width'];
+    const height = image.metadata?.['height'];
+    return typeof width === 'number' && width > 0 && typeof height === 'number' && height > 0
+      ? { width, height }
       : undefined;
   }
 

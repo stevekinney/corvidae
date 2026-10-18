@@ -153,7 +153,7 @@ describe('summarizer-based compaction', () => {
       }
     });
 
-    test('replaces document payloads with text references before summarization', () => {
+    test('keeps document parts intact for the summarizer instead of rewriting them as marker prose', () => {
       const messages: Message[] = [
         {
           id: 'm-0',
@@ -163,13 +163,13 @@ describe('summarizer-based compaction', () => {
               type: 'document',
               name: 'requirements.pdf',
               mimeType: 'application/pdf',
-              source: { kind: 'base64', data: 'A'.repeat(10_000) },
+              source: { kind: 'inline', data: 'A'.repeat(10_000), encoding: 'base64' },
             },
             {
               type: 'document',
               name: 'workspace-notes.md',
               mimeType: 'text/markdown',
-              source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+              source: { kind: 'local-file', path: '/workspace/notes.md' },
             },
           ],
           position: 0,
@@ -180,16 +180,7 @@ describe('summarizer-based compaction', () => {
       ];
 
       const stripped = stripToolResultDetailsBatch(messages);
-      expect(stripped[0]!.content).toEqual([
-        {
-          type: 'text',
-          text: '[Document: requirements.pdf (application/pdf); base64 data omitted]',
-        },
-        {
-          type: 'text',
-          text: '[Document: workspace-notes.md (text/markdown) at sandbox:/workspace/notes.md]',
-        },
-      ]);
+      expect(stripped[0]!.content).toEqual(messages[0]!.content);
     });
 
     test('drops thinking and redacted_thinking blocks (mutating them would be invalid for re-serialization)', () => {

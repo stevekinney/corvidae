@@ -1,5 +1,5 @@
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
-import type { ToolCall } from 'armorer/protocol';
+import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
 import { reclassifyToolError } from './errors';
@@ -30,6 +30,11 @@ export interface ToolExecutionDependencies {
   emittedSettledCallIds: Set<string>;
   stepAbortController: AbortController;
   stepToolbox: AnyToolbox;
+  /**
+   * Metadata for the first tool-call message, when the step appended no
+   * assistant message to carry it (a response with tool calls and no text).
+   */
+  firstToolCallMetadata?: Record<string, JSONValue> | undefined;
 }
 
 export interface ToolExecutionResultSet {
@@ -52,6 +57,7 @@ export async function executeTools(
     toolCallInputs,
     emittedSettledCallIds,
     stepAbortController,
+    firstToolCallMetadata,
   } = input;
   const { hooks } = deps;
   let materializedToolCalls: ToolCall[] = [];
@@ -59,7 +65,13 @@ export async function executeTools(
 
   if (toolCallInputs.length > 0) {
     materializedToolCalls = materializeToolCalls(toolCallInputs);
-    conversation.appendToolCalls(materializedToolCalls);
+    const [firstCall, ...otherCalls] = materializedToolCalls;
+    if (firstToolCallMetadata !== undefined && firstCall !== undefined) {
+      conversation.appendToolCall(firstCall, { metadata: firstToolCallMetadata });
+      conversation.appendToolCalls(otherCalls);
+    } else {
+      conversation.appendToolCalls(materializedToolCalls);
+    }
 
     let callsToExecute = materializedToolCalls;
     let filteredResults: ToolExecutionResult[] = [];

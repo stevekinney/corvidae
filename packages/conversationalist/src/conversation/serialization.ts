@@ -1,61 +1,23 @@
 import { z } from 'zod';
 
-import { createInvalidPositionError, createSerializationError } from '../errors';
+import {
+  createInvalidPositionError,
+  createSerializationError,
+  createUnsupportedSchemaVersionError,
+} from '../errors';
 import { conversationShape, messageSchema } from '../schemas';
-import type {
-  AssistantMessage,
-  ConversationHistory,
-  ConversationHistoryHeader,
-  Message,
-  ToolResult,
+import {
+  CURRENT_SCHEMA_VERSION,
+  type AssistantMessage,
+  type ConversationHistory,
+  type ConversationHistoryHeader,
+  type Message,
+  type ToolResult,
 } from '../types';
 import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
 import { assertConversationHistoryIntegrity } from './integrity';
 import { assertToolReference, type ToolUseIndex } from './tool-tracking';
-
-function normalizeLegacyToolCall(toolCall: unknown): unknown {
-  if (!isRecord(toolCall)) {
-    return toolCall;
-  }
-
-  const record = { ...toolCall };
-
-  if (!('arguments' in record) && 'args' in record) {
-    record['arguments'] = record['args'];
-  }
-
-  delete record['args'];
-
-  return record;
-}
-
-function normalizeLegacyToolResult(toolResult: unknown): unknown {
-  if (!isRecord(toolResult)) {
-    return toolResult;
-  }
-
-  const record = { ...toolResult };
-
-  if (!('content' in record) && 'result' in record) {
-    record['content'] = record['result'];
-  }
-
-  delete record['result'];
-
-  return record;
-}
-
-function normalizeLegacyMessage(messageValue: unknown): unknown {
-  if (!isRecord(messageValue)) return messageValue;
-  const message = { ...messageValue };
-  if (message['role'] === 'tool-use') message['role'] = 'tool-call';
-  if ('toolCall' in message) message['toolCall'] = normalizeLegacyToolCall(message['toolCall']);
-  if ('toolResult' in message) {
-    message['toolResult'] = normalizeLegacyToolResult(message['toolResult']);
-  }
-  return message;
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -100,30 +62,6 @@ function normalizeMessage(message: Message): Message | AssistantMessage {
   return base;
 }
 
-/** Whether a serialized message uses a shape only {@link normalizeLegacyMessage} accepts. */
-function isLegacyMessage(message: unknown): boolean {
-  if (!isRecord(message)) return false;
-  if (message['role'] === 'tool-use') return true;
-  const toolCall = message['toolCall'];
-  if (isRecord(toolCall) && 'args' in toolCall) return true;
-  const toolResult = message['toolResult'];
-  return isRecord(toolResult) && 'result' in toolResult;
-}
-
-/**
- * How a serialized message is read: `legacy` coerces shapes older versions
- * wrote (a `tool-use` role, `args`, `result`); `current` rejects them, because
- * a payload that claims the current schema version, such as a version 2
- * snapshot's message table, must not need coercion.
- */
-export type SerializedMessageShape = 'legacy' | 'current';
-
-function legacyShapeError(): Error {
-  return createSerializationError(
-    'failed to deserialize conversation: legacy payload shape under the current schema version',
-  );
-}
-
 function invalidDataError(): Error {
   return createSerializationError('failed to deserialize conversation: invalid data');
 }
@@ -134,9 +72,8 @@ function invalidDataError(): Error {
  * instance; whether it fits the conversation around it (its position, the tool
  * call it answers) is {@link assembleConversationHistory}'s job.
  */
-export function parseConversationMessage(json: unknown, shape: SerializedMessageShape): Message {
-  if (shape === 'current' && isLegacyMessage(json)) throw legacyShapeError();
-  const parsed = messageSchema.safeParse(shape === 'legacy' ? normalizeLegacyMessage(json) : json);
+export function parseConversationMessage(json: unknown): Message {
+  const parsed = messageSchema.safeParse(json);
   if (!parsed.success) throw invalidDataError();
   return createMessage(normalizeMessage(parsed.data));
 }
@@ -159,6 +96,13 @@ export interface ConversationFrame {
 
 /** Parses a conversation's header, ids, and message record, leaving each message unparsed. */
 export function parseConversationFrame(json: unknown): ConversationFrame {
+  // Refuse another schema version before shape validation, so stored data from
+  // an older build is told apart from corrupt data. There is no dual reader.
+  if (isRecord(json) && typeof json['schemaVersion'] === 'number') {
+    if (json['schemaVersion'] !== CURRENT_SCHEMA_VERSION) {
+      throw createUnsupportedSchemaVersionError(json['schemaVersion'], CURRENT_SCHEMA_VERSION);
+    }
+  }
   const parsed = conversationFrameSchema.safeParse(json);
   if (!parsed.success) throw invalidDataError();
   const { ids, messages, ...header } = parsed.data;
@@ -250,6 +194,9 @@ export function readConversationHistoryHeader(value: unknown): ConversationHisto
   if (typeof schemaVersion !== 'number' || !Number.isInteger(schemaVersion) || schemaVersion < 1) {
     throw invalidHeaderError('schemaVersion');
   }
+  if (schemaVersion !== CURRENT_SCHEMA_VERSION) {
+    throw createUnsupportedSchemaVersionError(schemaVersion, CURRENT_SCHEMA_VERSION);
+  }
   if (typeof id !== 'string') throw invalidHeaderError('id');
   if (title !== undefined && typeof title !== 'string') throw invalidHeaderError('title');
   if (!conversationStatuses.has(status)) throw invalidHeaderError('status');
@@ -328,7 +275,7 @@ export function assembleConversationHistory(
  * {@link assembleConversationHistory}; snapshot restore calls the same two
  * halves, parsing each stored message once and assembling every history node.
  *
- * @param json - The conversation JSON to deserialize (may be from an older version)
+ * @param json - The conversation JSON to deserialize (must carry the current schema version)
  * @returns A ConversationHistory object
  * @throws {SerializationError} If validation fails
  */
@@ -336,7 +283,7 @@ export function deserializeConversationHistory(json: unknown): ConversationHisto
   const frame = parseConversationFrame(json);
   const messages: Record<string, Message> = {};
   for (const [id, message] of Object.entries(frame.messages)) {
-    messages[id] = parseConversationMessage(message, 'legacy');
+    messages[id] = parseConversationMessage(message);
   }
   return assembleConversationHistory(frame.header, frame.ids, messages);
 }

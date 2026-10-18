@@ -12,10 +12,11 @@ import {
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 import { Conversation, isConversation } from 'conversationalist';
 
+import { snapshotPayload } from './agent-input';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';
 import { createDurableActiveRun } from './durable/active-run-create';
-import type { DurableRunDeps } from './durable/types';
+import type { DurableRunDeps, SessionInputPayload } from './durable/types';
 import type {
   CombinedOperativeEventMap,
   CombinedOperativeEventType,
@@ -245,7 +246,8 @@ export function createActiveRun(
         // back to '' inside createDurableActiveRun if undefined here.
         agentName: options.agentName,
         options: { ...options, runtime },
-        prompt: durable.prompt,
+        // Copied now, like the tags: the caller owns this array and the start runs later.
+        prompt: durable.prompt === undefined ? undefined : snapshotPayload(durable.prompt),
         ...(dependencies?.clock ? { livenessClock: dependencies.clock } : {}),
         ...(dependencies?.owner !== undefined ? { livenessOwner: dependencies.owner } : {}),
         ...(durable.emitter
@@ -772,8 +774,8 @@ export interface DurableRunRouting extends DurableActiveRunContext {
    * process sharing the store.
    */
   tags?: readonly string[] | undefined;
-  /** First user message to seed a brand-new run. */
-  prompt?: string | undefined;
+  /** First user message to seed a brand-new run: text, or ordered text and media parts. */
+  prompt?: SessionInputPayload | undefined;
   /**
    * A pre-built emitter for this run's event surface. Threaded through to
    * {@link createDurableActiveRun} — see `DurableActiveRunOptions.emitter` for

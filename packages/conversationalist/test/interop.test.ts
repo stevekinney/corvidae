@@ -59,7 +59,7 @@ describe('package-local structural interop', () => {
       environment,
     );
 
-    const openAIMessages = toOpenAIMessagesGrouped(conversation);
+    const openAIMessages = toOpenAIMessagesGrouped(conversation).messages;
     expect(openAIMessages[1]).toMatchObject({
       role: 'assistant',
       tool_calls: [

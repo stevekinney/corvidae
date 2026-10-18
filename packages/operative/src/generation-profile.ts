@@ -17,6 +17,8 @@
  * model, and `policy.ts` imports it from here rather than redefining it.
  */
 
+import type { ContentSource, Modality } from 'conversationalist';
+
 import type { BackendDescriptor, CatalogProjection } from './providers/model-catalog.ts';
 import type { ProviderName } from './providers/types.ts';
 import type { RunnableAgent } from './runnable-agent.ts';
@@ -53,6 +55,17 @@ export interface AgentPreferences {
   readonly preferredProviders?: readonly ProviderName[] | undefined;
   readonly preferredModels?: readonly string[] | undefined;
   readonly minimumContextWindowTokens?: number | undefined;
+  /**
+   * Input modalities (and, optionally, the source forms) a backend must accept
+   * for this agent to run on it. A backend missing one is excluded with
+   * `missing-required-capability`.
+   */
+  readonly requiredInputModalities?:
+    | readonly {
+        readonly modality: Modality;
+        readonly sourceForms?: readonly ContentSource['kind'][] | undefined;
+      }[]
+    | undefined;
 }
 
 /**

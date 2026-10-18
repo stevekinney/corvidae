@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
+import type { OpenAIMessage } from '../src/adapters/openai/types';
 import { simpleTokenEstimator } from '../src/context';
 import { truncateToTokenLimit } from '../src/context-truncation';
 import {
   appendMessages,
   createConversationHistory as createConversation,
 } from '../src/conversation/index';
-import { ConversationalistError } from '../src/errors';
+import { ConversationalistError, UnsupportedContentError } from '../src/errors';
 import {
   createBasicConversation,
   createMultiModalConversation,
@@ -27,9 +28,7 @@ function approvalAction(message: string, idempotencyKey: string) {
     idempotencyKey,
   };
 }
-function assertToolCallMessage(
-  message: ReturnType<typeof toOpenAIMessages>[number] | undefined,
-): void {
+function assertToolCallMessage(message: OpenAIMessage | undefined): void {
   expect(message?.role).toBe('assistant');
   if (!message || message.role !== 'assistant' || !('tool_calls' in message))
     throw new Error('Expected tool call message with tool_calls');
@@ -39,16 +38,14 @@ function assertToolCallMessage(
   expect(message.tool_calls?.[0]?.function.name).toBe('get_weather');
 }
 
-function assertToolResultMessage(
-  message: ReturnType<typeof toOpenAIMessages>[number] | undefined,
-): void {
+function assertToolResultMessage(message: OpenAIMessage | undefined): void {
   expect(message?.role).toBe('tool');
   if (!message || message.role !== 'tool' || !('tool_call_id' in message))
     throw new Error('Expected tool result message with tool_call_id');
   expect(message.tool_call_id).toBe('call-123');
 }
 
-function assertOpenAIToolMessages(messages: ReturnType<typeof toOpenAIMessages>): void {
+function assertOpenAIToolMessages(messages: OpenAIMessage[]): void {
   expect(messages).toHaveLength(4);
   assertToolCallMessage(messages[1]);
   assertToolResultMessage(messages[2]);
@@ -58,7 +55,7 @@ describe('OpenAI Adapter', () => {
   describe('toOpenAIMessages', () => {
     it('converts basic conversation', () => {
       const conv = createBasicConversation();
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
 
       expect(messages).toHaveLength(3);
       expect(messages[0]).toEqual({
@@ -74,14 +71,14 @@ describe('OpenAI Adapter', () => {
 
     it('converts tool calls to OpenAI format', () => {
       const conv = createToolCallConversation();
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
 
       assertOpenAIToolMessages(messages);
     });
 
     it('converts multi-modal content', () => {
       const conv = createMultiModalConversation();
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
 
       expect(messages).toHaveLength(2);
       const userMsg = messages[0];
@@ -104,26 +101,29 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe('Solo');
     });
 
-    it('returns empty string for text-only conversion with no parts', () => {
+    it('rejects an image in a text-only role instead of returning an empty string', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
         conv,
         {
           role: 'assistant',
-          content: [{ type: 'image', url: 'https://example.com/only-image.png' }],
+          content: [
+            {
+              type: 'image',
+              source: { kind: 'remote-url', url: 'https://example.com/only-image.png' },
+            },
+          ],
         },
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
-      expect(messages).toHaveLength(1);
-      expect(messages[0]?.role).toBe('assistant');
-      expect(messages[0]?.content).toBe('');
+      expect(() => toOpenAIMessages(conv)).toThrow(UnsupportedContentError);
+      expect(() => toOpenAIMessages(conv)).toThrow(/role-not-accepted/);
     });
 
     it('skips hidden messages', () => {
@@ -135,7 +135,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages).toHaveLength(1);
       expect(messages[0]?.content).toBe('Visible');
     });
@@ -148,7 +148,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages[0]?.role).toBe('system');
     });
 
@@ -161,7 +161,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages).toHaveLength(1);
       expect(messages[0]?.role).toBe('user');
     });
@@ -175,7 +175,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages).toHaveLength(1);
       expect(messages[0]?.role).toBe('user');
     });
@@ -189,7 +189,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       expect(messages).toHaveLength(1);
       expect(messages[0]?.role).toBe('user');
     });
@@ -216,7 +216,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       const toolMsg = messages.find((m) => m.role === 'tool');
       expect(toolMsg?.content).toBe('String result');
     });
@@ -249,7 +249,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessages(conv);
+      const messages = toOpenAIMessages(conv).messages;
       const toolMessage = messages.find((message) => message.role === 'tool');
       expect(toolMessage?.role).toBe('tool');
       if (!toolMessage || toolMessage.role !== 'tool') {
@@ -293,7 +293,7 @@ describe('OpenAI Adapter', () => {
         { estimateTokens: simpleTokenEstimator, preserveLastN: 1 },
         testEnvironment,
       );
-      const messages = toOpenAIMessages(truncated);
+      const messages = toOpenAIMessages(truncated).messages;
 
       const toolCallIds = new Set<string>();
       for (const message of messages) {

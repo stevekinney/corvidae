@@ -7,6 +7,11 @@ import {
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
 import { extractStatusCode } from '../errors.ts';
+import {
+  generateAdmitsMedia,
+  noBackendAdmitsMedia,
+  requestMediaRequirements,
+} from '../media-dispatch.ts';
 import type { GenerateFunction } from '../types.ts';
 import { classifyProviderError } from './classify-error.ts';
 import { FalloverExhaustedError } from './errors.ts';
@@ -61,8 +66,19 @@ export function createFalloverGenerate(options: FalloverOptions): GenerateFuncti
 
     const collectedErrors: Array<{ provider: string; error: unknown }> = [];
 
+    // COR-716: the request's media limits the cascade to the providers whose
+    // backends admit every part, judged on this exact context. A provider that
+    // cannot take it is never called, so a content rejection is never booked as
+    // a provider failure; a request no provider admits is refused, typed.
+    const requirements = requestMediaRequirements(context);
+    const admitting = providers.filter((provider) =>
+      generateAdmitsMedia(provider.generate, requirements),
+    );
+    if (admitting.length === 0) throw noBackendAdmitsMedia(context, 'no-backend-admits-media');
+
     for (let providerIndex = 0; providerIndex < providers.length; providerIndex++) {
       const provider = providers[providerIndex]!;
+      if (!admitting.includes(provider)) continue;
 
       // Skip providers on cooldown, but record the skip for diagnostics
       if (!tracker.isAvailable(provider.name)) {
@@ -127,7 +143,7 @@ export function createFalloverGenerate(options: FalloverOptions): GenerateFuncti
       collectedErrors.push({ provider: provider.name, error: lastError });
 
       // Fire fallover event if there's a next provider to try
-      const nextAvailable = findNextAvailable(providers, providerIndex + 1, tracker);
+      const nextAvailable = findNextAvailable(providers, providerIndex + 1, tracker, admitting);
       if (nextAvailable !== undefined && onFallover) {
         onFallover({
           failedProvider: provider.name,
@@ -152,9 +168,10 @@ function findNextAvailable(
   providers: FalloverOptions['providers'],
   startIndex: number,
   tracker: ReturnType<typeof createProviderHealthTracker>,
+  admitting: readonly FalloverOptions['providers'][number][],
 ): number | undefined {
   for (let i = startIndex; i < providers.length; i++) {
-    if (tracker.isAvailable(providers[i]!.name)) {
+    if (admitting.includes(providers[i]!) && tracker.isAvailable(providers[i]!.name)) {
       return i;
     }
   }

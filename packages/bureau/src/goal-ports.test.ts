@@ -1577,6 +1577,7 @@ function dyingStarter() {
 
 function seededTranscript(input: GoalAttemptStart['input']): string[] {
   if (typeof input === 'string') return [`string: ${input}`];
+  if (!('conversation' in input)) return [`parts: ${JSON.stringify(input)}`];
   const { conversation } = input;
   return conversation.ids.map((id) => {
     const message = conversation.messages[id]!;

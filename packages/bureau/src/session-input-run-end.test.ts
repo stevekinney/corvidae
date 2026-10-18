@@ -16,7 +16,7 @@ import {
 } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
-import { Conversation, createConversationHistory } from 'conversationalist';
+import { Conversation, createConversationHistory, CURRENT_SCHEMA_VERSION } from 'conversationalist';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -94,7 +94,7 @@ async function receiptState(
     principal: 'alice',
     deliveryMode: 'steer',
     incarnation,
-    payload: { incarnation, payload },
+    payload: { schemaVersion: CURRENT_SCHEMA_VERSION, incarnation, payload },
     principalBacklogLimit: 100,
     sessionBacklogLimitForCrossSessionRead: 100,
     nowMs: Date.now(),

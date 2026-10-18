@@ -8,6 +8,7 @@ import {
 } from '../src/conversation/index';
 import { ConversationalistError } from '../src/errors';
 import { getOrderedMessages } from '../src/utilities/message-store';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 const runtime = createManualRuntimeServices();
 
@@ -21,32 +22,32 @@ describe('conversation serialization', () => {
           type: 'document',
           name: 'requirements.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'base64', data: 'cGRm' },
+          source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
         },
         {
           type: 'document',
           name: 'workspace-notes.md',
           mimeType: 'text/markdown',
-          source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+          source: { kind: 'local-file', path: '/workspace/notes.md' },
         },
       ],
     });
 
     const restored = deserializeConversation(JSON.parse(JSON.stringify(c)));
 
-    expect(restored.schemaVersion).toBe(5);
+    expect(restored.schemaVersion).toBe(CURRENT_SCHEMA_VERSION);
     expect(getOrderedMessages(restored)[0]?.content).toEqual([
       {
         type: 'document',
         name: 'requirements.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       },
       {
         type: 'document',
         name: 'workspace-notes.md',
         mimeType: 'text/markdown',
-        source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+        source: { kind: 'local-file', path: '/workspace/notes.md' },
       },
     ]);
   });
@@ -73,7 +74,7 @@ describe('conversation serialization', () => {
     const now = runtime.clock.nowISO();
     // Position mismatch
     const badPos = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'c',
       status: 'active' as const,
       metadata: {},
@@ -96,7 +97,7 @@ describe('conversation serialization', () => {
 
     // Missing tool reference
     const badTool = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'c2',
       status: 'active' as const,
       metadata: {},
@@ -126,7 +127,7 @@ describe('conversation serialization', () => {
   test('deserialize rejects missing messages and unlisted messages', () => {
     const now = runtime.clock.nowISO();
     const missingMessage = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'c3',
       status: 'active' as const,
       metadata: {},
@@ -138,7 +139,7 @@ describe('conversation serialization', () => {
     expect(() => deserializeConversation(missingMessage)).toThrow(ConversationalistError);
 
     const unlistedMessage = {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'c4',
       status: 'active' as const,
       metadata: {},
@@ -173,46 +174,46 @@ describe('conversation serialization', () => {
     expect(restored.ids).toEqual(c.ids);
   });
 
-  test('deserialize migrates legacy tool-use payloads', () => {
+  test('deserialize refuses a payload stored under another schema version', () => {
     const now = runtime.clock.nowISO();
-    const legacy = {
-      schemaVersion: 3,
-      id: 'legacy',
+    const stored = (schemaVersion: number, content: unknown) => ({
+      schemaVersion,
+      id: 'stored',
       status: 'active' as const,
       metadata: {},
-      ids: ['m1', 'm2'],
+      ids: ['m1'],
       messages: {
         m1: {
           id: 'm1',
-          role: 'tool-use',
-          content: '',
+          role: 'user',
+          content,
           position: 0,
           createdAt: now,
           metadata: {},
           hidden: false,
-          toolCall: { id: 'call-1', name: 'weather', args: { location: 'Denver' } },
-        },
-        m2: {
-          id: 'm2',
-          role: 'tool-result',
-          content: '',
-          position: 1,
-          createdAt: now,
-          metadata: {},
-          hidden: false,
-          toolResult: { callId: 'call-1', outcome: 'success', result: { tempF: 72 } },
         },
       },
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
-    const restored = deserializeConversation(legacy);
-    const messages = getOrderedMessages(restored);
-
-    expect(messages[0]?.role).toBe('tool-call');
-    expect(messages[0]?.toolCall?.arguments).toEqual({ location: 'Denver' });
-    expect(messages[1]?.toolResult?.content).toEqual({ tempF: 72 });
+    // Version 5 stored an image as `{ type: 'image', url }`. It is refused by
+    // version, never dual-read and never reported as a malformed payload.
+    for (const schemaVersion of [1, 3, CURRENT_SCHEMA_VERSION - 1, CURRENT_SCHEMA_VERSION + 1]) {
+      const payload = stored(schemaVersion, [{ type: 'image', url: 'https://example.com/a.png' }]);
+      let thrown: unknown;
+      try {
+        deserializeConversation(payload);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(ConversationalistError);
+      expect((thrown as ConversationalistError).code).toBe('error:unsupported-schema-version');
+      expect((thrown as ConversationalistError).context).toEqual({
+        schemaVersion,
+        expected: CURRENT_SCHEMA_VERSION,
+      });
+    }
   });
 
   test('deserialize rejects non-object roots and malformed message entries', () => {
@@ -220,7 +221,7 @@ describe('conversation serialization', () => {
 
     const now = runtime.clock.nowISO();
     const malformed = {
-      schemaVersion: 5,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'malformed',
       status: 'active' as const,
       metadata: {},

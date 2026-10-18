@@ -1,6 +1,15 @@
-import { type MultiModalContent, renderDocumentReferenceText } from '../../multi-modal';
+import { baseMimeType, isTextualMimeType } from '../../media-types';
+import { isMediaContent, type MediaContent, type MultiModalContent } from '../../multi-modal';
 import { isStreamingMessage } from '../../streaming';
 import type { Message, ToolCall, ToolResult } from '../../types';
+import {
+  createMediaExportContext,
+  effectiveSource,
+  recordLineage,
+  rejectPart,
+  toBase64Payload,
+  type MediaExportContext,
+} from '../media';
 import type {
   AnthropicContentBlock,
   AnthropicSystemBlock,
@@ -9,24 +18,136 @@ import type {
 } from './types';
 
 /**
- * Converts internal multi-modal content to Anthropic content blocks.
+ * Converts internal multi-modal content to Anthropic content blocks. Media is
+ * delivered in a user message only; a media part in any other role is rejected.
  */
 export function toAnthropicContent(
   content: string | ReadonlyArray<MultiModalContent>,
+  context: MediaExportContext,
 ): string | AnthropicContentBlock[] {
   if (typeof content === 'string') return content;
-  const blocks = content.flatMap((part) => {
-    const block = toAnthropicPart(part);
-    return block === undefined ? [] : [block];
+  const blocks: AnthropicContentBlock[] = [];
+  content.forEach((part, partIndex) => {
+    const block = toAnthropicPart(part, partIndex, context);
+    if (block !== undefined) blocks.push(block);
   });
   const only = blocks.length === 1 ? blocks[0] : undefined;
   return only?.type === 'text' && only.citations === undefined ? only.text : blocks;
 }
 
-function toAnthropicPart(part: MultiModalContent): AnthropicContentBlock | undefined {
-  if (part.type === 'document') return toAnthropicDocument(part);
-  if (part.type === 'image') return toAnthropicImage(part.url ?? '');
-  return toAnthropicSimplePart(part);
+function toAnthropicPart(
+  part: MultiModalContent,
+  partIndex: number,
+  context: MediaExportContext,
+): AnthropicContentBlock | undefined {
+  if (!isMediaContent(part)) return toAnthropicSimplePart(part);
+  if (context.role !== 'user') return rejectPart(context, partIndex, part, 'role-not-accepted');
+  return toAnthropicMedia(part, partIndex, context);
+}
+
+/** The source shapes an Anthropic image and document block share. */
+type SharedMediaSource =
+  | { type: 'base64'; media_type: string; data: string }
+  | { type: 'url'; url: string }
+  | { type: 'file'; file_id: string };
+
+function toAnthropicMedia(
+  part: MediaContent,
+  partIndex: number,
+  context: MediaExportContext,
+): AnthropicContentBlock {
+  if (part.type !== 'image' && part.type !== 'document') {
+    // The Messages API has no audio, video, or generic file input.
+    return rejectPart(context, partIndex, part, 'modality-not-accepted', part.source.kind);
+  }
+  const effective = effectiveSource(context, partIndex, part);
+  const { source } = effective;
+  const title = part.type === 'document' && part.name !== undefined ? { title: part.name } : {};
+  const wrap = (wire: SharedMediaSource): AnthropicContentBlock =>
+    part.type === 'image'
+      ? { type: 'image', source: wire }
+      : { type: 'document', ...title, source: wire };
+
+  if (source.kind === 'remote-url') {
+    recordLineage(context, partIndex, part, effective, {
+      to: 'remote-url',
+      transform: 'remote-url-delegated',
+    });
+    return wrap({ type: 'url', url: source.url });
+  }
+  if (source.kind === 'provider-file') {
+    if (source.provider !== 'anthropic') {
+      return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+    }
+    recordLineage(context, partIndex, part, effective, {
+      to: 'provider-file',
+      transform: 'provider-file-reference',
+      providerFileId: source.providerFileId,
+    });
+    return wrap({ type: 'file', file_id: source.providerFileId });
+  }
+  if (source.kind === 'inline' && source.encoding === 'utf8' && part.type === 'document') {
+    // Anthropic takes plain-text documents natively; no base64 round trip. A
+    // text document source's `media_type` is always "text/plain"
+    // (https://platform.claude.com/docs/en/api/messages/create, PlainTextSource,
+    // checked 2026-10-17), so the part's own type, if different, goes in lineage.
+    recordLineage(context, partIndex, part, effective, {
+      to: 'inline',
+      transform: 'passthrough',
+      ...(effective.mimeType !== undefined && baseMimeType(effective.mimeType) !== 'text/plain'
+        ? { originalMimeType: effective.mimeType }
+        : {}),
+    });
+    return {
+      type: 'document',
+      ...title,
+      source: { type: 'text', media_type: 'text/plain', data: source.data },
+    };
+  }
+  const payload = toBase64Payload(source);
+  if (payload === undefined || (source.kind === 'inline' && source.encoding === 'utf8')) {
+    return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+  }
+  const declaredMimeType = effective.mimeType;
+  if (declaredMimeType === undefined) {
+    return rejectPart(context, partIndex, part, 'mime-type-required', source.kind);
+  }
+  // The wire carries the base type; a parameter (`;version=1.7`) is not a type.
+  const mimeType = baseMimeType(declaredMimeType);
+  if (part.type === 'document' && isTextualMimeType(mimeType)) {
+    // A base64 document source accepts only application/pdf. Text bytes go as a
+    // text source, so a text document that arrived as base64 or a data URL is
+    // decoded here, or rejected before the client call when it is not UTF-8.
+    const text = decodeUtf8Base64(payload.data);
+    if (text === undefined) {
+      return rejectPart(context, partIndex, part, 'source-form-not-accepted', source.kind);
+    }
+    recordLineage(context, partIndex, part, effective, {
+      to: 'inline',
+      transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
+      ...(declaredMimeType !== 'text/plain' ? { originalMimeType: declaredMimeType } : {}),
+    });
+    return {
+      type: 'document',
+      ...title,
+      source: { type: 'text', media_type: 'text/plain', data: text },
+    };
+  }
+  recordLineage(context, partIndex, part, effective, {
+    to: 'inline',
+    transform: payload.kind === 'data-url' ? 'data-url-split' : 'inline-base64',
+  });
+  return wrap({ type: 'base64', media_type: mimeType, data: payload.data });
+}
+
+function decodeUtf8Base64(data: string): string | undefined {
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(
+      Uint8Array.from(atob(data), (character) => character.charCodeAt(0)),
+    );
+  } catch {
+    return undefined;
+  }
 }
 
 function toAnthropicSimplePart(part: MultiModalContent): AnthropicContentBlock | undefined {
@@ -88,33 +209,6 @@ function toAnthropicCodeBlock(part: MultiModalContent): AnthropicContentBlock {
   throw new TypeError(`Unsupported Anthropic miscellaneous content ${part.type}.`);
 }
 
-function toAnthropicDocument(
-  part: Extract<MultiModalContent, { type: 'document' }>,
-): AnthropicContentBlock {
-  if (part.source.kind === 'base64')
-    return {
-      type: 'document',
-      title: part.name,
-      source: { type: 'base64', media_type: part.mimeType, data: part.source.data },
-    };
-  if (part.source.uri.startsWith('http://') || part.source.uri.startsWith('https://'))
-    return { type: 'document', title: part.name, source: { type: 'url', url: part.source.uri } };
-  if (part.source.uri.startsWith('file:'))
-    return {
-      type: 'document',
-      title: part.name,
-      source: { type: 'file', file_id: part.source.uri.slice('file:'.length) },
-    };
-  return { type: 'text', text: renderDocumentReferenceText(part) };
-}
-
-function toAnthropicImage(url: string): AnthropicContentBlock {
-  const match = url.startsWith('data:') ? url.match(/^data:([^;]+);base64,(.+)$/) : null;
-  if (match?.[1] && match[2])
-    return { type: 'image', source: { type: 'base64', media_type: match[1], data: match[2] } };
-  return { type: 'image', source: { type: 'url', url } };
-}
-
 /**
  * Converts an internal ToolCall to Anthropic tool_use block.
  */
@@ -168,6 +262,10 @@ function systemMessageText(message: Message): string {
   if (typeof message.content === 'string') {
     return message.content;
   }
+  const context = createMediaExportContext('anthropic', message, [], undefined);
+  message.content.forEach((part, partIndex) => {
+    if (isMediaContent(part)) rejectPart(context, partIndex, part, 'role-not-accepted');
+  });
   return message.content
     .filter((part): part is { type: 'text'; text: string } => part.type === 'text')
     .map((part) => part.text ?? '')

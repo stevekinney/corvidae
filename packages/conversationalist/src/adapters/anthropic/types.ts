@@ -6,6 +6,8 @@
  * {@link AnthropicConversation} without pulling the optional
  * `@anthropic-ai/sdk` peer dependency into their declaration closure.
  */
+import type { ContentPartLineage } from '../../multi-modal';
+import type { MediaExportOptions } from '../media';
 
 /**
  * Anthropic text content block.
@@ -31,7 +33,13 @@ export interface AnthropicUrlImageSource {
   url: string;
 }
 
-export type AnthropicImageSource = AnthropicBase64ImageSource | AnthropicUrlImageSource;
+export interface AnthropicFileImageSource {
+  type: 'file';
+  file_id: string;
+}
+
+export type AnthropicImageSource =
+  AnthropicBase64ImageSource | AnthropicUrlImageSource | AnthropicFileImageSource;
 
 export interface AnthropicImageBlock {
   type: 'image';
@@ -222,7 +230,15 @@ export interface AnthropicConversation {
   messages: AnthropicMessage[];
 }
 
-export interface ToAnthropicMessagesOptions {
+/**
+ * Result of exporting a conversation for Anthropic: the wire payload, and one
+ * lineage entry per media part delivered.
+ */
+export interface AnthropicExport extends AnthropicConversation {
+  lineage: readonly ContentPartLineage[];
+}
+
+export interface ToAnthropicMessagesOptions extends MediaExportOptions {
   /**
    * When `true`, every `cache_control` breakpoint lowered from a
    * `cacheBoundary` mark opts into Anthropic's extended one-hour cache TTL

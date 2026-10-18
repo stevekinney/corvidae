@@ -29,7 +29,7 @@ export function descriptor(
   overrides: Partial<BackendDescriptor> = {},
 ): BackendDescriptor {
   return Object.freeze({
-    descriptorVersion: 1,
+    descriptorVersion: 2,
     provider,
     endpoint: 'messages',
     model,
@@ -38,6 +38,8 @@ export function descriptor(
     modalities: FULL_MODALITIES,
     mimeFamilies: ['text'] as readonly MimeFamily[],
     mediaLimits: [],
+    mediaCounts: [],
+    providerFetchesRemoteUrls: false,
     contextWindowTokens: 100_000,
     maxOutputTokens: 8_000,
     streaming: true,

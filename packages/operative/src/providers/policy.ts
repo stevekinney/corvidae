@@ -230,6 +230,19 @@ function evaluateAgent(
       };
     }
   }
+  for (const required of agent.requiredInputModalities ?? []) {
+    const entry = descriptor.modalities[required.modality];
+    const missingForm = required.sourceForms?.find((form) => !entry.sourceForms.includes(form));
+    if (!entry.input || missingForm !== undefined) {
+      return {
+        eligible: false,
+        exclusionCode: 'missing-required-capability',
+        exclusionReason: entry.input
+          ? `missing required ${required.modality} source form: ${missingForm}`
+          : `missing required input modality: ${required.modality}`,
+      };
+    }
+  }
   if (
     agent.minimumContextWindowTokens !== undefined &&
     descriptor.contextWindowTokens < agent.minimumContextWindowTokens
