@@ -22,6 +22,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
 import { BureauError, createBureau } from './create-bureau';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
+import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
@@ -223,6 +224,40 @@ describe('a bureau.run() park', () => {
     seen.release();
     await run.result();
     expect((stale as BureauError).code).toBe('CONFLICT');
+  });
+
+  // A parked run that ends before its review is decided has two ways to end, and they answer
+  // differently because the review index and the engine learn of the end at different moments.
+  // The design's error table and the session path say the same.
+  it('answers NOT_FOUND to a resolve after the run was aborted and has settled', async () => {
+    const bureau = await start({ asker: askingAgent(newSeen()) });
+    const run = bureau.run('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+
+    run.abort();
+    await run.result();
+    const refusal = await rejectionOf(
+      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+    );
+
+    // The settled run has left the index, so the review is gone rather than in conflict.
+    expect((refusal as BureauError).code).toBe('NOT_FOUND');
+    expect(bureau.listPendingReviews()).toEqual([]);
+  });
+
+  it('answers CONFLICT to a resolve after the engine cancelled the run, before the index heard', async () => {
+    const bureau = await start({ asker: askingAgent(newSeen()) });
+    const run = bureau.run('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+
+    await bureau.durableEngine()!.cancel(run.id);
+    const refusal = await rejectionOf(
+      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+    );
+    await run.result().catch(() => undefined);
+
+    // The engine, not the index, says the run has settled, so the review is closed.
+    expect((refusal as BureauError).code).toBe('CONFLICT');
   });
 
   it('lets exactly one of two concurrent resolves through', async () => {
@@ -535,5 +570,207 @@ describe('a bureau.run() park after a restart', () => {
     expect(finished?.status).toBe('completed');
     expect(after.resumed.join('')).toContain('production');
     expect(restarted.listPendingReviews()).toEqual([]);
+  });
+});
+
+describe('a long signalName on a bureau.run() park (COR-1577)', () => {
+  const MAXIMUM_DELIVERY_ID_BYTES = 128;
+  const bytesOf = (text: string) => new TextEncoder().encode(text).byteLength;
+  const signalIdOf = (call: readonly unknown[] | undefined): string => {
+    if (call === undefined) throw new Error('Expected a delivery.');
+    return (call[3] as { signalId: string }).signalId;
+  };
+  // A catalog run id is about 62 bytes, so each name pushes the review id past 128 bytes.
+  const names = {
+    ascii: 'x'.repeat(70),
+    multibyte: 'é'.repeat(40),
+  } as const;
+
+  for (const [label, signalName] of Object.entries(names)) {
+    it(`parks, lists, resolves, and resumes under a ${label} name, keeping the review id whole`, async () => {
+      const seen = newSeen();
+      const bureau = await start({ asker: askingAgent(seen, signalName) });
+      const signal = spyOn(bureau.durableEngine()!, 'signal');
+
+      const run = bureau.run('asker', 'deploy');
+      const review = await nextReview(bureau, run.id);
+      expect(review.id).toBe(`human-wait:${run.id}:${signalName}:0`);
+      expect(bytesOf(review.id)).toBeGreaterThan(MAXIMUM_DELIVERY_ID_BYTES);
+
+      const resolved = await bureau.resolveReview({
+        id: review.id,
+        decision: 'approve',
+        principal: 'operator',
+        payload: { environment: 'staging' },
+      });
+      const result = await run.result();
+
+      expect(resolved).toMatchObject({ id: review.id, kind: 'human-wait', decision: 'approve' });
+      expect(result.finishReason).not.toBe('error');
+      expect(seen.resumed.join('')).toContain('staging');
+      const delivered = signalIdOf(signal.mock.calls[0]);
+      expect(bytesOf(delivered)).toBeLessThanOrEqual(MAXIMUM_DELIVERY_ID_BYTES);
+      expect(delivered).toBe(humanWaitDeliveryId(review.id));
+      expect(bureau.listPendingReviews()).toEqual([]);
+    });
+
+    it(`denies a ${label}-named park too`, async () => {
+      const bureau = await start({ asker: askingAgent(newSeen(), signalName) });
+      const run = bureau.run('asker', 'deploy');
+      const review = await nextReview(bureau, run.id);
+
+      await bureau.resolveReview({
+        id: review.id,
+        decision: 'deny',
+        principal: 'operator',
+        reason: 'not now',
+      });
+      const result = await run.result();
+
+      expect(result.finishReason).not.toBe('error');
+      expect(bureau.listPendingReviews()).toEqual([]);
+    });
+  }
+
+  it('delivers once under the same derived id when a failed delivery is retried', async () => {
+    const seen = newSeen();
+    const bureau = await start({ asker: askingAgent(seen, names.ascii) });
+    const run = bureau.run('asker', 'deploy');
+    const review = await nextReview(bureau, run.id);
+    const signal = spyOn(bureau.durableEngine()!, 'signal');
+    signal.mockRejectedValueOnce(new Error('transport lost'));
+
+    const failed = await rejectionOf(
+      bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' }),
+    );
+    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: 'operator' });
+    await run.result();
+
+    expect((failed as Error).message).toContain('transport lost');
+    expect(seen.resumed).toHaveLength(1);
+    const ids = signal.mock.calls.map((call) => signalIdOf(call));
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(1);
+    expect(ids.every((id) => bytesOf(id) <= MAXIMUM_DELIVERY_ID_BYTES)).toBe(true);
+  });
+
+  it('deduplicates an exact redelivery under the derived id while the run is parked again on the same signal', async () => {
+    const seen = newSeen();
+    const generate: GenerateFunction = async (context: GenerateContext) => {
+      if (context.step > 0) seen.resumed.push(JSON.stringify(context.conversation.current));
+      if (context.step < 2) {
+        return {
+          content: '',
+          toolCalls: [
+            {
+              id: `call-${context.step}`,
+              name: 'requestHumanInput',
+              arguments: { signalName: names.ascii },
+            },
+          ],
+        };
+      }
+      return { content: 'thanks', toolCalls: [] };
+    };
+    const twice = createAgent({
+      generate,
+      toolbox: createToolbox([]),
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    });
+    const bureau = await start({ asker: twice });
+    const run = bureau.run('asker', 'deploy');
+    const first = await nextReview(bureau, run.id);
+    await bureau.resolveReview({
+      id: first.id,
+      decision: 'approve',
+      principal: 'operator',
+      payload: { environment: 'first' },
+    });
+    await pollUntil(() => bureau.listPendingReviews().some((review) => review.id.endsWith(':1')));
+
+    // The same delivery again, now that the run is parked on the same signal a second time.
+    await bureau
+      .durableEngine()!
+      .signal(
+        run.id,
+        names.ascii,
+        { environment: 'duplicate' },
+        { signalId: humanWaitDeliveryId(first.id) },
+      );
+    for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
+
+    expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([
+      `human-wait:${run.id}:${names.ascii}:1`,
+    ]);
+    expect(seen.resumed.join('')).not.toContain('duplicate');
+    const second = bureau.listPendingReviews()[0]!;
+    await bureau.resolveReview({ id: second.id, decision: 'approve', principal: 'operator' });
+    await run.result();
+    expect(seen.resumed.join('')).not.toContain('duplicate');
+  });
+
+  it('derives the same delivery id after a restart, and resumes the recovered run', async () => {
+    const databasePath = join(
+      tmpdir(),
+      `bureau-run-human-wait-long-${process.pid}-${databaseCounter++}.sqlite`,
+    );
+    databasePaths.push(databasePath);
+    const options = {
+      storage: { type: 'sqlite' as const, path: databasePath },
+      durableOwnership: { ownership: 'none' as const },
+    };
+    const crashed = await start({ asker: askingAgent(newSeen(), names.ascii) }, options);
+    const run = crashed.run('asker', 'deploy');
+    const original = await nextReview(crashed, run.id);
+    const before = spyOn(crashed.durableEngine()!, 'signal');
+    before.mockRejectedValueOnce(new Error('transport lost'));
+    await rejectionOf(
+      crashed.resolveReview({ id: original.id, decision: 'approve', principal: 'operator' }),
+    );
+
+    const after = newSeen();
+    const restarted = await start({ asker: askingAgent(after, names.ascii) }, options);
+    const restored = await nextReview(restarted, run.id);
+    const again = spyOn(restarted.durableEngine()!, 'signal');
+    await restarted.resolveReview({
+      id: restored.id,
+      decision: 'approve',
+      principal: 'operator',
+      payload: { environment: 'production' },
+    });
+    const finished = await restarted.waitForDurableRun(run.id);
+
+    expect(restored.id).toBe(original.id);
+    const sentBefore = signalIdOf(before.mock.calls[0]);
+    const sentAfter = signalIdOf(again.mock.calls[0]);
+    expect(sentAfter).toBe(sentBefore);
+    expect(bytesOf(sentAfter)).toBeLessThanOrEqual(MAXIMUM_DELIVERY_ID_BYTES);
+    expect(finished?.status).toBe('completed');
+    expect(after.resumed.join('')).toContain('production');
+  });
+});
+
+describe('humanWaitDeliveryId', () => {
+  const bytesOf = (text: string) => new TextEncoder().encode(text).byteLength;
+
+  it('is the review id itself when it fits in 128 bytes', () => {
+    const exactly128 = `human-wait:${'r'.repeat(100)}:a:0`.padEnd(128, '0');
+    expect(bytesOf(exactly128)).toBe(128);
+    expect(humanWaitDeliveryId(exactly128)).toBe(exactly128);
+    expect(humanWaitDeliveryId('human-wait:run-1:answer:0')).toBe('human-wait:run-1:answer:0');
+  });
+
+  it('is a fixed-length, deterministic, prefixed hash otherwise, distinct per review id', () => {
+    const long = `human-wait:run-1:${'x'.repeat(200)}:0`;
+    const other = `human-wait:run-1:${'x'.repeat(200)}:1`;
+
+    expect(humanWaitDeliveryId(long)).toBe(humanWaitDeliveryId(long));
+    expect(humanWaitDeliveryId(long)).toStartWith('human-wait:sha256:');
+    expect(bytesOf(humanWaitDeliveryId(long))).toBeLessThanOrEqual(128);
+    expect(humanWaitDeliveryId(long)).not.toBe(humanWaitDeliveryId(other));
+    // Measured in bytes, not characters: 70 two-byte characters are 140 bytes.
+    const multibyte = 'é'.repeat(70);
+    expect(multibyte.length).toBeLessThan(128);
+    expect(humanWaitDeliveryId(multibyte)).toStartWith('human-wait:sha256:');
   });
 });

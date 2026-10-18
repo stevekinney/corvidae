@@ -7,7 +7,8 @@
  * have, so this module adds no persisted state of its own. The engine already holds it:
  * `WorkflowState.waitingForSignals` says whether a run is still parked on a signal (it survives
  * a restart and clears when the signal is delivered), the checkpoint holds the park's ordinal and
- * prompt, and `engine.signal(…, { signalId })` delivers once however often it is retried. The
+ * prompt, and `engine.signal(…, { signalId })` delivers once however often it is retried, under a
+ * delivery id derived from the review id ({@link humanWaitDeliveryId}). The
  * map kept here is derived from those and is never trusted: every resolve asks the engine first.
  *
  * Counting the parks goes through `human-wait-parks.ts`, the same code the session path uses, so
@@ -16,6 +17,7 @@
  * @module run-human-waits
  */
 
+import { sha256HexSync } from '@lostgradient/cryptography';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import {
   type CombinedOperativeEventMap,
@@ -46,6 +48,22 @@ export function humanWaitDenialPayload(
   return decision === 'reject'
     ? { __abRejected: true, reason }
     : { __abDenied: true, ...(reason !== undefined ? { reason } : {}) };
+}
+
+/** Weft refuses a `signalId` longer than this many UTF-8 bytes. */
+const MAXIMUM_DELIVERY_ID_BYTES = 128;
+const textEncoder = new TextEncoder();
+
+/**
+ * The id a decision is delivered to Weft under, derived from the review id. The review id embeds
+ * the model-chosen `signalName`, so it can exceed Weft's `signalId` limit; it stays the review's
+ * address on the wire either way. The review id itself is used when it fits, and a fixed-length
+ * hash of it otherwise. The derivation is deterministic, so a retry, including one made after a
+ * restart, is delivered under the same id and Weft's accepted-response marker deduplicates it.
+ */
+export function humanWaitDeliveryId(reviewId: string): string {
+  if (textEncoder.encode(reviewId).byteLength <= MAXIMUM_DELIVERY_ID_BYTES) return reviewId;
+  return `human-wait:sha256:${sha256HexSync(reviewId)}`;
 }
 
 type StoredRun = {
@@ -185,7 +203,22 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     if (steps.length > 0) baselines.set(runId, parks.baseline);
     const outstanding = parks.outstanding;
     if (outstanding === undefined) return;
-    const state = await engine.get(runId);
+    let state: WorkflowState | null;
+    try {
+      state = await engine.get(runId);
+    } catch (error) {
+      // A failed read must not fail the run's recovery. This one review is left unlisted: the run
+      // is still parked in the engine, and the next restart reads the engine again.
+      dependencies.diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message:
+          `[bureau] Could not read the workflow state of recovered run "${runId}" while ` +
+          'restoring a human-wait review, so the review is not listed: ' +
+          (error instanceof Error ? error.message : String(error)),
+      });
+      return;
+    }
     if (state === null || !state.waitingForSignals?.includes(outstanding.signalName)) return;
     restored.set(runId, {
       runId,
@@ -290,8 +323,10 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         input.decision === 'approve'
           ? input.payload
           : humanWaitDenialPayload(input.decision, input.reason);
-      // The review id is the delivery id, so a retry after a failure delivers once.
-      await engine.signal(review.runId, review.signalName, payload, { signalId: review.id });
+      // The delivery id is derived from the review id, so a retry after a failure delivers once.
+      await engine.signal(review.runId, review.signalName, payload, {
+        signalId: humanWaitDeliveryId(review.id),
+      });
       resolved.add(review.id);
       restored.delete(review.runId);
     } finally {
