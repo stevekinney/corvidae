@@ -1,4 +1,5 @@
 import type { AnyToolbox } from 'armorer';
+import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
@@ -28,6 +29,8 @@ export interface GenerationDependencies {
   steeringDesiredState: SteeringDesiredState | undefined;
   stepToolbox: AnyToolbox;
   stepToolChoice: ToolChoice | undefined;
+  /** Media sources resolved for this step (COR-716). */
+  resolvedSources: ResolvedMediaSources | undefined;
 }
 
 export interface GenerationResult {
@@ -50,6 +53,7 @@ export async function executeGeneration(
     steeringDesiredState,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   let response: GenerateResponse = undefined!;
@@ -73,7 +77,14 @@ export async function executeGeneration(
     try {
       let prepareResult: GenerateResponse | void = undefined;
       if (hooks?.has('prepareStep')) {
-        const prepareContext = { conversation, step, signal: stepSignal, abortStep, elicit };
+        const prepareContext = {
+          conversation,
+          step,
+          signal: stepSignal,
+          abortStep,
+          elicit,
+          resolvedSources,
+        };
         // `runFirst`, not `run`: a `prepareStep` handler returns a
         // `GenerateResponse` but receives a `StepContext`, so the waterfall
         // would hand the next handler a response where it expects a context.
@@ -97,6 +108,7 @@ export async function executeGeneration(
           responseFormat: deps.responseFormat,
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
+          resolvedSources,
         };
         if (hooks?.has('beforeGenerate')) {
           // Iterate handlers manually (the same reason afterGenerate does,
@@ -120,6 +132,7 @@ export async function executeGeneration(
             responseFormat: deps.responseFormat,
             signal: stepSignal,
             steering: steeringDesiredState,
+            resolvedSources,
           };
           for (const [index, entry] of handlers.entries()) {
             let handlerResult: GenerateContext | void;
@@ -150,7 +163,11 @@ export async function executeGeneration(
               // state is re-applied here so a hook can never silently drop
               // or override it — for this handler's own return value, not
               // only the waterfall's last one.
-              beforeGenContext = { ...handlerResult, steering: steeringDesiredState };
+              beforeGenContext = {
+                ...handlerResult,
+                steering: steeringDesiredState,
+                resolvedSources,
+              };
             }
           }
           generateContext = beforeGenContext;

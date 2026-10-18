@@ -1,4 +1,5 @@
 import type { Conversation } from 'conversationalist';
+import { messageText } from 'conversationalist';
 
 import type { Scratchpad } from './create-scratchpad';
 import type { OnStepHook, PrepareStepHook, StepResult } from './types';
@@ -52,15 +53,15 @@ export interface CreateMemoryBridgeOptions {
 // ---------------------------------------------------------------------------
 
 function extractLastUserMessage(conversation: Conversation): string | undefined {
-  const lastUserMessage = [...conversation.getMessages()].toReversed().find(
-    (
-      message,
-    ): message is typeof message & {
-      role: 'user';
-      content: string;
-    } => message.role === 'user' && typeof message.content === 'string',
-  );
-  return lastUserMessage?.content;
+  const lastUserMessage = [...conversation.getMessages()]
+    .toReversed()
+    .find((message) => message.role === 'user');
+  if (lastUserMessage === undefined) return undefined;
+  // The recall query is the message's text, whatever shape its content has: a
+  // multimodal message contributes its text parts and a message with none
+  // contributes no query, rather than a stale earlier one.
+  const text = messageText(lastUserMessage);
+  return text === '' ? undefined : text;
 }
 
 // ---------------------------------------------------------------------------

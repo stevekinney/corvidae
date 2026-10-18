@@ -17,6 +17,7 @@ import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderError, ToolCallParseError } from './errors.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveAnthropicEffort } from './shared/effort.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveAnthropicModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import type {
@@ -86,10 +87,10 @@ export function createAnthropicProviderStream(
     const conversationForRequest = cacheAwareAssembly
       ? cacheAwareAssembly(context)
       : context.conversation.current;
-    const { system, messages } = toAnthropicMessages(
-      conversationForRequest,
-      options.extendedCacheTtl ? { extendedCacheTtl: true } : undefined,
-    );
+    const { system, messages, lineage } = toAnthropicMessages(conversationForRequest, {
+      ...(options.extendedCacheTtl ? { extendedCacheTtl: true } : {}),
+      sources: context.resolvedSources,
+    });
     const tools = await context.toolbox.toAnthropicTools();
     const params = buildAnthropicMessageRequest({
       model: resolvedModel,
@@ -111,12 +112,15 @@ export function createAnthropicProviderStream(
       // Await handles both sync (mock) and async (real SDK APIPromise) returns
       const stream = await Promise.resolve(client.messages.create(params, requestOptions));
 
-      return await consumeAnthropicStream(
-        stream,
-        streaming,
-        context.signal,
-        resolvedModel,
-        resolvedEffort,
+      return withInputLineage(
+        await consumeAnthropicStream(
+          stream,
+          streaming,
+          context.signal,
+          resolvedModel,
+          resolvedEffort,
+        ),
+        lineage,
       );
     } catch (error) {
       if (error instanceof ProviderError) throw error;

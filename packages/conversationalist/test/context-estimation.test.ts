@@ -138,7 +138,7 @@ describe('simpleTokenEstimator', () => {
     expect(tokens).toBe(3);
   });
 
-  it('counts base64 and referenced document payloads', () => {
+  it('counts the prose a media part carries and leaves its bytes to the media estimator', () => {
     const message = createMessage({
       id: 'documents',
       role: 'user',
@@ -147,7 +147,8 @@ describe('simpleTokenEstimator', () => {
           type: 'document',
           name: 'inline.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
+          alt: 'abcd',
+          source: { kind: 'inline', data: 'A'.repeat(100_000), encoding: 'base64' },
         },
         {
           type: 'document',
@@ -162,6 +163,8 @@ describe('simpleTokenEstimator', () => {
       hidden: false,
     });
 
-    expect(simpleTokenEstimator(message)).toBe(21);
+    // 'inline.pdf' (10) + 'abcd' (4) + 'remote.pdf' (10) = 24 characters: the
+    // 100,000-character payload is priced by operative's MediaCostEstimator.
+    expect(simpleTokenEstimator(message)).toBe(6);
   });
 });

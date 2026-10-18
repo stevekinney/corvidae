@@ -9,6 +9,9 @@ import type {
   CompactionScheduler,
   Conversation,
   ConversationHistory,
+  MediaContent,
+  ResolvedMediaSource,
+  ResolvedMediaSources,
   TokenUsage,
 } from 'conversationalist';
 import type { ZodType } from 'zod';
@@ -17,6 +20,7 @@ import type { BackpressureStrategy } from './backpressure';
 import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { ContextEpochSealer } from './context-epoch';
+import type { MediaCostEstimator } from './context/types';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
@@ -235,7 +239,31 @@ export interface GenerateContext {
    * desired steering state but never silently drop or override it.
    */
   steering?: SteeringDesiredState | undefined;
+  /**
+   * Media sources a {@link ContentSourceResolver} projected to a kind the
+   * provider accepts, keyed `${messageId}:${partIndex}`. A provider adapter
+   * substitutes them at export time; the conversation itself keeps each part's
+   * original source, so asset identity and revision are never rewritten.
+   * `undefined` when the run has no resolver or no part needed resolving.
+   *
+   * NOT hook-overridable, like `steering`: `runStep` re-applies it after every
+   * `beforeGenerate` handler.
+   */
+  resolvedSources?: ResolvedMediaSources | undefined;
 }
+
+/**
+ * Projects a media part whose source no provider accepts directly (a managed
+ * asset, an upload, a local file, an MCP resource, an A2A reference) to a form
+ * one does. Bureau supplies it from its asset service; Operative cannot import
+ * Bureau, which is why it is injected. `unavailable` is a typed result, not a
+ * throw: the part is then reported `unsupported` and the step fails before any
+ * provider call.
+ */
+export type ContentSourceResolver = (
+  part: MediaContent,
+  position: { readonly messageId: string; readonly partIndex: number },
+) => Promise<ResolvedMediaSource | { readonly outcome: 'unavailable'; readonly reason: string }>;
 
 /**
  * Response returned by the user-provided generate function.
@@ -289,6 +317,11 @@ export interface RunOutcome {
 export interface StepContext {
   conversation: Conversation;
   step: number;
+  /**
+   * The media sources resolved for this step (see {@link GenerateContext.resolvedSources}),
+   * so a hook such as the input guardrail can read each asset's safety state.
+   */
+  resolvedSources?: ResolvedMediaSources | undefined;
   signal?: AbortSignal | undefined;
   abortStep?: ((reason?: string) => void) | undefined;
   elicit?:
@@ -545,6 +578,18 @@ export interface RunOptionsBase {
    */
   hooks?: HookRegistry<OperativeHookMap> | undefined;
   contextManagement?: ContextManagementOptions | undefined;
+  /**
+   * Projects media parts to a source form the provider accepts. Without one, a
+   * part whose source kind the backend does not list is reported `unsupported`
+   * and the step fails with a `MediaAdmissionError`; nothing is dropped.
+   */
+  contentSourceResolver?: ContentSourceResolver | undefined;
+  /**
+   * Costs media parts against the backend. Defaults to a catalog estimator built
+   * from the descriptors the `generate` function carries; with neither, every
+   * media part is `unbounded` and the step fails rather than admitting it free.
+   */
+  mediaCostEstimator?: MediaCostEstimator | undefined;
   /**
    * The Zod schema the final response must satisfy (AB-18) — the single
    * validated output contract. Validated with `.parseAsync()`; its

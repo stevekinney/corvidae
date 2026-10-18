@@ -15,6 +15,7 @@ import type { AgentRun, RunEvent } from './agent-run';
 import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
+import type { SessionInputPayload } from './durable/types';
 import type { AgentGenerationProfile } from './generation-profile';
 import type { GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
@@ -25,12 +26,15 @@ export type { RunEvent };
 
 /**
  * Input accepted by every `RunnableAgent.run()` call. A bare string starts a
- * fresh conversation. `{ conversation }` resumes from an existing
- * `ConversationHistory` and is snapshotted (cloned) before the run begins,
- * so the run's state and the caller's object are independent from the
- * moment `run()` is called.
+ * fresh conversation. An ordered list of user-admissible parts (text and media
+ * addressed by a `ContentSource`) starts a fresh conversation whose single user
+ * message holds those parts in order; an empty list is rejected with an
+ * `AgentContractError`, never turned into `''`. `{ conversation }` resumes from
+ * an existing `ConversationHistory`. Each form is snapshotted (cloned) before
+ * the run begins, so the run's state and the caller's object are independent
+ * from the moment `run()` is called.
  */
-export type AgentInput = string | { conversation: ConversationHistory };
+export type AgentInput = SessionInputPayload | { conversation: ConversationHistory };
 
 /**
  * Per-run context accepted alongside `AgentInput`. `agentName` is for a

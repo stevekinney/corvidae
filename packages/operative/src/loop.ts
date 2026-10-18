@@ -48,6 +48,8 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     onElicitation: options.onElicitation,
     hooks: options.hooks,
     contextManagement: options.contextManagement,
+    contentSourceResolver: options.contentSourceResolver,
+    mediaCostEstimator: options.mediaCostEstimator,
     output: options.output,
     responseFormat,
     maximumTokens: options.maximumTokens,

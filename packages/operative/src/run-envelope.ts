@@ -26,7 +26,7 @@ function unreachable(value: never): never {
  * reading frames over a pipe or WebSocket) should branch on `schemaVersion`
  * rather than assume the current shape.
  */
-export const RUN_ENVELOPE_SCHEMA_VERSION = 2 as const;
+export const RUN_ENVELOPE_SCHEMA_VERSION = 3 as const;
 
 export class UnsupportedRunResultVersionError extends Error {
   readonly version: unknown;

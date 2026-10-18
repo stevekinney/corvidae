@@ -36,6 +36,13 @@ export interface InputGuardrailOptions {
   mode?: ('parallel' | 'sequential') | undefined;
   /** Getter that returns the current session taint state. When provided, detectors receive the live value. */
   getSessionTainted?: (() => boolean) | undefined;
+  /**
+   * What to do with a media part whose resolved asset has no safety verdict
+   * (`unknown`). A part the safety gate `flagged` is always refused. The
+   * default `'allow'` admits unverified assets; `'block'` refuses them. Only a
+   * part a `ContentSourceResolver` projected carries a safety state.
+   */
+  assetSafety?: { unknown?: ('allow' | 'block') | undefined } | undefined;
 }
 
 /** Context provided to output validators. */

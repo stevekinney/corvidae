@@ -68,6 +68,10 @@ export interface StepDeps {
   readonly onElicitation: OnElicitation | undefined;
   readonly hooks: RunOptions['hooks'];
   readonly contextManagement: ContextManagementOptions | undefined;
+  /** Projects media parts to a source form the provider accepts (COR-716). */
+  readonly contentSourceResolver: RunOptions['contentSourceResolver'];
+  /** Costs media parts; defaults to a catalog estimator over the generate function's descriptors. */
+  readonly mediaCostEstimator: RunOptions['mediaCostEstimator'];
   readonly output: ZodType | undefined;
   readonly responseFormat: GenerateContext['responseFormat'];
   /** Per-request output token cap passed through to every GenerateContext. */
@@ -337,6 +341,7 @@ export async function runStep(
     elicit,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
   } = preparation;
 
   const generation = await executeGeneration({
@@ -350,6 +355,7 @@ export async function runStep(
     steeringDesiredState,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
   });
   if ('kind' in generation) return generation;
   const { stepSkipped, generateDurationMilliseconds } = generation;

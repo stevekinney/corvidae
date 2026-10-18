@@ -31,6 +31,12 @@ export { geminiConversationAdapter } from './adapters/gemini';
 export { appendGeminiMessages, fromGeminiMessages } from './adapters/gemini/inbound';
 export { toGeminiMessages } from './adapters/gemini/outbound';
 export type * from './adapters/gemini/types';
+export { parseDataUrl, resolvedSourceKey } from './adapters/media';
+export type {
+  MediaExportOptions,
+  ResolvedMediaSource,
+  ResolvedMediaSources,
+} from './adapters/media';
 export { openAIConversationAdapter } from './adapters/openai';
 export { appendOpenAIMessages, fromOpenAIMessages } from './adapters/openai/inbound';
 export { toOpenAIMessages, toOpenAIMessagesGrouped } from './adapters/openai/outbound';
@@ -235,7 +241,13 @@ export type {
   ConversationMutationResult,
   ConversationStoreSnapshot,
 } from './history';
-export { contentSourceDisplayUrl, isMediaContent, renderMediaPlaceholder } from './multi-modal';
+export {
+  contentSourceDisplayUrl,
+  copyContent,
+  copyMultiModalContent,
+  isMediaContent,
+  renderMediaPlaceholder,
+} from './multi-modal';
 export type {
   AudioContent,
   ContainerUploadContent,

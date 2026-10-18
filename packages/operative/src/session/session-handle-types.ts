@@ -4,6 +4,7 @@ import type { AgentRun } from '../agent-run';
 import type { AgentSession } from '../agent-session';
 import type { CheckpointStore } from '../durable/checkpoint-store';
 import type { RegistryAgnosticEngine } from '../durable/create-run-engine';
+import type { SessionInputPayload } from '../durable/types';
 import type { OperativeEventMap } from '../events';
 import type { FreshAttemptHandoffArtifact } from '../fresh-attempt/handoff-artifact';
 import type { FreshAttemptSourceResolver } from '../fresh-attempt/validate';
@@ -65,9 +66,10 @@ export interface MonitorOptions {
   every: number | string;
 
   /**
-   * The prompt sent to the agent on each tick.
+   * The prompt sent to the agent on each tick: a string, or an ordered list of
+   * user-admissible text and media parts.
    */
-  input: string;
+  input: SessionInputPayload;
 
   /**
    * Predicate evaluated on the completed `RunResult` of each tick.
@@ -109,7 +111,7 @@ export interface SessionHandle {
    *
    * `runId` is DERIVED: `${sessionId}:${sequence}` — the caller never supplies it.
    */
-  run(input: string): AgentRun;
+  run(input: SessionInputPayload): AgentRun;
 
   /**
    * Re-attach to the last run IFF it is non-terminal (`status === 'running'`).

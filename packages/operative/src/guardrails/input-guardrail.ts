@@ -1,18 +1,11 @@
 import { runDetectorPipeline } from 'armorer';
+import type { MultiModalContent } from 'conversationalist';
+import { isMediaContent } from 'conversationalist';
 
 import { GuardrailTripwireError } from '../errors';
 import type { GenerateResponse, PrepareStepHook, StepContext } from '../types';
+import { inspectContent, type InspectableField } from './inspectable-content';
 import type { DetectorContext, GuardrailTriggeredEvent, InputGuardrailOptions } from './types';
-
-/**
- * Extracts the text content of the last user message from a conversation.
- */
-function getLastUserMessageText(context: StepContext): string {
-  const messages = context.conversation.getMessages();
-  const lastUser = [...messages].toReversed().find((m) => m.role === 'user');
-  if (!lastUser) return '';
-  return typeof lastUser.content === 'string' ? lastUser.content : '';
-}
 
 /**
  * Creates a refusal response that short-circuits the generate call.
@@ -45,13 +38,25 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
     onTriggered,
     mode = 'parallel',
     getSessionTainted,
+    assetSafety,
   } = options;
+  const unverifiedAssets = assetSafety?.unknown ?? 'allow';
 
   return async (context: StepContext): Promise<void | GenerateResponse> => {
-    const input = getLastUserMessageText(context);
-    if (!input) return;
-
     const messages = context.conversation.getMessages();
+    const lastUserPosition = messages.findLastIndex((message) => message.role === 'user');
+    const lastUser = lastUserPosition === -1 ? undefined : messages[lastUserPosition];
+    if (!lastUser) return;
+
+    const inspectable = inspectContent(lastUser.content);
+    const assetFindings = findUnsafeAssets(
+      context,
+      lastUser.id,
+      lastUser.content,
+      unverifiedAssets,
+    );
+    if (inspectable.fields.length === 0 && assetFindings.length === 0) return;
+
     const detectorContext: DetectorContext = {
       step: context.step,
       conversationLength: messages.length,
@@ -59,31 +64,46 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
       provenance: 'user-input',
     };
 
-    const topResult = await runDetectorPipeline(input, detectors, detectorContext, mode);
+    // Every field is its own detector input, so a flagged caption is found
+    // whatever the rest of the message says, and a media part with no plain
+    // string is still inspected through the prose and URL it carries.
+    const triggered: Array<{
+      index: number;
+      pipeline: NonNullable<Awaited<ReturnType<typeof runDetectorPipeline>>>;
+    }> = [];
+    for (const [index, field] of inspectable.fields.entries()) {
+      const pipeline = await runDetectorPipeline(field.text, detectors, detectorContext, mode);
+      if (pipeline) triggered.push({ index, pipeline });
+    }
 
-    if (!topResult) return;
+    const topFinding = triggered[0] ?? undefined;
+    if (!topFinding && assetFindings.length === 0) return;
 
-    const event: GuardrailTriggeredEvent = {
-      detector: topResult.detectorName,
-      category: topResult.result.category,
-      confidence: topResult.result.confidence,
-      action,
-      input,
-      ...(topResult.result.detail === undefined ? {} : { detail: topResult.result.detail }),
-      provenance: detectorContext.provenance,
-    };
+    const event: GuardrailTriggeredEvent = topFinding
+      ? {
+          detector: topFinding.pipeline.detectorName,
+          category: topFinding.pipeline.result.category,
+          confidence: topFinding.pipeline.result.confidence,
+          action,
+          input: inspectable.fields[topFinding.index]!.text,
+          ...(topFinding.pipeline.result.detail === undefined
+            ? {}
+            : { detail: topFinding.pipeline.result.detail }),
+          provenance: detectorContext.provenance,
+        }
+      : assetFindings[0]!.event(action, detectorContext.provenance);
 
     onTriggered?.(event);
 
     if (action === 'tripwire') {
       throw new GuardrailTripwireError(
-        `Input guardrail tripwire: "${topResult.detectorName}" flagged the request (${topResult.result.category}).`,
+        `Input guardrail tripwire: "${event.detector}" flagged the request (${event.category}).`,
         {
-          guardrailName: topResult.detectorName,
-          category: topResult.result.category,
+          guardrailName: event.detector,
+          category: event.category,
           phase: 'input',
-          confidence: topResult.result.confidence,
-          detail: topResult.result.detail,
+          confidence: event.confidence,
+          detail: event.detail,
         },
       );
     }
@@ -92,25 +112,74 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
       return;
     }
 
-    if (action === 'sanitize' && topResult.result.sanitized) {
-      // Replace the last user message content with the sanitized version.
-      // redactMessageAtPosition replaces the message content in-place (using
-      // the sanitized text as the placeholder) rather than appending a new message.
-      const allMessages = context.conversation.getMessages();
-      let lastUserPosition = -1;
-      for (let index = allMessages.length - 1; index >= 0; index--) {
-        const message = allMessages[index];
-        if (message?.role !== 'user') continue;
-        lastUserPosition = index;
-        break;
+    // An asset the safety gate flagged has no sanitized form: sanitizing
+    // cannot make the bytes safe, so it falls through to a block.
+    if (action === 'sanitize' && assetFindings.length === 0) {
+      const replacements = new Map<number, string>();
+      let sanitizable = triggered.length > 0;
+      for (const { index, pipeline } of triggered) {
+        const field: InspectableField = inspectable.fields[index]!;
+        const sanitized = pipeline.result.sanitized;
+        if (sanitized === undefined || !field.replaceable) {
+          sanitizable = false;
+          break;
+        }
+        replacements.set(index, sanitized);
       }
-      if (lastUserPosition >= 0) {
-        context.conversation.redactMessageAtPosition(lastUserPosition, topResult.result.sanitized);
+      if (sanitizable) {
+        // Replace the user message in place, keeping every part the detector did
+        // not flag: media is never collapsed to the sanitized prose.
+        const rebuilt = inspectable.rebuild(replacements);
+        if (typeof rebuilt === 'string') {
+          context.conversation.redactMessageAtPosition(lastUserPosition, rebuilt);
+        } else {
+          context.conversation.redactMessageAtPosition(lastUserPosition, { content: rebuilt });
+        }
+        return;
       }
-      return;
     }
 
     // Default: block (also fallback when sanitize has no sanitized text)
     return createBlockResponse();
   };
+}
+
+/** A media part the asset-safety policy refuses, described as a guardrail event. */
+interface AssetFinding {
+  event(
+    action: GuardrailTriggeredEvent['action'],
+    provenance: GuardrailTriggeredEvent['provenance'],
+  ): GuardrailTriggeredEvent;
+}
+
+function findUnsafeAssets(
+  context: StepContext,
+  messageId: string,
+  content: string | ReadonlyArray<MultiModalContent>,
+  unverifiedAssets: 'allow' | 'block',
+): AssetFinding[] {
+  if (typeof content === 'string' || context.resolvedSources === undefined) return [];
+  const findings: AssetFinding[] = [];
+  content.forEach((part, partIndex) => {
+    if (!isMediaContent(part)) return;
+    const resolved = context.resolvedSources?.get(`${messageId}:${partIndex}`);
+    if (resolved === undefined) return;
+    const flagged = resolved.safety === 'flagged';
+    const unverified = resolved.safety === 'unknown' && unverifiedAssets === 'block';
+    if (!flagged && !unverified) return;
+    findings.push({
+      event: (action, provenance) => ({
+        detector: 'asset-safety',
+        category: flagged ? 'unsafe-asset' : 'unverified-asset',
+        confidence: 1,
+        action,
+        input: `${part.type} part ${partIndex}`,
+        detail: flagged
+          ? 'The asset safety gate flagged this media part.'
+          : 'No safety verdict exists for this media part and the policy refuses unverified assets.',
+        provenance,
+      }),
+    });
+  });
+  return findings;
 }

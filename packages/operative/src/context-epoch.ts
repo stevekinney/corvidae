@@ -281,7 +281,8 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
   const messages = input.conversation.getMessages();
   const renderedBaseline = messages
     .map(
-      (message) => `${message.role}:${typeof message.content === 'string' ? message.content : ''}`,
+      (message) =>
+        `${message.role}:${typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}`,
     )
     .join('\n');
 

@@ -5,7 +5,7 @@
  * compaction strategies, and the top-level context engine options.
  */
 
-import type { Conversation, Message } from 'conversationalist';
+import type { Conversation, MediaContent, Message, Modality } from 'conversationalist';
 
 import type { TokenBudget } from './token-budget';
 
@@ -46,13 +46,62 @@ export interface AssemblyOptions {
    * material). Only consulted when `stablePrefix` is `true`.
    */
   pinnedMessages?: ReadonlyArray<Message> | undefined;
+  /**
+   * Costs each media part. Defaults to the budget's own `estimateMedia`, which
+   * reports every part as `unbounded` (`no-estimator`) unless the budget was
+   * created with an estimator. A message holding a part whose outcome is not
+   * `estimated` is never admitted at zero cost: it is left out of the assembled
+   * messages and its outcome is returned in {@link AssemblyResult.mediaCosts}.
+   */
+  mediaCostEstimator?: MediaCostEstimator | undefined;
 }
+
+/** Where a media part sits: the message that holds it and its index in that message's content. */
+export interface MediaPartPosition {
+  readonly messageId: string;
+  readonly partIndex: number;
+}
+
+/**
+ * The typed outcome of costing one media part. Only `estimated` admits the part
+ * to a context window; `unsupported` and `unbounded` are policy outcomes, never
+ * a zero.
+ */
+export type MediaCostOutcome =
+  | (MediaPartPosition & {
+      readonly outcome: 'estimated';
+      readonly modality: Modality;
+      readonly tokens: number;
+      readonly basis: 'provider-count' | 'catalog-estimate';
+    })
+  | (MediaPartPosition & {
+      readonly outcome: 'unsupported';
+      readonly modality: Modality;
+      readonly reason:
+        'modality-not-accepted' | 'source-form-not-accepted' | 'mime-family-not-accepted';
+    })
+  | (MediaPartPosition & {
+      readonly outcome: 'unbounded';
+      readonly modality: Modality;
+      readonly reason: 'no-estimator' | 'size-unknown' | 'media-limit-exceeded';
+    });
+
+/** Costs one media part against the backend the run will call. */
+export type MediaCostEstimator = (
+  part: MediaContent,
+  position: MediaPartPosition,
+) => MediaCostOutcome;
+
+/** A media cost outcome that does not admit its part. */
+export type UnadmittedMediaCost = Exclude<MediaCostOutcome, { outcome: 'estimated' }>;
 
 /** Breakdown of token usage across context slices. */
 export interface BudgetReport {
   systemTokens: number;
   historyTokens: number;
   retrievedTokens: number;
+  /** Tokens the included messages' media parts cost; already counted in the slice totals. */
+  mediaTokens: number;
   totalTokens: number;
   remainingTokens: number;
 }
@@ -61,6 +110,8 @@ export interface BudgetReport {
 export interface AssemblyResult {
   messages: ReadonlyArray<Message>;
   budgetReport: BudgetReport;
+  /** One outcome per media part in every message the assembler considered. */
+  mediaCosts: ReadonlyArray<MediaCostOutcome>;
 }
 
 /** A function that assembles the context window from a conversation and budget. */

@@ -4,7 +4,7 @@ import {
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
 
-import type { ContentSource, MediaContent } from './multi-modal';
+import type { MediaContent } from './multi-modal';
 import type {
   ConversationHistory,
   Message,
@@ -105,7 +105,7 @@ export function defineMessagePlugin(
 
 /**
  * Approximate serialized character length of a single content part. Text and
- * image-alt count as their text; thinking/tool/result blocks count by the size
+ * a media part's prose (name, alt text, caption, transcript) count as their text; thinking/tool/result blocks count by the size
  * of their payload (reasoning text, encrypted data, tool input/result JSON) so a
  * message made mostly of structural blocks is NOT estimated as near-zero tokens
  * and can still be truncated. This is a rough size proxy, not an exact tokenizer.
@@ -146,37 +146,16 @@ function optionalStringLength(value: string | undefined): number {
   return value?.length ?? 0;
 }
 
-function contentSourceLength(source: ContentSource): number {
-  switch (source.kind) {
-    case 'inline':
-      return source.data.length;
-    case 'data-url':
-    case 'remote-url':
-      return source.url.length;
-    case 'local-file':
-      return source.path.length;
-    case 'upload':
-      return source.uploadId.length;
-    case 'provider-file':
-      return source.provider.length + source.providerFileId.length;
-    case 'mcp-resource':
-      return source.serverId.length + source.uri.length;
-    case 'a2a-reference':
-      return source.agentCardUrl.length + source.taskId.length + source.artifactId.length;
-    case 'managed-asset':
-      return source.assetId.length;
-  }
-}
-
 /**
- * Character length of a media part: its source payload plus every portable text
- * field it carries, so a media part is never estimated as zero cost.
+ * Character length of the prose a media part carries: its name, alt text,
+ * caption, transcript, extracted text, and metadata. The part's bytes are not
+ * counted here: this estimator prices text. Operative costs media bytes with a
+ * `MediaCostEstimator`, which reports a typed outcome per part instead of a
+ * number, so an uncostable part is refused rather than priced at zero.
  */
 function mediaCharLength(part: MediaContent): number {
   return (
-    contentSourceLength(part.source) +
     optionalStringLength(part.name) +
-    optionalStringLength(part.mimeType) +
     optionalStringLength(part.alt) +
     optionalStringLength(part.caption) +
     optionalStringLength(part.transcript) +

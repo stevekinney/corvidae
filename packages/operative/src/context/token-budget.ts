@@ -5,6 +5,10 @@
  * for compaction triggers and early warnings.
  */
 
+import type { MediaContent } from 'conversationalist';
+
+import type { MediaCostEstimator, MediaCostOutcome, MediaPartPosition } from './types';
+
 /** Tracks token usage and enforces budget constraints for context windows. */
 export interface TokenBudget {
   readonly maxTokens: number;
@@ -31,6 +35,11 @@ export interface TokenBudget {
   allocate(ratio?: number): number;
   /** Estimates the number of tokens in `text` using the configured estimator. */
   estimate(text: string): number;
+  /**
+   * Costs one media part. Without a configured `mediaCostEstimator` every part
+   * is `unbounded` (`no-estimator`): a budget never prices media at zero.
+   */
+  estimateMedia(part: MediaContent, position: MediaPartPosition): MediaCostOutcome;
 }
 
 /** Options for `createTokenBudget`. */
@@ -40,6 +49,8 @@ export interface ContextTokenBudgetOptions {
   warningThreshold?: number | undefined;
   compactionThreshold?: number | undefined;
   tokenEstimator?: ((text: string) => number) | undefined;
+  /** Costs media parts; see {@link TokenBudget.estimateMedia}. */
+  mediaCostEstimator?: MediaCostEstimator | undefined;
 }
 
 /** Default token estimator: roughly 4 characters per token. */
@@ -59,6 +70,7 @@ export function createTokenBudget(options: ContextTokenBudgetOptions): TokenBudg
     warningThreshold = Math.floor(maxTokens * 0.2),
     compactionThreshold = Math.floor(maxTokens * 0.8),
     tokenEstimator = defaultTokenEstimator,
+    mediaCostEstimator,
   } = options;
 
   let used = 0;
@@ -101,6 +113,11 @@ export function createTokenBudget(options: ContextTokenBudgetOptions): TokenBudg
     },
     estimate(text: string): number {
       return tokenEstimator(text);
+    },
+    estimateMedia(part: MediaContent, position: MediaPartPosition): MediaCostOutcome {
+      return mediaCostEstimator === undefined
+        ? { ...position, outcome: 'unbounded', modality: part.type, reason: 'no-estimator' }
+        : mediaCostEstimator(part, position);
     },
   };
 }

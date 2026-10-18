@@ -1,4 +1,5 @@
 import type { AnyToolbox } from 'armorer';
+import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
@@ -13,6 +14,7 @@ import {
   StepStartedEvent,
 } from './events';
 import type { EventDispatcher, RunState, StepDeps, StepOutcome } from './run-step';
+import { admitStepMedia } from './run-step-media';
 import { createElicit } from './run-step-support';
 import { awaitResumeOrAbort, explicitAbortReason } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
@@ -32,6 +34,8 @@ export interface StepPreparationResult {
   elicit: ReturnType<typeof createElicit> | undefined;
   stepToolbox: AnyToolbox;
   stepToolChoice: ToolChoice | undefined;
+  /** Media sources resolved for this step; re-applied to every generate context. */
+  resolvedSources: ResolvedMediaSources | undefined;
 }
 
 export async function prepareStep(
@@ -172,12 +176,24 @@ export async function prepareStep(
     ? createElicit(step, deps.onElicitation, conversation, stepSignal, deps.runtime, emitter)
     : undefined;
 
+  // COR-716 — admit the step's media before the input guardrail, context
+  // management, or the provider sees it: resolve sources a provider cannot take
+  // directly, cost every part, and refuse (typed, before generation) any part
+  // that cannot be admitted. A conversation with no media skips all of it.
+  const media = await admitStepMedia({ deps, conversation, step, emitter });
+  if ('kind' in media) return media;
+  const { resolvedSources, mediaTokens } = media;
+
   // Context management: compact if over token threshold
   if (deps.contextManagement) {
     const contextManagement = deps.contextManagement;
-    const tokensBefore = contextManagement.tokenEstimator
-      ? contextManagement.tokenEstimator(conversation)
-      : conversation.estimateTokens();
+    // Media is costed by the media estimator, not by the text estimator, so its
+    // tokens are added to whatever the configured estimator reports.
+    const estimateConversationTokens = (): number =>
+      (contextManagement.tokenEstimator
+        ? contextManagement.tokenEstimator(conversation)
+        : conversation.estimateTokens()) + mediaTokens;
+    const tokensBefore = estimateConversationTokens();
 
     // Emit budget warning when remaining tokens fall below warningThreshold
     const warningThreshold =
@@ -226,6 +242,7 @@ export async function prepareStep(
           estimate(text: string) {
             return Math.ceil(text.length / 4);
           },
+          estimateMedia: media.estimate,
         },
       })) !== false;
     if (tokensBefore > compactionThreshold) {
@@ -254,9 +271,7 @@ export async function prepareStep(
             abortStep,
             elicit,
           });
-          const tokensAfter = contextManagement.tokenEstimator
-            ? contextManagement.tokenEstimator(conversation)
-            : conversation.estimateTokens();
+          const tokensAfter = estimateConversationTokens();
           const messagesAfter = conversation.getMessages().length;
           emitter?.dispatch(new ContextCompactedEvent(step, tokensBefore, tokensAfter));
 
@@ -336,5 +351,6 @@ export async function prepareStep(
     elicit,
     stepToolbox,
     stepToolChoice,
+    resolvedSources,
   };
 }
