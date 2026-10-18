@@ -8489,6 +8489,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * where a future boot sweep would look for them.
    */
   const SESSION_DELETION_OWNER_PREFIX = 'session-deletion-owner:v1:';
+
+  /** Whether `error` is the strict UTF-8 decoder rejecting stored bytes, as opposed to the store failing. */
+  function isInvalidEncodingError(error: unknown): boolean {
+    return (
+      error instanceof TypeError &&
+      (error as { code?: unknown }).code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
+    );
+  }
   const sessionDeletionOwners = new Map<string, string>();
 
   function sessionDeletionOwnerKey(sessionId: string, incarnation: string): string {
@@ -8538,9 +8546,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // A record that is present but not valid text is a definite miss, like one that
       // is absent: nothing can ever read an owner from it, and retrying would jam
       // every later outbox entry behind it. It is audited without an owner and
-      // removed with the rest. The store's strict decoder reports it as a
-      // `TypeError`; anything else is the store itself failing, which is retried.
-      if (error instanceof TypeError) {
+      // removed with the rest. Only the strict decoder's own error code says so: a
+      // bare `TypeError` is also what `fetch` throws when an HTTP-backed store is
+      // unreachable, and that is the store failing, which is retried.
+      if (isInvalidEncodingError(error)) {
         diagnose({
           level: 'error',
           scope: 'durable-maintenance',

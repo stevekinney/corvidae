@@ -233,4 +233,46 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       await second.dispose();
     }
   });
+
+  it('keeps the owner when the store fails with a TypeError of its own, as an unreachable HTTP store does', async () => {
+    const storage = new MemoryStorage();
+    const blocked = { value: false };
+    const { bureau: first, base } = await openBlockedBureau(storage, blocked);
+    await settled(first, 'api-key:alice', 'unreachable');
+    blocked.value = true;
+    await first.deleteSession('unreachable').catch(() => undefined);
+    await first.dispose().catch(() => undefined);
+
+    const reading = { fails: true };
+    const second = await createBureau({
+      agents: {},
+      generate,
+      persistence: intercepted(
+        textValueStore(storage, { disposeUnderlyingStorage: false }),
+        (method, args) =>
+          method === 'get' && String(args[0]).startsWith(SIDE_RECORD_PREFIX) && reading.fails
+            ? Promise.reject(
+                new TypeError('Unable to connect. Is the computer able to access the url?'),
+              )
+            : undefined,
+      ),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      // The failure is the store's, not the record's: the deletion waits, owner intact.
+      expect(await deletionCount(second, 'unreachable')).toBe(0);
+      expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(1);
+
+      reading.fails = false;
+      await second.runDurableMaintenance();
+      await waitForCondition(
+        async () => (await deletionCount(second, 'unreachable')) === 1,
+        'the deletion never reached the audit trail once the store recovered',
+      );
+      const [entry] = await deletionEntries(second, 'unreachable');
+      expect(entry && ownerOf(entry)).toBe('api-key:alice');
+    } finally {
+      await second.dispose();
+    }
+  });
 });
