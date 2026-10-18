@@ -81,6 +81,20 @@ describe('createCatalogMediaCostEstimator', () => {
     });
   });
 
+  it('refuses a file handle issued by another provider', () => {
+    const handle = (provider: string): MediaContent => ({
+      type: 'image',
+      source: { kind: 'provider-file', provider, providerFileId: 'file-1' },
+    });
+    expect(createCatalogMediaCostEstimator([anthropic])(handle('openai'), position)).toMatchObject({
+      outcome: 'unsupported',
+      reason: 'source-form-not-accepted',
+    });
+    expect(
+      createCatalogMediaCostEstimator([anthropic])(handle('anthropic'), position),
+    ).toMatchObject({ outcome: 'estimated' });
+  });
+
   it('refuses a MIME family the backend does not list', () => {
     expect(
       createCatalogMediaCostEstimator([anthropic])(inline('image', 'QUJD', 'audio/mpeg'), position),

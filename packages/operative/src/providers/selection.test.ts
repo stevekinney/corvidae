@@ -850,6 +850,27 @@ describe('select: input media filters incompatible backends before ranking (COR-
     expect(overSixHundred.selected).toEqual({ provider: 'openai', model: 'gpt-4o' });
   });
 
+  it('keeps the provider of a provider-file part and excludes backends of another provider', () => {
+    const requirements = describeInputMedia([
+      {
+        type: 'document',
+        source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file_1' },
+      },
+    ]);
+    expect(requirements).toEqual([
+      { modality: 'document', sourceForm: 'provider-file', provider: 'anthropic', count: 1 },
+    ]);
+    const plan = select(
+      baseRequest({ inputMedia: requirements }),
+      baseOptions(catalogOf([anthropic, gemini])),
+    );
+    expect(plan.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+    expect(plan.candidates.find((c) => c.provider === 'gemini')).toMatchObject({
+      eligible: false,
+      exclusionCode: 'incompatible-modality',
+    });
+  });
+
   it('excludes a backend that does not fetch remote URLs itself', () => {
     const gemini20 = descriptor('gemini', 'gemini-2.0-flash');
     const plan = select(

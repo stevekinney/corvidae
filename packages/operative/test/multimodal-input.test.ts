@@ -6,7 +6,7 @@
  */
 import { HookRegistry } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import type {
   ContentSource,
@@ -24,6 +24,7 @@ import {
 } from 'conversationalist';
 
 import { z } from 'zod';
+import { noToolCalls } from '../src/conditions/predicates';
 import { createSlidingWindowStrategy } from '../src/context/compaction-strategies';
 import { prepareSubagentContext } from '../src/context/subagent-context';
 import { createTokenBudget } from '../src/context/token-budget';
@@ -44,8 +45,11 @@ import { createModelCatalog } from '../src/providers/model-catalog';
 import { createOpenAIProvider } from '../src/providers/openai.ts';
 import {
   anthropicTextResponse,
+  anthropicToolUseResponse,
+  geminiFunctionCallResponse,
   geminiTextResponse,
   openAITextResponse,
+  openAIToolCallResponse,
 } from '../src/providers/test/fixtures.ts';
 import {
   createMockAnthropicClient,
@@ -730,6 +734,28 @@ describe('providers deliver every part or reject before the provider call', () =
     ]);
   });
 
+  it('every provider records lineage on a response that only calls tools', async () => {
+    const openai = await createOpenAIProvider({
+      model: 'gpt-4.1',
+      client: createMockOpenAIClient([openAIToolCallResponse]),
+    })(contextFor([dataUrlImage]));
+    const anthropic = await createAnthropicProvider({
+      model: 'claude-sonnet-5-5',
+      client: createMockAnthropicClient([anthropicToolUseResponse]),
+    })(contextFor([dataUrlImage]));
+    const gemini = await createGeminiProvider({
+      model: 'gemini-2.5-flash',
+      client: createMockGeminiModel([geminiFunctionCallResponse]),
+    })(contextFor([dataUrlImage]));
+
+    for (const response of [openai, anthropic, gemini]) {
+      expect(response.toolCalls.length).toBeGreaterThan(0);
+      expect(response.metadata?.['inputLineage']).toEqual([
+        expect.objectContaining({ partIndex: 0, modality: 'image' }),
+      ]);
+    }
+  });
+
   it('OpenAI: rejects audio before the client is called, with a typed error', async () => {
     const client = createMockOpenAIClient([openAITextResponse]);
     const generate = createOpenAIProvider({ model: 'gpt-4.1', client });
@@ -944,4 +970,54 @@ describe('the static catalog and the adapters agree on what each backend accepts
       });
     }
   }
+});
+
+describe('lineage reaches the transcript on a step that only calls tools', () => {
+  it('stamps inputLineage on the first tool-call message when the response has no text', async () => {
+    const lineage = [
+      {
+        messageId: 'm',
+        partIndex: 1,
+        modality: 'image',
+        provider: 'openai',
+        from: 'inline',
+        to: 'data-url',
+        transform: 'inline-base64',
+      },
+    ];
+    let calls = 0;
+    const generate: GenerateFunction = async () => {
+      calls += 1;
+      return calls === 1
+        ? {
+            content: '',
+            toolCalls: [{ id: 'call-1', name: 'noop', arguments: {} }],
+            metadata: { inputLineage: lineage },
+          }
+        : { content: 'done', toolCalls: [] };
+    };
+    const noop = createTool({
+      name: 'noop',
+      description: 'does nothing',
+      input: z.object({}),
+      async execute() {
+        return 'ok';
+      },
+    });
+    const conversation = new Conversation();
+    conversation.appendUserMessage('go');
+
+    await createActiveRun({
+      generate,
+      toolbox: createToolbox([noop]),
+      conversation,
+      stopWhen: noToolCalls(),
+    }).result;
+
+    const toolCall = conversation.getMessages().find((message) => message.role === 'tool-call');
+    expect(toolCall?.metadata['inputLineage']).toEqual(lineage);
+    // Later steps carry none: lineage belongs to the request that produced it.
+    const second = conversation.getMessages().filter((m) => m.role === 'assistant');
+    expect(second.every((message) => message.metadata['inputLineage'] === undefined)).toBe(true);
+  });
 });

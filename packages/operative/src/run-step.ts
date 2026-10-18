@@ -436,8 +436,18 @@ export async function runStep(
     conversation.appendAssistantMessage(content, metadata);
   }
 
+  // A response with tool calls and no text appends no assistant message, so its
+  // metadata (the request's media lineage) would otherwise be lost: stamp the
+  // lineage on the step's first tool-call message instead.
+  const inputLineage = metadata?.['inputLineage'];
+  const lineageOnToolCall =
+    !content && !response.messageAppended && inputLineage !== undefined
+      ? { inputLineage }
+      : undefined;
+
   const toolExecution = await executeTools({
     deps,
+    firstToolCallMetadata: lineageOnToolCall,
     conversation,
     step,
     emitter,

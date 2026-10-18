@@ -186,6 +186,8 @@ export interface SelectionRequest {
 export interface InputMediaRequirement {
   readonly modality: Modality;
   readonly sourceForm: ContentSource['kind'];
+  /** For a `provider-file` source: the provider that issued the file handle. */
+  readonly provider?: string | undefined;
   readonly mimeFamily?: MimeFamily | undefined;
   readonly byteLength?: number | undefined;
   readonly count: number;
@@ -206,6 +208,7 @@ export function describeInputMedia(
     requirements.push({
       modality: part.type,
       sourceForm: part.source.kind,
+      ...(part.source.kind === 'provider-file' ? { provider: part.source.provider } : {}),
       ...(mimeFamily !== undefined ? { mimeFamily } : {}),
       ...(byteLength !== undefined ? { byteLength } : {}),
       count: 1,
@@ -234,6 +237,15 @@ export function evaluateInputMedia(
     if (!entry.sourceForms.includes(requirement.sourceForm)) {
       return refuse(
         `${label} does not accept a ${requirement.sourceForm} source for ${requirement.modality}`,
+      );
+    }
+    if (
+      requirement.sourceForm === 'provider-file' &&
+      requirement.provider !== undefined &&
+      requirement.provider !== descriptor.provider
+    ) {
+      return refuse(
+        `${label} cannot use a ${requirement.provider} file handle for ${requirement.modality}`,
       );
     }
     if (requirement.sourceForm === 'remote-url' && !descriptor.providerFetchesRemoteUrls) {

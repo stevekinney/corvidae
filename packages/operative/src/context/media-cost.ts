@@ -117,7 +117,10 @@ export function createCatalogMediaCostEstimator(
     }
     if (
       accepting.some(
-        (descriptor) => !descriptor.modalities[part.type].sourceForms.includes(source.kind),
+        (descriptor) =>
+          !descriptor.modalities[part.type].sourceForms.includes(source.kind) ||
+          // A file handle only works at the provider that issued it.
+          (source.kind === 'provider-file' && source.provider !== descriptor.provider),
       )
     ) {
       return { ...base, outcome: 'unsupported', reason: 'source-form-not-accepted' };
