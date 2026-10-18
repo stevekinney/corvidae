@@ -148,7 +148,7 @@ const schema = {
         name: 'capabilities',
         reason: 'unknown-shape',
         description:
-          'Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable\nindividual Chat features (attachments, search, copy, editing, retry) as a group\nrather than as five separate boolean props.',
+          'Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable\nindividual Chat features (attachments, search, copy, editing, retry, quote) as a group\nrather than as six separate boolean props.',
       },
       {
         name: 'composerActions',
