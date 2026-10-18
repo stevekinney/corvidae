@@ -79,6 +79,7 @@ export {
   materializeToolResultsAsync,
 } from './tool-interactions';
 export type {
+  AppendBatchOptions,
   AppendToolCallOptions,
   AppendToolResultOptions,
   MaterializeToolCallOptions,

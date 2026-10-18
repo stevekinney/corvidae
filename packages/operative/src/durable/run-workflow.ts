@@ -4,6 +4,7 @@ import { Conversation, isConversation } from 'conversationalist';
 
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
+import { appendFinalAssistantMessage } from '../message-identifiers';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import type { FinishReason } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
@@ -443,7 +444,7 @@ export function createRunWorkflow(
                   signal: deps.options.signal,
                 });
                 if (typeof finalContent !== 'string') return { kind: 'noop' as const };
-                conversation.appendAssistantMessage(finalContent);
+                appendFinalAssistantMessage(conversation, finalContent, runId, finalStep);
                 return {
                   kind: 'content' as const,
                   finalContent,

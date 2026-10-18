@@ -12,6 +12,7 @@ import {
   isConversationEnvironmentParameter,
   resolveConversationEnvironment,
 } from '../environment';
+import { createInvalidInputError } from '../errors';
 import type {
   AppendableToolCallInput,
   AppendableToolResult,
@@ -48,6 +49,15 @@ export interface AppendToolResultOptions {
   hidden?: boolean;
   tokenUsage?: TokenUsage;
   signal?: AbortSignal;
+}
+
+/**
+ * Row ids for a batch append. `messageIds[i]` becomes the id of the i-th row,
+ * in input order, instead of a minted one. The array must be exactly as long as
+ * the batch, and every id must be new to the conversation.
+ */
+export interface AppendBatchOptions {
+  readonly messageIds?: ReadonlyArray<string> | undefined;
 }
 
 export interface ToolInteraction {
@@ -88,15 +98,19 @@ export function appendToolCalls(
   conversation: Conversation,
   toolCalls: ReadonlyArray<AppendableToolCallInput>,
   environment?: Partial<ConversationEnvironment>,
+  batch?: AppendBatchOptions,
 ): Conversation {
   if (toolCalls.length === 0) {
     return conversation;
   }
+  const messageIds = requireBatchMessageIds(batch, toolCalls.length, 'appendToolCalls');
 
   const resolvedEnvironment = resolveConversationEnvironment(environment);
   const messageInputs = materializeToolCalls(toolCalls, {
     generateId: resolvedEnvironment.randomId,
-  }).map((toolCall) => createToolCallMessageInput(toolCall, undefined));
+  }).map((toolCall, index) =>
+    withMessageId(createToolCallMessageInput(toolCall, undefined), messageIds?.[index]),
+  );
 
   return appendMessages(conversation, ...messageInputs, resolvedEnvironment);
 }
@@ -127,13 +141,15 @@ export function appendToolResults(
   conversation: Conversation,
   toolResults: ReadonlyArray<AppendableToolResult>,
   environment?: Partial<ConversationEnvironment>,
+  batch?: AppendBatchOptions,
 ): Conversation {
   if (toolResults.length === 0) {
     return conversation;
   }
+  const messageIds = requireBatchMessageIds(batch, toolResults.length, 'appendToolResults');
 
-  const messageInputs = materializeToolResults(toolResults).map((toolResult) =>
-    createToolResultMessageInput(toolResult, undefined),
+  const messageInputs = materializeToolResults(toolResults).map((toolResult, index) =>
+    withMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);
@@ -168,15 +184,17 @@ export async function appendToolResultsAsync(
   toolResults: ReadonlyArray<AppendableToolResult>,
   environment?: Partial<ConversationEnvironment>,
   signal?: AbortSignal,
+  batch?: AppendBatchOptions,
 ): Promise<Conversation> {
   if (toolResults.length === 0) {
     return conversation;
   }
+  const messageIds = requireBatchMessageIds(batch, toolResults.length, 'appendToolResultsAsync');
 
   const normalizedToolResults = await materializeToolResultsAsync(toolResults, { signal });
 
-  const messageInputs = normalizedToolResults.map((toolResult) =>
-    createToolResultMessageInput(toolResult, undefined),
+  const messageInputs = normalizedToolResults.map((toolResult, index) =>
+    withMessageId(createToolResultMessageInput(toolResult, undefined), messageIds?.[index]),
   );
 
   return appendMessages(conversation, ...messageInputs, environment);
@@ -212,6 +230,26 @@ export function getPendingToolCalls(conversation: Conversation): ToolCall[] {
  */
 export function getToolInteractions(conversation: Conversation): ToolInteraction[] {
   return pairToolCallsWithResults(getOrderedMessages(conversation));
+}
+
+function requireBatchMessageIds(
+  batch: AppendBatchOptions | undefined,
+  count: number,
+  operation: string,
+): ReadonlyArray<string> | undefined {
+  const messageIds = batch?.messageIds;
+  if (messageIds === undefined) return undefined;
+  if (messageIds.length !== count) {
+    throw createInvalidInputError(
+      `${operation} received ${messageIds.length} messageIds for ${count} rows`,
+    );
+  }
+  return messageIds;
+}
+
+/** An input carrying an explicit row id; `appendMessages` keeps it instead of minting one. */
+function withMessageId(input: MessageInput, id: string | undefined): MessageInput {
+  return id === undefined ? input : ({ ...input, id } as MessageInput);
 }
 
 function createToolCallMessageInput(

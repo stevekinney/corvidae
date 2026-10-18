@@ -27,7 +27,11 @@ export function withStreaming(fn: StreamingGenerateFunction): GenerateFunction {
   const wrapped: GenerateFunction = async (context: GenerateContext): Promise<GenerateResponse> => {
     const { conversation } = context;
 
-    const messageId = conversation.appendStreamingMessage('assistant');
+    const messageId = conversation.appendStreamingMessage(
+      'assistant',
+      undefined,
+      context.assistantMessageId === undefined ? undefined : { id: context.assistantMessageId },
+    );
 
     const handle: StreamingHandle = {
       messageId,

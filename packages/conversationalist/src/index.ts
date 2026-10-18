@@ -143,6 +143,7 @@ export {
   validateConversationHistoryIntegrity,
 } from './conversation/index';
 export type {
+  AppendBatchOptions,
   AppendToolCallOptions,
   AppendToolResultOptions,
   BuildMessageOptions,

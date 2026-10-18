@@ -1,4 +1,4 @@
-import type { ToolInteraction } from './conversation/index';
+import type { AppendBatchOptions, ToolInteraction } from './conversation/index';
 import {
   appendToolCall,
   appendToolCalls,
@@ -41,7 +41,10 @@ export type ToolActions = {
     toolCall: AppendableToolCallInput,
     options?: Parameters<typeof appendToolCall>[2],
   ) => void;
-  readonly appendToolCalls: (toolCalls: ReadonlyArray<AppendableToolCallInput>) => void;
+  readonly appendToolCalls: (
+    toolCalls: ReadonlyArray<AppendableToolCallInput>,
+    batch?: AppendBatchOptions,
+  ) => void;
   readonly appendToolResult: (
     toolResult: AppendableToolResult,
     options?: Parameters<typeof appendToolResult>[2],
@@ -56,12 +59,18 @@ export type ToolActions = {
     result: AppendableToolResult,
     options?: Parameters<typeof resolveToolResultAsync>[3],
   ) => Promise<void>;
-  readonly appendToolResults: (results: ReadonlyArray<AppendableToolResult>) => void;
+  readonly appendToolResults: (
+    results: ReadonlyArray<AppendableToolResult>,
+    batch?: AppendBatchOptions,
+  ) => void;
   readonly appendToolResultAsync: (
     result: AppendableToolResult,
     options?: Parameters<typeof appendToolResultAsync>[2],
   ) => Promise<void>;
-  readonly appendToolResultsAsync: (results: ReadonlyArray<AppendableToolResult>) => Promise<void>;
+  readonly appendToolResultsAsync: (
+    results: ReadonlyArray<AppendableToolResult>,
+    batch?: AppendBatchOptions,
+  ) => Promise<void>;
   readonly getPendingToolCalls: () => ReturnType<typeof getPendingToolCalls>;
   readonly getToolInteractions: () => ToolInteraction[];
 };
@@ -92,9 +101,9 @@ export function createToolActions(hooks: ToolHooks): ToolActions {
         'tool-calls.appended',
       );
     },
-    appendToolCalls: (toolCalls) => {
+    appendToolCalls: (toolCalls, batch) => {
       hooks.assertOpen();
-      const next = appendToolCalls(hooks.current(), toolCalls, hooks.environment);
+      const next = appendToolCalls(hooks.current(), toolCalls, hooks.environment, batch);
       if (next !== hooks.current()) commit(next, 'tool-calls.appended');
     },
     appendToolResult: (result, options) => {
@@ -132,9 +141,9 @@ export function createToolActions(hooks: ToolHooks): ToolActions {
         hooks.context(previous, next, 'messages.updated'),
       );
     },
-    appendToolResults: (results) => {
+    appendToolResults: (results, batch) => {
       hooks.assertOpen();
-      const next = appendToolResults(hooks.current(), results, hooks.environment);
+      const next = appendToolResults(hooks.current(), results, hooks.environment, batch);
       if (next !== hooks.current()) commit(next, 'tool-results.appended');
     },
     appendToolResultAsync: async (result, options) => {
@@ -151,9 +160,9 @@ export function createToolActions(hooks: ToolHooks): ToolActions {
       );
       commit(next, 'tool-results.appended');
     },
-    appendToolResultsAsync: async (results) => {
+    appendToolResultsAsync: async (results, batch) => {
       const next = await hooks.runOwned('appendToolResultsAsync', (signal) =>
-        appendToolResultsAsync(hooks.current(), results, hooks.environment, signal),
+        appendToolResultsAsync(hooks.current(), results, hooks.environment, signal, batch),
       );
       if (next !== hooks.current()) commit(next, 'tool-results.appended');
     },

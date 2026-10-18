@@ -200,7 +200,11 @@ export async function callGenerateWithRetry(
           // retry loop started with (`context.steering`, the step's original
           // boundary read) so a mutator that omits or replaces it can never
           // make a later attempt within the same step ignore the override.
-          currentContext = { ...mutatedContext, steering: context.steering };
+          currentContext = {
+            ...mutatedContext,
+            steering: context.steering,
+            assistantMessageId: context.assistantMessageId,
+          };
           mutated = true;
           mutationDescription = `Context mutated on attempt ${attempt}`;
         }

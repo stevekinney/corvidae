@@ -60,7 +60,11 @@ export function withEnhancedStreaming(
     const { conversation } = context;
     const stateMachine = createStreamStateMachine();
 
-    const messageId = conversation.appendStreamingMessage('assistant');
+    const messageId = conversation.appendStreamingMessage(
+      'assistant',
+      undefined,
+      context.assistantMessageId === undefined ? undefined : { id: context.assistantMessageId },
+    );
     const textBlockId = `text-${messageId}`;
 
     let previousContent = '';

@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
-import { Conversation } from 'conversationalist';
+import { Conversation, type MessageInput } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { ContextEpochSealer } from './context-epoch';
@@ -12,6 +12,7 @@ import {
   RunErrorEvent,
   StepAbortedEvent,
 } from './events';
+import { assistantMessageIdentifier } from './message-identifiers';
 import { finalizeStep } from './run-step-finalization';
 import { executeGeneration } from './run-step-generation';
 import { prepareStep } from './run-step-preparation';
@@ -427,7 +428,19 @@ export async function runStep(
   accumulateUsage(runState, emitter, step, usage, deps.costEstimation);
 
   if (content && !response.messageAppended) {
-    conversation.appendAssistantMessage(content, metadata);
+    const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
+    if (assistantMessageId === undefined) {
+      conversation.appendAssistantMessage(content, metadata);
+    } else {
+      // The row is committed under the id a streaming client was shown.
+      const row: MessageInput & { readonly id: string } = {
+        id: assistantMessageId,
+        role: 'assistant',
+        content,
+        metadata,
+      };
+      conversation.appendMessages(row);
+    }
   }
 
   const toolExecution = await executeTools({

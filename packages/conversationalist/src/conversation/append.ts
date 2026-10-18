@@ -5,6 +5,7 @@ import {
 } from '../environment';
 import { createIntegrityError, createInvalidInputError } from '../errors';
 import type {
+  AssistantMessage,
   ConversationHistory as Conversation,
   JSONValue,
   Message,
@@ -56,8 +57,17 @@ function requireMessageInput(
 }
 
 /**
+ * An already-built `Message` carries the `position` and `createdAt` the
+ * builder stamps. A raw input that only names an `id` (a caller choosing the
+ * row's identity) is not built yet, so plugins still run over it.
+ */
+function isBuiltMessage(input: AppendableMessageInput): input is Message | AssistantMessage {
+  return 'id' in input && 'position' in input && 'createdAt' in input;
+}
+
+/**
  * Runs conversation plugins over a MessageInput. Already-built messages
- * (identified by having an `id`) are passed through untouched — they were
+ * (see `isBuiltMessage`) are passed through untouched — they were
  * presumably already processed once by `buildMessage`, and plugins are typed
  * against `MessageInput`'s mutable shape, which a `Message`'s readonly
  * `content` array isn't structurally assignable to anyway.
@@ -66,7 +76,7 @@ function applyPlugins(
   input: AppendableMessageInput,
   plugins: ConversationEnvironment['plugins'],
 ): AppendableMessageInput {
-  if ('id' in input) return input;
+  if (isBuiltMessage(input)) return input;
   return plugins.reduce((acc, plugin) => plugin(acc), input);
 }
 

@@ -6,6 +6,7 @@ import { GuardrailTripwireError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
+import { assistantMessageIdentifier } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { createElicit } from './run-step-support';
 import {
@@ -52,6 +53,7 @@ export async function executeGeneration(
     stepToolChoice,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
+  const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
   let response: GenerateResponse = undefined!;
   let stepRetryCount = 0;
   let shouldRetryStep: boolean;
@@ -97,6 +99,7 @@ export async function executeGeneration(
           responseFormat: deps.responseFormat,
           maximumTokens: deps.maximumTokens,
           steering: steeringDesiredState,
+          assistantMessageId,
         };
         if (hooks?.has('beforeGenerate')) {
           // Iterate handlers manually (the same reason afterGenerate does,
@@ -120,6 +123,7 @@ export async function executeGeneration(
             responseFormat: deps.responseFormat,
             signal: stepSignal,
             steering: steeringDesiredState,
+            assistantMessageId,
           };
           for (const [index, entry] of handlers.entries()) {
             let handlerResult: GenerateContext | void;
@@ -150,7 +154,11 @@ export async function executeGeneration(
               // state is re-applied here so a hook can never silently drop
               // or override it — for this handler's own return value, not
               // only the waterfall's last one.
-              beforeGenContext = { ...handlerResult, steering: steeringDesiredState };
+              beforeGenContext = {
+                ...handlerResult,
+                steering: steeringDesiredState,
+                assistantMessageId,
+              };
             }
           }
           generateContext = beforeGenContext;

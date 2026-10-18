@@ -1,6 +1,7 @@
 import type { ConversationEnvironment } from './environment';
 import type { ConversationActionType } from './events';
 import {
+  type AppendStreamingMessageOptions,
   appendStreamingMessage,
   cancelStreamingMessage,
   finalizeStreamingMessage,
@@ -26,6 +27,7 @@ export type StreamingActions = {
   readonly appendStreamingMessage: (
     role: 'assistant' | 'user',
     metadata?: Record<string, JSONValue>,
+    options?: AppendStreamingMessageOptions,
   ) => string;
   readonly updateStreamingMessage: (messageId: string, content: string) => void;
   readonly finalizeStreamingMessage: (
@@ -43,9 +45,16 @@ export class HistoryStreaming {
     role: 'assistant' | 'user',
     metadata: Record<string, JSONValue> | undefined,
     hooks: StreamingHooks,
+    options?: AppendStreamingMessageOptions,
   ): string {
     hooks.assertOpen();
-    const result = appendStreamingMessage(hooks.current(), role, metadata, hooks.environment);
+    const result = appendStreamingMessage(
+      hooks.current(),
+      role,
+      metadata,
+      hooks.environment,
+      options,
+    );
     hooks.commit(
       result.conversation,
       'stream.started',
@@ -103,7 +112,8 @@ export function createStreamingActions(
   const hooks = { current, environment, assertOpen, commit };
   return {
     getStreamingMessage: () => getStreamingMessage(current()),
-    appendStreamingMessage: (role, metadata) => owner.append(role, metadata, hooks),
+    appendStreamingMessage: (role, metadata, options) =>
+      owner.append(role, metadata, hooks, options),
     updateStreamingMessage: (messageId, content) => owner.update(messageId, content, hooks),
     finalizeStreamingMessage: (messageId, options) => owner.finalize(messageId, options, hooks),
     cancelStreamingMessage: (messageId) => owner.cancel(messageId, hooks),
