@@ -189,3 +189,50 @@ describe('PII redaction in tool arguments, results, and metadata', () => {
     expect(JSON.stringify(part?.citations)).toContain('[EMAIL_REDACTED]');
   });
 });
+
+describe('PII redaction in media parts', () => {
+  it('redacts the portable text a media part carries and leaves its source untouched', () => {
+    const plugin = createPIIRedactionPlugin();
+    const source = { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 2 };
+    const result = plugin({
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          source,
+          mimeType: 'image/png',
+          name: 'scan of user@example.com',
+          alt: 'photo from user@example.com',
+          caption: 'call 555-123-4567',
+          transcript: 'contact user@example.com',
+          extractedText: 'email: user@example.com',
+          metadata: { owner: 'user@example.com', list: ['user@example.com', 3] },
+        },
+      ],
+    });
+    expect(requireParts(result.content)).toEqual([
+      {
+        type: 'image',
+        source,
+        mimeType: 'image/png',
+        name: 'scan of [EMAIL_REDACTED]',
+        alt: 'photo from [EMAIL_REDACTED]',
+        caption: 'call [PHONE_REDACTED]',
+        transcript: 'contact [EMAIL_REDACTED]',
+        extractedText: 'email: [EMAIL_REDACTED]',
+        metadata: { owner: '[EMAIL_REDACTED]', list: ['[EMAIL_REDACTED]', 3] },
+      },
+    ]);
+  });
+
+  it('does not add fields a media part did not have', () => {
+    const plugin = createPIIRedactionPlugin();
+    const part = {
+      type: 'document' as const,
+      source: { kind: 'remote-url' as const, url: 'https://example.com/a.pdf' },
+    };
+    const result = plugin({ role: 'user', content: [part] });
+    expect(requireParts(result.content)).toEqual([part]);
+    expect(Object.keys(requireParts(result.content)[0]!)).toEqual(['type', 'source']);
+  });
+});

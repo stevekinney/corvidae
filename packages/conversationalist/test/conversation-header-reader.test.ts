@@ -33,6 +33,8 @@ const headers: Array<[string, unknown]> = [
   ['a numeric title', { ...validHeader, title: 3 }],
   ['an unknown status', { ...validHeader, status: 'paused' }],
   ['a missing status', { ...validHeader, status: undefined }],
+  ['the previous schema version', { ...validHeader, schemaVersion: CURRENT_SCHEMA_VERSION - 1 }],
+  ['a future schema version', { ...validHeader, schemaVersion: CURRENT_SCHEMA_VERSION + 1 }],
   ['a fractional schema version', { ...validHeader, schemaVersion: 1.5 }],
   ['a zero schema version', { ...validHeader, schemaVersion: 0 }],
   ['a string schema version', { ...validHeader, schemaVersion: '1' }],
