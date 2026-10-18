@@ -501,6 +501,7 @@ describe('OpenAI provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'gpt-4o', effectiveEffort: 'none' },

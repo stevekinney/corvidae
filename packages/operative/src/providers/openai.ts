@@ -3,7 +3,9 @@ import type { ToolCallInput } from 'armorer/protocol';
 import { toOpenAIMessagesGrouped } from 'conversationalist';
 
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
-import { ProviderError, ToolCallParseError } from './errors.ts';
+import { concatenateTextParts } from '../response-parts.ts';
+import { isProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
+import { mapOpenAIMessage } from './openai-parts.ts';
 import { createModelCatalog } from './model-catalog.ts';
 import { resolveOpenAIEffort } from './shared/effort.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
@@ -170,17 +172,20 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
       const response = await client.chat.completions.create(params, requestOptions);
 
       const choice = response.choices[0];
-      const content = choice?.message.content ?? '';
-      const toolCalls = parseOpenAIToolCalls(requireFunctionToolCalls(choice?.message.tool_calls));
-
       const usage = response.usage ? buildOpenAIUsage(response.usage) : undefined;
+      // Every message field is a part, metadata or a typed error: nothing the model returned vanishes.
+      const mapped = mapOpenAIMessage((choice?.message ?? {}) as Record<string, unknown>, usage);
+      const content = concatenateTextParts(mapped.parts);
+      const toolCalls = parseOpenAIToolCalls(requireFunctionToolCalls(choice?.message.tool_calls));
 
       return withInputLineage(
         {
           content,
+          parts: mapped.parts,
           toolCalls,
           usage,
           metadata: {
+            ...mapped.metadata,
             effectiveModel: resolvedModel,
             effectiveEffort: resolvedEffort ?? 'none',
           },
@@ -188,6 +193,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
         lineage,
       );
     } catch (error) {
+      if (isProviderContractError(error)) throw error;
       throw new ProviderError({ provider: 'openai', cause: error });
     }
   };
@@ -280,6 +286,10 @@ export function createOpenAIProviderStream(
 
       let accumulatedText = '';
       let usage: GenerateResponse['usage'] | undefined;
+      // The assistant message as the deltas assemble it; mapped by the same table as a whole
+      // completion once the stream has drained, so the two modes cannot disagree.
+      const assembled: Record<string, unknown> = {};
+      let textSequence = 0;
 
       // Track in-progress tool calls by index. `blockId` is the stable identity
       // carried on the live `stream:tool-call-*` events, so a host can
@@ -295,9 +305,30 @@ export function createOpenAIProviderStream(
 
         if (choice) {
           // Accumulate text content
-          if (choice.delta.content != null) {
+          if (choice.delta.content != null && choice.delta.content !== '') {
+            if (streaming.reportPart !== undefined) {
+              if (textSequence === 0) {
+                streaming.reportPart({ type: 'start', partIndex: 0, kind: 'text' });
+              }
+              textSequence += 1;
+              streaming.reportPart({
+                type: 'delta',
+                partIndex: 0,
+                sequence: textSequence,
+                delta: { kind: 'text', text: choice.delta.content },
+              });
+            }
             accumulatedText += choice.delta.content;
-            streaming.update(accumulatedText);
+            if (streaming.reportPart === undefined) streaming.update(accumulatedText);
+          }
+          // Every other delta field except tool calls and `role` joins the assembled message:
+          // strings concatenate across deltas, anything else keeps its latest value.
+          for (const [field, value] of Object.entries(choice.delta)) {
+            if (field === 'content' || field === 'tool_calls' || field === 'role') continue;
+            if (value === undefined || value === null) continue;
+            const previous = assembled[field];
+            assembled[field] =
+              typeof value === 'string' && typeof previous === 'string' ? previous + value : value;
           }
 
           // Accumulate tool calls
@@ -410,12 +441,21 @@ export function createOpenAIProviderStream(
         }
       }
 
+      // An aborted stream's text is whatever arrived; it maps like any other.
+      const mapped = mapOpenAIMessage({ ...assembled, content: accumulatedText }, usage);
+      const [textPart] = mapped.parts;
+      if (textPart !== undefined) {
+        streaming.reportPart?.({ type: 'complete', partIndex: 0, part: textPart });
+      }
+
       return withInputLineage(
         {
-          content: accumulatedText,
+          content: concatenateTextParts(mapped.parts),
+          parts: mapped.parts,
           toolCalls,
           usage,
           metadata: {
+            ...mapped.metadata,
             effectiveModel: resolvedModel,
             effectiveEffort: resolvedEffort ?? 'none',
           },

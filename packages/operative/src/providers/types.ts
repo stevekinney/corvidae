@@ -438,6 +438,14 @@ export interface OpenAIChatCompletion {
   choices: Array<{
     message: {
       content?: (string | null) | undefined;
+      /** The model's refusal text; model output, kept in metadata. */
+      refusal?: (string | null) | undefined;
+      /** Citation annotations on `content`; kept in metadata. */
+      annotations?: unknown;
+      /** Audio output; unadvertised, so a response carrying it fails typed. */
+      audio?: unknown;
+      /** The deprecated single function call; unmapped, so a response carrying it fails typed. */
+      function_call?: unknown;
       tool_calls?:
         | Array<
             | {
@@ -899,6 +907,10 @@ export interface OpenAIChatCompletionChunk {
   choices: Array<{
     delta: {
       content?: (string | null) | undefined;
+      refusal?: (string | null) | undefined;
+      role?: string | undefined;
+      /** The deprecated single function call; unmapped, so a stream carrying it fails typed. */
+      function_call?: unknown;
       tool_calls?:
         | Array<{
             index: number;
