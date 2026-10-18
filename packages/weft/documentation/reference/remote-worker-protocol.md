@@ -409,10 +409,16 @@ Server rejection of registration. The server sends this message, then closes the
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `type` | `"registerError"` | Yes | Message discriminator. |
-| `code` | `"invalid_registration" \| "unsupported_protocol_version" \| "deployment_conflict" \| "registration_rejected"` | Yes | Machine-readable registration failure. `deployment_conflict` means the manifest's `(deploymentName, buildId)` was already registered with a different `artifactDigest`; `registration_rejected` means a configured `WorkerAdmissionPolicy` refused the worker. |
+| `code` | `"invalid_registration" \| "unsupported_protocol_version" \| "deployment_conflict" \| "registration_rejected"` | Yes | Machine-readable registration failure. `deployment_conflict` means the manifest's `(deploymentName, buildId)` was already registered with a different `artifactDigest`, either by a connected worker or by the durable deployment catalog from an earlier registration; `registration_rejected` means a configured `WorkerAdmissionPolicy` refused the worker. |
 | `message` | string | Yes | Human-readable diagnostic. |
 | `supportedProtocolVersions` | number[] | Yes | The _server's_ supported protocol versions—not narrowed to the requesting worker's own, so a mismatched value can still be parsed and diagnosed. |
 | `requestedProtocolVersion` | number | No | Version sent by the worker when it was a finite number. |
+
+### Deployment version recording
+
+An accepted registration also records the worker's `(deploymentName, buildId)` as a `ready` version in the durable deployment catalog that `weft.worker.deployments.*` lists and routes between. The record is made once: another worker of the same build, a reconnect, or two workers registering at the same moment leave the first record as it was, and a version an operator has drained or removed is never made `ready` again. The record is written after the in-memory digest check, so a build that conflicts with a connected worker is refused before anything is stored.
+
+If the catalog cannot be written, the registration is not accepted and the server never half-registers the worker. A WebSocket worker's socket is closed with code `1013` (Try Again Later), so its `connect()` rejects and a retry registers normally once the catalog recovers; a long-poll registration is answered `503` with `Retry-After: 1` and `code: "catalog_unavailable"`, and `LongPollWorker` retries on its next poll cycle.
 
 ### `protocolError`
 
@@ -590,6 +596,7 @@ The `manifest` body is the same strict worker manifest the WebSocket transport s
 | `400` | Invalid JSON, malformed manifest, unsupported protocol version, invalid queue, or invalid concurrency. |
 | `403` | Authentication was present but did not include `workers:write`. |
 | `409` | The manifest conflicts with an existing deployment identity. |
+| `503` | The deployment catalog could not record the build (`code: "catalog_unavailable"`, `Retry-After: 1`). No session was created; retry registration. |
 
 Readiness is false until this registration succeeds. A worker that cannot register retries registration; it does not poll anonymously and a session id never replaces authentication. The session token is returned only in this registration response and is not exposed by diagnostics.
 

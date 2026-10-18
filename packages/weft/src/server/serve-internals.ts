@@ -406,6 +406,7 @@ export function buildServerContext(
     cancellationGracePeriodMs: clampCancellationGracePeriod(options.cancellationGracePeriodMs),
     payloadSizeMaxBytes: getEnginePayloadSizeMaxBytes(engine),
     pendingWorkerRequeues,
+    workerDeploymentCatalog,
     scanRunning: false,
     processingOperations: new Set(),
     reconciliationRunning: false,

@@ -16,63 +16,27 @@ import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import { digestCanonicalWorkerManifest, parseWorkerManifest } from '../../worker/manifest/index.ts';
 import {
   REMOTE_WORKER_PROTOCOL_VERSION,
-  type RegisterErrorMessage,
   type RegisterMessage,
   type RemoteWorkerCapabilities,
 } from '../../worker/protocol.ts';
 import type { WorkerRegistrationInfo } from '../../worker/registry.ts';
 import type { ServeOptions } from '../index.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
-import { isAuthenticated } from '../principal.ts';
-import type {
-  WorkerAdmissionDecision,
-  WorkerAdmissionPolicy,
-  WorkerAdmissionRequest,
-} from '../worker-admission-policy.ts';
 import type { ServerContext } from './context.ts';
 import { drainLongPollQueueInBackground } from './long-poll-drain.ts';
-import { rejectRegistration, sendWorkerProtocolMessage } from './websocket-worker-messaging.ts';
+import {
+  evaluateWorkerAdmissionPolicy,
+  principalMayRegisterWorker,
+} from './websocket-registration-admission.ts';
+import {
+  recordVersionOrReject,
+  rejectAndRecordRegistration,
+} from './websocket-registration-rejection.ts';
+import { sendWorkerProtocolMessage } from './websocket-worker-messaging.ts';
 import { runWorkerDisconnectRequeue } from './worker-disconnect-requeue.ts';
 
 const MAX_WORKER_CONCURRENCY = 1_000;
 const DEFAULT_WORKER_CONCURRENCY = 10;
-
-/**
- * Record one declined `register` attempt in the registry's bounded rejection
- * log (WFT-29), then send the `registerError` frame and close the socket.
- * `identity` carries whatever deployment fields had already been parsed by
- * the time the calling gate rejected the attempt — most gates run before a
- * `WorkerManifest` exists, so it is usually absent.
- */
-function rejectAndRecordRegistration(
-  context: ServerContext,
-  ws: ServerWebSocket<WebSocketData>,
-  code: RegisterErrorMessage['code'],
-  message: string,
-  workerId: string | undefined,
-  requestedProtocolVersion: number | undefined,
-  identity?: { deploymentName?: string; buildId?: string },
-): void {
-  context.registry.recordRejection({
-    code,
-    ...(workerId !== undefined ? { workerId } : {}),
-    rejectedAt: Date.now(),
-    queue: ws.data.queue ?? 'default',
-    ...(identity?.deploymentName !== undefined ? { deploymentName: identity.deploymentName } : {}),
-    ...(identity?.buildId !== undefined ? { buildId: identity.buildId } : {}),
-  });
-  rejectRegistration(ws, code, message, requestedProtocolVersion);
-}
-
-/**
- * Whether the connection's principal is allowed to register a worker. An
- * absent principal means authentication is disabled on this server, so the
- * registration is allowed; a present principal must carry `workers:write`.
- */
-function principalMayRegisterWorker(principal: WebSocketData['principal']): boolean {
-  if (principal === undefined) return true;
-  return isAuthenticated(principal) && principal.hasScope('workers:write');
-}
 
 /**
  * Flatten a manifest's declared workflows into qualified
@@ -174,26 +138,6 @@ function admitReconnectingSocket(
 }
 
 /**
- * Run the operator-supplied admission policy, converting a thrown error into
- * a rejection decision instead of letting it propagate. A throwing policy
- * must not leave the client hanging with no `registerError` and no closed
- * socket — `registerWorker`'s caller only logs an unhandled rejection.
- */
-function evaluateWorkerAdmissionPolicy(
-  policy: WorkerAdmissionPolicy,
-  request: WorkerAdmissionRequest,
-): WorkerAdmissionDecision {
-  try {
-    return policy(request);
-  } catch (error) {
-    return {
-      status: 'rejected',
-      reason: `workerAdmissionPolicy threw: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
-
-/**
  * Final synchronous commit: live-socket check, read-only deployment-
  * consistency check, workerId hijack/reconnect guard, then — only once both
  * gates have passed — the deployment-consistency digest record, registry
@@ -290,6 +234,53 @@ function commitWorkerRegistration(
   // Tasks that fell back to the long-poll queue while no WebSocket worker
   // could take them have somewhere to go now.
   drainLongPollQueueInBackground(context, options, queue);
+}
+
+/**
+ * The tail of {@link registerWorker}, once the manifest is parsed and admitted:
+ * clamp the concurrency, digest the manifest, record its deployment version in
+ * the durable catalog, prove or forfeit a pending reconnect, and commit.
+ */
+async function completeRegistration(
+  context: ServerContext,
+  options: ServeOptions,
+  ws: ServerWebSocket<WebSocketData>,
+  message: RegisterMessage,
+  manifest: WorkerManifest,
+  canonicalJson: string,
+  queue: string,
+  cleanupWorkflowIndex: (operationId: string) => void,
+): Promise<void> {
+  const rawConcurrency = message.concurrency ?? DEFAULT_WORKER_CONCURRENCY;
+  const clampedConcurrency = Math.min(
+    Math.max(1, Math.floor(rawConcurrency)),
+    MAX_WORKER_CONCURRENCY,
+  );
+
+  const acceptedManifestDigest = await digestCanonicalWorkerManifest(canonicalJson);
+
+  if (!(await recordVersionOrReject(context, ws, message, manifest, acceptedManifestDigest))) {
+    return;
+  }
+
+  const resumingSessionGeneration = await resolveReconnectProof(
+    context,
+    options,
+    message,
+    cleanupWorkflowIndex,
+  );
+
+  commitWorkerRegistration(
+    context,
+    options,
+    ws,
+    message,
+    manifest,
+    queue,
+    clampedConcurrency,
+    acceptedManifestDigest,
+    resumingSessionGeneration,
+  );
 }
 
 /**
@@ -435,31 +426,15 @@ export async function registerWorker(
     }
   }
 
-  const rawConcurrency = message.concurrency ?? DEFAULT_WORKER_CONCURRENCY;
-  const clampedConcurrency = Math.min(
-    Math.max(1, Math.floor(rawConcurrency)),
-    MAX_WORKER_CONCURRENCY,
-  );
-
-  const acceptedManifestDigest = await digestCanonicalWorkerManifest(canonicalJson);
-
-  const resumingSessionGeneration = await resolveReconnectProof(
-    context,
-    options,
-    message,
-    cleanupWorkflowIndex,
-  );
-
-  commitWorkerRegistration(
+  await completeRegistration(
     context,
     options,
     ws,
     message,
     manifest,
+    canonicalJson,
     queue,
-    clampedConcurrency,
-    acceptedManifestDigest,
-    resumingSessionGeneration,
+    cleanupWorkflowIndex,
   );
 }
 

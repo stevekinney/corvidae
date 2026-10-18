@@ -59,6 +59,20 @@ export type DeploymentSelectionFailure = Readonly<{
 
 export type DeploymentSelectionResult = DeploymentSelection | DeploymentSelectionFailure;
 
+/**
+ * A build id registered again with an artifact or manifest digest that differs
+ * from the stored one. Versions are immutable, so the second registration is
+ * refused rather than overwriting the first.
+ */
+export class WorkerDeploymentVersionConflictError extends Error {
+  constructor(deploymentName: string, buildId: string) {
+    super(
+      `Deployment version ${deploymentName}/${buildId} is immutable and conflicts with the stored identity.`,
+    );
+    this.name = 'WorkerDeploymentVersionConflictError';
+  }
+}
+
 type StoredVersion = Omit<WorkerDeploymentVersion, 'manifest'> & { manifest: WorkerManifest };
 
 function decodeVersion(value: Uint8Array): WorkerDeploymentVersion {
@@ -260,9 +274,7 @@ export class WorkerDeploymentCatalog {
         current.artifactDigest !== version.artifactDigest ||
         current.manifestDigest !== version.manifestDigest
       )
-        throw new Error(
-          `Deployment version ${version.deploymentName}/${version.buildId} is immutable and conflicts with the stored identity.`,
-        );
+        throw new WorkerDeploymentVersionConflictError(version.deploymentName, version.buildId);
       return current;
     }
     const stored: StoredVersion = { ...version, executionReferences: 0 };
