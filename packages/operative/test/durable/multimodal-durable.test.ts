@@ -1,8 +1,16 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  resolveStorage,
+  textValueStore,
+  yieldToPortableEventLoop,
+} from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { z } from 'zod';
 
 import { createCheckpointStore } from '../../src/durable/checkpoint-store';
@@ -280,5 +288,112 @@ describe('a durable run waits for its generated-media admissions before closed()
       reason: 'persistence-failed',
     });
     expect(acknowledgement).toEqual({ status: 'unresolved', reason: 'unknown-effect' });
+  });
+});
+
+describe('a durable run restarted over SQLite keeps its parts (COR-713)', () => {
+  const directories: string[] = [];
+  afterEach(async () => {
+    for (const directory of directories.splice(0)) {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  /** Runs to completion on one SQLite-backed engine, closes it, and reads the run back on a second. */
+  async function restart(
+    runId: string,
+    options: Parameters<typeof startDurableRunResult>[1]['options'],
+  ) {
+    const directory = await mkdtemp(join(tmpdir(), 'corvidae-multimodal-durable-'));
+    directories.push(directory);
+    const configuration = { type: 'sqlite', path: join(directory, 'weft.sqlite') } as const;
+
+    const storageA = await resolveStorage(configuration);
+    const storeA = createCheckpointStore(
+      textValueStore(storageA, { disposeUnderlyingStorage: false }),
+    );
+    const { engine: engineA } = await createRunEngine({
+      storage: storageA,
+      runWorkflow: createRunWorkflow(storeA),
+      recover: false,
+    });
+    const live = await startDurableRunResult(
+      { engine: engineA, checkpointStore: storeA },
+      { runId, sessionId: runId, options },
+    );
+    engineA[Symbol.dispose]?.();
+    storageA[Symbol.dispose]();
+
+    const storageB = await resolveStorage(configuration);
+    const storeB = createCheckpointStore(
+      textValueStore(storageB, { disposeUnderlyingStorage: false }),
+    );
+    const { engine: engineB } = await createRunEngine({
+      storage: storageB,
+      runWorkflow: createRunWorkflow(storeB),
+      recover: false,
+    });
+    try {
+      const reading = await readDurableRunResult(
+        { engine: engineB, checkpointStore: storeB },
+        runId,
+        { runtime: createDefaultRuntimeServices() },
+      );
+      if (reading.status !== 'completed')
+        throw new Error(`expected completed, got ${reading.status}`);
+      return { live, recovered: reading.result };
+    } finally {
+      engineB[Symbol.dispose]?.();
+      storageB[Symbol.dispose]();
+    }
+  }
+
+  it('keeps every step parts, the run-wide parts and each step row id', async () => {
+    const { live, recovered } = await restart('sqlite-parts-run', {
+      generate: scripted([
+        {
+          content: '',
+          parts: [thinking],
+          toolCalls: [{ id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } }],
+        },
+        { content: 'Sunny.', parts: [{ type: 'text', text: 'Sunny.' }], toolCalls: [] },
+      ]),
+      toolbox: createTestToolbox([weatherTool]),
+      conversation: new Conversation(),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+
+    expect(recovered.steps.map((step) => step.parts)).toEqual([
+      [thinking],
+      [{ type: 'text', text: 'Sunny.' }],
+    ]);
+    expect(recovered.parts).toEqual([thinking, { type: 'text', text: 'Sunny.' }]);
+    expect(recovered.steps.map((step) => step.messageId)).toEqual(
+      live.steps.map((step) => step.messageId),
+    );
+    expect(recovered.steps.every((step) => step.messageId !== undefined)).toBe(true);
+  });
+
+  it('keeps an onMaximumSteps replacement row in the run-wide parts and its flag in the cursor', async () => {
+    const { recovered } = await restart('sqlite-maximum-steps-run', {
+      generate: scripted([
+        {
+          content: 'One.',
+          toolCalls: [{ id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } }],
+        },
+      ]),
+      toolbox: createTestToolbox([weatherTool]),
+      conversation: new Conversation(),
+      maximumSteps: 1,
+      onMaximumSteps: async () => 'Summary.',
+    });
+
+    expect(recovered.finishReason).toBe('maximum-steps');
+    expect(recovered.content).toBe('Summary.');
+    expect(recovered.parts).toEqual([
+      { type: 'text', text: 'One.' },
+      { type: 'text', text: 'Summary.' },
+    ]);
+    expect(recovered.steps.map((step) => step.parts)).toEqual([[{ type: 'text', text: 'One.' }]]);
   });
 });
