@@ -29,6 +29,7 @@
 <script lang="ts">
   import { flushSync, tick } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
+  import type { MessageInput } from '../conversation-model.ts';
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
@@ -65,9 +66,13 @@
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
-  import { ConfirmDialog } from '@lostgradient/cinder';
+  import { Button, ConfirmDialog, Quote, SelectionPopover } from '@lostgradient/cinder';
   import { useChatStreamingState } from './use-chat-streaming-state.svelte.ts';
   import { useChatCommandActions } from './use-chat-command-actions.svelte.ts';
+  import { useChatQuotes } from './use-chat-quotes.svelte.ts';
+  import { useChatQuoteSelection } from './use-chat-quote-selection.svelte.ts';
+  import ChatQuoteChips from './chat-quote-chips.svelte';
+  import { MAX_QUOTES, composeQuotedContent } from '../utilities/quote-composition.ts';
   import { useChatHistoryLifecycle } from './use-chat-history-lifecycle.svelte.ts';
   import { useChatHistoryRestoration } from './use-chat-history-restoration.svelte.ts';
   import { useChatAutoScroll } from './use-chat-auto-scroll.svelte.ts';
@@ -250,6 +255,9 @@
     typingIndicatorState.reset();
     readReceiptsState.reset();
     announcements.clearAnnouncements();
+    // Quotes belong to the conversation they were taken from.
+    quotes.clear();
+    quoteSelection.dismiss();
   });
 
   // ==========================================================================
@@ -271,6 +279,18 @@
         unreadState.markAllAsRead();
       }
     },
+  });
+
+  const quotes = useChatQuotes();
+  const quoteSelection = useChatQuoteSelection({
+    getRoot: () => (allowQuote ? containerRef : null),
+  });
+
+  // Turning quoting off takes any quotes already gathered with it.
+  $effect(() => {
+    if (allowQuote) return;
+    quotes.clear();
+    quoteSelection.dismiss();
   });
 
   const commandActions = useChatCommandActions({
@@ -421,6 +441,7 @@
   const allowCopy = $derived(capabilities?.copy ?? true);
   const allowEditing = $derived(capabilities?.editing ?? true);
   const allowRetry = $derived(capabilities?.retry ?? true);
+  const allowQuote = $derived(capabilities?.quote ?? true);
 
   $effect(() => {
     if (rollbackConversationIdentity !== conversationId) {
@@ -1008,6 +1029,59 @@
   // ==========================================================================
 
   const handleSubmit = commandActions.handleSubmit;
+  const quoteLimitNoteId = $derived(`${id}-quote-limit`);
+
+  function handleQuote(selected: string): void {
+    const result = quotes.add(selected);
+    if (result === 'added') announcements.announce('Quote added');
+    else if (result === 'duplicate') announcements.announce('That text is already quoted');
+    else if (result === 'full') {
+      announcements.announce(`Quote limit reached. Remove a quote to add another.`);
+    }
+  }
+
+  function handleQuoteSelection(close: () => void): void {
+    handleQuote(quoteSelection.text);
+    // The quote is taken, so the selection has done its job.
+    document.getSelection()?.removeAllRanges();
+    close();
+  }
+
+  function handleRemoveQuote(quoteId: string): void {
+    if (quotes.remove(quoteId)) announcements.announce('Quote removed');
+  }
+
+  /**
+   * Sends the typed message with the quoted excerpts on top. The quotes leave
+   * the chip row at hand-off: the session controller settles `sendMessage` only
+   * when the whole run ends, so waiting for it would let a follow-up sent
+   * meanwhile repeat them. If the send fails they come back ahead of any chips
+   * added since, without repeats and within the limit.
+   */
+  function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
+    const carried = quotes.quotes;
+    if (carried.length === 0) {
+      handleSubmit(message, attachments);
+      return;
+    }
+    const content = composeQuotedContent(
+      carried.map((quote) => quote.text),
+      typeof message.content === 'string' ? message.content : '',
+    );
+    const origin = conversationId;
+    quotes.removeAll(carried.map((quote) => quote.id));
+    handleSubmit({ ...message, content }, attachments, (succeeded) => {
+      // Quotes belong to the conversation they were taken from, and are not
+      // brought back once the host has turned quoting off.
+      if (succeeded || conversationId !== origin || !allowQuote) return;
+      const dropped = quotes.restore(carried);
+      if (dropped > 0) {
+        announcements.announce(
+          `${dropped} ${dropped === 1 ? 'quote' : 'quotes'} could not be restored because the limit of ${MAX_QUOTES} was reached`,
+        );
+      }
+    });
+  }
   // The adapter opting in to run input is what keeps the composer live during a run.
   const followUpsEnabled = $derived(adapter?.sendRunInput !== undefined);
   const handleRetry = commandActions.handleRetry;
@@ -1592,6 +1666,9 @@
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
+          onQuote={allowQuote ? handleQuote : undefined}
+          quoteDisabled={quotes.isFull}
+          quoteDisabledDescriptionId={quotes.isFull ? quoteLimitNoteId : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}
           onRollback={onRollback ? (messageId) => (rollbackMessageId = messageId) : undefined}
           rollbackDiscarded={rollbackBoundaryIndex >= 0 &&
@@ -1798,10 +1875,19 @@
 
       <!-- Input Area -->
       <div class="chat-input-area">
+        {#if quotes.quotes.length > 0}
+          <ChatQuoteChips
+            quotes={quotes.quotes}
+            full={quotes.isFull}
+            limitNoteId={quoteLimitNoteId}
+            onremove={handleRemoveQuote}
+            onemptied={() => inputRef?.focus()}
+          />
+        {/if}
         <ChatInput
           id={inputId}
           bind:this={inputRef}
-          onsubmit={(message, attachments) => handleSubmit(message, attachments)}
+          onsubmit={handleComposerSubmit}
           disabled={streaming && !followUpsEnabled}
           sending={streaming}
           allowFollowUp={followUpsEnabled}
@@ -1823,6 +1909,35 @@
         />
       </div>
     </div>
+
+    {#if allowQuote}
+      <SelectionPopover
+        id={`${id}-quote-popover`}
+        open={quoteSelection.open}
+        position={quoteSelection.position}
+        label="Quote selection"
+        onClose={quoteSelection.dismiss}
+      >
+        {#snippet actions({ close })}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            label="Quote"
+            disabled={quotes.isFull}
+            aria-describedby={quotes.isFull ? quoteLimitNoteId : undefined}
+            title={quotes.isFull
+              ? `Quote limit reached (${MAX_QUOTES}). Remove a quote to add another.`
+              : undefined}
+            onclick={() => handleQuoteSelection(close)}
+          >
+            {#snippet leadingIcon()}
+              <Quote class="cinder-icon-xs" />
+            {/snippet}
+          </Button>
+        {/snippet}
+      </SelectionPopover>
+    {/if}
 
     <ChatStatusAnnouncer
       {statusId}

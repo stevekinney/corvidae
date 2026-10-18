@@ -20,6 +20,7 @@
     messageId,
     messagePart,
     markdownNode,
+    quoteSource,
     expanded = false,
     onToggle,
     onApprovalResolve,
@@ -101,6 +102,14 @@
   {/if}
 {/snippet}
 
+{#snippet renderPart(part: BodyMessagePart)}
+  {#if messagePart}
+    {@render messagePart(part, renderDefault)}
+  {:else}
+    {@render renderDefault(part)}
+  {/if}
+{/snippet}
+
 {#each units as unit (unit.key)}
   {#if unit.kind === 'images'}
     <ImagePart parts={unit.images} />
@@ -143,14 +152,26 @@
         />
       {/each}
     </div>
-  {:else if messagePart}
-    {@render messagePart(unit.part, renderDefault)}
+  {:else if unit.part.type === 'markdown'}
+    <!-- The marker lives on a container this renderer owns, so a host's
+         `messagePart` override of the markdown body is quotable just like the
+         default. The wrapper is always rendered, with the attribute omitted
+         while the message is not quotable, so the markdown body keeps its
+         element when a streaming reply gets its first text or quoting is
+         toggled. `display: contents` keeps the wrapper out of the layout. -->
+    <div class="chat-quote-source" data-quote-source={quoteSource}>
+      {@render renderPart(unit.part)}
+    </div>
   {:else}
-    {@render renderDefault(unit.part)}
+    {@render renderPart(unit.part)}
   {/if}
 {/each}
 
 <style>
+  .chat-quote-source {
+    display: contents;
+  }
+
   .chat-step-list {
     display: flex;
     flex-direction: column;

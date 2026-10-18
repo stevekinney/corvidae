@@ -82,7 +82,7 @@ export type ChatRowOverride = Snippet<[context: ChatRowContext, renderDefault: S
 
 /**
  * Feature-capability flags for the Chat component. Grouped here so consumers
- * pass a single object instead of five scattered boolean props.
+ * pass a single object instead of six scattered boolean props.
  *
  * All flags default to `true` when the `capabilities` prop is omitted or when
  * an individual key is absent from the object.
@@ -98,6 +98,8 @@ export type ChatCapabilities = {
   editing?: boolean;
   /** Whether failed assistant messages show a retry button. Default `true`. */
   retry?: boolean;
+  /** Whether assistant messages can be quoted: the Quote message action, the Quote popover on a selection, and the chips above the composer. Default `true`. */
+  quote?: boolean;
 };
 
 /** Props for the Chat component. */
@@ -159,8 +161,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   streamingStatus?: string;
   /**
    * Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable
-   * individual Chat features (attachments, search, copy, editing, retry) as a group
-   * rather than as five separate boolean props.
+   * individual Chat features (attachments, search, copy, editing, retry, quote) as a group
+   * rather than as six separate boolean props.
    */
   capabilities?: ChatCapabilities;
   /** Explicit role for the composer textarea, for overlay patterns such as ARIA comboboxes. */
