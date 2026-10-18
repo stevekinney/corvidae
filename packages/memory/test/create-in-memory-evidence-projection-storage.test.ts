@@ -78,6 +78,18 @@ describe('independence from Weft', () => {
     'evidence-schema.ts',
     'evidence-schema-primitives.ts',
     'derived-indexes.ts',
+    'transition-authority.ts',
+    'transition-engine.ts',
+    'transition-events.ts',
+    'transition-invariants.ts',
+    'transition-outcome.ts',
+    'transition-plan.ts',
+    'transition-proposal.ts',
+    'transition-reader.ts',
+    'transition-receipt-builder.ts',
+    'transition-receipt.ts',
+    'transition-validator.ts',
+    'consolidate-projections.ts',
   ];
 
   it('imports nothing from @lostgradient/weft in the modules a standalone Agent loads', () => {

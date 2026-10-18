@@ -142,9 +142,10 @@ async function embeddingFits(
   context: TransitionValidationContext,
   plan: TransitionPlan,
   built: readonly EvidenceProjectionRecord[],
+  written: readonly EvidenceProjectionRecord[],
 ): Promise<TransitionRefusal | undefined> {
   const namespaces = new Set(
-    built.filter((record) => record.embedding !== undefined).map((record) => record.namespace),
+    written.filter((record) => record.embedding !== undefined).map((record) => record.namespace),
   );
   for (const namespace of namespaces) {
     const touched = new Set(
@@ -157,7 +158,7 @@ async function embeddingFits(
     const after = [...stored, ...built.filter((record) => record.namespace === namespace)].filter(
       (record) => record.status === 'active' || record.status === 'demoted',
     );
-    for (const record of built) {
+    for (const record of written) {
       if (record.namespace !== namespace || record.embedding === undefined) continue;
       for (const other of after) {
         if (other.id === record.id || other.embedding === undefined) continue;
@@ -197,5 +198,5 @@ export async function checkTypeInvariants(
     const refusal = ownInvariant(record) ?? (await summaryCovers(context, built, record));
     if (refusal !== undefined) return refusal;
   }
-  return chunkOrdinals(written) ?? (await embeddingFits(context, plan, built));
+  return chunkOrdinals(written) ?? (await embeddingFits(context, plan, built, written));
 }

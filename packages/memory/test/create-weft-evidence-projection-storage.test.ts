@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test';
 import { createWeftEvidenceProjectionStorage } from '../src/create-weft-evidence-projection-storage';
 import { assertDisjointKeyPrefixes } from '../src/create-weft-evidence-projection-storage-helpers';
 import { DEFAULT_MEMORY_KEY_PREFIX } from '../src/create-weft-memory-record-storage';
+import { validateMemoryKeyPrefix } from '../src/create-weft-memory-record-storage-helpers';
 import {
   buildDerivedIndexes,
   type DerivedIndexes,
@@ -22,6 +23,8 @@ import {
 import type { EvidenceProjectionRecord } from '../src/evidence-projection-schema';
 import { MAX_COMMIT_BATCH_OPERATIONS } from '../src/evidence-projection-store-core';
 import { digestOfText } from '../src/evidence-schema';
+import { DEFAULT_MEMORY_GOVERNANCE_KEY_PREFIX } from '../src/governance/ledger';
+import { DEFAULT_TRANSITION_KEY_PREFIX } from '../src/transition-receipt';
 import {
   FIXED_AT,
   makeAssetEvidence,
@@ -61,6 +64,22 @@ describe('key families', () => {
         expect(family.startsWith(reserved)).toBe(false);
         expect(reserved.startsWith(family)).toBe(false);
       }
+    }
+  });
+
+  it('keeps the transition receipt family disjoint from the four other memory families and from Weft', () => {
+    const memoryPrefixes = [
+      DEFAULT_EVIDENCE_KEY_PREFIX,
+      DEFAULT_PROJECTION_KEY_PREFIX,
+      DEFAULT_MEMORY_KEY_PREFIX,
+      DEFAULT_MEMORY_GOVERNANCE_KEY_PREFIX,
+      DEFAULT_TRANSITION_KEY_PREFIX,
+    ];
+    expect(() => assertDisjointKeyPrefixes(memoryPrefixes)).not.toThrow();
+    expect(() => validateMemoryKeyPrefix(DEFAULT_TRANSITION_KEY_PREFIX)).not.toThrow();
+    for (const reserved of WEFT_RESERVED_KEY_PREFIXES) {
+      expect(DEFAULT_TRANSITION_KEY_PREFIX.startsWith(reserved)).toBe(false);
+      expect(reserved.startsWith(DEFAULT_TRANSITION_KEY_PREFIX)).toBe(false);
     }
   });
 

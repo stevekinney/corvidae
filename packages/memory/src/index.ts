@@ -1,9 +1,6 @@
 // Public type surface.
 export type { ChunkingOptions, ContentChunk, ExtractedDocument, StructureHint } from './chunking';
-export type {
-  ConsolidateProjectionsOptions,
-  ConsolidateProjectionsResult,
-} from './consolidate-projections';
+export type { ConsolidateProjectionsOptions } from './consolidate-projections';
 export type {
   ConsolidationChunkedTaskOptions,
   ConsolidationState,
@@ -340,6 +337,7 @@ export {
   EvidenceProjectionCommitError,
   ProjectionRevisionConflictError,
 } from './evidence-projection-storage';
+export type { WrapApply } from './evidence-projection-store-core';
 export {
   EVIDENCE_KINDS,
   EVIDENCE_SCHEMA_VERSION,
@@ -351,3 +349,50 @@ export {
   evidenceRecordSchema,
 } from './evidence-schema';
 export { projectAssetChunks } from './project-asset-chunks';
+
+// Atomic, verified, observable memory transitions over evidence and projections.
+export { TransitionIdentifierConflictError, createTransitionEngine } from './transition-engine';
+export type {
+  CreateTransitionEngineOptions,
+  SubmitTransitionOptions,
+  TransitionEngine,
+  TransitionEngineHook,
+  TransitionEngineHookContext,
+} from './transition-engine';
+export { TRANSITION_EVENT_KINDS, transitionEventSchema } from './transition-events';
+export type {
+  TransitionEvent,
+  TransitionEventSink,
+  TransitionSourceReference,
+} from './transition-events';
+export { TRANSITION_VALIDATION_REASONS } from './transition-outcome';
+export type {
+  TransitionConflictReason,
+  TransitionRejectionReason,
+  TransitionResult,
+  TransitionValidationReason,
+} from './transition-outcome';
+export {
+  MemoryTransitionProposalError,
+  TRANSITION_PROPOSAL_KINDS,
+  transitionDigest,
+  transitionProposalSchema,
+} from './transition-proposal';
+export type {
+  AppendEvidenceProposal,
+  ConsolidateProposal,
+  CorrectEvidenceProposal,
+  CreateProjectionProposal,
+  ReviseProjectionProposal,
+  TransitionProposal,
+  TransitionProposalKind,
+} from './transition-proposal';
+export {
+  DEFAULT_TRANSITION_KEY_PREFIX,
+  TRANSITION_RECEIPT_SCHEMA_VERSION,
+  TRANSITION_VALIDATION_CHECKS,
+  decodeTransitionReceipt,
+  encodeTransitionReceipt,
+  transitionReceiptSchema,
+} from './transition-receipt';
+export type { TransitionReceipt, TransitionValidationCheck } from './transition-receipt';
