@@ -40,7 +40,9 @@ export interface WorkflowDocumentSet {
    * Every other revision the host still holds a run or a pinned schedule on.
    * They are registered but never activated. A revision that has an in-flight
    * run and is not supplied here cannot be loaded when that run recovers, and
-   * the run fails permanently.
+   * the run fails permanently. A name supplied only here has no active
+   * document, so its sole registered revision still serves new starts and
+   * `active-at-fire` schedules.
    */
   readonly retained?: readonly unknown[];
 }
@@ -131,6 +133,10 @@ function registerPrepared(engine: Engine, prepared: PreparedDocument): void {
  * changed code does. Runs that started on the previous revision stay on it.
  * Under sustained contention for the same catalog entry the activation can
  * throw `WorkflowCatalogActivationConflictError`.
+ *
+ * Registering a revision that is already registered keeps the first
+ * registration's loader and handlers. A host that changes its handler map
+ * registers into a new engine.
  *
  * Returns the `active` documents' identities, then the `retained` ones', in the
  * order given.

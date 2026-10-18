@@ -166,14 +166,17 @@ describe('canonicalWorkflowDocumentJson()', () => {
 
 describe('workflowDocumentVersion()', () => {
   it('pins the version of a fixed document through the full validate-then-hash path', async () => {
-    // The expected hex is the SHA-256 of this exact text, computed outside Weft.
+    // The expected hex is the SHA-256 of this exact text, computed outside Weft with
+    // Python's hashlib over a canonicalizer that sorts keys by UTF-16 code unit. The
+    // trigger's two non-ASCII keys sort differently by code point, so the hash also
+    // fails if the ordering ever changes from code units.
     // A change here means every stored document's version moved: that is a
     // one-way-door change, never a refactor.
     const canonical =
-      '{"name":"golden-digest","steps":[{"handler":"summarize","input":{"limit":10,"window":"24h"},"kind":"activity"},{"duration":"5m","kind":"sleep"},{"kind":"await-signal","signal":"approve"},{"handler":"notify","kind":"activity"}],"trigger":{"cron":"0 9 * * *","kind":"schedule"}}';
+      '{"name":"golden-digest","steps":[{"handler":"summarize","input":{"limit":10,"window":"24h"},"kind":"activity"},{"duration":"5m","kind":"sleep"},{"kind":"await-signal","signal":"approve"},{"handler":"notify","kind":"activity"}],"trigger":{"cron":"0 9 * * *","kind":"schedule","😀":2,"Ａ":1}}';
     const validated = validateWorkflowDocument(
       {
-        trigger: { kind: 'schedule', cron: '0 9 * * *' },
+        trigger: { kind: 'schedule', cron: '0 9 * * *', '\uff21': 1, '\u{1F600}': 2 },
         steps: [
           { input: { window: '24h', limit: 10 }, handler: 'summarize', kind: 'activity' },
           { duration: '5m', kind: 'sleep' },
@@ -187,7 +190,7 @@ describe('workflowDocumentVersion()', () => {
 
     expect(canonicalWorkflowDocumentJson(validated)).toBe(canonical);
     expect(await workflowDocumentVersion(validated)).toBe(
-      'sha256:a1d566f926a4ef3a2be9a8dc54b5b41289b13aea382d58bb549beb5262807c18',
+      'sha256:9c62d90811ab3a69d5f23d86061fe839e8c7fc55d7750cc6cf2129a1f38863b6',
     );
   });
 
