@@ -1947,6 +1947,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
   const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
 
+  /**
+   * Resolves the moment shutdown begins, so a settlement waiting out a retry
+   * backoff ends its wait at once instead of after the whole delay.
+   */
+  const sessionInputClosing = Promise.withResolvers<void>();
+
   /** Tracks a settlement, which never rejects, so shutdown lands it before it tears the stores down. */
   function trackSessionInputSettlement(settling: Promise<void>): void {
     inFlightSessionInputSettlements.add(settling);
@@ -2183,7 +2189,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
-        await sessionPersistenceSleep(delay);
+        // Shutdown ends the wait at once; the loop then sees the bureau closed.
+        await Promise.race([sessionPersistenceSleep(delay), sessionInputClosing.promise]);
         delay = Math.min(delay * 2, SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS);
       }
     }
@@ -11340,6 +11347,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-690: close run admission before anything below snapshots the active
     // runs or run toolboxes, so nothing admitted afterwards escapes the drain.
     runAdmissionClosed = true;
+    sessionInputClosing.resolve();
 
     const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;

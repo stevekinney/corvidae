@@ -673,6 +673,156 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
   });
 });
 
+describe('what the retry loop must not hold (COR-1476)', () => {
+  it('lets createRun reject before the failing run-ended write is retried, when the start fails after promotion', async () => {
+    const seam = seamStorage(new MemoryStorage());
+    const bureau = await openBureau(
+      seam.storage,
+      async () => ({ content: 'answer', toolCalls: [] }),
+      { onDiagnostic: () => {} },
+    );
+    const stops: Array<() => void> = [];
+    try {
+      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await bureau.waitForDurableRun(first.id);
+      await pollUntil(async () => {
+        const session = await bureau.getSession(first.sessionId);
+        return session?.metadata['lastRunStatus'] === 'completed';
+      });
+
+      // The second run's gate cannot be built, and its `run-ended` entry can
+      // never be written: the settlement must not be what the caller waits on.
+      const failingReads = seam.failReads(
+        readsSession,
+        new Error('session read failed'),
+        seam.awaitWriteCommitted(logsRunPromoted),
+      );
+      stops.push(failingReads.stop);
+      const failingEnds = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
+      stops.push(failingEnds.stop);
+      let settledWith: string | undefined;
+      const starting = bureau
+        .createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId })
+        .then(
+          () => {
+            settledWith = 'resolved';
+          },
+          (error: unknown) => {
+            settledWith = error instanceof Error ? error.message : String(error);
+          },
+        );
+      // The settlement is retrying (each attempt reloads the session, which
+      // keeps failing, after the one write that failed): the caller already
+      // has its answer.
+      await pollUntil(() => failingEnds.attempts() >= 1 && failingReads.attempts() >= 4);
+      expect(settledWith).toBe('session read failed');
+      await starting;
+    } finally {
+      stops.forEach((stop) => stop());
+      await bureau.dispose();
+    }
+  });
+
+  it('settles a cancelled run once, and returns its lease before the run-ended write', async () => {
+    const real = new MemoryStorage();
+    const seam = seamStorage(real);
+    const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
+    const diagnostics: BureauDiagnostic[] = [];
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const stepOneStarted = deferred();
+    const bureau = await openBureau(
+      seam.storage,
+      async (context: GenerateContext) => {
+        if (context.step === 0) {
+          stepZeroStarted.resolve();
+          await releaseStepZero.promise;
+          return { content: 'working', toolCalls: [{ name: 'next', arguments: {} }] };
+        }
+        stepOneStarted.resolve();
+        return new Promise<never>(() => {});
+      },
+      { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic) },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await stepZeroStarted.promise;
+      await bureau.submitSessionInput(run.sessionId, input('input-a', 'first'));
+      releaseStepZero.resolve();
+      await stepOneStarted.promise;
+      const mailbox = createSessionInputMailbox(real, run.sessionId, 100);
+      const state = async () => {
+        const [receipt] = await mailbox.list({ limit: 10 });
+        return receipt?.state;
+      };
+      // Step 1's boundary holds the input.
+      expect(await state()).toBe('claimed');
+
+      // Two paths report the end: the cancellation inline, and the terminal
+      // listener. One settlement runs: one first-failure diagnostic, and the
+      // lease is back with the mailbox while the write is still failing.
+      const cancelling = bureau.cancelDurableRun(run.id);
+      await pollUntil(() => failing.attempts() >= 2);
+      await pollUntil(async () => {
+        const session = await bureau.getSession(run.sessionId);
+        return session?.metadata['lastRunStatus'] === 'aborted';
+      });
+      expect(await state()).not.toBe('claimed');
+      expect(
+        diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.scope === 'session-input' && diagnostic.message.includes('retrying'),
+        ),
+      ).toHaveLength(1);
+      failing.stop();
+      const cancelled = await cancelling;
+      expect(cancelled.status).toBe('requested');
+    } finally {
+      failing.stop();
+      releaseStepZero.resolve();
+      await bureau.dispose();
+    }
+  });
+
+  it('ends its backoff wait the moment the bureau shuts down', async () => {
+    const seam = seamStorage(new MemoryStorage());
+    const failing = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
+    // Each wait is held until the test lets it go.
+    const sleeps: Array<{ readonly promise: Promise<void>; readonly resolve: () => void }> = [];
+    const bureau = await openBureau(
+      seam.storage,
+      async () => ({ content: 'answer', toolCalls: [] }),
+      {
+        sessionPersistenceSleep: () => {
+          const sleep = deferred<void>();
+          sleeps.push({ promise: sleep.promise, resolve: () => sleep.resolve() });
+          return sleep.promise;
+        },
+        onDiagnostic: () => {},
+      },
+    );
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice', maximumSteps: 1 });
+      await bureau.waitForDurableRun(run.id);
+      // The loop is in its first wait, which nothing has released.
+      await pollUntil(() => sleeps.length === 1);
+
+      // Disposal does not wait for it: it completes while the wait still stands.
+      let disposed = false;
+      const disposing = bureau.dispose().then(() => {
+        disposed = true;
+      });
+      await pollUntil(() => disposed);
+      expect(sleeps).toHaveLength(1);
+      await disposing;
+    } finally {
+      failing.stop();
+      sleeps.forEach((sleep) => sleep.resolve());
+      await bureau.dispose();
+    }
+  });
+});
+
 describe('the run-ended write comes before the mailbox read (COR-1476)', () => {
   it('retries the run-ended write until it is acknowledged, then cancels what was left open', async () => {
     const seam = seamStorage(new MemoryStorage());

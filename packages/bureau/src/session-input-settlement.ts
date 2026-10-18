@@ -206,8 +206,18 @@ export function createSessionInputSettlement(
    * Removes the marker only if the mailbox's exhaustive open count is zero and
    * the marker has not changed since it was read. Losing the delete means the
    * session changed under it, so it decides again from what it reads next.
+   * Runs the mailbox's maintenance first: a command a gone holder leased stays
+   * `claimed` until its visibility lapses, and one whose cancellation that
+   * holder never settled stays `cancellation-requested`, so without it a dead
+   * lease would hold the marker forever on every path that judges it idle.
    */
   async function removeMarkerIfIdle(sessionId: string, mailbox: Mailbox): Promise<boolean> {
+    await mailbox.runMaintenance();
+    return removeMarkerOnceMaintained(sessionId, mailbox);
+  }
+
+  /** {@link removeMarkerIfIdle} for a caller that has just run the mailbox's maintenance itself. */
+  async function removeMarkerOnceMaintained(sessionId: string, mailbox: Mailbox): Promise<boolean> {
     const key = markerKey(sessionId);
     for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
       const raw = await kv.get(key);
@@ -227,13 +237,12 @@ export function createSessionInputSettlement(
   ): Promise<string[]> {
     const mailbox = dependencies.mailboxOf(sessionId);
     if (mailbox === undefined) return [];
-    // A command a gone holder leased stays `claimed` until its visibility
-    // lapses, and one whose cancellation that holder never settled stays
-    // `cancellation-requested`; maintenance moves both on, so the next lines
-    // can cancel the first and the marker can clear once the second is over.
+    // Maintenance before the cancel pass, so a lease a gone holder left and
+    // that has lapsed is cancelled outright rather than merely requested; the
+    // marker check then needs no second pass.
     await mailbox.runMaintenance();
     const cancelled = await cancelOpenSessionInput(mailbox, delivered);
-    await removeMarkerIfIdle(sessionId, mailbox);
+    await removeMarkerOnceMaintained(sessionId, mailbox);
     return cancelled;
   }
 

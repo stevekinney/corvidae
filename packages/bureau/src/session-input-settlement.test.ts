@@ -304,6 +304,55 @@ describe('a lease a gone holder left behind (COR-1476)', () => {
   });
 });
 
+describe('a deleted session over a lease a gone holder left behind (COR-1476)', () => {
+  it('clears the marker once the lease lapses, because the idle check runs maintenance first', async () => {
+    let now = Date.parse('2026-10-17T12:00:00.000Z');
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    let incarnation: string | undefined = 'incarnation-1';
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve(incarnation),
+      liveRunIds: () => Promise.resolve([]),
+      mailboxOf: () => mailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID);
+    const admitted = await mailbox.admit({
+      caller: 'alice',
+      target: SESSION_ID,
+      kind: 'session-input:steer',
+      payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: 'x' } },
+      idempotencyKey: 'input-x',
+    });
+    if (admitted.status !== 'admitted') throw new Error('expected admitted');
+    const claimed = await mailbox.claim();
+    expect(claimed.status).toBe('claimed');
+    // The session is deleted: its open input is asked to cancel, which the
+    // gone holder never settles.
+    incarnation = undefined;
+    await mailbox.requestCancellation({
+      commandId: admitted.receipt.commandId,
+      reason: 'the session was deleted',
+    });
+    const state = async () => {
+      const [receipt] = await mailbox.list({ limit: 10 });
+      return receipt?.state;
+    };
+
+    await settlement.sweep();
+    expect(await state()).toBe('cancellation-requested');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+
+    now += 31_000;
+    await settlement.sweep();
+    expect(await state()).toBe('cancelled');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
+  });
+});
+
 describe('backlog paging (COR-1476)', () => {
   it('cancels a backlog deeper than one batch in full', async () => {
     const f = fixture();

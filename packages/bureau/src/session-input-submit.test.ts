@@ -1,5 +1,5 @@
 import { stopWhen } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -95,6 +95,51 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
     } finally {
       failing.stop();
       held.release();
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('submitSessionInput marks the session again once its admission commits (COR-1476)', () => {
+  it('leaves the admitted input listed when a remover deleted the first marker before the admission committed', async () => {
+    const real = new MemoryStorage();
+    const seam = seamStorage(real);
+    const started = deferred();
+    const release = deferred();
+    const bureau = await createBureau({
+      agents: {},
+      generate: async () => {
+        started.resolve();
+        await release.promise;
+        return { content: 'answer', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      storage: seam.storage,
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    const holds: Array<{ release: () => void }> = [];
+    try {
+      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
+      await started.promise;
+      const kv = textValueStore(real, { disposeUnderlyingStorage: false });
+      const admission = seam.holdWrite(admitsSessionInput);
+      holds.push(admission);
+      const submitting = bureau.submitSessionInput(run.sessionId, input);
+      await admission.reached;
+      // The first marker is written; a remover deletes it in this window.
+      const before = await kv.list('session-input-open:v1:');
+      expect(before).toHaveLength(1);
+      for (const key of before) await kv.delete(key);
+      admission.release();
+
+      const outcome = await submitting;
+      expect(outcome.outcome).toBe('admitted');
+      if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('accepted');
+      expect(await kv.list('session-input-open:v1:')).toHaveLength(1);
+    } finally {
+      holds.forEach((hold) => hold.release());
+      release.resolve();
       await bureau.dispose();
     }
   });
