@@ -35,7 +35,7 @@ function bytesToHex(bytes: Uint8Array): string {
  * Digest a UTF-8 string with SHA-256, returning `sha256:<hex>`.
  *
  * Prefers `crypto.subtle`, which browsers expose only in secure contexts.
- * The dashboard that `dashboard()` serves over plain HTTP still derives
+ * An operator console served over plain HTTP still derives
  * activity contract hashes in the browser, so without SubtleCrypto the same
  * digest comes from `@noble/hashes`' portable SHA-256.
  */

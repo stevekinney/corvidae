@@ -23,7 +23,7 @@
  * External URL prefix under which the functional HTTP/WebSocket API is served
  * (REST workflows/schedules/tasks, `/mcp`, `/jsonrpc`, and the workflow/task
  * WebSocket upgrades). Caller-supplied `serve({ routes })`, such as the page
- * routes `dashboard()` registers, can occupy root-level paths, so the API is
+ * routes an application's page host registers, can occupy root-level paths, so the API is
  * namespaced beneath this prefix on the wire.
  *
  * This is purely an *external* (wire) concern. Internal routing — the

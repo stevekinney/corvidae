@@ -1,0 +1,15 @@
+# The browser-side `bun test` configuration, selected with `--config=./bunfig.ui.toml` by the
+# second invocation of `test` and by `scripts/run-coverage.ts`. It replaces `bunfig.toml` for those
+# runs rather than merging with it, so the DOM preload below never runs under the host's suite
+# (`src/host`, which runs under `bunfig.toml`) and the host never sees a `document`.
+#
+# The suite stays serial. Under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml`
+# preload on top of the one `--config` names, so these tests would run under both.
+[test]
+# happy-dom's DOM globals, the Svelte compile plugin from `@lostgradient/testing`, the jest-dom
+# matchers, and `@testing-library/svelte`'s cleanup, installed before any test imports.
+preload = ["./tests/setup.ts"]
+coverageReporter = ["text", "lcov"]
+coverageSkipTestFiles = true
+# The Playwright lane runs these through `test:browser`; `bun test` must not discover them.
+pathIgnorePatterns = ["tests/e2e/**"]

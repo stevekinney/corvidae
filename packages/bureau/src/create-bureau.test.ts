@@ -98,6 +98,7 @@ import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from './agent-catalog';
 import type { AuditRecord } from './audit-trail';
 import * as auditTrailModule from './audit-trail';
 import {
@@ -967,13 +968,18 @@ describe('createBureau', () => {
     // A generate function that calls the `next` tool on step 0 so a tool.started
     // event fires, then completes on step 1. The toolbox must be a real createToolbox
     // (not empty) so toolbox addEventListener is wired and the event bubbles.
-    const bureau = await createBureau({
-      agents: {},
-      generate: async ({ step }) =>
-        step === 0
-          ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
-          : { content: 'done', toolCalls: [] },
-      toolbox: createToolbox([createNextTool()]),
+    const callsNextThenFinishes: GenerateFunction = async ({ step }) =>
+      step === 0
+        ? { content: 'calling', toolCalls: [{ name: 'next', arguments: {} }] }
+        : { content: 'done', toolCalls: [] };
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        'audit-agent': createAgent({
+          generate: callsNextThenFinishes,
+          toolbox: createToolbox([createNextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       stopWhen: stopWhen.noToolCalls(),
     });
 
@@ -1041,10 +1047,16 @@ describe('createBureau', () => {
   it('stamps the session record with the dispatched agentName, not always bureau (regression PRRT_kwDORvupsc6MbUsN)', async () => {
     // Regression: createRunFromRequest stamped the run with request.agentName but
     // saveSession always created/kept the session as agentName:'bureau', so session
-    // APIs/persistence never reflected the dispatched agent. Now the session is
-    // stamped with (or promoted to) the named agent.
-    const bureau = await createBureau({
-      agents: {},
+    // APIs/persistence never reflected the dispatched agent. Now a new session is
+    // stamped with the named agent.
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        researcher: createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       persistence: textValueStore(new MemoryStorage()),
@@ -3545,14 +3557,20 @@ describe('createBureau', () => {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
       let bureauAReachedStep1 = false;
       const bureauA = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 0) {
-            return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          bureauAReachedStep1 = true;
-          return new Promise<never>(() => {});
+        agents: {
+          'recovery-agent': createAgent({
+            generate: async ({ step }) => {
+              if (step === 0) {
+                return { content: 'A step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              bureauAReachedStep1 = true;
+              return new Promise<never>(() => {});
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
+        generate: async () => ({ content: 'unused', toolCalls: [] }),
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
@@ -3581,13 +3599,19 @@ describe('createBureau', () => {
       // during resume carries {agentName:'recovery-agent', runId}.
       const capturedStamps: Array<{ agentName: string; runId: string }> = [];
       const bureauB = await createBureau({
-        agents: {},
-        generate: async ({ step }) => {
-          if (step === 1) {
-            return { content: 'B resume', toolCalls: [{ name: 'next', arguments: {} }] };
-          }
-          return { content: `B step ${step}`, toolCalls: [] };
+        agents: {
+          'recovery-agent': createAgent({
+            generate: async ({ step }) => {
+              if (step === 1) {
+                return { content: 'B resume', toolCalls: [{ name: 'next', arguments: {} }] };
+              }
+              return { content: `B step ${step}`, toolCalls: [] };
+            },
+            toolbox: createToolbox([createNextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
         },
+        generate: async () => ({ content: 'unused', toolCalls: [] }),
         toolbox: createToolbox([createNextTool()]),
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
@@ -8789,7 +8813,12 @@ describe('createBureau review queue (AB-20)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -8867,7 +8896,20 @@ describe('createBureau review queue (AB-20)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+        'older-run-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+        'newest-run-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -11510,7 +11552,12 @@ describe('createBureau review lifecycle (AB-46)', () => {
     );
 
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'terminal-agent': createAgent({
+          generate: createMockGenerate(),
+          toolbox: createEmptyToolbox(),
+        }),
+      },
       generate: createMockGenerate(),
       toolbox: createEmptyToolbox(),
       storage,
@@ -12387,7 +12434,10 @@ describe('createBureau flow control (AB-13)', () => {
   it('isolates the concurrency cap per agent by default', async () => {
     const { generate } = createBlockingGenerate();
     const bureau = await createBureau({
-      agents: {},
+      agents: {
+        'agent-a': createAgent({ generate, toolbox: createEmptyToolbox() }),
+        'agent-b': createAgent({ generate, toolbox: createEmptyToolbox() }),
+      },
       generate,
       toolbox: createEmptyToolbox(),
       flowControl: { concurrency: { limit: 1 } },
@@ -21305,7 +21355,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       const sessionStore = bureau.sessionStore;
       if (!sessionStore) throw new Error('expected a configured session store');
-      const deleted = await sessionStore.delete(review.sessionId);
+      const deleted = await sessionStore.delete(review.sessionId!);
       expect(deleted).toBe(true);
 
       const outcome = await bureau.resolveReview({
@@ -21508,7 +21558,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21617,7 +21667,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
 
       if (!bureau.sessionStore) throw new Error('Expected a configured session store');
       await bureau.sessionStore.update(
-        review.sessionId,
+        review.sessionId!,
         (session) => {
           if (!session) return session;
           return {
@@ -21677,7 +21727,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       // losing call that had actually reached `resumeApproval` and gotten
       // re-gated would have persisted a REPLACEMENT override with a
       // different token instead.
-      const persistedSession = await bureau.getSession(review.sessionId);
+      const persistedSession = await bureau.getSession(review.sessionId!);
       expect(persistedSession?.metadata['approvalResolutionStartedIds'] ?? []).not.toContain(
         review.id,
       );
