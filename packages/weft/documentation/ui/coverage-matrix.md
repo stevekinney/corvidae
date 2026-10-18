@@ -86,6 +86,8 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.workflows.cancel` | exposed | `src/ui/routes/workflows/detail/workflow-detail.svelte` | `cancel` | `src/ui/routes/workflows/detail/workflow-detail.test.ts` |  |  |
 | `weft.workflows.checkpoints.get` | exposed | `src/ui/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/ui/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.checkpoints.list` | exposed | `src/ui/routes/workflows/detail/checkpoints/checkpoints-data.ts` |  | `src/ui/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
+| `weft.workflows.definitions.get` | not-in-dashboard |  |  |  |  | Weft's own dashboard lists a workflow's revisions through `weft.workflows.revisions.list` and its registry from `weft.system.registry`; the definitions catalog serves the Interborough workflows page. |
+| `weft.workflows.definitions.list` | not-in-dashboard |  |  |  |  | Weft's own dashboard lists a workflow's revisions through `weft.workflows.revisions.list` and its registry from `weft.system.registry`; the definitions catalog serves the Interborough workflows page. |
 | `weft.workflows.events.list` | exposed | `src/ui/routes/workflows/detail/events-tab.svelte` | `getEvents` | `src/ui/routes/workflows/detail/events-tab.test.ts` |  |  |
 | `weft.workflows.finalizer.get` | exposed | `src/ui/routes/workflows/detail/workflow-observability.ts` |  | `src/ui/routes/workflows/detail/workflow-observability.test.ts` |  |  |
 | `weft.workflows.fork` | exposed | `src/ui/routes/workflows/detail/checkpoints/fork-dialog.svelte` | `fork` | `src/ui/routes/workflows/detail/checkpoints/fork-dialog.test.ts` |  |  |

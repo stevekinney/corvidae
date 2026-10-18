@@ -114,6 +114,8 @@ const EXPECTED_DESTRUCTIVE: Readonly<Record<string, boolean>> = {
   'weft.catalog.diagnostics': false,
   'weft.realms.diagnostics': false,
   'weft.catalog.sources.list': false,
+  'weft.workflows.definitions.list': false,
+  'weft.workflows.definitions.get': false,
   'weft.tasks.diagnostics': false,
   'weft.tasks.diagnostics.deadletters.clear': true,
   'weft.tasks.get': false,
