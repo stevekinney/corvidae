@@ -72,6 +72,7 @@ export type BureauHandlerSource = Pick<
   | 'hasDurableEngine'
   | 'locateRunCreationReceipt'
   | 'children'
+  | 'getDurableRun'
 > & { readonly agents: { has(name: string): boolean } };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */

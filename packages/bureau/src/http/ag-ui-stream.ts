@@ -48,6 +48,7 @@ export type AgUiStreamBureau = Pick<
   | 'listPendingReviews'
   | 'eventHistory'
   | 'children'
+  | 'getDurableRun'
 >;
 
 export type AgUiStreamEnvironment = {
@@ -193,6 +194,58 @@ function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingRevie
   return bureau.listPendingReviews().filter((review) => review.runId === nativeRunId);
 }
 
+const TERMINAL_EVENTS: ReadonlySet<string> = new Set([
+  RECORDED.runCompleted,
+  RECORDED.runError,
+  RECORDED.runAborted,
+]);
+
+/** Whether this process holds the run and it has not recorded its end. */
+export function runIsGoing(bureau: Pick<Bureau, 'getRun'>, nativeRunId: string): boolean {
+  const detail = bureau.getRun(nativeRunId);
+  if (detail === undefined) return false;
+  if (detail.status !== 'running' && detail.status !== 'aborting') return false;
+  return !detail.events.some((event) => TERMINAL_EVENTS.has(event.event));
+}
+
+/**
+ * The reviews of a run that a client can be asked to answer now: the ones the
+ * interrupt that ends the AG-UI run would carry. A run that is still going has
+ * not stored its conversation, so an approval it has gated cannot have its
+ * outcome written yet; it is offered once the run has settled, and until then
+ * only a human wait the run is parked on is.
+ */
+export function interruptibleReviews(
+  bureau: Pick<Bureau, 'getRun' | 'listPendingReviews'>,
+  nativeRunId: string,
+): PendingReview[] {
+  const pending = bureau.listPendingReviews().filter((review) => review.runId === nativeRunId);
+  return runIsGoing(bureau, nativeRunId)
+    ? pending.filter((review) => review.kind === 'human-wait')
+    : pending;
+}
+
+/**
+ * The row a settled child's final text is, under the id a child run's rows have
+ * (`<childRunId>:step:<n>`, `n` the child's last step), or `undefined` when the
+ * child has no final text or its step count cannot be read from its durable run.
+ */
+async function childResultRow(
+  bureau: Pick<Bureau, 'getDurableRun'>,
+  record: BureauChildRecord,
+): Promise<{ readonly id: string; readonly content: string } | undefined> {
+  const content = record.status === 'completed' ? record.outcome?.content : undefined;
+  if (content === undefined || content === '') return undefined;
+  const state = await bureau.getDurableRun(record.childRunId).catch(() => undefined);
+  const result: unknown = state?.result;
+  const steps =
+    typeof result === 'object' && result !== null
+      ? (result as { steps?: unknown }).steps
+      : undefined;
+  if (typeof steps !== 'number' || !Number.isInteger(steps) || steps < 1) return undefined;
+  return { id: `${record.childRunId}:step:${steps - 1}`, content };
+}
+
 /** The call a `tool-call` row announces, as the assistant message it belongs to is named. */
 function parentOfCallRow(rowId: string, callId: string): string {
   const suffix = `:call:${callId}`;
@@ -256,9 +309,7 @@ export function openRunStream(
   const { bureau, runtime } = environment;
   const stampContext: EventStamp = {
     nativeRunId: request.nativeRunId,
-    // A child run has no session of its own, and its thread is its own id, which
-    // is not a Bureau session.
-    sessionId: request.child === undefined ? request.threadId : undefined,
+    sessionId: request.threadId,
     now: () => runtime.clock.now(),
   };
   const projector = new RunProjector(request.nativeRunId, stampContext);
@@ -338,7 +389,9 @@ export function openRunStream(
           revision: lastRevision,
           status: snapshot.status,
           ...(snapshot.assessment === undefined ? {} : { assessment: snapshot.assessment }),
-          pendingInterruptIds: pendingFor(bureau, request.nativeRunId).map((review) => review.id),
+          pendingInterruptIds: interruptibleReviews(bureau, request.nativeRunId).map(
+            (review) => review.id,
+          ),
         },
       },
       stampContext,
@@ -350,7 +403,7 @@ export function openRunStream(
     JSON.stringify([
       snapshot.status,
       snapshot.assessment,
-      pendingFor(bureau, request.nativeRunId).map((review) => review.id),
+      interruptibleReviews(bureau, request.nativeRunId).map((review) => review.id),
     ]);
 
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
@@ -481,7 +534,8 @@ export function openRunStream(
    */
   const openChild = async (record: BureauChildRecord): Promise<void> => {
     const { threadId, runId } = request;
-    const result = record.status === 'completed' ? record.outcome?.content : undefined;
+    const durably = { durable: false } as const;
+    const resultRow = await childResultRow(bureau, record);
     writeEvents([
       stamp(
         {
@@ -491,18 +545,18 @@ export function openRunStream(
           ...(request.parentRunId === undefined ? {} : { parentRunId: request.parentRunId }),
         },
         stampContext,
-        { durable: false },
+        durably,
       ),
       stamp(
         {
           type: EventType.MESSAGES_SNAPSHOT,
           messages:
-            result === undefined || result === ''
+            resultRow === undefined
               ? []
-              : [{ id: `${request.nativeRunId}:result`, role: 'assistant', content: result }],
+              : [{ id: resultRow.id, role: 'assistant', content: resultRow.content }],
         },
         stampContext,
-        { durable: false },
+        durably,
       ),
       stamp(
         {
@@ -510,7 +564,7 @@ export function openRunStream(
           snapshot: { revision: record.revision, status: record.status, pendingInterruptIds: [] },
         },
         stampContext,
-        { durable: false },
+        durably,
       ),
     ]);
     if (ended) return;
@@ -533,6 +587,33 @@ export function openRunStream(
         return;
       }
       settled = waited.child;
+      // The client holds no result yet: it is the message the child ends with.
+      const settledRow = await childResultRow(bureau, settled);
+      if (ended) return;
+      if (settledRow !== undefined) {
+        writeEvents([
+          stamp(
+            { type: EventType.TEXT_MESSAGE_START, messageId: settledRow.id, role: 'assistant' },
+            stampContext,
+            durably,
+          ),
+          stamp(
+            {
+              type: EventType.TEXT_MESSAGE_CONTENT,
+              messageId: settledRow.id,
+              delta: settledRow.content,
+            },
+            stampContext,
+            durably,
+          ),
+          stamp(
+            { type: EventType.TEXT_MESSAGE_END, messageId: settledRow.id },
+            stampContext,
+            durably,
+          ),
+        ]);
+        if (ended) return;
+      }
     }
     let last: Event;
     if (settled.status === 'failed') {
@@ -550,7 +631,7 @@ export function openRunStream(
           outcome: settled.status === 'aborted' ? { type: 'cancelled' } : { type: 'success' },
         },
         stampContext,
-        { durable: false },
+        durably,
       );
     }
     dispose();

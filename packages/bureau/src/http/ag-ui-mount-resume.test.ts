@@ -13,6 +13,7 @@ import { z } from 'zod';
 
 import {
   as,
+  attachThreadRequest,
   authentication,
   cancelRequest,
   type Handler,
@@ -21,7 +22,13 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { bureauMetadata, readAgUiStream, typesOf } from './ag-ui-stream.test-support.ts';
+import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
+import {
+  bureauMetadata,
+  FrameReader,
+  readAgUiStream,
+  typesOf,
+} from './ag-ui-stream.test-support.ts';
 
 const SECRET = 'ag-ui-resume-secret';
 
@@ -513,13 +520,16 @@ describe('a resume that did not finish', () => {
     );
   });
 
-  it('is taken over by a retry after a restart, which applies it', async () => {
+  it('is taken over by a retry once its claimant’s lease has expired, which applies it', async () => {
     const charges: number[] = [];
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
     await withHarness(
       {
         script: [chargeOnce, say('Charged.')],
         toolbox: approvalToolbox(charges),
         storage: 'sqlite',
+        agUi: { runtime: dead },
       },
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
@@ -531,9 +541,10 @@ describe('a resume that did not finish', () => {
         void harness.handler(resumeRequest(entries));
         await waitForCondition(() => resolve.mock.calls.length === 1, 'the resume never started');
         resolve.mockRestore();
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retry = await readAgUiStream(
-          await harness.remount()(resumeRequest(entries, {}, 'client-run-3')),
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-3')),
         );
 
         expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
@@ -542,13 +553,16 @@ describe('a resume that did not finish', () => {
     );
   });
 
-  it('is finished by a retry after a restart when its approvals were applied but its run was not started', async () => {
+  it('is finished by a retry after its claimant died when its approvals were applied but its run was not started', async () => {
     const charges: number[] = [];
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
     await withHarness(
       {
         script: [chargeOnce, say('Charged.')],
         toolbox: approvalToolbox(charges),
         storage: 'sqlite',
+        agUi: { runtime: dead },
       },
       async (harness) => {
         const first = await startUntilInterrupted(harness.handler);
@@ -558,12 +572,14 @@ describe('a resume that did not finish', () => {
         await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
         createRun.mockRestore();
         expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
         const retry = await readAgUiStream(
-          await harness.remount()(resumeRequest(entries, {}, 'client-run-3')),
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-3')),
         );
+        // Not through the claimant's own mount, which is still waiting on the call that never returned.
         const again = await readAgUiStream(
-          await harness.handler(resumeRequest(entries, {}, 'client-run-4')),
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-4')),
         );
 
         expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
@@ -819,6 +835,492 @@ describe('resuming a human wait', () => {
         // The model was given the human's answer on the continuation.
         const continuation = generate.calls.at(-1)!.context.conversation;
         expect(JSON.stringify(continuation.getMessages())).toContain('yes');
+      },
+    );
+  });
+});
+
+/** A promise a test settles by hand, so a call can be held at a named point. */
+function barrier() {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reach!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  return { release, released, reach, reached };
+}
+
+describe('a resume that another process is applying', () => {
+  it('is not taken over while its claimant’s lease holds, and the tool runs once', async () => {
+    const charges: number[] = [];
+    const claimantClock = createManualRuntimeServices();
+    const otherClock = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+        agUi: { runtime: claimantClock },
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const held = barrier();
+        const real = harness.bureau.resolveReview.bind(harness.bureau);
+        const resolve = spyOn(harness.bureau, 'resolveReview');
+        resolve.mockImplementationOnce(async (input) => {
+          held.reach();
+          await held.released;
+          return real(input);
+        });
+        const claimant = harness.handler(resumeRequest(entries));
+        await held.reached;
+        // Part of the lease has gone, not all of it.
+        await otherClock.advance(DEFAULT_AG_UI_LEASE_MS - 1);
+
+        const refused = await readAgUiStream(
+          await harness.remount({ runtime: otherClock })(
+            resumeRequest(entries, {}, 'client-run-3'),
+          ),
+        );
+        held.release();
+        const finished = await readAgUiStream(await claimant);
+
+        expect(refused).toHaveLength(1);
+        expect(refused[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
+        expect(resolve).toHaveBeenCalledTimes(1);
+        expect(finished.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+      },
+    );
+  });
+
+  it('is taken over by another process once the lease has expired, and the tool runs once', async () => {
+    const charges: number[] = [];
+    const claimantClock = createManualRuntimeServices();
+    const otherClock = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+        agUi: { runtime: claimantClock },
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const held = barrier();
+        const real = harness.bureau.resolveReview.bind(harness.bureau);
+        spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+          held.reach();
+          await held.released;
+          return real(input);
+        });
+        const claimant = harness.handler(resumeRequest(entries));
+        await held.reached;
+        // The claimant never renews: its clock does not move, as a dead process's does not.
+        await otherClock.advance(DEFAULT_AG_UI_LEASE_MS);
+
+        const takenOver = await readAgUiStream(
+          await harness.remount({ runtime: otherClock })(
+            resumeRequest(entries, {}, 'client-run-3'),
+          ),
+        );
+        held.release();
+        const late = await readAgUiStream(await claimant);
+
+        expect(takenOver.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+        // What the claimant comes back to is the answer that the work was done.
+        expect(late[0]!.event.type).toBe(EventType.RUN_ERROR);
+      },
+    );
+  });
+});
+
+describe('a resume whose approvals are only partly applied', () => {
+  it('applies the missing decision when it is retried, and starts exactly one run', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeTwice, say('Both charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = first.interruptIds.map((id) => resolved(id));
+        const resolve = spyOn(bureau, 'resolveReview').mockRejectedValueOnce(
+          new Error('session store unavailable'),
+        );
+
+        const partial = await readAgUiStream(await handler(resumeRequest(entries)));
+        resolve.mockRestore();
+        const pendingAfterPartial = bureau.listPendingReviews().length;
+        const runsAfterPartial = bureau.listRuns().length;
+        const retry = await readAgUiStream(
+          await handler(resumeRequest(entries, {}, 'client-run-3')),
+        );
+
+        expect(partial).toHaveLength(1);
+        expect(partial[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
+        // One decision landed and no run began from a half-answered set.
+        expect(pendingAfterPartial).toBe(1);
+        expect(runsAfterPartial).toBe(1);
+        expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges.toSorted()).toEqual([500, 700]);
+        expect(bureau.listRuns()).toHaveLength(2);
+      },
+    );
+  });
+});
+
+describe('a resume that loses its ledger claim after it took effect', () => {
+  it('streams the run it created, not an error', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const kv = bureau.kv!;
+        const batch = kv.conditionalBatch.bind(kv);
+        // The completion of the resume's ledger entry finds the entry changed.
+        const lost = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) =>
+          operations.some(
+            (operation) =>
+              operation.type === 'set' &&
+              operation.key.startsWith('command-ledger:ag-ui-resume:v1') &&
+              operation.value.includes('"state":"completed"'),
+          )
+            ? Promise.resolve(false)
+            : batch(conditions, operations),
+        );
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+        lost.mockRestore();
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+        expect(bureau.listRuns()).toHaveLength(2);
+      },
+    );
+  });
+});
+
+describe('a resume retried after an attempt whose outcome was not written', () => {
+  /** The first attempt resolves the approval, cannot write its outcome, and never gets to release its claim. */
+  async function deadAttempt(harness: Harness, entries: ResumeEntry[]) {
+    const store = harness.bureau.sessionStore!;
+    const update = store.update.bind(store);
+    const failingWrite = spyOn(store, 'update').mockImplementation((id, updater, options) =>
+      update(
+        id,
+        async (session) => {
+          const next = await updater(session);
+          if (
+            session !== undefined &&
+            next !== undefined &&
+            next.conversationHistory !== session.conversationHistory
+          ) {
+            throw new Error('disk full');
+          }
+          return next;
+        },
+        options,
+      ),
+    );
+    const kv = harness.bureau.kv!;
+    const batch = kv.conditionalBatch.bind(kv);
+    const reached = barrier();
+    const dying = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) => {
+      const releasesResume = operations.some(
+        (operation) =>
+          operation.type === 'delete' && operation.key.startsWith('command-ledger:ag-ui-resume:v1'),
+      );
+      if (!releasesResume) return batch(conditions, operations);
+      reached.reach();
+      return new Promise<boolean>(() => {});
+    });
+    void harness.handler(resumeRequest(entries));
+    await reached.reached;
+    dying.mockRestore();
+    failingWrite.mockRestore();
+  }
+
+  it.each(['remount', 'restart'] as const)(
+    'answers RUN_FAILED and starts no run, across a %s',
+    async (how) => {
+      const charges: number[] = [];
+      const dead = createManualRuntimeServices();
+      const living = createManualRuntimeServices();
+      await withHarness(
+        {
+          script: [chargeOnce, say('Asked again.')],
+          toolbox: approvalToolbox(charges),
+          storage: 'sqlite',
+          agUi: { runtime: dead },
+          // The outcome write fails on purpose; the Bureau says so through its diagnostics.
+          onDiagnostic: () => undefined,
+        },
+        async (harness) => {
+          const first = await startUntilInterrupted(harness.handler);
+          const entries = [resolved(first.interruptIds[0]!)];
+          await deadAttempt(harness, entries);
+          const stored = (await harness.bureau.getSession('thread-1'))!.conversationHistory;
+          const row = stored.ids
+            .map((id) => stored.messages[id]!)
+            .find((message) => message.toolResult?.callId === 'call-1');
+          expect(row?.toolResult?.outcome).toBe('action_required');
+          const runsBefore = harness.bureau.listRuns().length;
+          await dead.advance(DEFAULT_AG_UI_LEASE_MS);
+
+          const survivor = how === 'restart' ? await harness.restart([say('Unused.')]) : harness;
+          try {
+            const retry = await readAgUiStream(
+              await (how === 'restart' ? survivor.handler : survivor.remount({ runtime: living }))(
+                resumeRequest(entries, {}, 'client-run-3'),
+              ),
+            );
+
+            expect(retry[0]!.event).toMatchObject({
+              type: EventType.RUN_ERROR,
+              code: 'RUN_FAILED',
+            });
+            if (how === 'remount') expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+            else expect(survivor.bureau.listRuns()).toHaveLength(0);
+            expect(charges).toEqual([500]);
+          } finally {
+            if (how === 'restart') await survivor.dispose();
+          }
+        },
+      );
+    },
+  );
+});
+
+describe('a tool approval of a run that is still going', () => {
+  const chargeThenWait = [
+    chargeOnce,
+    { kind: 'block' as const, barrier: 'next-step' },
+    say('Done.'),
+  ];
+
+  it('is not advertised, and a resume of it is refused before anything runs', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: chargeThenWait,
+        toolbox: approvalToolbox(charges),
+        stopWhen: stopWhen.noToolCalls(),
+      },
+      async ({ handler, bureau, generate }) => {
+        const start = new FrameReader(await handler(startRequest(runAgentInput())));
+        await start.until(EventType.STEP_STARTED);
+        await generate.reached('next-step');
+        await waitForCondition(() => bureau.listPendingReviews().length === 1, 'no review listed');
+        const pendingId = bureau.listPendingReviews()[0]!.id;
+
+        const attach = new FrameReader(await handler(attachThreadRequest('thread-1')));
+        const opening = await attach.until(EventType.STATE_SNAPSHOT);
+        await attach.cancel();
+        const state = opening.at(-1)!.event as unknown as {
+          snapshot: { pendingInterruptIds: string[] };
+        };
+        const resume = new FrameReader(await handler(resumeRequest([resolved(pendingId)])));
+        const answer = await resume.next();
+        await resume.cancel();
+        generate.release('next-step');
+        await start.rest();
+
+        expect(state.snapshot.pendingInterruptIds).toEqual([]);
+        expect(answer!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'INTERRUPT_NOT_FOUND',
+        });
+        expect(charges).toEqual([]);
+        expect(bureau.listRuns()).toHaveLength(1);
+      },
+    );
+  });
+});
+
+describe('a step that asks a human and calls a gated tool', () => {
+  const both = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Asking, and charging.',
+      toolCalls: [
+        {
+          id: 'call-1',
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: 'Approve this?' },
+        },
+        { id: 'call-2', name: 'charge-card', arguments: { cents: 500 } },
+      ],
+    },
+  };
+  const gateOnlyCharges = (charges: number[]): Toolbox =>
+    createToolbox([chargeCardTool(charges)], {
+      approvalSecret: SECRET,
+      policy: {
+        beforeExecute: ({ toolName }) =>
+          toolName === 'charge-card' ? gate('Operator approval required') : { allow: true },
+      },
+    }) as unknown as Toolbox;
+
+  it('parks on the human wait, and its resume is not refused for the tool approval it does not yet answer', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [both, say('Thanks.')],
+        toolbox: gateOnlyCharges(charges),
+        humanInput: true,
+        stopWhen: stopWhen.some(
+          stopWhen.toolCalled('requestHumanInput'),
+          stopWhen.pendingApproval(),
+          stopWhen.noToolCalls(),
+        ),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const interrupts = (
+          first.frames.at(-1)!.event as {
+            outcome: { interrupts: Array<{ id: string; reason: string }> };
+          }
+        ).outcome.interrupts;
+        const wait = interrupts.find((interrupt) => interrupt.reason === 'human-wait')!;
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(wait.id, { decision: 'approve', answer: 'yes' })])),
+        );
+
+        expect(wait).toBeDefined();
+        expect(frames.at(-1)!.event.type).not.toBe(EventType.RUN_ERROR);
+        // The approval is the run's to offer once the run has settled; nothing ran meanwhile.
+        expect(charges).toEqual([]);
+        expect(bureau.listRuns()).toHaveLength(1);
+      },
+    );
+  });
+});
+
+describe('the human’s answer, streamed under the id the run commits it by', () => {
+  const askAs = (id: string) => ({
+    kind: 'respond' as const,
+    response: {
+      content: `Asking ${id}.`,
+      toolCalls: [
+        {
+          id,
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: `Question ${id}?` },
+        },
+      ],
+    },
+  });
+  const humanWait = {
+    humanInput: true,
+    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+  };
+  const answerOf = (interruptId: string, text: string) =>
+    resolved(interruptId, { decision: 'approve', answer: text });
+  const userRows = (frames: ReadonlyArray<{ event: { type: string } }>) =>
+    frames
+      .filter(
+        (frame) =>
+          frame.event.type === EventType.TEXT_MESSAGE_START &&
+          (frame.event as unknown as { role?: string }).role === 'user',
+      )
+      .map((frame) => (frame.event as unknown as { messageId: string }).messageId);
+  const interruptOf = (frames: ReadonlyArray<{ event: unknown }>) =>
+    (frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } }).outcome
+      .interrupts[0]!.id;
+
+  it('numbers a second answer to one signal by its park, not by the rows the session holds', async () => {
+    await withHarness(
+      {
+        script: [
+          askAs('call-1'),
+          askAs('call-2'),
+          { kind: 'block', barrier: 'after-second' },
+          say('Done.'),
+        ],
+        storage: 'sqlite',
+        ...humanWait,
+      },
+      async ({ handler, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const second = await readAgUiStream(
+          await handler(resumeRequest([answerOf(first.interruptIds[0]!, 'first-answer')])),
+        );
+
+        const third = new FrameReader(
+          await handler(
+            resumeRequest([answerOf(interruptOf(second), 'second-answer')], {}, 'client-run-3'),
+          ),
+        );
+        await generate.reached('after-second');
+        const opening = await third.until(EventType.STEP_STARTED);
+        generate.release('after-second');
+        await third.rest();
+
+        expect(userRows(second)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+        expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:1`]);
+      },
+    );
+  });
+
+  it('is streamed by a retry that finds the answer delivered and the claim unfinished', async () => {
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [askAs('call-1'), { kind: 'block', barrier: 'next-step' }, say('Done.')],
+        storage: 'sqlite',
+        agUi: { runtime: dead },
+        ...humanWait,
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [answerOf(first.interruptIds[0]!, 'yes')];
+        // The first attempt delivers the answer and dies before it completes its claim.
+        const kv = harness.bureau.kv!;
+        const batch = kv.conditionalBatch.bind(kv);
+        const completing = barrier();
+        const dying = spyOn(kv, 'conditionalBatch').mockImplementation((conditions, operations) => {
+          const completes = operations.some(
+            (operation) =>
+              operation.type === 'set' &&
+              operation.key.startsWith('command-ledger:ag-ui-resume:v1') &&
+              operation.value.includes('"state":"completed"'),
+          );
+          if (!completes) return batch(conditions, operations);
+          completing.reach();
+          return new Promise<boolean>(() => {});
+        });
+        void harness.handler(resumeRequest(entries));
+        await completing.reached;
+        dying.mockRestore();
+        await harness.generate.reached('next-step');
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
+
+        const retry = new FrameReader(
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-3')),
+        );
+        const opening = await retry.until(EventType.STEP_STARTED);
+        harness.generate.release('next-step');
+        await retry.rest();
+
+        expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
       },
     );
   });

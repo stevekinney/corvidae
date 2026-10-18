@@ -144,7 +144,6 @@ describe('a tool approval', () => {
           EventType.TOOL_CALL_END,
           EventType.TOOL_CALL_RESULT,
           EventType.STEP_FINISHED,
-          EventType.STATE_SNAPSHOT,
           EventType.RUN_FINISHED,
         ]);
         expect(types).toContain(EventType.TOOL_CALL_RESULT);

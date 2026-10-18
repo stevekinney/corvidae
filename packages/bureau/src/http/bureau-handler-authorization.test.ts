@@ -1156,7 +1156,7 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
     }
   });
 
-  it('refuses a writer’s start on another owner’s thread', async () => {
+  it('refuses a writer’s start on another owner’s thread as it refuses a stranger’s, and leaves no trace', async () => {
     const harness = await openAgUiHarness({
       script: [done, done],
       authentication: agUiAuthentication,
@@ -1166,22 +1166,28 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
         await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
       );
       const runsBefore = harness.bureau.listRuns().length;
-
-      const frames = await readAgUiStream(
-        await harness.handler(
+      const start = (key: string) =>
+        harness.handler(
           startRequest(
             runAgentInput({
-              runId: 'writer-run',
-              messages: [{ id: 'writer-user', role: 'user', content: 'butting in' }],
+              runId: 'intruder-run',
+              messages: [{ id: 'intruder-user', role: 'user', content: 'butting in' }],
             }),
-            agUiCredentials('writer-key'),
+            agUiCredentials(key),
           ),
-        ),
-      );
+        );
 
-      expect(frames).toHaveLength(1);
-      expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
+      // A scopeless stranger is refused as a thread that is not theirs; the writer's scope changes nothing.
+      const refused = await maskedStream(start('writer-key'), 'thread-1');
+      const stranger = await maskedStream(start('bob-key'), 'thread-1');
+
+      expect(refused).toBe(stranger);
+      expect(refused).toContain('THREAD_NOT_FOUND');
       expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+      // The refused start left no trace in the audit trail, whatever the parked runs wrote since.
+      const audit = JSON.stringify(await harness.bureau.auditTrail?.query({}));
+      expect(audit).not.toContain('intruder');
+      expect(audit).not.toContain('butting in');
     } finally {
       await harness.dispose();
     }

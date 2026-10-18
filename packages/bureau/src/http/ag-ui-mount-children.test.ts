@@ -9,6 +9,7 @@ import {
   createAgent,
   createScriptedGenerate,
   type ScriptedGenerate,
+  type ScriptedGenerateStep,
   stopWhen,
 } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
@@ -20,6 +21,7 @@ import {
   as,
   attachRunRequest,
   authentication,
+  cancelRequest,
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
@@ -38,6 +40,11 @@ async function withParentAndChild<T>(
     childId: string;
     script: ScriptedGenerate;
   }) => Promise<T>,
+  /** What the child's one step answers once it is released. */
+  childStep: ScriptedGenerateStep = {
+    kind: 'respond',
+    response: { content: 'Child done.', toolCalls: [] },
+  },
 ): Promise<T> {
   const script = createScriptedGenerate([
     // A held step takes the step after it as its answer once released, so each
@@ -47,7 +54,7 @@ async function withParentAndChild<T>(
     { kind: 'respond', response: { content: 'Parent done.', toolCalls: [] } },
     // The child's only step, which the child's cancellation interrupts once it returns.
     { kind: 'block', barrier: 'child-hold' },
-    { kind: 'respond', response: { content: 'Child done.', toolCalls: [] } },
+    childStep,
   ]);
   const bureau = await createBureau({
     id: 'children-fixture',
@@ -97,12 +104,15 @@ describe('child runs', () => {
 
       const opening = await attached.until(EventType.STATE_SNAPSHOT);
 
+      // The thread is the parent's session, as on every stream of this mount.
       expect(opening[0]!.event).toMatchObject({
         type: EventType.RUN_STARTED,
+        threadId: 'thread-1',
         runId: childId,
         parentRunId,
       });
       expect(bureauMetadata(opening[0]!.event)['runId']).toBe(childId);
+      expect(bureauMetadata(opening[0]!.event)['sessionId']).toBe('thread-1');
       // The child ends when it is cancelled, and the stream says so.
       await bureau.children.cancel({ parentRunId, childRunId: childId });
       script.release('child-hold');
@@ -112,6 +122,58 @@ describe('child runs', () => {
         outcome: { type: 'cancelled' },
       });
     });
+  });
+
+  it('are cancelled by their owner through the cancel route', async () => {
+    await withParentAndChild(async ({ bureau, handler, parentRunId, childId, script }) => {
+      const attached = new FrameReader(await handler(attachRunRequest(childId, as('alice-key'))));
+      await attached.until(EventType.STATE_SNAPSHOT);
+
+      const cancelled = await handler(cancelRequest(childId, as('alice-key')));
+      script.release('child-hold');
+      const tail = await attached.rest();
+
+      expect(cancelled.status).toBe(200);
+      expect(await cancelled.json()).toMatchObject({ runId: childId });
+      expect(tail.at(-1)!.event).toMatchObject({
+        type: EventType.RUN_FINISHED,
+        outcome: { type: 'cancelled' },
+      });
+      expect((await bureau.children.get({ parentRunId, childRunId: childId }))?.status).toBe(
+        'aborted',
+      );
+    });
+  });
+
+  it('are not cancelled by anyone else, who is answered as for a run that never was', async () => {
+    await withParentAndChild(async ({ handler, childId }) => {
+      const stranger = await handler(cancelRequest(childId, as('bob-key')));
+      const random = await handler(cancelRequest('child-run-never-was', as('bob-key')));
+
+      expect(stranger.status).toBe(404);
+      expect(await stranger.text()).toBe(
+        (await random.text()).replaceAll('child-run-never-was', childId),
+      );
+    });
+  });
+
+  it('end the stream with RUN_ERROR when the child failed', async () => {
+    await withParentAndChild(
+      async ({ handler, childId, script }) => {
+        const attached = new FrameReader(await handler(attachRunRequest(childId, as('alice-key'))));
+        await attached.until(EventType.STATE_SNAPSHOT);
+
+        script.release('child-hold');
+        const tail = await attached.rest();
+
+        expect(tail.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'RUN_FAILED',
+          message: expect.stringContaining('the child could not answer'),
+        });
+      },
+      { kind: 'fail', error: new Error('the child could not answer') },
+    );
   });
 
   it('answer a non-owner exactly as they answer a run that never was', async () => {

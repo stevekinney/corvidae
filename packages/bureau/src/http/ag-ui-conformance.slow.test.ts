@@ -34,7 +34,7 @@ import {
 } from '@ag-ui/core';
 import { EventSchemas } from '@ag-ui/core/schemas';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { stopWhen, type Toolbox } from '@lostgradient/operative';
 import { agUiConversationAdapter } from 'conversationalist';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
@@ -536,7 +536,8 @@ describe('cancel', () => {
     await withServed(
       { script: [{ kind: 'block', barrier: 'hold' }, say('Never.')] },
       async ({ harness, served }) => {
-        const agent = agentFor(served, observed());
+        const starterObserver = observed();
+        const agent = agentFor(served, starterObserver);
         const starting = agent.runAgent({ runId: 'run-a' }).then(
           () => undefined,
           () => undefined,
@@ -546,6 +547,7 @@ describe('cancel', () => {
 
         agent.abortRun();
         await starting;
+        await starterObserver.frames();
         expect(harness.bureau.getRun(nativeRunId)?.status).toBe('running');
 
         const attaching = follow(pipeline(`${served.base}/ag-ui/runs/${nativeRunId}`));
@@ -643,7 +645,8 @@ describe('interrupt and resume', () => {
     await withServed(
       { script: [chargeOnce, say('Understood.')], toolbox: approvalToolbox(charges) },
       async ({ served, harness }) => {
-        const agent = agentFor(served, observed());
+        const observer = observed();
+        const agent = agentFor(served, observer);
         await agent.runAgent({ runId: 'run-a' });
         const [interrupt] = agent.pendingInterrupts;
 
@@ -666,6 +669,7 @@ describe('interrupt and resume', () => {
         });
         expect(charges).toEqual([]);
         expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+        await observer.frames();
       },
     );
   });
@@ -674,10 +678,12 @@ describe('interrupt and resume', () => {
     await withServed(
       { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox([]) },
       async ({ served, harness }) => {
-        await agentFor(served, observed()).runAgent({ runId: 'run-a' });
+        const observer = observed();
+        await agentFor(served, observer).runAgent({ runId: 'run-a' });
         const [review] = harness.bureau.listPendingReviews();
 
         const events = await follow(pipeline(`${served.base}/ag-ui/threads/thread-1/run`)).events;
+        await observer.frames();
 
         expect(typesOf(events)).toEqual([
           EventType.RUN_STARTED,
@@ -705,7 +711,8 @@ describe('interrupt and resume', () => {
         storage: 'sqlite',
       },
       async ({ served, harness }) => {
-        const agent = agentFor(served, observed());
+        const observer = observed();
+        const agent = agentFor(served, observer);
         await agent.runAgent({ runId: 'run-a' });
         const [interrupt] = agent.pendingInterrupts;
         const entries = [
@@ -727,6 +734,7 @@ describe('interrupt and resume', () => {
         );
 
         expect(resolve).not.toHaveBeenCalled();
+        await observer.frames();
         expect(charges).toEqual([500]);
         expect(bureauMetadata(retry[0]!.event)['runId']).toBe(
           bureauMetadata(original[0]!.event)['runId'],
@@ -822,13 +830,18 @@ describe('cleanup', () => {
       async ({ harness, served }) => {
         let frameListeners = 0;
         let snapshotSubscriptions = 0;
+        // Settled by the wrapped calls themselves, never by polling or a timer.
+        let subscribed = Promise.withResolvers<void>();
+        let allGone = Promise.withResolvers<void>();
         const subscribeLiveFrames = harness.bureau.subscribeLiveFrames.bind(harness.bureau);
         const subscribeRunSnapshot = harness.bureau.subscribeRunSnapshot.bind(harness.bureau);
         harness.bureau.subscribeLiveFrames = (listener) => {
           frameListeners += 1;
+          subscribed.resolve();
           const stop = subscribeLiveFrames(listener);
           return () => {
             frameListeners -= 1;
+            if (frameListeners === 0) allGone.resolve();
             stop();
           };
         };
@@ -846,30 +859,34 @@ describe('cleanup', () => {
           };
         };
 
-        await agentFor(served, observed()).runAgent({ runId: 'run-a' });
+        const firstObserver = observed();
+        await agentFor(served, firstObserver).runAgent({ runId: 'run-a' });
+        await allGone.promise;
         expect(frameListeners).toBe(0);
+        await firstObserver.frames();
 
         // A client that goes away once the server has its stream open: the run keeps
         // going, and the stream's listener and subscription go.
-        const abandoned = agentFor(served, observed(), { threadId: 'thread-2' });
+        subscribed = Promise.withResolvers<void>();
+        allGone = Promise.withResolvers<void>();
+        const abandonedObserver = observed();
+        const abandoned = agentFor(served, abandonedObserver, { threadId: 'thread-2' });
         const aborted = abandoned.runAgent({ runId: 'run-b' }).then(
           () => undefined,
           () => undefined,
         );
         await harness.generate.reached('hold');
+        await subscribed.promise;
         const abandonedRunId = harness.bureau
           .listRuns()
           .find((run) => run.sessionId === 'thread-2')!.id;
-        await waitForCondition(() => frameListeners === 1, 'the server never opened the stream');
+        expect(frameListeners).toBe(1);
         abandoned.abortRun();
         await aborted;
-        await waitForCondition(() => frameListeners === 0, 'a frame listener is still attached');
+        await allGone.promise;
         expect(harness.bureau.getRun(abandonedRunId)?.status).toBe('running');
         harness.generate.release('hold');
-        await waitForCondition(
-          () => harness.bureau.getRun(abandonedRunId)?.status === 'completed',
-          'the abandoned run never finished',
-        );
+        await abandonedObserver.frames();
 
         expect(frameListeners).toBe(0);
         expect(snapshotSubscriptions).toBe(0);

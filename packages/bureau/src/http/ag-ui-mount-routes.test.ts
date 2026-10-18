@@ -4,9 +4,11 @@
  * read back is parsed with `@ag-ui/core`'s own schema.
  */
 import { EventType, type RunAgentInput } from '@ag-ui/core';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { waitForCondition } from '@lostgradient/operative';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
+import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
 import {
   attachRunRequest,
   attachThreadRequest,
@@ -253,6 +255,93 @@ describe('a start that races another on the same thread', () => {
         expect(refused).toHaveLength(1);
         expect(refused[0]).toMatchObject({ code: 'THREAD_BUSY' });
         expect(bureau.listRuns()).toHaveLength(runsBefore + 1);
+      },
+    );
+  });
+});
+
+describe('a start that races another on the same thread in another process', () => {
+  it('is admitted by exactly one of two Bureaus over one store, and the other answers THREAD_BUSY', async () => {
+    await withHarness({ script: [say('First.')], storage: 'sqlite' }, async (harness) => {
+      const peer = await harness.peer([say('Second.')]);
+      try {
+        const reached = Promise.withResolvers<void>();
+        const held = Promise.withResolvers<void>();
+        const createRun = harness.bureau.createRun.bind(harness.bureau);
+        spyOn(harness.bureau, 'createRun').mockImplementationOnce(async (request) => {
+          reached.resolve();
+          await held.promise;
+          return createRun(request);
+        });
+        const start = (handler: Harness['handler'], runId: string) =>
+          handler(
+            startRequest(
+              runAgentInput({
+                runId,
+                messages: [{ id: `user-${runId}`, role: 'user', content: 'hello' }],
+              }),
+            ),
+          );
+
+        // The first Bureau has decided the thread is idle and not yet created its run.
+        const admitted = start(harness.handler, 'run-a');
+        await reached.promise;
+        const refused = await readAgUiStream(await start(peer.handler, 'run-b'));
+        held.resolve();
+        const started = await readAgUiStream(await admitted);
+
+        expect(refused).toHaveLength(1);
+        expect(refused[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
+        expect(started.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(harness.bureau.listRuns()).toHaveLength(1);
+        expect(peer.bureau.listRuns()).toHaveLength(0);
+      } finally {
+        await peer.dispose();
+      }
+    });
+  });
+
+  it('is admitted by the other Bureau once the first one’s lease has expired', async () => {
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
+    await withHarness(
+      { script: [say('First.')], storage: 'sqlite', agUi: { runtime: dead } },
+      async (harness) => {
+        const peer = await harness.peer([say('Second.')], { runtime: living });
+        try {
+          const reached = Promise.withResolvers<void>();
+          // The first Bureau claims the thread and its process dies before it creates the run.
+          spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => {
+            reached.resolve();
+            return new Promise(() => {});
+          });
+          void harness.handler(
+            startRequest(
+              runAgentInput({
+                runId: 'run-a',
+                messages: [{ id: 'user-a', role: 'user', content: 'hello' }],
+              }),
+            ),
+          );
+          await reached.promise;
+          await living.advance(DEFAULT_AG_UI_LEASE_MS);
+
+          const frames = await readAgUiStream(
+            await peer.handler(
+              startRequest(
+                runAgentInput({
+                  runId: 'run-b',
+                  messages: [{ id: 'user-b', role: 'user', content: 'hello' }],
+                }),
+              ),
+            ),
+          );
+
+          expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(peer.bureau.listRuns()).toHaveLength(1);
+        } finally {
+          await peer.dispose();
+        }
       },
     );
   });

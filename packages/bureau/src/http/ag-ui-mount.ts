@@ -24,10 +24,20 @@
  * refuses is answered exactly as a missing resource is, so an identifier grants
  * nothing.
  *
- * Starting is one decision per thread, taken in turn: whether the thread is busy
- * and the creation of the run that makes it busy cannot be separated, or two
- * starts would both be admitted. The turn is held by this process, so two
- * processes serving one store are separate admission domains.
+ * Starting is one decision per thread: whether the thread is busy and the creation
+ * of the run that makes it busy cannot be separated, or two starts would both be
+ * admitted. Bureau's default ownership posture lets several processes share one
+ * store, so the decision is taken under a durable lease on the thread
+ * (`ag-ui-lease.ts`, written by compare-and-swap in the Bureau's store with a
+ * claimant and an expiry on the injected clock): a start in any process that finds
+ * it held answers `THREAD_BUSY`, and the lease of a process that died expires and
+ * is taken over by one claimant. A resume's command is fenced the same way
+ * (`ag-ui-resume.ts`), and Armorer's single-use approval binding is a second line
+ * of defence for the one step a lease cannot fence, a tool that outlives it.
+ *
+ * A tool approval is offered once its run has settled; until then only a human
+ * wait is, because a run that is still going has not stored the conversation an
+ * approval's outcome is written into.
  *
  * A refusal at the door on a streaming route is a one-event stream, HTTP 200,
  * `RUN_ERROR` with a code from the closed set in `ag-ui-vocabulary.ts`, because a
@@ -53,6 +63,7 @@ import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import type { Bureau, OwnedResource } from '../types.ts';
 import { rowsAddedBy } from './ag-ui-messages.ts';
+import { createAgUiLeases } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
 import {
@@ -88,6 +99,12 @@ export type AgUiOptions = {
    * timeout (ten seconds by default) does not close it. Defaults to 5000.
    */
   readonly keepAliveIntervalMs?: number;
+  /**
+   * How long a thread-admission or resume lease holds without a renewal. A
+   * process that dies holding one is waited for this long and no longer. Defaults
+   * to 30000.
+   */
+  readonly leaseDurationMs?: number;
   /**
    * The clock and timers the mount reads, so a test drives the stream deadline
    * with a manual clock. Defaults to the real ones.
@@ -186,30 +203,11 @@ export function createAgUiMount(
     return authorization.mayAccess({ principal, resourceOwner, operatorScope });
   }
 
-  /**
-   * Serializes the decisions that admit a run to one thread. Whether a thread is
-   * busy and the creation of the run that makes it busy are one decision: two
-   * starts that each read "idle" before either created its run would both be
-   * admitted. This serializes them within this process; a second process serving
-   * the same storage is a separate admission domain, and the Bureau does not
-   * arbitrate between them (see the module doc).
-   */
-  const admissions = new Map<string, Promise<void>>();
-  async function admit<T>(threadId: string, decide: () => Promise<T>): Promise<T> {
-    const previous = admissions.get(threadId) ?? Promise.resolve();
-    let finished!: () => void;
-    const current = new Promise<void>((resolve) => {
-      finished = resolve;
-    });
-    admissions.set(threadId, current);
-    await previous;
-    try {
-      return await decide();
-    } finally {
-      finished();
-      if (admissions.get(threadId) === current) admissions.delete(threadId);
-    }
-  }
+  const leases = createAgUiLeases({
+    kv: bureau.kv!,
+    runtime,
+    leaseMs: options.leaseDurationMs,
+  });
 
   /** The thread's most recent root run when it is one a client can attach to. */
   async function attachableRunOfThread(threadId: string): Promise<string | undefined> {
@@ -258,6 +256,19 @@ export function createAgUiMount(
     });
   }
 
+  /** The session a run belongs to: the one this process holds it for, or its durable run's input. */
+  async function sessionOfRun(runId: string): Promise<string | undefined> {
+    const held = bureau.getRun(runId)?.sessionId;
+    if (held !== undefined) return held;
+    const state = await bureau.getDurableRun(runId).catch(() => undefined);
+    const input: unknown = state?.input;
+    const sessionId =
+      typeof input === 'object' && input !== null
+        ? (input as { sessionId?: unknown }).sessionId
+        : undefined;
+    return typeof sessionId === 'string' ? sessionId : undefined;
+  }
+
   async function attachByRun(runId: string, principal: Principal): Promise<Response> {
     const missing = (): Response => refuse('RUN_NOT_FOUND', `Run "${runId}" was not found`);
     const owner = await authorization.ownerOf({ kind: 'run', id: runId });
@@ -269,8 +280,11 @@ export function createAgUiMount(
       // parent's id on RUN_STARTED.
       const child = await bureau.children.locate(runId).catch(() => undefined);
       if (child === undefined) return missing();
+      // The thread is the parent's session, as on every stream of this mount.
+      const sessionId = await sessionOfRun(child.parentRunId);
+      if (sessionId === undefined) return missing();
       return openRunStream(environment, {
-        threadId: runId,
+        threadId: sessionId,
         runId,
         nativeRunId: runId,
         parentRunId: child.parentRunId,
@@ -297,11 +311,22 @@ export function createAgUiMount(
       const summary = bureau.abortRun(runId);
       return json({ runId, status: summary.status }, 200);
     } catch (error) {
-      if (error instanceof BureauError && error.code === 'NOT_FOUND') {
-        return notFound('run', runId);
-      }
-      throw error;
+      if (!(error instanceof BureauError && error.code === 'NOT_FOUND')) throw error;
     }
+    // Bureau holds no run for a child, so it is cancelled through the topology
+    // that owns it, by the parent it names.
+    const child = await bureau.children.locate(runId).catch(() => undefined);
+    if (child === undefined) return notFound('run', runId);
+    const cancelled = await bureau.children.cancel({
+      parentRunId: child.parentRunId,
+      childRunId: child.childRunId,
+    });
+    if (cancelled.outcome === 'requested') return json({ runId, status: 'aborting' }, 200);
+    if (cancelled.outcome === 'already-terminal') {
+      return json({ runId, status: cancelled.child.status }, 200);
+    }
+    if (cancelled.outcome === 'not-found') return notFound('run', runId);
+    return json({ code: 'Conflict', message: cancelled.reason }, 409);
   }
 
   async function startRun(
@@ -334,7 +359,7 @@ export function createAgUiMount(
         environment,
         runtime,
         mayWrite: (caller, resourceOwner) => may(caller, resourceOwner, 'bureau.tasks:write'),
-        admit,
+        leases,
         ownerOfReview: (reviewId) => authorization.ownerOf({ kind: 'review', id: reviewId }),
         refuse,
       });
@@ -347,18 +372,26 @@ export function createAgUiMount(
         owner,
       });
     }
-    const admitted = await admit(
-      input.threadId,
-      async (): Promise<{ readonly response: Response } | { readonly runId: string }> => {
-        // Only the thread's owner starts a run on a thread that exists: a start
-        // adds to the conversation, which a write scope alone does not grant. The
-        // refusal is the one a missing thread gets.
-        const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
-        if (threadOwner !== undefined && threadOwner !== owner) {
-          return {
-            response: refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`),
-          };
-        }
+    // Only the thread's owner starts a run on a thread that exists: a start adds to
+    // the conversation, which a write scope alone does not grant. The refusal is the
+    // one a missing thread gets, and comes before anything else is learned about it.
+    const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
+    if (threadOwner !== undefined && threadOwner !== owner) {
+      return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
+    }
+    // Whether the thread is busy and the creation of the run that makes it busy are
+    // one decision, so it is taken under a lease on the thread in the Bureau's own
+    // store: a start in any process that finds the lease held answers THREAD_BUSY,
+    // and the lease of a process that died expires.
+    const lease = await leases.acquire('thread', input.threadId);
+    if (lease === undefined) {
+      return refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`);
+    }
+    let admitted: { readonly response: Response } | { readonly runId: string };
+    try {
+      admitted = await (async (): Promise<
+        { readonly response: Response } | { readonly runId: string }
+      > => {
         const session = await bureau.getSession(input.threadId);
         let appendMessages;
         try {
@@ -421,6 +454,13 @@ export function createAgUiMount(
             response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
           };
         }
+        // A lease this start no longer holds was taken over: another start may have
+        // decided the thread is idle too.
+        if (!(await lease.renew())) {
+          return {
+            response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
+          };
+        }
         try {
           const run = await bureau.createRun({
             sessionId: input.threadId,
@@ -433,8 +473,10 @@ export function createAgUiMount(
         } catch (error) {
           return { response: refuse(...refusalFor(error, input.threadId)) };
         }
-      },
-    );
+      })();
+    } finally {
+      await lease.release();
+    }
     if ('response' in admitted) return admitted.response;
     return openRunStream(environment, {
       threadId: input.threadId,

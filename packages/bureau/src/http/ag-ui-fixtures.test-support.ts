@@ -37,7 +37,13 @@ export type Harness = {
    * Closes this Bureau and opens another over the same storage, running `script`: a
    * process restart. The returned harness owns the storage from here on.
    */
-  restart(script: readonly ScriptedGenerateStep[]): Promise<Harness>;
+  restart(script: readonly ScriptedGenerateStep[], agUi?: AgUiOptions): Promise<Harness>;
+  /**
+   * Opens a second Bureau over the same storage while this one stays open, running
+   * `script`: another process on one backend. It shares nothing with this one but the
+   * store, and leaves the storage to this harness to close.
+   */
+  peer(script: readonly ScriptedGenerateStep[], agUi?: AgUiOptions): Promise<Harness>;
   dispose(): Promise<void>;
 };
 
@@ -87,6 +93,7 @@ type StorageFixture = ReturnType<typeof createSqliteStorageFixture>;
 async function build(
   options: HarnessOptions,
   fixture: StorageFixture | undefined,
+  ownsStorage = true,
 ): Promise<Harness> {
   const generate = createScriptedGenerate(options.script);
   const bureau = await createBureau({
@@ -115,15 +122,17 @@ async function build(
     handler: mount(options.agUi),
     generate,
     remount: (agUi) => mount(agUi ?? options.agUi),
-    async restart(script) {
+    async restart(script, agUi) {
       restarted = true;
       await bureau.dispose();
-      return build({ ...options, script }, fixture);
+      return build({ ...options, script, ...(agUi === undefined ? {} : { agUi }) }, fixture);
     },
+    peer: (script, agUi) =>
+      build({ ...options, script, ...(agUi === undefined ? {} : { agUi }) }, fixture, false),
     async dispose() {
       if (restarted) return;
       await bureau.dispose();
-      await fixture?.dispose();
+      if (ownsStorage) await fixture?.dispose();
     },
   };
 }
