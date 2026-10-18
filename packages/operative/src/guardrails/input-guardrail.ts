@@ -1,10 +1,14 @@
 import { runDetectorPipeline } from 'armorer';
-import type { MultiModalContent } from 'conversationalist';
+import type { Message, MultiModalContent } from 'conversationalist';
 import { isMediaContent } from 'conversationalist';
 
 import { GuardrailTripwireError } from '../errors';
 import type { GenerateResponse, PrepareStepHook, StepContext } from '../types';
-import { inspectContent, type InspectableField } from './inspectable-content';
+import {
+  inspectContent,
+  type InspectableContent,
+  type InspectableField,
+} from './inspectable-content';
 import type { DetectorContext, GuardrailTriggeredEvent, InputGuardrailOptions } from './types';
 
 /**
@@ -17,14 +21,43 @@ function createBlockResponse(): GenerateResponse {
   };
 }
 
+/** One user message the guardrail inspects this step, with what it found in it. */
+interface InspectedMessage {
+  /** The message's index in `conversation.getMessages()`, for redaction. */
+  readonly position: number;
+  readonly inspectable: InspectableContent;
+  readonly assetFindings: AssetFinding[];
+  /** Detector hits, by field index. */
+  readonly triggered: Array<{
+    index: number;
+    pipeline: NonNullable<Awaited<ReturnType<typeof runDetectorPipeline>>>;
+  }>;
+}
+
+/**
+ * The user messages appended since the previous generation: every user message
+ * after the last assistant message. Several session inputs can land at one step
+ * boundary (COR-1476), and each is uninspected input until a generation answers
+ * it, so inspecting only the last would let the earlier ones through.
+ */
+function userMessagesSinceLastGeneration(
+  messages: ReadonlyArray<Message>,
+): Array<{ readonly message: Message; readonly position: number }> {
+  const lastAssistant = messages.findLastIndex((message) => message.role === 'assistant');
+  return messages.flatMap((message, position) =>
+    position > lastAssistant && message.role === 'user' ? [{ message, position }] : [],
+  );
+}
+
 /**
  * Creates an input guardrail hook that inspects user messages before each generate step.
  *
- * Detectors run against the last user message. When a detector triggers, the configured
- * action determines the behavior:
+ * Detectors run against every user message appended since the previous generation
+ * (all user messages after the last assistant message), field by field. When a
+ * detector triggers, the configured action determines the behavior:
  * - `'block'` (default): returns a `GenerateResponse` with refusal text, short-circuiting generate
  * - `'warn'`: calls `onTriggered` but allows the request through
- * - `'sanitize'`: replaces the last user message with the detector's sanitized version
+ * - `'sanitize'`: replaces each flagged user message with the detector's sanitized version
  * - `'tripwire'`: throws a `GuardrailTripwireError`, hard-halting the run before the
  *   generate call fires (see `createGuardrails({ mode: 'tripwire' })`)
  *
@@ -44,33 +77,8 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
 
   return async (context: StepContext): Promise<void | GenerateResponse> => {
     const messages = context.conversation.getMessages();
-    const lastUserPosition = messages.findLastIndex((message) => message.role === 'user');
-    const lastUser = lastUserPosition === -1 ? undefined : messages[lastUserPosition];
-    if (!lastUser) return;
-
-    const inspectable = inspectContent(lastUser.content, (partIndex) =>
-      context.resolvedSources?.get(`${lastUser.id}:${partIndex}`),
-    );
-    const assetFindings = findUnsafeAssets(
-      context,
-      lastUser.id,
-      lastUser.content,
-      unverifiedAssets,
-    );
-    const undecodable = inspectable.uninspectable.map((body): AssetFinding => ({
-      blocking: true,
-      event: (eventAction, provenance) => ({
-        detector: 'content-body',
-        category: 'uninspectable-content',
-        confidence: 1,
-        action: eventAction,
-        input: body.label,
-        detail: `A provider would read this media part as text, but it cannot be decoded: ${body.reason}.`,
-        provenance,
-      }),
-    }));
-    assetFindings.push(...undecodable);
-    if (inspectable.fields.length === 0 && assetFindings.length === 0) return;
+    const newUserMessages = userMessagesSinceLastGeneration(messages);
+    if (newUserMessages.length === 0) return;
 
     const detectorContext: DetectorContext = {
       step: context.step,
@@ -79,34 +87,61 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
       provenance: 'user-input',
     };
 
-    // Every field is its own detector input, so a flagged caption is found
-    // whatever the rest of the message says, and a media part with no plain
-    // string is still inspected through the prose and URL it carries.
-    const triggered: Array<{
-      index: number;
-      pipeline: NonNullable<Awaited<ReturnType<typeof runDetectorPipeline>>>;
-    }> = [];
-    for (const [index, field] of inspectable.fields.entries()) {
-      const pipeline = await runDetectorPipeline(field.text, detectors, detectorContext, mode);
-      if (pipeline) triggered.push({ index, pipeline });
+    const inspected: InspectedMessage[] = [];
+    for (const { message, position } of newUserMessages) {
+      const inspectable = inspectContent(message.content, (partIndex) =>
+        context.resolvedSources?.get(`${message.id}:${partIndex}`),
+      );
+      const assetFindings = findUnsafeAssets(
+        context,
+        message.id,
+        message.content,
+        unverifiedAssets,
+      );
+      const undecodable = inspectable.uninspectable.map((body): AssetFinding => ({
+        blocking: true,
+        event: (eventAction, provenance) => ({
+          detector: 'content-body',
+          category: 'uninspectable-content',
+          confidence: 1,
+          action: eventAction,
+          input: body.label,
+          detail: `A provider would read this media part as text, but it cannot be decoded: ${body.reason}.`,
+          provenance,
+        }),
+      }));
+      assetFindings.push(...undecodable);
+
+      // Every field is its own detector input, so a flagged caption is found
+      // whatever the rest of the message says, and a media part with no plain
+      // string is still inspected through the prose and URL it carries.
+      const triggered: InspectedMessage['triggered'] = [];
+      for (const [index, field] of inspectable.fields.entries()) {
+        const pipeline = await runDetectorPipeline(field.text, detectors, detectorContext, mode);
+        if (pipeline) triggered.push({ index, pipeline });
+      }
+      inspected.push({ position, inspectable, assetFindings, triggered });
     }
 
-    const topFinding = triggered[0] ?? undefined;
-    if (!topFinding && assetFindings.length === 0) return;
+    const assetFindings = inspected.flatMap((entry) => entry.assetFindings);
+    const firstHit = inspected.find((entry) => entry.triggered.length > 0);
+    const topFinding = firstHit?.triggered[0];
+    if (topFinding === undefined && assetFindings.length === 0) return;
 
-    const event: GuardrailTriggeredEvent = topFinding
-      ? {
-          detector: topFinding.pipeline.detectorName,
-          category: topFinding.pipeline.result.category,
-          confidence: topFinding.pipeline.result.confidence,
-          action,
-          input: inspectable.fields[topFinding.index]!.text,
-          ...(topFinding.pipeline.result.detail === undefined
-            ? {}
-            : { detail: topFinding.pipeline.result.detail }),
-          provenance: detectorContext.provenance,
-        }
-      : assetFindings[0]!.event(action, detectorContext.provenance);
+    const event: GuardrailTriggeredEvent =
+      topFinding !== undefined && firstHit !== undefined
+        ? {
+            detector: topFinding.pipeline.detectorName,
+            category: topFinding.pipeline.result.category,
+            confidence: topFinding.pipeline.result.confidence,
+            action,
+            input: firstHit.inspectable.fields[topFinding.index]!.text,
+            ...(topFinding.pipeline.result.detail === undefined
+              ? {}
+              : { detail: topFinding.pipeline.result.detail }),
+            provenance: detectorContext.provenance,
+          }
+        : assetFindings[0]!.event(action, detectorContext.provenance);
 
     onTriggered?.(event);
 
@@ -132,25 +167,34 @@ export function createInputGuardrail(options: InputGuardrailOptions): PrepareSte
     // An asset the safety gate flagged has no sanitized form: sanitizing
     // cannot make the bytes safe, so it falls through to a block.
     if (action === 'sanitize' && assetFindings.length === 0) {
-      const replacements = new Map<number, string>();
-      let sanitizable = triggered.length > 0;
-      for (const { index, pipeline } of triggered) {
-        const field: InspectableField = inspectable.fields[index]!;
-        const sanitized = pipeline.result.sanitized;
-        if (sanitized === undefined || !field.replaceable) {
-          sanitizable = false;
-          break;
+      const rewrites: Array<{ position: number; replacements: Map<number, string> }> = [];
+      let sanitizable = true;
+      for (const entry of inspected) {
+        if (entry.triggered.length === 0) continue;
+        const replacements = new Map<number, string>();
+        for (const { index, pipeline } of entry.triggered) {
+          const field: InspectableField = entry.inspectable.fields[index]!;
+          const sanitized = pipeline.result.sanitized;
+          if (sanitized === undefined || !field.replaceable) {
+            sanitizable = false;
+            break;
+          }
+          replacements.set(index, sanitized);
         }
-        replacements.set(index, sanitized);
+        if (!sanitizable) break;
+        rewrites.push({ position: entry.position, replacements });
       }
       if (sanitizable) {
-        // Replace the user message in place, keeping every part the detector did
-        // not flag: media is never collapsed to the sanitized prose.
-        const rebuilt = inspectable.rebuild(replacements);
-        if (typeof rebuilt === 'string') {
-          context.conversation.redactMessageAtPosition(lastUserPosition, rebuilt);
-        } else {
-          context.conversation.redactMessageAtPosition(lastUserPosition, { content: rebuilt });
+        // Replace each flagged user message in place, keeping every part the
+        // detector did not flag: media is never collapsed to the sanitized prose.
+        for (const { position, replacements } of rewrites) {
+          const entry = inspected.find((candidate) => candidate.position === position)!;
+          const rebuilt = entry.inspectable.rebuild(replacements);
+          if (typeof rebuilt === 'string') {
+            context.conversation.redactMessageAtPosition(position, rebuilt);
+          } else {
+            context.conversation.redactMessageAtPosition(position, { content: rebuilt });
+          }
         }
         return;
       }

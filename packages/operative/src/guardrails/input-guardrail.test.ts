@@ -622,3 +622,54 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
     });
   });
 });
+
+describe('every user message appended since the previous generation is inspected (COR-716)', () => {
+  const policy: InputDetector = {
+    name: 'policy',
+    detect: async (input: string) => ({
+      triggered: input.includes('forbidden'),
+      confidence: 1,
+      category: 'policy',
+      sanitized: input.replaceAll('forbidden', 'allowed'),
+    }),
+  };
+
+  it('blocks when the hit is in an earlier message landed at the same boundary', async () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('this one is forbidden');
+    conversation.appendUserMessage('this one is fine');
+    const hook = createInputGuardrail({ detectors: [policy] });
+
+    const result = await hook({ conversation, step: 0 });
+
+    expect(result?.content).toContain('blocked');
+  });
+
+  it('sanitizes each new user message, not only the last', async () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('first forbidden thing');
+    conversation.appendUserMessage('second forbidden thing');
+    const hook = createInputGuardrail({ detectors: [policy], action: 'sanitize' });
+
+    const result = await hook({ conversation, step: 0 });
+
+    expect(result).toBeUndefined();
+    const users = conversation.getMessages().filter((message) => message.role === 'user');
+    expect(users.map((message) => message.content)).toEqual([
+      'first allowed thing',
+      'second allowed thing',
+    ]);
+  });
+
+  it('does not re-inspect a user message a previous generation already answered', async () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage('an old forbidden message');
+    conversation.appendAssistantMessage('answered');
+    conversation.appendUserMessage('a clean follow-up');
+    const hook = createInputGuardrail({ detectors: [policy] });
+
+    const result = await hook({ conversation, step: 1 });
+
+    expect(result).toBeUndefined();
+  });
+});

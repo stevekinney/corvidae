@@ -278,12 +278,18 @@ export function createContextAssembler(): ContextAssembler {
     // Assemble history messages within budget
     // Start with mandatory messages, then fill with older history
     const assembledHistory: Message[] = [];
-    const includedIds = new Set<string>(assembledSystem.map((m) => m.id));
+    // A pinned message keeps its id (COR-716: a resolved source is keyed by it),
+    // so one that also sits in the history is already included and must not be
+    // assembled a second time, which the conversation integrity check refuses.
+    const includedIds = new Set<string>(
+      [...assembledSystem, ...assembledPinned].map((message) => message.id),
+    );
     let historyTokens = 0;
 
     // First, include all mandatory non-system messages
     for (const msg of nonSystem) {
       if (mustIncludeIds.has(msg.id)) {
+        if (includedIds.has(msg.id)) continue;
         // A mandatory message with media that cannot be costed is still not
         // admitted at zero; its outcome is in `mediaCosts` and the run refuses it.
         if (!costOf(msg).admissible) continue;
