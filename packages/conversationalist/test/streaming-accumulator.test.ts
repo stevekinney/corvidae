@@ -351,14 +351,18 @@ describe('C4 — createStreamingAccumulator (multi-part accumulation)', () => {
       signature: 'sig-1',
     });
     expect(
-      finalizeBlockState({ type: 'server_tool_use', id: 's1', name: 'web_search', inputBuffer: '{"q":"x"}' }),
+      finalizeBlockState({
+        type: 'server_tool_use',
+        id: 's1',
+        name: 'web_search',
+        inputBuffer: '{"q":"x"}',
+      }),
     ).toEqual({ type: 'server_tool_use', id: 's1', name: 'web_search', input: { q: 'x' } });
     expect(
       finalizeBlockState({ type: 'text', buffer: 'cited', citations: [{ cited_text: 'c' }] }),
     ).toEqual({ type: 'text', text: 'cited', citations: [{ cited_text: 'c' }] });
-    expect(finalizeBlockState({ type: 'tool_use', id: 't1', name: 'tool', inputBuffer: '{}' })).toBe(
-      undefined,
-    );
+    expect(
+      finalizeBlockState({ type: 'tool_use', id: 't1', name: 'tool', inputBuffer: '{}' }),
+    ).toBe(undefined);
   });
 });
-

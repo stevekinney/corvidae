@@ -1,6 +1,8 @@
 import { parseAnthropicToolCalls } from 'armorer';
 import { toAnthropicMessages } from 'conversationalist';
 
+import { concatenateTextParts } from '../response-parts.ts';
+import { anthropicPartsFromBlocks } from './anthropic-blocks.ts';
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
@@ -14,8 +16,6 @@ import {
   buildAnthropicMessageRequest,
   buildAnthropicUsage,
 } from './anthropic-shared.ts';
-import { concatenateTextParts } from '../response-parts.ts';
-import { anthropicPartsFromBlocks } from './anthropic-blocks.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError } from './errors.ts';
 import {
