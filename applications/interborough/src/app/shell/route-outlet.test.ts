@@ -1,33 +1,58 @@
 /**
- * Component tests for `<RouteOutlet>` (T1.6).
+ * The route outlet mounts the matched route inside its view's frame, and says so when no route
+ * owns the path.
  */
+import { HttpClient } from '@lostgradient/weft';
 import { render } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
-import RouteOutlet from './route-outlet.svelte';
+import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
+import { VIEW_COPY } from '../copy.ts';
+import Harness from './route-outlet.test-harness.svelte';
 
-describe('RouteOutlet', () => {
-  test('regression: renders a <main> landmark, not a plain <div>', async () => {
-    // Guards the WFC-11 design-fidelity fix: the app had no `<main>` or
-    // `role="main"` landmark anywhere, a semantic-structure gap. The root
-    // element must stay a `<main>` even while a route chunk is still
-    // loading (the skeleton state), not just once content mounts.
-    router.navigate('/');
+let restore: (() => void) | undefined;
+afterEach(() => {
+  restore?.();
+  restore = undefined;
+});
 
-    const { container } = render(RouteOutlet);
+/** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
+function landAt(path: string): void {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
+  router.navigate(path, { replace: true });
+}
 
-    const main = container.querySelector('main.weft-shell-outlet');
-    expect(main).not.toBeNull();
-    expect(container.querySelector('div.weft-shell-outlet')).toBeNull();
+function mount() {
+  return render(Harness, {
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      scopes: AUTHORIZATION_SCOPES,
+    },
+  });
+}
+
+describe('the route outlet', () => {
+  test('renders a placeholder view in its frame, empty once the Bureau answers', async () => {
+    restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
+    landAt('/chat/session-1');
+    const { container, findByRole } = mount();
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
+    ).not.toBeNull();
+    const frame = container.querySelector('.weft-view');
+    expect(frame?.getAttribute('data-view')).toBe('chat');
+    expect(frame?.getAttribute('data-state')).toBe('empty');
   });
 
-  test('renders the not-found empty state inside the <main> landmark for an unowned path', async () => {
-    router.navigate('/this-path-does-not-exist');
-
-    const { container, findByText } = render(RouteOutlet);
-
+  test('says when no route owns the path', async () => {
+    restore = installFetchImplementation(async () => Response.json({}));
+    landAt('/nowhere');
+    const { findByText, container } = mount();
     expect(await findByText('Page not found')).not.toBeNull();
-    expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
+    expect(container.querySelector('.weft-view')).toBeNull();
   });
 });

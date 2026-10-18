@@ -47,8 +47,11 @@ const PACKAGE_ROOT = join(import.meta.dir, '..');
  */
 export const UI_COVERAGE_DIRECTORY = 'coverage/ui';
 const COVERAGE_TEST_ROOTS = ['scripts', 'src', 'tests'] as const;
-/** Test files the coverage run leaves out: the Playwright lane, which `bun test` never runs. */
-const EXCLUDED_COVERAGE_TEST_PREFIXES = ['tests/e2e/'];
+/**
+ * Test files the coverage run leaves out: the Playwright lane, which `bun test` never runs, and
+ * the host's suite, which runs under `bunfig.toml` rather than the DOM preload this run uses.
+ */
+const EXCLUDED_COVERAGE_TEST_PREFIXES = ['tests/e2e/', 'src/host/'];
 const BUN_TEST_FILE_PATTERN = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
 
 function baselineCoverageTestRank(platform: NodeJS.Platform): ReadonlyMap<string, number> {

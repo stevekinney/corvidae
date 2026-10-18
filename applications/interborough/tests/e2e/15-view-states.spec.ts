@@ -48,14 +48,11 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
   workflows: jsonRpcProbe('weft.workflows.definitions.list'),
   runs: {
-    matches: (url) => url.pathname === '/api/v1/workflows' && url.searchParams.get('limit') === '1',
+    matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',
     empty: { items: [], total: 0 },
   },
-  schedules: {
-    matches: (url) => url.pathname === '/api/v1/schedules',
-    empty: { items: [], total: 0 },
-  },
-  inbox: { matches: (url) => url.pathname === '/api/v1/reviews', empty: { items: [] } },
+  schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
+  inbox: { matches: (url) => url.pathname === '/v1/reviews', empty: { items: [] } },
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
   system: jsonRpcProbe('weft.system.registry'),
@@ -66,30 +63,27 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
 async function drive(page: Page, view: ViewName, outcome: Outcome): Promise<void> {
   if (outcome === 'ready') return;
   const probe = PROBES[view];
-  await page.route(
-    (url) => probe.matches(url, ''),
-    async (route: Route) => {
-      const request = route.request();
-      if (!probe.matches(new URL(request.url()), request.postData() ?? '')) {
-        await route.fallback();
+  await page.route('**/*', async (route: Route) => {
+    const request = route.request();
+    if (!probe.matches(new URL(request.url()), request.postData() ?? '')) {
+      await route.fallback();
+      return;
+    }
+    switch (outcome) {
+      case 'loading':
+        // Hold the request: the probe stays pending for as long as the page is open.
         return;
-      }
-      switch (outcome) {
-        case 'loading':
-          // Hold the request: the probe stays pending for as long as the page is open.
-          return;
-        case 'empty':
-          await route.fulfill({ json: jsonRpcBody(request.postData(), probe.empty) });
-          return;
-        case 'error':
-          await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
-          return;
-        case 'forbidden':
-          await route.fulfill({ status: 403, json: { error: 'Forbidden' } });
-          return;
-      }
-    },
-  );
+      case 'empty':
+        await route.fulfill({ json: jsonRpcBody(request.postData(), probe.empty) });
+        return;
+      case 'error':
+        await route.fulfill({ status: 500, json: { error: 'The server broke.' } });
+        return;
+      case 'forbidden':
+        await route.fulfill({ status: 403, json: { error: 'Forbidden' } });
+        return;
+    }
+  });
 }
 
 /** A JSON-RPC probe wants an envelope around its result; a REST or health probe wants the body. */

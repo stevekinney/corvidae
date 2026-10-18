@@ -98,399 +98,122 @@ export function coverageMeasurementPlatform(): CoverageMeasurementPlatform | nul
 }
 
 const DARWIN_BASELINE: CoverageBaseline = {
-  // Re-measured 2026-08-24 for WFC-10 after fixing a genuine Bun 1.3.14
-  // coverage-engine bug in `scripts/run-coverage.ts`: `bun test --parallel`
-  // (even at N=1) implies `--isolate`, giving each test file a fresh module
-  // registry. When a Svelte component is both directly unit-tested AND
-  // statically imported by a sibling component also under test (e.g.
-  // `timeline-tab.svelte` tested directly by `timeline-tab.test.ts` AND
-  // imported by `workflow-detail.svelte`, tested by
-  // `workflow-detail.test.ts`), that isolation produces two
-  // differently-instrumented instances of the shared file, and Bun's LCOV
-  // merge does not correctly union their per-line hit counts — one
-  // instance's (lower) numbers clobber the other's. Confirmed by bisection:
-  // reproducible with a fresh `BUN_RUNTIME_TRANSPILER_CACHE_PATH` (rules out
-  // the persistent disk cache), independent of test order (rules out a
-  // WFC-9-style ordering fix), and gone entirely once `--parallel=1` is
-  // dropped (two full-suite runs without it produced near-identical LCOV,
-  // 1290/1290 tests passing both times, one line differing only in a
-  // timing-sensitive hit COUNT rather than hit/not-hit). Filed upstream:
-  // https://github.com/oven-sh/bun/issues/40386. This is the same evidentiary bar WFC-5's Linux fix
-  // (PR #12, commit a7d6603) set for a baseline correction: a directly
-  // measured, reproduced, root-caused re-measurement — not a guess to absorb
-  // a regression. Every area rose; none needed a downward correction.
-  //
-  // A small residual variance (a handful of lines out of ~34k, unrelated to
-  // the --parallel bug above) exists between individual runs, isolated to
-  // `src/routes/dashboard` and (rarely) `src/routes/workflows` — neither
-  // touched by this ticket's domain work. Per area, this baseline uses
-  // whichever observed state is the SAFE (lower-percentage) floor: for
-  // `workflows`/`OVERALL` that means the exact tuple from the one lower-
-  // percentage run out of 6 (workflows 92.61% lines / 93.55% functions vs.
-  // the other 5 runs' 93.15%/93.58%) — an earlier version of this baseline
-  // used the 5-run MAJORITY value instead, which sat above that 6th run's
-  // measurement and would have failed the gate roughly 1 time in 6 for no
-  // real regression; corrected before merge. `dashboard` already used the
-  // lower-percentage-state methodology correctly.
-  //
-  // Re-measured again 2026-08-25 after the workers (`f327874`), storage
-  // (`236aef7`), and system (`1c40222`) domain commits landed on top of the
-  // tooling fix above — the previous entry here only reflected the
-  // workflows-domain + tooling-fix state and was stale for those three
-  // areas (flagged in PR #14 review). This is the final post-all-domain-work
-  // measurement.
-  //
-  // Re-measured 2026-08-30 for the monorepo conversion (weft-console →
-  // packages/weft-ui in stevekinney/weft, renamed @lostgradient/weft-ui).
-  // Two structural shifts, no behavioral coverage loss: (1) check-coverage
-  // now filters LCOV records to package-local files, because instrumentation
-  // in the workspace also reports files reached through the
-  // @lostgradient/weft symlink as `../weft/…` — those are gated by weft's
-  // own 100%-adjusted gate; (2) the weft-console → weft-ui identifier rename
-  // shifted Svelte compiled-output line attribution by a handful of lines in
-  // reviews, schedules, and the test setup helpers (same test suites, all
-  // passing). Darwin and the linux CI artifact from run 33334402102
-  // aggregate identically at area level after the package-local filter, so
-  // both platform entries record the same measured tuples.
-  //
-  // Re-measured again 2026-09-10 for WFT-115's third review pass (root-vs-
-  // object schema type labels on an otherwise-empty tree, schema field
-  // descriptions rendered in the Tree, `resolveExpectedGeneration`'s
-  // newest-of-two-known-generations fix, and `workflowRevisionRows`
-  // rejecting a whole response — not just the malformed entry — when any
-  // record fails its structural guard). `overall` bumped alongside
-  // `src/routes/system` — the OVERALL rollup crosses every area, not just
-  // this PR's, so it must move with `src/routes/system` or a later PR's
-  // unrelated area could quietly slip under a stale overall floor.
-  //
-  // Three consecutive `bun run check:coverage`/`test:coverage` runs against
-  // the SAME commit produced two different OVERALL tuples (37506/35445/
-  // 7284/6942 once, then 37517/35392/7274/6931 twice) — the same class of
-  // non-deterministic Bun LCOV merge noise this file's own DARWIN_BASELINE
-  // history documents above (`--parallel` note) and cites the upstream
-  // filing for. Per this file's established "record the SAFE (lower-
-  // percentage) floor" rule for exactly this situation, this baseline uses
-  // the tuple that reproduced twice out of three and is also the lower of
-  // the two (94.33% lines / 95.28% functions vs. the single higher-reading
-  // run's 94.50%/95.30%) — the majority AND the conservative choice agree
-  // here, unlike the `workflows`-area case above where they didn't. This
-  // tuple turned out to match LINUX_BASELINE's own 2026-09-10 re-measurement
-  // below exactly — see that entry's note for the CI-artifact download this
-  // was cross-checked against.
-  measuredAt: '2026-09-10T23:22:00.000Z',
-  overall: { linesFound: 37517, linesHit: 35392, functionsFound: 7274, functionsHit: 6931 },
+  // Re-measured for COR-1488, when the console moved into this application and gained its sidebar,
+  // view frame, and placeholder routes, on darwin with the command in `run-coverage.ts`. The areas
+  // keep the names they had in the console's own workspace; `src/views` and `src/routes/placeholder`
+  // are new, and the `src` area now holds the entry point and the route table.
+  measuredAt: '2026-10-18T04:00:00.000Z',
+  overall: { linesFound: 46825, linesHit: 44991, functionsFound: 9179, functionsHit: 8835 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    // The 2026-08-30 monorepo re-measurement note above applies here too:
-    // the package-local LCOV filter added gate-path lines to
-    // check-coverage.ts that only execute during a real gate run, so the
-    // scripts line percentage dips (709/784 vs. 704/775) while its function
-    // coverage rises with the new isPackageLocalFile tests.
-    scripts: { linesFound: 784, linesHit: 709, functionsFound: 37, functionsHit: 36 },
-    src: { linesFound: 12, linesHit: 12, functionsFound: 2, functionsHit: 2 },
-    'src/app': { linesFound: 1411, linesHit: 1372, functionsFound: 305, functionsHit: 290 },
-    'src/lib': { linesFound: 1199, linesHit: 1190, functionsFound: 196, functionsHit: 192 },
+    scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
+    src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
+    'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
+    'src/lib': { linesFound: 1500, linesHit: 1489, functionsFound: 261, functionsHit: 257 },
     'src/routes/dashboard': {
-      linesFound: 1445,
-      linesHit: 1196,
-      functionsFound: 241,
-      functionsHit: 216,
+      linesFound: 1410,
+      linesHit: 1174,
+      functionsFound: 246,
+      functionsHit: 222,
     },
+    'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2244,
-      linesHit: 2092,
-      functionsFound: 439,
-      functionsHit: 418,
+      linesFound: 2204,
+      linesHit: 2060,
+      functionsFound: 440,
+      functionsHit: 421,
     },
     'src/routes/schedules': {
-      linesFound: 3480,
-      linesHit: 3382,
-      functionsFound: 727,
-      functionsHit: 701,
+      linesFound: 3675,
+      linesHit: 3597,
+      functionsFound: 790,
+      functionsHit: 767,
     },
     'src/routes/storage': {
-      linesFound: 2731,
-      linesHit: 2701,
-      functionsFound: 532,
-      functionsHit: 520,
+      linesFound: 2676,
+      linesHit: 2649,
+      functionsFound: 534,
+      functionsHit: 523,
     },
-    // Re-measured 2026-09-10 for WFT-115 (contract identity, full contract
-    // surface, and the new Revisions/Activate panel). Darwin local
-    // measurement: `bun run check:coverage` at HEAD, `coverage/lcov.info`
-    // parsed with this file's own `parseLcov`/`aggregateByArea` (see the
-    // repo-relative `scripts/agg_coverage.py`-style aggregation this number
-    // was cross-checked against). Investigated every regressed line/function
-    // individually before bumping rather than bumping blind:
-    //   - `workflow-revisions-panel.svelte` (new, 554 LF/114 FNF) is the
-    //     large majority of the delta. Its `.svelte` DA line numbers are
-    //     COMPILED-OUTPUT line numbers, not source lines (confirmed: this
-    //     file's LF/FNF both exceed its own 488-line raw source, so no
-    //     `sed`/`awk` reading of "the uncovered line" is trustworthy for a
-    //     `.svelte` file — a lesson worth recording for the next person who
-    //     tries). Of its original 24 uncovered lines / 4 uncovered
-    //     functions, one real production bug was found and fixed
-    //     (`$activeQuery.isError` had NO rendered branch at all — a
-    //     non-NotFound `weft.workflows.active.get` fault silently fell
-    //     through to "every row shows Installed, no Active badge, no
-    //     banner" instead of the fault UI every other query state gets;
-    //     `{:else if $activeQuery.isError}` + `QueryFaultBanner` added),
-    //     three more real test gaps were closed (a `revisions.list` fault,
-    //     the explicit empty-state text, and a success-shaped-but-malformed
-    //     `revisions.activate` response never fabricating an outcome
-    //     banner) — bringing it to 5 uncovered lines / 2 uncovered
-    //     functions. The residual 3-line gap (three consecutive lines
-    //     inside the `{#each rows}` row-identity block, sandwiched between
-    //     two lines that DO show non-zero hits) reproduces the exact
-    //     "covered code reports DA:0" pattern this file already documents
-    //     for `scopes.svelte.ts` above and for `src/routes/dashboard`'s
-    //     Linux floor below — confirmed not a real gap because 6+ of
-    //     `workflow-revisions-panel.test.ts`'s passing tests directly
-    //     assert the "Active"/"Installed" badge text that only renders if
-    //     that exact block executed.
-    //   - `registry-detail.svelte` (+4 uncovered lines, +3 functions) and
-    //     `registry-view.ts` (+1 uncovered line) are pre-existing,
-    //     untouched-by-this-PR code paths (`compareCodepoint`'s `a === b`
-    //     tie-return branch in the latter) whose relative weight in the
-    //     area average simply grew once `workflow-revisions-panel.svelte`
-    //     expanded the area's total denominator.
-    //   - `health-tab.svelte`'s pre-existing 2-line gap is unrelated static
-    //     hint-paragraph text inside an already-tested `{#if preview}`
-    //     branch (`health-tab.test.ts`'s "renders a codegen preview..."
-    //     test already exercises that branch) — another compiled-output
-    //     attribution artifact, not new dead code from this PR's 1-line
-    //     query-key-unification edit to that file.
-    // Re-measured again within the same WFT-115 PR after addressing review
-    // feedback (workflowVersion added to RegistryWorkflowRow/the identity
-    // block, expandable per-message schema trees in the contract panels, a
-    // rejected-not-silently-null malformed active-pointer response, and
-    // re-stamp-worded confirm-dialog copy) — the new tests these fixes
-    // required raised the floor again, from 5850/5821/1224/1201 to this
-    // tuple. See the DARWIN_BASELINE entry above for the original
-    // investigation this floor builds on.
-    // Re-measured once more within WFT-115 after a second review pass
-    // (durable-generation reuse after a stale refusal, the full
-    // `RetryPolicy` badge, and the docs-only preload-operation fix) —
-    // 5904/5875/1236/1213 -> this tuple.
-    //
-    // Re-measured a third time within WFT-115: `activation-outcome-banner.svelte`
-    // was extracted from `workflow-revisions-panel.svelte` (the 500-line
-    // implementation-file ceiling — the panel was at 541 lines combined
-    // with the fixes below), `resolveExpectedGeneration` and its "reject
-    // the whole revisions list on any malformed record" sibling change
-    // each added a pure-function unit-test surface, and two new template
-    // branches (a declared-but-non-object root schema type label; a schema
-    // field's `description` rendered in the Tree) got dedicated component
-    // tests. Investigated the residual gap before bumping: the ONLY
-    // remaining uncovered lines after this pass are (1) `registry-view.ts`'s
-    // pre-existing `compareCodepoint` tie-return branch (unrelated,
-    // untouched by this PR, already noted above) and (2) a handful of
-    // `.svelte` compiled-output DA lines inside blocks this PR's own
-    // passing tests directly exercise (the revisions-list row-identity
-    // block and the ConfirmDialog title/description ternaries) — the same
-    // "covered code reports DA:0" Svelte-compiled-output attribution
-    // pattern this file already documents for `scopes.svelte.ts` and
-    // `src/routes/dashboard`'s Linux floor, not a real gap. 5973/5944/
-    // 1248/1225 -> this tuple.
     'src/routes/system': {
-      linesFound: 6060,
-      linesHit: 6031,
-      functionsFound: 1264,
-      functionsHit: 1241,
+      linesFound: 8797,
+      linesHit: 8762,
+      functionsFound: 1804,
+      functionsHit: 1777,
     },
     'src/routes/workers': {
-      linesFound: 5685,
-      linesHit: 5463,
-      functionsFound: 1141,
-      functionsHit: 1123,
+      linesFound: 8553,
+      linesHit: 8407,
+      functionsFound: 1663,
+      functionsHit: 1649,
     },
     'src/routes/workflows': {
-      linesFound: 11513,
-      linesHit: 10673,
-      functionsFound: 2281,
-      functionsHit: 2134,
+      linesFound: 13274,
+      linesHit: 12599,
+      functionsFound: 2709,
+      functionsHit: 2566,
     },
-    tests: { linesFound: 118, linesHit: 94, functionsFound: 14, functionsHit: 13 },
+    'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
+    tests: { linesFound: 127, linesHit: 103, functionsFound: 15, functionsHit: 14 },
   },
 };
 
-/**
- * Recorded from CI run 31500023108's bootstrap-mode output (ubuntu runner,
- * 2026-08-11) after the cinder 0.23.0 / weft 0.18.0 wave re-bootstrapped it.
- * Linux attribution differs from darwin's in both directions (see the
- * platform-divergence note on {@link CoverageMeasurementPlatform}), so these
- * numbers are NOT comparable to `DARWIN_BASELINE`'s — each ratchets only
- * against its own platform's measurements.
- */
 const LINUX_BASELINE: CoverageBaseline = {
-  // Re-measured 2026-08-24 for WFC-5 (PR #12): `src/routes/schedules` failed
-  // the Linux gate three consecutive times with the IDENTICAL
-  // `61.70% < baseline 61.71%` line/lines regression, even after the fourth
-  // commit (0585822) added a new deterministic test —
-  // `ScheduleDetail > a current run renders a "running" Badge on the
-  // current-run link` — that specifically targets the previously-suspect
-  // `{#if schedule.currentWorkflowId}` branch and DID pass on Linux CI (run
-  // 32543992714, job 96959141755: `(pass) ScheduleDetail > a current run
-  // renders a "running" Badge on the current-run link [1147.99ms]`).
-  // Functions coverage for the same area (83.98%) matched the baseline
-  // exactly, with zero regression, both before and after that test existed.
-  // That is conclusive that the 0.01-point line gap is a stable Linux LCOV
-  // line-attribution artifact for this file (Svelte's compiled output can
-  // map lines differently across platforms — see the note on
-  // `CoverageMeasurementPlatform` below), not a real uncovered line. This is
-  // the same class of correction PR #11 ("Recompute Linux coverage
-  // aggregate", a7fd8d6) already made for the overall aggregate, and the
-  // same pattern already used above for `src/routes/dashboard`'s Linux
-  // floor: "retain a slightly lower ... floor to avoid rounding a passing
-  // measurement into a false regression."
-  //
-  // CI's `check:coverage` only prints per-area PERCENTAGES, not raw
-  // linesFound/linesHit, and no LCOV artifact was uploaded for run
-  // 32543992714 (`gh api .../artifacts` returned zero), so the exact current
-  // Linux integers are not directly recoverable from that run's log.
-  // Reconstructed instead from the known baseline pair (3748 found / 2313
-  // hit = 61.7134%, i.e. the 61.71% baseline shown) plus this branch's only
-  // source change in the area across all 3 code-changing commits — a 2-net-
-  // line edit inside `schedule-detail.svelte`'s `{#if
-  // schedule.currentWorkflowId}` Badge block (33e69e6/d16a555/0585822;
-  // `schedule-detail.test.ts` gained assertions but no other `src/routes/
-  // schedules` file changed). A local darwin re-measurement of the same diff
-  // (`bun run check:coverage` against HEAD @ 0585822 vs. the recorded darwin
-  // baseline) attributed that change as exactly +1 found / +1 hit line, with
-  // functions unchanged. Enumerating every (dFound, dHit) pair with
-  // 0 <= dHit <= dFound <= 8 against the printed 61.70% (i.e. a ratio in
-  // [61.695%, 61.705%)) yields exactly three candidates: (3749, 2313),
-  // (3752, 2315), (3755, 2317). (3749, 2313) — dFound +1, dHit +0 — is both
-  // the one that mirrors darwin's measured attribution for the identical
-  // diff AND the minimum of the feasible set, so it is a safe floor: if the
-  // true Linux pair turns out to be either of the other two candidates
-  // instead, this floor still passes against it. functionsFound/
-  // functionsHit are left unchanged (487/409) since function coverage was
-  // never in regression.
-  //
-  // Approved 2026-08-21 by the repo owner after reviewing this exact
-  // evidence chain ("Yes, re-baseline it").
-  //
-  // Superseded 2026-08-25 for WFC-10 (PR #14): the darwin `--parallel`
-  // coverage-engine fix documented on `DARWIN_BASELINE` above applies
-  // equally to Linux CI (`.github/workflows/ci.yaml`'s `coverage` job runs
-  // on `ubuntu-latest`), so the pre-fix Linux floor recorded here was
-  // stale and no longer functioned as a real ratchet (flagged in review —
-  // Linux CI could pass while losing most of the newly measured coverage,
-  // since actual coverage sat far above this floor). Unlike the
-  // `schedules` fix above, exact integers did not need reconstruction this
-  // time: `.github/workflows/ci.yaml`'s `coverage` job now uploads
-  // `coverage/lcov.info` as a build artifact (added in this same PR), so
-  // this is downloaded directly from CI run 32795118494's
-  // `coverage-lcov-linux` artifact and parsed with this file's own
-  // `parseLcov`/`aggregateByArea` — not reconstructed or estimated.
-  //
-  // `workflows`/`OVERALL` here use the same safe-floor tuple as
-  // `DARWIN_BASELINE`'s matching correction rather than this single CI
-  // run's own (higher) sample: the darwin side measured `workflows` landing
-  // in a lower-percentage state in 1 of 6 consecutive runs (92.61% lines /
-  // 93.55% functions vs. the other 5 runs' 93.15%/93.58%), and this run's
-  // Linux sample matched darwin's higher state exactly (11581/10788/
-  // 2291/2144) — a single sample can't rule out the same variance
-  // recurring here, so the lower-state tuple is used defensively rather
-  // than risk a false Linux CI regression later.
-  // Re-measured 2026-08-30 for the monorepo conversion — see the darwin
-  // note above; the linux CI artifact from run 33334402102 aggregates
-  // identically after the package-local LCOV filter.
-  //
-  // Re-measured again 2026-09-10 for WFT-115's third review pass (see
-  // DARWIN_BASELINE's matching note above for what changed). PR #975's
-  // `ui-coverage` job (run 34542778591, `ubuntu-latest`) uploaded its
-  // `coverage-lcov-linux` artifact even though the gate wasn't tripped
-  // (`if: always()`); downloaded and parsed with this file's own
-  // `parseLcov`/`aggregateByArea` rather than reconstructed from the
-  // percentages CI prints. The raw counts are IDENTICAL to the darwin
-  // tuple this file records above (37517/35392/7274/6931 overall,
-  // 6060/6031/1264/1241 for `src/routes/system`) — no Linux/darwin
-  // Svelte-compiled-output attribution divergence for this change, so
-  // both platform entries reuse the same measured tuple (same pattern as
-  // the 2026-08-30 note just above and the original 2026-09-10 WFT-115
-  // note further down this file).
-  measuredAt: '2026-09-10T23:40:00.000Z',
-  overall: { linesFound: 37517, linesHit: 35392, functionsFound: 7274, functionsHit: 6931 },
+  // COR-1488 re-measured darwin only. The recorded Linux and darwin counts were identical at the
+  // last measurement on both, so this carries the darwin counts until a Linux run records its own.
+  measuredAt: '2026-10-18T04:00:00.000Z',
+  overall: { linesFound: 46825, linesHit: 44991, functionsFound: 9179, functionsHit: 8835 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    // The 2026-08-30 monorepo re-measurement note above applies here too:
-    // the package-local LCOV filter added gate-path lines to
-    // check-coverage.ts that only execute during a real gate run, so the
-    // scripts line percentage dips (709/784 vs. 704/775) while its function
-    // coverage rises with the new isPackageLocalFile tests.
-    scripts: { linesFound: 784, linesHit: 709, functionsFound: 37, functionsHit: 36 },
-    src: { linesFound: 12, linesHit: 12, functionsFound: 2, functionsHit: 2 },
-    'src/app': { linesFound: 1411, linesHit: 1372, functionsFound: 305, functionsHit: 290 },
-    'src/lib': { linesFound: 1199, linesHit: 1190, functionsFound: 196, functionsHit: 192 },
+    scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
+    src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
+    'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
+    'src/lib': { linesFound: 1500, linesHit: 1489, functionsFound: 261, functionsHit: 257 },
     'src/routes/dashboard': {
-      linesFound: 1445,
-      linesHit: 1196,
-      functionsFound: 241,
-      functionsHit: 216,
+      linesFound: 1410,
+      linesHit: 1174,
+      functionsFound: 246,
+      functionsHit: 222,
     },
+    'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2244,
-      linesHit: 2092,
-      functionsFound: 439,
-      functionsHit: 418,
+      linesFound: 2204,
+      linesHit: 2060,
+      functionsFound: 440,
+      functionsHit: 421,
     },
     'src/routes/schedules': {
-      linesFound: 3480,
-      linesHit: 3382,
-      functionsFound: 727,
-      functionsHit: 701,
+      linesFound: 3675,
+      linesHit: 3597,
+      functionsFound: 790,
+      functionsHit: 767,
     },
     'src/routes/storage': {
-      linesFound: 2731,
-      linesHit: 2701,
-      functionsFound: 532,
-      functionsHit: 520,
+      linesFound: 2676,
+      linesHit: 2649,
+      functionsFound: 534,
+      functionsHit: 523,
     },
-    // HISTORICAL (superseded by the 2026-09-10-third-pass note just below —
-    // kept for the investigation trail, but the tuple it describes,
-    // 5850/5821/1224/1201, is no longer the object below this comment).
-    // Re-measured 2026-09-10 for WFT-115. CI run 34533944807's `ui-coverage`
-    // job (`ubuntu-latest`) printed `src/routes/system` at exactly 99.50%
-    // lines / 98.12% functions — identical, to two decimal places, to the
-    // darwin measurement THEN CURRENT above across EVERY one of the 13
-    // areas (OVERALL 94.30%/95.26%, `src/lib` 99.26%/97.99%, etc.), which
-    // was only plausible if the underlying raw integers were themselves
-    // identical (no Linux/darwin Svelte-compiled-output attribution
-    // divergence for that round's change). CI's `check:coverage` prints
-    // percentages only, never raw counts, so that round reused
-    // `DARWIN_BASELINE`'s tuple for the same area rather than a separate
-    // reconstruction — see that entry's own note for the full
-    // investigation (one real bug fixed, four real test gaps closed, and
-    // the residual is a confirmed Svelte-5-compiled-output line-attribution
-    // artifact in `workflow-revisions-panel.svelte`).
-    //
-    // Re-measured again 2026-09-10 for WFT-115's third review pass — see
-    // the `measuredAt` note above this baseline's `overall` field for the
-    // artifact-download methodology (a real `coverage-lcov-linux` CI
-    // artifact download this time, not reconstructed from percentages).
-    // 5850/5821/1224/1201 (the historical tuple the superseded paragraph
-    // above describes) -> this tuple, matching DARWIN_BASELINE's
-    // `src/routes/system` entry exactly.
     'src/routes/system': {
-      linesFound: 6060,
-      linesHit: 6031,
-      functionsFound: 1264,
-      functionsHit: 1241,
+      linesFound: 8797,
+      linesHit: 8762,
+      functionsFound: 1804,
+      functionsHit: 1777,
     },
     'src/routes/workers': {
-      linesFound: 5685,
-      linesHit: 5463,
-      functionsFound: 1141,
-      functionsHit: 1123,
+      linesFound: 8553,
+      linesHit: 8407,
+      functionsFound: 1663,
+      functionsHit: 1649,
     },
     'src/routes/workflows': {
-      linesFound: 11513,
-      linesHit: 10673,
-      functionsFound: 2281,
-      functionsHit: 2134,
+      linesFound: 13274,
+      linesHit: 12599,
+      functionsFound: 2709,
+      functionsHit: 2566,
     },
-    tests: { linesFound: 118, linesHit: 94, functionsFound: 14, functionsHit: 13 },
+    'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
+    tests: { linesFound: 127, linesHit: 103, functionsFound: 15, functionsHit: 14 },
   },
 };
 

@@ -1,28 +1,51 @@
-# Weft UI
+# Interborough
 
-[Svelte](https://svelte.dev/) components and client helpers for the [Weft](../../README.md) operator console. The UI owns the interface for workflows, human reviews, workers, schedules, storage, and system diagnostics. Its source lives in `src/ui`, its tests beside it and in `src/ui/tests`, its fixtures in `src/ui/fixtures`, its browser tooling and seeded test host in `scripts/ui-browser`, and its coverage ratchet in `scripts/ui-coverage`. Engine code never imports `src/ui`.
+Interborough is Corvidae's main application. One process on one loopback origin serves the browser application, Weft's engine API for the Engine console, and a Bureau, with no sign-in. It is a private application: nothing here is published.
 
-## Usage
+The browser application is the Weft operator console, moved here from `packages/weft/src/ui` (Weft no longer exports `./ui`, `dashboard()`, or a UI of any kind), with a new shell around it. The Weft console's coverage of Weft's operations is recorded in [`documentation/weft-console/coverage-matrix.md`](documentation/weft-console/coverage-matrix.md).
 
-Inside Corvidae the UI is Weft's `./ui` entry, which resolves to the TypeScript and Svelte source. It is not yet part of the published `@lostgradient/weft`; COR-1452 ships it. The entry exports exactly the names `documentation/weft-ui-public-surface.md` at the Corvidae root lists, and `src/ui/public-surface.test.ts` holds the two to each other: the whole application, one view per area, and the client, query, router, live-source, and runtime-configuration layers they share.
+## Running it
 
-```ts partial
-import {
-  WeftDashboard,
-  WorkflowsView,
-  createClient,
-  readRuntimeConfig,
-  provideClient,
-  getClient,
-  setApiKey,
-} from '@lostgradient/weft/ui';
+Run every command from the repository root.
+
+```bash
+bun run --filter=@lostgradient/interborough dev
+bun run --filter=@lostgradient/interborough build
+bun run --filter=@lostgradient/interborough test
+bun run --filter=@lostgradient/interborough test:slow
+bun run --filter=@lostgradient/interborough test:browser
+bun run --filter=@lostgradient/interborough test:coverage
+bun run --filter=@lostgradient/interborough lint
+bun run --filter=@lostgradient/interborough typecheck
 ```
 
-`WeftDashboard` is the browser application shell. It reads runtime configuration, creates the HTTP client, resolves the current principal, and presents API-key entry when authentication is required. The entry imports the shared interface styles, so importing any name from it brings them. Application tooling compiles the TypeScript and Svelte source directly.
+- `dev` builds the browser application into `build/`, starts the host on `http://127.0.0.1:7234`, and rebuilds when the source changes. `INTERBOROUGH_PORT` picks another port, and `0` asks for a free one.
+- `build` writes the production build into `build/`: `index.html` and content-hashed JavaScript, CSS, and WebAssembly under `build/assets/`. The host serves that directory. A build replaces `build/` only once it succeeds.
+- `test` runs the host's suite under `bunfig.toml`, then the browser application's under `bunfig.ui.toml`, whose preload installs happy-dom, the Svelte compile plugin from `@lostgradient/testing`, and the jest-dom matchers. The browser suite stays serial: under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml` preload on top of the one `--config` names. The tests in a `*.slow.test.ts` file bundle for seconds, so `test:slow` runs them.
+- `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered.
+- `test:coverage` runs the browser suite under coverage and compares each area with the floor in `scripts/coverage-baseline.ts`.
 
-`DashboardView`, `WorkflowsView`, `ReviewsView`, `WorkersView`, `SchedulesView`, `StorageView`, and `SystemView` render one area each, inside `WeftDashboard` or on their own. On its own a view needs only a client from `provideClient`, a `QueryClientProvider` around `createQueryClient()`, and the location `router` reads; it resolves the principal itself and supplies its own fleet event source and toast region when no ancestor did. `router` reads `window` on first use rather than when the module loads, so the entry imports without a DOM.
+## The host
 
-`createClient(configuration, sameOriginBaseUrl?)` creates a Weft `HttpClient`. `provideClient` and `getClient` share that client through Svelte context. `setApiKey` creates a replacement client with the entered key and removes conflicting authorization headers; it does not persist the key.
+`src/host/host.ts` starts everything:
+
+- **State** lives in Bungalow's directory, `~/.interborough` or `INTERBOROUGH_HOME`. The Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's `deploymentId`, so a restart keeps its tasks, sessions, schedules, and goals. The host takes Bungalow's single-instance lock, so a second host on the same directory refuses to start.
+- **One caller.** There is no sign-in, and the host binds `127.0.0.1` only. Every request acts as `anonymous:local`, which holds every Weft scope and every Bureau scope. `weft.system.principal` reports that subject, and the shell names it in its top bar.
+- **Routes** on the public origin:
+  - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents are Weft's engine operations.
+  - `/bureau/*` is `createBureauHandler` with the prefix removed. It does not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+  - `/assets/*` and every route in `src/app/routes.ts` serve the build.
+- **Why there are two listeners.** Weft's server reports its own shared `unauthenticated-local` caller for a request with no credential. To make both halves of the application name `anonymous:local`, Weft's server listens on a private loopback port that answers only a per-process key, and the public listener relays to it (`src/host/engine-proxy.ts`), attaching the key and dropping any credential the caller sent.
+- **Two engines on one database.** The Bureau builds its own engine and does not expose it, so the Engine console's engine is a second one over the same storage. It registers no workflows and runs no background tasks, because the Bureau's engine already recovers its runs and fires its timers. Give `startHost` a `createConsoleEngine` to register workflows of your own.
+- **No model.** Every seeded agent answers from `createScriptedGenerate`, and the host reads no provider key. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), and `internal`, which the host does not publish, plus one schedule and one goal. Seeding creates the schedule and the goal once.
+
+The only module that reads the environment is `src/host/environment-configuration.ts`.
+
+## The shell
+
+The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as do `/chat`, `/agents`, and `/audit`. `/engine` is the engine overview the sidebar's status pill opens.
+
+Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing, forbidden, or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
 
 ## Runtime configuration
 
@@ -30,42 +53,27 @@ import {
 
 ```html
 <script type="application/json" id="weft-ui-config">
-  { "baseUrl": "/weft", "eventTransport": "sse" }
+  { "baseUrl": "", "eventTransport": "auto" }
 </script>
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `baseUrl` | Required string. An empty string uses the page origin, a root-relative path selects an API prefix, and an absolute URL selects another origin. |
-| `eventTransport` | Optional `auto`, `websocket`, or `sse`; defaults to `auto`. A [Service Worker](https://developer.mozilla.org/docs/Web/API/Service_Worker_API) host requires `sse` because WebSocket upgrades do not reach its fetch listener. |
+| `eventTransport` | Optional `auto`, `websocket`, or `sse`; defaults to `auto`. |
 | `token` | Optional bearer token held in the client's memory. |
 | `headers` | Optional string-valued request headers. An explicit authorization header takes precedence over `token`. |
 | `assetBase` | Validated configuration data for host asset handling. The client does not use it to rewrite asset URLs. |
 
-Dynamic-source diagnostics belong to the engine process answering the request. Pin the console to a stable engine endpoint or route its configured headers consistently when inspecting that process's loading state. An unpinned load balancer can return different engines' state, and the response does not identify the engine. Durable catalog installation and process-local load history have different lifetimes.
+Dynamic-source diagnostics belong to the engine process answering the request. Durable catalog installation and process-local load history have different lifetimes, so a console pinned to a stable engine endpoint reads one process's loading state.
 
 The interface enables controls according to the principal's scopes. The Weft server remains responsible for authorizing each operation; a disabled control is not an authorization boundary.
 
-## Development
+## Layout
 
-From `packages/weft`, run:
-
-```bash
-bun run lint
-bun run typecheck
-bun run test
-bun run test:coverage
-bun run test:ui-deployment
-bun run test:ui-browser
-```
-
-Each of `lint`, `typecheck`, `test`, and `test:coverage` covers the engine and the UI together:
-
-- `test` runs the engine's suite under `bunfig.toml`, then the UI's under `bunfig.ui.toml`, whose preload installs happy-dom and the Svelte compile plugin (`scripts/lib/svelte-plugin.ts`, a copy of `@lostgradient/testing`'s that a root drift check keeps identical).
-- `test:coverage` runs the engine's 100% adjusted-coverage gate, then the UI's ratchet against the floors in `scripts/ui-coverage/coverage-baseline.ts`.
-- `typecheck` runs `tsc` for the engine and `svelte-check` against `tsconfig.ui.browser.json` (browser source) and `tsconfig.ui.json` (source, tests, and tooling).
-- `lint` runs oxlint for the engine under Weft's own configuration and for the UI under the root browser policy, then Weft's custom checks.
-
-`bun run dev:ui-server` starts the seeded Weft API through Weft's `dashboard()`, so port 7233 also serves a snapshot of the console, compiled once into `scripts/ui-browser/build/dashboard/` (delete that directory to recompile it). `bun run dev:ui-browser` builds the real Svelte source with Bun and serves it with API, JSON-RPC, SSE, and WebSocket forwarding. The browser build is a development artifact.
-
-From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/weft` for Weft and its UI, or `bun run validate` for all workspaces.
+- `src/host`: the host, its relay, its seeds, and `dev.ts`.
+- `src/app`: the shell, the router's route table, the view frame, and the sidebar.
+- `src/lib`, `src/routes`, `src/views`, `src/styles`: the console's client, query helpers, live sources, router, area routes, and styles.
+- `fixtures`: the deterministic demo workflows the console's tests and Playwright suite run against. They are append-only.
+- `tests`: the DOM preload, the deployment-mode tests, and the Playwright suite in `tests/e2e`.
+- `scripts`: the build and the coverage ratchet.

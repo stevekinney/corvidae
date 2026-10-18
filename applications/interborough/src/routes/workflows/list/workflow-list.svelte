@@ -173,7 +173,7 @@
 <div class="weft-workflow-list">
   <div class="weft-workflow-list__header">
     <div>
-      <h1>Workflows</h1>
+      <h1>Runs</h1>
       <p class="weft-workflow-list__subtitle">
         Snapshot at page load{total > 0 ? ` · ${total.toLocaleString()} matching` : ''}
       </p>
