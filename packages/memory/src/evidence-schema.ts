@@ -35,11 +35,11 @@ export type MemoryEvidenceRejectionCode =
 /** A record failed validation before it could reach an index or retrieval. */
 export class MemoryEvidenceValidationError extends Error {
   readonly code: MemoryEvidenceRejectionCode;
-  readonly record: 'evidence' | 'projection';
+  readonly record: 'evidence' | 'projection' | 'receipt';
 
   constructor(
     code: MemoryEvidenceRejectionCode,
-    record: 'evidence' | 'projection',
+    record: 'evidence' | 'projection' | 'receipt',
     message: string,
   ) {
     super(message);
@@ -59,56 +59,72 @@ const retentionRuleSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('source-linked') }).strict(),
 ]) satisfies z.ZodType<MemoryRetentionRule>;
 
-export const evidenceRecordSchema = z
-  .object({
-    schemaVersion: z.literal(EVIDENCE_SCHEMA_VERSION),
-    id: nonEmpty,
-    tenantId: nonEmpty,
-    ownerId: nonEmpty,
-    kind: z.enum(EVIDENCE_KINDS),
-    sourceLocator: nonEmpty,
-    content: z.discriminatedUnion('kind', [
-      z.object({ kind: z.literal('inline'), text: nonEmpty }).strict(),
-      z
-        .object({
-          kind: z.literal('managed-asset'),
-          assetId: nonEmpty,
-          revision: z.number().int().positive().optional(),
-        })
-        .strict(),
-    ]),
-    digest: digestSchema,
-    producer: producerSchema,
-    principal: principalSchema,
-    trustTier: z.enum(MEMORY_TRUST_LEVELS),
-    eventAt: epochMilliseconds,
-    observedAt: epochMilliseconds,
-    writtenAt: epochMilliseconds,
-    classification: z.enum(MEMORY_CLASSIFICATIONS),
-    authorizationScope: z
-      .object({ visibility: z.enum(['private', 'shared']), sharedWith: z.array(nonEmpty) })
-      .strict(),
-    retention: retentionRuleSchema,
-    causation: z
+/**
+ * The evidence record's fields, exported so the transition proposal can be
+ * composed from them (everything except the fields the engine stamps) instead
+ * of retyping them.
+ */
+export const evidenceRecordShape = {
+  schemaVersion: z.literal(EVIDENCE_SCHEMA_VERSION),
+  id: nonEmpty,
+  tenantId: nonEmpty,
+  ownerId: nonEmpty,
+  kind: z.enum(EVIDENCE_KINDS),
+  sourceLocator: nonEmpty,
+  content: z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('inline'), text: nonEmpty }).strict(),
+    z
       .object({
-        runId: nonEmpty.optional(),
-        sessionId: nonEmpty.optional(),
-        toolCallId: nonEmpty.optional(),
-        externalCommandId: nonEmpty.optional(),
+        kind: z.literal('managed-asset'),
+        assetId: nonEmpty,
+        revision: z.number().int().positive().optional(),
       })
-      .strict()
-      .refine((value) => Object.keys(value).length > 0, 'causation needs at least one identifier')
-      .optional(),
-    supersedes: z.array(nonEmpty).min(1).optional(),
-  })
-  .strict()
-  .refine(
-    (record) =>
-      record.supersedes === undefined ||
-      (new Set(record.supersedes).size === record.supersedes.length &&
-        !record.supersedes.includes(record.id)),
-    'supersedes must be distinct ids other than the record itself',
+      .strict(),
+  ]),
+  digest: digestSchema,
+  producer: producerSchema,
+  principal: principalSchema,
+  trustTier: z.enum(MEMORY_TRUST_LEVELS),
+  eventAt: epochMilliseconds,
+  observedAt: epochMilliseconds,
+  writtenAt: epochMilliseconds,
+  classification: z.enum(MEMORY_CLASSIFICATIONS),
+  authorizationScope: z
+    .object({ visibility: z.enum(['private', 'shared']), sharedWith: z.array(nonEmpty) })
+    .strict(),
+  retention: retentionRuleSchema,
+  causation: z
+    .object({
+      runId: nonEmpty.optional(),
+      sessionId: nonEmpty.optional(),
+      toolCallId: nonEmpty.optional(),
+      externalCommandId: nonEmpty.optional(),
+    })
+    .strict()
+    .refine((value) => Object.keys(value).length > 0, 'causation needs at least one identifier')
+    .optional(),
+  supersedes: z.array(nonEmpty).min(1).optional(),
+} satisfies z.ZodRawShape;
+
+/** `supersedes` names distinct ids other than the record itself. */
+export function hasValidSupersedes(record: {
+  readonly id: string;
+  readonly supersedes?: readonly string[] | undefined;
+}): boolean {
+  return (
+    record.supersedes === undefined ||
+    (new Set(record.supersedes).size === record.supersedes.length &&
+      !record.supersedes.includes(record.id))
   );
+}
+
+export const SUPERSEDES_RULE_MESSAGE =
+  'supersedes must be distinct ids other than the record itself';
+
+export const evidenceRecordSchema = z
+  .object(evidenceRecordShape)
+  .strict()
+  .refine(hasValidSupersedes, SUPERSEDES_RULE_MESSAGE);
 
 export type EvidenceRecord = z.infer<typeof evidenceRecordSchema>;
 
@@ -132,7 +148,7 @@ export type EvidenceSupersession = z.infer<typeof evidenceSupersessionSchema>;
 
 /** How a decoder reads one persisted shape: its version, and which path means "no source". */
 export interface RejectionClassification {
-  readonly record: 'evidence' | 'projection';
+  readonly record: 'evidence' | 'projection' | 'receipt';
   readonly schemaVersion: number;
   /** The top-level key whose absence or emptiness means the record names no source. */
   readonly sourceKey: string | undefined;

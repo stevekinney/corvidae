@@ -44,7 +44,9 @@ export interface MemoryRecord {
    * updates can both observe version N and both write N+1. A writer that must
    * not lose a concurrent change passes the version it read as
    * `expectedVersion` to `update()` or on a `deleteMany()` reference, which
-   * turns the write into a compare-and-swap.
+   * turns the write into a compare-and-swap. Concurrency-safe changes to
+   * evidence and projections go through the transition engine
+   * (`createTransitionEngine`), not through this marker.
    */
   version: number;
   /**

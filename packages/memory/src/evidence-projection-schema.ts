@@ -32,9 +32,11 @@ export const MAX_PROJECTION_REVISION = 9_999_999_999;
 export type ProjectionKind = (typeof PROJECTION_KINDS)[number];
 export type ProjectionStatus = (typeof PROJECTION_STATUSES)[number];
 
-const revisionSchema = z.number().int().positive().max(MAX_PROJECTION_REVISION);
-const projectionReferenceSchema = z.object({ id: nonEmpty, revision: revisionSchema }).strict();
-const sourceSchema = z.object({ evidenceId: nonEmpty, digest: digestSchema }).strict();
+export const revisionSchema = z.number().int().positive().max(MAX_PROJECTION_REVISION);
+export const projectionReferenceSchema = z
+  .object({ id: nonEmpty, revision: revisionSchema })
+  .strict();
+export const sourceSchema = z.object({ evidenceId: nonEmpty, digest: digestSchema }).strict();
 const transformationStepSchema = z
   .object({
     step: z.enum(TRANSFORMATION_STEPS),
@@ -80,7 +82,11 @@ const transitionSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('revoked'), at: epochMilliseconds, reasonCode: nonEmpty }).strict(),
 ]);
 
-const projectionBase = {
+export const embeddingSchema = z
+  .object({ model: nonEmpty, vector: z.array(z.number()).min(1) })
+  .strict();
+
+export const projectionRecordBase = {
   schemaVersion: z.literal(PROJECTION_SCHEMA_VERSION),
   id: nonEmpty,
   tenantId: nonEmpty,
@@ -99,14 +105,11 @@ const projectionBase = {
   confidence: z.number().min(0).max(1),
   status: z.enum(PROJECTION_STATUSES),
   transition: transitionSchema,
-  embedding: z
-    .object({ model: nonEmpty, vector: z.array(z.number()).min(1) })
-    .strict()
-    .optional(),
+  embedding: embeddingSchema.optional(),
 };
 
-const factPayload = z.object({ statement: nonEmpty, entities: z.array(nonEmpty) }).strict();
-const episodePayload = z
+export const factPayload = z.object({ statement: nonEmpty, entities: z.array(nonEmpty) }).strict();
+export const episodePayload = z
   .object({
     summary: nonEmpty,
     occurredFrom: epochMilliseconds,
@@ -117,12 +120,14 @@ const episodePayload = z
     (payload) => payload.occurredTo === undefined || payload.occurredTo >= payload.occurredFrom,
     'an episode does not end before it begins',
   );
-const procedurePayload = z.object({ title: nonEmpty, steps: z.array(nonEmpty).min(1) }).strict();
-const preferencePayload = z.object({ subject: nonEmpty, statement: nonEmpty }).strict();
-const summaryPayload = z
+export const procedurePayload = z
+  .object({ title: nonEmpty, steps: z.array(nonEmpty).min(1) })
+  .strict();
+export const preferencePayload = z.object({ subject: nonEmpty, statement: nonEmpty }).strict();
+export const summaryPayload = z
   .object({ text: nonEmpty, covers: z.array(projectionReferenceSchema).min(1) })
   .strict();
-const chunkPayload = z
+export const chunkPayload = z
   .object({
     text: nonEmpty,
     ordinal: z.number().int().nonnegative(),
@@ -137,6 +142,31 @@ const chunkPayload = z
     'a chunk does not end before it begins',
   );
 
+/** Each kind's payload schema, so a proposal can narrow a payload against a stored kind. */
+export const PROJECTION_PAYLOAD_SCHEMAS = {
+  fact: factPayload,
+  episode: episodePayload,
+  procedure: procedurePayload,
+  preference: preferencePayload,
+  summary: summaryPayload,
+  chunk: chunkPayload,
+} as const satisfies Record<(typeof PROJECTION_KINDS)[number], z.ZodType>;
+
+/** Sources name distinct evidence records. */
+export function hasDistinctSources(record: {
+  readonly sources: ReadonlyArray<{ readonly evidenceId: string }>;
+}): boolean {
+  return new Set(record.sources.map((source) => source.evidenceId)).size === record.sources.length;
+}
+
+/** A chunk projects exactly one source. */
+export function chunkHasOneSource(record: {
+  readonly kind: string;
+  readonly sources: readonly unknown[];
+}): boolean {
+  return record.kind !== 'chunk' || record.sources.length === 1;
+}
+
 const STATUS_OF_TRANSITION: Readonly<
   Record<(typeof PROJECTION_TRANSITION_KINDS)[number], ProjectionStatus>
 > = {
@@ -149,16 +179,24 @@ const STATUS_OF_TRANSITION: Readonly<
 
 export const evidenceProjectionRecordSchema = z
   .discriminatedUnion('kind', [
-    z.object({ ...projectionBase, kind: z.literal('fact'), payload: factPayload }).strict(),
-    z.object({ ...projectionBase, kind: z.literal('episode'), payload: episodePayload }).strict(),
+    z.object({ ...projectionRecordBase, kind: z.literal('fact'), payload: factPayload }).strict(),
     z
-      .object({ ...projectionBase, kind: z.literal('procedure'), payload: procedurePayload })
+      .object({ ...projectionRecordBase, kind: z.literal('episode'), payload: episodePayload })
       .strict(),
     z
-      .object({ ...projectionBase, kind: z.literal('preference'), payload: preferencePayload })
+      .object({ ...projectionRecordBase, kind: z.literal('procedure'), payload: procedurePayload })
       .strict(),
-    z.object({ ...projectionBase, kind: z.literal('summary'), payload: summaryPayload }).strict(),
-    z.object({ ...projectionBase, kind: z.literal('chunk'), payload: chunkPayload }).strict(),
+    z
+      .object({
+        ...projectionRecordBase,
+        kind: z.literal('preference'),
+        payload: preferencePayload,
+      })
+      .strict(),
+    z
+      .object({ ...projectionRecordBase, kind: z.literal('summary'), payload: summaryPayload })
+      .strict(),
+    z.object({ ...projectionRecordBase, kind: z.literal('chunk'), payload: chunkPayload }).strict(),
   ])
   .refine(
     (record) => record.status === STATUS_OF_TRANSITION[record.transition.kind],
@@ -168,15 +206,8 @@ export const evidenceProjectionRecordSchema = z
     (record) => (record.revision === 1) === (record.transition.kind === 'created'),
     'revision 1 is the created revision and nothing else is',
   )
-  .refine(
-    (record) =>
-      new Set(record.sources.map((source) => source.evidenceId)).size === record.sources.length,
-    'sources are distinct',
-  )
-  .refine(
-    (record) => record.kind !== 'chunk' || record.sources.length === 1,
-    'a chunk projects exactly one source',
-  )
+  .refine(hasDistinctSources, 'sources are distinct')
+  .refine(chunkHasOneSource, 'a chunk projects exactly one source')
   .refine(
     (record) =>
       record.transition.kind !== 'rebuilt' ||
@@ -185,6 +216,63 @@ export const evidenceProjectionRecordSchema = z
   );
 
 export type EvidenceProjectionRecord = z.infer<typeof evidenceProjectionRecordSchema>;
+
+export const EMBEDDING_PROFILE_SCHEMA_VERSION = 1;
+
+/**
+ * The per-namespace embedding profile marker: the model and dimension the
+ * namespace's recallable embeddings share. A vector index takes one of each, so
+ * the store keeps this marker in the same batch that writes an embedded record,
+ * and two commits that would give a namespace incompatible embeddings cannot
+ * both apply. It is the projection family's second persisted shape.
+ */
+export const embeddingProfileSchema = z
+  .object({
+    schemaVersion: z.literal(EMBEDDING_PROFILE_SCHEMA_VERSION),
+    model: nonEmpty,
+    dimensions: z.number().int().positive(),
+    /**
+     * How many embedded writes the namespace has taken. Every commit that writes
+     * an embedded record puts the marker with the stored generation plus one, so
+     * the second of two such commits to apply fails its marker condition.
+     */
+    generation: z.number().int().positive(),
+  })
+  .strict();
+
+export type EmbeddingProfile = z.infer<typeof embeddingProfileSchema>;
+
+export function embeddingProfileOf(
+  embedding: {
+    readonly model: string;
+    readonly vector: readonly number[];
+  },
+  generation = 1,
+): EmbeddingProfile {
+  return {
+    schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
+    model: embedding.model,
+    dimensions: embedding.vector.length,
+    generation,
+  };
+}
+
+/** Two profiles are the same when model and dimensions are; the generation is bookkeeping, not identity. */
+export function sameEmbeddingProfile(left: EmbeddingProfile, right: EmbeddingProfile): boolean {
+  return left.model === right.model && left.dimensions === right.dimensions;
+}
+
+export function encodeEmbeddingProfile(profile: EmbeddingProfile): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(embeddingProfileSchema.parse(profile)));
+}
+
+export function decodeEmbeddingProfile(raw: unknown): EmbeddingProfile {
+  return parseWithRejectionCodes(embeddingProfileSchema, raw, {
+    record: 'projection',
+    schemaVersion: EMBEDDING_PROFILE_SCHEMA_VERSION,
+    sourceKey: undefined,
+  });
+}
 
 /**
  * Validates a persisted projection with the evidence decoder's order. The

@@ -6,6 +6,7 @@ import {
 import {
   createEvidenceProjectionStoreCore,
   type PlannedBatch,
+  type WrapApply,
 } from './evidence-projection-store-core';
 
 /** Default bound on stored evidence records, superseded ones included. */
@@ -18,6 +19,8 @@ export interface CreateInMemoryEvidenceProjectionStorageOptions {
   maxEvidence?: number;
   /** Most projection revisions the store holds across every projection, history included. */
   maxProjectionRevisions?: number;
+  /** Wraps the store's one write boundary. For tests: fail, count, or park a batch. */
+  wrapApply?: WrapApply;
 }
 
 function requireBound(name: string, value: number): number {
@@ -83,6 +86,7 @@ export function createInMemoryEvidenceProjectionStorage(
   const core = createEvidenceProjectionStoreCore({
     keys: createEvidenceProjectionKeys(),
     apply,
+    ...(options?.wrapApply === undefined ? {} : { wrapApply: options.wrapApply }),
     reader: {
       get: (key) => Promise.resolve(store.get(key)?.slice() ?? null),
       async *keys(prefix) {
