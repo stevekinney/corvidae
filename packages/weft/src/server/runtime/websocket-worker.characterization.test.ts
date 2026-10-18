@@ -1962,7 +1962,10 @@ describe('handleWorkerWebSocketMessage', () => {
       const staleSocket = createFakeWs();
       context.workerSockets.set('w-reconnect', staleSocket as never);
       const timerHandle = setTimeout(() => {}, 60_000);
-      context.pendingWorkerRequeues.set('w-reconnect', timerHandle);
+      context.pendingWorkerRequeues.set('w-reconnect', {
+        timer: timerHandle,
+        endsAt: Date.now() + 60_000,
+      });
 
       // Reconnecting socket registers under the same workerId.
       const ws = createFakeWs();

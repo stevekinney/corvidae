@@ -105,7 +105,7 @@ Worker                              Server
 
 The server tracks the worker by `workerId` in an in-memory registry. While a worker socket is live, another socket cannot claim the same `workerId`: the duplicate registration receives `registerError` with code `invalid_registration` and the server closes that socket. This blocks same-id task hijacking when authentication is disabled, but it also means a legitimate reconnect can be rejected until the old socket's close is observed.
 
-If a registered worker disconnects with tasks in flight, the server waits for the configured `ServeOptions.workerReconnectGracePeriodMs` before requeueing those tasks. A same-`workerId` `register` inside that grace window is either a PROVEN or an UNPROVEN resume (protocol v6, COR-220):
+If a registered worker disconnects with tasks in flight, the server waits for the configured `ServeOptions.workerReconnectGracePeriodMs` before requeueing those tasks. While that window is open, `weft.workers.diagnostics` reports the instant it closes as `instance.reconnectGraceEndsAt`; the field is absent for a worker that is not inside a grace window. A same-`workerId` `register` inside that grace window is either a PROVEN or an UNPROVEN resume (protocol v6, COR-220):
 
 - **Proven** — the reconnecting `register` echoes `resumeSessionGeneration` equal to the `sessionGeneration` the server handed back on the `registerAck` for the session that just disconnected. The pending requeue is cancelled, the session's generation is left unchanged, and every in-flight attempt — its attempt token, its heartbeat-renewable lease deadline, and its absolute attempt deadline — is preserved exactly as it was at disconnect. Nothing is reclaimed and no lease is reset.
 - **Unproven** — `resumeSessionGeneration` is absent or does not match. The server treats this exactly as if the grace window had already lapsed: it forfeits the disconnected session's in-flight work immediately (the same requeue the grace timer would eventually have run) and then registers a brand new session, with `sessionGeneration` incremented, before acknowledging.
@@ -664,7 +664,7 @@ A result transport failure never turns a completed activity into a failed activi
 
 ### Heartbeat and control
 
-Session heartbeat and activity heartbeat are separate from each other and from the activity's absolute deadline. Session heartbeat keeps the accepted worker registration live; activity heartbeat renews only one in-flight attempt's visibility lease; an absolute activity deadline still caps execution.
+Session heartbeat and activity heartbeat are separate from each other and from the activity's absolute deadline. Session heartbeat keeps the accepted worker registration live; activity heartbeat renews only one in-flight attempt's visibility lease; an absolute activity deadline still caps execution. The session lease lasts 60 seconds from the session's last task poll or bare session heartbeat; a session that goes that long with neither is expired and its next request is answered `410`. `weft.workers.diagnostics` reports the current expiry as `instance.sessionLeaseExpiresAt` for a long-poll worker and omits it for a WebSocket worker.
 
 ```text
 POST /api/v1/worker-sessions/:sessionId/heartbeat

@@ -45,6 +45,7 @@ import {
   createGetWorkerDiagnosticsOperation,
   createGetWorkerDiagnosticsRestBinding,
   getWorkerDiagnosticsOperation,
+  type WorkerSessionTiming,
 } from './operations/get-worker-diagnostics.ts';
 import {
   createListTaskQueuesOperation,
@@ -166,6 +167,8 @@ export type LiveOperationRegistryOptions = {
   storage?: Storage;
   taskQueue?: TaskQueue;
   clock?: () => number;
+  /** Where `weft.workers.diagnostics` reads each worker's reconnect-grace and session-lease instants. */
+  workerSessionTiming?: WorkerSessionTiming;
   workerStartOverrideSigningSecret?: string;
   /**
    * Runs the operator-registered targets behind `weft.conformance.targets` and
@@ -254,6 +257,9 @@ function buildWorkerDiagnosticsOperationForRegistry(options: LiveOperationRegist
   return createGetWorkerDiagnosticsOperation({
     workerRegistry: options.workerRegistry,
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
+    ...(options.workerSessionTiming !== undefined
+      ? { sessionTiming: options.workerSessionTiming }
+      : {}),
   });
 }
 

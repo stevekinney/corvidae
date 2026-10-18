@@ -153,7 +153,7 @@ function admitReconnectingSocket(
   const pendingRequeue = context.pendingWorkerRequeues.get(message.workerId);
   const isGracePeriodReconnect = pendingRequeue !== undefined;
   if (isGracePeriodReconnect) {
-    clearTimeout(pendingRequeue);
+    clearTimeout(pendingRequeue.timer);
     context.pendingWorkerRequeues.delete(message.workerId);
   }
 
@@ -493,7 +493,7 @@ async function resolveReconnectProof(
     return message.resumeSessionGeneration;
   }
 
-  clearTimeout(pendingRequeue);
+  clearTimeout(pendingRequeue.timer);
   context.pendingWorkerRequeues.delete(message.workerId);
   await runWorkerDisconnectRequeue(context, options, message.workerId, cleanupWorkflowIndex);
   return undefined;

@@ -44,6 +44,16 @@ export type LongPollWorkerSession = Readonly<{
 }>;
 
 /**
+ * A deferred worker-disconnect requeue: the timer that will run it and the
+ * instant it fires. `endsAt` is when the reconnect grace window closes, which
+ * `weft.workers.diagnostics` reports as `reconnectGraceEndsAt`.
+ */
+export interface PendingWorkerRequeue {
+  readonly timer: ReturnType<typeof setTimeout>;
+  readonly endsAt: number;
+}
+
+/**
  * Internal closure state for a single `serve()` invocation.
  *
  * Extracted runtime helpers receive this record explicitly so they do not
@@ -103,7 +113,7 @@ export interface ServerContext {
    * Pending requeue timers keyed by `workerId`. A successful re-register clears
    * the timer for that worker, suppressing the deferred requeue.
    */
-  readonly pendingWorkerRequeues: Map<string, ReturnType<typeof setTimeout>>;
+  readonly pendingWorkerRequeues: Map<string, PendingWorkerRequeue>;
   /** Mutex: prevents concurrent visibility scans from running simultaneously. */
   scanRunning: boolean;
   /** Fine-grained mutex for in-flight operation IDs being processed by expiry paths. */
