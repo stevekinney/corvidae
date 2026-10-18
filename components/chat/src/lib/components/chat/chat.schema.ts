@@ -61,7 +61,7 @@ const schema = {
     streaming: {
       type: 'boolean',
       description:
-        'Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown. Default `false`.',
+        'Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`.',
     },
     streamingStatus: {
       type: 'string',
@@ -149,6 +149,12 @@ const schema = {
         reason: 'unknown-shape',
         description:
           'Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable\nindividual Chat features (attachments, search, copy, editing, retry) as a group\nrather than as five separate boolean props.',
+      },
+      {
+        name: 'composerActions',
+        reason: 'function-or-snippet',
+        description:
+          'Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before.',
       },
       {
         name: 'conversation',

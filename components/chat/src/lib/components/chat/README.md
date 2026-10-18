@@ -118,6 +118,53 @@ async sendMessage(message, attachments) {
 
 The helpers immutably set or clear the transient `_deliveryStatus` metadata used by Chat's failed-message label and Retry button. Apply the same pair around `retryMessage` and `editMessage` resends; the successful attempt clears the marker.
 
+### Follow-ups during a run
+
+By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that owns the run on the server, and can deliver input to it in flight, opts in with `sendRunInput`. Follow-ups are supported only for server-owned runs (`executionOwner: 'server'`): with a browser-owned run the controller does not expose the hook, the composer does not offer follow-ups, and submitting during the run behaves as it did before. There are two hooks, and they are different types:
+
+- `ChatAdapter.sendRunInput(conversationId, message, attachments)` is the component-facing hook. It takes the same message and attachments as `sendMessage`, preceded by the conversation id. A raw adapter used without the controller gets no row id, and correlating its follow-ups is the host's problem.
+- `ChatSessionControllerOptions.sendRunInput(conversationId, message, attachments, { messageId })` is the host-facing hook. The controller appends a transcript row for the follow-up and fills `messageId` with that row's id, so a host can pass it on as the session input's own id (`submitSessionInput` accepts a caller-supplied `id`). A retry of the same row passes the same id. Providing it makes `controller.adapter` expose the adapter hook.
+
+```ts
+import { assertRunInputAccepted } from '@lostgradient/chat';
+
+const session = createChatSessionController({
+  getConversation: () => conversation,
+  setConversation: (next) => (conversation = next),
+  transport,
+  executionOwner: 'server',
+  async sendRunInput(conversationId, message, attachments, { messageId }) {
+    const result = await yourBackend.submitSessionInput({
+      id: messageId,
+      conversationId,
+      message,
+      attachments,
+    });
+    if (!result.receipt) throw new Error(`Input was not admitted: ${result.outcome}`);
+    assertRunInputAccepted(result.receipt);
+  },
+});
+```
+
+The promise resolving is the acknowledgement, and it resolves only when the input's receipt is `accepted`, `queued`, or `promoted`. Every other receipt rejects with an error that names its state, so the row is marked failed with a Retry button. `assertRunInputAccepted(receipt)` does this for you. Read the receipt, not just the submission outcome: a `canceled` receipt from an immediate self-cancel (no run is live) and a `replayed` outcome whose receipt is already `canceled` both reject. Admission is not delivery, because the server cancels input a run ends without delivering it, and never answers it in a continuation run.
+
+With the hook present:
+
+- The textarea stays enabled during a run, Send and Stop sit side by side, and Enter submits a follow-up.
+- The follow-up appears in the transcript at once as a row stamped `metadata._followUp`, with a pending "Sending…" state that the acknowledgement clears.
+- Follow-ups are handed over one at a time, in the order they were sent, so a slow acknowledgement cannot be overtaken. `Chat` also serializes calls to a raw adapter the same way.
+- A follow-up is accepted while an approval is pending and does not resolve it.
+- A follow-up row never owns the run. Retrying after a failed run, finding the owner of a tool call that arrives after a follow-up, an approval continuation's turn and attachments, and the AG-UI transport's choice of turn all stay with the turn that opened the run. Rows without the marker are not follow-ups, including rows installed with `adoptHistory`.
+- When the run's terminal history names the follow-up's row, the transcript keeps one row, moved to the position the terminal gives it, and the client's row wins, so its marker and delivery status survive.
+- A rejection marks that row failed with the usual Retry and leaves the run alone. Retrying resends it through the hook with the same `messageId` while a run is in progress, and otherwise promotes it to an ordinary turn.
+- A follow-up still waiting for the hook when the run ends (queued behind a slow acknowledgement) goes out as an ordinary turn on its existing row when the run completes or fails, one after another in the order sent. If the user stopped the run, it is marked failed with a Retry instead. A run parked on a pending approval has not ended.
+- Once a run ends, each follow-up the host accepted is classified. The run delivered it when its terminal history (the history a `run.completed` frame carries) names the row's id. Otherwise the server cancelled it, and that includes a run that ended with no terminal history at all, such as a stop mid-stream or a failure. If this client pressed stop, the row is marked failed with a Retry. If the run completed or failed, the row is promoted to an ordinary turn after the run ends, reusing its row and attachments. The decision waits for both the acknowledgement and the run's end, in either order, so an acknowledgement that arrives late is still classified. A follow-up the hook rejects is failed as above.
+- `controller.invalidate()` retires every acknowledgement still owed: a late acknowledgement or rejection writes nothing, and the sender's promise rejects with an invalidation error. A follow-up still queued when it happens is marked failed and reported through `onError`. A stop does not retire anything.
+- The controller's adapter orders its own input (`ChatAdapter.ordersRunInput`), so `Chat` hands it each follow-up at once and the row shows immediately; for a raw adapter, `Chat` queues the calls itself, one at a time, and drops that queue when the conversation changes.
+- A follow-up queued when the conversation changes is rejected through `onAdapterError` rather than dropped silently.
+
+A controller without `sendRunInput`, or with a browser-owned run, behaves exactly as before. The "Follow-ups during a run" example shows the flow.
+
 ### Edit and resend
 
 `ChatAdapter.editMessage` hands you the edited message's ID and new content; the superseded branch (the old reply, any tool calls after it) should be discarded before the edited content is re-sent. `rewindBeforeMessage` performs exactly that cut — it drops the named message and everything after it in the transcript, keeps tool-call/tool-result pairs atomic, and renumbers positions — so an edit flow never assembles `ids`/`messages`/`updatedAt` by hand:
@@ -235,6 +282,33 @@ Chat's outer layout element is `height: 100%`. When no ancestor on the chain res
   }
 </style>
 ```
+
+## Composer actions
+
+`composerActions` is an optional snippet rendered in the composer footer, beside Send, so a host can put its own controls next to the composer; the usual case is a model picker built from Cinder's `Select` (or `Combobox`). Chat does not ship a picker: the host owns the value and what it means.
+
+```svelte
+<script lang="ts">
+  import { Chat } from '@lostgradient/chat';
+  import { Select } from '@lostgradient/cinder';
+
+  let model = $state('balanced');
+</script>
+
+<Chat id="assistant-chat" {conversation} {adapter}>
+  {#snippet composerActions()}
+    <Select
+      id="assistant-chat-model"
+      bind:value={model}
+      options={models}
+      label="Model"
+      labelVisible={false}
+    />
+  {/snippet}
+</Chat>
+```
+
+The snippet takes no arguments. It stays interactive while a run streams and while a tool approval is pending, because Chat only disables the composer textarea, never the footer; the host decides whether a control should lock during a run. Without the snippet the composer renders as it always has. The "Composer actions" example shows the whole flow.
 
 ## Building composer overlays
 
@@ -414,7 +488,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `moreHistoryAvailable` | `boolean` | no | — | Whether the explicit "Load earlier messages" trigger is shown when a load handler exists. Default `true`. |
 | `newMessageIndicatorVisible` | `boolean` | no | — | Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. |
 | `scrollFadeVisible` | `boolean` | no | — | Show a scroll-driven edge fade on the top and bottom of the message timeline as it overflows. Opt-in and presentation-only — never the sole signal that more messages exist; the jump-to-latest button and unread count remain the authoritative affordances. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so there is no color the fade could correctly fade toward, and it stays inert rather than painting an incorrect opaque band. Default `false`. |
-| `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown. Default `false`. |
+| `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`. |
 | `streamingStatus` | `string` | no | — | Optional status label displayed in the typing indicator while `streaming` is `true` and no streaming content has arrived yet (e.g. `"Thinking…"` or `"Analyzing file…"`). When omitted, three animated dots are shown. |
 | `surfaceMode` | `"default"` \| `"transparent"` | no | — | Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. |
 | `unreadCount` | `number` | no | — | Number of messages received while the viewport was scrolled away from the bottom. Bindable; resets to `0` when the user scrolls to the bottom. Default `0`. |
@@ -425,6 +499,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `virtualized` | `boolean` | no | — | Use the virtualized message render path for long transcripts. The complete `ConversationHistory` remains unchanged; only the DOM window is reduced. Default `false`. |
 | `adapter` | `(opaque)` | no | — | Optional command/transport boundary around `conversation`. Its methods take precedence over the matching callback props (e.g. `sendMessage` over `onSubmit`); omit it and Chat behaves exactly as with plain callbacks. Not expressible in JSON Schema; see the component types for the signature. |
 | `capabilities` | `(opaque)` | no | — | Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable individual Chat features (attachments, search, copy, editing, retry) as a group rather than as five separate boolean props. Not expressible in JSON Schema; see the component types for the signature. |
+| `composerActions` | `(opaque)` | no | — | Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. Not expressible in JSON Schema; see the component types for the signature. |
 | `conversation` | `(opaque)` | yes | — | The conversation transcript to render. Pass a {@link ConversationHistory} snapshot; consumers holding a stateful conversation object pass its current snapshot (e.g. `conversation.current`). Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `header` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

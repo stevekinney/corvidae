@@ -14,11 +14,16 @@
    * @related chat, chat-conversation-header, side-navigation
    */
   export type { ChatConversationListProps } from './chat-conversation-list.types.ts';
-  export type { ConversationSummary } from './conversation-summary.ts';
+  export type {
+    ConversationActivity,
+    ConversationAgent,
+    ConversationSummary,
+  } from './conversation-summary.ts';
   export { deriveConversationSummary } from './conversation-summary.ts';
 </script>
 
 <script lang="ts">
+  import { LoadMore, StatusDot } from '@lostgradient/cinder';
   import { classNames } from '../../utilities/class-names.ts';
   import type { ChatConversationListProps } from './chat-conversation-list.types.ts';
   import { conversationSummaryTimestamp } from './conversation-summary.ts';
@@ -30,6 +35,11 @@
     emptyText = 'No conversations',
     class: className,
     onSelectConversation,
+    onLoadMore,
+    hasMore = false,
+    loading = false,
+    buttonLabel,
+    onError,
     ...rest
   }: ChatConversationListProps = $props();
 
@@ -49,15 +59,63 @@
     return unreadCount === 1 ? '1 unread message' : `${unreadCount} unread messages`;
   }
 
+  const activityLabels = {
+    running: 'Running',
+    'awaiting-input': 'Awaiting input',
+  } as const;
+  const activityStatuses = { running: 'accent', 'awaiting-input': 'warning' } as const;
+
+  // The list is the scroll container LoadMore observes, so its sentinel fires as
+  // the user scrolls to the end of the list. LoadMore captures its root once, when
+  // it is created, so it is only created after the element exists.
+  let listElement = $state<HTMLElement | null>(null);
+  // Left out rather than passed as `undefined`, so LoadMore keeps its own defaults.
+  const loadMoreOptions = $derived({
+    ...(buttonLabel === undefined ? {} : { buttonLabel }),
+    ...(onError === undefined ? {} : { onError }),
+  });
+
   const resolvedAriaLabel = $derived(
     typeof ariaLabel === 'string' && ariaLabel.trim().length > 0 ? ariaLabel : undefined,
   );
 </script>
 
+{#snippet rowContent(conversation: (typeof sortedConversations)[number])}
+  <span class="cinder-chat-conversation-list__title">{conversation.title}</span>
+  <span class="cinder-chat-conversation-list__preview">{preview(conversation)}</span>
+  {#if conversation.unreadCount > 0}
+    <span class="cinder-chat-conversation-list__badge" aria-hidden="true">
+      {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+    </span>
+    <span class="cinder-sr-only">, {unreadMessageLabel(conversation.unreadCount)}</span>
+  {/if}
+  {#if conversation.agent || (conversation.activity && conversation.activity !== 'idle')}
+    <span class="cinder-chat-conversation-list__meta">
+      {#if conversation.agent}
+        <span class="cinder-chat-conversation-list__agent" data-cinder-conversation-agent>
+          <span class="cinder-sr-only">Agent:</span>
+          {conversation.agent.name}
+        </span>
+      {/if}
+      {#if conversation.activity && conversation.activity !== 'idle'}
+        <StatusDot
+          class="cinder-chat-conversation-list__activity"
+          size="sm"
+          status={activityStatuses[conversation.activity]}
+          label={activityLabels[conversation.activity]}
+          data-cinder-conversation-activity={conversation.activity}
+        />
+      {/if}
+    </span>
+  {/if}
+{/snippet}
+
 <nav
+  bind:this={listElement}
   {...rest}
   class={classNames('cinder-chat-conversation-list', className)}
   aria-label={resolvedAriaLabel}
+  data-cinder-conversation-list-scrolls={onLoadMore === undefined ? undefined : ''}
 >
   {#if sortedConversations.length === 0}
     <p class="cinder-chat-conversation-list__empty" role="status">{emptyText}</p>
@@ -76,14 +134,7 @@
               data-cinder-conversation-selected={isActive ? '' : undefined}
               onclick={() => onSelectConversation(conversation.id)}
             >
-              <span class="cinder-chat-conversation-list__title">{conversation.title}</span>
-              <span class="cinder-chat-conversation-list__preview">{preview(conversation)}</span>
-              {#if conversation.unreadCount > 0}
-                <span class="cinder-chat-conversation-list__badge" aria-hidden="true">
-                  {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-                </span>
-                <span class="cinder-sr-only">, {unreadMessageLabel(conversation.unreadCount)}</span>
-              {/if}
+              {@render rowContent(conversation)}
             </button>
           {:else}
             <div
@@ -93,18 +144,14 @@
               data-cinder-conversation-static
               data-cinder-conversation-selected={isActive ? '' : undefined}
             >
-              <span class="cinder-chat-conversation-list__title">{conversation.title}</span>
-              <span class="cinder-chat-conversation-list__preview">{preview(conversation)}</span>
-              {#if conversation.unreadCount > 0}
-                <span class="cinder-chat-conversation-list__badge" aria-hidden="true">
-                  {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
-                </span>
-                <span class="cinder-sr-only">, {unreadMessageLabel(conversation.unreadCount)}</span>
-              {/if}
+              {@render rowContent(conversation)}
             </div>
           {/if}
         </li>
       {/each}
     </ul>
+  {/if}
+  {#if onLoadMore && listElement}
+    <LoadMore {onLoadMore} {hasMore} {loading} root={listElement} {...loadMoreOptions} />
   {/if}
 </nav>

@@ -15,7 +15,7 @@ import {
   type SessionRunRequest,
   type SessionRunState,
 } from './session-controller-history.ts';
-import { mergeRunHistory } from './session-controller-rows.ts';
+import { mergeRunHistory, restoreFollowUps } from './session-controller-rows.ts';
 import {
   decodeTransportResult,
   notifyObserver,
@@ -37,6 +37,13 @@ type SessionRunnerDependencies = {
   emit: (callback: (handlers: ChatPushHandlers) => void) => void;
   notifyStreaming: (value: boolean) => void;
   reportError: (error: unknown) => void;
+  /**
+   * Told the authoritative history a `run.completed` frame carried, once the
+   * turn is over, even when the turn ended by a stop or an error after the
+   * frame arrived. The controller uses it to see which follow-ups the run never
+   * delivered.
+   */
+  onTerminalHistory?: (terminal: ConversationHistory) => void;
 };
 
 export type TurnState = {
@@ -82,6 +89,7 @@ export function createSessionRunner({
   emit,
   notifyStreaming,
   reportError,
+  onTerminalHistory,
 }: SessionRunnerDependencies): {
   executeRun: (userMessageId: string, attachments?: ChatAttachment[]) => Promise<void>;
   stopActiveRun: () => Promise<void>;
@@ -135,6 +143,7 @@ export function createSessionRunner({
           controller,
           executionOwner,
           request,
+          onTerminalHistory,
         });
         if (!shouldContinue) return;
       }
@@ -190,6 +199,7 @@ type TurnDependencies = Pick<
   controller: AbortController;
   executionOwner: ChatExecutionOwner;
   request: SessionRunRequest;
+  onTerminalHistory: SessionRunnerDependencies['onTerminalHistory'];
 };
 
 async function executeTurn({
@@ -209,6 +219,7 @@ async function executeTurn({
   controller,
   executionOwner,
   request,
+  onTerminalHistory,
 }: TurnDependencies): Promise<boolean> {
   // Two things abort the transport from inside this loop rather than
   // from the user: a protocol failure at its throw site (see
@@ -347,14 +358,19 @@ async function executeTurn({
     // retry affordance for a turn nobody is looking at any more.
     if (!isCurrent()) return false;
     update(
-      markMessageDeliveryFailed(
-        cancelStreamingMessage(turnState.committed, turnState.currentAssistantMessageId),
-        userMessageId,
+      restoreFollowUps(
+        markMessageDeliveryFailed(
+          cancelStreamingMessage(turnState.committed, turnState.currentAssistantMessageId),
+          userMessageId,
+        ),
+        options.getConversation(),
       ),
     );
     reportError(error);
     throw error;
   } finally {
+    if (turnState.terminalConversation !== undefined)
+      onTerminalHistory?.(turnState.terminalConversation);
     emit((handlers) => handlers.onStreamEnd());
     if (lifecycle.active === controller) lifecycle.active = undefined;
   }

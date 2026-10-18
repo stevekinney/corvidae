@@ -28,6 +28,12 @@ Use the public props and documented examples to provide accessible names, descri
 
 When ChatConversationList accepts snippets or arbitrary children, the caller owns the semantics inside those children. Prefer native elements first, and add ARIA only when it matches the rendered behavior.
 
+## Agent, activity, and load more
+
+The agent name is read with an "Agent:" prefix. `running` and `awaiting-input` activity render Cinder's `StatusDot` with `role="img"`, an accessible name ("Running", "Awaiting input"), and the same text visible beside the dot, so state is never carried by color alone; `idle` renders nothing. Because the dot sits inside the row's button, it is part of the button's name, and a screen reader hears it with the title and preview.
+
+The load-more control is Cinder's `LoadMore`: a real button that remains available when the scroll sentinel does not fire, `aria-busy` and disabled while `loading`, and a polite status for its states. It follows the last row inside the navigation landmark. The list becomes the scroll container only while the control is showing; keep its height bounded and verify keyboard focus reaches the button after the last row.
+
 ## Verification
 
 - Render ChatConversationList in the playground or a focused test fixture.

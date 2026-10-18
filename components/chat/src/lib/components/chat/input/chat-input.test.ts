@@ -108,6 +108,128 @@ describe('ChatInput', () => {
     expect(restoredSendTrigger.hasAttribute('data-stop')).toBe(false);
   });
 
+  test('allowFollowUp keeps Send and attachments live and shows Stop beside Send while sending', async () => {
+    let submitCount = 0;
+    let stopCount = 0;
+    const { container } = render(ChatInput, {
+      id: 'follow-up-composer',
+      sending: true,
+      allowFollowUp: true,
+      onsubmit: () => {
+        submitCount += 1;
+      },
+      onstop: () => {
+        stopCount += 1;
+      },
+    });
+    const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    const send = container.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!;
+    const stop = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Stop generating"]',
+    )!;
+
+    expect(composer.disabled).toBe(false);
+    expect(send.type).toBe('submit');
+    expect(send.hasAttribute('data-stop')).toBe(false);
+    expect(stop.type).toBe('button');
+    expect(stop.hasAttribute('data-stop')).toBe(true);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,
+    ).toBe(false);
+
+    await fireEvent.input(composer, { target: { value: 'follow up' } });
+    await fireEvent.keyDown(composer, { key: 'Enter' });
+    expect(submitCount).toBe(1);
+
+    await fireEvent.click(stop);
+    expect(stopCount).toBe(1);
+    expect(submitCount).toBe(1);
+  });
+
+  test.each([
+    ['enter', 'Press Enter to send a follow-up.'],
+    ['modifier-enter', 'Press Command+Enter or Control+Enter to send a follow-up.'],
+    ['enter-if-single-line', 'Press Enter to send a single-line follow-up.'],
+  ] as const)('the follow-up instruction follows submitOn %s', (submitOn, expected) => {
+    const { container } = render(ChatInput, {
+      id: `follow-up-instruction-${submitOn}`,
+      sending: true,
+      allowFollowUp: true,
+      submitOn,
+      onstop: () => undefined,
+    });
+
+    const composer = container.querySelector('textarea.chat-input-editor')!;
+    const description = container.querySelector(`#${composer.getAttribute('aria-describedby')}`);
+    const text = description?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+    expect(text).toContain(expected);
+    if (submitOn === 'modifier-enter') expect(text).not.toContain('Press Enter to send');
+  });
+
+  test('moves focus off the side Stop button when it unmounts', async () => {
+    const props = {
+      id: 'stop-focus',
+      sending: true,
+      allowFollowUp: true,
+      value: 'ready',
+      onstop: () => undefined,
+    };
+    const rendered = render(ChatInput, props);
+    const stop = rendered.container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Stop generating"]',
+    )!;
+    stop.focus();
+    expect(document.activeElement).toBe(stop);
+
+    await rendered.rerender({ ...props, sending: false });
+    await tick();
+
+    expect(rendered.container.querySelector('button[aria-label="Stop generating"]')).toBeNull();
+    expect(document.activeElement).toBe(
+      rendered.container.querySelector('button[aria-label="Send message"]'),
+    );
+  });
+
+  test('falls back to the textarea when Send is disabled as the Stop button unmounts', async () => {
+    const props = {
+      id: 'stop-focus-empty',
+      sending: true,
+      allowFollowUp: true,
+      onstop: () => undefined,
+    };
+    const rendered = render(ChatInput, props);
+    rendered.container
+      .querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]')!
+      .focus();
+
+    await rendered.rerender({ ...props, sending: false });
+    await tick();
+
+    expect(document.activeElement).toBe(
+      rendered.container.querySelector('textarea.chat-input-editor'),
+    );
+  });
+
+  test('without allowFollowUp a sending composer cannot submit', async () => {
+    let submitCount = 0;
+    const { container } = render(ChatInput, {
+      id: 'no-follow-up-composer',
+      sending: true,
+      onsubmit: () => {
+        submitCount += 1;
+      },
+    });
+    const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+
+    await fireEvent.input(composer, { target: { value: 'too early' } });
+    await fireEvent.keyDown(composer, { key: 'Enter' });
+
+    expect(submitCount).toBe(0);
+    expect(
+      container.querySelector<HTMLButtonElement>('button[aria-label="Attach file"]')?.disabled,
+    ).toBe(true);
+  });
+
   test('hides the programmatic file picker from the accessibility tree', () => {
     const { container } = render(ChatInput, { id: 'attachment-a11y' });
     const picker = container.querySelector<HTMLInputElement>('input[type="file"]');

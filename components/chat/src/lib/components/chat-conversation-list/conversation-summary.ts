@@ -6,6 +6,17 @@ import type {
 import { getMessages } from '../chat/utilities/conversation.ts';
 import { getMessageText } from '../chat/utilities/index.ts';
 
+/** What the agent behind a conversation is doing right now. */
+export type ConversationActivity = 'idle' | 'running' | 'awaiting-input';
+
+/** The agent a conversation is with. */
+export type ConversationAgent = {
+  /** Agent identifier. */
+  id: string;
+  /** Agent display name, shown as a label on the row. */
+  name: string;
+};
+
 export type ConversationSummary = {
   /** Conversation identifier. */
   id: string;
@@ -31,6 +42,13 @@ export type ConversationSummary = {
   lastMessageAt?: string;
   /** Optional participant names derived from namespaced conversation metadata. */
   participantNames: readonly string[];
+  /** The agent this conversation is with. Rendered as a label on the row when present. */
+  agent?: ConversationAgent;
+  /**
+   * What the agent is doing. `running` and `awaiting-input` render a status
+   * indicator with an accessible name; `idle`, or leaving it out, renders none.
+   */
+  activity?: ConversationActivity;
 };
 
 function metadataNumber(metadata: Readonly<Record<string, unknown>>, key: string): number {
