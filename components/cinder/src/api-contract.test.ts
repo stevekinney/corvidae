@@ -34,11 +34,19 @@ function memberName(member: ASTNode): string | undefined {
   return (member?.key?.name ?? member?.key?.value) as string | undefined;
 }
 
+/** `onSave(value: string): void` parses as a method signature, not a property signature. */
+function isKeyedSignature(member: ASTNode): boolean {
+  return (
+    (member.type === 'TSPropertySignature' || member.type === 'TSMethodSignature') &&
+    !member.computed
+  );
+}
+
 function extractPropNames(typeLiteral: ASTNode): Set<string> {
   if (!typeLiteral || typeLiteral.type !== 'TSTypeLiteral') return new Set();
   return new Set(
     (typeLiteral.members ?? [])
-      .filter((m: ASTNode) => m.type === 'TSPropertySignature')
+      .filter(isKeyedSignature)
       .map((m: ASTNode) => memberName(m) as string),
   );
 }
@@ -50,11 +58,13 @@ function isPropOptional(member: ASTNode): boolean {
 function getMember(typeLiteral: ASTNode, name: string): ASTNode {
   if (!typeLiteral || typeLiteral.type !== 'TSTypeLiteral') return undefined;
   return (typeLiteral.members ?? []).find(
-    (m: ASTNode) => m.type === 'TSPropertySignature' && memberName(m) === name,
+    (m: ASTNode) => isKeyedSignature(m) && memberName(m) === name,
   );
 }
 
 function getTypeKind(member: ASTNode): string | null {
+  // A method signature's `typeAnnotation` is its return type; the member itself is a function.
+  if (member?.type === 'TSMethodSignature') return 'TSFunctionType';
   return member?.typeAnnotation?.typeAnnotation?.type ?? null;
 }
 
@@ -85,10 +95,16 @@ function resolvePropTypeLiteral(annotation: ASTNode): ASTNode {
     return { kind: 'literal', typeLiteral: annotation };
   }
   if (annotation.type === 'TSIntersectionType') {
-    const literal = annotation.types
-      ?.map((t: ASTNode) => unwrapTypeAnnotation(t))
-      .find((t: ASTNode) => t.type === 'TSTypeLiteral');
-    return { kind: 'intersection', typeLiteral: literal ?? null };
+    // `Base & { a } & { b }`: every top-level inline literal contributes members, so the
+    // arm is checked as one literal that holds all of them.
+    const literals = (annotation.types ?? [])
+      .map((t: ASTNode) => unwrapTypeAnnotation(t))
+      .filter((t: ASTNode) => t.type === 'TSTypeLiteral');
+    const merged =
+      literals.length === 0
+        ? null
+        : { type: 'TSTypeLiteral', members: literals.flatMap((l: ASTNode) => l.members ?? []) };
+    return { kind: 'intersection', typeLiteral: merged };
   }
   if (annotation.type === 'TSUnionType') {
     const arms = (annotation.types ?? [])
@@ -264,6 +280,41 @@ describe('validateArm unlisted members', () => {
     expect(errors).toEqual([
       'fixture.svelte arm[1]: prop "extra" is in Props but not listed in the contract',
     ]);
+  });
+
+  test('reports an unlisted method-signature member and accepts a listed one', () => {
+    const resolved = parseFixtureProps(
+      '{ listed?: string; onSave(value: string): void; onClose?(): void }',
+    );
+    const errors: string[] = [];
+    validateArm(
+      'fixture.svelte',
+      null,
+      resolved.typeLiteral,
+      {
+        listed: { optional: true, type_kind: 'TSStringKeyword', default: undefined },
+        onClose: { optional: true, type_kind: 'TSFunctionType', default: undefined },
+      },
+      {},
+      errors,
+    );
+    expect(errors).toEqual([
+      'fixture.svelte: prop "onSave" is in Props but not listed in the contract',
+    ]);
+  });
+
+  test('checks every inline literal of an intersection', () => {
+    const resolved = parseFixtureProps('Base & { a?: string } & { b?: string }');
+    const errors: string[] = [];
+    validateArm(
+      'fixture.svelte',
+      null,
+      resolved.typeLiteral,
+      { a: { optional: true, type_kind: 'TSStringKeyword', default: undefined } },
+      {},
+      errors,
+    );
+    expect(errors).toEqual(['fixture.svelte: prop "b" is in Props but not listed in the contract']);
   });
 });
 
