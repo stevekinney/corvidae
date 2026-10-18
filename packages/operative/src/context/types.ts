@@ -86,6 +86,7 @@ export type MediaCostOutcome =
         | 'asset-unverified'
         | 'media-over-budget'
         | 'no-route-admits-media'
+        | 'no-backend-admits-media'
         | 'mime-type-mismatch';
     })
   | (MediaPartPosition & {

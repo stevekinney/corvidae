@@ -21,7 +21,7 @@ import type {
   MimeFamily,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { parseDataUrl } from 'conversationalist';
+import { baseMimeType, parseDataUrl } from 'conversationalist';
 
 import type { BackendDescriptor } from '../providers/model-catalog';
 import type { MediaCostEstimator, MediaCostOutcome, MediaPartPosition } from './types';
@@ -43,11 +43,14 @@ export const MEDIA_TOKENS_PER_KIBIBYTE = Object.freeze({
 /** A floor so an empty-looking payload still costs something. */
 const MINIMUM_MEDIA_TOKENS = 1;
 
-/** The MIME family a media type belongs to, or `undefined` when none is declared. */
+/**
+ * The MIME family a media type belongs to, or `undefined` when none is declared.
+ * Read from the base type, so a parameter or the type's case never changes it.
+ */
 export function mimeFamilyOf(mimeType: string | undefined): MimeFamily | undefined {
   if (mimeType === undefined) return undefined;
-  const lowered = mimeType.toLowerCase();
-  const family = lowered.split('/')[0];
+  const base = baseMimeType(mimeType);
+  const family = base.split('/')[0];
   switch (family) {
     case 'text':
     case 'image':
@@ -57,7 +60,7 @@ export function mimeFamilyOf(mimeType: string | undefined): MimeFamily | undefin
     case 'model':
       return family;
     default:
-      return lowered === 'application/pdf' ? 'document' : 'application';
+      return base === 'application/pdf' ? 'document' : 'application';
   }
 }
 
@@ -89,14 +92,32 @@ export interface CatalogMediaCostEstimatorOptions {
   readonly resolvedSources?: ResolvedMediaSources | undefined;
 }
 
+/** Whether a backend takes this source form for the part. */
+function acceptsSource(
+  descriptor: BackendDescriptor,
+  modality: MediaContent['type'],
+  source: ContentSource,
+): boolean {
+  return (
+    descriptor.modalities[modality].sourceForms.includes(source.kind) &&
+    // A file handle only works at the provider that issued it.
+    !(source.kind === 'provider-file' && source.provider !== descriptor.provider) &&
+    // A URL is useful only to a backend that fetches it; the host never does.
+    !(source.kind === 'remote-url' && !descriptor.providerFetchesRemoteUrls)
+  );
+}
+
 /**
- * Costs media against `descriptors`: the backends the run can call. Only the
- * descriptors that accept the part's modality at all are consulted, and the
- * part is refused as `modality-not-accepted` only when none does. The part must
- * be acceptable to every consulted descriptor (the run may be served by any of
- * them). A part of unknown size is costed at the per-part byte cap its
- * modality carries, and is `size-unknown` only when a consulted descriptor
- * declares no such cap.
+ * Costs media against `descriptors`: the backends the run can call. A part is
+ * acceptable when at least one backend takes it: the modality, the source form,
+ * the MIME family, and the size within that backend's per-part limit. It is
+ * refused with the reason of the first check no backend passes. Which backends
+ * take the whole request, and so which the call may reach, is admission's
+ * question (`run-step-media.ts`), answered with the same per-backend evaluator
+ * selection uses; this estimator prices one part. A part of unknown size is
+ * costed at the largest per-part byte cap among the backends that take it, and
+ * is `size-unknown` when none of them bounds it: a backend without a cap does
+ * not admit an unsized part.
  */
 export function createCatalogMediaCostEstimator(
   descriptors: readonly BackendDescriptor[],
@@ -115,45 +136,36 @@ export function createCatalogMediaCostEstimator(
     if (accepting.length === 0) {
       return { ...base, outcome: 'unsupported', reason: 'modality-not-accepted' };
     }
-    if (
-      accepting.some(
-        (descriptor) =>
-          !descriptor.modalities[part.type].sourceForms.includes(source.kind) ||
-          // A file handle only works at the provider that issued it.
-          (source.kind === 'provider-file' && source.provider !== descriptor.provider) ||
-          // A URL is useful only to a backend that fetches it; the host never does.
-          (source.kind === 'remote-url' && !descriptor.providerFetchesRemoteUrls),
-      )
-    ) {
+    const takingSource = accepting.filter((descriptor) =>
+      acceptsSource(descriptor, part.type, source),
+    );
+    if (takingSource.length === 0) {
       return { ...base, outcome: 'unsupported', reason: 'source-form-not-accepted' };
     }
     const family = mimeFamilyOf(mimeType);
-    if (
-      family !== undefined &&
-      accepting.some((descriptor) => !descriptor.mimeFamilies.includes(family))
-    ) {
+    const takingFamily =
+      family === undefined
+        ? takingSource
+        : takingSource.filter((descriptor) => descriptor.mimeFamilies.includes(family));
+    if (takingFamily.length === 0) {
       return { ...base, outcome: 'unsupported', reason: 'mime-family-not-accepted' };
     }
 
     const knownByteLength = resolved?.byteLength ?? sourceByteLength(source);
-    const caps = accepting.map((descriptor) => perPartByteCap(descriptor, part.type));
-    const byteLength =
-      knownByteLength ??
-      (caps.every((cap): cap is number => cap !== undefined) ? Math.max(...caps) : undefined);
-    if (byteLength === undefined) {
-      return { ...base, outcome: 'unbounded', reason: 'size-unknown' };
-    }
-    const exceedsLimit = accepting.some((descriptor) =>
-      descriptor.mediaLimits.some(
-        (limit) =>
-          limit.modality === part.type &&
-          limit.scope === 'per-part' &&
-          limit.maxBytes !== undefined &&
-          byteLength > limit.maxBytes,
-      ),
-    );
-    if (exceedsLimit) {
-      return { ...base, outcome: 'unbounded', reason: 'media-limit-exceeded' };
+    const caps = takingFamily.map((descriptor) => perPartByteCap(descriptor, part.type));
+    let byteLength: number;
+    if (knownByteLength === undefined) {
+      const declared = caps.filter((cap): cap is number => cap !== undefined);
+      if (declared.length === 0) {
+        return { ...base, outcome: 'unbounded', reason: 'size-unknown' };
+      }
+      byteLength = Math.max(...declared);
+    } else {
+      const withinLimit = caps.some((cap) => cap === undefined || knownByteLength <= cap);
+      if (!withinLimit) {
+        return { ...base, outcome: 'unbounded', reason: 'media-limit-exceeded' };
+      }
+      byteLength = knownByteLength;
     }
     const tokens = Math.max(
       MINIMUM_MEDIA_TOKENS,

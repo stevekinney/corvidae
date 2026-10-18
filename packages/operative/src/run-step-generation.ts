@@ -3,12 +3,12 @@ import type { ResolvedMediaSources } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
-import { GuardrailTripwireError } from './errors';
+import { GuardrailTripwireError, MediaAdmissionError } from './errors';
 import { GenerateErrorEvent, GenerateStartedEvent, RunErrorEvent } from './events';
 import { composeGenerationSelectionRecord } from './generation-selection-record';
 import type { ErrorRecoveryAction } from './hooks/types';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
-import { admitStepMedia, mediaFingerprint, refuseUnsafeMedia } from './run-step-media';
+import type { StepMediaAdmission } from './run-step-media';
 import { createElicit } from './run-step-support';
 import {
   applyWaterfallHandlerErrorPolicy,
@@ -30,8 +30,10 @@ export interface GenerationDependencies {
   steeringDesiredState: SteeringDesiredState | undefined;
   stepToolbox: AnyToolbox;
   stepToolChoice: ToolChoice | undefined;
-  /** Media sources resolved for this step (COR-716). */
+  /** The step boundary's derivation of the media sources, for the `prepareStep` hooks (COR-716). */
   resolvedSources: ResolvedMediaSources | undefined;
+  /** This step's media admission; every `generate` call derives its own `resolvedSources` from it. */
+  admission: StepMediaAdmission;
 }
 
 export interface GenerationResult {
@@ -55,6 +57,7 @@ export async function executeGeneration(
     stepToolbox,
     stepToolChoice,
     resolvedSources,
+    admission,
   } = input;
   const { hooks, hookTracker, backpressure, signal } = deps;
   let response: GenerateResponse = undefined!;
@@ -100,9 +103,6 @@ export async function executeGeneration(
         response = prepareResult;
       } else {
         // beforeGenerate: waterfall that can modify the generate context
-        // What admission saw. A `beforeGenerate` handler may append to or replace
-        // the conversation, so the media it ends with is checked again below.
-        const admittedMedia = mediaFingerprint(conversation);
         let generateContext: GenerateContext = {
           conversation,
           step,
@@ -177,35 +177,22 @@ export async function executeGeneration(
           generateContext = beforeGenContext;
         }
 
-        // Re-admit when the effective conversation's media differs from what
-        // admission saw: resolve, cost, and count it, and refuse a flagged asset,
-        // so a handler cannot add media that skipped all of it.
-        if (mediaFingerprint(generateContext.conversation) !== admittedMedia) {
-          const readmitted = await admitStepMedia({
-            deps,
-            conversation: generateContext.conversation,
-            step,
-            emitter,
-          });
-          if ('kind' in readmitted) return readmitted;
-          // COR-104: a cancellation can land while the handler's media resolves.
-          if (signal?.aborted) {
-            return { kind: 'abort', reason: explicitAbortReason(signal) };
-          }
-          generateContext = { ...generateContext, resolvedSources: readmitted.resolvedSources };
+        // COR-716: the binding admission, on the exact conversation this call
+        // receives, after the last hook that could change it. The derivation
+        // is never carried over from the boundary preview: a `prepareStep` or
+        // `beforeGenerate` handler may have appended or replaced media, and a
+        // part the preview already resolved is memoized, so an unchanged
+        // conversation costs no resolver call. Nothing this loop controls sits
+        // between this derivation and the call; the two sites that do are
+        // named in `run-step-media.ts` (a background compaction, which only
+        // removes messages; a provider's own `pinnedMessages`).
+        const bound = await admission.admit(generateContext.conversation);
+        if ('kind' in bound) return bound;
+        // COR-104: a cancellation can land while a handler's media resolves.
+        if (signal?.aborted) {
+          return { kind: 'abort', reason: explicitAbortReason(signal) };
         }
-
-        // Admission's safety verdict, for every media part the step will send. It is
-        // not the guardrail's: a flagged asset is refused with no guardrail, with one
-        // that only warns, and when it arrived in an earlier turn.
-        const unsafe = refuseUnsafeMedia({
-          deps,
-          conversation: generateContext.conversation,
-          resolvedSources: generateContext.resolvedSources,
-          step,
-          emitter,
-        });
-        if (unsafe !== undefined) return unsafe;
+        generateContext = { ...generateContext, resolvedSources: bound.resolvedSources };
 
         // onLLMInput: parallel allSettled, read-only, non-blocking. AB-204:
         // handed to hookTracker so closed() can await it — it can still be
@@ -258,6 +245,14 @@ export async function executeGeneration(
         // `generate.retry`. Without this the mutation would be invisible —
         // the seal above happens once, before the call, and a mutated
         // retry sends the model something the epoch does not describe.
+        // COR-716: a retry mutator returns a new request, so its media is
+        // derived again before the retry is issued; `resolvedSources` is never
+        // carried across a mutation. A refusal propagates as a
+        // `MediaAdmissionError`, handled below as the policy error it is.
+        const admitMutated = async (mutatedContext: GenerateContext): Promise<GenerateContext> => {
+          const derived = await admission.derive(mutatedContext.conversation);
+          return { ...mutatedContext, resolvedSources: derived.resolvedSources };
+        };
         const sealMutatedEpoch =
           deps.contextEpoch === undefined
             ? undefined
@@ -287,6 +282,7 @@ export async function executeGeneration(
                     emitter,
                     deps.runtime,
                     sealMutatedEpoch,
+                    admitMutated,
                   ),
                 )
               : await callGenerateWithRetry(
@@ -296,6 +292,7 @@ export async function executeGeneration(
                   emitter,
                   deps.runtime,
                   sealMutatedEpoch,
+                  admitMutated,
                 );
           durationMilliseconds = deps.runtime.monotonic.now() - generateStart;
         } catch (generateError) {
@@ -377,6 +374,15 @@ export async function executeGeneration(
       // entirely and propagate straight to the error result, matching how the
       // validateResponse tripwire path (below) never consults onError either.
       if (error instanceof GuardrailTripwireError) {
+        backpressure?.onError(error);
+        emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+        return { kind: 'error', error, errorKind: 'policy' };
+      }
+
+      // COR-716: a refusal of the media a retry mutator left behind is
+      // admission's verdict, the same policy error the boundary returns, and
+      // not something `onError` may recover from.
+      if (error instanceof MediaAdmissionError) {
         backpressure?.onError(error);
         emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
         return { kind: 'error', error, errorKind: 'policy' };

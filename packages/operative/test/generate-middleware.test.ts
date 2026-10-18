@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { Conversation } from 'conversationalist';
 
 import { composeGenerate, createFallbackGenerate } from '../src/generate-middleware';
 import { throwingRejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -15,7 +16,7 @@ function textResponse(content: string): GenerateResponse {
 
 function createMockContext(overrides: Partial<GenerateContext> = {}): GenerateContext {
   return {
-    conversation: {} as never,
+    conversation: new Conversation(),
     step: 0,
     toolbox: {} as never,
     ...overrides,

@@ -67,8 +67,11 @@ describe('a flagged asset never reaches generate (COR-716)', () => {
       },
     });
 
+    // Admission's verdict, at the step boundary, before the guardrail runs:
+    // the turn ends as a typed policy error, and generate is never called.
     const first = await handle.run([managed]).result();
-    expect(first.content).toContain('blocked');
+    expect(first.finishReason).toBe('error');
+    expect(first.error).toBeInstanceOf(MediaAdmissionError);
     expect(seen).toHaveLength(0);
     await yieldToPortableEventLoop();
 

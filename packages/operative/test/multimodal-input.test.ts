@@ -668,10 +668,12 @@ describe('media admission: a part is delivered or refused before generation', ()
     }
 
     it('fails a step whose media no candidate accepts with a typed policy error, before generate', async () => {
+      // The generate function reports no backend, so admission has nothing to
+      // judge reachability by and the gate's catalog is what refuses the audio.
       const { seen, result } = run(
         [{ type: 'audio', source: { kind: 'inline', data: BYTES, encoding: 'base64' } }],
         { selection: gateOver([anthropicRow]), mediaCostEstimator: estimate },
-        [anthropicRow],
+        [],
       );
 
       const outcome = await result;

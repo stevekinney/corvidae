@@ -101,7 +101,7 @@ describe('createCatalogMediaCostEstimator', () => {
     ).toMatchObject({ outcome: 'unsupported', reason: 'mime-family-not-accepted' });
   });
 
-  it('costs a part of unknown size at the per-part cap every backend declares for its modality', () => {
+  it('costs a part of unknown size at the largest per-part cap among the backends that take it', () => {
     const remote: MediaContent = {
       type: 'image',
       source: { kind: 'remote-url', url: 'https://example.com/a.png' },
@@ -116,7 +116,7 @@ describe('createCatalogMediaCostEstimator', () => {
     });
   });
 
-  it('cannot bound a part of unknown size when any backend declares no cap for its modality', () => {
+  it('cannot bound a part of unknown size when no backend that takes it declares a cap', () => {
     const remote: MediaContent = {
       type: 'image',
       source: { kind: 'remote-url', url: 'https://example.com/a.png' },
@@ -126,9 +126,10 @@ describe('createCatalogMediaCostEstimator', () => {
       outcome: 'unbounded',
       reason: 'size-unknown',
     });
+    // Beside a backend that bounds it, the part is costed at that backend's cap:
+    // dispatch is limited to the backends that admit it, so OpenAI never sees it.
     expect(createCatalogMediaCostEstimator([anthropic, openai])(remote, position)).toMatchObject({
-      outcome: 'unbounded',
-      reason: 'size-unknown',
+      outcome: 'estimated',
     });
   });
 
@@ -234,7 +235,10 @@ describe('createCatalogMediaCostEstimator', () => {
     });
   });
 
-  it('must satisfy the source form and MIME family of every backend that accepts the modality', () => {
+  it('accepts a part when at least one backend that takes the modality takes its source form', () => {
+    // A managed asset is not a wire form at any backend, so it is refused;
+    // an OpenAI file handle is taken by OpenAI alone, and that is enough here.
+    // Whether one backend takes the whole request is admission's question.
     const managed: MediaContent = {
       type: 'image',
       source: { kind: 'managed-asset', assetId: 'a' },
@@ -243,5 +247,21 @@ describe('createCatalogMediaCostEstimator', () => {
       outcome: 'unsupported',
       reason: 'source-form-not-accepted',
     });
+    const openAIFile: MediaContent = {
+      type: 'document',
+      mimeType: 'application/pdf',
+      source: { kind: 'provider-file', provider: 'openai', providerFileId: 'file-1' },
+    };
+    expect(
+      createCatalogMediaCostEstimator([anthropic, openai])(openAIFile, position),
+    ).not.toMatchObject({ reason: 'source-form-not-accepted' });
+  });
+});
+
+describe('mimeFamilyOf reads the base media type (COR-716)', () => {
+  it('ignores parameters and case', () => {
+    expect(mimeFamilyOf('application/pdf;version=1.7')).toBe('document');
+    expect(mimeFamilyOf('Application/PDF')).toBe('document');
+    expect(mimeFamilyOf('Text/Plain; charset=utf-8')).toBe('text');
   });
 });

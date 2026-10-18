@@ -247,8 +247,11 @@ export interface GenerateContext {
    * original source, so asset identity and revision are never rewritten.
    * `undefined` when the run has no resolver or no part needed resolving.
    *
-   * NOT hook-overridable, like `steering`: `runStep` re-applies it after every
-   * `beforeGenerate` handler.
+   * Derived, never carried: `runStep` derives it from this context's own
+   * conversation immediately before the call, and again before a mutated
+   * retry is issued, so a `beforeGenerate` handler or retry mutator that
+   * appends media gets that media admitted, and one that drops the field gets
+   * it back. Like `steering`, a hook cannot override it.
    */
   resolvedSources?: ResolvedMediaSources | undefined;
 }
@@ -319,8 +322,11 @@ export interface StepContext {
   conversation: Conversation;
   step: number;
   /**
-   * The media sources resolved for this step (see {@link GenerateContext.resolvedSources}),
-   * so a hook such as the input guardrail can read each asset's safety state.
+   * The media sources resolved so far (see {@link GenerateContext.resolvedSources}):
+   * at a `prepareStep` hook, the step boundary's derivation, which the input
+   * guardrail reads to inspect each resolved body; at `onMaximumSteps`, the
+   * derivation for the conversation the handler receives. The call to
+   * `generate` derives its own from the conversation it is given.
    */
   resolvedSources?: ResolvedMediaSources | undefined;
   signal?: AbortSignal | undefined;
@@ -587,11 +593,11 @@ export interface RunOptionsBase {
   contentSourceResolver?: ContentSourceResolver | undefined;
   /**
    * What to do with a resolved asset no safety gate gave a verdict (`unknown`)
-   * (COR-716). Applied to the media a `beforeGenerate` handler adds, which never
-   * reaches the input guardrail that otherwise owns the policy. A flagged asset is
-   * always refused; `'allow'` (the default) admits unverified assets, `'block'`
-   * refuses them. `createAgent` takes it from the agent's input guardrail
-   * declaration when this is not set.
+   * (COR-716). Admission applies it to every resolved part a call sends, in
+   * every message, whichever hook or handler added it, with or without an input
+   * guardrail. A flagged asset is always refused; `'allow'` (the default) admits
+   * unverified assets, `'block'` refuses them. `createAgent` takes it from the
+   * agent's input guardrail declaration when this is not set.
    */
   assetSafety?: AssetSafetyPolicy | undefined;
   /**
@@ -628,6 +634,13 @@ export interface RunOptionsBase {
    * returns a string, it replaces the final content (e.g. a forced summary
    * from one last LLM call without tools). The `finishReason` remains
    * `'maximum-steps'` regardless.
+   *
+   * COR-716: the loop derives `context.resolvedSources` for the conversation it
+   * hands this handler, so a final `generate` call that forwards it sends media
+   * that admission costed and vetted; a refusal ends the run as a policy error
+   * before the handler runs. The handler may append text to the conversation
+   * first, as `createEarlyStoppingHandler` does. Media a handler appends is
+   * outside that derivation: the loop cannot admit what it has not seen.
    */
   onMaximumSteps?: ((context: StepContext) => Promise<string | void>) | undefined;
   /**

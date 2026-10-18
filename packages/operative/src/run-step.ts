@@ -344,6 +344,7 @@ export async function runStep(
     stepToolbox,
     stepToolChoice,
     resolvedSources,
+    admission,
   } = preparation;
 
   const generation = await executeGeneration({
@@ -358,6 +359,7 @@ export async function runStep(
     stepToolbox,
     stepToolChoice,
     resolvedSources,
+    admission,
   });
   if ('kind' in generation) return generation;
   const { stepSkipped, generateDurationMilliseconds } = generation;

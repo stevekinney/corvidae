@@ -767,10 +767,16 @@ async function importGeminiClient(options: {
  * than misreport an endpoint it never invokes; see
  * `providers/gemini.ts`'s streaming factory below.
  */
-function geminiDescriptorsFor(model: string) {
-  return createModelCatalog().descriptors.filter(
+function geminiDescriptorsFor(model: string, endpoint?: 'generateContentStream') {
+  const rows = createModelCatalog().descriptors.filter(
     (descriptor) => descriptor.provider === 'gemini' && descriptor.model === model,
   );
+  // The seed row describes `models.generateContent`; the streaming factory calls
+  // `models.generateContentStream`, whose model, modalities, limits, and pricing
+  // are the same, so the streaming descriptor is that row under the operation it
+  // actually invokes (COR-716: without a descriptor, media admission has nothing
+  // to cost against and refuses every part).
+  return endpoint === undefined ? rows : rows.map((row) => ({ ...row, endpoint }));
 }
 
 /**
@@ -1020,14 +1026,10 @@ export function createGeminiProviderStream(
     });
   };
 
-  // The seed catalog's Gemini row describes `models.generateContent`
-  // (`geminiDescriptorsFor`'s own doc comment), not the distinct
-  // `models.generateContentStream` operation this factory actually calls.
-  // Attaching that row here would misreport an endpoint this function never
-  // invokes, so this stream factory is left opaque (no descriptor attached)
-  // until the seed catalog (mod-02a, out of this issue's scope) gains a
-  // stream-specific row. See the review thread on PR #433.
-  return generate;
+  return withBackendDescriptors(
+    generate,
+    geminiDescriptorsFor(resolvedModel, 'generateContentStream'),
+  );
 }
 
 /**

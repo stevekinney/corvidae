@@ -5,7 +5,9 @@ import { Conversation, isConversation } from 'conversationalist';
 import { appendAgentInput } from '../agent-input';
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
+import { buildStepDeps } from '../loop';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
+import { createStepMediaAdmission } from '../run-step-media';
 import type { FinishReason } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
 import {
@@ -438,10 +440,17 @@ export function createRunWorkflow(
                 runtime: deps.options.runtime ?? createDefaultRuntimeServices(),
               });
               try {
+                // COR-716: the same derivation as `executeLoop`'s tail.
+                const media = await createStepMediaAdmission({
+                  deps: buildStepDeps(deps.options),
+                  step: finalStep,
+                  emitter: deps.emitter,
+                }).derive(conversation);
                 const finalContent = await handler({
                   conversation,
                   step: finalStep,
                   signal: deps.options.signal,
+                  resolvedSources: media.resolvedSources,
                 });
                 if (typeof finalContent !== 'string') return { kind: 'noop' as const };
                 conversation.appendAssistantMessage(finalContent);

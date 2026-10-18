@@ -1,10 +1,13 @@
-import { MediaAdmissionError } from '../../errors.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../backend-descriptor-attachment.ts';
+import {
+  generateAdmitsMedia,
+  noBackendAdmitsMedia,
+  requestMediaRequirements,
+} from '../media-dispatch.ts';
 import type { BackendDescriptor } from '../model-catalog.ts';
-import { evaluateInputMedia, locateInputMedia } from '../selection.ts';
 import type { GenerateContext, GenerateFunction, GenerateResponse } from '../types.ts';
 import type { ModelRoute, RoutingDecision, RoutingOptions } from './types.ts';
 
@@ -81,40 +84,23 @@ function unionDescriptors(
 }
 
 /**
- * The routes whose backends admit the step's media. A route that attaches no
- * descriptor is opaque and is kept: nothing says it cannot take the media. With no
- * media every route is a candidate; with media and no admitting route, the step is
- * refused.
+ * The reachable routes whose backends admit the step's media, judged by the
+ * shared dispatcher filter (`generateAdmitsMedia`): a route with no descriptor is
+ * opaque and is kept, and one is a candidate when at least one of its backends
+ * takes every part. Reachable means the routes `routeMap` keeps: two routes
+ * sharing a name are never both reachable, so the shadowed one is never a
+ * candidate either. With no media every reachable route is a candidate; with
+ * media and no admitting route, the step is refused.
  */
 function routesAdmittingMedia(
   context: GenerateContext,
-  routes: readonly ModelRoute[],
+  reachable: readonly ModelRoute[],
 ): readonly ModelRoute[] {
-  const requirements = locateInputMedia(context.conversation, context.resolvedSources).map(
-    ({ requirement }) => requirement,
-  );
-  if (requirements.length === 0) return routes;
-  const admitting = routes.filter((route) =>
-    readBackendDescriptors(route.generate).every(
-      (descriptor) => evaluateInputMedia(descriptor, requirements).eligible,
-    ),
-  );
-  if (admitting.length === 0) throw noRouteAdmitsMedia(context);
+  const requirements = requestMediaRequirements(context);
+  if (requirements.length === 0) return reachable;
+  const admitting = reachable.filter((route) => generateAdmitsMedia(route.generate, requirements));
+  if (admitting.length === 0) throw noBackendAdmitsMedia(context, 'no-route-admits-media');
   return admitting;
-}
-
-function noRouteAdmitsMedia(context: GenerateContext): MediaAdmissionError {
-  return new MediaAdmissionError(
-    locateInputMedia(context.conversation, context.resolvedSources).map(
-      ({ messageId, partIndex, part }) => ({
-        messageId,
-        partIndex,
-        modality: part.type,
-        outcome: 'unsupported' as const,
-        reason: 'no-route-admits-media' as const,
-      }),
-    ),
-  );
 }
 
 /**
@@ -172,6 +158,8 @@ export function createRoutingGenerate(options: RoutingOptions): GenerateFunction
   // actually invokes.
   const routes = options.routes.map((route) => Object.freeze({ ...route }));
   const routeMap = new Map(routes.map((r) => [r.name, r]));
+  // The routes dispatch can reach: last-write-wins by name, like `routeMap.get`.
+  const reachable = [...routeMap.values()];
 
   const generate: GenerateFunction = async (
     context: GenerateContext,
@@ -184,10 +172,12 @@ export function createRoutingGenerate(options: RoutingOptions): GenerateFunction
     // The strategy chooses among the routes that can, a steering override of one that
     // cannot is refused, and a step no route can take fails here, typed, before any
     // provider call. A step with no media is untouched.
-    const candidates = routesAdmittingMedia(context, routes);
+    const candidates = routesAdmittingMedia(context, reachable);
     const steeringRoute = context.steering?.route;
     if (steeringRoute !== undefined && !candidates.some((route) => route.name === steeringRoute)) {
-      if (routeMap.has(steeringRoute)) throw noRouteAdmitsMedia(context);
+      if (routeMap.has(steeringRoute)) {
+        throw noBackendAdmitsMedia(context, 'no-route-admits-media');
+      }
     }
     const decision: RoutingDecision =
       steeringRoute !== undefined

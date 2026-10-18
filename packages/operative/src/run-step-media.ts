@@ -1,20 +1,49 @@
 /**
  * Per-step media admission (COR-716).
  *
- * Before a step reaches the input guardrail, context assembly, or the provider,
- * every media part in the conversation is resolved and costed:
+ * The invariant: every `GenerateContext` handed to the run's `generate` carries
+ * a `resolvedSources` that {@link StepMediaAdmission.admit} derived from that
+ * context's own conversation, immediately before the call, against the backends
+ * the call can reach. A derivation is never carried across a mutation: a
+ * `prepareStep` hook, a `beforeGenerate` handler, a retry mutator, and the
+ * `onMaximumSteps` tail each get a fresh derivation for the conversation they
+ * leave behind, so no site needs its own fingerprint of what admission saw.
  *
- * 1. A part whose source kind no provider lists (a managed asset, an upload, a
- *    local file, an MCP resource, an A2A reference) is projected through the
- *    run's `ContentSourceResolver`. The stored message keeps the original
- *    source; the projection travels beside it in `resolvedSources`.
- * 2. Each part is costed by the run's `MediaCostEstimator`, which defaults to a
- *    catalog estimator built from the descriptors the `generate` function
- *    carries.
- * 3. Any part that is not `estimated` fails the step with a
- *    {@link MediaAdmissionError}, before any provider call.
+ * One derivation does, in order:
  *
- * A conversation with no media part skips all of it.
+ * 1. **Resolve.** A part whose source kind no provider lists (a managed asset,
+ *    an upload, a local file, an MCP resource, an A2A reference) is projected
+ *    through the run's `ContentSourceResolver`; with no resolver it is
+ *    unavailable, whatever the estimator would say. The stored message keeps
+ *    the original source; the projection travels beside it in
+ *    `resolvedSources`. A resolution is memoized per part for the step, so the
+ *    preview the input guardrail inspected and the binding derivation before
+ *    the call see the same bytes and the same safety verdict, and an unchanged
+ *    conversation costs no resolver call.
+ * 2. **Fit.** A media type from a data URL or the resolver must fit the part's
+ *    modality, as a declared one must at the schema.
+ * 3. **Verdict.** Admission owns the safety verdict for every resolved part: a
+ *    `flagged` asset is always refused, an `unknown` one when `assetSafety.unknown`
+ *    is `'block'`. It holds with no input guardrail, with one that only warns,
+ *    and for an asset that arrived in an earlier turn.
+ * 4. **Backends.** Each reachable backend is judged on the whole request with
+ *    `evaluateInputMedia`, the evaluator selection uses. The request is admitted
+ *    when at least one backend takes every part; dispatch (routing, fallover,
+ *    fallback) is then limited to those backends, through `generateAdmitsMedia`.
+ * 5. **Cost.** Each part is costed by the run's `MediaCostEstimator`, which
+ *    defaults to the catalog estimator over the admitting backends.
+ *
+ * Any part that is not `estimated` fails the step with a
+ * {@link MediaAdmissionError}, before any provider call. A conversation with no
+ * media part skips all of it.
+ *
+ * Two mutation sites sit outside what a derivation can cover, by design:
+ * a background compaction can publish a compacted history between the
+ * derivation and the call (COR-808), which is safe because it only removes
+ * messages and keeps their ids, so a stale map is a superset of what the
+ * adapter substitutes; and a provider's own `pinnedMessages` are host
+ * configuration assembled inside the provider, never user input, so they do not
+ * pass admission.
  */
 import type {
   ContentSource,
@@ -31,7 +60,11 @@ import { MediaAdmissionError } from './errors';
 import { RunErrorEvent } from './events';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { BackendDescriptor } from './providers/model-catalog';
-import { type InputMediaRequirement, locateInputMedia } from './providers/selection';
+import {
+  evaluateInputMedia,
+  type InputMediaRequirement,
+  locateInputMedia,
+} from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 
 /** The source kinds a provider adapter can carry without a resolver. */
@@ -51,6 +84,21 @@ export interface StepMedia {
   readonly estimate: MediaCostEstimator;
 }
 
+/** The step outcome a failed derivation becomes: always an error, never a skip. */
+export type MediaRefusal = Extract<StepOutcome, { kind: 'error' }>;
+
+/**
+ * One step's admission. `derive` and `admit` compute the same thing; `derive`
+ * throws (for a caller inside a `try` that already reports errors), `admit`
+ * dispatches the `run.error` event and returns the step outcome.
+ */
+export interface StepMediaAdmission {
+  /** Derives the media admission for `conversation` as it is now; throws on refusal. */
+  derive(conversation: Conversation): Promise<StepMedia>;
+  /** Like `derive`, but reports a refusal as the step's error outcome. */
+  admit(conversation: Conversation): Promise<StepMedia | MediaRefusal>;
+}
+
 interface LocatedMedia {
   readonly part: MediaContent;
   readonly messageId: string;
@@ -66,85 +114,6 @@ function locateMedia(conversation: Conversation): LocatedMedia[] {
     });
   }
   return located;
-}
-
-/**
- * Refuses the parts past a backend's per-request cap on a modality. Counted in
- * conversation order across every located part, against the smallest cap among
- * the backends that accept the modality (the run may be served by any of them).
- */
-function overCountParts(
-  located: readonly LocatedMedia[],
-  descriptors: readonly BackendDescriptor[],
-): Map<string, UnadmittedMediaCost> {
-  const refusals = new Map<string, UnadmittedMediaCost>();
-  const seen = new Map<MediaContent['type'], number>();
-  for (const { part, messageId, partIndex } of located) {
-    const caps = descriptors
-      .filter((descriptor) => descriptor.modalities[part.type].input)
-      .flatMap((descriptor) =>
-        descriptor.mediaCounts
-          .filter((count) => count.modality === part.type)
-          .map((count) => count.maxPerRequest),
-      );
-    const count = (seen.get(part.type) ?? 0) + 1;
-    seen.set(part.type, count);
-    if (caps.length > 0 && count > Math.min(...caps)) {
-      refusals.set(`${messageId}:${partIndex}`, {
-        messageId,
-        partIndex,
-        modality: part.type,
-        outcome: 'unsupported',
-        reason: 'media-count-exceeded',
-      });
-    }
-  }
-  return refusals;
-}
-
-/**
- * Refuses the parts past a backend's aggregate byte limit on a modality. The
- * bytes of every located part whose size is known (a resolved source counts as
- * its resolved bytes) are summed in conversation order, against the smallest
- * aggregate cap among the backends that accept the modality. A part of unknown
- * size adds nothing, so only declared sizes can trip the limit.
- */
-function overAggregateParts(
-  located: readonly LocatedMedia[],
-  descriptors: readonly BackendDescriptor[],
-  resolved: ReadonlyMap<string, ResolvedMediaSource>,
-): Map<string, UnadmittedMediaCost> {
-  const refusals = new Map<string, UnadmittedMediaCost>();
-  const totals = new Map<MediaContent['type'], number>();
-  for (const { part, messageId, partIndex } of located) {
-    const key = `${messageId}:${partIndex}`;
-    const entry = resolved.get(key);
-    const byteLength = entry?.byteLength ?? sourceByteLength(entry?.source ?? part.source);
-    if (byteLength === undefined) continue;
-    const total = (totals.get(part.type) ?? 0) + byteLength;
-    totals.set(part.type, total);
-    const caps = descriptors
-      .filter((descriptor) => descriptor.modalities[part.type].input)
-      .flatMap((descriptor) =>
-        descriptor.mediaLimits.flatMap((limit) =>
-          limit.modality === part.type &&
-          limit.scope === 'aggregate' &&
-          limit.maxBytes !== undefined
-            ? [limit.maxBytes]
-            : [],
-        ),
-      );
-    if (caps.length > 0 && total > Math.min(...caps)) {
-      refusals.set(key, {
-        messageId,
-        partIndex,
-        modality: part.type,
-        outcome: 'unbounded',
-        reason: 'media-limit-exceeded',
-      });
-    }
-  }
-  return refusals;
 }
 
 /**
@@ -170,160 +139,260 @@ function dataUrlMimeType(source: ContentSource): string | undefined {
   return source.kind === 'data-url' ? parseDataUrl(source.url)?.mimeType : undefined;
 }
 
-/** A stable fingerprint of every media part and where it sits, to notice a change. */
-export function mediaFingerprint(conversation: Conversation): string {
-  return JSON.stringify(
-    locateMedia(conversation).map(({ part, messageId, partIndex }) => [messageId, partIndex, part]),
-  );
+type Resolution =
+  | { readonly outcome: 'resolved'; readonly source: ResolvedMediaSource }
+  | { readonly outcome: 'unavailable' };
+
+/** A memoized resolution, valid while the part at its position is unchanged. */
+interface MemoizedResolution {
+  readonly identity: string;
+  readonly resolution: Resolution;
 }
 
-/** Whether `conversation` holds any media part a step must admit. */
-export function conversationHasMedia(conversation: Conversation): boolean {
-  return locateMedia(conversation).length > 0;
+function unsupported(
+  located: LocatedMedia,
+  reason: Extract<UnadmittedMediaCost, { outcome: 'unsupported' }>['reason'],
+): UnadmittedMediaCost {
+  return {
+    messageId: located.messageId,
+    partIndex: located.partIndex,
+    modality: located.part.type,
+    outcome: 'unsupported',
+    reason,
+  };
+}
+
+/** The largest cap among `caps`, or `undefined` when any backend declares none (and so has no cap). */
+function largestCap(caps: readonly (number | undefined)[]): number | undefined {
+  return caps.every((cap): cap is number => cap !== undefined) ? Math.max(...caps) : undefined;
 }
 
 /**
- * Resolves and costs the step's media. Returns the {@link StepMedia}, or a
- * `StepOutcome` of kind `error` when any part cannot be admitted.
+ * Names the parts to blame when no backend takes the whole request. A part no
+ * backend takes on its own keeps that specific reason. Among the backends that
+ * take every part on its own, the parts past the largest per-request count cap
+ * are `media-count-exceeded` and the parts past the largest aggregate byte cap
+ * are `media-limit-exceeded`, in conversation order. When nothing singles a
+ * part out, every part is refused as `no-backend-admits-media`.
  */
-export async function admitStepMedia(input: {
-  readonly deps: StepDeps;
-  readonly conversation: Conversation;
-  readonly step: number;
-  readonly emitter: EventDispatcher | undefined;
-}): Promise<StepMedia | StepOutcome> {
-  const { deps, conversation, step, emitter } = input;
-  const located = locateMedia(conversation);
-  const descriptors = readBackendDescriptors(deps.generate);
-
-  if (located.length === 0) {
-    return {
-      resolvedSources: undefined,
-      mediaTokens: 0,
-      estimate: deps.mediaCostEstimator ?? createCatalogMediaCostEstimator(descriptors),
-    };
+function refusalsWhenNoBackendAdmits(input: {
+  readonly located: readonly LocatedMedia[];
+  readonly requirements: readonly InputMediaRequirement[];
+  readonly descriptors: readonly BackendDescriptor[];
+  readonly resolvedSources: ResolvedMediaSources | undefined;
+  readonly partAlone: MediaCostEstimator;
+}): Map<string, UnadmittedMediaCost> {
+  const { located, requirements, descriptors, resolvedSources, partAlone } = input;
+  const refusals = new Map<string, UnadmittedMediaCost>();
+  for (const entry of located) {
+    const alone = partAlone(entry.part, { messageId: entry.messageId, partIndex: entry.partIndex });
+    if (alone.outcome !== 'estimated') refusals.set(`${entry.messageId}:${entry.partIndex}`, alone);
   }
-
-  const resolved = new Map<string, ResolvedMediaSource>();
-  const unavailable = new Map<string, UnadmittedMediaCost>();
-  if (deps.contentSourceResolver !== undefined) {
-    for (const { part, messageId, partIndex } of located) {
-      if (WIRE_SOURCE_KINDS.has(part.source.kind)) continue;
-      let result: Awaited<ReturnType<typeof deps.contentSourceResolver>>;
-      try {
-        result = await deps.contentSourceResolver(part, { messageId, partIndex });
-      } catch (error) {
-        emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
-        return { kind: 'error', error, errorKind: 'policy' };
+  const takingEach = descriptors.filter((descriptor) =>
+    requirements.every((requirement) => evaluateInputMedia(descriptor, [requirement]).eligible),
+  );
+  if (takingEach.length > 0) {
+    const seen = new Map<MediaContent['type'], number>();
+    const totals = new Map<MediaContent['type'], number>();
+    for (const entry of located) {
+      const key = `${entry.messageId}:${entry.partIndex}`;
+      if (refusals.has(key)) continue;
+      const modality = entry.part.type;
+      const count = (seen.get(modality) ?? 0) + 1;
+      seen.set(modality, count);
+      const countCap = largestCap(
+        takingEach.map(
+          (descriptor) =>
+            descriptor.mediaCounts.find((cap) => cap.modality === modality)?.maxPerRequest,
+        ),
+      );
+      if (countCap !== undefined && count > countCap) {
+        refusals.set(key, unsupported(entry, 'media-count-exceeded'));
+        continue;
       }
-      const key = `${messageId}:${partIndex}`;
-      if (result.outcome === 'resolved') {
-        resolved.set(key, result);
-      } else {
-        unavailable.set(key, {
-          messageId,
-          partIndex,
-          modality: part.type,
-          outcome: 'unsupported',
-          reason: 'source-form-not-accepted',
+      const resolution = resolvedSources?.get(key);
+      const byteLength =
+        resolution?.byteLength ?? sourceByteLength(resolution?.source ?? entry.part.source);
+      if (byteLength === undefined) continue;
+      const total = (totals.get(modality) ?? 0) + byteLength;
+      totals.set(modality, total);
+      const aggregateCap = largestCap(
+        takingEach.map(
+          (descriptor) =>
+            descriptor.mediaLimits.find(
+              (limit) =>
+                limit.modality === modality &&
+                limit.scope === 'aggregate' &&
+                limit.maxBytes !== undefined,
+            )?.maxBytes,
+        ),
+      );
+      if (aggregateCap !== undefined && total > aggregateCap) {
+        refusals.set(key, {
+          messageId: entry.messageId,
+          partIndex: entry.partIndex,
+          modality,
+          outcome: 'unbounded',
+          reason: 'media-limit-exceeded',
         });
       }
     }
   }
-  // A media type that comes from outside the schema's reach (a data URL's own header,
-  // or what a resolver reported) must fit the part's modality as a declared one does.
-  for (const { part, messageId, partIndex } of located) {
-    const key = `${messageId}:${partIndex}`;
-    if (unavailable.has(key)) continue;
-    const entry = resolved.get(key);
-    const declared = [
-      entry?.mimeType,
-      dataUrlMimeType(part.source),
-      entry === undefined ? undefined : dataUrlMimeType(entry.source),
-    ];
-    if (
-      declared.some(
-        (mimeType) => mimeType !== undefined && !mimeTypeFitsModality(part.type, mimeType),
-      )
-    ) {
-      resolved.delete(key);
-      unavailable.set(key, {
-        messageId,
-        partIndex,
-        modality: part.type,
-        outcome: 'unsupported',
-        reason: 'mime-type-mismatch',
-      });
+  if (refusals.size === 0) {
+    for (const entry of located) {
+      refusals.set(
+        `${entry.messageId}:${entry.partIndex}`,
+        unsupported(entry, 'no-backend-admits-media'),
+      );
     }
   }
-  const resolvedSources: ResolvedMediaSources | undefined =
-    resolved.size > 0 ? resolved : undefined;
-
-  const estimate =
-    deps.mediaCostEstimator ?? createCatalogMediaCostEstimator(descriptors, { resolvedSources });
-  const countRefusals = overCountParts(located, descriptors);
-  const aggregateRefusals = overAggregateParts(located, descriptors, resolved);
-  const outcomes: MediaCostOutcome[] = located.map(({ part, messageId, partIndex }) => {
-    const key = `${messageId}:${partIndex}`;
-    return (
-      unavailable.get(key) ??
-      countRefusals.get(key) ??
-      aggregateRefusals.get(key) ??
-      estimate(part, { messageId, partIndex })
-    );
-  });
-
-  const refused = outcomes.filter(
-    (outcome): outcome is UnadmittedMediaCost => outcome.outcome !== 'estimated',
-  );
-  if (refused.length > 0) {
-    const error = new MediaAdmissionError(refused);
-    emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
-    return { kind: 'error', error, errorKind: 'policy' };
-  }
-  const mediaTokens = outcomes.reduce(
-    (sum, outcome) => sum + (outcome.outcome === 'estimated' ? outcome.tokens : 0),
-    0,
-  );
-  return { resolvedSources, mediaTokens, estimate };
+  return refusals;
 }
 
 /**
- * Admission's safety verdict for the media a step will send (COR-716), applied to
- * every media part in the conversation, in every message, on every path: a
- * `flagged` asset is always refused, and an `unknown` one when the run's
- * `assetSafety` policy is `'block'`. It reads the resolutions admission produced,
- * not a guardrail's verdict, so it holds with no input guardrail, with one in
- * `warn` mode, and for assets that arrived in an earlier turn or from a
- * `beforeGenerate` handler. Returns the failing step outcome, or `undefined`.
+ * Creates the admission for one step. Call {@link StepMediaAdmission.admit} on
+ * the conversation at the step boundary (the preview selection, budgeting, and
+ * the input guardrail read) and again on the exact conversation each
+ * `generate` call receives.
  */
-export function refuseUnsafeMedia(input: {
+export function createStepMediaAdmission(input: {
   readonly deps: StepDeps;
-  readonly conversation: Conversation;
-  readonly resolvedSources: ResolvedMediaSources | undefined;
   readonly step: number;
   readonly emitter: EventDispatcher | undefined;
-}): StepOutcome | undefined {
-  const { deps, conversation, resolvedSources, step, emitter } = input;
-  if (resolvedSources === undefined) return undefined;
-  const blockUnknown = deps.assetSafety?.unknown === 'block';
-  const refused: UnadmittedMediaCost[] = [];
-  for (const { part, messageId, partIndex } of locateMedia(conversation)) {
-    const resolved = resolvedSources.get(`${messageId}:${partIndex}`);
-    if (resolved === undefined) continue;
-    const flagged = resolved.safety === 'flagged';
-    const unverified = resolved.safety === 'unknown' && blockUnknown;
-    if (!flagged && !unverified) continue;
-    refused.push({
-      messageId,
-      partIndex,
-      modality: part.type,
-      outcome: 'unsupported',
-      reason: flagged ? 'asset-flagged' : 'asset-unverified',
-    });
+}): StepMediaAdmission {
+  const { deps, step, emitter } = input;
+  const descriptors = readBackendDescriptors(deps.generate);
+  const memo = new Map<string, MemoizedResolution>();
+
+  async function resolve(located: LocatedMedia): Promise<Resolution> {
+    const { part, messageId, partIndex } = located;
+    const key = `${messageId}:${partIndex}`;
+    // A non-wire part never carries bytes, so its JSON is small and names it exactly.
+    const identity = JSON.stringify(part);
+    const remembered = memo.get(key);
+    if (remembered !== undefined && remembered.identity === identity) return remembered.resolution;
+    const resolver = deps.contentSourceResolver;
+    const result =
+      resolver === undefined ? undefined : await resolver(part, { messageId, partIndex });
+    const resolution: Resolution =
+      result?.outcome === 'resolved'
+        ? { outcome: 'resolved', source: result }
+        : { outcome: 'unavailable' };
+    memo.set(key, { identity, resolution });
+    return resolution;
   }
-  if (refused.length === 0) return undefined;
-  const error = new MediaAdmissionError(refused);
-  emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
-  return { kind: 'error', error, errorKind: 'policy' };
+
+  async function derive(conversation: Conversation): Promise<StepMedia> {
+    const located = locateMedia(conversation);
+    if (located.length === 0) {
+      return {
+        resolvedSources: undefined,
+        mediaTokens: 0,
+        estimate: deps.mediaCostEstimator ?? createCatalogMediaCostEstimator(descriptors),
+      };
+    }
+
+    const resolved = new Map<string, ResolvedMediaSource>();
+    const refusals = new Map<string, UnadmittedMediaCost>();
+    const blockUnknown = deps.assetSafety?.unknown === 'block';
+    for (const entry of located) {
+      const key = `${entry.messageId}:${entry.partIndex}`;
+      if (WIRE_SOURCE_KINDS.has(entry.part.source.kind)) continue;
+      // A non-wire source with no resolver, or one the resolver cannot project,
+      // is unavailable at admission whatever the estimator would say.
+      const resolution = await resolve(entry);
+      if (resolution.outcome === 'unavailable') {
+        refusals.set(key, unsupported(entry, 'source-form-not-accepted'));
+        continue;
+      }
+      resolved.set(key, resolution.source);
+    }
+    // A media type that comes from outside the schema's reach (a data URL's own header,
+    // or what a resolver reported) must fit the part's modality as a declared one does.
+    for (const entry of located) {
+      const key = `${entry.messageId}:${entry.partIndex}`;
+      if (refusals.has(key)) continue;
+      const resolution = resolved.get(key);
+      const declared = [
+        resolution?.mimeType,
+        dataUrlMimeType(entry.part.source),
+        resolution === undefined ? undefined : dataUrlMimeType(resolution.source),
+      ];
+      if (
+        declared.some(
+          (mimeType) => mimeType !== undefined && !mimeTypeFitsModality(entry.part.type, mimeType),
+        )
+      ) {
+        resolved.delete(key);
+        refusals.set(key, unsupported(entry, 'mime-type-mismatch'));
+      }
+    }
+    // Admission's safety verdict, for every resolved part in every message.
+    for (const entry of located) {
+      const key = `${entry.messageId}:${entry.partIndex}`;
+      const resolution = resolved.get(key);
+      if (resolution === undefined || refusals.has(key)) continue;
+      if (resolution.safety === 'flagged') {
+        refusals.set(key, unsupported(entry, 'asset-flagged'));
+      } else if (resolution.safety === 'unknown' && blockUnknown) {
+        refusals.set(key, unsupported(entry, 'asset-unverified'));
+      }
+    }
+    const resolvedSources: ResolvedMediaSources | undefined =
+      resolved.size > 0 ? resolved : undefined;
+
+    // Each reachable backend is judged on the whole request; the request is
+    // admitted when at least one takes every part, and costed against those.
+    const requirements = locateInputMedia(conversation, resolvedSources).map(
+      ({ requirement }) => requirement,
+    );
+    const admitting = descriptors.filter(
+      (descriptor) => evaluateInputMedia(descriptor, requirements).eligible,
+    );
+    const noBackendAdmits = descriptors.length > 0 && admitting.length === 0;
+    const estimate =
+      deps.mediaCostEstimator ??
+      createCatalogMediaCostEstimator(admitting.length > 0 ? admitting : descriptors, {
+        resolvedSources,
+      });
+    // When no backend takes the whole request, blame the parts that single it
+    // out, not the set; see `refusalsWhenNoBackendAdmits`.
+    const blamed = noBackendAdmits
+      ? refusalsWhenNoBackendAdmits({
+          located,
+          requirements,
+          descriptors,
+          resolvedSources,
+          partAlone: createCatalogMediaCostEstimator(descriptors, { resolvedSources }),
+        })
+      : new Map<string, UnadmittedMediaCost>();
+    const outcomes: MediaCostOutcome[] = located.map((entry) => {
+      const key = `${entry.messageId}:${entry.partIndex}`;
+      const refused = refusals.get(key) ?? blamed.get(key);
+      if (refused !== undefined) return refused;
+      return estimate(entry.part, { messageId: entry.messageId, partIndex: entry.partIndex });
+    });
+
+    const refused = outcomes.filter(
+      (outcome): outcome is UnadmittedMediaCost => outcome.outcome !== 'estimated',
+    );
+    if (refused.length > 0) throw new MediaAdmissionError(refused);
+    const mediaTokens = outcomes.reduce(
+      (sum, outcome) => sum + (outcome.outcome === 'estimated' ? outcome.tokens : 0),
+      0,
+    );
+    return { resolvedSources, mediaTokens, estimate };
+  }
+
+  return {
+    derive,
+    async admit(conversation) {
+      try {
+        return await derive(conversation);
+      } catch (error) {
+        emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+        return { kind: 'error', error, errorKind: 'policy' };
+      }
+    },
+  };
 }

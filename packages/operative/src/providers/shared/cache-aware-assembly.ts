@@ -37,6 +37,10 @@ import type { GenerateContext } from '../types.ts';
  * out silently: if the assembly omits one, whether because a part could not be
  * costed or because the budget cannot hold it, the request fails with a
  * `MediaAdmissionError` naming the parts.
+ *
+ * `pinnedMessages` are host configuration, assembled here inside the provider,
+ * never user input: they do not pass run-step admission (COR-716), and a media
+ * part among them reaches the adapter on the host's own authority.
  */
 export function createCacheAwareAssembly(
   assembler: ContextAssembler,
