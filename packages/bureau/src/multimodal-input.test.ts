@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
@@ -311,7 +312,7 @@ describe('session input carrying a managed asset (COR-716)', () => {
       }
       return { content: 'done', toolCalls: [] };
     }, anthropicDescriptors);
-    const bureau = await createBureau({
+    const bureau = await createBureau<AgentDefinitions>({
       agents: {
         echo: createAgent({
           generate: agentGenerate,
