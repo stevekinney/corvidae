@@ -487,8 +487,10 @@ describe('provider conversion matrix: lineage and wire shape', () => {
       { type: 'image', source: { kind: 'data-url', url: 'data:image/svg+xml,%3Csvg%2F%3E' } },
     ]);
     const exported = toOpenAIMessages(conversation);
-    const url = (exported.messages[0]?.content as Array<{ image_url: { url: string } }>)[0]!
-      .image_url.url;
+    const content = exported.messages[0]?.content;
+    if (!Array.isArray(content)) throw new Error('expected content parts');
+    const [first] = content;
+    const url = first?.type === 'image_url' ? first.image_url.url : undefined;
     expect(url).toBe(`data:image/svg+xml;base64,${btoa('<svg/>')}`);
     expect(exported.lineage[0]?.transform).not.toBe('passthrough');
   });

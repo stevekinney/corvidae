@@ -287,7 +287,8 @@ describe('SessionHandle.run: ordered parts as input', () => {
     await run.result();
 
     expect(userContents(histories[0])).toEqual([parts()]);
-    const persisted = (await store.load('session-snapshot'))?.conversationHistory;
+    const stored = await store.load('session-snapshot');
+    const persisted = stored?.conversationHistory;
     expect(userContents(persisted)).toEqual([parts()]);
   });
 
@@ -506,7 +507,8 @@ describe('media admission: a part is delivered or refused before generation', ()
 
   it('costs an unsized remote image at the backend’s per-image cap, and admits it', async () => {
     const { seen, result } = run([image()], {});
-    expect((await result).finishReason).toBe('stop-condition');
+    const finished = await result;
+    expect(finished.finishReason).toBe('stop-condition');
     expect(seen.contexts).toHaveLength(1);
   });
 
@@ -564,10 +566,12 @@ describe('media admission: a part is delivered or refused before generation', ()
 
     // At the cap it is admitted; a 1M-token window allows 600.
     const atCap = run(Array.from({ length: 100 }, inlineImage), {}, [haiku]);
-    expect((await atCap.result).finishReason).toBe('stop-condition');
+    const atCapOutcome = await atCap.result;
+    expect(atCapOutcome.finishReason).toBe('stop-condition');
     const sonnet = catalog.descriptors.find((d) => d.model === 'claude-sonnet-5-5')!;
     const wide = run(Array.from({ length: 101 }, inlineImage), {}, [sonnet]);
-    expect((await wide.result).finishReason).toBe('stop-condition');
+    const wideOutcome = await wide.result;
+    expect(wideOutcome.finishReason).toBe('stop-condition');
   });
 
   describe('a beforeGenerate handler cannot add media past admission', () => {
@@ -649,7 +653,8 @@ describe('media admission: a part is delivered or refused before generation', ()
 
     it('leaves a handler that changes no media alone', async () => {
       const { seen, result } = withHook(() => undefined);
-      expect((await result).finishReason).toBe('stop-condition');
+      const finished = await result;
+      expect(finished.finishReason).toBe('stop-condition');
       expect(seen.contexts).toHaveLength(1);
     });
   });

@@ -441,7 +441,7 @@ describe('createModelCatalog: catalog invariants', () => {
     const anthropicCounts = new Set(
       catalog.descriptors.filter((row) => row.provider === 'anthropic').map(imageCount),
     );
-    expect([...anthropicCounts].toSorted()).toEqual([100, 600]);
+    expect([...anthropicCounts].toSorted((a, b) => (a ?? 0) - (b ?? 0))).toEqual([100, 600]);
   });
 
   it('has Gemini fetch remote URLs itself only on models that support external URLs', () => {

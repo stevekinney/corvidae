@@ -429,7 +429,8 @@ describe('createInputGuardrail: media parts cannot bypass inspection (COR-716)',
     async (_label, source) => {
       const part: MultiModalContent = { type: 'document', source };
       const block = createInputGuardrail({ detectors: [keywordDetector] });
-      expect((await block(contextWith([part])))?.content).toContain('blocked');
+      const blocked = await block(contextWith([part]));
+      expect(blocked?.content).toContain('blocked');
 
       const sanitize = createInputGuardrail({ detectors: [keywordDetector], action: 'sanitize' });
       const context = contextWith([part]);
