@@ -8,6 +8,9 @@ import {
   toAnthropicMessages,
 } from 'conversationalist';
 
+import { concatenateTextParts } from '../response-parts.ts';
+import type { PartDelta } from '../streaming/types.ts';
+import { ANTHROPIC_CONTROL_EVENT_TYPES, anthropicOpeningState } from './anthropic-blocks.ts';
 import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
@@ -21,9 +24,6 @@ import {
   buildAnthropicMessageRequest,
 } from './anthropic-shared.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
-import { concatenateTextParts } from '../response-parts.ts';
-import type { PartDelta } from '../streaming/types.ts';
-import { ANTHROPIC_CONTROL_EVENT_TYPES } from './anthropic-blocks.ts';
 import { ProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveAnthropicEffort } from './shared/effort.ts';
@@ -251,41 +251,6 @@ function handleAnthropicMessageStart(
   state.cacheReadTokens = event.message?.usage?.cache_read_input_tokens;
 }
 
-/** The accumulator state a block opens with, or `undefined` for a block that is not a content part. */
-function openingState(
-  block: NonNullable<import('./types.ts').AnthropicStreamEvent['content_block']>,
-): BlockAccumulatorState | undefined {
-  switch (block.type) {
-    case 'text':
-      return { type: 'text', buffer: block.text ?? '' };
-    case 'thinking':
-      return { type: 'thinking', buffer: block.thinking ?? '', signature: block.signature ?? '' };
-    case 'redacted_thinking':
-      return { type: 'redacted_thinking', data: block.data ?? '' };
-    case 'server_tool_use':
-      return { type: 'server_tool_use', id: block.id ?? '', name: block.name ?? '', inputBuffer: '' };
-    case 'container_upload':
-      return { type: 'container_upload', file_id: block.file_id ?? '' };
-    case 'web_search_tool_result':
-      return {
-        type: 'web_search_tool_result',
-        tool_use_id: block.tool_use_id ?? '',
-        content: (block.content ?? null) as JSONValue,
-      };
-    case 'web_fetch_tool_result':
-    case 'code_execution_tool_result':
-    case 'bash_code_execution_tool_result':
-    case 'text_editor_code_execution_tool_result':
-      return {
-        type: block.type,
-        tool_use_id: block.tool_use_id ?? '',
-        content: (block.content ?? null) as JSONValue,
-      };
-    default:
-      return undefined;
-  }
-}
-
 function partKindOf(blockState: BlockAccumulatorState): MultiModalContent['type'] {
   return blockState.type === 'tool_use' ? 'text' : blockState.type;
 }
@@ -305,7 +270,7 @@ function handleAnthropicBlockStart(
       streaming.report?.({ type: 'stream:tool-call-start', toolName: pending.name, blockId });
     return;
   }
-  const opening = openingState(block);
+  const opening = anthropicOpeningState(block);
   if (opening === undefined) {
     state.violation ??= { blockType: block.type, position: event.index };
     return;
@@ -357,7 +322,8 @@ function handleAnthropicBlockDelta(
     const thinking = delta.thinking ?? '';
     if (thinking === '') return;
     block?.appendThinkingDelta(thinking);
-    if (entry !== undefined) reportDelta(state, streaming, entry.partIndex, { kind: 'thinking', thinking });
+    if (entry !== undefined)
+      reportDelta(state, streaming, entry.partIndex, { kind: 'thinking', thinking });
     return;
   }
   if (delta.type === 'signature_delta') {

@@ -5,6 +5,7 @@ import { Conversation, type MultiModalContent } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';
+import { createAgent } from '../src/create-agent';
 import { createActiveRun } from '../src/create-run';
 import {
   agentRunErrorToJSON,
@@ -22,6 +23,8 @@ import {
 import { createGeminiProvider, createGeminiProviderStream } from '../src/providers/gemini';
 import { createGeminiPartMapper } from '../src/providers/gemini-parts';
 import { createOpenAIProvider, createOpenAIProviderStream } from '../src/providers/openai';
+import { normalizeAnthropicStream } from '../src/providers/streaming/normalize-anthropic';
+import { normalizeOpenAIStream } from '../src/providers/streaming/normalize-openai';
 import {
   createMockAnthropicClient,
   createMockAnthropicStreamingClient,
@@ -32,7 +35,7 @@ import {
 } from '../src/providers/test/mock-clients';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
-import type { LivePartEvent } from '../src/streaming/types';
+import type { LivePartEvent, StreamEvent } from '../src/streaming/types';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
 import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -542,11 +545,11 @@ describe('cleanup waits for generated-media admissions', () => {
   const imageResponse: GenerateResponse = { content: '', parts: [inlineImage], toolCalls: [] };
 
   function admissionSignal(): { promise: Promise<void>; resolve: () => void } {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => {
-      resolve = done;
+    let release!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    return { promise, resolve };
+    return { promise, resolve: release };
   }
 
   it('holds the terminal result until the admission settles', async () => {
@@ -791,7 +794,7 @@ async function openAIResponse(
   message: Record<string, unknown>,
 ) {
   if (mode === 'non-streaming') {
-    const client = createMockOpenAIClient([completion(message as never)]);
+    const client = createMockOpenAIClient([completion(message)]);
     return createOpenAIProvider({ model: 'gpt-4o', client })(adapterContext());
   }
   const client = createMockOpenAIStreamingClient([chunksFor(message) as never]);
@@ -924,9 +927,7 @@ async function geminiResponse(
 ) {
   const usageMetadata = { promptTokenCount: 8, candidatesTokenCount: 3, totalTokenCount: 11 };
   if (mode === 'non-streaming') {
-    const client = createMockGeminiModel([
-      { candidates: [{ content: { parts } }], usageMetadata } as never,
-    ]);
+    const client = createMockGeminiModel([{ candidates: [{ content: { parts } }], usageMetadata }]);
     return createGeminiProvider({ model: 'gemini-2.5-flash', client })(adapterContext());
   }
   // One part per chunk: the stream delivers what the single response would have.
@@ -934,7 +935,7 @@ async function geminiResponse(
     candidates: [{ content: { parts: [part] } }],
     ...(index === parts.length - 1 ? { usageMetadata } : {}),
   }));
-  const client = createMockGeminiStreamingModel([chunks as never]);
+  const client = createMockGeminiStreamingModel([chunks]);
   return createGeminiProviderStream({ model: 'gemini-2.5-flash', client })(
     adapterContext(recorder.handle),
   );
@@ -1086,5 +1087,193 @@ describe('Gemini part mapper with a backend that advertises image output', () =>
       reason: 'unlisted-block',
       blockType: 'inlineData',
     });
+  });
+});
+
+describe('an unmapped provider block fails the run, is accounted, and is not retried', () => {
+  const unlisted = { type: 'tool_search_tool_result', tool_use_id: 'x', content: [] };
+
+  it.each(ANTHROPIC_MODES)(
+    'Anthropic %s: throws the typed error with provider, block type, position and usage',
+    async (mode) => {
+      const error = await rejectionOf(
+        mode === 'non-streaming'
+          ? createAnthropicProvider({
+              model: 'claude-sonnet-4-6',
+              client: createMockAnthropicClient([
+                { content: [{ type: 'text', text: 'Hi' }, unlisted], usage: usageOf },
+              ] as never),
+            })(adapterContext())
+          : createAnthropicProviderStream({
+              model: 'claude-sonnet-4-6',
+              client: createMockAnthropicStreamingClient([
+                anthropicStreamEventsFor([{ type: 'text', text: 'Hi' }, unlisted]),
+              ]),
+            })(adapterContext()),
+      );
+
+      expect(error).toBeInstanceOf(ProviderContractError);
+      expect(error).toMatchObject({
+        provider: 'anthropic',
+        blockType: 'tool_search_tool_result',
+        partIndex: 1,
+        reason: 'unlisted-block',
+        retryable: false,
+      });
+      expect((error as ProviderContractError).usage).toMatchObject({ prompt: 12, completion: 7 });
+    },
+  );
+
+  it('Anthropic streaming: an unknown delta type is refused after the stream drains', async () => {
+    const events = anthropicStreamEventsFor([{ type: 'text', text: 'Hi' }]);
+    events.splice(3, 0, {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'mystery_delta' },
+    });
+    const error = await rejectionOf(
+      createAnthropicProviderStream({
+        model: 'claude-sonnet-4-6',
+        client: createMockAnthropicStreamingClient([events]),
+      })(adapterContext()),
+    );
+    expect(error).toMatchObject({ blockType: 'mystery_delta', partIndex: 0 });
+    expect((error as ProviderContractError).usage).toMatchObject({ completion: 7 });
+  });
+
+  it('is accounted in the run usage and never retried, with no shouldRetry set', async () => {
+    const client = createMockAnthropicClient([
+      { content: [unlisted], usage: usageOf },
+      { content: [{ type: 'text', text: 'recovered' }], usage: usageOf },
+    ] as never);
+
+    const result = await run(
+      baseOptions(createAnthropicProvider({ model: 'claude-sonnet-4-6', client }), {
+        retry: { attempts: 3 },
+      }),
+    );
+
+    expect(result.finishReason).toBe('error');
+    // The loop wraps a provider error, keeping it as the cause (the ToolCallParseError precedent).
+    expect((result.error as { cause?: unknown }).cause).toBeInstanceOf(ProviderContractError);
+    expect(client._calls).toHaveLength(1);
+    expect(result.usage).toMatchObject({ prompt: 12, completion: 7 });
+  });
+
+  it('still retries an ordinary transient failure under the same options', async () => {
+    const client = createMockAnthropicClient(
+      [{ content: [{ type: 'text', text: 'ok' }], usage: usageOf }] as never,
+      [Object.assign(new Error('overloaded'), { status: 529 })],
+    );
+    const result = await run(
+      baseOptions(createAnthropicProvider({ model: 'claude-sonnet-4-6', client }), {
+        retry: { attempts: 2 },
+      }),
+    );
+    expect(result.finishReason).toBe('stop-condition');
+    expect(client._calls).toHaveLength(2);
+  });
+});
+
+async function collect(stream: AsyncIterable<StreamEvent>): Promise<StreamEvent[]> {
+  const events: StreamEvent[] = [];
+  for await (const event of stream) events.push(event);
+  return events;
+}
+
+async function* iterate<T>(items: readonly T[]): AsyncIterable<T> {
+  for (const item of items) yield item;
+}
+
+describe('the public stream normalizers report parts and refuse unmapped output (COR-713)', () => {
+  it('Anthropic: emits part events beside the legacy block events, with the signature on the completed thinking part', async () => {
+    const events = await collect(
+      normalizeAnthropicStream(
+        iterate(anthropicStreamEventsFor([thinkingBlock, citedTextBlock, toolUseBlock])),
+        { messageId: 'row-1' },
+      ),
+    );
+
+    const partEvents = events.filter((event) => event.type.startsWith('stream:part-'));
+    expect(
+      partEvents.map((event) => [event.type, 'partIndex' in event ? event.partIndex : -1]),
+    ).toEqual([
+      ['stream:part-start', 0],
+      ['stream:part-delta', 0],
+      ['stream:part-delta', 0],
+      ['stream:part-complete', 0],
+      ['stream:part-start', 1],
+      ['stream:part-delta', 1],
+      ['stream:part-delta', 1],
+      ['stream:part-delta', 1],
+      ['stream:part-complete', 1],
+    ]);
+    const completed = events.filter((event) => event.type === 'stream:part-complete');
+    expect(completed.map((event) => event.part)).toEqual([thinkingBlock, citedTextBlock] as never);
+    expect(partEvents.every((event) => 'messageId' in event && event.messageId === 'row-1')).toBe(
+      true,
+    );
+    // The legacy surface is unchanged: block events, text deltas, the tool call and one completion.
+    expect(events.filter((event) => event.type === 'stream:tool-call-complete')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream:text-delta').length).toBeGreaterThan(0);
+    expect(events.filter((event) => event.type === 'stream:complete')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream:error')).toHaveLength(0);
+  });
+
+  it('Anthropic: an unlisted block or delta yields a stream:error carrying the typed contract error', async () => {
+    const unlisted = { type: 'tool_search_tool_result', tool_use_id: 'x', content: [] };
+    const events = await collect(
+      normalizeAnthropicStream(
+        iterate(anthropicStreamEventsFor([{ type: 'text', text: 'Hi' }, unlisted as never])),
+      ),
+    );
+    const errors = events.filter((event) => event.type === 'stream:error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.error).toBeInstanceOf(ProviderContractError);
+    expect(errors[0]?.error).toMatchObject({ blockType: 'tool_search_tool_result', partIndex: 1 });
+  });
+
+  it('OpenAI: text becomes one part with start, deltas and completion; audio output yields stream:error', async () => {
+    const chunks = [
+      { choices: [{ delta: { content: 'Hel' }, finish_reason: null }], usage: null },
+      { choices: [{ delta: { content: 'lo' }, finish_reason: 'stop' }], usage: null },
+    ];
+    const events = await collect(normalizeOpenAIStream(iterate(chunks as never), undefined));
+    expect(
+      events.filter((event) => event.type.startsWith('stream:part-')).map((event) => event.type),
+    ).toEqual([
+      'stream:part-start',
+      'stream:part-delta',
+      'stream:part-delta',
+      'stream:part-complete',
+    ]);
+    expect(events.find((event) => event.type === 'stream:part-complete')).toMatchObject({
+      part: { type: 'text', text: 'Hello' },
+    });
+
+    const refused = await collect(
+      normalizeOpenAIStream(
+        iterate([{ choices: [{ delta: { audio: { data: 'AAAA' } } }], usage: null }] as never),
+        undefined,
+      ),
+    );
+    expect(refused.find((event) => event.type === 'stream:error')?.error).toBeInstanceOf(
+      ProviderContractError,
+    );
+  });
+});
+
+describe('createAgent carries the media-admission port to its runs', () => {
+  it('admits a generated image through the agent option', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const agent = createAgent({
+      generate: createMockGenerate([{ content: '', parts: [inlineImage], toolCalls: [] }]),
+      generatedMediaAdmitter: admitter.port,
+    });
+
+    const result = await agent.run('Draw').result();
+
+    expect(result.parts).toMatchObject([{ type: 'image', source: { kind: 'managed-asset' } }]);
+    expect(admitter.admissions).toHaveLength(1);
   });
 });

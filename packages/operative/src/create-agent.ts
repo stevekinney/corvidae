@@ -18,6 +18,7 @@ import type { AgentSkillDescriptor } from './agent-skill-descriptor';
 import { noToolCalls } from './conditions/predicates';
 import type { MediaCostEstimator } from './context/types';
 import { createActiveRun } from './create-run';
+import type { GeneratedMediaAdmitter } from './generated-media';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
 import type { AssetSafetyPolicy, GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
@@ -127,6 +128,11 @@ export interface CreateAgentOptionsBase {
    * `MediaAdmissionError` before any provider call; nothing is dropped.
    */
   contentSourceResolver?: ContentSourceResolver | undefined;
+  /**
+   * Admits generated media as managed assets; see `RunOptions.generatedMediaAdmitter`. Without
+   * one, a media part the model generates fails the step with a `GeneratedMediaNotAdmittedError`.
+   */
+  generatedMediaAdmitter?: GeneratedMediaAdmitter | undefined;
   /** What to do with a resolved asset no safety gate gave a verdict; see `RunOptions.assetSafety`. */
   assetSafety?: AssetSafetyPolicy | undefined;
 

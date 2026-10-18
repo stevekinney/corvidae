@@ -43,7 +43,12 @@ export const serverToolBlocks = [
     tool_use_id: 'srvtoolu_01',
     content: [{ type: 'web_search_result', url: 'https://example.com', title: 'Weather' }],
   },
-  { type: 'server_tool_use', id: 'srvtoolu_02', name: 'web_fetch', input: { url: 'https://x.test' } },
+  {
+    type: 'server_tool_use',
+    id: 'srvtoolu_02',
+    name: 'web_fetch',
+    input: { url: 'https://x.test' },
+  },
   {
     type: 'web_fetch_tool_result',
     tool_use_id: 'srvtoolu_02',
@@ -89,9 +94,13 @@ export function anthropicStreamEventsFor(
     { type: 'message_start', message: { usage: { input_tokens: usage.input, output_tokens: 0 } } },
   ];
   for (const [index, block] of blocks.entries()) {
-    const type = block['type'] as string;
+    const type = block['type'];
     if (type === 'text') {
-      events.push({ type: 'content_block_start', index, content_block: { type: 'text', text: '' } });
+      events.push({
+        type: 'content_block_start',
+        index,
+        content_block: { type: 'text', text: '' },
+      });
       const text = block['text'] as string;
       const middle = Math.ceil(text.length / 2);
       for (const piece of [text.slice(0, middle), text.slice(middle)]) {
@@ -146,8 +155,12 @@ export function anthropicStreamEventsFor(
           delta: { type: 'input_json_delta', partial_json: piece },
         });
       }
-    } else if (type === 'redacted_thinking' || type === 'container_upload' || RESULT_BLOCK_TYPES.has(type)) {
-      events.push({ type: 'content_block_start', index, content_block: block as never });
+    } else if (
+      type === 'redacted_thinking' ||
+      type === 'container_upload' ||
+      RESULT_BLOCK_TYPES.has(type)
+    ) {
+      events.push({ type: 'content_block_start', index, content_block: block });
     } else {
       events.push({ type: 'content_block_start', index, content_block: { type } });
     }

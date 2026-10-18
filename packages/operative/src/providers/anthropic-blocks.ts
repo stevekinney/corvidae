@@ -1,4 +1,4 @@
-import type { JSONValue, MultiModalContent } from 'conversationalist';
+import type { BlockAccumulatorState, JSONValue, MultiModalContent } from 'conversationalist';
 
 import { ProviderContractError } from './errors.ts';
 import type { AnthropicMessageResponse, GenerateResponse } from './types.ts';
@@ -102,4 +102,44 @@ export function anthropicPartsFromBlocks(
     if (part !== undefined) parts.push(part);
   }
   return parts;
+}
+
+/** The accumulator state a block opens with, or `undefined` for a block that is not a content part. */
+export function anthropicOpeningState(
+  block: NonNullable<import('./types.ts').AnthropicStreamEvent['content_block']>,
+): BlockAccumulatorState | undefined {
+  switch (block.type) {
+    case 'text':
+      return { type: 'text', buffer: block.text ?? '' };
+    case 'thinking':
+      return { type: 'thinking', buffer: block.thinking ?? '', signature: block.signature ?? '' };
+    case 'redacted_thinking':
+      return { type: 'redacted_thinking', data: block.data ?? '' };
+    case 'server_tool_use':
+      return {
+        type: 'server_tool_use',
+        id: block.id ?? '',
+        name: block.name ?? '',
+        inputBuffer: '',
+      };
+    case 'container_upload':
+      return { type: 'container_upload', file_id: block.file_id ?? '' };
+    case 'web_search_tool_result':
+      return {
+        type: 'web_search_tool_result',
+        tool_use_id: block.tool_use_id ?? '',
+        content: (block.content ?? null) as JSONValue,
+      };
+    case 'web_fetch_tool_result':
+    case 'code_execution_tool_result':
+    case 'bash_code_execution_tool_result':
+    case 'text_editor_code_execution_tool_result':
+      return {
+        type: block.type,
+        tool_use_id: block.tool_use_id ?? '',
+        content: (block.content ?? null) as JSONValue,
+      };
+    default:
+      return undefined;
+  }
 }

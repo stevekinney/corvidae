@@ -2,11 +2,11 @@ import { parseOpenAIToolCalls } from 'armorer';
 import type { ToolCallInput } from 'armorer/protocol';
 import { toOpenAIMessagesGrouped } from 'conversationalist';
 
-import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { concatenateTextParts } from '../response-parts.ts';
+import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { isProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
-import { mapOpenAIMessage } from './openai-parts.ts';
 import { createModelCatalog } from './model-catalog.ts';
+import { mapOpenAIMessage } from './openai-parts.ts';
 import { resolveOpenAIEffort } from './shared/effort.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveOpenAIModel } from './shared/model-registry.ts';
@@ -174,7 +174,7 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
       const choice = response.choices[0];
       const usage = response.usage ? buildOpenAIUsage(response.usage) : undefined;
       // Every message field is a part, metadata or a typed error: nothing the model returned vanishes.
-      const mapped = mapOpenAIMessage((choice?.message ?? {}) as Record<string, unknown>, usage);
+      const mapped = mapOpenAIMessage(choice?.message ?? {}, usage);
       const content = concatenateTextParts(mapped.parts);
       const toolCalls = parseOpenAIToolCalls(requireFunctionToolCalls(choice?.message.tool_calls));
 

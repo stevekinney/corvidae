@@ -306,29 +306,10 @@ export interface AnthropicProviderOptions extends BaseProviderOptions {
    * `extendedCacheTtl` and `baseURL` as the other native-shape options on
    * this type.
    *
-   * ## Known limitation: thinking is not yet supported end-to-end with tool calls
-   *
-   * Setting this alongside a toolbox is **not** a supported combination today.
-   * Anthropic documents thinking-block replay as mandatory inside a tool-use
-   * turn — "Required: within a tool-use turn, pass thinking blocks back",
-   * "complete and unmodified", each block carrying the signed `signature` the
-   * server decrypts to reconstruct the reasoning. This provider extracts only
-   * `text` and `tool_use` blocks from the response, so the `thinking` (or
-   * `redacted_thinking`) block that accompanied the tool call never reaches
-   * the conversation, and the follow-up request that carries the tool result
-   * omits it. Anthropic does not hard-fail that request: it degrades — the API
-   * strips blocks that would form an invalid turn structure, or silently
-   * disables thinking for that request — so the failure mode is quality loss
-   * that never announces itself, not an error the caller can catch.
-   *
-   * Fixing it means preserving native response blocks in conversation history,
-   * which is **output**-side work owned by AB-73 (the multimodal output
-   * contract, project ABP-13) and reaches into conversationalist's message
-   * model and `run-step.ts`. AB-157 — the issue that added this option — is
-   * scoped to the *request* knob only, and is recorded as `related` to AB-73
-   * precisely so both do not quietly reshape the same response surface. Until
-   * AB-73 lands, use this option on tool-free requests, or accept that
-   * multi-step tool loops lose reasoning continuity between steps.
+   * The `thinking` and `redacted_thinking` blocks a response carries are kept as ordered
+   * `GenerateResponse.parts` in both factories, committed to the assistant row, and replayed
+   * byte-identical, before `tool_use` in the same assistant turn, on the next request, so thinking
+   * and tool calls combine without losing reasoning continuity.
    *
    * ## Validation
    *
@@ -927,6 +908,8 @@ export interface OpenAIChatCompletionChunk {
       content?: (string | null) | undefined;
       refusal?: (string | null) | undefined;
       role?: string | undefined;
+      /** Audio output; unadvertised, so a stream carrying it fails typed. */
+      audio?: unknown;
       /** The deprecated single function call; unmapped, so a stream carrying it fails typed. */
       function_call?: unknown;
       tool_calls?:

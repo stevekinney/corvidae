@@ -1,3 +1,4 @@
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
@@ -7,6 +8,7 @@ import { noToolCalls } from '../src/conditions/predicates';
 import { createActiveRun } from '../src/create-run';
 import { GeneratedMediaNotAdmittedError } from '../src/errors';
 import { createStepGeneratedMediaAdmitter } from '../src/generated-media';
+import type { OperativeHookMap } from '../src/hooks';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -425,5 +427,48 @@ describe.each(wrappers)('%s commits response parts', (_name, wrap) => {
     expect((error as GeneratedMediaNotAdmittedError).rejectionCode).toBe('aborted');
     expect(admitter.admissions[0]?.settlement?.outcome).toBe('aborted');
     expect(conversation.getMessages()).toHaveLength(0);
+  });
+
+  it('replaces the streamed row when a response hook changes the settled response', async () => {
+    const conversation = new Conversation();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => ({ content: '[redacted]', toolCalls: [] }));
+    const generate = wrap(async ({ streaming }) => {
+      streaming.reportPart?.({ type: 'start', partIndex: 0, kind: 'thinking' });
+      streaming.reportPart?.({ type: 'complete', partIndex: 0, part: thinkingPart });
+      streaming.reportPart?.({ type: 'start', partIndex: 1, kind: 'text' });
+      streaming.reportPart?.({
+        type: 'delta',
+        partIndex: 1,
+        sequence: 1,
+        delta: { kind: 'text', text: 'secret answer' },
+      });
+      streaming.reportPart?.({
+        type: 'complete',
+        partIndex: 1,
+        part: { type: 'text', text: 'secret answer' },
+      });
+      return {
+        content: 'secret answer',
+        parts: [thinkingPart, { type: 'text', text: 'secret answer' }],
+        toolCalls: [],
+      };
+    });
+
+    const result = await run({
+      generate,
+      toolbox: createWeatherToolbox(),
+      conversation,
+      hooks,
+      stopWhen: noToolCalls(),
+    });
+
+    const rows = result.conversation.getMessages().filter((m) => m.role === 'assistant');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.content).toBe('[redacted]');
+    expect(result.steps[0]?.messageId).toBe(rows[0]?.id);
+    expect(result.steps[0]?.parts).toEqual([{ type: 'text', text: '[redacted]' }]);
+    expect(JSON.stringify(result.conversation.current)).not.toContain('secret answer');
+    expect(JSON.stringify(result.conversation.current)).not.toContain('sig-1');
   });
 });

@@ -1,3 +1,4 @@
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -16,8 +17,8 @@ import {
   AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
   normalizeAgentRunWorkflowResult,
 } from '../../src/durable/run-workflow-result';
-import { InvalidRunResultError, UnsupportedRunResultVersionError } from '../../src/run-envelope';
 import { stopWhen } from '../../src/index';
+import { InvalidRunResultError, UnsupportedRunResultVersionError } from '../../src/run-envelope';
 import { createScriptedMediaAdmitter } from '../../src/testing/generated-media.test-support';
 import type { GenerateResponse } from '../../src/types';
 
@@ -102,7 +103,9 @@ describe('a durable run keeps parts', () => {
               {
                 content: '',
                 parts: [thinking],
-                toolCalls: [{ id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } }],
+                toolCalls: [
+                  { id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } },
+                ],
               },
               { content: 'Sunny.', parts: [{ type: 'text', text: 'Sunny.' }], toolCalls: [] },
             ]),
@@ -132,9 +135,13 @@ describe('a durable run keeps parts', () => {
         recover: false,
       });
       try {
-        const reading = await readDurableRunResult({ engine: fresh, checkpointStore: freshStore }, runId, {
-          runtime: (await import('@lostgradient/lifecycle')).createDefaultRuntimeServices(),
-        });
+        const reading = await readDurableRunResult(
+          { engine: fresh, checkpointStore: freshStore },
+          runId,
+          {
+            runtime: createDefaultRuntimeServices(),
+          },
+        );
         expect(reading.status).toBe('completed');
         if (reading.status !== 'completed') return;
         expect(reading.result.parts).toEqual(result.parts);
@@ -162,7 +169,9 @@ describe('a durable run keeps parts', () => {
             generate: scripted([
               {
                 content: 'One.',
-                toolCalls: [{ id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } }],
+                toolCalls: [
+                  { id: 'call-1', name: 'get_weather', arguments: { location: 'Paris' } },
+                ],
               },
             ]),
             toolbox: createTestToolbox([weatherTool]),
@@ -229,7 +238,10 @@ describe('a durable run keeps parts', () => {
 });
 
 describe('a durable run waits for its generated-media admissions before closed() acknowledges cleanup', () => {
-  async function closedAfter(closedOutcome?: { status: 'unresolved'; reason: 'persistence-failed' }) {
+  async function closedAfter(closedOutcome?: {
+    status: 'unresolved';
+    reason: 'persistence-failed';
+  }) {
     const { checkpointStore, engine } = await startEngine();
     const admitter = createScriptedMediaAdmitter(closedOutcome ? { closedOutcome } : {});
     try {
@@ -270,4 +282,3 @@ describe('a durable run waits for its generated-media admissions before closed()
     expect(acknowledgement).toEqual({ status: 'unresolved', reason: 'unknown-effect' });
   });
 });
-

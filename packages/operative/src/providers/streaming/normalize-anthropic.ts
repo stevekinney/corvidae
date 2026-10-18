@@ -1,4 +1,8 @@
-import type { StreamBlock, StreamEvent, StreamState } from '../../streaming/types';
+import { createStreamingAccumulator, finalizeBlockState, type JSONValue } from 'conversationalist';
+
+import type { PartDelta, StreamBlock, StreamEvent, StreamState } from '../../streaming/types';
+import { anthropicOpeningState } from '../anthropic-blocks';
+import { ProviderContractError } from '../errors';
 import type { AnthropicStreamEvent } from '../types';
 import type { NormalizerState } from './stream-helpers';
 import { buildState, findBlock } from './stream-helpers';
@@ -13,7 +17,38 @@ import { buildState, findBlock } from './stream-helpers';
  */
 export async function* normalizeAnthropicStream(
   stream: AsyncIterable<AnthropicStreamEvent>,
+  options: { readonly messageId?: string } = {},
 ): AsyncIterable<StreamEvent> {
+  const messageId = options.messageId ?? 'message';
+  /** Accumulates content blocks, so each part completes with the signature and citations it earned. */
+  const accumulator = createStreamingAccumulator();
+  /** Provider block index to part index; client `tool_use` blocks are not parts. */
+  const partIndexes = new Map<number, number>();
+  const sequences = new Map<number, number>();
+  let nextPartIndex = 0;
+  /** An unlisted block or delta is refused once, as a `stream:error`; the legacy events carry on. */
+  let refused = false;
+  const refuse = (blockType: string, position: number): StreamEvent | undefined => {
+    if (refused) return undefined;
+    refused = true;
+    return {
+      type: 'stream:error',
+      error: new ProviderContractError({
+        provider: 'anthropic',
+        reason: 'unlisted-block',
+        blockType,
+        partIndex: position,
+        usage: undefined,
+      }),
+    };
+  };
+  const partDelta = (providerIndex: number, delta: PartDelta): StreamEvent | undefined => {
+    const partIndex = partIndexes.get(providerIndex);
+    if (partIndex === undefined) return undefined;
+    const sequence = (sequences.get(partIndex) ?? 0) + 1;
+    sequences.set(partIndex, sequence);
+    return { type: 'stream:part-delta', messageId, partIndex, sequence, delta };
+  };
   const state: NormalizerState = {
     blocks: [],
     hasUsageData: false,
@@ -81,6 +116,24 @@ export async function* normalizeAnthropicStream(
         if (blockType === 'tool-call' && toolName) {
           yield { type: 'stream:tool-call-start', toolName, blockId };
         }
+
+        if (rawType !== 'tool_use' && contentBlock !== undefined) {
+          const opening = anthropicOpeningState(contentBlock);
+          if (opening === undefined) {
+            const refusal = refuse(rawType, index);
+            if (refusal) yield refusal;
+          } else {
+            const partIndex = nextPartIndex++;
+            partIndexes.set(index, partIndex);
+            accumulator.openBlock(index, opening);
+            yield {
+              type: 'stream:part-start',
+              messageId,
+              partIndex,
+              kind: opening.type === 'tool_use' ? 'text' : opening.type,
+            };
+          }
+        }
         break;
       }
 
@@ -96,7 +149,11 @@ export async function* normalizeAnthropicStream(
         const textDelta = event.delta?.text;
         const jsonDelta = event.delta?.partial_json;
 
+        const partBlock = accumulator.getBlock(index);
         if (deltaType === 'text_delta' && textDelta) {
+          partBlock?.appendTextDelta(textDelta);
+          const emitted = partDelta(index, { kind: 'text', text: textDelta });
+          if (emitted) yield emitted;
           block.content += textDelta;
           accumulatedText += textDelta;
 
@@ -111,6 +168,11 @@ export async function* normalizeAnthropicStream(
             accumulated: accumulatedText,
           };
         } else if (deltaType === 'input_json_delta' && jsonDelta) {
+          if (partBlock !== undefined) {
+            partBlock.appendInputJsonDelta(jsonDelta);
+            const emitted = partDelta(index, { kind: 'input-json', partialJson: jsonDelta });
+            if (emitted) yield emitted;
+          }
           block.content += jsonDelta;
           block.partialArguments = (block.partialArguments ?? '') + jsonDelta;
 
@@ -127,9 +189,22 @@ export async function* normalizeAnthropicStream(
             blockId,
             partialArguments: block.partialArguments,
           };
+        } else if (deltaType === 'signature_delta') {
+          // Replay data: the completed part carries the whole signature, no live event.
+          partBlock?.appendSignatureDelta(event.delta?.signature ?? '');
+        } else if (deltaType === 'citations_delta') {
+          partBlock?.appendCitationsDelta(event.delta?.citation as JSONValue);
+          const emitted = partDelta(index, {
+            kind: 'citation',
+            citation: event.delta?.citation as JSONValue,
+          });
+          if (emitted) yield emitted;
         } else if (deltaType === 'thinking_delta') {
           const thinkingDelta = event.delta?.thinking ?? event.delta?.text ?? '';
           if (thinkingDelta) {
+            partBlock?.appendThinkingDelta(thinkingDelta);
+            const emitted = partDelta(index, { kind: 'thinking', thinking: thinkingDelta });
+            if (emitted) yield emitted;
             block.content += thinkingDelta;
 
             yield {
@@ -138,6 +213,9 @@ export async function* normalizeAnthropicStream(
               delta: thinkingDelta,
             };
           }
+        } else if (deltaType !== undefined && deltaType !== 'text_delta') {
+          const refusal = refuse(deltaType, index);
+          if (refusal) yield refusal;
         }
         break;
       }
@@ -153,6 +231,18 @@ export async function* normalizeAnthropicStream(
         block.complete = true;
 
         yield { type: 'stream:block-complete', block: { ...block } };
+
+        const stoppedPart = partIndexes.has(index)
+          ? finalizeBlockState(accumulator.getBlock(index)!.state)
+          : undefined;
+        if (stoppedPart !== undefined) {
+          yield {
+            type: 'stream:part-complete',
+            messageId,
+            partIndex: partIndexes.get(index)!,
+            part: stoppedPart as never,
+          };
+        }
 
         if (block.type === 'tool-call') {
           const toolName = blockToolNames.get(blockId) ?? '';
