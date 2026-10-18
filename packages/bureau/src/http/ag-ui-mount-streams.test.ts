@@ -301,6 +301,60 @@ describe('text deltas that arrive while a stream is still opening', () => {
   });
 });
 
+describe('the answer an onMaximumSteps handler leaves', () => {
+  it('reaches a stream before its RUN_FINISHED, from the completion the run records', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
+      async ({ handler, bureau, generate }) => {
+        // A run completes with the handler's text recorded only on its completion event, which
+        // is the one frame the stream cannot get that text from anywhere else.
+        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
+        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
+        bureau.subscribeLiveFrames = (listener) => {
+          deliver = listener;
+          return subscribe(listener);
+        };
+        const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+        await stream.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        const nativeRunId = bureau.listRuns()[0]!.id;
+
+        deliver!({
+          type: 'event',
+          event: 'step.completed',
+          runId: nativeRunId,
+          sequence: 999_999,
+          detail: { step: 0, content: '' },
+        } as never);
+        deliver!({
+          type: 'event',
+          event: 'run.completed',
+          runId: nativeRunId,
+          sequence: 1_000_000,
+          detail: {
+            finishReason: 'maximum-steps',
+            content: 'Out of steps.',
+            steps: [{ step: 0, content: '' }],
+          },
+        } as never);
+        const tail = await stream.rest();
+        generate.release('hold');
+
+        expect(tail.slice(-4).map((frame) => frame.event.type)).toEqual([
+          EventType.TEXT_MESSAGE_START,
+          EventType.TEXT_MESSAGE_CONTENT,
+          EventType.TEXT_MESSAGE_END,
+          EventType.RUN_FINISHED,
+        ]);
+        expect(tail.at(-3)!.event).toMatchObject({
+          messageId: `${nativeRunId}:step:1`,
+          delta: 'Out of steps.',
+        });
+      },
+    );
+  });
+});
+
 describe('cleanup', () => {
   it('leaves no listener, timer, or snapshot subscription once every stream has ended', async () => {
     const runtime = createManualRuntimeServices();

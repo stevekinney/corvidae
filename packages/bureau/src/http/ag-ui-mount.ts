@@ -65,7 +65,7 @@ import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import type { Bureau, OwnedResource } from '../types.ts';
 import { rowsAddedBy } from './ag-ui-messages.ts';
-import { createAgUiLeases } from './ag-ui-lease.ts';
+import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
 import {
@@ -231,21 +231,50 @@ export function createAgUiMount(
   }
 
   /**
-   * Whether the thread's last run is going in a process that is not this one. The
-   * thread lease covers only a start's admission, so once it is released another
-   * process's live run is visible only in the store: the session says its last run
-   * is running, this process does not hold that run, and the durable run agrees. A
-   * marker a crash left behind is settled by durable recovery, so it cannot hold the
-   * thread for ever.
+   * Whether the thread has an unsettled run, decided from durable state alone, so it
+   * is the same answer in every process and in every state. Process-local state (the
+   * runs and reviews this process holds) may choose what an attach streams, but it
+   * never decides this: a start in another process cannot see it.
+   *
+   * The thread is busy when the session's last run is unsettled:
+   *
+   * - live or parked on a human wait: the session says `running` and the durable run
+   *   agrees (a marker whose durable run has settled, as a crash can leave, is not
+   *   busy; a read that fails is, because a start admitted on a guess forks the thread);
+   * - settled with an unresolved approval: the session still holds a
+   *   `pendingApprovalOverrides` entry for that run. Bureau persists the entry when an
+   *   approval is gated and removes it in the same write as the resolution, whichever
+   *   process resolves it and however (this mount, `bureau.reviews.resolve`, after a
+   *   restart); an entry whose binding has expired is not pending, by the rule
+   *   `listPendingReviews` uses, so an unanswerable approval cannot hold a thread.
+   *   (`lastRequestAuthorities` is not cleared when the resolving process does not
+   *   hold the run, and the conversation's `action_required` row is not rewritten by
+   *   an expiry, so neither can stand for this.)
    */
-  async function liveElsewhere(threadId: string): Promise<boolean> {
-    const session = await bureau.getSession(threadId);
-    const metadata = session?.metadata;
-    const lastRunId = metadata?.['lastRunId'];
-    if (metadata?.['lastRunStatus'] !== 'running' || typeof lastRunId !== 'string') return false;
-    if (bureau.getRun(lastRunId) !== undefined) return false;
-    const durable = await bureau.getDurableRun(lastRunId).catch(() => undefined);
-    return durable?.status === 'running';
+  async function threadBusy(threadId: string): Promise<boolean> {
+    try {
+      const session = await bureau.getSession(threadId);
+      const metadata = session?.metadata;
+      const lastRunId = metadata?.['lastRunId'];
+      if (metadata === undefined || typeof lastRunId !== 'string') return false;
+      if (metadata['lastRunStatus'] === 'running') {
+        const durable = await bureau.getDurableRun(lastRunId);
+        if (durable?.status === 'running') return true;
+      }
+      const overrides = metadata['pendingApprovalOverrides'];
+      if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
+        return false;
+      }
+      const asOf = runtime.clock.now();
+      return Object.entries(overrides).some(([reviewId, approval]) => {
+        if (!reviewId.startsWith(`approval:${lastRunId}:`)) return false;
+        const expiresAt = (approval as { approvalBinding?: { expiresAt?: unknown } } | null)
+          ?.approvalBinding?.expiresAt;
+        return typeof expiresAt !== 'number' || expiresAt > asOf;
+      });
+    } catch {
+      return true;
+    }
   }
 
   async function attachableRun(
@@ -469,10 +498,7 @@ export function createAgUiMount(
             ),
           };
         }
-        if (
-          (await attachableRunOfThread(input.threadId)) !== undefined ||
-          (await liveElsewhere(input.threadId))
-        ) {
+        if (await threadBusy(input.threadId)) {
           return {
             response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
           };
@@ -498,7 +524,7 @@ export function createAgUiMount(
         }
       })();
     } finally {
-      await lease.release();
+      await releaseQuietly(lease);
     }
     if ('response' in admitted) return admitted.response;
     return openRunStream(environment, {

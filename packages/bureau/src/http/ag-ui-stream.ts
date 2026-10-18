@@ -257,12 +257,14 @@ function parentOfCallRow(rowId: string, callId: string): string {
 /**
  * The events that show a tool call the conversation already holds, and the
  * result row it is waiting under: what a client needs to draw the approval card
- * for a call it did not watch run.
+ * for a call it did not watch run. `executed` carries the arguments the call ran
+ * with when an approval overrode the ones the conversation holds.
  */
 export function replayCall(
   history: ConversationHistory | undefined,
   callId: string,
   context: EventStamp,
+  executed?: { readonly arguments: unknown },
 ): Event[] {
   const rows: Message[] =
     history === undefined ? [] : history.ids.map((id) => history.messages[id]!);
@@ -272,7 +274,8 @@ export function replayCall(
   const resultRow = rows.find((row) => row.toolResult?.callId === callId);
   const live = <TEvent extends Event>(event: TEvent): TEvent =>
     stamp(event, context, { durable: false });
-  const args = typeof call.arguments === 'string' ? call.arguments : JSON.stringify(call.arguments);
+  const shown = executed === undefined ? call.arguments : executed.arguments;
+  const args = typeof shown === 'string' ? shown : JSON.stringify(shown);
   const events: Event[] = [
     live({
       type: EventType.TOOL_CALL_START,
@@ -671,6 +674,7 @@ export function openRunStream(
     // A run Bureau no longer holds has no events to replay, so a start retried
     // against it is shown the conversation as well, as an attach is.
     if (request.messagesSnapshot || detail === undefined) {
+      projector.holds(conversation?.ids ?? []);
       writeEvents([
         stamp(
           {

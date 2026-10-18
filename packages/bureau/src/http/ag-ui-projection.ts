@@ -107,6 +107,7 @@ export class RunProjector {
     { readonly step: number; started: boolean; ended: boolean; accumulated: string } | undefined;
   private readonly announced = new Set<string>();
   private readonly resulted = new Set<string>();
+  private readonly held = new Set<string>();
   private tripwire = false;
 
   constructor(
@@ -116,6 +117,14 @@ export class RunProjector {
 
   private live<TEvent extends Event>(event: TEvent): TEvent {
     return stamp(event, this.context, { durable: false });
+  }
+
+  /**
+   * Rows the client already holds, from a snapshot it was sent: a message with one of
+   * these ids is not announced again.
+   */
+  holds(ids: Iterable<string>): void {
+    for (const id of ids) this.held.add(id);
   }
 
   /** The step in flight, if one has started and not finished. */
@@ -148,7 +157,7 @@ export class RunProjector {
         this.tripwire = true;
         return { events: [] };
       case RECORDED.runCompleted:
-        return { events: [], terminal: this.ending('completed', detail) };
+        return { events: this.maximumStepsTail(data), terminal: this.ending('completed', detail) };
       case RECORDED.runError:
         return { events: [], terminal: this.ending('error', detail) };
       case RECORDED.runAborted:
@@ -198,6 +207,34 @@ export class RunProjector {
       this.openStep = undefined;
     }
     return events;
+  }
+
+  /**
+   * The answer an `onMaximumSteps` handler leaves. The run appends it to the
+   * conversation after its last step, under the id the next step would have had, and
+   * dispatches neither a generate nor a step event for it: the run's completion is the
+   * only event that carries it. A run that ended on its step limit without a handler
+   * ends with its last step's text, which a step event already carried.
+   */
+  private maximumStepsTail(data: Record<string, unknown>): Event[] {
+    const content = data['content'];
+    if (data['finishReason'] !== 'maximum-steps' || typeof content !== 'string') return [];
+    if (content.length === 0) return [];
+    const steps = Array.isArray(data['steps']) ? data['steps'].map(record) : [];
+    if (steps.at(-1)?.['content'] === content) return [];
+    const indexes = steps.flatMap((step) => {
+      const index = step['step'];
+      return typeof index === 'number' && Number.isInteger(index) ? [index] : [];
+    });
+    const next = indexes.length === 0 ? steps.length : Math.max(...indexes) + 1;
+    const messageId = this.messageId(next);
+    if (this.held.has(messageId)) return [];
+    this.held.add(messageId);
+    return [
+      this.live({ type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' }),
+      this.live({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: content }),
+      this.live({ type: EventType.TEXT_MESSAGE_END, messageId }),
+    ];
   }
 
   private ending(outcome: NativeTerminal['outcome'], detail: unknown): NativeTerminal {

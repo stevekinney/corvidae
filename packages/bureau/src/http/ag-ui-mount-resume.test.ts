@@ -60,6 +60,19 @@ function approvalToolbox(charges: number[]): Toolbox {
   }) as unknown as Toolbox;
 }
 
+/** Only the proposed amount needs approval, so an approval that edits it runs the tool at once. */
+function amountGatedToolbox(charges: number[]): Toolbox {
+  return createToolbox([chargeCardTool(charges)], {
+    approvalSecret: SECRET,
+    policy: {
+      beforeExecute: ({ params }) =>
+        (params as { cents?: number }).cents === 500
+          ? gate('Operator approval required')
+          : { allow: true as const },
+    },
+  }) as unknown as Toolbox;
+}
+
 /** The policy changes its mind on each evaluation, so approving a call gates it again. */
 function regatingToolbox(charges: number[]): Toolbox {
   let evaluations = 0;
@@ -107,6 +120,9 @@ const say = (content: string) => ({
 });
 
 const approve: ResumeEntry['payload'] = { decision: 'approve' };
+
+/** A promise that never settles: a process that died mid-call. */
+const never = <T>(): Promise<T> => new Promise<T>(() => {});
 
 function resolved(interruptId: string, payload: unknown = approve): ResumeEntry {
   return { interruptId, status: 'resolved', payload };
@@ -184,6 +200,50 @@ describe('resuming a tool approval', () => {
         const history = session?.conversationHistory;
         const rows = history?.ids.map((id) => history.messages[id]!) ?? [];
         expect(rows.filter((row) => row.toolResult?.callId === 'call-1')).toHaveLength(1);
+      },
+    );
+  });
+
+  it('replays the arguments the approval ran the tool with, not the ones the model proposed', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: amountGatedToolbox(charges) },
+      async ({ handler }) => {
+        const first = await startUntilInterrupted(handler);
+        const entry = resolved(first.interruptIds[0]!, {
+          decision: 'approve',
+          arguments: { cents: 900 },
+        });
+
+        const frames = await readAgUiStream(await handler(resumeRequest([entry])));
+
+        const shown = frames
+          .map((frame) => frame.event)
+          .filter((event) => event.type === EventType.TOOL_CALL_ARGS)
+          .map((event) => (event as { toolCallId: string; delta: string }).delta);
+        expect(charges).toEqual([900]);
+        expect(shown).toEqual(['{"cents":900}']);
+      },
+    );
+  });
+
+  it('replays the proposed arguments when the approval left them as they were', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox(charges) },
+      async ({ handler }) => {
+        const first = await startUntilInterrupted(handler);
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+
+        const shown = frames
+          .map((frame) => frame.event)
+          .filter((event) => event.type === EventType.TOOL_CALL_ARGS)
+          .map((event) => (event as { delta: string }).delta);
+        expect(charges).toEqual([500]);
+        expect(shown).toEqual(['{"cents":500}']);
       },
     );
   });
@@ -487,9 +547,6 @@ describe('a resume whose run cannot start', () => {
 });
 
 describe('a resume that did not finish', () => {
-  /** A promise that never settles: a process that died mid-call. */
-  const never = <T>(): Promise<T> => new Promise<T>(() => {});
-
   it('can be answered again when its resolution failed without effect', async () => {
     const charges: number[] = [];
     await withHarness(
@@ -1054,10 +1111,46 @@ describe('a resume through the route of another published agent', () => {
         expect(refused).toHaveLength(1);
         expect(refused[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
         expect(missing[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        // Byte for byte the answer an interrupt that never was gets, once each id is masked.
+        const masked = (frames: typeof refused, id: string) =>
+          JSON.stringify(frames.map((frame) => frame.event))
+            .replaceAll(id, '<id>')
+            .replace(/"timestamp":\d+/g, '"timestamp":0');
+        expect(masked(refused, first.interruptIds[0]!)).toBe(
+          masked(missing, 'approval:nope:call-9'),
+        );
         // The agent that raised the interrupt still answers it, once.
         expect(own.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         expect(charges).toEqual([500]);
         expect(bureau.listRuns().map((run) => run.agentName)).toEqual(['assistant', 'assistant']);
+      },
+    );
+  });
+
+  it('is refused too when the review carries no agent, which is then the session’s', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        otherAgents: ['other'],
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const getReview = bureau.getReview.bind(bureau);
+        // A review read back without its agent, as one rebuilt from an older record is.
+        spyOn(bureau, 'getReview').mockImplementation(async (id) => {
+          const review = await getReview(id);
+          return review === undefined ? undefined : { ...review, agentName: undefined };
+        });
+
+        const refused = await readAgUiStream(await handler(throughOther(entries, 'client-run-2')));
+        const own = await readAgUiStream(await handler(resumeRequest(entries, {}, 'client-run-3')));
+
+        expect(refused[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        expect(own.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
       },
     );
   });
@@ -1366,6 +1459,132 @@ describe('a tool approval of a run that is still going', () => {
         expect(bureau.listRuns()).toHaveLength(1);
       },
     );
+  });
+});
+
+describe('an approval no run can continue from', () => {
+  // The agent goes on past the gated call, so its conversation ends in an assistant row.
+  const settledWithApproval = async (charges: number[]) => ({
+    script: [chargeOnce, say('Waiting for the approval.'), say('A fresh message.')],
+    toolbox: approvalToolbox(charges),
+    stopWhen: stopWhen.noToolCalls(),
+    storage: 'sqlite' as const,
+  });
+  const decisions: Array<[string, unknown]> = [
+    ['cancelled', undefined],
+    ['deny', { decision: 'deny', reason: 'no' }],
+    ['reject', { decision: 'reject', reason: 'not this card' }],
+  ];
+
+  it.each(decisions)(
+    'is freed by a %s, which resolves it, runs nothing, and leaves the thread open',
+    async (_name, payload) => {
+      const charges: number[] = [];
+      await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        await waitForCondition(
+          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          'run did not settle',
+        );
+        const id = bureau.listPendingReviews()[0]!.id;
+        const entry: ResumeEntry =
+          payload === undefined ? { interruptId: id, status: 'cancelled' } : resolved(id, payload);
+
+        const busy = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-2',
+                messages: [{ id: 'user-2', role: 'user', content: 'a new message' }],
+              }),
+            ),
+          ),
+        );
+        const freed = await readAgUiStream(
+          await handler(resumeRequest([entry], {}, 'client-run-3')),
+        );
+        const next = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-4',
+                messages: [{ id: 'user-3', role: 'user', content: 'a new message' }],
+              }),
+            ),
+          ),
+        );
+
+        expect(busy[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+        expect(freed.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+        expect(bureau.listPendingReviews()).toEqual([]);
+        expect(next.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([]);
+      });
+    },
+  );
+
+  it('is finished by a retry after its claimant died having refused it, which starts no run', async () => {
+    const charges: number[] = [];
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
+    await withHarness(
+      { ...(await settledWithApproval(charges)), agUi: { runtime: dead } },
+      async (harness) => {
+        const { handler, bureau } = harness;
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        await waitForCondition(
+          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          'run did not settle',
+        );
+        const entries = [
+          { interruptId: bureau.listPendingReviews()[0]!.id, status: 'cancelled' as const },
+        ];
+        // The claimant refuses the approval and dies before it says so.
+        const resolve = bureau.resolveReview.bind(bureau);
+        spyOn(bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+          await resolve(input);
+          return never();
+        });
+        void handler(resumeRequest(entries));
+        await waitForCondition(() => bureau.listPendingReviews().length === 0, 'never refused');
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
+
+        const retry = await readAgUiStream(
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-3')),
+        );
+
+        expect(retry.at(-1)!.event).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+        expect(bureau.listRuns()).toHaveLength(1);
+        expect(charges).toEqual([]);
+      },
+    );
+  });
+
+  it('tells a client that cannot approve it to deny or cancel it, not to send a message', async () => {
+    const charges: number[] = [];
+    await withHarness(await settledWithApproval(charges), async ({ handler, bureau }) => {
+      await readAgUiStream(await handler(startRequest(runAgentInput())));
+      await waitForCondition(
+        () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+        'run did not settle',
+      );
+      const id = bureau.listPendingReviews()[0]!.id;
+
+      const refused = await readAgUiStream(await handler(resumeRequest([resolved(id)])));
+
+      expect(refused[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
+      expect((refused[0]!.event as { message: string }).message).toContain('Deny or cancel');
+      expect((refused[0]!.event as { message: string }).message).not.toContain(
+        'send a new message',
+      );
+      expect(charges).toEqual([]);
+    });
   });
 });
 

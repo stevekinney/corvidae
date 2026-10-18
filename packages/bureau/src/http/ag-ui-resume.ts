@@ -51,7 +51,7 @@ import { ApprovalOutcomeNotWrittenError } from '../create-bureau.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
 import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
-import type { AgUiLeases } from './ag-ui-lease.ts';
+import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import {
   interruptibleReviews,
   openRunStream,
@@ -251,6 +251,11 @@ export function createResume(context: ResumeContext) {
       }
     }
     const reviews = new Map<string, PendingReview>();
+    let sessionAgentName: Promise<string | undefined> | undefined;
+    const sessionAgent = (): Promise<string | undefined> => {
+      sessionAgentName ??= bureau.getSession(threadId).then((session) => session?.agentName);
+      return sessionAgentName;
+    };
     for (const entry of entries) {
       const review = await bureau.getReview(entry.interruptId);
       const reviewOwner =
@@ -272,7 +277,11 @@ export function createResume(context: ResumeContext) {
       // The continuation is the agent's that raised the interrupt: it runs under that
       // agent's route, so a resume through another published agent's route is refused as
       // an interrupt that does not exist there, and nothing is resolved.
-      const otherAgents = review?.agentName !== undefined && review.agentName !== request.agentName;
+      // A review with no agent recorded (one read back after a restart) is the session's;
+      // with neither, nothing says which agent's it is, so no route is let through.
+      const raisedBy =
+        review === undefined ? undefined : (review.agentName ?? (await sessionAgent()));
+      const otherAgents = review !== undefined && raisedBy !== request.agentName;
       if (
         review === undefined ||
         review.sessionId !== threadId ||
@@ -341,31 +350,60 @@ export function createResume(context: ResumeContext) {
     { result, applied }: Settled,
   ): Promise<Response> {
     if (!applied) return streamFor(request, result);
+    // Whether this attempt, or an attempt it took over, put the entry's answer to work.
+    const delivered = (entry: ResumeEntry): boolean =>
+      result.recovered === true ||
+      result.outcomes.some(
+        (outcome) =>
+          outcome.interruptId === entry.interruptId &&
+          (outcome.outcome === 'applied' ||
+            (result.takenOver === true && outcome.outcome === 'no-op')),
+      );
     if (result.mode === 'continued') {
-      const delivered = (entry: ResumeEntry): boolean =>
-        result.recovered === true ||
-        result.outcomes.some(
-          (outcome) =>
-            outcome.interruptId === entry.interruptId &&
-            (outcome.outcome === 'applied' ||
-              (result.takenOver === true && outcome.outcome === 'no-op')),
-        );
       return streamFor(request, result, { answerRows: answerRowsOf(request, reviews, delivered) });
     }
     if (result.mode !== 'created' || result.recovered === true) return streamFor(request, result);
     const session = await bureau.getSession(request.threadId);
+    const executed = executedArguments(request, reviews, delivered);
     return streamFor(request, result, {
       prelude: () =>
         [...reviews.values()].flatMap((review) =>
           review.kind === 'tool-approval'
-            ? replayCall(session?.conversationHistory, review.approval.callId, {
-                nativeRunId: result.runId,
-                sessionId: request.threadId,
-                now: () => runtime.clock.now(),
-              })
+            ? replayCall(
+                session?.conversationHistory,
+                review.approval.callId,
+                {
+                  nativeRunId: result.runId,
+                  sessionId: request.threadId,
+                  now: () => runtime.clock.now(),
+                },
+                executed.get(review.approval.callId),
+              )
             : [],
         ),
     });
+  }
+
+  /**
+   * The arguments each approved call was run with, by call id, for the calls whose
+   * approval overrode them: the conversation holds the call as the model proposed it,
+   * and the client is shown the call that ran.
+   */
+  function executedArguments(
+    request: ResumeRequest,
+    reviews: ReadonlyMap<string, PendingReview>,
+    delivered: (entry: ResumeEntry) => boolean,
+  ): Map<string, { readonly arguments: unknown }> {
+    const executed = new Map<string, { readonly arguments: unknown }>();
+    for (const entry of request.entries) {
+      const review = reviews.get(entry.interruptId);
+      if (review?.kind !== 'tool-approval' || !delivered(entry)) continue;
+      const resolution = resolutionFor(entry, review, request.owner);
+      if (resolution.decision === 'approve' && 'arguments' in resolution) {
+        executed.set(review.approval.callId, { arguments: resolution.arguments });
+      }
+    }
+    return executed;
   }
 
   /**
@@ -427,10 +465,10 @@ export function createResume(context: ResumeContext) {
             : await takeOver(request, reviews, held, identity, digest, holds);
         return 'code' in outcome ? outcome : { result: outcome, applied: true };
       } finally {
-        await threadLease.release();
+        await releaseQuietly(threadLease);
       }
     } finally {
-      await commandLease.release();
+      await releaseQuietly(commandLease);
     }
   }
 
@@ -469,7 +507,16 @@ export function createResume(context: ResumeContext) {
     if (!(await holds())) return LEASE_LOST;
     const toolApprovals = answered.some((review) => review.kind === 'tool-approval');
     let result: ResumeResult;
-    if (toolApprovals) {
+    if (
+      toolApprovals &&
+      !approvesTool(request.entries, reviews) &&
+      !(await conversationAnswerable(request.threadId))
+    ) {
+      // Every tool approval was refused and no run can start from the conversation, as
+      // when the attempt that died first saw it: the refusals are written, the command is
+      // complete, and the settled run is shown.
+      result = { runId: answered[0]!.runId, mode: 'superseded', outcomes: [], recovered: true };
+    } else if (toolApprovals) {
       let created: string;
       try {
         created = await continuationRun(request, reviews);
@@ -522,6 +569,19 @@ export function createResume(context: ResumeContext) {
     return created.id;
   }
 
+  /** Whether any entry approves a tool call: the one answer that runs a tool. */
+  function approvesTool(
+    entries: ReadonlyArray<ResumeEntry>,
+    reviews: ReadonlyMap<string, PendingReview>,
+  ): boolean {
+    return entries.some(
+      (entry) =>
+        reviews.get(entry.interruptId)?.kind === 'tool-approval' &&
+        entry.status === 'resolved' &&
+        (entry.payload as AgUiResumePayload).decision === 'approve',
+    );
+  }
+
   /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `createRun` requires. */
   async function conversationAnswerable(threadId: string): Promise<boolean> {
     const session = await bureau.getSession(threadId);
@@ -571,14 +631,17 @@ export function createResume(context: ResumeContext) {
       }
     }
 
-    // Resolving a tool approval runs the tool, and the run that continues from it
+    // Approving a tool approval runs the tool, and the run that continues from it
     // starts from the conversation as it stands. If no run can start from that
-    // conversation, nothing is resolved: the tool must not run to a dead end.
-    if (
-      !takeover &&
-      entries.some((entry) => reviews.get(entry.interruptId)?.kind === 'tool-approval') &&
-      !(await conversationAnswerable(request.threadId))
-    ) {
+    // conversation, nothing is approved: the tool must not run to a dead end. A cancel,
+    // a deny, or a reject runs no tool, so it always resolves; with no run to start it
+    // writes the refusal as the outcome, completes the command with no run, and frees
+    // the thread, which is the only way out of that state through this mount.
+    const hasToolApproval = entries.some(
+      (entry) => reviews.get(entry.interruptId)?.kind === 'tool-approval',
+    );
+    const canContinue = hasToolApproval ? await conversationAnswerable(request.threadId) : true;
+    if (!takeover && !canContinue && approvesTool(entries, reviews)) {
       return refuse('CONTINUATION_UNAVAILABLE', CONTINUATION_UNAVAILABLE_MESSAGE);
     }
 
@@ -657,6 +720,11 @@ export function createResume(context: ResumeContext) {
     if (continued) {
       return completed(pendingEntry, { runId: runId!, mode: 'continued', outcomes, ...takenOver });
     }
+    if (executed && !superseded && !canContinue) {
+      // Every tool approval was refused, and no run can start from the conversation: the
+      // refusals are written, the command is complete, and the settled run is shown.
+      return completed(pendingEntry, { runId: runId!, mode: 'superseded', outcomes, ...takenOver });
+    }
     if (executed && !superseded) {
       // The conversation now ends in the executed results, so a run with no new
       // message starts from them. Its request id is the command's key, so a
@@ -682,7 +750,7 @@ export function createResume(context: ResumeContext) {
 }
 
 const CONTINUATION_UNAVAILABLE_MESSAGE =
-  'No run can continue from this thread’s conversation as it stands (it does not end in a user or tool-result message), so the approval was left unresolved; send a new message to continue the thread';
+  'No run can continue from this thread’s conversation as it stands (it does not end in a user or tool-result message), so this approval cannot be approved. Deny or cancel it, which frees the thread; a new message is refused while it is pending';
 const LEASE_LOST: Refusal = {
   code: 'RUN_FAILED',
   message: 'This resume lost its lease to another attempt before it finished; try again',

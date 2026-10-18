@@ -138,6 +138,61 @@ describe('tools', () => {
   });
 });
 
+describe('the answer an onMaximumSteps handler leaves', () => {
+  const steps = [
+    { step: 0, content: '' },
+    { step: 1, content: 'Still working.' },
+  ];
+  const completed = (overrides: Record<string, unknown>) => ({
+    finishReason: 'maximum-steps',
+    content: 'Out of steps.',
+    steps,
+    ...overrides,
+  });
+
+  it('is announced with the run’s completion, under the id of the step after the last', () => {
+    const run = projector();
+
+    const ended = run.handleRecorded(RECORDED.runCompleted, completed({}));
+
+    expect(ended.events).toMatchObject([
+      { type: EventType.TEXT_MESSAGE_START, messageId: 'run-1:step:2', role: 'assistant' },
+      { type: EventType.TEXT_MESSAGE_CONTENT, messageId: 'run-1:step:2', delta: 'Out of steps.' },
+      { type: EventType.TEXT_MESSAGE_END, messageId: 'run-1:step:2' },
+    ]);
+    expect(ended.terminal).toMatchObject({ outcome: 'completed' });
+  });
+
+  it('is not announced to a client whose snapshot already holds the row', () => {
+    const run = projector();
+    run.holds(['user-1', 'run-1:step:2']);
+
+    expect(run.handleRecorded(RECORDED.runCompleted, completed({})).events).toEqual([]);
+  });
+
+  it('is announced once, however often the completion is projected', () => {
+    const run = projector();
+
+    run.handleRecorded(RECORDED.runCompleted, completed({}));
+
+    expect(run.handleRecorded(RECORDED.runCompleted, completed({})).events).toEqual([]);
+  });
+
+  it.each([
+    [
+      'a run that ended with no handler, whose text is its last step’s',
+      { content: 'Still working.' },
+    ],
+    ['a handler that left no text', { content: '' }],
+    ['a run that stopped on a condition', { finishReason: 'stop-condition' }],
+    ['a completion with no text to read', { content: undefined }],
+  ])('is not invented for %s', (_name, overrides) => {
+    expect(projector().handleRecorded(RECORDED.runCompleted, completed(overrides)).events).toEqual(
+      [],
+    );
+  });
+});
+
 describe('ending', () => {
   it('closes a message and a step an interrupted run leaves open, and only those', () => {
     const run = projector();

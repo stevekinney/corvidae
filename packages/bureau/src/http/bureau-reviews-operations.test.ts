@@ -418,8 +418,13 @@ describe('bureau.reviews.resolve', () => {
     );
 
     expect(unwritten.error?.data?.httpStatus).toBe(409);
-    expect(JSON.stringify(unwritten.error)).toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
+    // The token is the start of the reason, and nothing else on the wire carries it.
+    const reasonOf = (reply: typeof unwritten) =>
+      (reply.error?.data as { reason?: string } | undefined)?.reason;
+    expect(reasonOf(unwritten)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN: ')).toBe(true);
+    expect(reasonOf(lost)?.startsWith('APPROVAL_OUTCOME_NOT_WRITTEN')).toBe(false);
     expect(JSON.stringify(lost.error)).not.toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
+    expect(JSON.stringify(unwritten.error)).not.toContain('"code":"APPROVAL');
   });
 
   it('answers Forbidden to an authenticated caller it cannot attribute, even one that holds the scope', async () => {

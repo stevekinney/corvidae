@@ -5,8 +5,10 @@
  */
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { waitForCondition } from '@lostgradient/operative';
+import { type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
+import { z } from 'zod';
 
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
 import {
@@ -387,6 +389,284 @@ describe('a start that races another on the same thread in another process', () 
         }
       },
     );
+  });
+});
+
+describe('whether a thread is busy, decided from what the store holds', () => {
+  const approvalToolbox = (): Toolbox =>
+    createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'busy-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+  const chargeOnce = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Charging.',
+      toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+    },
+  };
+  const startWithMessage = (runId: string) =>
+    startRequest(
+      runAgentInput({
+        runId,
+        messages: [
+          { id: 'user-1', role: 'user', content: 'hello' },
+          { id: `user-${runId}`, role: 'user', content: 'and also' },
+        ],
+      }),
+    );
+  const settled = (harness: Harness) =>
+    waitForCondition(
+      () => harness.bureau.getRun(harness.bureau.listRuns()[0]!.id)?.status === 'completed',
+      'run did not settle',
+    );
+
+  it('refuses a start in another process while the last run is settled with an approval pending', async () => {
+    await withHarness(
+      { script: [chargeOnce], toolbox: approvalToolbox(), storage: 'sqlite' },
+      async (harness) => {
+        const peer = await harness.peer([say('B done.')]);
+        try {
+          await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+          await settled(harness);
+
+          const refused = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
+
+          expect(refused).toHaveLength(1);
+          expect(refused[0]!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'THREAD_BUSY',
+          });
+          expect(peer.bureau.listRuns()).toHaveLength(0);
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+
+  it('admits a start in another process once the approval was resolved through the Bureau after a restart', async () => {
+    await withHarness(
+      { script: [chargeOnce], toolbox: approvalToolbox(), storage: 'sqlite' },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        await settled(harness);
+        const id = harness.bureau.listPendingReviews()[0]!.id;
+        const restarted = await harness.restart([say('A done.')]);
+        const peer = await restarted.peer([say('B done.')]);
+        try {
+          await restarted.bureau.resolveReview({
+            id,
+            decision: 'deny',
+            principal: 'anonymous:local',
+            reason: 'no',
+          });
+
+          const frames = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
+
+          expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(peer.bureau.listRuns()).toHaveLength(1);
+        } finally {
+          await peer.dispose();
+          await restarted.dispose();
+        }
+      },
+    );
+  });
+
+  it('admits a start in the process that held the run once another process resolved the approval', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('A done.')], toolbox: approvalToolbox(), storage: 'sqlite' },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        await settled(harness);
+        const id = harness.bureau.listPendingReviews()[0]!.id;
+        const peer = await harness.peer([say('B done.')]);
+        try {
+          const denied = await readAgUiStream(
+            await peer.handler(
+              startRequest(
+                runAgentInput({
+                  runId: 'run-b',
+                  messages: [],
+                  resume: [
+                    {
+                      interruptId: id,
+                      status: 'resolved',
+                      payload: { decision: 'deny', reason: 'no' },
+                    },
+                  ],
+                }),
+              ),
+            ),
+          );
+
+          // The holder still lists the approval as pending in its own memory; the store says it is not.
+          const frames = await readAgUiStream(await harness.handler(startWithMessage('run-c')));
+
+          expect(denied.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+
+  it('is not held by an approval whose binding has expired, which nobody can answer', async () => {
+    const later = createManualRuntimeServices({ origin: new Date().toISOString() });
+    await withHarness(
+      { script: [chargeOnce], toolbox: approvalToolbox(), storage: 'sqlite' },
+      async (harness) => {
+        const peer = await harness.peer([say('B done.')], { runtime: later });
+        try {
+          await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+          await settled(harness);
+          const before = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
+          // Far past any binding's lifetime.
+          await later.advance(400 * 24 * 60 * 60 * 1000);
+
+          const after = await readAgUiStream(await peer.handler(startWithMessage('run-c')));
+
+          expect(before[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+          expect(after.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+
+  it('is decided by the last run alone, not by an approval an earlier run left unanswered', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Second run.'), say('Third run.')],
+        toolbox: approvalToolbox(),
+        storage: 'sqlite',
+      },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        await settled(harness);
+        // Another run is started on the thread directly, past the mount, and settles.
+        const second = await harness.bureau.createRun({
+          sessionId: 'thread-1',
+          agentName: 'assistant',
+          message: 'and another thing',
+          principal: 'anonymous:local',
+        });
+        await waitForCondition(
+          () => harness.bureau.getRun(second.id)?.status === 'completed',
+          'second run did not settle',
+        );
+
+        const frames = await readAgUiStream(
+          await harness.handler(
+            startRequest(
+              runAgentInput({
+                runId: 'run-c',
+                messages: [
+                  { id: 'user-1', role: 'user', content: 'hello' },
+                  { id: 'user-3', role: 'user', content: 'once more' },
+                ],
+              }),
+            ),
+          ),
+        );
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      },
+    );
+  });
+
+  it('is not held by a running marker whose durable run has settled', async () => {
+    await withHarness({ script: [say('A done.')], storage: 'sqlite' }, async (harness) => {
+      const peer = await harness.peer([say('B done.')]);
+      try {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        await settled(harness);
+        // What a crash between the run's end and its session save leaves.
+        const store = harness.bureau.sessionStore!;
+        await store.update('thread-1', (session) =>
+          session === undefined
+            ? undefined
+            : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } },
+        );
+
+        const frames = await readAgUiStream(await peer.handler(startWithMessage('run-b')));
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      } finally {
+        await peer.dispose();
+      }
+    });
+  });
+
+  it('is busy when the store cannot be read, rather than admitting a start on a guess', async () => {
+    await withHarness({ script: [say('A done.'), say('B done.')] }, async (harness) => {
+      await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+      const getSession = harness.bureau.getSession.bind(harness.bureau);
+      // The start's own read of the session succeeds; the busy decision's does not.
+      let reads = 0;
+      spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+        reads += 1;
+        if (reads === 2) throw new Error('store unavailable');
+        return getSession(...args);
+      });
+
+      const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
+
+      expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+      expect(harness.bureau.listRuns()).toHaveLength(1);
+    });
+  });
+});
+
+describe('a start whose lease cannot be released', () => {
+  it('still answers with the run it created, and says so on the console', async () => {
+    await withHarness({ script: [say('Done.')], storage: 'sqlite' }, async (harness) => {
+      const kv = harness.bureau.kv!;
+      const write = kv.conditionalBatch.bind(kv);
+      spyOn(kv, 'conditionalBatch').mockImplementation(async (conditions, operations) => {
+        if (
+          operations.some(
+            (operation) =>
+              operation.type === 'delete' && operation.key.startsWith('ag-ui-lease:v1:thread'),
+          )
+        ) {
+          throw new Error('store unavailable');
+        }
+        return write(conditions, operations);
+      });
+      const logged = spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const frames = await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+      const logCount = logged.mock.calls.length;
+      logged.mockRestore();
+
+      expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      expect(harness.bureau.listRuns()).toHaveLength(1);
+      expect(logCount).toBe(1);
+    });
   });
 });
 

@@ -752,6 +752,9 @@ class BureauError extends Error {
  * is `CONFLICT` for lack of a better one, and a management-plane consumer must not
  * read it as another resolver having won.
  */
+const APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE =
+  'The decision was recorded, but its outcome could not be written into the conversation, which still shows the approval as pending';
+
 class ApprovalOutcomeNotWrittenError extends BureauError {
   constructor(message: string) {
     super(message, 'CONFLICT');
@@ -11208,9 +11211,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       scope: 'session-persistence',
       message: `[bureau] Could not write the outcome of review "${review.id}" into session "${review.sessionId}": ${serializeUnknownError(lastError)}. The conversation still shows the approval as pending.`,
     });
-    return new ApprovalOutcomeNotWrittenError(
-      `Review "${review.id}" was resolved, but its outcome was not written into the conversation of session "${review.sessionId}" (${serializeUnknownError(lastError)}); the conversation still shows the approval as pending`,
-    );
+    // A fixed sentence: it reaches a client's screen, and the storage error's text
+    // (which can name keys and paths) stays in the diagnostic above.
+    return new ApprovalOutcomeNotWrittenError(APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE);
   }
 
   async function resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {

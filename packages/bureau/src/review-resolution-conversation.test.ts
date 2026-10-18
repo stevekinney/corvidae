@@ -286,8 +286,13 @@ describe('when the outcome cannot be written into the session', () => {
       failing.mockRestore();
 
       expect(error).toBeInstanceOf(BureauError);
-      expect((error as BureauError).message).toContain('not written into the conversation');
+      // A fixed sentence reaches the caller; the storage error's text stays in the diagnostic.
+      expect((error as BureauError).message).toContain(
+        'could not be written into the conversation',
+      );
+      expect((error as BureauError).message).not.toContain('disk full');
       expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toContain('disk full');
       // The tool ran and the review is resolved: the failure is about the conversation only.
       expect(charges).toEqual([500]);
       expect(bureau.listPendingReviews()).toHaveLength(0);

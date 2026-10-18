@@ -172,3 +172,17 @@ export function createAgUiLeases(options: {
     },
   };
 }
+
+/**
+ * Gives a lease up without letting a store error fail the request it served: the
+ * work is already done, and a lease nobody renews expires on its own.
+ */
+export async function releaseQuietly(lease: AgUiLease): Promise<void> {
+  try {
+    await lease.release();
+  } catch (error) {
+    // The mount has no diagnostics sink of its own; the Bureau's default is the console.
+    // eslint-disable-next-line no-console
+    console.error('[bureau] Could not release an AG-UI lease; it will expire:', error);
+  }
+}
