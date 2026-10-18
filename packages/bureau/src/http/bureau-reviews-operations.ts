@@ -94,6 +94,12 @@ const toolActionSchema = z.discriminatedUnion('type', [
 const toolApprovalReviewSchema = z.object({
   ...reviewCommonFields,
   kind: z.literal('tool-approval'),
+  /**
+   * How many times the approval was superseded: 0 until a resolution is gated
+   * again, then incremented each time. The review keeps its id across rounds, so
+   * the round is what tells one supersession's resolution from the next.
+   */
+  round: z.number().int().min(0),
   approval: z.object({
     callId: z.string(),
     toolName: z.string(),
@@ -174,6 +180,7 @@ export function projectReview(
     return {
       ...common,
       kind: 'tool-approval',
+      round: review.round,
       approval: {
         callId: review.approval.callId,
         toolName: review.approval.toolName,
@@ -377,7 +384,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: false,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved, or one the caller may not resolve, answers 404 until command receipts exist. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. A `superseded` receipt writes nothing.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,

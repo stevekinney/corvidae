@@ -5,8 +5,9 @@ import {
   principalFromApiKey,
   principalFromJwtClaims,
 } from '@lostgradient/weft';
-import { createToolbox, type Toolbox } from 'armorer';
+import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { BureauError, createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
@@ -69,6 +70,7 @@ function toolApprovalReview(overrides: Partial<PendingReview> = {}): PendingRevi
     requestedAt: 1_000,
     ageMilliseconds: 50,
     status: 'pending',
+    round: 0,
     ...overrides,
   } as PendingReview;
 }
@@ -122,6 +124,7 @@ describe('bureau.reviews.list', () => {
           requestedAt: 1_000,
           ageMilliseconds: 50,
           status: 'pending',
+          round: 0,
           approval: {
             callId: 'call-1',
             toolName: 'send-email',
@@ -417,6 +420,16 @@ describe('bureau.reviews.resolve', () => {
 });
 
 describe('projectReview', () => {
+  it('carries the supersession round of a tool approval', () => {
+    const projected = projectReview({
+      ...(toolApprovalReview() as Extract<PendingReview, { kind: 'tool-approval' }>),
+      round: 2,
+      status: 'pending',
+    });
+
+    expect(projected).toMatchObject({ kind: 'tool-approval', round: 2 });
+  });
+
   it('omits optional fields that are absent', () => {
     const projected = projectReview({
       kind: 'human-wait',
@@ -538,6 +551,81 @@ describe('the reviews operations against a real Bureau', () => {
       expect(resolved.result).toMatchObject({ decision: 'reject', receipt: 'applied' });
       const records = JSON.stringify(await bureau.auditTrail?.query({}));
       expect(records).toContain('api-key:tester');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
+  it('writes the outcome of a tool approval resolved through the handler into the session', async () => {
+    const charges: number[] = [];
+    let generations = 0;
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'handler-approval-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau({
+      id: 'reviews-tool-approval-bureau',
+      agents: {},
+      generate: async () => {
+        generations++;
+        return generations === 1
+          ? {
+              content: '',
+              toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+            }
+          : { content: 'Charged.', toolCalls: [] };
+      },
+      toolbox,
+      storage: { type: 'memory' },
+      durableExecution: true,
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Charge it', principal: 'api-key:tester' });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'expected the tool call to surface a pending approval',
+      );
+      const handler = createBureauHandler(bureau, { authentication });
+      const listed = await call(handler, 'bureau.reviews.list', {});
+      const [review] = (listed.result?.['reviews'] ?? []) as Array<{ id: string; round: number }>;
+      expect(review?.round).toBe(0);
+
+      const resolved = await call(handler, 'bureau.reviews.resolve', {
+        id: review?.id,
+        decision: 'approve',
+      });
+
+      expect(resolved.result).toMatchObject({ decision: 'approve', receipt: 'applied' });
+      const session = await bureau.getSession(run.sessionId);
+      const history = session?.conversationHistory;
+      const row = history?.ids
+        .map((id) => history.messages[id])
+        .find((message) => message?.toolResult?.callId === 'call-1');
+      expect(row?.toolResult?.outcome).toBe('success');
+      expect(row?.toolResult?.content).toEqual({ charged: 500 });
+      expect(charges).toEqual([500]);
     } finally {
       await bureau.dispose();
     }

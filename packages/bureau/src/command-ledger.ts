@@ -775,12 +775,51 @@ export function digestCommandPayload(
  * legitimately differ between retries, so none of them belong here.
  */
 export interface RunCreationPayload {
-  readonly message: string;
+  /** Absent when the request appends rows instead, or answers the conversation as it stands. */
+  readonly message?: string | undefined;
+  /**
+   * The rows the request appends, serialized by {@link serializeAppendedMessages};
+   * absent when it appends none.
+   */
+  readonly appendMessages?: string | undefined;
   /** The session the request names, trimmed; absent when it asks for a new one. */
   readonly sessionId?: string | undefined;
   readonly systemPrompt?: string | undefined;
   readonly maximumSteps?: number | undefined;
   readonly maximumTokens?: number | undefined;
+}
+
+/** JSON with every object's keys sorted, so equal values serialize alike. */
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, nested: unknown) =>
+    nested !== null && typeof nested === 'object' && !Array.isArray(nested)
+      ? Object.fromEntries(
+          Object.entries(nested).toSorted(([left], [right]) => (left < right ? -1 : 1)),
+        )
+      : nested,
+  );
+}
+
+/**
+ * The rows a run-creation request appends, as the string its digest covers:
+ * everything about each row except the `createdAt` and `position` that
+ * appending re-stamps, which differ between two builds of the same row. An
+ * empty list serializes as absent, the same as no list.
+ */
+export function serializeAppendedMessages(
+  messages: ReadonlyArray<object> | undefined,
+): string | undefined {
+  if (messages === undefined || messages.length === 0) return undefined;
+  return canonicalJson(
+    messages.map((message) => {
+      const {
+        createdAt: _createdAt,
+        position: _position,
+        ...stable
+      } = message as Record<string, unknown>;
+      return stable;
+    }),
+  );
 }
 
 /**
@@ -791,6 +830,7 @@ export interface RunCreationPayload {
 export function digestRunCreationPayload(payload: RunCreationPayload): string {
   return digestCommandPayload({
     message: payload.message,
+    appendMessages: payload.appendMessages,
     sessionId: payload.sessionId,
     systemPrompt: payload.systemPrompt,
     maximumSteps: payload.maximumSteps,

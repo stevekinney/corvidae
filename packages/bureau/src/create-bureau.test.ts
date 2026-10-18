@@ -18334,7 +18334,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           const updateSpy = spyOn(sessionStore, 'update');
           try {
             await bureau.resolveReview({ id: review.id, decision: 'deny', principal: 'operator' });
-            expect(updateSpy.mock.calls.length).toBe(2);
+            // The resolution's own two writes, plus COR-855's one: the denial
+            // replaces the pending tool result in the session's conversation.
+            expect(updateSpy.mock.calls.length).toBe(3);
           } finally {
             updateSpy.mockRestore();
           }
