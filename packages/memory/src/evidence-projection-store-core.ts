@@ -626,9 +626,13 @@ export function createEvidenceProjectionStoreCore(options: {
    * Every such commit conditions on the marker's exact bytes (or on its
    * absence) and puts it back with the generation plus one. A condition
    * serializes a commit only against commits that write the same key, so the
-   * bump is what makes two embedded writers to one namespace exclusive: the
-   * second to apply fails its marker condition and re-plans against the first's
-   * result. Without it a same-profile creation could land between a migration's
+   * bump is what makes concurrent embedded writes to one namespace serialize
+   * through the marker: a write that loses its batch on the marker condition
+   * re-plans against the winner's result, within the commit's bounded attempt
+   * budget. Once that is spent the commit fails with
+   * `ProjectionRevisionConflictError` (the engine reports `conflicted`,
+   * `revision-conflict`) with nothing written, and the caller may resubmit.
+   * Without it a same-profile creation could land between a migration's
    * scan and its apply, and the namespace would end up with a marker of one
    * profile and a recallable record of the other.
    *

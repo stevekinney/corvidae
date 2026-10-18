@@ -56,6 +56,53 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       });
     }
 
+    it('must not be rebuilt in the same proposal to a validity that begins before the projection it supersedes', async () => {
+      const harness = createHarness(makeBackend);
+      await harness.storage.commit({
+        tenantId: TENANT,
+        evidence: [e1],
+        projections: [
+          makeFact('p1', [e1], { validity: { validFrom: FIXED_AT + 200 } }),
+          makeFact('p3', [e1], {
+            payload: { statement: 'Successor.', entities: [] },
+            validity: { validFrom: FIXED_AT + 300 },
+          }),
+        ],
+      });
+      const result = expectRefused(
+        await harness.engine.submit({
+          kind: 'revise-projection',
+          operationId: 'operation-1',
+          tenantId: TENANT,
+          authority,
+          revisions: [
+            {
+              // The successor is rebuilt here, to revision 2, valid from before p1 began.
+              namespace: NAMESPACE,
+              id: 'p3',
+              expectedRevision: 1,
+              change: {
+                kind: 'rebuilt',
+                sources: [{ evidenceId: 'e1', digest: e1.digest }],
+                payload: { statement: 'Rebuilt successor.', entities: [] },
+              },
+              validity: { validFrom: FIXED_AT + 100 },
+            },
+            {
+              namespace: NAMESPACE,
+              id: 'p1',
+              expectedRevision: 1,
+              change: { kind: 'superseded', supersededBy: { id: 'p3', revision: 2 } },
+            },
+          ],
+        }),
+        'rejected',
+      );
+      expect(result.reason).toBe('temporal-inconsistency');
+      const untouched = await harness.storage.getProjection(TENANT, NAMESPACE, 'p3');
+      expect(untouched?.revision).toBe(1);
+    });
+
     it('commits when it is valid from the same instant or later', async () => {
       const harness = createHarness(makeBackend);
       await harness.storage.commit({
