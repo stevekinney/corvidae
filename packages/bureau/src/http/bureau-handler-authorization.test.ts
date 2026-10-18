@@ -11,8 +11,9 @@ import {
   principalFromApiKey,
   type AuthorizationScope,
 } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
@@ -29,7 +30,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { createAgUiMount } from './ag-ui-mount.ts';
-import { bureauMetadata, readAgUiStream } from './ag-ui-stream.test-support.ts';
+import { bureauMetadata, FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import {
   BUREAU_HANDLER_OPERATIONS,
@@ -1041,5 +1042,207 @@ describe('the AG-UI routes owner predicate', () => {
         'bureau.tasks:write',
       ]);
     });
+  });
+});
+
+describe('what bureau.tasks:write grants on the AG-UI routes', () => {
+  const chargeOnce = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Charging.',
+      toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
+    },
+  };
+  const askHuman = {
+    kind: 'respond' as const,
+    response: {
+      content: 'Asking.',
+      toolCalls: [
+        {
+          id: 'call-1',
+          name: 'requestHumanInput',
+          arguments: { signalName: 'human-response', prompt: 'Approve this?' },
+        },
+      ],
+    },
+  };
+  const done = { kind: 'respond' as const, response: { content: 'Done.', toolCalls: [] } };
+
+  function approvalToolbox(charges: number[]) {
+    return createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            charges.push(cents);
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'write-scope-secret',
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as never;
+  }
+
+  const resume = (
+    entries: Array<{ interruptId: string; status: 'resolved'; payload: unknown }>,
+    key: string,
+    threadId = 'thread-1',
+  ) =>
+    startRequest(
+      runAgentInput({ threadId, runId: 'writer-resume', messages: [], resume: entries }),
+      agUiCredentials(key),
+    );
+
+  it('refuses a writer’s answer to another owner’s tool approval before anything runs', async () => {
+    const charges: number[] = [];
+    const harness = await openAgUiHarness({
+      script: [chargeOnce, done],
+      toolbox: approvalToolbox(charges),
+      authentication: agUiAuthentication,
+    });
+    try {
+      const started = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const finished = started.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+      const id = finished.outcome.interrupts[0]!.id;
+      const runsBefore = harness.bureau.listRuns().length;
+
+      const refused = await maskedStream(
+        harness.handler(
+          resume(
+            [{ interruptId: id, status: 'resolved', payload: { decision: 'approve' } }],
+            'writer-key',
+          ),
+        ),
+        id,
+      );
+      const missing = await maskedStream(
+        harness.handler(
+          resume(
+            [
+              {
+                interruptId: 'approval:nope:call-9',
+                status: 'resolved',
+                payload: { decision: 'approve' },
+              },
+            ],
+            'writer-key',
+          ),
+        ),
+        'approval:nope:call-9',
+      );
+
+      expect(refused).toBe(missing);
+      expect(refused).toContain('INTERRUPT_NOT_FOUND');
+      expect(charges).toEqual([]);
+      expect(harness.bureau.listPendingReviews()).toHaveLength(1);
+      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('refuses a writer’s start on another owner’s thread', async () => {
+    const harness = await openAgUiHarness({
+      script: [done, done],
+      authentication: agUiAuthentication,
+    });
+    try {
+      await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const runsBefore = harness.bureau.listRuns().length;
+
+      const frames = await readAgUiStream(
+        await harness.handler(
+          startRequest(
+            runAgentInput({
+              runId: 'writer-run',
+              messages: [{ id: 'writer-user', role: 'user', content: 'butting in' }],
+            }),
+            agUiCredentials('writer-key'),
+          ),
+        ),
+      );
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0]!.event).toMatchObject({ code: 'THREAD_NOT_FOUND' });
+      expect(harness.bureau.listRuns()).toHaveLength(runsBefore);
+    } finally {
+      await harness.dispose();
+    }
+  });
+
+  it('still lets a writer answer a human wait and cancel another owner’s run', async () => {
+    const harness = await openAgUiHarness({
+      script: [askHuman, done, { kind: 'block', barrier: 'hold' }, done],
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      authentication: agUiAuthentication,
+    });
+    try {
+      const parked = await readAgUiStream(
+        await harness.handler(startRequest(runAgentInput(), agUiCredentials('alice-key'))),
+      );
+      const finished = parked.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } };
+      const nativeRunId = String(bureauMetadata(parked[0]!.event)['runId']);
+
+      const answered = await readAgUiStream(
+        await harness.handler(
+          resume(
+            [
+              {
+                interruptId: finished.outcome.interrupts[0]!.id,
+                status: 'resolved',
+                payload: { decision: 'approve', answer: 'yes' },
+              },
+            ],
+            'writer-key',
+          ),
+        ),
+      );
+
+      expect(bureauMetadata(answered[0]!.event)['runId']).toBe(nativeRunId);
+      expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+
+      const second = new FrameReader(
+        await harness.handler(
+          startRequest(
+            runAgentInput({
+              threadId: 'thread-2',
+              runId: 'alice-second',
+              messages: [{ id: 'u2', role: 'user', content: 'again' }],
+            }),
+            agUiCredentials('alice-key'),
+          ),
+        ),
+      );
+      await second.until(EventType.STEP_STARTED);
+      await harness.generate.reached('hold');
+      const secondRunId = harness.bureau.listRuns().find((run) => run.sessionId === 'thread-2')!.id;
+      const cancelled = await harness.handler(
+        cancelRequest(secondRunId, agUiCredentials('writer-key')),
+      );
+      harness.generate.release('hold');
+      await second.rest();
+
+      expect(cancelled.status).toBe(200);
+    } finally {
+      await harness.dispose();
+    }
   });
 });

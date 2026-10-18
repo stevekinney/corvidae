@@ -19,6 +19,9 @@ import type { Event } from '@ag-ui/core';
 
 const textEncoder = new TextEncoder();
 
+/** An SSE comment: a block with no `data:` line, which a client skips. */
+const KEEP_ALIVE_FRAME = textEncoder.encode(': keep-alive\n\n');
+
 /**
  * A count that no queue reaches, so `desiredSize` is `capacity - queued` and the
  * sink can read how many chunks are unread without Bun deciding when to stop
@@ -37,6 +40,14 @@ export type AgUiSinkOptions = {
   readonly timers: RuntimeServices['timers'];
   /** The stream ends this many milliseconds after it opens. */
   readonly maxStreamDurationMs: number;
+  /**
+   * How often a quiet stream writes an SSE comment (`: keep-alive`), which every
+   * client ignores. `Bun.serve` closes a connection that sends nothing for ten
+   * seconds (`idleTimeout`, at most 255), and a model step that does not stream can
+   * be silent for longer, so the default is half of that. Weft's own subscription
+   * heartbeat is fifteen seconds, which is longer than Bun's default allows.
+   */
+  readonly keepAliveMs: number;
   /**
    * How many unread live events a stream holds before it is closed as too slow.
    * The events written at open (the snapshots and the replay of the step in
@@ -74,7 +85,9 @@ export function createAgUiSink(options: AgUiSinkOptions): AgUiSink {
   let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
   let closed = false;
   let openingChunks = 0;
+  let enqueued = 0;
   let cancelDeadline: (() => void) | undefined;
+  let cancelKeepAlive: (() => void) | undefined;
 
   const release = (): void => {
     if (closed) return;
@@ -82,6 +95,10 @@ export function createAgUiSink(options: AgUiSinkOptions): AgUiSink {
     if (cancelDeadline !== undefined) {
       cancelDeadline();
       cancelDeadline = undefined;
+    }
+    if (cancelKeepAlive !== undefined) {
+      cancelKeepAlive();
+      cancelKeepAlive = undefined;
     }
     options.onClosed();
   };
@@ -105,9 +122,27 @@ export function createAgUiSink(options: AgUiSinkOptions): AgUiSink {
 
   const queued = (): number => UNBOUNDED_CAPACITY - (controller?.desiredSize ?? UNBOUNDED_CAPACITY);
 
+  // A comment goes out only when nothing is waiting to be read: a reader with
+  // events pending is not idle, and one that has stopped reading would otherwise
+  // be handed a backlog of comments.
+  const keepAlive = options.timers.setInterval(() => {
+    if (closed || queued() > 0) return;
+    try {
+      controller?.enqueue(KEEP_ALIVE_FRAME);
+      enqueued += 1;
+    } catch {
+      release();
+    }
+  }, options.keepAliveMs);
+  cancelKeepAlive = () => options.timers.clearInterval(keepAlive);
+
+  /** The opening chunks the reader has not read yet. Chunks are read in the order written. */
+  const unreadOpening = (): number => Math.max(0, openingChunks - (enqueued - queued()));
+
   const enqueue = (event: Event, cursor: string | undefined): void => {
     try {
       controller?.enqueue(frame(event, cursor));
+      enqueued += 1;
     } catch {
       // The reader went away between the check and the write.
       release();
@@ -126,7 +161,7 @@ export function createAgUiSink(options: AgUiSinkOptions): AgUiSink {
     },
     writeLive(event, cursor) {
       if (closed) return true;
-      if (queued() > openingChunks + options.liveBufferSize) return false;
+      if (queued() - unreadOpening() > options.liveBufferSize) return false;
       enqueue(event, cursor);
       return true;
     },

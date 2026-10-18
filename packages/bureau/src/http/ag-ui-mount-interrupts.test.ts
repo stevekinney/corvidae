@@ -13,6 +13,7 @@ import { z } from 'zod';
 import {
   attachRunRequest,
   attachThreadRequest,
+  cancelRequest,
   type Harness,
   openHarness,
   runAgentInput,
@@ -63,6 +64,11 @@ const chargeCard = {
     toolCalls: [{ id: 'call-1', name: 'charge-card', arguments: { cents: 500 } }],
   },
 };
+
+const say = (content: string) => ({
+  kind: 'respond' as const,
+  response: { content, toolCalls: [] },
+});
 
 const askHuman = {
   kind: 'respond' as const,
@@ -126,11 +132,21 @@ describe('a tool approval', () => {
         });
         // The call and its pending result reached the stream before the interrupt.
         const types = typesOf(frames);
-        expect(types.slice(-4)).toEqual(
-          [EventType.TOOL_CALL_RESULT, EventType.STEP_FINISHED, EventType.RUN_FINISHED].length === 3
-            ? types.slice(-4)
-            : types.slice(-4),
-        );
+        expect(types).toEqual([
+          EventType.RUN_STARTED,
+          EventType.STATE_SNAPSHOT,
+          EventType.STEP_STARTED,
+          EventType.TEXT_MESSAGE_START,
+          EventType.TEXT_MESSAGE_CONTENT,
+          EventType.TEXT_MESSAGE_END,
+          EventType.TOOL_CALL_START,
+          EventType.TOOL_CALL_ARGS,
+          EventType.TOOL_CALL_END,
+          EventType.TOOL_CALL_RESULT,
+          EventType.STEP_FINISHED,
+          EventType.STATE_SNAPSHOT,
+          EventType.RUN_FINISHED,
+        ]);
         expect(types).toContain(EventType.TOOL_CALL_RESULT);
         // The review is the same one the management plane lists.
         expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([
@@ -181,6 +197,123 @@ describe('a tool approval', () => {
         const resultRow = snapshot.messages.find((message) => message.role === 'tool');
         expect(events[6]).toMatchObject({ messageId: resultRow?.id });
         expect(JSON.stringify(frames)).not.toContain('approvalToken');
+      },
+    );
+  });
+});
+
+describe('the interrupt of a settled approval', () => {
+  it('carries the same durable label and cursor on an attach as on the start stream', async () => {
+    await withHarness(
+      { script: [chargeCard], toolbox: approvalToolbox([]), storage: 'sqlite' },
+      async ({ handler, bureau }) => {
+        const started = await readAgUiStream(await handler(startRequest(runAgentInput())));
+        const nativeRunId = String(bureauMetadata(started[0]!.event)['runId']);
+
+        const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
+
+        const history = await bureau.eventHistory({ kind: 'run', id: nativeRunId });
+        if (!('events' in history)) throw new Error('expected a page of history');
+        const record = history.events.findLast((event) => event.kind === 'run.completed');
+        const last = attached.at(-1)!;
+        expect(last.event).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'interrupt' },
+        });
+        expect(bureauMetadata(last.event)).toMatchObject({ durable: true, cursor: record?.cursor });
+        expect(last.id).toBe(record?.cursor);
+        expect(bureauMetadata(started.at(-1)!.event)).toMatchObject({
+          durable: true,
+          cursor: record?.cursor,
+        });
+      },
+    );
+  });
+
+  it('keeps the human-wait interrupt non-durable on an attach', async () => {
+    await withHarness(
+      {
+        script: [askHuman],
+        humanInput: true,
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        storage: 'sqlite',
+      },
+      async ({ handler }) => {
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+
+        const attached = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
+
+        expect(bureauMetadata(attached.at(-1)!.event)['durable']).toBe(false);
+        expect(attached.at(-1)!.id).toBeUndefined();
+      },
+    );
+  });
+});
+
+describe('an attach to a run the Bureau no longer holds', () => {
+  it('reports the state it can know, with no liveness assessment', async () => {
+    await withHarness(
+      { script: [chargeCard], toolbox: approvalToolbox([]), storage: 'sqlite' },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        const restarted = await harness.restart([]);
+        try {
+          const frames = await readAgUiStream(
+            await restarted.handler(attachThreadRequest('thread-1')),
+          );
+
+          const state = frames.find((frame) => frame.event.type === EventType.STATE_SNAPSHOT)!
+            .event as unknown as { snapshot: Record<string, unknown> };
+          expect(state.snapshot).not.toHaveProperty('assessment');
+          expect(state.snapshot).toMatchObject({
+            status: 'terminal',
+            pendingInterruptIds: [expect.any(String)],
+          });
+          expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'interrupt' } });
+        } finally {
+          await restarted.dispose();
+        }
+      },
+    );
+  });
+});
+
+describe('cancelling a run that settled with an approval pending', () => {
+  it('leaves the thread busy until the interrupt is answered, and answering it as cancelled frees it', async () => {
+    await withHarness(
+      { script: [chargeCard, say('Understood.'), say('Next.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await readAgUiStream(await handler(startRequest(runAgentInput())));
+        const nativeRunId = String(bureauMetadata(first[0]!.event)['runId']);
+        const [review] = bureau.listPendingReviews();
+        const next = () =>
+          handler(
+            startRequest(
+              runAgentInput({
+                runId: `next-${Math.random()}`,
+                messages: [{ id: `user-${Math.random()}`, role: 'user', content: 'again' }],
+              }),
+            ),
+          );
+
+        const cancelled = await handler(cancelRequest(nativeRunId));
+        const busy = await readAgUiStream(await next());
+        await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'answer',
+                messages: [],
+                resume: [{ interruptId: review!.id, status: 'cancelled' }],
+              }),
+            ),
+          ),
+        );
+        const free = await readAgUiStream(await next());
+
+        expect(cancelled.status).toBe(200);
+        expect(busy[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+        expect(free[0]!.event.type).toBe(EventType.RUN_STARTED);
       },
     );
   });

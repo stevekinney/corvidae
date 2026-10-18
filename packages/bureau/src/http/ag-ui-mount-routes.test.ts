@@ -220,6 +220,116 @@ describe('start', () => {
   });
 });
 
+describe('a start that races another on the same thread', () => {
+  it.each([
+    ['a thread that does not exist yet', false],
+    ['a thread whose last run has finished', true],
+  ])('admits exactly one of two concurrent starts on %s', async (_name, existing) => {
+    await withHarness(
+      { script: [say('First.'), { kind: 'block', barrier: 'hold' }, say('Second.')] },
+      async ({ handler, bureau, generate }) => {
+        if (existing) await readAgUiStream(await handler(startRequest(runAgentInput())));
+        const start = (runId: string, text: string) =>
+          handler(
+            startRequest(
+              runAgentInput({
+                runId,
+                messages: [{ id: `user-${runId}`, role: 'user', content: text }],
+              }),
+            ),
+          );
+        const runsBefore = bureau.listRuns().length;
+
+        const [left, right] = await Promise.all([start('race-a', 'one'), start('race-b', 'two')]);
+        const leftReader = new FrameReader(left);
+        const rightReader = new FrameReader(right);
+        const [leftFirst, rightFirst] = await Promise.all([leftReader.next(), rightReader.next()]);
+        generate.release('hold');
+        await Promise.all([leftReader.rest(), rightReader.rest()]);
+
+        const first = [leftFirst!.event, rightFirst!.event];
+        const refused = first.filter((event) => event.type === EventType.RUN_ERROR);
+        expect(first.filter((event) => event.type === EventType.RUN_STARTED)).toHaveLength(1);
+        expect(refused).toHaveLength(1);
+        expect(refused[0]).toMatchObject({ code: 'THREAD_BUSY' });
+        expect(bureau.listRuns()).toHaveLength(runsBefore + 1);
+      },
+    );
+  });
+});
+
+describe('a start that reuses the runId of another thread’s run', () => {
+  it('is a conflict, not an attach to the other thread’s run', async () => {
+    await withHarness({ script: [say('Once.')] }, async ({ handler, bureau }) => {
+      await readAgUiStream(await handler(startRequest(runAgentInput())));
+
+      const frames = await readAgUiStream(
+        await handler(startRequest(runAgentInput({ threadId: 'thread-2', messages: [] }))),
+      );
+
+      expect(frames).toHaveLength(1);
+      expect(frames[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_CONFLICT' });
+      expect(bureau.listRuns()).toHaveLength(1);
+    });
+  });
+});
+
+describe('a start retried after the Bureau restarted', () => {
+  it('replays the original run: its messages and the outcome it had', async () => {
+    await withHarness({ script: [say('Hello there.')], storage: 'sqlite' }, async (harness) => {
+      const original = await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+      const restarted = await harness.restart([]);
+      try {
+        const retry = await readAgUiStream(await restarted.handler(startRequest(runAgentInput())));
+
+        const messages = retry.find((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT)!
+          .event as unknown as { messages: Array<{ role: string; content?: string }> };
+        expect(messages.messages.map((message) => message.content)).toContain('Hello there.');
+        expect(retry[0]!.event).toMatchObject({
+          type: EventType.RUN_STARTED,
+          runId: 'client-run-1',
+        });
+        expect(bureauMetadata(retry[0]!.event)['runId']).toBe(
+          bureauMetadata(original[0]!.event)['runId'],
+        );
+        const finished = retry.at(-1)!;
+        expect(finished.event).toMatchObject({
+          type: EventType.RUN_FINISHED,
+          outcome: { type: 'success' },
+        });
+        expect(bureauMetadata(finished.event)['durable']).toBe(true);
+        expect(finished.id).toBe(original.at(-1)!.id);
+        expect(finished.id).toBeString();
+      } finally {
+        await restarted.dispose();
+      }
+    });
+  });
+
+  it('replays the failure of a run that failed, not an invented success', async () => {
+    await withHarness(
+      { script: [{ kind: 'fail', error: new Error('provider said no') }], storage: 'sqlite' },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        const restarted = await harness.restart([]);
+        try {
+          const retry = await readAgUiStream(
+            await restarted.handler(startRequest(runAgentInput())),
+          );
+
+          expect(retry.at(-1)!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            message: expect.stringContaining('provider said no'),
+          });
+          expect(typesOf(retry)).not.toContain(EventType.RUN_FINISHED);
+        } finally {
+          await restarted.dispose();
+        }
+      },
+    );
+  });
+});
+
 describe('door refusals are one-event streams', () => {
   const refusal = async (harness: Harness, request: Request) => {
     const response = await harness.handler(request);

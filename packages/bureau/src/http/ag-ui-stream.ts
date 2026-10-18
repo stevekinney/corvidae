@@ -30,6 +30,7 @@ import {
 } from '@ag-ui/core';
 import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
 
+import type { BureauChildRecord } from '../child-topology-store.ts';
 import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { snapshotMessages } from './ag-ui-messages.ts';
@@ -46,6 +47,7 @@ export type AgUiStreamBureau = Pick<
   | 'subscribeRunSnapshot'
   | 'listPendingReviews'
   | 'eventHistory'
+  | 'children'
 >;
 
 export type AgUiStreamEnvironment = {
@@ -53,6 +55,7 @@ export type AgUiStreamEnvironment = {
   readonly runtime: Pick<RuntimeServices, 'clock' | 'timers'>;
   readonly maxStreamDurationMs: number;
   readonly liveBufferSize: number;
+  readonly keepAliveMs: number;
 };
 
 export type OpenRunStream = {
@@ -60,7 +63,14 @@ export type OpenRunStream = {
   /** The `runId` the AG-UI run carries: the client's on start and resume, the native one on attach. */
   readonly runId: string;
   readonly nativeRunId: string;
+  /** The parent's native id, on the stream of a child run. */
   readonly parentRunId?: string | undefined;
+  /**
+   * Set when `nativeRunId` is a child run: Bureau holds no run for it, only the
+   * child's record, so the stream is built from the record and ends when the
+   * child settles.
+   */
+  readonly child?: BureauChildRecord | undefined;
   /** Replay the run from its first event, or only the step in flight behind a snapshot. */
   readonly replay: 'beginning' | 'open-step';
   readonly messagesSnapshot: boolean;
@@ -69,6 +79,14 @@ export type OpenRunStream = {
    * after a tool approval replays the approved call before the executed result.
    */
   readonly preludeEvents?: (() => Event[]) | undefined;
+  /**
+   * The rows a human's answer just appended to the run's conversation, announced
+   * as user messages ahead of the step that answers them. No recorded event
+   * carries such a row (it is neither a step's text nor a tool call), so the
+   * resume that delivered the answer says what it was.
+   */
+  readonly answerRows?:
+    ReadonlyArray<{ readonly id: string; readonly content: string }> | undefined;
 };
 
 /** The message a mount-minted `RUN_ERROR` carries, by code. */
@@ -90,12 +108,22 @@ export function errorEvent(
 type ReadHistory = {
   readonly fence: string | undefined;
   readonly lastCursorByKind: ReadonlyMap<string, string>;
+  /** How the run ended, from its last terminal record, when it recorded one. */
+  readonly terminal:
+    { readonly outcome: NativeTerminal['outcome']; readonly detail: unknown } | undefined;
+};
+
+const TERMINAL_OUTCOME: Readonly<Record<string, NativeTerminal['outcome']>> = {
+  [RECORDED.runCompleted]: 'completed',
+  [RECORDED.runError]: 'error',
+  [RECORDED.runAborted]: 'aborted',
 };
 
 async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Promise<ReadHistory> {
   const lastCursorByKind = new Map<string, string>();
   let fence: string | undefined;
   let since: string | undefined;
+  let terminal: ReadHistory['terminal'];
   for (;;) {
     const page = await bureau.eventHistory(
       { kind: 'run', id: nativeRunId },
@@ -105,11 +133,13 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
     for (const event of page.events) {
       lastCursorByKind.set(event.kind, event.cursor);
       fence = event.cursor;
+      const outcome = TERMINAL_OUTCOME[event.kind];
+      if (outcome !== undefined) terminal = { outcome, detail: event.payload };
     }
     if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
   }
-  return { fence, lastCursorByKind };
+  return { fence, lastCursorByKind, terminal };
 }
 
 function usageOf(detail: unknown): TokenUsage[] {
@@ -226,7 +256,9 @@ export function openRunStream(
   const { bureau, runtime } = environment;
   const stampContext: EventStamp = {
     nativeRunId: request.nativeRunId,
-    sessionId: request.threadId,
+    // A child run has no session of its own, and its thread is its own id, which
+    // is not a Bureau session.
+    sessionId: request.child === undefined ? request.threadId : undefined,
     now: () => runtime.clock.now(),
   };
   const projector = new RunProjector(request.nativeRunId, stampContext);
@@ -241,9 +273,11 @@ export function openRunStream(
   let lastState = '';
   let lastRevision = 0;
   let tail: Promise<void> = Promise.resolve();
+  const childWait = new AbortController();
 
   const dispose = (): void => {
     ended = true;
+    childWait.abort();
     unsubscribeFrames?.();
     unsubscribeFrames = undefined;
     unsubscribeSnapshots?.();
@@ -273,6 +307,7 @@ export function openRunStream(
   sink = createAgUiSink({
     timers: runtime.timers,
     maxStreamDurationMs: environment.maxStreamDurationMs,
+    keepAliveMs: environment.keepAliveMs,
     liveBufferSize: environment.liveBufferSize,
     onDeadline: () => {
       fail('STREAM_DEADLINE', 'The stream reached its maximum duration; attach again.');
@@ -293,7 +328,7 @@ export function openRunStream(
   const stateSnapshot = (snapshot: {
     revision: number;
     status: string;
-    assessment: string;
+    assessment?: string | undefined;
   }): Event => {
     lastRevision = Math.max(lastRevision, snapshot.revision);
     return stamp(
@@ -302,7 +337,7 @@ export function openRunStream(
         snapshot: {
           revision: lastRevision,
           status: snapshot.status,
-          assessment: snapshot.assessment,
+          ...(snapshot.assessment === undefined ? {} : { assessment: snapshot.assessment }),
           pendingInterruptIds: pendingFor(bureau, request.nativeRunId).map((review) => review.id),
         },
       },
@@ -311,7 +346,7 @@ export function openRunStream(
     );
   };
 
-  const stateKey = (snapshot: { status: string; assessment: string }): string =>
+  const stateKey = (snapshot: { status: string; assessment?: string | undefined }): string =>
     JSON.stringify([
       snapshot.status,
       snapshot.assessment,
@@ -438,7 +473,95 @@ export function openRunStream(
     if (opened) enqueue(drain);
   });
 
+  /**
+   * A child run's stream. Bureau holds no run for a child, only its record, so
+   * there are no steps to project: the stream is the record as it stands, then
+   * the record the child settles into. Its events are not part of any durable
+   * history this mount reads, so none is labelled durable.
+   */
+  const openChild = async (record: BureauChildRecord): Promise<void> => {
+    const { threadId, runId } = request;
+    const result = record.status === 'completed' ? record.outcome?.content : undefined;
+    writeEvents([
+      stamp(
+        {
+          type: EventType.RUN_STARTED,
+          threadId,
+          runId,
+          ...(request.parentRunId === undefined ? {} : { parentRunId: request.parentRunId }),
+        },
+        stampContext,
+        { durable: false },
+      ),
+      stamp(
+        {
+          type: EventType.MESSAGES_SNAPSHOT,
+          messages:
+            result === undefined || result === ''
+              ? []
+              : [{ id: `${request.nativeRunId}:result`, role: 'assistant', content: result }],
+        },
+        stampContext,
+        { durable: false },
+      ),
+      stamp(
+        {
+          type: EventType.STATE_SNAPSHOT,
+          snapshot: { revision: record.revision, status: record.status, pendingInterruptIds: [] },
+        },
+        stampContext,
+        { durable: false },
+      ),
+    ]);
+    if (ended) return;
+    opened = true;
+    let settled = record;
+    if (record.status === 'running') {
+      const waited = await bureau.children.wait(
+        { parentRunId: record.parentRunId, childRunId: record.childRunId },
+        { signal: childWait.signal },
+      );
+      if (ended) return;
+      if (waited.outcome === 'not-found') {
+        fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
+        return;
+      }
+      if (waited.outcome !== 'settled') {
+        // Nothing in this process is observing the child (it is between a restart
+        // and its reattachment); a later attach finds it observed.
+        fail('RUN_FAILED', 'The child run is not being observed yet; attach again');
+        return;
+      }
+      settled = waited.child;
+    }
+    let last: Event;
+    if (settled.status === 'failed') {
+      last = errorEvent(
+        'RUN_FAILED',
+        settled.outcome?.reason ?? 'The child run failed',
+        stampContext,
+      );
+    } else {
+      last = stamp(
+        {
+          type: EventType.RUN_FINISHED,
+          threadId,
+          runId,
+          outcome: settled.status === 'aborted' ? { type: 'cancelled' } : { type: 'success' },
+        },
+        stampContext,
+        { durable: false },
+      );
+    }
+    dispose();
+    sink.finish(last);
+  };
+
   const open = async (): Promise<void> => {
+    if (request.child !== undefined) {
+      await openChild(request.child);
+      return;
+    }
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
     const session = await bureau.getSession(request.threadId);
     const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
@@ -447,8 +570,9 @@ export function openRunStream(
     const fence = history?.fence;
     const liveness = detail?.liveness;
     // A run Bureau no longer holds (recovered after a restart, or removed by
-    // retention) has no liveness to read: it is reported as it was left.
-    const synthesized = { revision: lastRevision, status: 'terminal', assessment: 'terminal' };
+    // retention) has no liveness to read: it is reported as it was left, with no
+    // assessment, because no liveness assessment was made of it.
+    const synthesized = { revision: lastRevision, status: 'terminal' };
     const snapshot = liveness ?? synthesized;
 
     writeEvents([
@@ -463,7 +587,9 @@ export function openRunStream(
         { durable: false },
       ),
     ]);
-    if (request.messagesSnapshot) {
+    // A run Bureau no longer holds has no events to replay, so a start retried
+    // against it is shown the conversation as well, as an attach is.
+    if (request.messagesSnapshot || detail === undefined) {
       writeEvents([
         stamp(
           {
@@ -477,6 +603,28 @@ export function openRunStream(
     }
     writeEvents([stateSnapshot(snapshot)]);
     lastState = stateKey(snapshot);
+    // The answer a resume just delivered, unless the conversation the snapshot
+    // carries already holds it (a run that has moved on since).
+    for (const row of request.answerRows ?? []) {
+      if (conversation?.ids.includes(row.id) === true) continue;
+      writeEvents([
+        stamp(
+          { type: EventType.TEXT_MESSAGE_START, messageId: row.id, role: 'user' },
+          stampContext,
+          {
+            durable: false,
+          },
+        ),
+        stamp(
+          { type: EventType.TEXT_MESSAGE_CONTENT, messageId: row.id, delta: row.content },
+          stampContext,
+          { durable: false },
+        ),
+        stamp({ type: EventType.TEXT_MESSAGE_END, messageId: row.id }, stampContext, {
+          durable: false,
+        }),
+      ]);
+    }
     writeEvents(request.preludeEvents?.() ?? []);
 
     // Replay what the client has not seen, through the same projection the live
@@ -524,6 +672,12 @@ export function openRunStream(
       }
     }
 
+    // A delta that arrived while the stream was reading was cut before the
+    // replay, which the replay's events do not include: the next delta carries
+    // the text accumulated so far, so replaying a stale one would only repeat it.
+    for (let index = buffer.length - 1; index >= 0; index -= 1) {
+      if (buffer[index]!.type === 'stream:text-delta') buffer.splice(index, 1);
+    }
     opened = true;
     if (ending !== undefined) {
       await finishAs(ending);
@@ -539,17 +693,37 @@ export function openRunStream(
             writeEvents(replayCall(conversation, review.approval.callId, stampContext));
           }
         }
-        interruptNow(pending.map(toInterrupt));
+        // The same fact the start stream ends on, so it carries the same label
+        // and cursor: the run completed, and the interrupt is what is left.
+        if (detail?.status === 'error' || detail?.status === 'aborted') {
+          interruptNow(pending.map(toInterrupt));
+        } else {
+          await finishAs({
+            outcome: 'completed',
+            detail: { error: detail?.error, usage: detail?.usage },
+            tripwire: false,
+          });
+        }
+        return;
+      }
+      if (detail === undefined) {
+        // The run is not held, so how it ended is what its durable record says:
+        // never an outcome the stream made up.
+        if (history?.terminal === undefined) {
+          fail('RUN_FAILED', `Run "${request.nativeRunId}" recorded no outcome`);
+          return;
+        }
+        await finishAs({ ...history.terminal, tripwire: false });
         return;
       }
       await finishAs({
         outcome:
-          detail?.status === 'error'
+          detail.status === 'error'
             ? 'error'
-            : detail?.status === 'aborted'
+            : detail.status === 'aborted'
               ? 'aborted'
               : 'completed',
-        detail: { error: detail?.error, usage: detail?.usage },
+        detail: { error: detail.error, usage: detail.usage },
         tripwire: false,
       });
       return;

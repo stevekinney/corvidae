@@ -9,15 +9,25 @@
  * | ------------------------------- | --------------- | ------ |
  * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. |
  * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. |
- * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id. |
+ * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. |
  * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. |
  *
  * Every route is authenticated by the handler before the mount sees it, and
  * decides with the owner predicate every catalog operation decides with
  * (`owner-predicate.ts`): the owner of the resource, or the kind's operator
- * scope (`bureau.tasks:read` to attach, `bureau.tasks:write` to start, resume, or
- * cancel). A caller the predicate refuses is answered exactly as a missing
- * resource is, so an identifier grants nothing.
+ * scope. `bureau.tasks:read` lets another principal attach. `bureau.tasks:write`
+ * lets it cancel a run and answer a human-input wait, and no more: only the
+ * thread's owner starts a run on an existing thread (a cross-owner start is
+ * `THREAD_NOT_FOUND`), and only the owner answers a tool approval (a resume that
+ * includes one is `INTERRUPT_NOT_FOUND`, before anything is resolved), because
+ * approving a call authorizes a tool to run as the owner. A caller the predicate
+ * refuses is answered exactly as a missing resource is, so an identifier grants
+ * nothing.
+ *
+ * Starting is one decision per thread, taken in turn: whether the thread is busy
+ * and the creation of the run that makes it busy cannot be separated, or two
+ * starts would both be admitted. The turn is held by this process, so two
+ * processes serving one store are separate admission domains.
  *
  * A refusal at the door on a streaming route is a one-event stream, HTTP 200,
  * `RUN_ERROR` with a code from the closed set in `ag-ui-vocabulary.ts`, because a
@@ -74,6 +84,11 @@ export type AgUiOptions = {
    */
   readonly liveBufferSize?: number;
   /**
+   * How often a quiet stream writes an SSE comment so a proxy or `Bun.serve`'s idle
+   * timeout (ten seconds by default) does not close it. Defaults to 5000.
+   */
+  readonly keepAliveIntervalMs?: number;
+  /**
    * The clock and timers the mount reads, so a test drives the stream deadline
    * with a manual clock. Defaults to the real ones.
    */
@@ -83,6 +98,7 @@ export type AgUiOptions = {
 export const DEFAULT_AG_UI_PATH_PREFIX = '/ag-ui';
 export const DEFAULT_AG_UI_MAX_STREAM_DURATION_MS = 900_000;
 export const DEFAULT_AG_UI_LIVE_BUFFER_SIZE = 1000;
+export const DEFAULT_AG_UI_KEEP_ALIVE_INTERVAL_MS = 5000;
 const PROTOCOL_VERSION = '1.0';
 
 /** What the mount reads from the Bureau. */
@@ -152,6 +168,7 @@ export function createAgUiMount(
     runtime,
     maxStreamDurationMs: options.maxStreamDurationMs ?? DEFAULT_AG_UI_MAX_STREAM_DURATION_MS,
     liveBufferSize: options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
+    keepAliveMs: options.keepAliveIntervalMs ?? DEFAULT_AG_UI_KEEP_ALIVE_INTERVAL_MS,
   };
   const now = (): number => runtime.clock.now();
   let resumeRun: ReturnType<typeof createResume> | undefined;
@@ -167,6 +184,28 @@ export function createAgUiMount(
     operatorScope: 'bureau.tasks:read' | 'bureau.tasks:write',
   ): boolean {
     return authorization.mayAccess({ principal, resourceOwner, operatorScope });
+  }
+
+  /**
+   * Serializes the decisions that admit a run to one thread. Whether a thread is
+   * busy and the creation of the run that makes it busy are one decision: two
+   * starts that each read "idle" before either created its run would both be
+   * admitted. This serializes them within this process; a second process serving
+   * the same storage is a separate admission domain, and the Bureau does not
+   * arbitrate between them (see the module doc).
+   */
+  const admissions = new Map<string, Promise<unknown>>();
+  function admit<T>(threadId: string, decide: () => Promise<T>): Promise<T> {
+    const turn = (admissions.get(threadId) ?? Promise.resolve()).then(decide, decide);
+    const settled = turn.then(
+      () => undefined,
+      () => undefined,
+    );
+    admissions.set(threadId, settled);
+    void settled.then(() => {
+      if (admissions.get(threadId) === settled) admissions.delete(threadId);
+    });
+    return turn;
   }
 
   /** The thread's most recent root run when it is one a client can attach to. */
@@ -221,7 +260,22 @@ export function createAgUiMount(
     const owner = await authorization.ownerOf({ kind: 'run', id: runId });
     if (owner === undefined || !may(principal, owner, 'bureau.tasks:read')) return missing();
     const target = await attachableRun(runId);
-    if (target === undefined) return missing();
+    if (target === undefined) {
+      // Bureau holds no run for a child, only its record, so its owner attaches
+      // through that: a thread of its own (the child has no session), and the
+      // parent's id on RUN_STARTED.
+      const child = await bureau.children.locate(runId).catch(() => undefined);
+      if (child === undefined) return missing();
+      return openRunStream(environment, {
+        threadId: runId,
+        runId,
+        nativeRunId: runId,
+        parentRunId: child.parentRunId,
+        child,
+        replay: 'open-step',
+        messagesSnapshot: true,
+      });
+    }
     return openRunStream(environment, {
       threadId: target.sessionId,
       runId,
@@ -277,6 +331,7 @@ export function createAgUiMount(
         environment,
         runtime,
         mayWrite: (caller, resourceOwner) => may(caller, resourceOwner, 'bureau.tasks:write'),
+        admit,
         ownerOfReview: (reviewId) => authorization.ownerOf({ kind: 'review', id: reviewId }),
         refuse,
       });
@@ -289,66 +344,99 @@ export function createAgUiMount(
         owner,
       });
     }
-    const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
-    if (threadOwner !== undefined && !may(principal, threadOwner, 'bureau.tasks:write')) {
-      return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
-    }
-    const session = await bureau.getSession(input.threadId);
-    let appendMessages;
-    try {
-      appendMessages = rowsAddedBy(
-        session?.conversationHistory ?? createConversationHistory({ id: input.threadId }),
-        input.messages,
-      );
-    } catch (error) {
-      return refuse('INVALID_INPUT', error instanceof Error ? error.message : 'Invalid messages');
-    }
+    const admitted = await admit(
+      input.threadId,
+      async (): Promise<{ readonly response: Response } | { readonly runId: string }> => {
+        // Only the thread's owner starts a run on a thread that exists: a start
+        // adds to the conversation, which a write scope alone does not grant. The
+        // refusal is the one a missing thread gets.
+        const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
+        if (threadOwner !== undefined && threadOwner !== owner) {
+          return {
+            response: refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`),
+          };
+        }
+        const session = await bureau.getSession(input.threadId);
+        let appendMessages;
+        try {
+          appendMessages = rowsAddedBy(
+            session?.conversationHistory ?? createConversationHistory({ id: input.threadId }),
+            input.messages,
+          );
+        } catch (error) {
+          return {
+            response: refuse(
+              'INVALID_INPUT',
+              error instanceof Error ? error.message : 'Invalid messages',
+            ),
+          };
+        }
 
-    // A start the thread already holds the rows of is the retry of one that
-    // created them: it attaches to the run that did, rather than starting another.
-    // A start that added new rows under a used runId falls through to createRun,
-    // whose ledger refuses the changed request.
-    if (appendMessages.length === 0) {
-      const earlier = await bureau
-        .locateRunCreationReceipt({
-          principal: owner,
-          agentName,
-          runCreationRequestId: input.runId,
-        })
-        .catch(() => undefined);
-      if (earlier?.status === 'recorded' || earlier?.status === 'pending') {
-        return openRunStream(environment, {
-          threadId: input.threadId,
-          runId: input.runId,
-          nativeRunId: earlier.receipt.runId,
-          replay: 'beginning',
-          messagesSnapshot: false,
-        });
-      }
-    }
-    if (appendMessages.at(-1)?.role !== 'user') {
-      return refuse('INVALID_INPUT', 'A start must add a user message as its last message');
-    }
-    if (threadOwner !== undefined && (await attachableRunOfThread(input.threadId)) !== undefined) {
-      return refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`);
-    }
-
-    let run;
-    try {
-      run = await bureau.createRun({
-        sessionId: input.threadId,
-        agentName,
-        principal: owner,
-        appendMessages,
-        runCreationRequestId: input.runId,
-      });
-    } catch (error) {
-      return refuse(...refusalFor(error, input.threadId));
-    }
+        // A start the thread already holds the rows of is the retry of one that
+        // created them: it attaches to the run that did, rather than starting
+        // another. A start that added new rows under a used runId falls through to
+        // createRun, whose ledger refuses the changed request. A runId that names a
+        // run of another thread is a conflict, not an attach to that run.
+        if (appendMessages.length === 0) {
+          const earlier = await bureau
+            .locateRunCreationReceipt({
+              principal: owner,
+              agentName,
+              runCreationRequestId: input.runId,
+            })
+            .catch(() => undefined);
+          if (earlier?.status === 'recorded' || earlier?.status === 'pending') {
+            if (earlier.sessionId !== input.threadId) {
+              return {
+                response: refuse(
+                  'RUN_CONFLICT',
+                  'This runId was already used for a different request',
+                ),
+              };
+            }
+            return {
+              response: openRunStream(environment, {
+                threadId: input.threadId,
+                runId: input.runId,
+                nativeRunId: earlier.receipt.runId,
+                replay: 'beginning',
+                messagesSnapshot: false,
+              }),
+            };
+          }
+        }
+        if (appendMessages.at(-1)?.role !== 'user') {
+          return {
+            response: refuse(
+              'INVALID_INPUT',
+              'A start must add a user message as its last message',
+            ),
+          };
+        }
+        if ((await attachableRunOfThread(input.threadId)) !== undefined) {
+          return {
+            response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
+          };
+        }
+        try {
+          const run = await bureau.createRun({
+            sessionId: input.threadId,
+            agentName,
+            principal: owner,
+            appendMessages,
+            runCreationRequestId: input.runId,
+          });
+          return { runId: run.id };
+        } catch (error) {
+          return { response: refuse(...refusalFor(error, input.threadId)) };
+        }
+      },
+    );
+    if ('response' in admitted) return admitted.response;
     return openRunStream(environment, {
       threadId: input.threadId,
       runId: input.runId,
-      nativeRunId: run.id,
+      nativeRunId: admitted.runId,
       replay: 'beginning',
       messagesSnapshot: false,
     });

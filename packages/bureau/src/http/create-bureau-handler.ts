@@ -71,6 +71,7 @@ export type BureauHandlerSource = Pick<
   | 'eventHistory'
   | 'hasDurableEngine'
   | 'locateRunCreationReceipt'
+  | 'children'
 > & { readonly agents: { has(name: string): boolean } };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */
@@ -137,6 +138,7 @@ const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set([
   'pathPrefix',
   'maxStreamDurationMs',
   'liveBufferSize',
+  'keepAliveIntervalMs',
   'runtime',
 ]);
 
@@ -228,7 +230,7 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
   if (agUi.pathPrefix !== undefined && !/^\/[^\s?#]+$/.test(agUi.pathPrefix)) {
     fail('agUi.pathPrefix must be an absolute path with no query or fragment');
   }
-  for (const name of ['maxStreamDurationMs', 'liveBufferSize'] as const) {
+  for (const name of ['maxStreamDurationMs', 'liveBufferSize', 'keepAliveIntervalMs'] as const) {
     const value = agUi[name];
     if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
       fail(`agUi.${name} must be a positive integer`);

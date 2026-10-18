@@ -96,6 +96,7 @@ async function build(
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
     storage: fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
+    sessionPersistenceRetryDelayMilliseconds: 0,
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
