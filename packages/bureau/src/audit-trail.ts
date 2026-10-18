@@ -496,6 +496,14 @@ export interface AuditTrailOptions {
    * `runtime.clock.now()` when omitted, matching every prior caller.
    */
   eventTimestamp?: EventTimestampResolver;
+  /**
+   * COR-718: the owner a deleted session had, by session id and incarnation, or
+   * `undefined` when Bureau recorded none. The `session.deleted` entry carries it
+   * as `detail.owner`: the session's body is gone by the time the entry is
+   * written, so the owner must travel with the deletion and is never read from
+   * the live session. An entry written without one has no owner.
+   */
+  sessionDeletionOwner?: (sessionId: string, incarnation: string) => string | undefined;
 }
 
 /**
@@ -903,6 +911,11 @@ export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
 
 /** The `runId` prefix of a session's synthetic audit owner, `session:<id>`. */
 export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
+
+/** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
+function ownerDetail(owner: string | undefined): { owner?: string } {
+  return owner === undefined ? {} : { owner };
+}
 
 /**
  * The synthetic `runId` a session deletion's out-of-band audit record is
@@ -1524,7 +1537,13 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         // consumer of `bureau.auditTrail` unable to tell WHICH live body a
         // deletion removed when a session id was deleted, recreated, and
         // deleted again, even though that identity is available.
-        detail: { sessionId: event.sessionId, incarnation: event.incarnation },
+        detail: {
+          sessionId: event.sessionId,
+          incarnation: event.incarnation,
+          ...ownerDetail(
+            auditTrailOptions?.sessionDeletionOwner?.(event.sessionId, event.incarnation),
+          ),
+        },
       },
       // AB-389: `event.committedAtMs` — the session outbox entry's own
       // authoritative commit time — is used directly here rather than the

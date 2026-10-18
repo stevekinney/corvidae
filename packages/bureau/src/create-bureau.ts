@@ -6135,12 +6135,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         return review === undefined ? undefined : runOwner(review.runId);
       }
       case 'audit': {
-        const { runId } = resource;
+        const { runId, detail } = resource;
         if (runId.startsWith(AUDIT_SCHEDULE_OWNER_PREFIX)) {
           return scheduleOwner(runId.slice(AUDIT_SCHEDULE_OWNER_PREFIX.length));
         }
         if (runId.startsWith(AUDIT_SESSION_OWNER_PREFIX)) {
-          return sessionOwner(runId.slice(AUDIT_SESSION_OWNER_PREFIX.length));
+          // Read from the entry, never from the session: it may be gone, or
+          // recreated under another owner since the deletion.
+          const recorded =
+            typeof detail === 'object' && detail !== null
+              ? (detail as { owner?: unknown }).owner
+              : undefined;
+          return typeof recorded === 'string' ? recorded : undefined;
         }
         return runOwner(runId);
       }
@@ -7885,6 +7891,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (entry.kind === 'session.attachment') {
       return drainOutboxAttachmentEntry(entry, outboxSessionStore);
     }
+    // COR-718 — the deletion's audit entry carries the owner the session had, which
+    // the audit listener reads synchronously, so it is loaded before the dispatch.
+    if (entry.kind === 'session.deleted') {
+      await loadSessionDeletionOwner(entry.sessionId, entry.incarnation);
+    }
     // AB-389 (Codex P2 review finding, PR #598, "Isolate subscriber
     // exceptions while draining the outbox"): `emitter.dispatch()`
     // fans out to two kinds of listener — `addEventListener`-registered
@@ -8046,6 +8057,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         message: `[bureau] Lost the claim on session outbox entry ${entry.ordinal} (${entry.kind} for session "${entry.sessionId}") before acknowledging it; a different drainer reclaimed and will retire it.`,
       });
       return 'stop';
+    }
+    // The audit entry is verified and the outbox entry acknowledged, so the side
+    // record has done its work.
+    if (entry.kind === 'session.deleted') {
+      await removeSessionDeletionOwner(entry.sessionId, entry.incarnation);
     }
     return 'continue';
   }
@@ -8444,6 +8460,83 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return deletion;
   }
 
+  /**
+   * COR-718 — who owned a session at the moment it was deleted, kept for the
+   * `session.deleted` audit entry. The deleted session's body is gone by the time
+   * that entry is written (possibly in another process, after a restart), and its
+   * id may be recreated under another owner, so the entry carries the owner in its
+   * `detail`. Operative's session store knows nothing of owners, so Bureau writes
+   * the owner to its own store, keyed by session id and incarnation, before the
+   * store delete; the outbox drain reads it back into memory before it dispatches
+   * the event, and removes it once the audit entry is verified and the outbox
+   * entry acknowledged.
+   *
+   * It is written only when an audit trail exists to consume it. A crash between
+   * this write and the store delete, or between the acknowledgement and the
+   * removal, leaves one small orphan record; that is accepted, because the record
+   * is only ever read for its own session id and incarnation.
+   */
+  const SESSION_DELETION_OWNER_PREFIX = 'session-deletion-owner:v1:';
+  const sessionDeletionOwners = new Map<string, string>();
+
+  function sessionDeletionOwnerKey(sessionId: string, incarnation: string): string {
+    return `${SESSION_DELETION_OWNER_PREFIX}${encodeURIComponent(sessionId)}:${incarnation}`;
+  }
+
+  async function recordSessionDeletionOwner(session: AgentSession): Promise<void> {
+    const store = runtime.kv;
+    if (!auditTrailInstance || !store) return;
+    const owner = resolveSessionOwner(session.metadata);
+    // A malformed owner names no one, so the entry is left without one.
+    if (owner === undefined) return;
+    const key = sessionDeletionOwnerKey(session.id, session.incarnation);
+    sessionDeletionOwners.set(key, owner);
+    try {
+      await store.set(key, owner);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Could not record the owner of session "${session.id}" before deleting it; its deletion entry will have none: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /** Reads the owner record back into memory before the deletion event is dispatched. */
+  async function loadSessionDeletionOwner(sessionId: string, incarnation: string): Promise<void> {
+    const store = runtime.kv;
+    if (!store) return;
+    const key = sessionDeletionOwnerKey(sessionId, incarnation);
+    if (sessionDeletionOwners.has(key)) return;
+    try {
+      const owner = await store.get(key);
+      if (owner !== null) sessionDeletionOwners.set(key, owner);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Could not read the recorded owner of deleted session "${sessionId}"; its deletion entry will have none: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  async function removeSessionDeletionOwner(sessionId: string, incarnation: string): Promise<void> {
+    const key = sessionDeletionOwnerKey(sessionId, incarnation);
+    sessionDeletionOwners.delete(key);
+    try {
+      await runtime.kv?.delete(key);
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Could not remove the owner record of deleted session "${sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
   async function performDeleteSession(
     id: string,
     onStoreDeletionCommitted: () => void,
@@ -8451,6 +8544,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const sessionStore = requireSessionStore();
     const session = await sessionStore.load(id);
     if (session) {
+      await recordSessionDeletionOwner(session);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -12317,6 +12411,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         signal: backgroundShutdownController.signal,
         initialSequence: auditTrailInitialSequence,
         eventTimestamp,
+        sessionDeletionOwner: (sessionId, incarnation) =>
+          sessionDeletionOwners.get(sessionDeletionOwnerKey(sessionId, incarnation)),
       },
       runtimeServices,
     );

@@ -50,6 +50,11 @@ export const goalOwner: BureauGoalRequest<'worker'>['principal'] = 'api-key:alic
 // `getOwner` reads a closed list of kinds, and answers text or nothing.
 export const owner: Promise<string | undefined> = bureau.getOwner({ kind: 'run', id: 'run-1' });
 export const audited: OwnedResource = { kind: 'audit', runId: 'schedule:schedule-1' };
+export const deleted: OwnedResource = {
+  kind: 'audit',
+  runId: 'session:session-1',
+  detail: { owner: 'api-key:alice' },
+};
 // @ts-expect-error -- a delivery record has no owner of record
 bureau.getOwner({ kind: 'delivery', id: 'delivery-1' });
 // @ts-expect-error -- an audit entry is named by its run id

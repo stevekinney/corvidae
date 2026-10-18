@@ -1397,9 +1397,12 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * - `goal`: the goal request's `principal`.
    * - `schedule`: `DurableScheduleDefinition.principal`.
    * - `review`: its run's owner.
-   * - `audit`: derived from the entry's `runId`, never stored: a run id gives that
-   *   run's owner, `schedule:<id>` the schedule's, and `session:<id>` the
-   *   session's (unknown once the session is deleted).
+   * - `audit`: derived from the entry, never stored on it as a field of its own: a
+   *   run id gives that run's owner, `schedule:<id>` the schedule's, and
+   *   `session:<id>` (a `session.deleted` entry) the `owner` its `detail` records.
+   *   Bureau captures that owner at deletion, so the answer never depends on the
+   *   live session, which may be gone or recreated under another owner. An entry
+   *   without one, such as a deletion that bypassed Bureau, has no owner.
    */
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
@@ -2128,7 +2131,12 @@ export interface AbortingRun {
 /** A resource whose owner of record {@link Bureau.getOwner} reads. */
 export type OwnedResource =
   | { readonly kind: 'run' | 'session' | 'goal' | 'schedule' | 'review'; readonly id: string }
-  | { readonly kind: 'audit'; readonly runId: string };
+  | {
+      readonly kind: 'audit';
+      readonly runId: string;
+      /** The audit entry's `detail`. A `session.deleted` entry's owner is `detail.owner`. */
+      readonly detail?: unknown;
+    };
 
 export interface RunSummary {
   id: string;
