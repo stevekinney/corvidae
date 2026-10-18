@@ -83,6 +83,11 @@ export type ChatMessagePartsRendererProps = {
   messagePart?: MessagePartOverride | undefined;
   /** Optional override for wide or interactive block nodes inside markdown. */
   markdownNode?: MarkdownNodeOverride | undefined;
+  /**
+   * Marks each markdown body as quotable text belonging to this message, so a
+   * selection inside it can be quoted. Leave unset for messages that cannot be.
+   */
+  quoteSource?: string | undefined;
   /** Disclosure state for tool-call parts. Owned by the message. */
   expanded?: boolean;
   /** Called when a tool-call part's disclosure toggle is activated. */
