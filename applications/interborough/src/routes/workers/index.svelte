@@ -50,6 +50,8 @@
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
+  import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
+  import TaskDeliveryHistory from './task-delivery-history.svelte';
   import QueueListView from './queue-list-view.svelte';
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
@@ -471,6 +473,12 @@
               staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
             />
           {/await}
+          {#if taskDetailQuery.data}
+            <TaskDeliveryHistory operationId={selectedTaskId} />
+            {#if taskDetailQuery.data.state === 'deadLettered'}
+              <TaskDeadLetterPanel task={taskDetailQuery.data} />
+            {/if}
+          {/if}
         {:else}
           {#await loadDiagnosticsView()}
             <div role="status" aria-busy="true" aria-label="Loading diagnostics view">

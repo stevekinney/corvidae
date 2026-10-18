@@ -64,6 +64,10 @@ export const queryKeys = {
     ['diagnostics', 'filtered', filters] as const,
   tasks: {
     detail: (operationId: string) => ['tasks', 'detail', operationId] as const,
+    /** `weft.tasks.deliveries` (COR-284): the server's answers to one task's result submissions. */
+    deliveries: (operationId: string) => ['tasks', 'deliveries', operationId] as const,
+    /** `weft.tasks.deadletters.get` (COR-284): a dead-lettered attempt's retained result. */
+    deadLetter: (operationId: string) => ['tasks', 'dead-letter', operationId] as const,
   },
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,

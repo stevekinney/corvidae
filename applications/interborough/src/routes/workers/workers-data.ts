@@ -34,6 +34,7 @@ import {
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
 import { parseRegistrySnapshot } from './registry-snapshot-guard.ts';
+import { parseDeadLetter, parseTaskDeliveries } from './task-delivery-evidence.ts';
 import { isTaskLedgerDetail } from './task-ledger-validation.ts';
 import {
   DEFAULT_TASK_DIAGNOSTICS_INPUT,
@@ -81,6 +82,42 @@ export function taskLedgerDetailQuery(client: WorkersOperations, operationId: ()
     },
     enabled: operationId().length > 0,
     refetchInterval: REFETCH_INTERVAL_MS,
+  }));
+}
+
+/** The server's answers to one task's result submissions (`weft.tasks.deliveries`, `system:read`). */
+export function taskDeliveriesQuery(client: WorkersOperations, operationId: () => string) {
+  return createQuery(() => ({
+    queryKey: queryKeys.tasks.deliveries(operationId()),
+    queryFn: async () =>
+      parseTaskDeliveries(
+        await client.operations['weft.tasks.deliveries']({ operationId: operationId() }),
+      ),
+    enabled: operationId().length > 0,
+    // A malformed response is deterministic, so retrying only delays naming it; the poll recovers a transient fault.
+    retry: false,
+    refetchInterval: REFETCH_INTERVAL_MS,
+  }));
+}
+
+/**
+ * A dead-lettered attempt's retained result (`weft.tasks.deadletters.get`,
+ * `system:admin`). Disabled until `enabled()` is true so the value is read only
+ * on an operator's explicit request; it is never polled, because it cannot change.
+ */
+export function deadLetterQuery(
+  client: WorkersOperations,
+  operationId: () => string,
+  enabled: () => boolean,
+) {
+  return createQuery(() => ({
+    queryKey: queryKeys.tasks.deadLetter(operationId()),
+    queryFn: async () =>
+      parseDeadLetter(
+        await client.operations['weft.tasks.deadletters.get']({ operationId: operationId() }),
+      ),
+    enabled: enabled() && operationId().length > 0,
+    retry: false,
   }));
 }
 

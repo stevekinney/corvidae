@@ -804,3 +804,36 @@
   flex-wrap: wrap;
   gap: var(--cinder-space-2);
 }
+
+/* ---------------------------------------------------------------------- */
+/* Result delivery history and dead-letter retention (COR-284)            */
+/* ---------------------------------------------------------------------- */
+
+.weft-task-deliveries__body,
+.weft-dead-letter-retention__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  padding: 12px 15px;
+  overflow-wrap: anywhere;
+}
+
+.weft-task-deliveries__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+}
+
+.weft-task-deliveries__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.weft-task-deliveries__entry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
