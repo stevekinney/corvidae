@@ -1,8 +1,5 @@
 import { type ProjectionReference, projectionText } from './evidence-projection-schema';
-import {
-  EvidenceProjectionCommitError,
-  type EvidenceProjectionStorage,
-} from './evidence-projection-storage';
+import { EvidenceProjectionCommitError } from './evidence-projection-storage';
 import type { MemoryAuthority } from './governance/authority';
 import type { TransitionEngine } from './transition-engine';
 import type { TransitionResult } from './transition-outcome';
@@ -29,12 +26,6 @@ export interface ConsolidateProjectionsOptions {
   readonly embed?: (text: string) => Promise<{ model: string; vector: number[] }>;
   /** Aborting before the submission returns `canceled` with no events and no engine call. */
   readonly signal?: AbortSignal;
-  /**
-   * Loads each candidate's text at its referenced revision for `summarize`.
-   * That revision is immutable history, so reading it can never be stale; whether
-   * it is still current is the engine's to detect.
-   */
-  readonly storage: Pick<EvidenceProjectionStorage, 'getProjectionRevision'>;
 }
 
 /**
@@ -54,10 +45,13 @@ export interface ConsolidateProjectionsOptions {
 export async function consolidateProjections(
   options: ConsolidateProjectionsOptions,
 ): Promise<TransitionResult> {
-  const { authority, namespace, storage, signal } = options;
+  const { authority, namespace, signal } = options;
+  // The candidates are read from the engine's own store, so the text summarized is the text
+  // the submission will be judged against. That revision is immutable history, so reading it
+  // can never be stale; whether it is still current is the engine's to detect.
   const texts: string[] = [];
   for (const reference of options.candidates) {
-    const candidate = await storage.getProjectionRevision(
+    const candidate = await options.engine.storage.getProjectionRevision(
       authority.tenantId,
       namespace,
       reference.id,

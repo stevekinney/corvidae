@@ -238,7 +238,6 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
         const pending = [
           consolidateProjections({
             engine: consolidator.engine,
-            storage,
             authority,
             operationId: 'consolidate-1',
             namespace: NAMESPACE,

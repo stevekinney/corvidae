@@ -217,6 +217,51 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       expect(untouched?.revision).toBe(1);
     });
 
+    it('refuses a created successor that does not list the revision retired into it', async () => {
+      const harness = await seeded(makeBackend);
+      const proposal = correctionProposal('operation-1');
+      await expectRejected(
+        harness,
+        { ...proposal, projections: [proposedFact('p2', [ref(makeInlineEvidence('e2'))])] },
+        'prior-state-not-preserved',
+        'does not list',
+      );
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'p2')).toBeUndefined();
+      expect(await harness.storage.getEvidence(TENANT, 'e2')).toBeUndefined();
+    });
+
+    it('refuses a created successor that lists a revision the proposal does not retire into it', async () => {
+      const harness = await seeded(
+        makeBackend,
+        [e1],
+        [
+          makeFact('p1', [e1]),
+          makeFact('p4', [e1], { payload: { statement: 'Bystander.', entities: [] } }),
+        ],
+      );
+      const proposal = correctionProposal('operation-1');
+      const [p2] = proposal.projections ?? [];
+      await expectRejected(
+        harness,
+        {
+          ...proposal,
+          projections: [
+            {
+              ...p2!,
+              supersedes: [
+                { id: 'p1', revision: 1 },
+                { id: 'p4', revision: 1 },
+              ],
+            },
+          ],
+        },
+        'prior-state-not-preserved',
+        'p4',
+      );
+      const bystander = await harness.storage.getProjection(TENANT, NAMESPACE, 'p4');
+      expect(bystander?.revision).toBe(1);
+    });
+
     it('accepts the correction when both sides agree', async () => {
       const harness = await seeded(makeBackend);
       expectCommitted(await harness.engine.submit(correctionProposal('operation-1')));

@@ -356,6 +356,29 @@ async function checkPriorState(
   }
   for (const record of plan.created) {
     if (record.transition.kind !== 'created') continue;
+    // Reciprocity, the other direction: every revision this proposal retires into the record is
+    // listed in its `supersedes`, so the lineage persists on both sides or on neither. A
+    // rebuilt successor has no `supersedes` to list, and one already stored is immutable, so
+    // only the records the proposal creates are held to this.
+    const listed = new Set(
+      (record.transition.supersedes ?? []).map(
+        (reference) => `${reference.id}@${reference.revision}`,
+      ),
+    );
+    for (const retired of plan.revisions) {
+      const { change } = retired.request;
+      const retiredIntoRecord =
+        change.kind === 'superseded' &&
+        retired.namespace === record.namespace &&
+        change.supersededBy.id === record.id &&
+        change.supersededBy.revision === record.revision;
+      if (retiredIntoRecord && !listed.has(`${retired.id}@${retired.expectedRevision}`)) {
+        return refuse(
+          'prior-state-not-preserved',
+          `${projectionLabel(record)} does not list ${projectionLabel({ namespace: retired.namespace, id: retired.id, revision: retired.expectedRevision })}, which this proposal supersedes by it.`,
+        );
+      }
+    }
     for (const reference of record.transition.supersedes ?? []) {
       const retired = revisionOf(plan, record.namespace, reference.id);
       const change = retired?.request.change;

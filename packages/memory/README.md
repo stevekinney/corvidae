@@ -559,7 +559,9 @@ A proposal carries a stable `operationId`, the `tenantId`, and a `MemoryAuthorit
 - **`correct-evidence`**: a successor evidence record that names the evidence it supersedes. It may carry, in the same proposal and so the same batch, projections created from the successor and revisions that supersede the old projections.
 - **`create-projection`**: new projections, each at revision 1.
 - **`revise-projection`**: one or more revisions. Each names `expectedRevision` and one change: `demoted`, `superseded`, `revoked`, or `rebuilt`.
-- **`consolidate`**: fold two or more projections into a summary, with the candidates retired or demoted in the same batch. `consolidateProjections()` builds this proposal from your `summarize` and `embed` functions and submits it.
+- **`consolidate`**: fold two or more projections into a summary, with the candidates retired or demoted in the same batch. `consolidateProjections()` builds this proposal from your `summarize` and `embed` functions and submits it; it takes the engine and nothing else to read with, reading the candidates through `engine.storage`, so it cannot read one store and submit to another.
+
+A supersession names both sides: a projection the proposal creates lists, in its `supersedes`, exactly the revisions the proposal retires into it, and each of those revisions names it as its `supersededBy`. A successor that is rebuilt or already stored has no list to compare, so only the retired side is checked for it.
 
 A proposal made only of revocations needs `memory:revoke`; anything else it carries needs `memory:write`. Every change is authorized against the evidence the projection it replaces rests on, and a rebuild is authorized against the evidence it brings as well.
 

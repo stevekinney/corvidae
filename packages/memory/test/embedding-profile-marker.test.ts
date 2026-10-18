@@ -235,7 +235,6 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
     ) =>
       consolidateProjections({
         engine: harness.engine,
-        storage: harness.storage,
         authority,
         operationId: `consolidate-${outcome}`,
         namespace: NAMESPACE,

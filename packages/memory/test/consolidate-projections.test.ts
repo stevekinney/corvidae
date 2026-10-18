@@ -58,7 +58,6 @@ function consolidate(
 ) {
   return consolidateProjections({
     engine: harness.engine,
-    storage: harness.storage,
     authority,
     operationId: 'consolidate-1',
     namespace: NAMESPACE,
@@ -274,6 +273,27 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       expect(harness.clock.reads).toBe(0);
       expect(await harness.engine.getReceipt(TENANT, 'consolidate-1')).toBeUndefined();
       expect(await harness.storage.getProjection(TENANT, NAMESPACE, 's1')).toBeUndefined();
+    });
+
+    it("reads the candidates from the engine's own store and takes no separate storage", async () => {
+      const harness = await seeded(makeBackend);
+      const elsewhere = makeBackend();
+      const options: Parameters<typeof consolidateProjections>[0] = {
+        engine: harness.engine,
+        authority,
+        operationId: 'consolidate-1',
+        namespace: NAMESPACE,
+        candidates: BOTH,
+        outcome: 'supersede',
+        summarize: (texts) => Promise.resolve(`Summary: ${texts.join(' / ')}`),
+        summaryId: 's1',
+        projectorRevision: 'consolidator:1',
+        promptRevision: 'prompt:1',
+        // @ts-expect-error a separate storage could disagree with the engine's, so there is no such option
+        storage: elsewhere,
+      };
+      // An empty store passed anyway is never read: the candidates come from the engine's store.
+      expectCommitted(await consolidateProjections(options));
     });
 
     it('embeds the summary when an embedder is supplied', async () => {

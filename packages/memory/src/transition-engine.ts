@@ -61,6 +61,13 @@ export interface SubmitTransitionOptions {
 
 export interface TransitionEngine {
   /**
+   * The storage the engine validates and commits against. A caller that has to
+   * read the state a proposal will be judged on, as `consolidateProjections`
+   * does for its candidates, reads it here, so it cannot read one store and
+   * submit to another.
+   */
+  readonly storage: EvidenceProjectionStorage;
+  /**
    * Validates a proposal and applies it atomically with its receipt. Throws
    * {@link MemoryTransitionProposalError} for a proposal that fails its schema
    * and {@link TransitionIdentifierConflictError} for an operation id already
@@ -348,7 +355,8 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
 
       if (isAborted()) return await canceled();
       await emit({ kind: 'validation-started' });
-      const committedAt = now();
+      // A wall clock can step back between the two reads; the commit never precedes the request.
+      const committedAt = Math.max(requestedAt, now());
       eventAt = committedAt;
 
       const validation = await validateTransition({ proposal, reader, at: committedAt });
@@ -445,6 +453,7 @@ export function createTransitionEngine(options: CreateTransitionEngineOptions): 
   }
 
   return {
+    storage,
     submit,
     async getReceipt(tenantId, operationId) {
       return readReceipt(tenantId, operationId);

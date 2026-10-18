@@ -78,7 +78,6 @@ for (const [label, makeBackend] of TRANSITION_BACKENDS) {
       parkNext = true;
       const migration = consolidateProjections({
         engine: engineOver(storage),
-        storage,
         authority,
         operationId: 'migrate',
         namespace: NAMESPACE,
