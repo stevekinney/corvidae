@@ -29,16 +29,25 @@ function toPascal(kebab: string): string {
 
 type ASTNode = any;
 
-/** Identifier keys carry `name`; quoted keys such as `'aria-label'` carry `value`. */
+/**
+ * The member's static name, or `undefined` when it has none. Identifier keys carry `name`;
+ * quoted and numeric keys such as `'aria-label'` or `0` carry `value`. A computed key is
+ * static only when it is a string or numeric literal (`['extra']`); `[dynamicKey]` has no name.
+ */
 function memberName(member: ASTNode): string | undefined {
-  return (member?.key?.name ?? member?.key?.value) as string | undefined;
+  const key = member?.key;
+  if (key?.type === 'Literal' && (typeof key.value === 'string' || typeof key.value === 'number')) {
+    return String(key.value);
+  }
+  if (!member?.computed && key?.type === 'Identifier') return key.name as string;
+  return undefined;
 }
 
 /** `onSave(value: string): void` parses as a method signature, not a property signature. */
 function isKeyedSignature(member: ASTNode): boolean {
   return (
     (member.type === 'TSPropertySignature' || member.type === 'TSMethodSignature') &&
-    !member.computed
+    memberName(member) !== undefined
   );
 }
 
@@ -315,6 +324,25 @@ describe('validateArm unlisted members', () => {
       errors,
     );
     expect(errors).toEqual(['fixture.svelte: prop "b" is in Props but not listed in the contract']);
+  });
+
+  test('checks statically named computed keys and ignores dynamic ones', () => {
+    const resolved = parseFixtureProps(
+      "{ listed?: string; ['extra']?: string; [0]?: string; [dynamicKey]?: string }",
+    );
+    const errors: string[] = [];
+    validateArm(
+      'fixture.svelte',
+      null,
+      resolved.typeLiteral,
+      { listed: { optional: true, type_kind: 'TSStringKeyword', default: undefined } },
+      {},
+      errors,
+    );
+    expect(errors).toEqual([
+      'fixture.svelte: prop "extra" is in Props but not listed in the contract',
+      'fixture.svelte: prop "0" is in Props but not listed in the contract',
+    ]);
   });
 });
 
