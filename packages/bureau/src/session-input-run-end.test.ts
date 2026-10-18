@@ -552,9 +552,18 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
         seam.awaitWriteCommitted(logsRunPromoted),
       );
       const ended = seam.awaitWriteCommitted(logsRunEnded);
-      await expect(
-        bureau.createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId }),
-      ).rejects.toThrow('session read failed');
+      let startError: unknown;
+      try {
+        await bureau.createRun({
+          message: 'Second',
+          principal: 'alice',
+          sessionId: first.sessionId,
+        });
+      } catch (error) {
+        startError = error;
+      }
+      expect(startError).toBeInstanceOf(Error);
+      expect((startError as Error).message).toBe('session read failed');
       failing.stop();
       // Its end is recorded once the log can be written again.
       await ended;
