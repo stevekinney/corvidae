@@ -715,3 +715,41 @@ describe('graph edges reveal only what the authority may search', () => {
     });
   });
 });
+
+describe('a demoted projection whose summary the authority cannot search', () => {
+  it('stays recallable and emits no demotion edge that names the hidden summary', () => {
+    const mine = makeInlineEvidence('e-mine');
+    const foreign = makeInlineEvidence('e-foreign', { ownerId: 'owner-2' });
+    const myFact = makeFact('f-mine', [mine]);
+    const theirFact = makeFact('f-theirs', [foreign]);
+    // A consolidation across two owners: the summary's sources are the union of both.
+    const summary = {
+      ...makeFact('s-hidden', [mine, foreign]),
+      kind: 'summary',
+      payload: {
+        text: 'Both notes',
+        covers: [
+          { id: 'f-mine', revision: 1 },
+          { id: 'f-theirs', revision: 1 },
+        ],
+      },
+    } as EvidenceProjectionRecord;
+    const demoted = nextRevision(myFact, {
+      status: 'demoted',
+      transition: { kind: 'demoted', at: FIXED_AT + 5, demotedBy: { id: 's-hidden', revision: 1 } },
+    });
+    const indexes = buildDerivedIndexes({
+      evidence: [mine, foreign],
+      supersessions: new Map(),
+      projections: [demoted, theirFact, summary],
+      authority: makeAuthority(),
+    });
+    expect(indexes.temporal.query({ asOf: FIXED_AT + 1 }).map((entry) => entry.id)).toEqual([
+      'f-mine',
+    ]);
+    expect(indexes.graph.query({ from: 'projection:f-mine' }).map((edge) => edge.to)).not.toContain(
+      'projection:s-hidden',
+    );
+    expect(indexes.graph.query({ to: 'projection:s-hidden' })).toEqual([]);
+  });
+});

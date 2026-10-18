@@ -305,3 +305,33 @@ for (const [label, makeBackend] of BACKENDS) {
     });
   });
 }
+
+describe('superseding every embedded projection', () => {
+  it('accepts a summary whose embedding differs only from the candidates it retires', async () => {
+    const storage = createInMemoryEvidenceProjectionStorage();
+    const e1 = makeInlineEvidence('e1');
+    const old = makeFact('g1', [e1], { embedding: { model: 'old-model', vector: [1, 0, 0] } });
+    await storage.commit({ tenantId: TENANT, evidence: [e1], projections: [old] });
+    const result = await consolidateProjections({
+      storage,
+      tenantId: TENANT,
+      namespace: NAMESPACE,
+      candidates: [{ id: 'g1', revision: 1 }],
+      outcome: 'supersede',
+      summarize: () => Promise.resolve('Migrated'),
+      summaryId: 's1',
+      projectorRevision: 'consolidator:2',
+      policyRevision: 'policy:1',
+      now: () => FIXED_AT + 10,
+      embed: () => Promise.resolve({ model: 'new-model', vector: [1, 0] }),
+    });
+    expect(result.summary.embedding?.model).toBe('new-model');
+    const indexes = await rebuildDerivedIndexes({
+      storage,
+      tenantId: TENANT,
+      namespace: NAMESPACE,
+      authority: makeAuthority(),
+    });
+    expect(indexes.vector.model).toBe('new-model');
+  });
+});
