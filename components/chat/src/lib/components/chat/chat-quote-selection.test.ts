@@ -10,11 +10,15 @@
  *      selection.
  *   4. At the quote limit the Quote action is disabled and says why.
  *   5. Collapsing the selection closes an open popover.
+ *   6. While a pointer is down the selection is still being dragged, so the
+ *      popover waits for its release.
+ *   7. A host's `messagePart` override of the markdown body is quotable too.
+ *   8. With `capabilities.quote` off, a selection opens nothing.
  */
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -172,6 +176,52 @@ describe('Chat selection Quote popover', () => {
     await tick();
 
     expect(isQuotePopoverOpen()).toBe(false);
+  });
+
+  test('waits for the pointer to be released before opening', async () => {
+    const { container } = render(Chat, { id: 'chat-sel-pointer', conversation: twoReplies('i') });
+
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    selectText(assistantBodies(container)[0]!, 'crisp and sweet');
+    await tick();
+    expect(isQuotePopoverOpen()).toBe(false);
+
+    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    await tick();
+    expect(isQuotePopoverOpen()).toBe(true);
+  });
+
+  test('opens for text a messagePart override renders in place of the markdown body', async () => {
+    const custom = createRawSnippet<[unknown, unknown]>((part) => ({
+      render: () =>
+        `<p class="custom-body">Custom: ${(part() as { content?: string }).content ?? ''}</p>`,
+    }));
+    const { container } = render(Chat, {
+      id: 'chat-sel-override',
+      conversation: twoReplies('j'),
+      messagePart: custom as never,
+    });
+
+    // The override renders every markdown body; the first one is the user's.
+    const bodies = container.querySelectorAll<HTMLElement>('.custom-body');
+    selectText(bodies[1]!, 'Custom: Apples');
+    await tick();
+
+    expect(isQuotePopoverOpen()).toBe(true);
+  });
+
+  test('opens nothing when capabilities.quote is off', async () => {
+    const { container } = render(Chat, {
+      id: 'chat-sel-capability',
+      conversation: twoReplies('k'),
+      capabilities: { quote: false },
+    });
+
+    selectText(assistantBodies(container)[0]!, 'crisp and sweet');
+    await tick();
+
+    expect(isQuotePopoverOpen()).toBe(false);
+    expect(quotePopover()).toBeNull();
   });
 
   test('disables Quote and explains why once ten quotes are collected', async () => {

@@ -6,15 +6,13 @@
     /** The markdown render part to display. */
     part: MarkdownMessagePart;
     markdownNode?: MarkdownNodeOverride | undefined;
-    /** The owning message id when this text can be quoted; marks the rendered content. */
-    quoteSource?: string | undefined;
   };
 </script>
 
 <script lang="ts">
   import MessageContent from '../message-content.svelte';
 
-  let { part, markdownNode, quoteSource }: MarkdownPartProps = $props();
+  let { part, markdownNode }: MarkdownPartProps = $props();
 </script>
 
 <!--
@@ -29,5 +27,4 @@
   streaming={part.streaming}
   expanded={part.expanded}
   {markdownNode}
-  data-quote-source={quoteSource}
 />

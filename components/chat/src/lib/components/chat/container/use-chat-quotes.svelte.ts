@@ -20,6 +20,12 @@ export interface UseChatQuotesReturn {
   remove(id: string): ChatQuote | undefined;
   /** Removes every quote whose id is listed; quotes added since stay. */
   removeAll(ids: readonly string[]): void;
+  /**
+   * Puts quotes taken out for a send that failed back ahead of the current ones,
+   * in their original order and without repeating any text, keeping the first
+   * {@link MAX_QUOTES}. Returns how many quotes did not fit.
+   */
+  restore(carried: readonly ChatQuote[]): number;
   /** Removes every quote. */
   clear(): void;
 }
@@ -50,6 +56,18 @@ export function useChatQuotes(): UseChatQuotesReturn {
     quotes = quotes.filter((quote) => !removing.has(quote.id));
   }
 
+  function restore(carried: readonly ChatQuote[]): number {
+    const seen = new Set<string>();
+    const merged: ChatQuote[] = [];
+    for (const quote of [...carried, ...quotes]) {
+      if (seen.has(quote.text)) continue;
+      seen.add(quote.text);
+      merged.push(quote);
+    }
+    quotes = merged.slice(0, MAX_QUOTES);
+    return merged.length - quotes.length;
+  }
+
   function clear(): void {
     quotes = [];
   }
@@ -64,6 +82,7 @@ export function useChatQuotes(): UseChatQuotesReturn {
     add,
     remove,
     removeAll,
+    restore,
     clear,
   };
 }

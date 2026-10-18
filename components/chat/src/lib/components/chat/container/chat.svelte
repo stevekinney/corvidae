@@ -282,7 +282,16 @@
   });
 
   const quotes = useChatQuotes();
-  const quoteSelection = useChatQuoteSelection({ getRoot: () => containerRef });
+  const quoteSelection = useChatQuoteSelection({
+    getRoot: () => (allowQuote ? containerRef : null),
+  });
+
+  // Turning quoting off takes any quotes already gathered with it.
+  $effect(() => {
+    if (allowQuote) return;
+    quotes.clear();
+    quoteSelection.dismiss();
+  });
 
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
@@ -432,6 +441,7 @@
   const allowCopy = $derived(capabilities?.copy ?? true);
   const allowEditing = $derived(capabilities?.editing ?? true);
   const allowRetry = $derived(capabilities?.retry ?? true);
+  const allowQuote = $derived(capabilities?.quote ?? true);
 
   $effect(() => {
     if (rollbackConversationIdentity !== conversationId) {
@@ -1042,23 +1052,33 @@
   }
 
   /**
-   * Sends the typed message with the quoted excerpts on top, then drops those
-   * quotes once the hand-off succeeds. A failed send keeps them, and a quote
-   * added while the send was in flight is not among the ones dropped.
+   * Sends the typed message with the quoted excerpts on top. The quotes leave
+   * the chip row at hand-off: the session controller settles `sendMessage` only
+   * when the whole run ends, so waiting for it would let a follow-up sent
+   * meanwhile repeat them. If the send fails they come back ahead of any chips
+   * added since, without repeats and within the limit.
    */
   function handleComposerSubmit(message: MessageInput, attachments: ChatAttachment[]): void {
-    const sending = quotes.quotes;
-    if (sending.length === 0) {
+    const carried = quotes.quotes;
+    if (carried.length === 0) {
       handleSubmit(message, attachments);
       return;
     }
     const content = composeQuotedContent(
-      sending.map((quote) => quote.text),
+      carried.map((quote) => quote.text),
       typeof message.content === 'string' ? message.content : '',
     );
-    const ids = sending.map((quote) => quote.id);
+    const origin = conversationId;
+    quotes.removeAll(carried.map((quote) => quote.id));
     handleSubmit({ ...message, content }, attachments, (succeeded) => {
-      if (succeeded) quotes.removeAll(ids);
+      // Quotes belong to the conversation they were taken from.
+      if (succeeded || conversationId !== origin) return;
+      const dropped = quotes.restore(carried);
+      if (dropped > 0) {
+        announcements.announce(
+          `${dropped} ${dropped === 1 ? 'quote' : 'quotes'} could not be restored because the limit of ${MAX_QUOTES} was reached`,
+        );
+      }
     });
   }
   // The adapter opting in to run input is what keeps the composer live during a run.
@@ -1645,7 +1665,7 @@
           {markdownNode}
           onRetry={allowRetry && canRetry ? handleRetry : undefined}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
-          onQuote={handleQuote}
+          onQuote={allowQuote ? handleQuote : undefined}
           quoteDisabled={quotes.isFull}
           quoteDisabledDescriptionId={quotes.isFull ? quoteLimitNoteId : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}
@@ -1889,32 +1909,34 @@
       </div>
     </div>
 
-    <SelectionPopover
-      id={`${id}-quote-popover`}
-      open={quoteSelection.open}
-      position={quoteSelection.position}
-      label="Quote selection"
-      onClose={quoteSelection.dismiss}
-    >
-      {#snippet actions({ close })}
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          label="Quote"
-          disabled={quotes.isFull}
-          aria-describedby={quotes.isFull ? quoteLimitNoteId : undefined}
-          title={quotes.isFull
-            ? `Quote limit reached (${MAX_QUOTES}). Remove a quote to add another.`
-            : undefined}
-          onclick={() => handleQuoteSelection(close)}
-        >
-          {#snippet leadingIcon()}
-            <Quote class="cinder-icon-xs" />
-          {/snippet}
-        </Button>
-      {/snippet}
-    </SelectionPopover>
+    {#if allowQuote}
+      <SelectionPopover
+        id={`${id}-quote-popover`}
+        open={quoteSelection.open}
+        position={quoteSelection.position}
+        label="Quote selection"
+        onClose={quoteSelection.dismiss}
+      >
+        {#snippet actions({ close })}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            label="Quote"
+            disabled={quotes.isFull}
+            aria-describedby={quotes.isFull ? quoteLimitNoteId : undefined}
+            title={quotes.isFull
+              ? `Quote limit reached (${MAX_QUOTES}). Remove a quote to add another.`
+              : undefined}
+            onclick={() => handleQuoteSelection(close)}
+          >
+            {#snippet leadingIcon()}
+              <Quote class="cinder-icon-xs" />
+            {/snippet}
+          </Button>
+        {/snippet}
+      </SelectionPopover>
+    {/if}
 
     <ChatStatusAnnouncer
       {statusId}

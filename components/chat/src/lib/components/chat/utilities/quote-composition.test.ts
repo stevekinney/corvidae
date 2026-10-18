@@ -20,6 +20,10 @@ describe('composeQuotedContent', () => {
     expect(composeQuotedContent(['a', 'b\nc'], 'text')).toBe('> a\n\n> b\n> c\n\ntext');
   });
 
+  test('ends at the last quote, with no trailing separator, when nothing is typed', () => {
+    expect(composeQuotedContent(['a', 'b'], '')).toBe('> a\n\n> b');
+  });
+
   test('treats CRLF and CR as line breaks', () => {
     expect(composeQuotedContent(['a\r\nb\rc'], 'x')).toBe('> a\n> b\n> c\n\nx');
   });

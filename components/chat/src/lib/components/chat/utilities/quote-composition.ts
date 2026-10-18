@@ -47,7 +47,9 @@ export function previewQuoteText(text: string): string {
 /**
  * The message content for a reply: each quote as a Markdown block quote (every
  * line prefixed with `> `), quotes separated by one blank line, then one blank
- * line and the typed text. With no quotes the typed text is returned as is.
+ * line and the typed text. With no quotes the typed text is returned as is, and
+ * with no typed text (a reply that is quotes and an attachment) the content ends
+ * at the last quote.
  */
 export function composeQuotedContent(quotes: readonly string[], typed: string): string {
   if (quotes.length === 0) return typed;
@@ -57,5 +59,6 @@ export function composeQuotedContent(quotes: readonly string[], typed: string): 
       .map((line) => `> ${line}`)
       .join('\n'),
   );
-  return `${blocks.join('\n\n')}\n\n${typed}`;
+  const quoted = blocks.join('\n\n');
+  return typed === '' ? quoted : `${quoted}\n\n${typed}`;
 }

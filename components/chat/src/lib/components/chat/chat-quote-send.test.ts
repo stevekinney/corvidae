@@ -11,6 +11,11 @@
  *   4. A successful send clears the chips; a failed one keeps them.
  *   5. A quote added while a send is in flight survives that send's success.
  *   6. A reply without quotes is sent exactly as typed.
+ *   7. The quotes leave the chip row at hand-off, so a follow-up sent while the
+ *      run they started is still going does not repeat them.
+ *   8. A failed send puts its quotes back ahead of any added since, without
+ *      duplicates, within the cap of 10, and says when some were dropped.
+ *   9. Quotes with an attachment and no typed text send no trailing separator.
  */
 
 /// <reference lib="dom" />
@@ -85,6 +90,18 @@ async function settle(): Promise<void> {
   await tick();
   await Promise.resolve();
   await tick();
+}
+
+function liveText(container: HTMLElement): string {
+  return Array.from(container.querySelectorAll('[aria-live="polite"]'))
+    .map((region) => region.textContent ?? '')
+    .join(' ');
+}
+
+function chipTexts(container: HTMLElement): string[] {
+  return quoteChips(container).map(
+    (chip) => chip.querySelector('.chat-quote-chip-text')?.textContent ?? '',
+  );
 }
 
 describe('Chat sending quoted excerpts', () => {
@@ -318,5 +335,206 @@ describe('Chat sending quoted excerpts', () => {
 
     expect(submitted).toEqual(['> Callback quote.\n\nReply']);
     expect(quoteChips(container)).toHaveLength(0);
+  });
+
+  test('does not repeat the quotes in a follow-up sent while the run they started is going', async () => {
+    // Like the session controller: sendMessage settles when the run ends, and
+    // sendRunInput settles on acknowledgement.
+    let endRun: () => void = () => {};
+    const sent: string[] = [];
+    const runInput: string[] = [];
+    const adapter: ChatAdapter = {
+      sendMessage: (message) => {
+        sent.push(message.content as string);
+        return new Promise<void>((resolve) => {
+          endRun = resolve;
+        });
+      },
+      sendRunInput: async (_conversationId, message) => {
+        runInput.push(message.content as string);
+      },
+      ordersRunInput: true,
+    };
+    const conversation = conversationOf('follow-up', ['Quoted reply text.']);
+    const { container, rerender } = render(Chat, {
+      id: 'chat-send-follow-up',
+      adapter,
+      conversation,
+      streaming: false,
+    });
+    await quote(container, 0);
+    await send(container, 'Why?');
+    // The host marks the run as streaming once it starts.
+    await rerender({ id: 'chat-send-follow-up', adapter, conversation, streaming: true });
+    await settle();
+    expect(quoteChips(container)).toHaveLength(0);
+
+    await send(container, 'Shorter, please.');
+    await settle();
+    endRun();
+    await settle();
+
+    expect(sent).toEqual(['> Quoted reply text.\n\nWhy?']);
+    expect(runInput).toEqual(['Shorter, please.']);
+    expect(quoteChips(container)).toHaveLength(0);
+  });
+
+  test('takes the quotes out of the chip row while the send is in flight', async () => {
+    const adapter: ChatAdapter = { sendMessage: () => new Promise<void>(() => {}) };
+    const { container } = render(Chat, {
+      id: 'chat-send-pending',
+      adapter,
+      conversation: conversationOf('pending', ['Pending quote.']),
+    });
+    await quote(container, 0);
+
+    await send(container, 'Go');
+    await settle();
+
+    expect(quoteChips(container)).toHaveLength(0);
+  });
+
+  test('puts the quotes of a failed send back ahead of chips added meanwhile', async () => {
+    let fail: (error: Error) => void = () => {};
+    const adapter: ChatAdapter = {
+      sendMessage: () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    };
+    const { container } = render(Chat, {
+      id: 'chat-send-restore',
+      adapter,
+      onAdapterError: () => undefined,
+      conversation: conversationOf('restore', [
+        'First quote.',
+        'Second quote.',
+        'Added meanwhile.',
+      ]),
+    });
+    await quote(container, 0);
+    await quote(container, 1);
+    await send(container, 'Go');
+    await quote(container, 2);
+    expect(chipTexts(container)).toEqual(['Added meanwhile.']);
+
+    fail(new Error('offline'));
+    await settle();
+
+    expect(chipTexts(container)).toEqual(['First quote.', 'Second quote.', 'Added meanwhile.']);
+  });
+
+  test('restores a failed send without duplicating a chip added again meanwhile', async () => {
+    let fail: (error: Error) => void = () => {};
+    const adapter: ChatAdapter = {
+      sendMessage: () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    };
+    const { container } = render(Chat, {
+      id: 'chat-send-restore-duplicate',
+      adapter,
+      onAdapterError: () => undefined,
+      conversation: conversationOf('restore-duplicate', ['Same quote.', 'Other quote.']),
+    });
+    await quote(container, 0);
+    await send(container, 'Go');
+    await quote(container, 1);
+    await quote(container, 0);
+    expect(chipTexts(container)).toEqual(['Other quote.', 'Same quote.']);
+
+    fail(new Error('offline'));
+    await settle();
+
+    expect(chipTexts(container)).toEqual(['Same quote.', 'Other quote.']);
+  });
+
+  test('keeps the first ten and says so when a failed send cannot fit all its quotes back', async () => {
+    let fail: (error: Error) => void = () => {};
+    const adapter: ChatAdapter = {
+      sendMessage: () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    };
+    const replies = Array.from({ length: 13 }, (_, index) => `Quote number ${index + 1}.`);
+    const { container } = render(Chat, {
+      id: 'chat-send-restore-cap',
+      adapter,
+      onAdapterError: () => undefined,
+      conversation: conversationOf('restore-cap', replies),
+    });
+    for (let index = 0; index < 3; index += 1) await quote(container, index);
+    await send(container, 'Go');
+    for (let index = 3; index < 13; index += 1) await quote(container, index);
+    expect(quoteChips(container)).toHaveLength(10);
+
+    fail(new Error('offline'));
+    await settle();
+
+    expect(chipTexts(container)).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((number) => `Quote number ${number}.`),
+    );
+    expect(liveText(container)).toContain('3 quotes could not be restored');
+  });
+
+  test('does not restore a failed send into a different conversation', async () => {
+    let fail: (error: Error) => void = () => {};
+    const adapter: ChatAdapter = {
+      sendMessage: () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    };
+    const first = conversationOf('restore-first', ['Old conversation quote.']);
+    const second = conversationOf('restore-second', ['New conversation text.']);
+    const { container, rerender } = render(Chat, {
+      id: 'chat-send-restore-switch',
+      adapter,
+      onAdapterError: () => undefined,
+      conversation: first,
+    });
+    await quote(container, 0);
+    await send(container, 'Go');
+    await rerender({
+      id: 'chat-send-restore-switch',
+      adapter,
+      onAdapterError: () => undefined,
+      conversation: second,
+    });
+
+    fail(new Error('offline'));
+    await settle();
+
+    expect(quoteChips(container)).toHaveLength(0);
+  });
+
+  test('sends quotes and an attachment with no trailing separator when nothing is typed', async () => {
+    const sent: string[] = [];
+    const adapter: ChatAdapter = {
+      sendMessage: async (message) => {
+        sent.push(message.content as string);
+      },
+    };
+    const { container } = render(Chat, {
+      id: 'chat-send-attachment-only',
+      adapter,
+      conversation: conversationOf('attachment-only', ['Quoted with a file.']),
+    });
+    await quote(container, 0);
+    const picker = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const file = new File([new Uint8Array([1])], 'photo.png', {
+      type: 'image/png',
+      lastModified: 1,
+    });
+    await fireEvent.change(picker, { target: { files: [file] } });
+    await settle();
+
+    const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    await fireEvent.keyDown(composer, { key: 'Enter' });
+    await settle();
+
+    expect(sent).toEqual(['> Quoted with a file.']);
   });
 });

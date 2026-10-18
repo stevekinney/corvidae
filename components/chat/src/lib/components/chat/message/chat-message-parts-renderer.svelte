@@ -82,7 +82,7 @@
 -->
 {#snippet renderDefault(part: BodyMessagePart)}
   {#if part.type === 'markdown'}
-    <MarkdownPart {part} {markdownNode} {quoteSource} />
+    <MarkdownPart {part} {markdownNode} />
   {:else if part.type === 'tool-call'}
     <ToolCallPart {part} {messageId} {expanded} {onToggle} activityActive={toolActivityActive} />
   {:else if part.type === 'tool-result'}
@@ -99,6 +99,14 @@
          the unreachable branch when the union widens, and this sentinel makes
          the omission visible in the DOM. -->
     <span data-cinder-unhandled-part aria-hidden="true"></span>
+  {/if}
+{/snippet}
+
+{#snippet renderPart(part: BodyMessagePart)}
+  {#if messagePart}
+    {@render messagePart(part, renderDefault)}
+  {:else}
+    {@render renderDefault(part)}
   {/if}
 {/snippet}
 
@@ -144,14 +152,23 @@
         />
       {/each}
     </div>
-  {:else if messagePart}
-    {@render messagePart(unit.part, renderDefault)}
+  {:else if unit.part.type === 'markdown' && quoteSource !== undefined}
+    <!-- The marker lives on a container this renderer owns, so a host's
+         `messagePart` override of the markdown body is quotable just like the
+         default. `display: contents` keeps the wrapper out of the layout. -->
+    <div class="chat-quote-source" data-quote-source={quoteSource}>
+      {@render renderPart(unit.part)}
+    </div>
   {:else}
-    {@render renderDefault(unit.part)}
+    {@render renderPart(unit.part)}
   {/if}
 {/each}
 
 <style>
+  .chat-quote-source {
+    display: contents;
+  }
+
   .chat-step-list {
     display: flex;
     flex-direction: column;

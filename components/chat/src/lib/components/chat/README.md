@@ -302,9 +302,11 @@ A quote is the selected text exactly as the browser reports it (`Selection.toStr
 Why does order matter here?
 ```
 
-The composed text goes through `ChatAdapter.sendMessage` (or `onSubmit`), or through `sendRunInput` when a run is active, exactly as a plain reply would. `ChatSubmitEvent.message.content` and the adapter's `message.content` already hold the composed text. The composer still needs typed text to send, so quotes alone cannot be sent.
+The composed text goes through `ChatAdapter.sendMessage` (or `onSubmit`), or through `sendRunInput` when a run is active, exactly as a plain reply would. `ChatSubmitEvent.message.content` and the adapter's `message.content` already hold the composed text. The composer still needs typed text or an attachment to send, so quotes alone cannot be sent. With an attachment and no typed text, the content ends at the last quote.
 
-Chat clears the chips once the send is accepted. A send the adapter rejects keeps them, so the reader can retry without quoting again, and a quote added while a send was in flight is not cleared by it. `onSubmit` is not awaited, so a rejected promise from it counts as accepted. Changing the conversation clears the chips.
+The quotes leave the chip row the moment the message is handed off, not when the send finishes. The session controller settles `sendMessage` only when the whole run ends, so a follow-up sent during that run would otherwise repeat them. If the send fails, the quotes come back ahead of any chips added since, in their original order and without repeating any text. When they would not all fit within the limit of 10, the first 10 stay and Chat announces how many were dropped. A send that fails after the conversation has changed restores nothing. `onSubmit` is not awaited, so only a synchronous throw from it counts as a failure. Changing the conversation clears the chips.
+
+Quoting is on by default. `capabilities.quote` set to `false` removes the Quote message action and the selection popover, and clears any chips.
 
 Quoting covers assistant messages only. User messages and tool output offer no Quote action, and a selection inside them opens no popover. The "Quoting agent messages" example shows the flow.
 
@@ -523,7 +525,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `virtualizationOverscan` | `number` | no | — | Number of extra virtual rows rendered before and after the viewport. Default `3`. |
 | `virtualized` | `boolean` | no | — | Use the virtualized message render path for long transcripts. The complete `ConversationHistory` remains unchanged; only the DOM window is reduced. Default `false`. |
 | `adapter` | `(opaque)` | no | — | Optional command/transport boundary around `conversation`. Its methods take precedence over the matching callback props (e.g. `sendMessage` over `onSubmit`); omit it and Chat behaves exactly as with plain callbacks. Not expressible in JSON Schema; see the component types for the signature. |
-| `capabilities` | `(opaque)` | no | — | Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable individual Chat features (attachments, search, copy, editing, retry) as a group rather than as five separate boolean props. Not expressible in JSON Schema; see the component types for the signature. |
+| `capabilities` | `(opaque)` | no | — | Feature-capability flags. Pass a `ChatCapabilities` object to enable or disable individual Chat features (attachments, search, copy, editing, retry, quote) as a group rather than as six separate boolean props. Not expressible in JSON Schema; see the component types for the signature. |
 | `composerActions` | `(opaque)` | no | — | Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. Not expressible in JSON Schema; see the component types for the signature. |
 | `conversation` | `(opaque)` | yes | — | The conversation transcript to render. Pass a {@link ConversationHistory} snapshot; consumers holding a stateful conversation object pass its current snapshot (e.g. `conversation.current`). Not expressible in JSON Schema; see the component types for the signature. |
 | `empty` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

@@ -3255,6 +3255,50 @@ test.describe('chat harness — quoted replies', () => {
   });
 });
 
+test.describe('chat harness — quote limit', () => {
+  test('ten chips, the limit note, and the disabled Quote actions have no axe violations', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await harness.locator('[data-testid="seed-thread"]').click();
+      const chat = harness.locator('#harness-chat');
+      const assistantRows = chat.locator('.chat-message-wrapper[data-role="assistant"]');
+      await expect(assistantRows).toHaveCount(13);
+
+      for (let index = 0; index < 10; index += 1) {
+        await assistantRows.nth(index).getByRole('button', { name: 'Quote message' }).focus();
+        await page.keyboard.press('Enter');
+      }
+      const chips = chat.getByRole('list', { name: 'Quoted excerpts' }).getByRole('listitem');
+      await expect(chips).toHaveCount(10);
+
+      const note = chat.getByText('Quote limit reached (10)');
+      await expect(note).toBeVisible();
+      const noteId = await note.getAttribute('id');
+      expect(noteId).not.toBeNull();
+      const eleventh = assistantRows.nth(10).getByRole('button', { name: 'Quote message' });
+      await expect(eleventh).toBeDisabled();
+      await expect(eleventh).toHaveAttribute('aria-describedby', noteId ?? '');
+
+      const buckets = await runAxe(
+        page,
+        {
+          slug: 'chat',
+          theme: 'dark',
+          viewport: 'desktop',
+          fixture: 'private-harness-quote-limit',
+        },
+        { include: `${HARNESS} #harness-chat` },
+      );
+      expect(buckets.critical, JSON.stringify(buckets.critical, null, 2)).toHaveLength(0);
+      expect(buckets.serious, JSON.stringify(buckets.serious, null, 2)).toHaveLength(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat conversation list — accessibility', () => {
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`the agent label, activity indicators, and load-more control have no serious axe violations (${colorScheme})`, async ({

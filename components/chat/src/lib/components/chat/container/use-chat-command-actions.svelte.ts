@@ -167,8 +167,13 @@ export function useChatCommandActions(options: CommandActionsOptions) {
       }
     }
     // `onSubmit`-style callbacks are not awaited, so handing one the work is all
-    // that can be reported: a synchronous throw leaves `onOutcome` unheard.
-    void callback?.();
+    // that can be reported: only a synchronous throw counts as a failure.
+    try {
+      void callback?.();
+    } catch (error) {
+      onOutcome?.(false);
+      throw error;
+    }
     onOutcome?.(true);
   }
 

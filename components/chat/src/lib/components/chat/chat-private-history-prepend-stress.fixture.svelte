@@ -133,6 +133,7 @@
         copy: false,
         editing: false,
         retry: false,
+        quote: false,
       }}
     />
   </div>
