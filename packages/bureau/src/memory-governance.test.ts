@@ -101,14 +101,14 @@ describe('createRunMemoryAuthority (COR-41)', () => {
     );
     expect(disabled.capabilities).toEqual([]);
     const custom = createRunMemoryAuthority(
-      requestContext({ principalId: 'service:scheduler' }),
+      requestContext({ principalId: 'system:scheduler' }),
       { runId: 'run-2' },
       { runCapabilities: ['memory:search'], purpose: 'scheduled-recall' },
     );
     expect(custom).toMatchObject({ capabilities: ['memory:search'], purpose: 'scheduled-recall' });
     expect(custom.delegationChain[1]?.principal).toEqual({
       kind: 'service',
-      id: 'service:scheduler',
+      id: 'system:scheduler',
     });
   });
 });

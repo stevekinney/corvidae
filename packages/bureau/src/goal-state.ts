@@ -46,6 +46,8 @@ import {
   type ValidatorIdentity,
 } from '@lostgradient/operative';
 
+import { principalDefect } from './owner-of-record';
+
 // ---------------------------------------------------------------------------
 // Caps, keys, and identifiers
 // ---------------------------------------------------------------------------
@@ -1540,7 +1542,8 @@ export function describeCreateDefect(input: CreateGoalStateInput): string | unde
   ) {
     return `validatorTimeoutMs must be a finite number above zero; got ${String(input.validatorTimeoutMs)}.`;
   }
-  if (!isOptionalString(input.principal)) return 'The goal principal must be text.';
+  const principalReason = principalDefect(input.principal);
+  if (principalReason !== undefined) return `The goal ${principalReason}.`;
   if (!isNonEmptyString(input.now)) return 'The creation time must be non-empty text.';
   const exact = (value: unknown, keys: readonly string[]): boolean =>
     value === undefined || (isPlainRecord(value) && hasExactKeys(value, keys));

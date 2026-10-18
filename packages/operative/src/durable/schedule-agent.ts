@@ -8,7 +8,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { parseDuration, ScheduleHandle } from '@lostgradient/weft';
+import { decode, KEYS, parseDuration, ScheduleHandle } from '@lostgradient/weft';
 
 import type { ClosedFunction } from '../closed-acknowledgement';
 import { createClosedAcknowledgement } from '../closed-acknowledgement';
@@ -65,6 +65,13 @@ export interface ScheduledAgentRunInput {
    * the same per-fire session id after a crash.
    */
   scheduleId?: string | undefined;
+  /**
+   * The schedule's owner of record, written once when the schedule is created
+   * and read at every fire: a fire's run is owned by the schedule's owner, not
+   * by the scheduler that started it. Absent on a schedule created without one,
+   * which the Bureau reads as its local anonymous owner.
+   */
+  principal?: string | undefined;
 }
 
 /**
@@ -85,6 +92,8 @@ export function isScheduledAgentRunInput(value: unknown): value is ScheduledAgen
   if (sessionId !== undefined && typeof sessionId !== 'string') return false;
   const scheduleId = candidate['scheduleId'];
   if (scheduleId !== undefined && typeof scheduleId !== 'string') return false;
+  const principal = candidate['principal'];
+  if (principal !== undefined && typeof principal !== 'string') return false;
   return true;
 }
 
@@ -142,6 +151,11 @@ export interface CreateAgentScheduleOptions {
    * exposes only `'skip' | 'allow'` — see {@link AgentScheduleOverlapPolicy}.
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
+  /**
+   * The schedule's owner of record (maps to `ScheduledAgentRunInput.principal`).
+   * Written into the scheduled input only when given.
+   */
+  principal?: string | undefined;
   /**
    * Optional stable id for this schedule (used by `getSchedule`/`pauseSchedule`
    * etc.). Defaults to an id minted through `options.runtime` (AB-92/AB-253).
@@ -220,6 +234,13 @@ export interface AgentScheduleHandle {
  * `RegistryAgnosticEngine` interface.
  */
 export interface SchedulingEngine {
+  /**
+   * The engine's storage, when it can be read. An idempotent registration reads the
+   * stored schedule's input through it to check that the retry names the same
+   * `principal`, because `getSchedule` returns a summary that leaves the input out.
+   * An engine without it cannot be asked, and its retries are not compared.
+   */
+  readonly storage?: { get(key: string): Promise<Uint8Array | null> };
   schedule(
     type: string,
     input: unknown,
@@ -291,6 +312,8 @@ export interface AgentScheduleOptions {
    * `'skip' | 'allow'` — see {@link AgentScheduleOverlapPolicy}.
    */
   overlap?: AgentScheduleOverlapPolicy | undefined;
+  /** The schedule's owner of record; see {@link CreateAgentScheduleOptions.principal}. */
+  principal?: string | undefined;
   /** Optional stable schedule id (defaults to Weft-assigned uuid). */
   id?: string | undefined;
   /**
@@ -409,6 +432,29 @@ function assertSupportedOverlapPolicy(
   }
 }
 
+/**
+ * An idempotent registration is the same schedule only if it names the same owner:
+ * a retry under another `principal` must not be handed the first owner's schedule.
+ * The stored input is read through the engine's storage; an engine that cannot be
+ * read is not compared. Checked before the schedule is compared for compatibility,
+ * and worded as a schedule that is not there, so a non-owner learns nothing about
+ * another principal's schedule: not its overlap policy, its spec, or that it was
+ * cancelled (COR-718).
+ */
+async function assertSameScheduleOwner(
+  engine: SchedulingEngine,
+  scheduleId: string,
+  principal: string | undefined,
+): Promise<void> {
+  const bytes = await engine.storage?.get(KEYS.schedule(scheduleId));
+  if (!bytes) return;
+  const state = decode(bytes) as { input?: { principal?: unknown } } | null;
+  const stored = state?.input?.principal;
+  if (stored !== principal) {
+    throw new Error(`Schedule ${scheduleId} was not found.`);
+  }
+}
+
 function assertCompatibleAgentSchedule(
   schedule: ScheduleSummary,
   scheduleId: string,
@@ -475,8 +521,19 @@ function assertCompatibleAgentSchedule(
 export async function createAgentSchedule(
   options: CreateAgentScheduleOptions,
 ): Promise<AgentScheduleHandle> {
-  const { engine, agentName, spec, input, description, session, overlap, id, idempotent, emitter } =
-    options;
+  const {
+    engine,
+    agentName,
+    spec,
+    input,
+    description,
+    session,
+    overlap,
+    id,
+    idempotent,
+    emitter,
+    principal,
+  } = options;
   const workflowType = options.workflowType ?? 'agentRun';
   const runtime = options.runtime ?? createDefaultRuntimeServices();
 
@@ -501,6 +558,11 @@ export async function createAgentSchedule(
       "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
     );
   }
+  // The owner is persisted in the scheduled input, and every fire rejects an input
+  // whose principal is not text, so a bad one is refused before it registers.
+  if (principal !== undefined && typeof principal !== 'string') {
+    throw new InvalidScheduleError('schedule principal must be a string');
+  }
   const scheduleId = id?.trim() ?? runtime.identifiers.next('schedule');
 
   // Trim the session id so a padded value ('  digest  ') persists under the same
@@ -510,6 +572,7 @@ export async function createAgentSchedule(
     agentName,
     input,
     scheduleId,
+    ...(principal !== undefined ? { principal } : {}),
     ...(session !== undefined ? { sessionId: session.trim() } : {}),
   };
 
@@ -522,6 +585,7 @@ export async function createAgentSchedule(
   if (id !== undefined && idempotent === true) {
     const existingSchedule = await engine.getSchedule(scheduleId);
     if (existingSchedule) {
+      await assertSameScheduleOwner(engine, scheduleId, principal);
       assertCompatibleAgentSchedule(
         existingSchedule,
         scheduleId,
@@ -541,6 +605,7 @@ export async function createAgentSchedule(
     if (id !== undefined && idempotent === true) {
       const existingSchedule = await engine.getSchedule(scheduleId);
       if (existingSchedule) {
+        await assertSameScheduleOwner(engine, scheduleId, principal);
         assertCompatibleAgentSchedule(
           existingSchedule,
           scheduleId,

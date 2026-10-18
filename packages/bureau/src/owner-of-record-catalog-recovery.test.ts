@@ -1,0 +1,107 @@
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { createAgent, stopWhen } from '@lostgradient/operative';
+import { createTool, createToolbox } from 'armorer';
+import { describe, expect, it } from 'bun:test';
+import { z } from 'zod';
+
+import { createBureau } from './create-bureau';
+import { waitForCondition } from './test';
+
+function nextTool() {
+  return createTool({
+    name: 'next',
+    description: 'continue',
+    input: z.object({}),
+    execute: async () => 'ok',
+  });
+}
+
+describe('a catalog run recovered after a restart (COR-718)', () => {
+  it('keeps its owner, anonymous:local when it was dispatched with no principal, readable through event history', async () => {
+    const databasePath = join(tmpdir(), `owner-of-record-catalog-recovery-${process.pid}.sqlite`);
+    let reachedStepOne = 0;
+    const first = await createBureau({
+      agents: {
+        echo: createAgent({
+          generate: async ({ step }) => {
+            if (step === 0)
+              return { content: 'step 0', toolCalls: [{ name: 'next', arguments: {} }] };
+            reachedStepOne += 1;
+            return new Promise<never>(() => {});
+          },
+          toolbox: createToolbox([nextTool()]),
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      },
+      storage: { type: 'sqlite', path: databasePath },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+    });
+    try {
+      first.run('echo', 'unowned');
+      first.run('echo', 'owned', { principal: 'api-key:alice' });
+      await waitForCondition(() => reachedStepOne >= 2, 'both runs never reached step one');
+      const listed = await first.listDurableRuns();
+      const runIds = (listed?.items ?? [])
+        .filter((item) => item.id.startsWith('agent-run-'))
+        .map((item) => item.id);
+      expect(runIds).toHaveLength(2);
+      // The first process is deliberately not disposed: it stands in for a crash.
+
+      const second = await createBureau({
+        agents: {
+          echo: createAgent({
+            generate: async ({ step }) => ({ content: `recovered ${step}`, toolCalls: [] }),
+            toolbox: createToolbox([nextTool()]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
+        storage: { type: 'sqlite', path: databasePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+      try {
+        await waitForCondition(async () => {
+          const after = await second.listDurableRuns();
+          return runIds.every(
+            (id) => after?.items.find((item) => item.id === id)?.status === 'completed',
+          );
+        }, 'the recovered runs never completed');
+
+        const owners = await Promise.all(runIds.map((id) => second.getOwner({ kind: 'run', id })));
+        expect(owners.toSorted((left, right) => String(left).localeCompare(String(right)))).toEqual(
+          ['anonymous:local', 'api-key:alice'],
+        );
+        const read = async (id: string, principal: string) => {
+          const page = await second.eventHistory({ kind: 'run', id }, { principal });
+          return 'outcome' in page ? page.outcome : 'page';
+        };
+        const verdicts = await Promise.all(
+          runIds.map(async (id, index) => ({
+            owner: owners[index],
+            asLocal: await read(id, 'anonymous:local'),
+            asAlice: await read(id, 'api-key:alice'),
+          })),
+        );
+        expect(verdicts.find((verdict) => verdict.owner === 'anonymous:local')).toMatchObject({
+          asLocal: 'page',
+          asAlice: 'not-found',
+        });
+        expect(verdicts.find((verdict) => verdict.owner === 'api-key:alice')).toMatchObject({
+          asLocal: 'not-found',
+          asAlice: 'page',
+        });
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await first.dispose().catch(() => undefined);
+      await rm(databasePath, { force: true });
+      await rm(`${databasePath}-wal`, { force: true });
+      await rm(`${databasePath}-shm`, { force: true });
+    }
+  });
+});

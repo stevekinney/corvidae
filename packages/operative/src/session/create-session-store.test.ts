@@ -5,7 +5,7 @@ import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createAgentSession } from '../agent-session';
 import { SessionOutboxAppendedEvent } from '../events';
-import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { rejectionOf, throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import type { JSONValue } from '../types';
 import {
   createSessionStore,
@@ -1855,6 +1855,113 @@ describe('SessionStore commit outbox (AB-389)', () => {
     const [entry] = await store.outbox.pending();
     expect(entry?.committedAtMs).toBe(commitTime);
     expect(entry?.committedAtMs).not.toBe(runtime.clock.now());
+  });
+});
+
+describe('SessionStore cleanup() and the outbox (COR-718)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  /** Saves `ids` live, then advances the clock a day so every one of them has expired. */
+  async function expiredSessions(
+    store: SessionStore,
+    runtime: ReturnType<typeof createManualRuntimeServices>,
+    ids: readonly string[],
+  ): Promise<Map<string, string>> {
+    const incarnations = new Map<string, string>();
+    for (const id of ids) {
+      await store.save(makeSession({ id, agentName: 'expiring-agent' }));
+      incarnations.set(id, (await store.load(id))!.incarnation);
+    }
+    for (const entry of await store.outbox.pending())
+      await claimAndAcknowledge(store, entry.ordinal);
+    await runtime.advance(DAY + 1);
+    return incarnations;
+  }
+
+  it('appends one session.deleted entry per expired session, in the same commit, each with that session’s incarnation', async () => {
+    const runtime = createManualRuntimeServices();
+    const rawStore = textValueStore(new MemoryStorage());
+    let conditionalBatchCalls = 0;
+    const instrumentedStore = {
+      ...rawStore,
+      conditionalBatch: async (
+        conditions: Parameters<typeof rawStore.conditionalBatch>[0],
+        operations: Parameters<typeof rawStore.conditionalBatch>[1],
+      ) => {
+        conditionalBatchCalls += 1;
+        return rawStore.conditionalBatch(conditions, operations);
+      },
+    };
+    const store = createSessionStore(instrumentedStore, { runtime });
+    const incarnations = await expiredSessions(store, runtime, ['expired-a', 'expired-b']);
+    await store.save(makeSession({ id: 'fresh', agentName: 'expiring-agent' }));
+    for (const entry of await store.outbox.pending())
+      await claimAndAcknowledge(store, entry.ordinal);
+    conditionalBatchCalls = 0;
+    const triggers: SessionOutboxAppendedEvent[] = [];
+    store.events.addEventListener(SessionOutboxAppendedEvent.type, (event) => triggers.push(event));
+    const commitTime = runtime.clock.now();
+
+    expect(await store.cleanup({ olderThan: DAY })).toBe(2);
+
+    expect(conditionalBatchCalls).toBe(1);
+    const pending = await store.outbox.pending();
+    expect(pending.map((entry) => entry.kind)).toEqual(['session.deleted', 'session.deleted']);
+    expect(pending.map((entry) => entry.sessionId).toSorted()).toEqual(['expired-a', 'expired-b']);
+    for (const entry of pending) {
+      expect(entry.incarnation).toBe(incarnations.get(entry.sessionId)!);
+      expect(entry.committedAtMs).toBe(commitTime);
+    }
+    // Consecutive ordinals after the three commits above, and one wake-up naming the last.
+    expect(pending.map((entry) => entry.ordinal)).toEqual([4, 5]);
+    expect(triggers.map((event) => event.ordinal)).toEqual([5]);
+    expect(await store.exists('fresh')).toBe(true);
+  });
+
+  it('appends no entry and consumes no ordinal when nothing has expired', async () => {
+    const runtime = createManualRuntimeServices();
+    const store = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
+    await store.save(makeSession({ id: 'young', agentName: 'expiring-agent' }));
+    for (const entry of await store.outbox.pending())
+      await claimAndAcknowledge(store, entry.ordinal);
+
+    expect(await store.cleanup({ olderThan: DAY })).toBe(0);
+
+    expect(await store.outbox.pending()).toEqual([]);
+    const young = await store.load('young');
+    await store.save({ ...young! });
+    const afterSave = await store.outbox.pending();
+    expect(afterSave.map((entry) => entry.ordinal)).toEqual([2]);
+  });
+
+  it('tells the beforeCleanup hook which sessions are expiring, and expires nothing when it rejects', async () => {
+    const runtime = createManualRuntimeServices();
+    const seen: string[][] = [];
+    let reject = true;
+    const store = createSessionStore(textValueStore(new MemoryStorage()), {
+      runtime,
+      beforeCleanup: async (sessions) => {
+        seen.push(sessions.map((session) => `${session.id}:${session.incarnation}`).toSorted());
+        if (reject) throw new Error('injected: the owner record could not be written');
+      },
+    });
+    const incarnations = await expiredSessions(store, runtime, ['hooked-a', 'hooked-b']);
+    const expected = [...incarnations]
+      .map(([id, incarnation]) => `${id}:${incarnation}`)
+      .toSorted();
+
+    const refusal = await rejectionOf(store.cleanup({ olderThan: DAY }));
+    expect(String(refusal)).toContain('injected');
+    expect(seen).toEqual([expected]);
+    expect(await store.exists('hooked-a')).toBe(true);
+    expect(await store.exists('hooked-b')).toBe(true);
+    expect(await store.outbox.pending()).toEqual([]);
+
+    reject = false;
+    expect(await store.cleanup({ olderThan: DAY })).toBe(2);
+    expect(seen).toEqual([expected, expected]);
+    const afterCleanup = await store.outbox.pending();
+    expect(afterCleanup.map((entry) => entry.kind)).toEqual(['session.deleted', 'session.deleted']);
   });
 });
 

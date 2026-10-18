@@ -5,7 +5,7 @@ import type {
   ScheduleSpec,
   ScheduleSummary,
 } from '@lostgradient/weft';
-import { ScheduleHandle } from '@lostgradient/weft';
+import { encode, KEYS, ScheduleHandle } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentScheduledEvent, SchedulePausedEvent } from '../events';
@@ -82,6 +82,13 @@ function makeSchedulingEngine(options?: {
    * `createAgentSchedule` path's `handle.cancel()` to reject.
    */
   handleCancelSchedule?: (scheduleId: string) => Promise<void>;
+  /**
+   * The input the engine holds for an existing schedule, readable through its
+   * `storage` as the real engine's is. Omitted, the stub has no storage.
+   */
+  storedInput?: unknown;
+  /** `schedule()` rejects as a duplicate id would, so only the existing-schedule path remains. */
+  rejectSchedule?: boolean;
 }): SchedulingEngine & { calls: ScheduleCall[] } {
   const scheduleId = options?.scheduleId ?? 'test-sched-1';
   const summaries = options?.summaries ?? [mockSummary];
@@ -89,6 +96,14 @@ function makeSchedulingEngine(options?: {
 
   return {
     calls,
+    ...(options && 'storedInput' in options
+      ? {
+          storage: {
+            get: async (key: string) =>
+              key === KEYS.schedule(scheduleId) ? encode({ input: options.storedInput }) : null,
+          },
+        }
+      : {}),
     async schedule(
       type: string,
       input: unknown,
@@ -96,6 +111,7 @@ function makeSchedulingEngine(options?: {
       opts?: ScheduleOptions,
     ): Promise<ScheduleHandle> {
       calls.push({ type, input, spec, options: opts });
+      if (options?.rejectSchedule) throw new Error('duplicate schedule id');
       return makeFakeHandle(
         opts?.id ?? scheduleId,
         options?.handleRecorder,
@@ -162,6 +178,14 @@ describe('isScheduledAgentRunInput', () => {
     expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', sessionId: 5 })).toBe(false);
     expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', scheduleId: 5 })).toBe(false);
   });
+
+  it('accepts a string principal and rejects any other type', () => {
+    expect(
+      isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: 'api-key:ops' }),
+    ).toBe(true);
+    expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: 5 })).toBe(false);
+    expect(isScheduledAgentRunInput({ agentName: 'a', input: 'hi', principal: null })).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -222,6 +246,64 @@ describe('createAgentSchedule', () => {
       overlap: 'skip',
       id: 'daily-digest-sched',
     });
+  });
+
+  it('writes the principal into the scheduled input beside scheduleId, and only when it is given', async () => {
+    const engine = makeSchedulingEngine();
+
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { every: '6h' },
+      input: 'hello',
+      id: 'owned-sched',
+      principal: 'api-key:ops',
+    });
+    await createAgentSchedule({
+      engine,
+      agentName: 'researcher',
+      spec: { every: '6h' },
+      input: 'hello',
+      id: 'unowned-sched',
+    });
+
+    const owned = engine.calls[0]!.input as ScheduledAgentRunInput;
+    expect(owned.scheduleId).toBe('owned-sched');
+    expect(owned.principal).toBe('api-key:ops');
+    expect('principal' in (engine.calls[1]!.input as ScheduledAgentRunInput)).toBe(false);
+  });
+
+  it('rejects a principal that is not text before registering anything', async () => {
+    const engine = makeSchedulingEngine();
+
+    for (const principal of [7, null, {}, ['alice']]) {
+      let thrown: unknown;
+      try {
+        await createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '6h' },
+          input: 'hello',
+          principal: principal as never,
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(InvalidScheduleError);
+    }
+    expect(engine.calls).toHaveLength(0);
+  });
+
+  it('threads the principal through AgentScheduler.schedule', async () => {
+    const engine = makeSchedulingEngine();
+
+    await createAgentScheduler({ engine }).schedule('researcher', {
+      spec: { every: '6h' },
+      input: 'hello',
+      principal: 'api-key:ops',
+    });
+
+    expect((engine.calls[0]!.input as ScheduledAgentRunInput).principal).toBe('api-key:ops');
   });
 
   it('trims a padded schedule id before registering', async () => {
@@ -511,6 +593,100 @@ describe('createAgentSchedule', () => {
     const summary = await handle.describe();
     expect(summary.id).toBe('schedule-self-run-step');
   });
+
+  it.each([
+    ['the existing-schedule path', false],
+    ['the duplicate-id race path', true],
+  ])(
+    'refuses an idempotent retry under another principal on %s',
+    async (_label, rejectSchedule) => {
+      const existingSummary: ScheduleSummary = {
+        ...mockSummary,
+        id: 'schedule-self-run-step',
+        intervalMs: 3_600_000,
+      };
+      const engine = makeSchedulingEngine({
+        summaries: [existingSummary],
+        scheduleId: 'schedule-self-run-step',
+        storedInput: { agentName: 'researcher', input: 'hello', principal: 'api-key:alice' },
+        rejectSchedule,
+      });
+      const retry = (principal: string) =>
+        createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '1h' },
+          input: 'hello',
+          id: 'schedule-self-run-step',
+          idempotent: true,
+          principal,
+        });
+
+      let refusal: unknown;
+      try {
+        await retry('api-key:bob');
+      } catch (error) {
+        refusal = error;
+      }
+      // Worded as a schedule that is not there, so the retrying principal learns
+      // nothing about whose it is.
+      expect(String(refusal)).toContain('was not found');
+      expect(String(refusal)).not.toMatch(/owner|another principal|different principal/i);
+      // The owner's own retry is still the same schedule.
+      const own = await retry('api-key:alice');
+      expect(own.id).toBe('schedule-self-run-step');
+    },
+  );
+
+  it.each([
+    ['the existing-schedule path', false],
+    ['the duplicate-id race path', true],
+  ])(
+    'checks the owner before compatibility on %s, so a non-owner learns nothing about the schedule',
+    async (_label, rejectSchedule) => {
+      // A cancelled schedule with another interval: the owner would be told both, a
+      // non-owner neither.
+      const existingSummary: ScheduleSummary = {
+        ...mockSummary,
+        id: 'schedule-self-run-step',
+        intervalMs: 60_000,
+        status: 'cancelled',
+      };
+      const engine = makeSchedulingEngine({
+        summaries: [existingSummary],
+        scheduleId: 'schedule-self-run-step',
+        storedInput: { agentName: 'researcher', input: 'hello', principal: 'api-key:alice' },
+        rejectSchedule,
+      });
+      const retry = (principal: string) =>
+        createAgentSchedule({
+          engine,
+          agentName: 'researcher',
+          spec: { every: '1h' },
+          input: 'hello',
+          id: 'schedule-self-run-step',
+          idempotent: true,
+          principal,
+        });
+
+      let asStranger: unknown;
+      try {
+        await retry('api-key:bob');
+      } catch (error) {
+        asStranger = error;
+      }
+      let asOwner: unknown;
+      try {
+        await retry('api-key:alice');
+      } catch (error) {
+        asOwner = error;
+      }
+
+      expect(String(asStranger)).toContain('was not found');
+      expect(String(asStranger)).not.toMatch(/cancelled|interval|overlap|description/i);
+      expect(String(asOwner)).toContain('cancelled');
+    },
+  );
 
   it('dispatches lifecycle events from a reused idempotent handle (scheduleHandleFromEngine) when an emitter is supplied (AB-223)', async () => {
     const existingSummary: ScheduleSummary = {

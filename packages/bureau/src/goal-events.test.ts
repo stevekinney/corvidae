@@ -240,15 +240,18 @@ describe('who may read a goal history', () => {
     expect(stranger).toEqual({ outcome: 'not-found' });
   });
 
-  it('is open for a goal created with no principal', async () => {
+  it('belongs to anonymous:local for a goal created with no principal, and to no one else', async () => {
     database = createTestDatabase('events-open');
     const bureau = await boot();
     await bureau.goals.create(goalRequest());
     await ended(bureau);
 
-    expect(kinds(await goalEvents(bureau, 'g1', { principal: 'anyone' }))).toContain(
+    expect(kinds(await goalEvents(bureau, 'g1', { principal: 'anonymous:local' }))).toContain(
       'goal.succeeded',
     );
+    expect(await bureau.eventHistory({ kind: 'goal', id: 'g1' }, { principal: 'anyone' })).toEqual({
+      outcome: 'not-found',
+    });
   });
 
   it('does not consider a goal a deleted aggregate', async () => {

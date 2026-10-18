@@ -434,6 +434,7 @@ describe('a goal that ended while its next attempt was still starting', () => {
       // The start died after claiming the run and before the engine created it.
       await view.claimRun('goal-g1-a0', {
         agentName: 'worker',
+        principal: 'anonymous:local',
         definitionRevision: 1,
         input: 'work',
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
@@ -708,6 +709,7 @@ describe('the attempt behind a running goal', () => {
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
+      principal: 'anonymous:local',
       definitionRevision: readGenerationProfile(worker).revision,
       input: 'work',
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
@@ -761,6 +763,7 @@ describe('the attempt behind a running goal', () => {
       const view = await inspection();
       await view.claimRun('goal-g1-a0', {
         agentName: 'worker',
+        principal: 'anonymous:local',
         definitionRevision,
         input: 'work',
         goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },
@@ -974,6 +977,7 @@ describe('the attempt behind a running goal', () => {
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
+      principal: 'anonymous:local',
       definitionRevision: readGenerationProfile(worker).revision,
       input: 'work',
     });
@@ -1013,6 +1017,7 @@ describe('the attempt behind a running goal', () => {
     const view = await inspection();
     await view.claimRun('goal-g1-a0', {
       agentName: 'worker',
+      principal: 'anonymous:local',
       definitionRevision: readGenerationProfile(worker).revision,
       input: 'work',
       goalAttempt: { goalRunId: 'g1', attemptIndex: 0 },

@@ -338,6 +338,24 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       await retry.run.result();
     });
 
+    it('lets the retry of an attempt whose goal states no principal reach the claim, under anonymous:local', async () => {
+      const { dispatcher, engine, runAttribution } = await hungFirstResolver();
+
+      // A goal recorded before owners existed has no principal; its attempts are owned
+      // by anonymous:local, and the retry must recognize the attribution it recorded.
+      void dispatcher.startGoalAttemptRun({ ...attempt });
+      expect(runAttribution.get(attempt.runId)).toEqual({
+        agentName: 'worker',
+        principal: 'anonymous:local',
+      });
+
+      const retry = dispatcher.startGoalAttemptRun({ ...attempt });
+      await retry.durablyStarted;
+
+      expect(await engine.get(attempt.runId)).not.toBeNull();
+      await retry.run.result();
+    });
+
     it('keeps the retry’s attribution when the older execution fails after the retry took over', async () => {
       const { dispatcher, runAttribution, failFirst } = await hungFirstResolver();
       const older = dispatcher.startGoalAttemptRun({ ...attempt, principal: 'alice' });

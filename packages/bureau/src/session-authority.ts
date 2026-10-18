@@ -1,190 +1,81 @@
 import type { JSONValue } from '@lostgradient/operative';
 
-/**
- * Resolves what a session's metadata records about its most recent run's
- * authority, per AB-42's coordinator ruling (2026-09-02): reads
- * `metadata['lastRequestAuthorities'][lastRunId]?.principalId`, falling back
- * to the legacy `metadata['lastRequestAuthority'].principalId` exactly as
- * {@link recoveredRequestContextFromMetadata} already does.
- *
- * `{ recorded: false }` means the session has recorded no authority at
- * all — an "open" session, per the ruling. `{ recorded: true, principalId }`
- * means an authority WAS recorded; `principalId` is `undefined` only when
- * that recorded authority is itself malformed (missing or non-string
- * `principalId`), which must fail closed (deny every principal), never be
- * read as "open" — a corrupted or partially-written persistence record must
- * not silently grant access. This is why a per-run entry present-but-malformed
- * does NOT fall back to the legacy field the way a genuinely absent per-run
- * entry does: once a per-run entry exists, it is authoritative for that run,
- * so silently falling through past a corrupted record would suppress exactly
- * the failure this distinction exists to catch — conflating "absent" with
- * "malformed" is the class of bug this whole function guards against.
- *
- * The same reasoning extends to a non-empty-but-uncorrelated
- * `lastRequestAuthorities` map (see below): it is checked BEFORE the legacy
- * fallback, not after, because that exact shape is what two concurrent runs
- * on one session produce, and the legacy field may belong to the OTHER,
- * unrelated run — see the concurrent-run correlation note below.
- *
- * A completed/aborted/errored run's `lastRequestAuthorities[lastRunId]` entry
- * is pruned on terminal transition (see the cleanup near `remainingAuthorities`
- * below), while the legacy singular `lastRequestAuthority` is retained — so a
- * per-run lookup that is GENUINELY ABSENT (no map, no `lastRunId`, or the key
- * missing from the map) falls back to the legacy field.
- */
+import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
+
+/** Whether `value` is a plain object, the shape every persisted authority and owner map decodes as. */
 export function isPlainAuthorityRecord(
   value: JSONValue | undefined,
 ): value is Record<string, JSONValue> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function lookupSessionAuthority(
-  metadata: Record<string, JSONValue>,
-  // AB-67/AB-199 review finding (PR #430 — Codex P2, "Authorize against the
-  // targeted live run"): defaults to `metadata['lastRunId']` — the
-  // single-run behavior an untargeted caller (`recordedSessionAuthorityPrincipalId`,
-  // the session-owner reads in `eventHistory`) keeps — but a caller that
-  // already knows which run a command actually targets (both session verbs,
-  // through `resolveSessionPreAdmission`, once they resolve an explicit
-  // `runId` or the session's sole live run) passes it explicitly.
-  // Without this, a run B that completes first prunes only its OWN
-  // `lastRequestAuthorities[B]` entry (see the terminal-transition cleanup
-  // below) while leaving `lastRunId: B` and A's now-uncorrelated entry
-  // behind; the uncorrelated-map branch below then fails EVERY principal
-  // closed before a command explicitly naming still-live run A ever gets a
-  // chance to authorize against A's own (perfectly valid) entry.
-  targetRunId?: string,
-):
-  | { readonly recorded: false }
-  | { readonly recorded: true; readonly principalId: string | undefined } {
-  const lastRunId = targetRunId ?? metadata['lastRunId'];
-  const authorities = metadata['lastRequestAuthorities'];
-  // A PRESENT-but-malformed `lastRequestAuthorities` value (not absent — a
-  // string or array where a map belongs) is itself evidence something was
-  // recorded and corrupted. It must fail closed regardless of `lastRunId` or
-  // a legacy fallback, never be read as "nothing recorded" (open) — the same
-  // fail-closed principle as a malformed per-run/legacy entry below.
-  if (authorities !== undefined && !isPlainAuthorityRecord(authorities)) {
-    return { recorded: true, principalId: undefined };
-  }
-  const perRunEntry = authorityForRun(authorities, lastRunId);
-  const legacy = metadata['lastRequestAuthority'];
-  let candidate: JSONValue | undefined;
-  if (perRunEntry !== undefined) {
-    candidate = perRunEntry;
-  } else if (authorities !== undefined && Object.keys(authorities).length > 0) {
-    // A valid, non-empty `lastRequestAuthorities` map exists but doesn't
-    // correlate to this run (`lastRunId` missing/corrupt, or the map's
-    // entries are keyed to other runs). Checked BEFORE the legacy fallback,
-    // not after: this exact shape is what two concurrent runs on one session
-    // produce — run B's dispatch overwrites the singular legacy field with
-    // B's authority while A is still running, so trusting legacy here would
-    // authorize B's principal against A's (still-uncorrelated) run. A
-    // non-empty-but-uncorrelated map is recorded-but-uncorrelated evidence,
-    // not "nothing recorded" — fail closed rather than consult a legacy
-    // field that may belong to an unrelated concurrent run.
-    return { recorded: true, principalId: undefined };
-  } else if (legacy !== undefined) {
-    candidate = legacy;
-  } else {
-    return { recorded: false };
-  }
-  if (!isPlainAuthorityRecord(candidate)) {
-    return { recorded: true, principalId: undefined };
-  }
-  const principalId = candidate['principalId'];
-  return { recorded: true, principalId: typeof principalId === 'string' ? principalId : undefined };
-}
-
-function authorityForRun(
-  authorities: Record<string, JSONValue> | undefined,
-  runId: JSONValue | undefined,
-): JSONValue | undefined {
-  if (typeof runId !== 'string' || !runId || authorities === undefined) return undefined;
-  return authorities[runId];
-}
-
 /**
- * The `principalId` recorded for a session's most recent run, per
- * {@link lookupSessionAuthority}'s rule. Returns `undefined` both when the
- * session has recorded no authority at all AND when a recorded authority is
- * malformed — this function alone cannot distinguish the two, so it is
- * informational only. {@link isSessionAuthorityAuthorized} is the
- * security-relevant surface: it fails closed (denies) for malformed
- * authority, never treating it as open the way "genuinely no authority
- * recorded" is treated.
- *
- * It reads the pre-existing metadata keys `create-bureau.ts` already writes
- * on every run dispatch, with no target run, so it always resolves against
- * `lastRunId`. The session verbs (`submitSessionInput`,
- * `submitSteeringCommand`) do not use it: they authorize against the run a
- * request targets, through {@link resolveSessionPreAdmission}.
+ * The session metadata key holding the session's owner of record. Written once,
+ * when the session is created, with the owner of the run that created it. It is
+ * a key of its own, not derived from `lastRunOwningPrincipals`, because that map
+ * is pruned once a run's history falls below the retention floor, and a session
+ * must not change owner when it is.
  */
-export function recordedSessionAuthorityPrincipalId(
-  metadata: Record<string, JSONValue>,
-): string | undefined {
-  const lookup = lookupSessionAuthority(metadata);
-  return lookup.recorded ? lookup.principalId : undefined;
+export const SESSION_OWNER_METADATA_KEY = 'sessionOwner';
+
+/**
+ * The owner of record a session's metadata names: the stored owner, or
+ * {@link ANONYMOUS_LOCAL_OWNER} for a session written before owners existed (a
+ * read rule, not a migration). `undefined` means the key is present but not a
+ * string, which no principal can match: a corrupted record fails closed rather
+ * than reading as the local owner's.
+ */
+export function resolveSessionOwner(metadata: Record<string, JSONValue>): string | undefined {
+  const stored = metadata[SESSION_OWNER_METADATA_KEY];
+  if (stored === undefined) return ANONYMOUS_LOCAL_OWNER;
+  return typeof stored === 'string' ? stored : undefined;
 }
 
 /**
- * Whether `principal` is authorized to act on a session recording the given
- * metadata, per {@link lookupSessionAuthority}'s rule. A session with no
- * recorded authority at all is treated as open — every principal is
- * authorized — matching what every existing session verb enforces today
- * (nothing stronger), per AB-42's coordinator ruling (2026-09-02). A session
- * with a RECORDED-BUT-MALFORMED authority fails closed: no principal is
- * authorized, since a corrupted record cannot be verified to match anyone.
+ * Thrown from inside a session's atomic update when the save names an owner other
+ * than the one the stored session already has. The preflight ownership check reads
+ * the session before the save, so two principals racing to create one new session
+ * can both pass it; this is the check that holds when the stored session is
+ * decided, and it refuses the later save before its messages are appended.
+ */
+export class SessionOwnerConflictError extends Error {
+  constructor(sessionId: string) {
+    super(`Session "${sessionId}" not found`);
+    this.name = 'SessionOwnerConflictError';
+  }
+}
+
+/**
+ * Whether `principal` is the owner of a session recording the given metadata.
+ * Every resource has an owner, so a session with nothing recorded belongs to
+ * {@link ANONYMOUS_LOCAL_OWNER} and admits no one else; AB-42's "open session"
+ * rule is gone. A principal that is not the owner gets the verdict a session that
+ * does not exist gets, so a caller cannot tell the two apart.
+ *
+ * `targetRunId` no longer changes the verdict. Authority used to be recorded per
+ * run, so which run a request targeted decided whose entry it was checked
+ * against; the owner is now the session's, and a run started on the session by
+ * anyone else is refused, so every run on a session shares it. The parameter
+ * stays so the session verbs' call sites do not change.
  */
 export function isSessionAuthorityAuthorized(
   metadata: Record<string, JSONValue>,
   principal: string,
-  // See {@link lookupSessionAuthority}'s doc comment on its own `targetRunId`
-  // parameter — forwarded verbatim.
-  targetRunId?: string,
+  _targetRunId?: string,
 ): boolean {
-  const lookup = lookupSessionAuthority(metadata, targetRunId);
-  if (!lookup.recorded) return true;
-  return lookup.principalId === principal;
+  return resolveSessionOwner(metadata) === principal;
 }
 
 /**
  * Whether `principal` may read a session-scoped durable event history
- * (`Bureau.eventHistory({ kind: 'session', id })`, COR-1382). It widens
- * {@link isSessionAuthorityAuthorized} and never narrows it: whatever that
- * rule allows, including every principal on a session with no recorded
- * authority, is allowed here too. Beyond that, every principal that owned a
- * run on the session, as recorded in the persisted `lastRunOwningPrincipals`
- * map, may read it. That map survives terminal transitions and process
- * restarts, unlike `lastRunId`, which is last-write-wins across concurrent
- * runs and leaves an earlier run's owner denied once a later run finishes.
- *
- * The widening step fails closed on malformed authority metadata: when any
- * recorded authority (every value of `lastRequestAuthorities`, plus a
- * present `lastRequestAuthority`) is not a plain record with a string
- * `principalId`, or `lastRequestAuthorities` is present but not a plain
- * record, only the unchanged rule above decides. "Present" means
- * `!== undefined`, so a stored JSON `null` is present and malformed. This is
- * stricter than {@link lookupSessionAuthority}, which ignores entries keyed
- * to other runs, because it gates only the widening.
+ * (`Bureau.eventHistory({ kind: 'session', id })`, COR-1382). Only the session's
+ * owner may: the same comparison {@link isSessionAuthorityAuthorized} makes.
  */
 export function isSessionHistoryReadAuthorized(
   metadata: Record<string, JSONValue>,
   principal: string,
 ): boolean {
-  if (isSessionAuthorityAuthorized(metadata, principal)) return true;
-  const isWellFormedAuthority = (value: JSONValue) =>
-    isPlainAuthorityRecord(value) && typeof value['principalId'] === 'string';
-  const authorities = metadata['lastRequestAuthorities'];
-  if (authorities !== undefined) {
-    if (!isPlainAuthorityRecord(authorities)) return false;
-    if (!Object.values(authorities).every(isWellFormedAuthority)) return false;
-  }
-  const legacy = metadata['lastRequestAuthority'];
-  if (legacy !== undefined && !isWellFormedAuthority(legacy)) return false;
-  const owners = metadata['lastRunOwningPrincipals'];
-  if (!isPlainAuthorityRecord(owners)) return false;
-  return Object.values(owners).some((owner) => owner === principal);
+  return isSessionAuthorityAuthorized(metadata, principal);
 }
 
 /**
@@ -237,18 +128,11 @@ export function isSessionRunTerminal(
  * `'proceed'` to the verb's own capability and admission checks.
  *
  * `liveRunIds` is the session's still-running runs as the caller's live-run
- * registry reports them (COR-301; the PR #430 review findings "Consult live
- * runs before declaring the session terminal" and "Authorize against the
- * targeted live run" that first fixed this for steering). Authorization
- * targets `explicitRunId` when the request names a run, else the session's
- * sole live run, else falls back to {@link lookupSessionAuthority}'s
- * `lastRunId` default, the only choice left when several runs are live and
- * none is named. Targeting the run matters because a concurrent run's
- * terminal write prunes only its own `lastRequestAuthorities` entry and
- * leaves `lastRunId` pointing at itself, which would otherwise fail every
- * principal closed (or, once the map is empty, authorize whichever principal
- * dispatched last). The session is terminal only when its last persisted run
- * is not running and no run is live ({@link isSessionRunTerminal}).
+ * registry reports them (COR-301). Authorization compares `principal` with the
+ * session's owner ({@link isSessionAuthorityAuthorized}), which does not depend
+ * on the run a request targets; `explicitRunId` is accepted so the verbs'
+ * call sites are unchanged. The session is terminal only when its last persisted
+ * run is not running and no run is live ({@link isSessionRunTerminal}).
  */
 export function resolveSessionPreAdmission(
   metadata: Record<string, JSONValue>,
@@ -256,8 +140,7 @@ export function resolveSessionPreAdmission(
   liveRunIds: readonly string[],
   explicitRunId?: string,
 ): 'not-found' | 'session-terminal' | 'proceed' {
-  const targetRunId = explicitRunId ?? (liveRunIds.length === 1 ? liveRunIds[0] : undefined);
-  if (!isSessionAuthorityAuthorized(metadata, principal, targetRunId)) return 'not-found';
+  if (!isSessionAuthorityAuthorized(metadata, principal, explicitRunId)) return 'not-found';
   if (isSessionRunTerminal(metadata, liveRunIds)) return 'session-terminal';
   return 'proceed';
 }
