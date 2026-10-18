@@ -108,6 +108,7 @@
     loadEarlierLabel = 'Load earlier messages',
     loadingEarlierLabel = 'Loading earlier messages',
     header,
+    composerActions,
     empty,
     emptyPrompts,
     messageActions,
@@ -281,6 +282,7 @@
     getOnEdit: () => onEdit,
     getOnApprovalResolve: () => onApprovalResolve,
     getOnStop: () => onStopGenerating,
+    getStreaming: () => streaming,
     invalidateHistory: () => getHistoryRestoration().invalidate(),
     afterSubmit: (editing) => {
       if (!editing) {
@@ -1006,6 +1008,8 @@
   // ==========================================================================
 
   const handleSubmit = commandActions.handleSubmit;
+  // The adapter opting in to run input is what keeps the composer live during a run.
+  const followUpsEnabled = $derived(adapter?.sendRunInput !== undefined);
   const handleRetry = commandActions.handleRetry;
   const handleEdit = commandActions.handleEdit;
   const handleApprovalResolve = commandActions.resolveToolApproval;
@@ -1798,8 +1802,10 @@
           id={inputId}
           bind:this={inputRef}
           onsubmit={(message, attachments) => handleSubmit(message, attachments)}
-          disabled={streaming}
+          disabled={streaming && !followUpsEnabled}
           sending={streaming}
+          allowFollowUp={followUpsEnabled}
+          actions={composerActions}
           {allowAttachments}
           onstop={streaming ? handleStopGenerating : undefined}
           {onComposerInput}

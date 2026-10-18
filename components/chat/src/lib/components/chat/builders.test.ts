@@ -15,6 +15,7 @@ import {
   createConversation,
   createConversationHistory,
   markMessageDeliveryFailed,
+  markMessageDeliveryPending,
   prependMessages,
   removeMessage,
   replaceToolResult,
@@ -81,6 +82,25 @@ describe('chat conversation builders', () => {
     expect(cleared.messages[messageId]!.metadata).toEqual({});
     expect(failed).not.toBe(initial);
     expect(cleared).not.toBe(failed);
+  });
+
+  test('marks a message pending and replaces or clears the marker', () => {
+    const initial = appendUserMessage(
+      createConversationHistory({ id: 'conversation-pending-delivery-status' }),
+      'Send this',
+    );
+    const messageId = initial.ids[0]!;
+    const pending = markMessageDeliveryPending(initial, messageId);
+
+    expect(pending.messages[messageId]!.metadata).toEqual({ _deliveryStatus: 'sending' });
+    expect(markMessageDeliveryPending(pending, messageId)).toBe(pending);
+    expect(markMessageDeliveryFailed(pending, messageId).messages[messageId]!.metadata).toEqual({
+      _deliveryStatus: 'failed',
+    });
+    expect(clearMessageDeliveryStatus(pending, messageId).messages[messageId]!.metadata).toEqual(
+      {},
+    );
+    expect(markMessageDeliveryPending(initial, 'missing')).toBe(initial);
   });
 
   test('returns the same history when delivery is already marked failed', () => {

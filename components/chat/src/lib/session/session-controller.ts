@@ -7,6 +7,8 @@ import {
   appendMessages,
   appendUserMessage,
   clearMessageDeliveryStatus,
+  isFollowUpMessage,
+  promoteFollowUpMessage,
   replaceToolResult,
   rewindBeforeMessage,
 } from '../components/chat/builders.ts';
@@ -21,6 +23,7 @@ import {
   latestResolvedApprovalOwner,
   rebuildApprovalState,
 } from './session-controller-approval-state.ts';
+import { createFollowUpQueue, type RunOutcome } from './session-controller-follow-ups.ts';
 import {
   captureHistoryToken as captureToken,
   createSessionRunState,
@@ -133,7 +136,12 @@ export function createChatSessionController(
     captureToken(lifecycle, options.getConversation().id);
   const isHistoryTokenCurrent = (token: ChatHistoryToken): boolean =>
     isTokenCurrent(lifecycle, options.getConversation().id, token);
-  const invalidate = (): void => invalidateOutstandingWork(lifecycle);
+  const invalidate = (): void => {
+    invalidateOutstandingWork(lifecycle);
+    // A stop retires the run's own work without touching this; only the host's
+    // `invalidate()` retires an acknowledgement the hook still owes.
+    followUps.invalidate();
+  };
   const adoptHistory = (history: ConversationHistory, token: ChatHistoryToken): boolean => {
     // A run owns the conversation while it is streaming into it, and a full
     // snapshot replaces membership outright — installing one mid-run would
@@ -143,7 +151,7 @@ export function createChatSessionController(
     update(history);
     return true;
   };
-  const { executeRun, stopActiveRun } = createSessionRunner({
+  const { executeRun: executeRunner, stopActiveRun: stopRunner } = createSessionRunner({
     options,
     maxTurns,
     executionOwner,
@@ -154,7 +162,37 @@ export function createChatSessionController(
     emit,
     notifyStreaming,
     reportError,
+    onTerminalHistory: (terminal) => {
+      terminalIds = new Set(terminal.ids);
+    },
   });
+  let stopRequested = false;
+  // The ids in the history the run's terminal frame carried, if one arrived.
+  let terminalIds: ReadonlySet<string> | undefined;
+  const stopActiveRun = async (): Promise<void> => {
+    stopRequested = true;
+    await stopRunner();
+  };
+  /** Runs one turn to its end, then deals with the follow-ups still waiting for it. */
+  const executeRun = async (
+    userMessageId: string,
+    attachments: ChatAttachment[] = [],
+  ): Promise<void> => {
+    stopRequested = false;
+    terminalIds = undefined;
+    let outcome: RunOutcome = 'completed';
+    try {
+      await executeRunner(userMessageId, attachments);
+      if (stopRequested) outcome = 'stopped';
+    } catch (error) {
+      outcome = stopRequested ? 'stopped' : 'failed';
+      throw error;
+    } finally {
+      // Not awaited: this run's promise is about this run. A follow-up that
+      // becomes its own turn reports through its own send promise.
+      void followUps.runEnded(outcome, terminalIds);
+    }
+  };
   const send = async (message: MessageInput, attachments: ChatAttachment[] = []): Promise<void> => {
     assertActive();
     startSubmission(lifecycle);
@@ -208,12 +246,91 @@ export function createChatSessionController(
     return 'resolved';
   };
 
+  const sendMessage = async (
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ): Promise<void> => {
+    assertNoPendingApprovals();
+    await send(message, attachments);
+  };
+  /** Whether a run is working, or is parked on a tool approval, so input has somewhere to go. */
+  const hasRunInProgress = (): boolean => {
+    if (lifecycle.running) return true;
+    rebuildApprovalState(
+      options.getConversation(),
+      toolOwners,
+      pendingApprovals,
+      lifecycle.activeUserMessageId,
+    );
+    return pendingApprovals.size > 0;
+  };
+  /**
+   * Turns a follow-up row into an ordinary turn and runs it. The row loses its
+   * follow-up marker, its pending status and its follow-up entry before the run
+   * starts, so it is the run's opener: it owns the run's tool calls, is the turn
+   * the transport sends, and can be retried if the run fails.
+   */
+  const runFollowUpAsTurn = async (messageId: string): Promise<void> => {
+    followUps.forget(messageId);
+    startSubmission(lifecycle);
+    update(
+      cleanIncompleteToolRows(
+        promoteFollowUpMessage(options.getConversation(), messageId),
+        messageId,
+      ),
+    );
+    await executeRun(messageId, messageAttachments.get(messageId) ?? []);
+  };
+  const followUps = createFollowUpQueue({
+    options,
+    lifecycle,
+    messageAttachments,
+    update,
+    reportError,
+    hasRunInProgress,
+    runAsTurn: runFollowUpAsTurn,
+  });
+  const sendRunInput = async (
+    conversationId: string,
+    message: MessageInput,
+    attachments: ChatAttachment[],
+  ): Promise<void> => {
+    assertNotDisposed();
+    if (conversationId !== options.getConversation().id)
+      throw new Error('Run input targets a different conversation');
+    // Nothing is running: this is an ordinary turn, and the composer only
+    // routed it here because its view of the run was a moment out of date.
+    if (!hasRunInProgress()) return sendMessage(message, attachments);
+    await followUps.send(conversationId, message, attachments);
+  };
+  const retryFollowUp = async (messageId: string): Promise<void> => {
+    const row = options.getConversation().messages[messageId];
+    // Pending or already admitted: nothing to retry, and nothing may be
+    // forgotten on the way to saying so.
+    if (row?.metadata['_deliveryStatus'] !== 'failed')
+      throw new Error('Only a failed follow-up can be retried');
+    if (followUps.has(messageId) && hasRunInProgress()) {
+      await followUps.resend(messageId);
+      return;
+    }
+    // The run is over, so the row becomes the opener of a turn of its own.
+    assertNoPendingApprovals();
+    await runFollowUpAsTurn(messageId);
+  };
+
   const adapter: ChatAdapter = {
-    sendMessage: async (message, attachments) => {
-      assertNoPendingApprovals();
-      await send(message, attachments);
-    },
+    sendMessage,
+    // Follow-ups need the host to own the run: it is the host that cancels input
+    // a run ends without delivering. A browser-owned run does not offer them.
+    ...(options.sendRunInput && executionOwner === 'server'
+      ? { sendRunInput, ordersRunInput: true }
+      : {}),
     retryMessage: async (messageId) => {
+      assertNotDisposed();
+      if (isFollowUpMessage(options.getConversation().messages[messageId])) {
+        await retryFollowUp(messageId);
+        return;
+      }
       assertActive();
       startSubmission(lifecycle);
       const history = options.getConversation();
@@ -223,7 +340,13 @@ export function createChatSessionController(
         !message ||
         message.role !== 'user' ||
         message.metadata['_deliveryStatus'] !== 'failed' ||
-        history.ids.slice(position + 1).some((id) => history.messages[id]?.role === 'user')
+        // A follow-up sent later in the run never took ownership of it.
+        history.ids
+          .slice(position + 1)
+          .some(
+            (id) =>
+              history.messages[id]?.role === 'user' && !isFollowUpMessage(history.messages[id]),
+          )
       )
         throw new Error('Only the latest failed owning user turn can be retried');
       update(
@@ -337,6 +460,7 @@ export function createChatSessionController(
       invalidate();
       lifecycle.disposed = true;
       messageAttachments.clear();
+      followUps.dispose();
     },
   };
 }
