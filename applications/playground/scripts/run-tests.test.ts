@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   BUILD_PIPELINE_MODULE_NAMES,
   PROCESS_OWNING_MODULE_NAMES,
+  bunTestFlags,
   createTestProcessPlan,
   discoverTestFiles,
   requiresFreshProcess,
@@ -158,5 +159,29 @@ describe('playground test lanes', () => {
     expect(selectLaneFiles(files, 'slow').map(({ path }) => path)).toEqual([
       'src/analyze.slow.test.ts',
     ]);
+  });
+});
+
+describe('playground test lane flags', () => {
+  const workerCounts = (flags: string[]) =>
+    flags.flatMap((flag) => {
+      const match = /^--parallel(?:=(\d+))?$/.exec(flag);
+      return match === null ? [] : [Number(match[1] ?? Number.POSITIVE_INFINITY)];
+    });
+
+  it('runs the fast lane with four workers', () => {
+    expect(bunTestFlags('fast')).toContain('--parallel=4');
+  });
+
+  it('runs the slow lane serially, with no worker count above one', () => {
+    const counts = workerCounts(bunTestFlags('slow'));
+    expect(counts.every((count) => count <= 1)).toBe(true);
+    expect(bunTestFlags('slow')).not.toContain('--parallel=4');
+  });
+
+  it('gives both lanes the browser and Svelte conditions', () => {
+    for (const lane of ['fast', 'slow'] as const) {
+      expect(bunTestFlags(lane).join(' ')).toContain('--conditions browser --conditions svelte');
+    }
   });
 });
