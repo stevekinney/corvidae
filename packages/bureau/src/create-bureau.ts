@@ -9210,22 +9210,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
     // resource (over 256 bytes) is a deployment limit, so it answers
     // `unsupported-capability` like a bureau with no mailbox rather than throwing.
-    // Admission needs the whole durable delivery composition, not only a
-    // mailbox to write to: without the durable engine, the delivery store, and
-    // the settlement, an admitted input would have no run, record, or sweep to
-    // ever move its receipt past `accepted`.
     const sessionMailbox = tryGetSessionInputMailbox(sessionId);
     const storage = runtime.durableStorage;
     const kv = runtime.kv;
-    if (
-      sessionMailbox === undefined ||
-      storage === undefined ||
-      kv === undefined ||
-      runtime.durable === undefined ||
-      sessionInputDeliveryStore === undefined ||
-      sessionInputSettlement === undefined
-    ) {
+    if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
       return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
+    }
+    // A mailbox exists only with the durable engine (`getSessionInputMailbox`),
+    // and the engine with `kv` is what composes the settlement, so it is never
+    // absent here; this only narrows the type, and fails loudly if the
+    // composition above ever changes.
+    if (sessionInputSettlement === undefined) {
+      throw new Error('Session-input admission reached a bureau without its settlement.');
     }
 
     const id = request.id ?? runtimeServices.identifiers.next('session-input');

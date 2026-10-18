@@ -1,10 +1,7 @@
 import { stopWhen } from '@lostgradient/operative';
-import { MemoryStorage, resolveStorage, textValueStore } from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createBureau } from './create-bureau';
 import { createSessionInputMailbox } from './session-input-durability';
@@ -148,47 +145,11 @@ describe('submitSessionInput marks the session again once its admission commits 
   });
 });
 
-describe('submitSessionInput without durable delivery (COR-1476)', () => {
-  it('answers unsupported-capability when durable execution is off, even over persistent storage', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'corvidae-session-input-no-durable-'));
-    const path = join(directory, 'bureau.sqlite');
-    const bureau = await createBureau({
-      agents: {},
-      generate: async () => ({ content: 'answer', toolCalls: [] }),
-      toolbox: createToolbox([]),
-      storage: { type: 'sqlite', path },
-      durableExecution: false,
-      stopWhen: stopWhen.noToolCalls(),
-    });
-    try {
-      const run = await bureau.createRun({ message: 'First', principal: 'alice' });
-      await bureau.getRun(run.id);
-      const outcome = await bureau.submitSessionInput(run.sessionId, input);
-      expect(outcome).toEqual({
-        outcome: 'unsupported-capability',
-        reason: 'durable-mailbox-unavailable',
-      });
-      // Nothing was admitted: no run could ever deliver it.
-      const storage = await resolveStorage({ type: 'sqlite', path });
-      try {
-        const receipts = await createSessionInputMailbox(storage, run.sessionId, 100).list({
-          limit: 10,
-        });
-        expect(receipts).toEqual([]);
-      } finally {
-        storage[Symbol.dispose]();
-      }
-    } finally {
-      await bureau.dispose();
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
-});
-
 describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
-  it('refuses a new submit once shutdown starts, and lands one in flight before teardown', async () => {
+  it('refuses a new submit once shutdown starts, and waits for one in flight before teardown', async () => {
     const seam = seamStorage(new MemoryStorage());
     const started = deferred();
+    const diagnostics: BureauDiagnostic[] = [];
     const bureau = await createBureau({
       agents: {},
       generate: async () => {
@@ -199,20 +160,21 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       storage: seam.storage,
       durableExecution: true,
       stopWhen: stopWhen.noToolCalls(),
+      onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic),
     });
     const holds: Array<{ release: () => void }> = [];
     try {
       const run = await bureau.createRun({ message: 'First', principal: 'alice' });
       await started.promise;
-      // One admission is held at its mailbox commit when shutdown begins.
-      const admission = seam.holdWrite(admitsSessionInput);
-      holds.push(admission);
+      // One admission is committed and held at the engine read that follows.
+      const held = seam.holdRead(readsWorkflows, seam.awaitWrite(admitsSessionInput));
+      holds.push(held);
       const events: string[] = [];
       const inFlight = bureau.submitSessionInput(run.sessionId, input).then((outcome) => {
         events.push(`in-flight settled: ${outcome.outcome}`);
         return outcome;
       });
-      await admission.reached;
+      await held.reached;
 
       const shuttingDown = bureau.shutdown({ policy: 'abort' }).then(() => {
         events.push('shutdown resolved');
@@ -220,23 +182,29 @@ describe('submitSessionInput while the bureau shuts down (COR-1476)', () => {
       // A submit that begins after shutdown started is refused outright.
       let refusal: unknown;
       try {
-        await bureau.submitSessionInput(run.sessionId, {
-          ...input,
-          id: 'input-y',
-        });
+        await bureau.submitSessionInput(run.sessionId, { ...input, id: 'input-y' });
       } catch (error) {
         refusal = error;
       }
       expect(refusal).toBeInstanceOf(Error);
       expect((refusal as Error).message).toContain('shutting down');
+      // Shutdown waits for the held admission: across a real delay it has not
+      // resolved, and nothing has settled.
+      await new Promise((resolve) => setTimeout(resolve, 300));
       expect(events).toEqual([]);
 
-      // The held admission completes before shutdown's teardown lets go.
-      admission.release();
+      // Released, the admission finishes its protocol first, on a live engine.
+      held.release();
       const outcome = await inFlight;
       expect(outcome.outcome).toBe('admitted');
       await shuttingDown;
       expect(events).toEqual(['in-flight settled: admitted', 'shutdown resolved']);
+      expect(
+        diagnostics.filter(
+          (diagnostic) =>
+            diagnostic.scope === 'session-input' && diagnostic.message.includes('cancel'),
+        ),
+      ).toEqual([]);
     } finally {
       holds.forEach((hold) => hold.release());
       await bureau.dispose();

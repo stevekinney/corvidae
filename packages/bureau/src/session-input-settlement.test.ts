@@ -1,7 +1,10 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { createSessionInputMailbox } from './session-input-durability';
+import {
+  createSessionInputMailbox,
+  SESSION_INPUT_COMMAND_TIMEOUT_MS,
+} from './session-input-durability';
 import {
   cancelOpenSessionInput,
   createSessionInputSettlement,
@@ -383,6 +386,99 @@ describe('a session that no longer exists (COR-1476)', () => {
     const [receipt] = await mailbox.list({ limit: 10 });
     expect(receipt?.state).toBe('cancelled');
     expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
+  });
+});
+
+describe('the absent-session sweep against a recreation (COR-1476)', () => {
+  it('leaves alone input admitted to a session recreated while its maintenance ran', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const real = createSessionInputMailbox(storage, SESSION_ID, 1000);
+    let recreated = false;
+    let newCommandId: string | undefined;
+    // The session is recreated, with a live run, while the absent branch's
+    // maintenance pass runs: the input admitted to the new incarnation is
+    // that run's to deliver.
+    const mailbox = new Proxy(real, {
+      get(target, property, receiver) {
+        if (property === 'runMaintenance') {
+          return async (now?: number) => {
+            if (!recreated) {
+              recreated = true;
+              const admission = await real.admit({
+                caller: 'alice',
+                target: SESSION_ID,
+                kind: 'session-input:steer',
+                payload: {
+                  form: 'inline',
+                  value: { incarnation: 'incarnation-2', payload: 'new' },
+                },
+                idempotencyKey: 'input-new',
+              });
+              if (admission.status !== 'admitted') throw new Error(admission.status);
+              newCommandId = admission.receipt.commandId;
+            }
+            return target.runMaintenance(now);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve(recreated ? 'incarnation-2' : undefined),
+      liveRunIds: () => Promise.resolve(['run-of-incarnation-2']),
+      mailboxOf: () => mailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID);
+
+    await settlement.sweep();
+
+    expect(newCommandId).toBeDefined();
+    const [receipt] = await real.list({ limit: 10 });
+    expect(receipt?.commandId).toBe(newCommandId);
+    expect(receipt?.state).toBe('available');
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+  });
+});
+
+describe('a run parked past the command timeout (COR-1476)', () => {
+  it('has its input expire at the deadline even though the sweep leaves a live run alone', async () => {
+    let now = Date.parse('2026-10-17T12:00:00.000Z');
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    const settlement = createSessionInputSettlement({
+      kv,
+      incarnationOf: () => Promise.resolve('incarnation-1'),
+      liveRunIds: () => Promise.resolve(['run-parked']),
+      mailboxOf: () => mailbox,
+      isClosed: () => false,
+      diagnose: () => {},
+    });
+    await settlement.markOpen(SESSION_ID);
+    await mailbox.admit({
+      caller: 'alice',
+      target: SESSION_ID,
+      kind: 'session-input:steer',
+      payload: { form: 'inline', value: { incarnation: 'incarnation-1', payload: 'x' } },
+      idempotencyKey: 'input-x',
+    });
+    const state = async () => {
+      const [receipt] = await mailbox.list({ limit: 10 });
+      return receipt?.state;
+    };
+
+    await settlement.sweep();
+    expect(await state()).toBe('available');
+
+    // The run stays parked past the command's seven-day lifetime.
+    now += SESSION_INPUT_COMMAND_TIMEOUT_MS + 60_000;
+    await settlement.sweep();
+    expect(await state()).toBe('dead-lettered');
   });
 });
 

@@ -241,27 +241,49 @@ export function createSessionInputSettlement(
     // that has lapsed is cancelled outright rather than merely requested; the
     // marker check then needs no second pass.
     await mailbox.runMaintenance();
+    return cancelMaintained(sessionId, mailbox, delivered);
+  }
+
+  /** The cancel pass of {@link cancelUndelivered}, after maintenance has run. */
+  async function cancelMaintained(
+    sessionId: string,
+    mailbox: Mailbox,
+    delivered: ReadonlySet<string>,
+  ): Promise<string[]> {
     const cancelled = await cancelOpenSessionInput(mailbox, delivered);
     await removeMarkerOnceMaintained(sessionId, mailbox);
     return cancelled;
   }
 
   async function sweepSession(sessionId: string): Promise<void> {
-    const incarnation = await dependencies.incarnationOf(sessionId);
     const mailbox = dependencies.mailboxOf(sessionId);
+    if (mailbox === undefined) return;
+    const incarnation = await dependencies.incarnationOf(sessionId);
     if (incarnation === undefined) {
       // Deleting the session retired its input once, but an admission that
       // loaded the old incarnation can commit after that pass, so whatever is
-      // open now belongs to nobody: cancel it, then drop the marker.
-      await cancelUndelivered(sessionId, new Set());
+      // open now belongs to nobody: cancel it, then drop the marker. The
+      // mailbox is keyed by session id, not incarnation, so a session
+      // recreated under the same id since the read above would have its own
+      // fresh input cancelled here; the re-read narrows that window to the
+      // cancel pass itself. What remains is within the ruling (an input that
+      // ends `canceled` is resent), and closing it would mean keying the
+      // mailbox by incarnation, a one-way door left for later.
+      await mailbox.runMaintenance();
+      if ((await dependencies.incarnationOf(sessionId)) !== undefined) return;
+      await cancelMaintained(sessionId, mailbox, new Set());
       return;
     }
-    if (mailbox === undefined || dependencies.isClosed()) return;
+    if (dependencies.isClosed()) return;
+    // Maintenance before the liveness check: a run parked past the command
+    // timeout keeps the sweep away from its input, so this is where that
+    // input's deadline is enforced (dead-lettered, receipt `expired`).
+    await mailbox.runMaintenance();
     const live = await dependencies.liveRunIds(sessionId, incarnation);
     // A live run delivers the input at its next boundary, and its end cancels
     // what it never delivered; a starting one is live in a moment.
     if (live.length > 0) return;
-    await cancelUndelivered(sessionId, new Set());
+    await cancelMaintained(sessionId, mailbox, new Set());
   }
 
   return {

@@ -74,15 +74,6 @@ const SESSION_INPUT_NAMESPACE = 'corvidae.bureau.session-input';
 /** Key prefix for the cross-session identity index in `runtime.kv`. */
 const SESSION_INPUT_IDENTITY_KEY_PREFIX = 'session-input-identity:v1';
 
-/**
- * How long a `(principal, id) -> sessionId` identity claim is honored
- * before being treated as absent. Matches Weft's own default
- * `terminalRetentionMs` (`MailboxOptions.terminalRetentionMs`) — the same
- * order of magnitude this codebase already uses for "how long does a
- * completed durable fact stay meaningful" elsewhere.
- */
-const SESSION_INPUT_IDENTITY_TTL_MS = 86_400_000;
-
 /** Bounds the compare-and-swap retry loop against concurrent claimants of the same key. */
 const SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS = 10;
 
@@ -103,13 +94,31 @@ export const SESSION_INPUT_COMMAND_TIMEOUT_MS = 7 * 86_400_000;
 export const SESSION_INPUT_MAXIMUM_ATTEMPTS = 100;
 
 /**
- * How long a delivery record outlives its last write: the 7 day command timeout,
- * plus the day the mailbox retains a terminal record, plus a day's margin. A
- * record may be deleted only when its command can no longer be claimed by any
- * run and a replay of its caller's id is answered from the mailbox's retained
- * record or as a fresh admission with a new command.
+ * How long the mailbox keeps a terminal record (`promoted`, `canceled`,
+ * `expired`, `rejected`) before retiring it, after which a replay of its id is
+ * admitted as a fresh command. Weft's own default, made explicit because the
+ * two retention windows below are derived from it.
  */
-export const SESSION_INPUT_DELIVERY_RETENTION_MS = 9 * 86_400_000;
+export const SESSION_INPUT_TERMINAL_RETENTION_MS = 86_400_000;
+
+/**
+ * How long a `(principal, id) -> sessionId` identity claim is honored before
+ * being treated as absent: the command's whole lifetime, plus the window in
+ * which the mailbox still answers its id from the retained record. Shorter,
+ * and the same id could be admitted to another session while the original
+ * was still open.
+ */
+export const SESSION_INPUT_IDENTITY_TTL_MS =
+  SESSION_INPUT_COMMAND_TIMEOUT_MS + SESSION_INPUT_TERMINAL_RETENTION_MS;
+
+/**
+ * How long a delivery record outlives its last write: the identity's lifetime
+ * (the command timeout plus the mailbox's terminal retention), plus a day's
+ * margin. A record may be deleted only when its command can no longer be
+ * claimed by any run and a replay of its caller's id is answered from the
+ * mailbox's retained record or as a fresh admission with a new command.
+ */
+export const SESSION_INPUT_DELIVERY_RETENTION_MS = SESSION_INPUT_IDENTITY_TTL_MS + 86_400_000;
 
 /** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
 export function createSessionInputMailbox(
@@ -125,6 +134,7 @@ export function createSessionInputMailbox(
     maxBacklog: sessionBacklogLimit,
     commandTimeoutMs: SESSION_INPUT_COMMAND_TIMEOUT_MS,
     maxAttempts: SESSION_INPUT_MAXIMUM_ATTEMPTS,
+    terminalRetentionMs: SESSION_INPUT_TERMINAL_RETENTION_MS,
     // A released command is due again almost at once: a lease a run's gate
     // returns is claimable by the session's next step boundary.
     retryBackoffMs: 10,
@@ -174,7 +184,17 @@ function parseSessionInputIdentityRecord(
 }
 
 type SessionInputIdentityResult =
-  | { readonly matches: true; readonly created: boolean }
+  | { readonly matches: true; readonly created: false }
+  | {
+      readonly matches: true;
+      readonly created: true;
+      /**
+       * Removes the record this call wrote, if it is still the current one.
+       * Called when the admission that claimed it created no mailbox record,
+       * so the identity names nothing.
+       */
+      readonly release: () => Promise<void>;
+    }
   | { readonly matches: false; readonly existingSessionId: string };
 
 /**
@@ -213,7 +233,15 @@ async function claimSessionInputIdentity(
       [{ key, expectedValue: currentRaw }],
       [{ type: 'set', key, value: nextValue }],
     );
-    if (committed) return { matches: true, created: true };
+    if (committed) {
+      return {
+        matches: true,
+        created: true,
+        release: async () => {
+          await kv.conditionalBatch([{ key, expectedValue: nextValue }], [{ type: 'delete', key }]);
+        },
+      };
+    }
     // Lost the compare-and-swap race — someone else wrote this key between
     // the read and the write above. Re-read and retry against fresh state.
   }
@@ -459,20 +487,35 @@ export async function admitSessionInput(
   // ("before a record is created") is satisfied because this check runs
   // before the real mailbox's own `admit()` call below, which is the one
   // that could create a record.
+  //
+  // An identity this call claimed is kept only once the mailbox has a record
+  // for it. A request the principal backlog or the session backlog refuses,
+  // or whose admission throws, releases it again: otherwise its retry would
+  // read `created: false`, skip the principal check, and be admitted over the
+  // limit, and another session's attempt at the id would be sent to rebuild a
+  // receipt that never existed.
   if (identity.created) {
     const openForPrincipal = await countOpenCommandsForPrincipal(sessionMailbox, principal);
     if (openForPrincipal >= principalBacklogLimit) {
+      await identity.release();
       return { outcome: 'backlog-exhausted', scope: 'principal', limit: principalBacklogLimit };
     }
   }
 
-  const admission = await sessionMailbox.admit({
-    caller: principal,
-    target: sessionId,
-    kind: encodeSessionInputKind(deliveryMode),
-    payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
-    idempotencyKey: id,
-  });
+  let admission: Awaited<ReturnType<Mailbox['admit']>>;
+  try {
+    admission = await sessionMailbox.admit({
+      caller: principal,
+      target: sessionId,
+      kind: encodeSessionInputKind(deliveryMode),
+      payload: { form: 'inline', value: payload as unknown as Record<string, unknown> },
+      idempotencyKey: id,
+    });
+  } catch (error) {
+    if (identity.created) await identity.release();
+    throw error;
+  }
+  if (admission.status === 'rejected' && identity.created) await identity.release();
 
   switch (admission.status) {
     case 'admitted':
