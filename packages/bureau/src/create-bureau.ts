@@ -1984,10 +1984,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * receives input `submitSessionInput` admitted while it is live. `undefined`
    * when the bureau has no durable mailbox, no session store, or the session no
    * longer exists, in which case there is nothing to deliver.
+   *
+   * The gate is bound to `incarnation`, the one the run started in
+   * (`runSessionIncarnations`, or the incarnation its promotion captured),
+   * never to a fresh load: a session deleted and recreated between the run's
+   * promotion and this call would otherwise hand the old run a gate stamped
+   * with the new incarnation, and it would promote input admitted for the new
+   * session into its old transcript. A mismatch means the run's session is
+   * gone, so it gets no gate; its end settles the way any run's end does.
+   * Without a recorded incarnation (a run that predates the record), the
+   * loaded session's is used, as before.
    */
   async function sessionInputGateFor(
     sessionId: string,
     runId: string,
+    incarnation: string | undefined,
   ): Promise<SessionInputGate | undefined> {
     const mailbox = tryGetSessionInputMailbox(sessionId);
     const gateSessionStore = runtime.sessionStore;
@@ -2000,6 +2011,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const session = await gateSessionStore.load(sessionId);
     if (session === undefined) return undefined;
+    if (incarnation !== undefined && session.incarnation !== incarnation) {
+      diagnose({
+        level: 'warn',
+        scope: 'session-input',
+        message: `[bureau] Run "${runId}" started in an incarnation of session "${sessionId}" that has since been recreated; it receives no session input.`,
+      });
+      return undefined;
+    }
     const gate = createSessionInputDeliveryGate({
       sessionId,
       runId,
@@ -2030,8 +2049,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionId: string,
     runId: string,
     services: DurableRunDeps,
+    incarnation: string | undefined,
   ): Promise<void> {
-    const gate = await sessionInputGateFor(sessionId, runId);
+    const gate = await sessionInputGateFor(
+      sessionId,
+      runId,
+      runSessionIncarnations.get(runId) ?? incarnation,
+    );
     if (gate !== undefined) {
       services.options = { ...services.options, sessionId, sessionInput: gate };
     }
@@ -4601,7 +4625,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
-        const runSessionInputGate = await sessionInputGateFor(sessionId, runId);
+        const runSessionInputGate = await sessionInputGateFor(
+          sessionId,
+          runId,
+          runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
+        );
         assertRunAdmissionOpen('run');
         activeRun = createActiveRun(
           {
@@ -5817,7 +5845,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       info.workflowId,
       services,
     );
-    await attachRecoveredSessionInput(info.input.sessionId, info.workflowId, services);
+    await attachRecoveredSessionInput(
+      info.input.sessionId,
+      info.workflowId,
+      services,
+      recoveredSteeringGate === undefined ? undefined : loadedSession?.incarnation,
+    );
     const eventSurface = createRecoveredRunEventSurface(
       services,
       info.workflowId,
@@ -6260,7 +6293,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }
           }
           if (recoveredServices !== undefined) {
-            await attachRecoveredSessionInput(ownedSessionId!, handle.id, recoveredServices);
+            await attachRecoveredSessionInput(
+              ownedSessionId!,
+              handle.id,
+              recoveredServices,
+              durableSteeringStore() === undefined ? undefined : classifiedIncarnation,
+            );
           }
           reattachRecoveredRun(
             handle.id,

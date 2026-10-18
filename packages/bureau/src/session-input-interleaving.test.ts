@@ -1,4 +1,4 @@
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
@@ -18,6 +18,7 @@ import {
   savesSessionAs,
   seamStorage,
   type StorageSeam,
+  userTexts,
 } from './test/session-input-fixtures';
 import type { Bureau } from './types';
 
@@ -162,6 +163,81 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       await a.bureau.dispose();
       b.real[Symbol.dispose]();
       a.real[Symbol.dispose]();
+    }
+  });
+});
+
+describe('a run whose session is recreated while it starts (COR-1476)', () => {
+  it('never delivers input admitted to the new incarnation: its gate is bound to the incarnation it was promoted in', async () => {
+    const SESSION = 'session-recreated';
+    const prompts1: string[][] = [];
+    const run1Started = deferred();
+    const a = await openProcess(async (context: GenerateContext) => {
+      prompts1.push(userTexts(context.conversation));
+      run1Started.resolve();
+      return new Promise<never>(() => {});
+    });
+    const prompts2: string[][] = [];
+    const run2Started = deferred();
+    const release2 = deferred();
+    const b = await openProcess(async (context: GenerateContext) => {
+      prompts2.push(userTexts(context.conversation));
+      if (prompts2.length === 1) {
+        run2Started.resolve();
+        await release2.promise;
+      }
+      return { content: 'done', toolCalls: [] };
+    });
+    const holds: Array<{ release: () => void }> = [];
+    try {
+      // Process A starts run 1. Its start loads the session body twice after
+      // its running save committed: once for its steering promotion, once to
+      // build its input gate. The second load is held.
+      let bodyReads = 0;
+      const gateLoad = a.seam.holdRead(
+        (key) => {
+          if (!key.startsWith('agent-session-v2:body:')) return false;
+          bodyReads += 1;
+          return bodyReads === 2;
+        },
+        a.seam.awaitWriteCommitted(savesSessionAs('running')),
+      );
+      holds.push(gateLoad);
+      const creating = a.bureau.createRun({
+        message: 'First',
+        principal: 'alice',
+        sessionId: SESSION,
+      });
+      await gateLoad.reached;
+
+      // Process B deletes and recreates the session meanwhile, with a live run
+      // of the new incarnation, and admits input to it.
+      await b.bureau.deleteSession(SESSION);
+      const second = await b.bureau.createRun({
+        message: 'Second',
+        principal: 'alice',
+        sessionId: SESSION,
+      });
+      await run2Started.promise;
+      const admitted = await b.bureau.submitSessionInput(SESSION, input);
+      expect(admitted.outcome).toBe('admitted');
+
+      // Run 1 starts on the session it was promoted in, which is gone: it has
+      // no gate, and its first step sees only its own message.
+      gateLoad.release();
+      await creating;
+      await run1Started.promise;
+      expect(prompts1).toEqual([['First']]);
+
+      // The new incarnation's run delivers the input at its next boundary.
+      release2.resolve();
+      await b.bureau.waitForDurableRun(second.id);
+      expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
+    } finally {
+      release2.resolve();
+      holds.forEach((hold) => hold.release());
+      await a.bureau.dispose();
+      await b.bureau.dispose();
     }
   });
 });

@@ -100,7 +100,11 @@ export interface MailboxSessionInputGateOptions {
  *
  * The invariant behind the four hand-offs: every lease the gate acquires ends
  * in exactly one of three states, acknowledged, released, or cancelled, by the
- * time `dispose()` resolves, unless the process dies first. The gate therefore
+ * time `dispose()` resolves, unless the process dies first, or the release in
+ * `dispose()` itself fails, in which case the lease lapses at the visibility
+ * timeout: disposal is the end of the line, nothing retries after it, so it
+ * clears the table before its release pass rather than keeping a lease
+ * nobody will settle. The gate therefore
  * keeps a lease in its table from the claim until the mailbox call that
  * settles it (an acknowledgement or a rejection) has committed, and only
  * `settleLease` removes one: on failure the lease stays and is listed for
@@ -372,7 +376,11 @@ export function createMailboxSessionInputGate(
         }
       }
       // Disposal landed during the retirements above: nothing may hold what
-      // this call leased, and nothing is returned for a step to append.
+      // this call leased, and nothing is returned for a step to append. A
+      // release that fails here is reported and the lease kept, as
+      // `settleLease` does everywhere, but with the gate disposed nothing
+      // retries it: the lease lapses at the visibility timeout, the same
+      // exception the module doc states for `dispose()` itself.
       if (disposed) {
         const acquired = decoded
           .map(({ claim }) => claim)
