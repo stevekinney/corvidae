@@ -1,7 +1,8 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
-import { Conversation } from 'conversationalist';
+import { Conversation, withMessageId } from 'conversationalist';
 
+import { signalMessageIdentifier } from '../message-identifiers';
 import type { FinishReason } from '../types';
 import {
   buildSignalContinuationInput,
@@ -41,6 +42,16 @@ export interface WorkflowParkState {
   pendingHumanWait?: PendingHumanWait | undefined;
   lastWakeupNote?: string | undefined;
   lastHumanWaitSignal?: string | undefined;
+  /** The run's ordinal of the pending human-wait park (see `human-wait-parks.ts`). */
+  humanWaitParkOrdinal?: number | undefined;
+  /**
+   * Set when the step that parked also left a tool call waiting on approval. That step
+   * stopped the run on the approval, and the park only holds the run until the human
+   * has answered: once the answer is in the conversation the run settles, as it would
+   * have without the park, so the approval is the next thing it offers and the run does
+   * not generate past it.
+   */
+  settleAfterAnswer?: boolean | undefined;
   runId: string;
 }
 
@@ -111,14 +122,31 @@ export function* runWorkflowPark(
     const renderedMessage = renderSignalContinuation(
       buildSignalContinuationInput(signalName, payload, deliveredAt),
     );
+    // The park's ordinal in the run, not a count of the rows the conversation holds,
+    // which a compaction can shrink.
+    const parkOrdinal = state.humanWaitParkOrdinal;
     state.snapshot = (() => {
       const resumedConversation = Conversation.from(state.snapshot, {
         runtime: runDepsFrom(ctx.services).options.runtime ?? createDefaultRuntimeServices(),
       });
-      resumedConversation.appendUserMessage(renderedMessage);
+      const id =
+        parkOrdinal === undefined
+          ? undefined
+          : signalMessageIdentifier(state.runId, signalName, parkOrdinal);
+      if (id === undefined) resumedConversation.appendUserMessage(renderedMessage);
+      else
+        resumedConversation.appendMessages(
+          withMessageId({ role: 'user', content: renderedMessage }, id),
+        );
       return resumedConversation.snapshot();
     })();
     yield* ctx.run('saveConversation', { runId: state.runId, snapshot: state.snapshot });
+    if (state.settleAfterAnswer === true) {
+      // The step already stopped the run on the approval it is waiting for: the
+      // answer is part of the conversation the approval's continuation starts from.
+      state.settleAfterAnswer = false;
+      return false;
+    }
     resetTerminalState(state);
     return true;
   }

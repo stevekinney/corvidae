@@ -340,7 +340,7 @@ function beginInput(overrides: Partial<BeginRunCreationInput> = {}): BeginRunCre
 /** The location of a recorded receipt; fails when the run carried none. */
 function recorded(receipt: RunCreationReceipt | undefined): RunCreationReceiptLocation {
   if (receipt === undefined) throw new Error('expected the run to carry a receipt');
-  return { status: 'recorded', receipt };
+  return { status: 'recorded', receipt, sessionId: expect.any(String) as string };
 }
 
 const LOCATE = { callerId: 'alice', agentName: 'bureau', requestId: 'request-1' } as const;
@@ -605,6 +605,7 @@ describe('run-creation ledger retention', () => {
       expect(await after.locate(LOCATE)).toEqual({
         status: 'pending',
         receipt: { runId: 'run-1', requestId: 'request-1', createdAt: ORIGIN, status: 'pending' },
+        sessionId: CLAIM.sessionId,
       });
       expect(
         await after.begin(beginInput({ claim: { runId: 'run-2', sessionId: 's-2' } })),

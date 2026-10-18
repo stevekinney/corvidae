@@ -161,12 +161,31 @@ function clearTerminalApprovalMetadata(
   }
 }
 
+/**
+ * The session's marker of its latest run. A run's terminal save writes them only
+ * while that run is still the latest (see `saveSession`'s `markerRunId`).
+ */
+const LAST_RUN_MARKER_KEYS = [
+  'lastRunId',
+  'lastRunStatus',
+  'lastFinishReason',
+  'lastError',
+] as const;
+
+function withoutLastRunMarker(metadata: Record<string, JSONValue>): Record<string, JSONValue> {
+  const remaining: Record<string, JSONValue> = { ...metadata };
+  for (const key of LAST_RUN_MARKER_KEYS) delete remaining[key];
+  return remaining;
+}
+
 function clearCompletedRunMetadata(
   metadata: Record<string, JSONValue>,
   store: Pick<Store, 'getRun'>,
+  // The run that is ending, when it is not the one the merged marker names.
+  ending?: { readonly runId: string; readonly status: JSONValue | undefined },
 ): void {
-  const runId = metadata['lastRunId'];
-  const status = metadata['lastRunStatus'];
+  const runId = ending?.runId ?? metadata['lastRunId'];
+  const status = ending === undefined ? metadata['lastRunStatus'] : ending.status;
   if (
     typeof runId !== 'string' ||
     (status !== 'completed' && status !== 'aborted' && status !== 'error')
@@ -230,6 +249,13 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     // process may have deleted the session without knowing this run exists,
     // and an upsert here would silently undo that deletion.
     expectedIncarnation?: string,
+    // A run's terminal save names the run it belongs to. The marker of the session's
+    // latest run (`lastRunId`, `lastRunStatus`, `lastFinishReason`, `lastError`) is
+    // written only while the stored `lastRunId` is still that run, decided inside the
+    // atomic update, as `markStartFailed` does: a save that lands late, or is retried
+    // after a store error, must not make a newer run's session read as an older run's
+    // outcome. Every other field is written as before.
+    markerRunId?: string,
   ): Promise<AgentSession | undefined> {
     if (!sessionStore) return undefined;
     const candidateRunId = metadata['lastRunId'];
@@ -276,8 +302,20 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
         throw new SessionAgentConflictError(sessionId, existingSession.agentName, agentName);
       }
       const resolvedAgentName = nextSession.agentName;
-      const mergedMetadata = mergeMetadata(nextSession.metadata, metadata);
-      clearCompletedRunMetadata(mergedMetadata, store);
+      const storedRunId = existingSession?.metadata['lastRunId'];
+      const newerRunHoldsMarker =
+        markerRunId !== undefined && typeof storedRunId === 'string' && storedRunId !== markerRunId;
+      const mergedMetadata = mergeMetadata(
+        nextSession.metadata,
+        newerRunHoldsMarker ? withoutLastRunMarker(metadata) : metadata,
+      );
+      // The ending run's own approval state is released even when it no longer holds
+      // the marker.
+      clearCompletedRunMetadata(
+        mergedMetadata,
+        store,
+        newerRunHoldsMarker ? { runId: markerRunId, status: metadata['lastRunStatus'] } : undefined,
+      );
 
       return {
         ...nextSession,

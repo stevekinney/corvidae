@@ -12,8 +12,9 @@ import {
   ToolsExecutingEvent,
 } from './events';
 import type { ErrorRecoveryAction } from './hooks/types';
+import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
-import { dispatchSettledResults, sealDanglingToolCalls } from './run-step-support';
+import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
 import type { GenerateResponse } from './types';
 
@@ -62,15 +63,34 @@ export async function executeTools(
   const { hooks } = deps;
   let materializedToolCalls: ToolCall[] = [];
   let results: ToolExecutionResult[] = [];
+  const resultRowScope = { runId: deps.runId, step };
 
   if (toolCallInputs.length > 0) {
     materializedToolCalls = materializeToolCalls(toolCallInputs);
+    const assistantMessageId = assistantMessageIdentifier(deps.runId, step);
+    const callRowIds = toolCallMessageIdentifiers(
+      assistantMessageId,
+      materializedToolCalls,
+      assistantMessageId !== undefined &&
+        conversation
+          .getMessages({ includeHidden: true })
+          .some((message) => message.id === assistantMessageId),
+    );
     const [firstCall, ...otherCalls] = materializedToolCalls;
     if (firstToolCallMetadata !== undefined && firstCall !== undefined) {
-      conversation.appendToolCall(firstCall, { metadata: firstToolCallMetadata });
-      conversation.appendToolCalls(otherCalls);
+      conversation.appendToolCall(firstCall, {
+        metadata: firstToolCallMetadata,
+        ...(callRowIds === undefined ? {} : { messageId: callRowIds[0]! }),
+      });
+      conversation.appendToolCalls(
+        otherCalls,
+        callRowIds === undefined ? undefined : { messageIds: callRowIds.slice(1) },
+      );
     } else {
-      conversation.appendToolCalls(materializedToolCalls);
+      conversation.appendToolCalls(
+        materializedToolCalls,
+        callRowIds === undefined ? undefined : { messageIds: callRowIds },
+      );
     }
 
     let callsToExecute = materializedToolCalls;
@@ -104,6 +124,8 @@ export async function executeTools(
           conversation,
           deps.collectAsync,
           'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)',
+          undefined,
+          resultRowScope,
         );
         dispatchSettledResults(
           emitter,
@@ -131,6 +153,7 @@ export async function executeTools(
         deps.collectAsync,
         'Tool execution skipped by beforeToolExecution hook',
         filteredOutCalls,
+        resultRowScope,
       );
       dispatchSettledResults(
         emitter,
@@ -301,6 +324,8 @@ export async function executeTools(
             conversation,
             deps.collectAsync,
             'Tool execution failed before a result could be produced',
+            undefined,
+            resultRowScope,
           );
           dispatchSettledResults(
             emitter,
@@ -349,9 +374,12 @@ export async function executeTools(
           // produced real results — seal the tool calls with those
           // (unvalidated) results rather than leaving them dangling.
           if (deps.collectAsync) {
-            await conversation.appendToolResultsAsync(results);
+            await conversation.appendToolResultsAsync(
+              results,
+              resultRowBatch(resultRowScope, results),
+            );
           } else {
-            conversation.appendToolResults(results);
+            conversation.appendToolResults(results, resultRowBatch(resultRowScope, results));
           }
           emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
           return { kind: 'error', error, errorKind: 'tool' };
@@ -359,9 +387,9 @@ export async function executeTools(
       }
 
       if (deps.collectAsync) {
-        await conversation.appendToolResultsAsync(results);
+        await conversation.appendToolResultsAsync(results, resultRowBatch(resultRowScope, results));
       } else {
-        conversation.appendToolResults(results);
+        conversation.appendToolResults(results, resultRowBatch(resultRowScope, results));
       }
 
       emitter?.dispatch(new ToolsExecutedEvent(step, callsToExecute, executedResults));

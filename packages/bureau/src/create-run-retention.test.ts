@@ -104,14 +104,19 @@ async function pollUntil(check: () => boolean): Promise<boolean> {
 async function settledRun(bureau: Bureau, request: CreateRunRequest = REQUEST) {
   const created = await bureau.createRun(request);
   expect(await pollUntil(() => bureau.getRun(created.id)?.status === 'completed')).toBe(true);
-  expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(recorded(created.receipt));
+  expect(await bureau.locateRunCreationReceipt(LOCATE)).toEqual(
+    recorded(created.receipt, created.sessionId),
+  );
   return created;
 }
 
 /** The location of a recorded receipt; fails when the run carried none. */
-function recorded(receipt: RunCreationReceipt | undefined): RunCreationReceiptLocation {
+function recorded(
+  receipt: RunCreationReceipt | undefined,
+  sessionId?: string,
+): RunCreationReceiptLocation {
   if (receipt === undefined) throw new Error('expected the run to carry a receipt');
-  return { status: 'recorded', receipt };
+  return { status: 'recorded', receipt, sessionId: sessionId ?? (expect.any(String) as string) };
 }
 
 async function durableRunIds(bureau: Bureau): Promise<string[] | undefined> {
