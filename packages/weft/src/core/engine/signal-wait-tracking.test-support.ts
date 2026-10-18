@@ -47,12 +47,14 @@ export function recordSignalWaitingEvents(engine: Engine): SignalWaitingEvent[] 
 
 /**
  * Wait for the workflow-state writes already queued for `workflowId` to
- * settle. The signal-wait bookkeeping runs in that per-workflow chain, so once
- * a change has been requested this observes it without polling. A `ctx.all`
- * branch woken by `engine.signal()` requests its removal before `signal()`
- * resolves: the delivery invokes the branch's resolver before returning, and
- * the branch's continuation, which enqueues the removal synchronously, is the
- * first microtask that resolver queued.
+ * settle. The signal-wait bookkeeping runs in that per-workflow chain. A
+ * `ctx.all` branch woken by `engine.signal()` has ordinarily finished its
+ * removal by the time `signal()` resolves, because the removal is all
+ * microtask work on `MemoryStorage`. This is the safety net that does not
+ * depend on that: the delivery invokes the branch's resolver before
+ * returning, the branch's continuation is the first microtask that resolver
+ * queued, and it enqueues the removal synchronously, so the removal is in the
+ * chain before `signal()` resolves.
  */
 export async function settleWorkflowStateWrites(engine: Engine, workflowId: string): Promise<void> {
   await getInternals(engine).workflowStateWriteChains.get(workflowId);
