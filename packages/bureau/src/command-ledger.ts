@@ -790,7 +790,7 @@ export interface RunCreationPayload {
 }
 
 /** JSON with every object's keys sorted, so equal values serialize alike. */
-function canonicalJson(value: unknown): string {
+export function canonicalJson(value: unknown): string {
   return JSON.stringify(value, (_key, nested: unknown) =>
     nested !== null && typeof nested === 'object' && !Array.isArray(nested)
       ? Object.fromEntries(

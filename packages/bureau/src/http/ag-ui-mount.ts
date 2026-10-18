@@ -43,6 +43,7 @@ import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError } from '../create-bureau.ts';
 import type { Bureau, OwnedResource } from '../types.ts';
 import { rowsAddedBy } from './ag-ui-messages.ts';
+import { createResume } from './ag-ui-resume.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
 import {
   type AgUiStreamBureau,
@@ -76,7 +77,7 @@ export type AgUiOptions = {
    * The clock and timers the mount reads, so a test drives the stream deadline
    * with a manual clock. Defaults to the real ones.
    */
-  readonly runtime?: Pick<RuntimeServices, 'clock' | 'timers'>;
+  readonly runtime?: Pick<RuntimeServices, 'clock' | 'timers' | 'identifiers'>;
 };
 
 export const DEFAULT_AG_UI_PATH_PREFIX = '/ag-ui';
@@ -94,6 +95,9 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'getOwner'
     | 'hasDurableEngine'
     | 'locateRunCreationReceipt'
+    | 'getReview'
+    | 'resolveReview'
+    | 'kv'
   >;
 
 /** The owner predicate the mount decides with, and where an owner of record comes from. */
@@ -150,6 +154,7 @@ export function createAgUiMount(
     liveBufferSize: options.liveBufferSize ?? DEFAULT_AG_UI_LIVE_BUFFER_SIZE,
   };
   const now = (): number => runtime.clock.now();
+  let resumeRun: ReturnType<typeof createResume> | undefined;
 
   /** A door refusal: a one-event stream. */
   function refuse(code: AgUiErrorCode, message: string): Response {
@@ -265,6 +270,24 @@ export function createAgUiMount(
     }
     if (!publish.includes(agentName)) {
       return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
+    }
+    if (input.resume !== undefined && input.resume.length > 0) {
+      resumeRun ??= createResume({
+        bureau,
+        environment,
+        runtime,
+        mayWrite: (caller, resourceOwner) => may(caller, resourceOwner, 'bureau.tasks:write'),
+        ownerOfReview: (reviewId) => authorization.ownerOf({ kind: 'review', id: reviewId }),
+        refuse,
+      });
+      return resumeRun({
+        threadId: input.threadId,
+        runId: input.runId,
+        agentName,
+        entries: input.resume,
+        principal,
+        owner,
+      });
     }
     const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
     if (threadOwner !== undefined && !may(principal, threadOwner, 'bureau.tasks:write')) {
