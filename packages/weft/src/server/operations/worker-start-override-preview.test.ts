@@ -35,7 +35,10 @@ describe('weft.worker.startoverrides.preview operation', () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected preview operation to fail.');
-    expect(result.fault.code).toBe('EngineFailure');
+    expect(result.fault).toMatchObject({
+      code: 'UnsupportedCapability',
+      data: { capability: 'workerStartOverrideSigning' },
+    });
   });
 
   it('issues a scoped preview for a terminal auto-upgrade workflow', async () => {
@@ -147,7 +150,10 @@ describe('weft.worker.startoverrides.preview operation', () => {
     const missing = await executePreview(new MemoryStorage());
     expect(missing.ok).toBe(false);
     if (missing.ok) throw new Error('Expected missing workflow preview to fail.');
-    expect(missing.fault.code).toBe('EngineFailure');
+    expect(missing.fault).toMatchObject({
+      code: 'NotFound',
+      data: { resource: 'workflow', identifier: WORKFLOW_ID },
+    });
 
     const currentBinding = await seedPreviewCatalogAndBinding();
 
@@ -163,14 +169,20 @@ describe('weft.worker.startoverrides.preview operation', () => {
     const live = await executePreview(liveStorage);
     expect(live.ok).toBe(false);
     if (live.ok) throw new Error('Expected live workflow preview to fail.');
-    expect(live.fault.code).toBe('EngineFailure');
+    expect(live.fault).toMatchObject({
+      code: 'Conflict',
+      data: { reason: 'workflow-not-terminal' },
+    });
 
     const unboundStorage = new MemoryStorage();
     await seedWorkflowState(unboundStorage, { status: 'completed' });
     const unbound = await executePreview(unboundStorage);
     expect(unbound.ok).toBe(false);
     if (unbound.ok) throw new Error('Expected unbound workflow preview to fail.');
-    expect(unbound.fault.code).toBe('EngineFailure');
+    expect(unbound.fault).toMatchObject({
+      code: 'Conflict',
+      data: { reason: 'no-worker-binding' },
+    });
 
     const pinnedStorage = new MemoryStorage();
     await seedWorkflowState(pinnedStorage, {
@@ -181,7 +193,10 @@ describe('weft.worker.startoverrides.preview operation', () => {
     const pinned = await executePreview(pinnedStorage);
     expect(pinned.ok).toBe(false);
     if (pinned.ok) throw new Error('Expected pinned workflow preview to fail.');
-    expect(pinned.fault.code).toBe('EngineFailure');
+    expect(pinned.fault).toMatchObject({
+      code: 'Conflict',
+      data: { reason: 'policy-not-auto-upgrade' },
+    });
   });
 
   it('rejects a resolved target that does not satisfy the workflow compatibility contract', async () => {
@@ -230,7 +245,33 @@ describe('weft.worker.startoverrides.preview operation', () => {
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('Expected incompatible preview to fail.');
-    expect(result.fault.code).toBe('EngineFailure');
+    expect(result.fault).toMatchObject({
+      code: 'Conflict',
+      data: { reason: 'upgrade-incompatible-contract' },
+    });
+  });
+
+  it('faults with a no-routed-deployment Conflict when no ready build provides the revision', async () => {
+    const storage = new MemoryStorage();
+    const currentBinding = await seedPreviewCatalogAndBinding();
+    await seedWorkflowState(storage, {
+      status: 'completed',
+      revision: 'revision-nobody-serves',
+      workerVersioningPolicy: {
+        mode: 'auto-upgrade',
+        compatibility: compatibilityFromBinding(currentBinding),
+      },
+      workerBinding: { current: currentBinding, history: [] },
+    });
+
+    const result = await executePreview(storage);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected a conflict.');
+    expect(result.fault).toMatchObject({
+      code: 'Conflict',
+      data: { reason: 'no-routed-deployment' },
+    });
   });
 
   it('extracts preview requests from the HTTP JSON body', async () => {

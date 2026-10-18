@@ -62,6 +62,7 @@ import {
   createListWorkersRestBinding,
   listWorkersOperation,
 } from './operations/list-workers.ts';
+import { createStartOrSignalWorkflowOperation } from './operations/start-or-signal-workflow.ts';
 import { createStartWorkflowOperation } from './operations/start-workflow.ts';
 import { STATIC_OPERATIONS } from './operations/static-operations.ts';
 import { STATIC_REST_BINDINGS } from './operations/static-rest-bindings.ts';
@@ -323,6 +324,14 @@ function buildWorkerStartOverridePreviewOperation(options: LiveOperationRegistry
   });
 }
 
+function buildStartOrSignalWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
+  return createStartOrSignalWorkflowOperation(
+    options.workerStartOverrideSigningSecret === undefined
+      ? {}
+      : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret },
+  );
+}
+
 function buildStartWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
   return createStartWorkflowOperation(
     options.workerStartOverrideSigningSecret === undefined
@@ -359,9 +368,11 @@ export function createLiveOperationRegistry(
     ...STATIC_OPERATIONS.map((operation) =>
       operation.name === 'weft.workflows.start'
         ? buildStartWorkflowOperationForRegistry(resolved)
-        : operation.name === 'weft.worker.startoverrides.preview'
-          ? buildWorkerStartOverridePreviewOperation(resolved)
-          : operation,
+        : operation.name === 'weft.workflows.startorsignal'
+          ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
+          : operation.name === 'weft.worker.startoverrides.preview'
+            ? buildWorkerStartOverridePreviewOperation(resolved)
+            : operation,
     ),
     buildTaskDiagnosticsOperationForRegistry(resolved),
     buildSystemMetricsOperation(resolved),

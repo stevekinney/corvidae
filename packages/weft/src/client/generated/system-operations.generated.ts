@@ -167,7 +167,7 @@ export type SystemOperationTypes = {
         readonly workflowId: string;
       };
     };
-    readonly faults: 'InvalidParams';
+    readonly faults: 'Conflict' | 'InvalidParams' | 'NotFound' | 'UnsupportedCapability';
   };
   'weft.workers.drain': {
     readonly input: { readonly reason?: string; readonly workerId: string };

@@ -854,6 +854,24 @@ type ListTaskQueuesResponse = {
 
 Queues are sorted by `queue` ascending.
 
+## Worker start override
+
+A terminal workflow whose worker-versioning policy is `auto-upgrade` keeps the build it last ran on when it is restarted with `onTerminalConflict: "start-new"`. To restart it on the build routing now selects, an operator first asks for a preview and then spends the resulting token on the restart.
+
+`POST /v1/worker-start-overrides/preview` (JSON-RPC `weft.worker.startoverrides.preview`, `system:admin`) takes `{ workflowId, ttlMs? }` and returns `{ preview }`: a server-signed, single-use token scoped to that workflow, the binding it replaces, and the build routing selects now, valid for `ttlMs` (default 60 seconds, at most 5 minutes). It needs the server to be configured with a `workerStartOverrideSigningSecret`.
+
+Pass the whole `preview` object as `workerStartOverridePreview` to `weft.workflows.startorsignal` (with `id`, `signalId`, and `onTerminalConflict: "start-new"`), or to `weft.workflows.start`. The token is consumed with the replacement, atomically, so it works once.
+
+These operations answer with typed faults a client can branch on:
+
+| Fault | When | Data |
+| --- | --- | --- |
+| `NotFound` | The preview names a workflow that does not exist. | `resource: "workflow"`, `identifier` |
+| `Conflict` | The preview cannot be issued: the workflow is not terminal (`workflow-not-terminal`), has no durable binding (`no-worker-binding`), is not `auto-upgrade` (`policy-not-auto-upgrade`), no ready routed build provides its revision (`no-routed-deployment`), or the candidate build does not satisfy the policy (`upgrade-<reason>`, for example `upgrade-incompatible-contract`). | `reason` (JSON-RPC) |
+| `UnsupportedCapability` | The server has no signing secret. | `capability: "workerStartOverrideSigning"` |
+| `Conflict` | A start carries a token that cannot authorize it: expired, already used, for another workflow, stale against the accepted binding, forged, or unverifiable. | `reason: "override-token-rejected"` (JSON-RPC) |
+| `InvalidParams` | The token is not shaped like a preview. | `issues: []` |
+
 ## Revision-aware deployment routing
 
 `WorkerDeploymentCatalog` stores immutable `(deploymentName, buildId)` versions and a conditional routing pointer in the configured storage backend. A version records its artifact and manifest digests, accepted manifest, lifecycle state, first-seen time, and execution references. Re-registering a build with different digests is rejected. Routing pointers carry a monotonically increasing generation, a current build, an optional ramping build, and an integer `rampBasisPoints` value from `0` through `10_000`; stale expected generations are rejected.

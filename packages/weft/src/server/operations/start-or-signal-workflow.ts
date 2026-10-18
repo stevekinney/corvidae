@@ -8,7 +8,10 @@ import {
 } from '../../core/engine/errors.ts';
 import { runtimeWorkflowEngine } from '../../core/runtime-workflow-engine.ts';
 import { isSignalIdWithinByteLimit } from '../../core/signal-id.ts';
-import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
+import {
+  StartWorkflowValidationError,
+  WorkerStartOverrideRejectedError,
+} from '../../core/start-workflow-validation.ts';
 import type {
   SearchAttributeSchema,
   StartOrSignalOptions,
@@ -17,7 +20,7 @@ import type {
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { invalidParamsFault, workerStartOverrideRejectedFault } from './operation-helpers.ts';
 import { buildStartOrSignalWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,
@@ -44,6 +47,7 @@ const startOrSignalWorkflowInput = z.object({
   idempotencyKey: z.unknown().optional(),
   searchAttributes: z.unknown().optional(),
   onTerminalConflict: z.unknown().optional(),
+  workerStartOverridePreview: z.unknown().optional(),
 });
 
 const startOrSignalWorkflowOutput = z.object({
@@ -137,8 +141,9 @@ function assertConvergenceTokenProvided(
  *   2. StartOrSignalConflictError   → Conflict (target already terminal)
  *   3. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
  *   4. WorkflowTeardownPendingError → Conflict (terminal cleanup not done)
- *   5. StartWorkflowValidationError → InvalidParams
- *   6. otherwise                    → EngineFailure
+ *   5. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
+ *   6. StartWorkflowValidationError → InvalidParams
+ *   7. otherwise                    → EngineFailure
  */
 function resolveStartOrSignalWorkflowFault(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -168,6 +173,9 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
     };
     throw fault;
   }
+  if (error instanceof WorkerStartOverrideRejectedError) {
+    throw workerStartOverrideRejectedFault(message);
+  }
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }
@@ -180,61 +188,72 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   throw fault;
 }
 
-export const startOrSignalWorkflowOperation = defineOperation({
-  name: 'weft.workflows.startorsignal',
-  mcpExposable: false,
-  summary: 'Atomically start a workflow or signal it if it already exists',
-  description:
-    'Start a workflow or deliver a signal to it if it already exists (signal-with-start). An ' +
-    'absent target is created and delivered the signal in one batch; a non-terminal target ' +
-    '(running, pending, or suspended) is signalled; a terminal target faults with Conflict unless ' +
-    '`onTerminalConflict: "start-new"` is supplied with `id` and `signalId`, in which case the ' +
-    'prior terminal run is replaced through the shared terminal-replacement path and the initial ' +
-    'signal is delivered to the fresh run. A spent `idempotencyKey` whose run was purged or swept ' +
-    'by retention also faults with Conflict. ' +
-    'Requires `type`, `signalName`, and exactly one of `signalId` or `idempotencyKey` (not ' +
-    'both). Accepts `input`, `signalPayload`, and the non-idempotency start options from ' +
-    'weft.workflows.start (`id`, `executionTimeout`, `startAt`/`startAfter`, `tags`, ' +
-    '`searchAttributes`) plus `onTerminalConflict`; `idempotencyKey` is governed by the ' +
-    '"exactly one of" rule above and cannot be combined with restart. ' +
-    'Returns the workflow `id`. Concurrent callers converge on one workflow ' +
-    'and one signal only with a shared `idempotencyKey`, or a shared `id` plus `signalId`; a ' +
-    'bare `signalId` (no `id`/`idempotencyKey`) starts a fresh run per caller and does not ' +
-    'converge.',
-  destructive: true,
-  tags: ['Workflows', 'Signals'],
-  inputSchema: startOrSignalWorkflowInput,
-  outputSchema: startOrSignalWorkflowOutput,
-  // Every call carries a signal (`signalName` is required), so a caller that
-  // could start but not signal would otherwise signal a running workflow
-  // through here. Both scopes are required.
-  access: {
-    kind: 'scoped',
-    scopes: { kind: 'allOf', scopes: ['workflows:write', 'signals:write'] },
-  },
-  discoverable: true,
-  producibleFaults: ['Conflict'],
-  transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
-  unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
-  invoke: async ({ input, host: engine }): Promise<StartOrSignalWorkflowOutput> => {
-    const typedEngine = runtimeWorkflowEngine(engine);
-    const { type, signal, options } = validateStartOrSignalWorkflowInput(input, (validType) => {
-      return typedEngine.getWorkflowDefinition(validType)?.searchAttributes;
-    });
+type StartOrSignalWorkflowOperationOptions = Readonly<{
+  workerStartOverrideSigningSecret?: string;
+}>;
 
-    try {
-      const { handle, outcome } = await typedEngine.startOrSignal(
-        type,
-        input.input,
-        signal,
-        options,
-      );
-      return { id: handle.id, outcome };
-    } catch (error) {
-      return resolveStartOrSignalWorkflowFault(error);
-    }
-  },
-});
+export function createStartOrSignalWorkflowOperation(
+  configuration: StartOrSignalWorkflowOperationOptions = {},
+) {
+  return defineOperation({
+    name: 'weft.workflows.startorsignal',
+    mcpExposable: false,
+    summary: 'Atomically start a workflow or signal it if it already exists',
+    description:
+      'Start a workflow or deliver a signal to it if it already exists (signal-with-start). An ' +
+      'absent target is created and delivered the signal in one batch; a non-terminal target ' +
+      '(running, pending, or suspended) is signalled; a terminal target faults with Conflict unless ' +
+      '`onTerminalConflict: "start-new"` is supplied with `id` and `signalId`, in which case the ' +
+      'prior terminal run is replaced through the shared terminal-replacement path and the initial ' +
+      'signal is delivered to the fresh run. A spent `idempotencyKey` whose run was purged or swept ' +
+      'by retention also faults with Conflict. ' +
+      'Requires `type`, `signalName`, and exactly one of `signalId` or `idempotencyKey` (not ' +
+      'both). Accepts `input`, `signalPayload`, and the non-idempotency start options from ' +
+      'weft.workflows.start (`id`, `executionTimeout`, `startAt`/`startAfter`, `tags`, ' +
+      '`searchAttributes`) plus `onTerminalConflict`; `idempotencyKey` is governed by the ' +
+      '"exactly one of" rule above and cannot be combined with restart. ' +
+      'Returns the workflow `id`. Concurrent callers converge on one workflow ' +
+      'and one signal only with a shared `idempotencyKey`, or a shared `id` plus `signalId`; a ' +
+      'bare `signalId` (no `id`/`idempotencyKey`) starts a fresh run per caller and does not ' +
+      'converge.',
+    destructive: true,
+    tags: ['Workflows', 'Signals'],
+    inputSchema: startOrSignalWorkflowInput,
+    outputSchema: startOrSignalWorkflowOutput,
+    // Every call carries a signal (`signalName` is required), so a caller that
+    // could start but not signal would otherwise signal a running workflow
+    // through here. Both scopes are required.
+    access: {
+      kind: 'scoped',
+      scopes: { kind: 'allOf', scopes: ['workflows:write', 'signals:write'] },
+    },
+    discoverable: true,
+    producibleFaults: ['Conflict'],
+    transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
+    unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
+    invoke: async ({ input, host: engine }): Promise<StartOrSignalWorkflowOutput> => {
+      const typedEngine = runtimeWorkflowEngine(engine);
+      const { type, signal, options } = validateStartOrSignalWorkflowInput(input, (validType) => {
+        return typedEngine.getWorkflowDefinition(validType)?.searchAttributes;
+      });
+
+      try {
+        const { handle, outcome } = await typedEngine.startOrSignal(type, input.input, signal, {
+          ...options,
+          ...(options.workerStartOverridePreview === undefined ||
+          configuration.workerStartOverrideSigningSecret === undefined
+            ? {}
+            : { workerStartOverrideSigningSecret: configuration.workerStartOverrideSigningSecret }),
+        });
+        return { id: handle.id, outcome };
+      } catch (error) {
+        return resolveStartOrSignalWorkflowFault(error);
+      }
+    },
+  });
+}
+
+export const startOrSignalWorkflowOperation = createStartOrSignalWorkflowOperation();
 
 export const startOrSignalWorkflowRestBinding: UnknownRestBinding = {
   method: 'POST',
@@ -255,6 +274,7 @@ export const startOrSignalWorkflowRestBinding: UnknownRestBinding = {
     idempotencyKey: { kind: 'body-field', bodyField: 'idempotencyKey' },
     searchAttributes: { kind: 'body-field', bodyField: 'searchAttributes' },
     onTerminalConflict: { kind: 'body-field', bodyField: 'onTerminalConflict' },
+    workerStartOverridePreview: { kind: 'body-field', bodyField: 'workerStartOverridePreview' },
   },
   extractInput: async (request, _pathParams, context) => {
     const record = await parseStartWorkflowRequestRecord(request, context);

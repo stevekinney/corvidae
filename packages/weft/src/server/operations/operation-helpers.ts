@@ -40,6 +40,16 @@ export function invalidParamsFault(message: string, weftCode?: WeftErrorCode): O
 }
 
 /**
+ * The `Conflict` a start answers when its worker start-override token cannot
+ * authorize it (expired, already used, for another workflow, stale against the
+ * accepted binding, or unverifiable). The reason is a stable machine-readable
+ * string, not the message, so a client branches on it.
+ */
+export function workerStartOverrideRejectedFault(message: string): OperationFault {
+  return { code: 'Conflict', message, data: { reason: 'override-token-rejected' } };
+}
+
+/**
  * Default REST fault shaper. Delegates to the centralized, exhaustively
  * audited REST projection so direct and per-operation bindings cannot drift.
  * REST-only — JSON-RPC transports receive their distinct operation fault data.
