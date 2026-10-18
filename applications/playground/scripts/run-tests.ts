@@ -53,7 +53,12 @@ const TEST_DIRECTORIES = ['scripts', 'src'] as const;
 // Bun 1.4.2: three consecutive runs at four workers passed every test in about 140 s, against
 // 276 s serially. Re-measure before raising the worker count; ten workers on a ten-core host made
 // Cinder's scroll-settling tests fail.
-const SHARED_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=4'];
+const FAST_LANE_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=4'];
+
+// The slow lane is serial by design (COR-1499): its tests are slow because they do real work, and
+// running them four at a time would put their contention back on the host that the lane exists to
+// relieve. `--parallel=1` is the serial form this runner used before the fast lane went parallel.
+const SLOW_LANE_FLAGS = ['--conditions', 'browser', '--conditions', 'svelte', '--parallel=1'];
 
 const MOUNT_HEAVY_TEST = 'src/component-page.test.ts';
 
@@ -210,14 +215,23 @@ export async function discoverTestFiles(lane?: TestLane): Promise<PlaygroundTest
   return lane === undefined ? testFiles : selectLaneFiles(testFiles, lane);
 }
 
+/** The `bun test` flags for a lane: four workers for the fast lane, one for the slow lane. */
+export function bunTestFlags(lane: TestLane): string[] {
+  return lane === 'fast' ? [...FAST_LANE_FLAGS] : [...SLOW_LANE_FLAGS];
+}
+
 /**
  * Run one `bun test` invocation for a process group. Inherits stdio so the
  * child's reporter streams straight through. Returns its exit code.
  */
-async function runBunTest(args: string[], reportPath: string | null): Promise<number> {
+async function runBunTest(
+  lane: TestLane,
+  args: string[],
+  reportPath: string | null,
+): Promise<number> {
   const reporter =
     reportPath === null ? [] : ['--reporter=junit', `--reporter-outfile=${reportPath}`];
-  const child = Bun.spawn(['bun', 'test', ...SHARED_FLAGS, ...reporter, ...args], {
+  const child = Bun.spawn(['bun', 'test', ...bunTestFlags(lane), ...reporter, ...args], {
     cwd: PLAYGROUND_ROOT,
     env: TEST_ENV,
     stdout: 'inherit',
@@ -244,7 +258,7 @@ async function main(): Promise<void> {
 
   for (const [index, testPaths] of processPlan.entries()) {
     const reportPath = lane === 'fast' ? join(JUNIT_DIRECTORY, `fast-${index}.xml`) : null;
-    failed = (await runBunTest(testPaths, reportPath)) !== 0 || failed;
+    failed = (await runBunTest(lane, testPaths, reportPath)) !== 0 || failed;
   }
 
   let exitCode = failed ? 1 : 0;
