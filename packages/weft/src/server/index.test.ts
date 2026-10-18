@@ -1426,7 +1426,7 @@ describe('serve', () => {
     // Wait until the serialization chain has persisted all three. Polling on
     // the observable count is deterministic across CI load — a raw
     // A fixed wall-clock sleep was flaky on slower runners.
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 3, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 3, {
       label: '3 pre-terminal events persisted',
     });
 
@@ -1435,7 +1435,7 @@ describe('serve', () => {
     // Wait until the terminal event is persisted (now 4 total). Cleanup
     // evicts the sequence maps once the current serialization chain drains;
     // by the time the 4th key is observable, cleanup has completed.
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 4, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 4, {
       label: 'terminal event persisted and cleanup complete',
     });
 
@@ -1444,12 +1444,12 @@ describe('serve', () => {
     // storage and resume after the highest existing sequence number — not
     // restart at 0 and overwrite the previously persisted events.
     engine.dispatchEvent(new WorkflowSuspendedEvent(workflowId));
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 5, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 5, {
       label: 'post-terminal event persisted without collision',
     });
 
     const keys: string[] = [];
-    for await (const [key] of engine.storage.scan(`ev:${workflowId}:`)) {
+    for await (const [key] of engine.storage.scan(`watch-event:${workflowId}:`)) {
       keys.push(key);
     }
 
@@ -1458,7 +1458,7 @@ describe('serve', () => {
     // restarted at 0, we would see fewer than 5 entries (collisions).
     expect(keys.length).toBe(5);
 
-    // Keys are `ev:{workflowId}:{sequence}` and scan order is lexicographic.
+    // Keys are `watch-event:{workflowId}:{sequence}` and scan order is lexicographic.
     // Verify the sequences are contiguous (no gaps, no collisions).
     const sequences = keys.map((key) => {
       const parts = key.split(':');
@@ -1494,7 +1494,7 @@ describe('serve', () => {
     await waitFor(
       async () => {
         for (let i = 0; i < workflowCount; i++) {
-          const count = await countKeys(engine, `ev:bulk-wf-${i}:`);
+          const count = await countKeys(engine, `watch-event:bulk-wf-${i}:`);
           if (count !== 2) return false;
         }
         return true;
@@ -1504,7 +1504,7 @@ describe('serve', () => {
 
     // Each workflow should have exactly 2 stored events (non-terminal + terminal).
     for (let i = 0; i < workflowCount; i++) {
-      const count = await countKeys(engine, `ev:bulk-wf-${i}:`);
+      const count = await countKeys(engine, `watch-event:bulk-wf-${i}:`);
       expect(count).toBe(2);
     }
   });
@@ -1553,7 +1553,7 @@ describe('serve', () => {
         }),
       ]),
     );
-    expect(await countKeys(engine, KEYS.eventPrefix(workflowId))).toBe(0);
+    expect(await countKeys(engine, KEYS.watchEventPrefix(workflowId))).toBe(0);
 
     broadcaster.dispose();
   });
@@ -1565,7 +1565,7 @@ describe('serve', () => {
     const workflowId = 'terminal-recursion-wf';
 
     engine.dispatchEvent(new WorkflowSuspendedEvent(workflowId));
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 1, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 1, {
       label: 'pre-terminal event persisted',
     });
 
@@ -1575,7 +1575,7 @@ describe('serve', () => {
     engine.dispatchEvent(new WorkflowCompletedEvent(workflowId, 'ok', 1));
     engine.dispatchEvent(new WorkflowSuspendedEvent(workflowId));
 
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 3, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 3, {
       label: 'terminal and immediate follow-up events persisted',
     });
 
@@ -1583,12 +1583,12 @@ describe('serve', () => {
     // should rehydrate from storage and continue the sequence without
     // collisions or gaps.
     engine.dispatchEvent(new WorkflowSuspendedEvent(workflowId));
-    await waitFor(async () => (await countKeys(engine, `ev:${workflowId}:`)) === 4, {
+    await waitFor(async () => (await countKeys(engine, `watch-event:${workflowId}:`)) === 4, {
       label: 'post-recursion event persisted after cleanup',
     });
 
     const keys: string[] = [];
-    for await (const [key] of engine.storage.scan(`ev:${workflowId}:`)) {
+    for await (const [key] of engine.storage.scan(`watch-event:${workflowId}:`)) {
       keys.push(key);
     }
 
@@ -3570,7 +3570,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     engine.dispatchEvent(new WorkflowCompletedEvent('wf-watch-resume', 'first', 1));
     engine.dispatchEvent(new WorkflowCompletedEvent('wf-watch-resume', 'second', 2));
     await waitFor(
-      async () => (await engine.storage.get(KEYS.event('wf-watch-resume', 1))) !== null,
+      async () => (await engine.storage.get(KEYS.watchEvent('wf-watch-resume', 1))) !== null,
       {
         label: 'watch event sequence persisted',
       },
@@ -3602,7 +3602,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
 
     engine.dispatchEvent(new WorkflowCompletedEvent('wf-watch-clamped', 'first', 1));
     await waitFor(
-      async () => (await engine.storage.get(KEYS.event('wf-watch-clamped', 0))) !== null,
+      async () => (await engine.storage.get(KEYS.watchEvent('wf-watch-clamped', 0))) !== null,
       {
         label: 'watch event sequence persisted before clamped resume',
       },
@@ -3766,7 +3766,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     engine = createEngine();
     const storage = engine.storage as MemoryStorage;
     await storage.put(
-      KEYS.event('wf-sequence', 4),
+      KEYS.watchEvent('wf-sequence', 4),
       encode({
         type: WorkflowSuspendedEvent.type,
         timestamp: Date.now(),
@@ -3776,12 +3776,12 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
     server = serveTestServer({ engine, port: 0 });
 
     engine.dispatchEvent(new WorkflowSuspendedEvent('wf-sequence'));
-    await waitFor(async () => (await storage.get(KEYS.event('wf-sequence', 5))) !== null, {
+    await waitFor(async () => (await storage.get(KEYS.watchEvent('wf-sequence', 5))) !== null, {
       label: 'event persistence at next sequence',
     });
 
-    expect(await storage.get(KEYS.event('wf-sequence', 4))).not.toBeNull();
-    expect(await storage.get(KEYS.event('wf-sequence', 5))).not.toBeNull();
+    expect(await storage.get(KEYS.watchEvent('wf-sequence', 4))).not.toBeNull();
+    expect(await storage.get(KEYS.watchEvent('wf-sequence', 5))).not.toBeNull();
   });
 
   it('persists streamed token chunks under the durable blob prefix', async () => {
@@ -3819,7 +3819,7 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
       prefix: string,
       options?: Parameters<MemoryStorage['scan']>[1],
     ) {
-      if (prefix === 'ev:wf-sequence-retry:' && failFirstEventScan) {
+      if (prefix === 'watch-event:wf-sequence-retry:' && failFirstEventScan) {
         failFirstEventScan = false;
         throw new Error('event scan failed');
       }
@@ -3833,11 +3833,14 @@ describe('token streaming WebSocket (WS /v1/workflows/:id/stream)', () => {
         label: 'initial event sequence scan failure to surface',
       });
       engine.dispatchEvent(new WorkflowSuspendedEvent('wf-sequence-retry'));
-      await waitFor(async () => (await storage.get(KEYS.event('wf-sequence-retry', 0))) !== null, {
-        label: 'event persistence after retry',
-      });
+      await waitFor(
+        async () => (await storage.get(KEYS.watchEvent('wf-sequence-retry', 0))) !== null,
+        {
+          label: 'event persistence after retry',
+        },
+      );
 
-      expect(await storage.get(KEYS.event('wf-sequence-retry', 0))).not.toBeNull();
+      expect(await storage.get(KEYS.watchEvent('wf-sequence-retry', 0))).not.toBeNull();
       expect(errorSpy).toHaveBeenCalled();
     } finally {
       restoreScan();

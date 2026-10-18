@@ -24,7 +24,11 @@ import type {
   ScheduleMissedFireEvent,
   ScheduleSkippedEvent,
 } from './schedule-events.ts';
-import type { SignalDeliveredEvent, SignalReceivedEvent } from './signal-events.ts';
+import type {
+  SignalDeliveredEvent,
+  SignalReceivedEvent,
+  SignalWaitingEvent,
+} from './signal-events.ts';
 import type {
   AlertFiredEvent,
   AlertResolvedEvent,
@@ -94,6 +98,7 @@ export type WeftEventMap = {
   'task:result-delivery': TaskResultDeliveryEvent;
   'task:attempt-transition': TaskAttemptTransitionEvent;
   'signal:received': SignalReceivedEvent;
+  'signal:waiting': SignalWaitingEvent;
   'signal:delivered': SignalDeliveredEvent;
   'schedule:fired': ScheduleFiredEvent;
   'human-review:requested': ReviewRequestedEvent;

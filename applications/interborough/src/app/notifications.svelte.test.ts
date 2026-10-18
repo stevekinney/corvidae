@@ -49,6 +49,7 @@ const EXPECTED_TIERS: Readonly<Record<string, NotificationTier>> = {
   'activity:failed': 'warning',
   'activity:async-pending': 'info',
   'signal:received': 'info',
+  'signal:waiting': 'info',
   'signal:delivered': 'info',
   'attributes:changed': 'info',
   'update:received': 'info',

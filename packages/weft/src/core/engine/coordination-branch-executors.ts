@@ -1,6 +1,7 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { createDeferredConsumeEnvelope } from './deferred-consume-envelope.ts';
 import type { EngineInternals } from './internals.ts';
+import { clearSignalWait, recordSignalWaitBegan } from './signal-wait-tracking.ts';
 import {
   consumeSignalWithAtomicWorkflowCommit,
   peekSignal,
@@ -188,6 +189,11 @@ export function executeWaitSignalSubOperation(
       if (registered) {
         releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
       }
+      // The race settled without this signal, so the wait is over: drop it from
+      // the durable `waitingForSignals` list. Nothing awaits this branch any
+      // more, so the write runs on its own; it changes nothing when the engine
+      // is shutting down, because then the wait is still outstanding durably.
+      void clearSignalWait(internals, workflowId, signalName);
       // Prefer the race-loser `signal`'s reason; fall back to the engine-abort
       // reason on teardown (mirrors `executeSleepSubOperation`) so a disposed
       // engine surfaces its own abort reason rather than a generic Error.
@@ -201,6 +207,14 @@ export function executeWaitSignalSubOperation(
       // Resolve with the envelope, NOT a consumed value: the coordinator decides
       // whether this branch won and calls finalize() exactly once on the winner.
       resolve(createDeferredConsumeEnvelope(finalize));
+    };
+
+    // The signal is here, so this branch's wait is over. Drop it from the
+    // durable list before resolving, so it is gone before the coordinator's
+    // next checkpoint (this also covers a wait listed before a restart).
+    const winAfterClearingWait = async () => {
+      await clearSignalWait(internals, workflowId, signalName);
+      win();
     };
 
     const fail = (error: unknown) => {
@@ -235,7 +249,7 @@ export function executeWaitSignalSubOperation(
       const existing = await peekSignal(internals, workflowId, signalName);
       if (settled) return;
       if (existing.found) {
-        win();
+        await winAfterClearingWait();
         return;
       }
 
@@ -246,16 +260,27 @@ export function executeWaitSignalSubOperation(
       if (settled) return;
       if (buffered.found) {
         releaseSignalWaiter(internals, workflowId, waiterKey, deliver);
-        win();
+        await winAfterClearingWait();
         return;
       }
+
+      // No signal was buffered, so the wait has begun: record it durably. A
+      // delivery or a lost race that lands meanwhile ends the wait first, and
+      // the record then leaves the name out.
+      await recordSignalWaitBegan(
+        internals,
+        workflowId,
+        signalName,
+        () => !settled && internals.signalWaiters.get(waiterKey) === deliver,
+      );
+      if (settled) return;
 
       // Wait for delivery to wake this waiter (deliverBufferedSignals releases
       // the waiter then calls deliver(); it does NOT consume the durable record),
       // then resolve with the deferred-consume envelope.
       await delivered;
       if (settled) return;
-      win();
+      await winAfterClearingWait();
     })().catch(fail);
   });
 }

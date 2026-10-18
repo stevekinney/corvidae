@@ -1,10 +1,15 @@
 /**
  * Machine-readable component API contract.
  *
- * This module is the source of truth that `src/api-contract.test.ts` validates
- * each component's exported Props type against. If a component's Props diverge
- * from this table — wrong prop name, wrong optionality, wrong default — the test
- * fails with a named error.
+ * This module is the source of truth for each component's public props and snippets.
+ * `src/api-contract.test.ts` checks every component's exported Props type against it,
+ * and fails with a named error when:
+ *   - a listed prop is missing from Props, or its optionality or `type_kind` differs;
+ *   - a listed required snippet is missing from Props;
+ *   - an inline Props member is in neither `props` nor `snippets`;
+ *   - a declared generic or its constraint is missing from `<script generics>`.
+ * The test does not compare `default`, snippet `kind` or `tupleArity`, or snippet
+ * optionality: those fields document the component and are not enforced.
  *
  * Shape definitions mirror §Canonical Props shape in the plan:
  *   'literal'      — TSTypeLiteral (Shape A, no ...rest)
@@ -92,6 +97,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       id: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       title: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      style: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
@@ -124,6 +130,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+          severity: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
           class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
           subscriptionState: { optional: false, type_kind: 'TSTypeReference', default: REQUIRED },
         },
@@ -138,6 +145,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+          severity: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
           class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
           subscriptionState: {
             optional: true,
@@ -171,7 +179,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
-    snippets: { children: s0(true) },
+    snippets: { children: s0(true), leadingIcon: s0(true), trailingIcon: s0(true) },
   },
 
   // COR-239: CardProps was `CardPlain | CardWithHeader | CardWithTitle` (each arm a
@@ -209,6 +217,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
     generics: [{ name: 'T' }],
     props: {
       items: { optional: false, type_kind: 'TSArrayType', default: REQUIRED },
+      key: { optional: false, type_kind: 'TSFunctionType', default: REQUIRED },
+      density: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
@@ -239,6 +249,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       title: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      headingLevel: { optional: true, type_kind: 'TSUnionType', default: L(3) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
@@ -290,8 +301,16 @@ export const CONTRACT: Record<string, ComponentContract> = {
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       error: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
-      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      // `disabled` has no default in the destructure — it resolves through FormField
+      // context (`field.disabled`), so the prop carries no literal default.
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       type: { optional: true, type_kind: 'TSTypeReference', default: L('text') },
+      onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      inputAttachment: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
@@ -365,11 +384,21 @@ export const CONTRACT: Record<string, ComponentContract> = {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
     props: {
+      placement: { optional: true, type_kind: 'TSTypeReference', default: L('top') },
+      labelsVisible: { optional: true, type_kind: 'TSTypeReference', default: L('always') },
+      menuTogglePlacement: {
+        optional: true,
+        type_kind: 'TSTypeReference',
+        default: L('after-brand'),
+      },
+      mobileMenuOpen: { optional: true, type_kind: 'TSBooleanKeyword', default: B(false) },
+      label: { optional: true, type_kind: 'TSStringKeyword', default: L('Main navigation') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
       brand: s0(true),
-      items: s0(false),
+      menuToggle: sp(1, true),
+      items: sp(1, false),
       actions: s0(true),
     },
   },
@@ -423,7 +452,13 @@ export const CONTRACT: Record<string, ComponentContract> = {
       value: { optional: true, type_kind: 'TSTypeReference', default: BE },
       options: { optional: false, type_kind: 'TSTypeOperator', default: REQUIRED },
       label: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
-      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      // `disabled` has no default in the destructure — it resolves through FormField
+      // context (`field.disabled`), so the prop carries no literal default.
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      error: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
@@ -445,6 +480,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
       label: { optional: true, type_kind: 'TSStringKeyword', default: L('Loading') },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
@@ -460,7 +496,13 @@ export const CONTRACT: Record<string, ComponentContract> = {
       description: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       error: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       rows: { optional: true, type_kind: 'TSNumberKeyword', default: L(4) },
-      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      // `disabled` has no default in the destructure — it resolves through FormField
+      // context (`field.disabled`), so the prop carries no literal default.
+      disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      required: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      maxlength: { optional: true, type_kind: 'TSNumberKeyword', default: NO_DEFAULT },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
+      countVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
@@ -479,6 +521,12 @@ export const CONTRACT: Record<string, ComponentContract> = {
       // through FormField context (`disabled ?? context?.disabled ?? false`), so
       // the prop carries no literal default.
       disabled: { optional: true, type_kind: 'TSBooleanKeyword', default: NO_DEFAULT },
+      onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
+      labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
+      value: { optional: true, type_kind: 'TSStringKeyword', default: L('on') },
+      form: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {},
@@ -489,10 +537,12 @@ export const CONTRACT: Record<string, ComponentContract> = {
     props: {
       text: { optional: false, type_kind: 'TSStringKeyword', default: REQUIRED },
       placement: { optional: true, type_kind: 'TSTypeReference', default: L('top') },
+      describe: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      triggerRef: { optional: true, type_kind: 'TSUnionType', default: L(null) },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: {
-      children: s0(false),
+      children: s0(true),
     },
   },
 

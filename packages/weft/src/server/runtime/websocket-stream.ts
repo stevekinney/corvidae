@@ -76,7 +76,7 @@ export async function getHighestStoredWatchSequence(
   engine: Engine,
   workflowId: string,
 ): Promise<number> {
-  const prefix = KEYS.eventPrefix(workflowId);
+  const prefix = KEYS.watchEventPrefix(workflowId);
 
   for await (const [storageKey] of engine.storage.scan(prefix, { reverse: true, limit: 50 })) {
     const sequence = parseSequenceFromEventKey(prefix, storageKey);
@@ -366,8 +366,8 @@ export async function replayWatchEvents(
         ? -1
         : Math.min(requestedResumeFrom, await getHighestStoredWatchSequence(engine, workflowId));
     ws.data.watchLastDeliveredSequence = after;
-    const prefix = KEYS.eventPrefix(workflowId);
-    const scanOptions = after >= 0 ? { gt: KEYS.event(workflowId, after) } : undefined;
+    const prefix = KEYS.watchEventPrefix(workflowId);
+    const scanOptions = after >= 0 ? { gt: KEYS.watchEvent(workflowId, after) } : undefined;
 
     for await (const [storageKey, value] of engine.storage.scan(prefix, scanOptions)) {
       const sequence = parseSequenceFromEventKey(prefix, storageKey);

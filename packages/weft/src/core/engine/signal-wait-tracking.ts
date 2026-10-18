@@ -1,0 +1,152 @@
+/**
+ * The durable `WorkflowState.waitingForSignals` list (COR-1472): which signals a
+ * running workflow is parked on, written into its `wf:` record so `engine.get()`
+ * reports it across a restart.
+ *
+ * Every change is a read-modify-write of the `wf:` record inside
+ * {@link runSerializedWorkflowStateWrite}, the per-workflow chain that this
+ * engine's terminal, suspend, and tag writes also run in, so a change applies
+ * in the order it was requested and never interleaves with them. The commit is
+ * also conditioned on the record bytes it was computed from, so a write by
+ * another engine between the read and the commit (a cancel, say) makes this one
+ * decide again rather than write `running` back over it.
+ *
+ * A change applies only while the record is the same run, still `running`, and
+ * not being terminalized, and while this engine is not shutting down: a wait
+ * torn down by `dispose()` is still outstanding durably, which is the whole
+ * point of persisting it. Leaving `running` removes the list in the terminal or
+ * suspend write itself (`withoutSignalWaits` in `signal-wait-state.ts`).
+ *
+ * Neither function here rejects (see `changeSignalWaits`), so a caller may
+ * await one for ordering without guarding a failure.
+ *
+ * @module core/engine/signal-wait-tracking
+ */
+import { KEYS, type ConditionalBatchCondition } from '../../storage/interface.ts';
+import { encode } from '../codec.ts';
+import { SignalWaitingEvent } from '../events.ts';
+import type { WorkflowState } from '../types.ts';
+import { broadcast } from './broadcast.ts';
+import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
+import type { EngineInternals } from './internals.ts';
+import { withoutSignalWaits } from './signal-wait-state.ts';
+import { runSerializedWorkflowStateWrite } from './storage-io.ts';
+import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
+import { FENCED_RETRY_BUDGET } from './termination/terminal-fence.ts';
+import { decodeWorkflowState } from './validation.ts';
+
+/** The next list for a workflow, or `null` when the change does not apply. */
+type SignalWaitChange = (current: readonly string[]) => readonly string[] | null;
+
+/**
+ * Record that `workflowId` began waiting for `signalName`, then announce it
+ * with `signal:waiting`. Call it once the wait is registered and the last
+ * buffered-signal check found nothing, so a signal that was already waiting is
+ * never listed. A name the record already lists (a wait recovered after a
+ * restart) is left alone and not announced again.
+ *
+ * `isStillWaiting` is read inside the serialized section, after the record is
+ * loaded: a signal delivered before the write runs has already ended the wait,
+ * and listing it then would leave a stale entry.
+ */
+export async function recordSignalWaitBegan(
+  internals: EngineInternals,
+  workflowId: string,
+  signalName: string,
+  isStillWaiting: () => boolean,
+): Promise<void> {
+  const listed = await changeSignalWaits(internals, workflowId, (current) =>
+    current.includes(signalName) || !isStillWaiting() ? null : [...current, signalName],
+  );
+  if (!listed) return;
+  internals.engine.dispatchEvent(new SignalWaitingEvent(workflowId, signalName));
+  broadcast(internals, { type: SignalWaitingEvent.type, workflowId, signalName }, internals.engine);
+}
+
+/** Remove `signalName` from `workflowId`'s list: its wait ended without the workflow leaving `running`. */
+export async function clearSignalWait(
+  internals: EngineInternals,
+  workflowId: string,
+  signalName: string,
+): Promise<void> {
+  await changeSignalWaits(internals, workflowId, (current) =>
+    current.includes(signalName) ? current.filter((name) => name !== signalName) : null,
+  );
+}
+
+/**
+ * Apply `change` to the persisted list. Returns whether it wrote. The run is
+ * captured now, before the serialized section, so a change requested by one
+ * run never lands on a `start-new` replacement that took the id meanwhile.
+ *
+ * Never rejects. The list reports on a wait, and a wait or a signal delivery
+ * must not fail or hang because its report could not be written: a storage
+ * failure, a deposed claim, or a record that keeps changing under every
+ * attempt leaves the list as it was and the caller carries on. The workflow's
+ * own next write meets the same storage and reports its failure there.
+ */
+async function changeSignalWaits(
+  internals: EngineInternals,
+  workflowId: string,
+  change: SignalWaitChange,
+): Promise<boolean> {
+  try {
+    const workflowExecutionToken = workflowExecutionTokenForWorkflow(internals, workflowId);
+    return await runSerializedWorkflowStateWrite(internals, workflowId, async () => {
+      for (let attempt = 0; attempt < FENCED_RETRY_BUDGET; attempt += 1) {
+        const outcome = await attemptSignalWaitChange(
+          internals,
+          workflowId,
+          workflowExecutionToken,
+          change,
+        );
+        if (outcome !== 'lost-race') return outcome === 'written';
+      }
+      return false;
+    });
+  } catch {
+    return false;
+  }
+}
+
+async function attemptSignalWaitChange(
+  internals: EngineInternals,
+  workflowId: string,
+  workflowExecutionToken: string | undefined,
+  change: SignalWaitChange,
+): Promise<'written' | 'skipped' | 'lost-race'> {
+  if (internals.abortController.signal.aborted) return 'skipped';
+  const key = KEYS.workflow(workflowId);
+  const bytes = await internals.storage.get(key);
+  if (bytes === null) return 'skipped';
+  const state = decodeWorkflowState(bytes);
+  if (!changeApplies(internals, state, workflowExecutionToken)) return 'skipped';
+  const next = change(state.waitingForSignals ?? []);
+  if (next === null) return 'skipped';
+  const nextState =
+    next.length === 0 ? withoutSignalWaits(state) : { ...state, waitingForSignals: next };
+  const conditions: ConditionalBatchCondition[] = internals.storage.capabilities().conditionalBatch
+    ? [{ key, expectedValue: bytes }]
+    : [];
+  const committed = await commitFencedEngineWriteAllowingPreconditionFailure(
+    internals,
+    workflowId,
+    [{ type: 'put', key, value: encode(nextState) }],
+    conditions,
+  );
+  return committed ? 'written' : 'lost-race';
+}
+
+/** Whether a signal-wait change may still touch this record. */
+function changeApplies(
+  internals: EngineInternals,
+  state: WorkflowState,
+  workflowExecutionToken: string | undefined,
+): boolean {
+  return (
+    state.status === 'running' &&
+    !internals.terminalizingWorkflows.has(state.id) &&
+    (workflowExecutionToken === undefined ||
+      state.workflowExecutionToken === workflowExecutionToken)
+  );
+}
