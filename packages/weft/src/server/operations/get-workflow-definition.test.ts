@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { removeWorkflowRevision } from '../../core/engine/catalog-removal.ts';
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { workflow, type WorkflowDefinition } from '../../core/types.ts';
@@ -116,6 +117,20 @@ describe('weft.workflows.definitions.get: GET /v1/registry/definitions/:name', (
       origin: 'source',
       contract: { name: 'lazy', workflowVersion: '3.0.0' },
     });
+  });
+
+  it('never returns ready with a null contract: a preloaded source whose revision was removed is idle', async () => {
+    engine = createOperationTestEngine();
+    const lazy = await sourceFor(typed('removed-lazy'));
+    engine.registerSource(lazy);
+    await engine.workflows.preload('removed-lazy', lazy.descriptor.revision);
+    await removeWorkflowRevision(engine, 'removed-lazy', lazy.descriptor.revision);
+
+    const response = await getDefinition(engine, 'removed-lazy');
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ state: 'idle', contract: null, contractHash: null });
   });
 
   it('lists the signals a document awaits in the contract it returns', async () => {

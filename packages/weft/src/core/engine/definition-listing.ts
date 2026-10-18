@@ -182,7 +182,17 @@ async function describeDefinition(
   const state = resolveState(engine, name, origin, revision);
   const fields =
     state.state === 'ready' ? await readContractFields(engine, name, revision) : NO_CONTRACT;
-  return { name, origin, ...state, revision, ...fields };
+  // A `ready` entry always carries its contract. A source loaded in this process
+  // whose revision was since removed from the catalog has none to carry, and the
+  // next start would load and install it again, so it reports as `idle`.
+  const withheld = origin === 'source' && state.state === 'ready' && fields.contract === null;
+  return {
+    name,
+    origin,
+    ...(withheld ? { state: 'idle', lastFailureCategory: null } : state),
+    revision,
+    ...fields,
+  };
 }
 
 function toSummary(detail: WorkflowDefinitionDetail): WorkflowDefinitionSummary {

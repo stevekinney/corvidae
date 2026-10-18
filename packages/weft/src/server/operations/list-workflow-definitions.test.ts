@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { removeWorkflowRevision } from '../../core/engine/catalog-removal.ts';
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
 import { listWorkflowSources } from '../../core/engine/source-listing.ts';
 import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
@@ -217,6 +218,34 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
         state: 'ready',
         description: 'Loaded after its waiter left',
         workflowVersion: '0.0.0',
+      }),
+    ]);
+  });
+
+  it('never reports ready without a contract: a preloaded source whose revision was removed is idle', async () => {
+    engine = createOperationTestEngine();
+    const removed = await sourceFor(trivial('removed-source', 'Removed after preload'));
+    engine.registerSource(removed);
+    await engine.workflows.preload('removed-source', removed.descriptor.revision);
+    const before = (await listDefinitions(engine)) as { definitions: Record<string, unknown>[] };
+    expect(before.definitions[0]).toMatchObject({ state: 'ready', workflowVersion: '0.0.0' });
+
+    const outcome = await removeWorkflowRevision(
+      engine,
+      'removed-source',
+      removed.descriptor.revision,
+    );
+    expect(outcome.removed).toBe(true);
+    const after = (await listDefinitions(engine)) as { definitions: Record<string, unknown>[] };
+
+    expect(after.definitions).toEqual([
+      expect.objectContaining({
+        name: 'removed-source',
+        state: 'idle',
+        lastFailureCategory: null,
+        revision: removed.descriptor.revision,
+        workflowVersion: null,
+        description: null,
       }),
     ]);
   });
