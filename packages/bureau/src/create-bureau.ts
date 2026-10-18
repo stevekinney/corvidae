@@ -114,7 +114,12 @@ import {
   type SignedPendingToolApproval,
   type ToolRequestContext,
 } from 'armorer';
-import { Conversation, createConversationHistory, isConversationHistory } from 'conversationalist';
+import {
+  Conversation,
+  type ConversationHistory,
+  createConversationHistory,
+  isConversationHistory,
+} from 'conversationalist';
 
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
 import { createAssetService } from './assets/asset-service';
@@ -2998,6 +3003,43 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
+  /**
+   * COR-718 — a run's terminal save, pinned to the session incarnation the run
+   * started in (`runSessionIncarnations`, recorded by its first save and restored
+   * on recovery), whether or not durable steering is composed. The session may
+   * have expired and been recreated under another owner while the run ran, and a
+   * save that is not pinned would write the run's prompt and reply into that
+   * owner's session. A run with no recorded incarnation never started in any
+   * session this Bureau still knows, so its save goes nowhere.
+   */
+  function saveRunTerminalSession(
+    runId: string,
+    sessionId: string,
+    conversation: Conversation,
+    metadata: Record<string, JSONValue>,
+    agentName?: string,
+    baseConversationHistory?: ConversationHistory,
+  ): Promise<AgentSession | undefined> {
+    if (!runtime.sessionStore) return Promise.resolve(undefined);
+    const incarnation = runSessionIncarnations.get(runId);
+    if (incarnation === undefined) {
+      diagnose({
+        level: 'warn',
+        scope: 'session',
+        message: `[bureau] Run "${runId}" has no recorded session incarnation; its terminal save into session "${sessionId}" was skipped rather than written into a session it did not start in.`,
+      });
+      return Promise.resolve(undefined);
+    }
+    return saveSession(
+      sessionId,
+      conversation,
+      metadata,
+      agentName,
+      baseConversationHistory,
+      incarnation,
+    );
+  }
+
   // ── AB-391: review-transition audit records ride the session outbox ──
   //
   // A review transition (`resolveReview`'s approve/deny/reject decision, or
@@ -4419,7 +4461,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
         persistSessionUpdate(
           () =>
-            saveSession(
+            saveRunTerminalSession(
+              runId,
               sessionId,
               event.conversation,
               {
@@ -4432,7 +4475,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               },
               request.agentName,
               baseConversationHistory,
-              steeringSession?.incarnation,
             ),
           {
             runId,
@@ -4486,7 +4528,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // conversation reflects those steps, whereas the closure still holds
             // only the seed transcript. For the in-memory loop the event carries
             // the same mutated instance, so this is correct on both paths.
-            saveSession(
+            saveRunTerminalSession(
+              runId,
               sessionId,
               event.conversation,
               {
@@ -4503,7 +4546,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               },
               request.agentName,
               baseConversationHistory,
-              steeringSession?.incarnation,
             ),
           {
             runId,
@@ -4875,9 +4917,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     recoveredServices?: DurableRunDeps,
     sessionMetadata?: unknown,
     steeringGate?: BureauSteeringGate,
-    // The incarnation `steeringGate` was folded for; fences the run's
-    // terminal session save against a deletion in another process.
-    steeringIncarnation?: string,
+    // The session incarnation the run was recovered against (the one
+    // `steeringGate`, if any, was folded for): its terminal save is fenced to it,
+    // against a deletion or an expiry in any process (COR-718).
+    sessionIncarnation?: string,
   ): void {
     // At-most-once registration per runId (guards double-recover / a runId already
     // started live on this process — neither should reach here, but a silent
@@ -4886,7 +4929,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     if (!liveFramesSubscribed) bootFrameRunIds.add(runId);
-    if (steeringIncarnation !== undefined) runSessionIncarnations.set(runId, steeringIncarnation);
+    if (sessionIncarnation !== undefined) runSessionIncarnations.set(runId, sessionIncarnation);
 
     const recoveredRun = reattachDurableActiveRun(
       {
@@ -5026,9 +5069,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Steered, and so counted as live for steering, only with a gate: the
     // incarnation alone (still passed to fence the terminal save) does not
     // make a run read commands or log its end.
-    if (steeringIncarnation !== undefined && steeringGate !== undefined) {
-      steeringRunIncarnations.set(runId, steeringIncarnation);
-      pollSessionSteering(sessionId, steeringIncarnation, runId);
+    if (sessionIncarnation !== undefined && steeringGate !== undefined) {
+      steeringRunIncarnations.set(runId, sessionIncarnation);
+      pollSessionSteering(sessionId, sessionIncarnation, runId);
     }
     if (steeringGate !== undefined) {
       recoveredRun.addEventListener(SteeringAppliedEvent.type, (event) => {
@@ -5075,21 +5118,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
       persistSessionUpdate(
         () =>
-          saveSession(
-            sessionId,
-            completedConversation,
-            {
-              lastRunId: runId,
-              lastRunStatus,
-              lastFinishReason: finishReason,
-              ...(isRunFailureFinishReason(finishReason)
-                ? { lastError: serializeUnknownError(lastError) }
-                : {}),
-            },
-            undefined,
-            undefined,
-            steeringIncarnation,
-          ),
+          saveRunTerminalSession(runId, sessionId, completedConversation, {
+            lastRunId: runId,
+            lastRunStatus,
+            lastFinishReason: finishReason,
+            ...(isRunFailureFinishReason(finishReason)
+              ? { lastError: serializeUnknownError(lastError) }
+              : {}),
+          }),
         { runId, sessionId, status: lastRunStatus },
       );
     });
@@ -5126,19 +5162,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // final checkpoint and threads it into RunAbortedEvent.conversation, so
         // use that directly instead of re-fetching the checkpoint snapshot.
         () =>
-          saveSession(
-            sessionId,
-            abortedConversation,
-            {
-              lastRunId: runId,
-              lastRunStatus: 'aborted',
-              lastFinishReason: 'aborted',
-              lastError: serializeUnknownError(event.error),
-            },
-            undefined,
-            undefined,
-            steeringIncarnation,
-          ),
+          saveRunTerminalSession(runId, sessionId, abortedConversation, {
+            lastRunId: runId,
+            lastRunStatus: 'aborted',
+            lastFinishReason: 'aborted',
+            lastError: serializeUnknownError(event.error),
+          }),
         { runId, sessionId, status: 'aborted' },
       );
     });
@@ -5466,7 +5495,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       info.services as DurableRunDeps,
       sessionLoad.session,
       recoveredSteeringGate,
-      recoveredSteeringGate === undefined ? undefined : loadedSession?.incarnation,
+      loadedSession?.incarnation,
     );
     // AB-336 — see this function's own doc comment: a run recovered still
     // genuinely parked on `requestHumanInput` has no live action log to
@@ -5898,7 +5927,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             fallbackSteeringGate,
             // Fenced to the classified incarnation even when the session was
             // recreated since: the old run then saves into nothing.
-            durableSteeringStore() === undefined ? undefined : classifiedIncarnation,
+            classifiedIncarnation,
           );
           // AB-336 — same reconstruction as the primary reattach path above
           // (`onRecoveredWorkflow`); this post-recovery classification pass
@@ -8620,6 +8649,50 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * Marks every still-running run of session `id` as orphaned and aborts the ones
+   * that are not paused, for a session that is about to be removed, by
+   * `deleteSession` or by the store's own `cleanup()` (COR-718). Shared so that an
+   * expiry is a deletion in this respect too: without it an expired session's run
+   * would keep executing and write its terminal transcript into whatever session
+   * the id names by then.
+   *
+   * The runs are found the same way `listRuns` attributes a run to a session, via
+   * `getRunSessionIdentifier`, not the narrower `persistedApprovalRunIds` (AB-207).
+   * Every still-live run is marked in `orphanedRunIds` BEFORE any of it is aborted
+   * or released, so its eventual terminal `saveSession` call never resurrects the
+   * record it belonged to (PR #430, "Prevent released runs from recreating deleted
+   * sessions"), whichever way it settles. A run paused through the session's
+   * steering gate is left for `settleForDeletion` to release rather than aborted
+   * here, which keeps a usable control path until it terminates. The returned
+   * `runTerminals` settle when each run's own terminal event has fired.
+   */
+  function abandonSessionRuns(id: string): {
+    sessionRunIds: Set<string>;
+    steeringGate: BureauSteeringGate | undefined;
+    runTerminals: Array<Promise<void>>;
+  } {
+    const state = store.getState();
+    const sessionRunIds = new Set<string>();
+    for (const [, runState] of state.runs) {
+      if (getRunSessionIdentifier(runState) === id) sessionRunIds.add(runState.id);
+    }
+    for (const runId of sessionRunIds) {
+      const runState = store.getRun(runId);
+      if (runState?.status === 'running') orphanedRunIds.add(runId);
+    }
+    const steeringGate = steeringGates.get(id);
+    const runTerminals: Array<Promise<void>> = [];
+    for (const runId of sessionRunIds) {
+      const runState = store.getRun(runId);
+      if (runState?.status !== 'running') continue;
+      runTerminals.push(whenActiveRunTerminal(runState.activeRun));
+      const isPaused = steeringGate?.forRun(runId).getDesiredState().paused ?? false;
+      if (!isPaused) abortRun(runId);
+    }
+    return { sessionRunIds, steeringGate, runTerminals };
+  }
+
   async function performDeleteSession(
     id: string,
     onStoreDeletionCommitted: () => void,
@@ -8657,36 +8730,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // this abort or via the later release — is awaited AFTER
       // `settleForDeletion` runs, so this function's returned promise never
       // resolves while a session run is still cleanup-pending.
-      const state = store.getState();
-      const sessionRunIds = new Set<string>();
-      for (const [, runState] of state.runs) {
-        if (getRunSessionIdentifier(runState) === id) sessionRunIds.add(runState.id);
-      }
-
-      // AB-67/AB-199 review finding (PR #430 — Codex P1, "Prevent released
-      // runs from recreating deleted sessions"): every still-live run this
-      // session owns is marked here BEFORE any of it is aborted or released
-      // below, so its eventual terminal `saveSession` call never resurrects
-      // the record it belonged to. This is deliberately independent of HOW
-      // that run settles: a paused in-memory run is released (not aborted)
-      // by `settleForDeletion` below, runs that were never paused are
-      // aborted immediately, and either way its `run.completed`/
-      // `run.aborted` listener now finds itself orphaned and skips the
-      // write instead of recreating the deleted session.
-      for (const runId of sessionRunIds) {
-        const runState = store.getRun(runId);
-        if (runState?.status === 'running') orphanedRunIds.add(runId);
-      }
-
-      const steeringGateForAbort = steeringGates.get(id);
-      const runTerminals: Array<Promise<void>> = [];
-      for (const runId of sessionRunIds) {
-        const runState = store.getRun(runId);
-        if (runState?.status !== 'running') continue;
-        runTerminals.push(whenActiveRunTerminal(runState.activeRun));
-        const isPaused = steeringGateForAbort?.forRun(runId).getDesiredState().paused ?? false;
-        if (!isPaused) abortRun(runId);
-      }
+      const {
+        sessionRunIds,
+        steeringGate: steeringGateForAbort,
+        runTerminals,
+      } = abandonSessionRuns(id);
 
       // AB-228/AB-371/AB-384, superseded by AB-389: `session.deleted` used
       // to be dispatched directly, right here, immediately after
@@ -12600,7 +12648,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // its deletion's audit entry the way `deleteSession` records it, before the store
   // removes anything; a session whose owner cannot be recorded is kept.
   sessionCleanupHandler.resolve(async (sessions) => {
+    // Every owner first: a record that cannot be written keeps every session, with
+    // its runs untouched.
     for (const session of sessions) await recordSessionDeletionOwner(session);
+    // Then the expiry is a deletion for the sessions' runs too: each still-running
+    // run is orphan-marked and aborted (or released, if paused) exactly as
+    // `performDeleteSession` does, so none of them writes into whatever session
+    // the id names afterwards. Nothing here awaits a run's terminal event or
+    // touches the session store: this hook runs inside the store's own mutation,
+    // and a terminal save queued behind it would deadlock.
+    for (const session of sessions) {
+      const { steeringGate } = abandonSessionRuns(session.id);
+      steeringGate?.settleForDeletion(runtimeServices.clock.nowISO());
+      steeringGate?.purgeFromLedger();
+      if (steeringGates.get(session.id) === steeringGate) steeringGates.delete(session.id);
+      if (steeringCursors.get(session.id)?.incarnation === session.incarnation) {
+        forgetSessionSteering(session.id);
+      }
+    }
   });
 
   // COR-718: a schedule fire's run is owned by its schedule's owner, and the scheduler is

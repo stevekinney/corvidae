@@ -14,6 +14,7 @@ import {
   type GenerateFunction,
   stopWhen,
 } from '@lostgradient/operative';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
@@ -223,6 +224,110 @@ describe('the history of an expired session (COR-718)', () => {
       expect(loaded[0]?.payload).toMatchObject({ incarnation: live!.incarnation });
     } finally {
       await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * The first generate call (the former owner's run) waits until released; every
+ * later call answers at once.
+ */
+function gatedGenerate() {
+  let calls = 0;
+  const release = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  const generate: GenerateFunction = async () => {
+    calls += 1;
+    if (calls === 1) {
+      reached.resolve();
+      await release.promise;
+      return { content: 'ALICE-SECRET-REPLY', toolCalls: [] };
+    }
+    return { content: 'bob reply', toolCalls: [] };
+  };
+  return { generate, release, reached };
+}
+
+type AnyBureau = Awaited<ReturnType<typeof createBureau>>;
+
+/**
+ * Alice's run is in flight when its session expires and Bob recreates the id.
+ * Alice's run must settle without writing a word into Bob's session.
+ */
+async function expiryDuringRun(open: (generate: GenerateFunction) => Promise<AnyBureau>) {
+  const { generate, release, reached } = gatedGenerate();
+  const bureau = await open(generate);
+  try {
+    const aliceRun = await bureau.createRun({
+      message: 'ALICE-SECRET-PROMPT',
+      sessionId: 'shared',
+      principal: ALICE,
+    });
+    await reached.promise;
+    const aliceIncarnation = (await bureau.sessionStore!.load('shared'))!.incarnation;
+
+    // The session store knows nothing of runs: the expiry is Bureau's to handle.
+    expect(await bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
+    const bobRun = await bureau.createRun({
+      message: 'bob prompt',
+      sessionId: 'shared',
+      principal: BOB,
+    });
+    await waitForCondition(
+      () => bureau.getRun(bobRun.id)?.status !== 'running',
+      'bob never settled',
+    );
+    const bobIncarnation = (await bureau.sessionStore!.load('shared'))!.incarnation;
+    expect(bobIncarnation).not.toBe(aliceIncarnation);
+
+    release.resolve();
+    await waitForCondition(
+      () => bureau.getRun(aliceRun.id)?.status !== 'running',
+      'alice never settled',
+    );
+    // Alice's terminal save, if one was started, was queued on the store before her
+    // run left `running`; this update lands behind it.
+    await bureau.sessionStore!.update('shared', (session) => session);
+
+    const session = await bureau.getSession('shared');
+    expect(session?.incarnation).toBe(bobIncarnation);
+    expect(JSON.stringify(session)).not.toContain('ALICE-SECRET');
+    expect(await bureau.getOwner({ kind: 'session', id: 'shared' })).toBe(BOB);
+    expect(bureau.getRun(aliceRun.id)?.status).toBe('aborted');
+  } finally {
+    release.resolve();
+    await bureau.dispose();
+  }
+}
+
+describe('a run whose session expired and was recreated while it ran (COR-718)', () => {
+  it('writes nothing into the new owner’s session on a KV-only Bureau, and settles as aborted', async () => {
+    await expiryDuringRun((generate) =>
+      createBureau({
+        agents: {},
+        generate,
+        persistence: textValueStore(new MemoryStorage()),
+        stopWhen: stopWhen.noToolCalls(),
+      }),
+    );
+  });
+
+  it('writes nothing into the new owner’s session on a durable Bureau either', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-session-expiry-durable-'));
+    try {
+      await expiryDuringRun((generate) =>
+        createBureau({
+          id: 'session-expiry',
+          agents: {},
+          generate,
+          storage: { type: 'sqlite', path: join(directory, 'bureau.sqlite') },
+          durableExecution: true,
+          durableOwnership: { ownership: 'none' },
+          stopWhen: stopWhen.noToolCalls(),
+        }),
+      );
+    } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
