@@ -140,8 +140,16 @@ function assertGeminiMultimodalConversion(
     'user',
   ]);
   expect(messages[0]?.content).toEqual([
-    { type: 'image', url: 'data:image/png;base64,c3lzdGVtLWltYWdl', mimeType: 'image/png' },
-    { type: 'image', url: 'gs://bucket/system-reference.png', mimeType: 'image/png' },
+    {
+      type: 'image',
+      source: { kind: 'inline', data: 'c3lzdGVtLWltYWdl', encoding: 'base64' },
+      mimeType: 'image/png',
+    },
+    {
+      type: 'image',
+      source: { kind: 'remote-url', url: 'gs://bucket/system-reference.png' },
+      mimeType: 'image/png',
+    },
   ]);
   expect(toolCalls[0]?.toolCall).toEqual({
     id: 'gemini-call-1',
@@ -172,10 +180,18 @@ function assertGeminiToolResults(conversation: ReturnType<typeof fromGeminiMessa
   });
   expect(messages[5]?.content).toBe('hello from model');
   expect(messages[6]?.content).toEqual([
-    { type: 'image', url: 'data:image/jpeg;base64,bW9kZWwtaW1hZ2U=', mimeType: 'image/jpeg' },
+    {
+      type: 'image',
+      source: { kind: 'inline', data: 'bW9kZWwtaW1hZ2U=', encoding: 'base64' },
+      mimeType: 'image/jpeg',
+    },
   ]);
   expect(messages[7]?.content).toEqual([
-    { type: 'image', url: 'gs://bucket/model-reference.jpg', mimeType: 'image/jpeg' },
+    {
+      type: 'image',
+      source: { kind: 'remote-url', url: 'gs://bucket/model-reference.jpg' },
+      mimeType: 'image/jpeg',
+    },
   ]);
   expect(toolResults[0]?.toolResult).toMatchObject({
     callId: 'gemini-call-1',

@@ -1,10 +1,10 @@
 import type { ConversationHistory as Conversation } from '../../types';
 import { appendAnthropicMessages, fromAnthropicMessages } from './inbound';
 import { toAnthropicMessages } from './outbound';
-import type { AnthropicConversation } from './types';
+import type { AnthropicConversation, AnthropicExport } from './types';
 
 export const anthropicConversationAdapter = {
-  export(conversation: Conversation): AnthropicConversation {
+  export(conversation: Conversation): AnthropicExport {
     return toAnthropicMessages(conversation);
   },
   import(payload: AnthropicConversation): Conversation {

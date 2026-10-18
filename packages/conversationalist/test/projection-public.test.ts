@@ -42,7 +42,11 @@ describe('createPublicConversationProjection', () => {
             name: 'lookup',
             input: { token: 'privileged-tool-input' },
           },
-          { type: 'image', url: 'https://assets.example/private-grant', text: 'private image' },
+          {
+            type: 'image',
+            source: { kind: 'remote-url', url: 'https://assets.example/private-grant' },
+            alt: 'private image',
+          },
         ],
         metadata: { personalData: 'private-person' },
         toolCall: { id: 'tool-call', name: 'lookup', arguments: { secret: 'argument' } },

@@ -4,7 +4,8 @@ import {
   copyContent,
   copyMultiModalContent,
   type DocumentContent,
-  renderDocumentReferenceText,
+  type MultiModalContent,
+  renderMediaPlaceholder,
 } from '../src/multi-modal';
 
 describe('copyMultiModalContent', () => {
@@ -27,45 +28,51 @@ describe('copyMultiModalContent', () => {
     });
   });
 
-  describe('image content', () => {
-    it('copies image content with all properties', () => {
+  describe('media content', () => {
+    it('copies image content with every portable field', () => {
       const input = {
         type: 'image' as const,
-        url: 'https://example.com/image.png',
+        source: { kind: 'remote-url' as const, url: 'https://example.com/image.png' },
         mimeType: 'image/png',
-        text: 'Alt text',
+        name: 'image.png',
+        alt: 'Alt text',
+        caption: 'A caption',
+        transcript: 'A transcript',
+        extractedText: 'Extracted',
+        metadata: { nested: { depth: 1 } },
       };
       const result = copyMultiModalContent(input);
 
-      expect(result).toEqual({
-        type: 'image',
-        url: 'https://example.com/image.png',
-        mimeType: 'image/png',
-        text: 'Alt text',
-      });
+      expect(result).toEqual(input);
       expect(result).not.toBe(input);
+      if (result.type !== 'image') throw new Error('Expected copied image');
+      expect(result.source).not.toBe(input.source);
+      expect(result.metadata).not.toBe(input.metadata);
     });
 
-    it('copies image content with only url', () => {
+    it('copies image content with only a source', () => {
       const input = {
         type: 'image' as const,
-        url: 'https://example.com/image.png',
+        source: { kind: 'remote-url' as const, url: 'https://example.com/image.png' },
       };
       const result = copyMultiModalContent(input);
 
-      expect(result).toEqual({
-        type: 'image',
-        url: 'https://example.com/image.png',
-      });
+      expect(result).toEqual(input);
+      expect(Object.keys(result)).toEqual(['type', 'source']);
     });
 
-    it('copies image content without optional properties', () => {
-      // Deliberately malformed: exercises defensive handling of an `image` block
-      // missing its required `url` field (e.g. from an untrusted provider).
-      const input = { type: 'image' };
-      const result: unknown = Reflect.apply(copyMultiModalContent, undefined, [input]);
+    it('copies audio, video, and file content under their own type', () => {
+      for (const type of ['audio', 'video', 'file'] as const) {
+        const input = {
+          type,
+          source: { kind: 'managed-asset' as const, assetId: 'asset-1', revision: 3 },
+          mimeType: 'application/octet-stream',
+        };
+        const result = copyMultiModalContent(input);
 
-      expect(result).toEqual({ type: 'image' });
+        expect(result).toEqual(input);
+        expect(result).not.toBe(input);
+      }
     });
   });
 
@@ -75,7 +82,7 @@ describe('copyMultiModalContent', () => {
         type: 'document',
         name: 'requirements.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       };
       const result = copyMultiModalContent(input);
 
@@ -87,22 +94,22 @@ describe('copyMultiModalContent', () => {
 
     it('renders document reference fallbacks without embedding base64 data', () => {
       expect(
-        renderDocumentReferenceText({
+        renderMediaPlaceholder({
           type: 'document',
           name: 'requirements.pdf',
           mimeType: 'application/pdf',
-          source: { kind: 'base64', data: 'cGRm' },
+          source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
         }),
       ).toBe('[Document: requirements.pdf (application/pdf); base64 data omitted]');
 
       expect(
-        renderDocumentReferenceText({
+        renderMediaPlaceholder({
           type: 'document',
           name: 'notes.md',
           mimeType: 'text/markdown',
-          source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+          source: { kind: 'local-file', path: '/workspace/notes.md' },
         }),
-      ).toBe('[Document: notes.md (text/markdown) at sandbox:/workspace/notes.md]');
+      ).toBe('[Document: notes.md (text/markdown) at /workspace/notes.md]');
     });
 
     it('copies thinking content', () => {
@@ -200,15 +207,18 @@ describe('copyContent', () => {
   });
 
   it('copies array of multi-modal content', () => {
-    const input = [
-      { type: 'text' as const, text: 'Hello' },
-      { type: 'image' as const, url: 'https://example.com/img.png' },
+    const input: MultiModalContent[] = [
+      { type: 'text', text: 'Hello' },
+      {
+        type: 'image',
+        source: { kind: 'remote-url', url: 'https://example.com/img.png' },
+      },
     ];
     const result = copyContent(input);
 
     expect(result).toEqual([
       { type: 'text', text: 'Hello' },
-      { type: 'image', url: 'https://example.com/img.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/img.png' } },
     ]);
     expect(result).not.toBe(input);
     if (typeof result === 'string') throw new Error('Expected copied multimodal array');

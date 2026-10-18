@@ -142,7 +142,7 @@ describe('core', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'Look at this' },
-          { type: 'image', url: 'data:image/png;base64,abc' },
+          { type: 'image', source: { kind: 'data-url', url: 'data:image/png;base64,abc' } },
         ],
       },
       { role: 'assistant', content: 'I see it' },

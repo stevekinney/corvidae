@@ -1,26 +1,18 @@
-import type {
-  DocumentContent,
-  ImageContent,
-  MultiModalContent,
-  TextContent,
-} from '../../multi-modal';
+import type { MediaContent, MultiModalContent, TextContent } from '../../multi-modal';
 import type { JSONValue } from '../../types';
+import {
+  createMediaPart,
+  encodeUtf8Base64,
+  inlineBase64Source,
+  parseDataUrl,
+  sourceFromUrl,
+} from '../media';
 import { parseJSONValue, toJSONValue } from '../shared';
 import { A2AMappingError, unsupportedA2AContent } from './errors';
 import type { A2ADataPart, A2APart, A2ARawPart, A2AStruct, A2AUrlPart } from './proto-types';
 
 /** Media type assumed for a `data` part that declares none. */
 const JSON_MEDIA_TYPE = 'application/json';
-/**
- * Document name given to a file or data part that carries no filename, because
- * `DocumentContent.name` must be non-empty; the Anthropic adapter uses the
- * same default. A document with this name maps back to a part with no filename.
- */
-const UNNAMED_DOCUMENT_NAME = 'document';
-/** Media type assumed for a file part that declares none. */
-const OCTET_STREAM_MEDIA_TYPE = 'application/octet-stream';
-
-const DATA_URL_PATTERN = /^data:([^;,]+);base64,(.*)$/;
 
 /**
  * Converts one Conversationalist content part to an A2A `Part`.
@@ -42,9 +34,11 @@ export function toA2APart(content: MultiModalContent): A2APart {
     case 'text':
       return toA2ATextPart(content);
     case 'image':
-      return toA2AImagePart(content);
+    case 'audio':
+    case 'video':
     case 'document':
-      return toA2ADocumentPart(content);
+    case 'file':
+      return toA2AMediaPart(content);
     case 'thinking':
     case 'redacted_thinking':
       throw unsupportedA2AContent(content.type, 'A2A parts carry no model reasoning.');
@@ -133,64 +127,113 @@ function fromA2ATextPart(text: string, metadata: A2AStruct | undefined): TextCon
   };
 }
 
-function toA2AImagePart(content: ImageContent): A2APart {
-  const metadata = content.text !== undefined ? { metadata: { text: content.text } } : {};
-  const match = DATA_URL_PATTERN.exec(content.url);
-  if (match?.[1] !== undefined && match[2] !== undefined) {
-    return { raw: match[2], mediaType: match[1], ...metadata };
+/** The part metadata keys the A2A mapping owns; `alt` keeps its historic `text` key. */
+function toA2AMetadata(content: MediaContent): { metadata?: Record<string, JSONValue> } {
+  const metadata: Record<string, JSONValue> = {
+    ...(content.alt !== undefined ? { text: content.alt } : {}),
+    ...(content.caption !== undefined ? { caption: content.caption } : {}),
+    ...(content.transcript !== undefined ? { transcript: content.transcript } : {}),
+    ...(content.extractedText !== undefined ? { extractedText: content.extractedText } : {}),
+    ...(content.metadata !== undefined ? { metadata: toJSONValue(content.metadata) } : {}),
+  };
+  return Object.keys(metadata).length > 0 ? { metadata } : {};
+}
+
+function toA2AMediaPart(content: MediaContent): A2APart {
+  const { source } = content;
+  const metadata = toA2AMetadata(content);
+  const filename =
+    content.name === undefined || content.name === '' ? {} : { filename: content.name };
+  if (source.kind === 'remote-url') {
+    return {
+      url: source.url,
+      ...filename,
+      ...(content.mimeType !== undefined ? { mediaType: content.mimeType } : {}),
+      ...metadata,
+    };
+  }
+  if (source.kind !== 'inline' && source.kind !== 'data-url') {
+    throw unsupportedA2AContent(
+      content.type,
+      `a ${source.kind} source has no A2A part representation.`,
+    );
+  }
+  const bytes =
+    source.kind === 'inline'
+      ? { data: source.encoding === 'base64' ? source.data : encodeUtf8Base64(source.data) }
+      : parseDataUrl(source.url);
+  if (bytes === undefined) {
+    throw unsupportedA2AContent(content.type, 'its data URL carries no bytes.');
+  }
+  const mediaType = content.mimeType ?? ('mimeType' in bytes ? bytes.mimeType : undefined);
+  const json =
+    mediaType !== undefined && content.type === 'document'
+      ? decodeCanonicalJSON(bytes.data)
+      : undefined;
+  if (mediaType !== undefined && json !== undefined) {
+    return {
+      data: json.value,
+      ...filename,
+      ...(mediaType === JSON_MEDIA_TYPE ? {} : { mediaType }),
+      ...metadata,
+    };
   }
   return {
-    url: content.url,
-    ...(content.mimeType !== undefined ? { mediaType: content.mimeType } : {}),
+    raw: bytes.data,
+    ...filename,
+    ...(mediaType !== undefined ? { mediaType } : {}),
     ...metadata,
   };
 }
 
-function toA2ADocumentPart(content: DocumentContent): A2APart {
-  const filename =
-    content.name === '' || content.name === UNNAMED_DOCUMENT_NAME ? {} : { filename: content.name };
-  if (content.source.kind === 'reference') {
-    return { url: content.source.uri, ...filename, mediaType: content.mimeType };
-  }
-  const data = decodeCanonicalJSON(content.source.data);
-  if (data !== undefined) {
-    return {
-      data: data.value,
-      ...filename,
-      ...(content.mimeType === JSON_MEDIA_TYPE ? {} : { mediaType: content.mimeType }),
-    };
-  }
-  return { raw: content.source.data, ...filename, mediaType: content.mimeType };
-}
-
-function fromA2ADataPart(part: A2ADataPart): DocumentContent {
+function fromA2AMetadata(metadata: A2AStruct | undefined) {
+  const text = metadata?.['text'];
+  const caption = metadata?.['caption'];
+  const transcript = metadata?.['transcript'];
+  const extractedText = metadata?.['extractedText'];
+  const nested = metadata?.['metadata'];
   return {
-    type: 'document',
-    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
-    mimeType: nonEmpty(part.mediaType) ?? JSON_MEDIA_TYPE,
-    source: { kind: 'base64', data: encodeUtf8Base64(JSON.stringify(part.data)) },
+    ...(typeof text === 'string' ? { alt: text } : {}),
+    ...(typeof caption === 'string' ? { caption } : {}),
+    ...(typeof transcript === 'string' ? { transcript } : {}),
+    ...(typeof extractedText === 'string' ? { extractedText } : {}),
+    ...(typeof nested === 'object' && nested !== null && !Array.isArray(nested)
+      ? { metadata: toJSONRecord(nested) }
+      : {}),
   };
 }
 
-function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): ImageContent | DocumentContent {
-  const mediaType = nonEmpty(part.mediaType);
-  if (mediaType?.startsWith('image/') === true && nonEmpty(part.filename) === undefined) {
-    const text = part.metadata?.['text'];
-    return {
-      type: 'image',
-      url: part.raw === undefined ? part.url : `data:${mediaType};base64,${part.raw}`,
-      mimeType: mediaType,
-      ...(typeof text === 'string' ? { text } : {}),
-    };
-  }
+function toJSONRecord(value: object): Record<string, JSONValue> {
+  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, toJSONValue(entry)]));
+}
+
+function fromA2ADataPart(part: A2ADataPart): MediaContent {
+  const name = nonEmpty(part.filename);
   return {
-    type: 'document',
-    name: nonEmpty(part.filename) ?? UNNAMED_DOCUMENT_NAME,
-    mimeType: mediaType ?? OCTET_STREAM_MEDIA_TYPE,
-    source:
-      part.raw === undefined
-        ? { kind: 'reference', uri: part.url }
-        : { kind: 'base64', data: part.raw },
+    ...createMediaPart(
+      'document',
+      inlineBase64Source(encodeUtf8Base64(JSON.stringify(part.data))),
+      { mimeType: nonEmpty(part.mediaType) ?? JSON_MEDIA_TYPE, name },
+    ),
+    ...fromA2AMetadata(part.metadata),
+  };
+}
+
+function fromA2AFilePart(part: A2ARawPart | A2AUrlPart): MediaContent {
+  const mediaType = nonEmpty(part.mediaType);
+  const name = nonEmpty(part.filename);
+  const family = mediaType?.split('/')[0];
+  const modality =
+    name === undefined && (family === 'image' || family === 'audio' || family === 'video')
+      ? family
+      : 'document';
+  return {
+    ...createMediaPart(
+      modality,
+      part.raw === undefined ? sourceFromUrl(part.url) : inlineBase64Source(part.raw),
+      { mimeType: mediaType, name },
+    ),
+    ...fromA2AMetadata(part.metadata),
   };
 }
 
@@ -209,12 +252,6 @@ function assertSingleContentMember(part: A2APart): void {
 
 function nonEmpty(value: string | undefined): string | undefined {
   return value === undefined || value === '' ? undefined : value;
-}
-
-function encodeUtf8Base64(text: string): string {
-  let binary = '';
-  for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
-  return btoa(binary);
 }
 
 /**

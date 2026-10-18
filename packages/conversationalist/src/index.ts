@@ -165,6 +165,7 @@ export {
 export type { SessionInfo } from './environment';
 export {
   ConversationalistError,
+  UnsupportedContentError,
   createConversationLifecycleError,
   createDuplicateIdError,
   createInvalidInputError,
@@ -176,9 +177,15 @@ export {
   createRevisionConflictError,
   createSerializationError,
   createToolResultNotFoundError,
+  createUnsupportedSchemaVersionError,
   createValidationError,
 } from './errors';
-export type { ConversationalistErrorCode } from './errors';
+export type {
+  ConversationalistErrorCode,
+  UnsupportedContentOptions,
+  UnsupportedContentProvider,
+  UnsupportedContentReason,
+} from './errors';
 export {
   CompactionCompletedEvent,
   CompactionStartedEvent,
@@ -228,12 +235,18 @@ export type {
   ConversationMutationResult,
   ConversationStoreSnapshot,
 } from './history';
+export { contentSourceDisplayUrl, isMediaContent, renderMediaPlaceholder } from './multi-modal';
 export type {
+  AudioContent,
   ContainerUploadContent,
+  ContentPartLineage,
   ContentSource,
+  ContentTransform,
   DocumentContent,
-  DocumentSource,
+  FileContent,
   ImageContent,
+  MediaContent,
+  MediaContentFields,
   MediaLimitScope,
   MediaLimits,
   MimeFamily,
@@ -246,6 +259,7 @@ export type {
   ServerToolUseContent,
   TextContent,
   ThinkingContent,
+  VideoContent,
   WebSearchToolResultContent,
 } from './multi-modal';
 export {

@@ -14,6 +14,7 @@ describe('Anthropic SDK conversion', () => {
     expect(toAnthropicMessagesForSdk(conversation)).toEqual({
       system: 'Follow the system instructions.',
       messages: [{ role: 'user', content: 'Hello' }],
+      lineage: [],
     });
   });
 
@@ -143,8 +144,7 @@ describe('Anthropic SDK conversion', () => {
       {
         type: 'document',
         name: 'upload.pdf',
-        mimeType: 'application/octet-stream',
-        source: { kind: 'reference', uri: 'file:file-1' },
+        source: { kind: 'provider-file', provider: 'anthropic', providerFileId: 'file-1' },
       },
     ]);
   });

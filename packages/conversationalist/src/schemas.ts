@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { MultiModalContent } from './multi-modal';
+import type { ContentSource, MultiModalContent } from './multi-modal';
 import type {
   ConversationHistory as Conversation,
   ConversationStatus,
@@ -16,6 +16,7 @@ import type {
   ToolErrorCategory,
   ToolResult,
 } from './types';
+import { CURRENT_SCHEMA_VERSION } from './types';
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (!value || typeof value !== 'object') return false;
@@ -53,33 +54,65 @@ export const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() => {
   ]);
 }) satisfies z.ZodType<JSONValue>;
 
+/**
+ * Zod schema for the nine AB-70 `ContentSource` kinds. Mirrors the
+ * `ContentSource` type in `multi-modal.ts` exactly.
+ */
+export const contentSourceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('inline'),
+    data: z.string().min(1),
+    encoding: z.enum(['base64', 'utf8']),
+  }),
+  z.object({ kind: z.literal('data-url'), url: z.url() }),
+  z.object({ kind: z.literal('remote-url'), url: z.url() }),
+  z.object({ kind: z.literal('local-file'), path: z.string().min(1) }),
+  z.object({ kind: z.literal('upload'), uploadId: z.string().min(1) }),
+  z.object({
+    kind: z.literal('provider-file'),
+    provider: z.string().min(1),
+    providerFileId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('mcp-resource'),
+    serverId: z.string().min(1),
+    uri: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('a2a-reference'),
+    agentCardUrl: z.string().min(1),
+    taskId: z.string().min(1),
+    artifactId: z.string().min(1),
+  }),
+  z.object({
+    kind: z.literal('managed-asset'),
+    assetId: z.string().min(1),
+    revision: z.number().int().min(0).exactOptional(),
+  }),
+]) satisfies z.ZodType<ContentSource>;
+
+const mediaContentFields = {
+  source: contentSourceSchema,
+  mimeType: z.string().min(1).exactOptional(),
+  name: z.string().min(1).exactOptional(),
+  alt: z.string().exactOptional(),
+  caption: z.string().exactOptional(),
+  transcript: z.string().exactOptional(),
+  extractedText: z.string().exactOptional(),
+  metadata: z.record(z.string(), jsonValueSchema).exactOptional(),
+};
+
 const multiModalContentUnion = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('text'),
     text: z.string(),
     citations: jsonValueSchema.optional(),
   }),
-  z.object({
-    type: z.literal('image'),
-    url: z.url(),
-    mimeType: z.string().optional(),
-    text: z.string().optional(),
-  }),
-  z.object({
-    type: z.literal('document'),
-    name: z.string().min(1),
-    mimeType: z.string().min(1),
-    source: z.discriminatedUnion('kind', [
-      z.object({
-        kind: z.literal('base64'),
-        data: z.string().min(1),
-      }),
-      z.object({
-        kind: z.literal('reference'),
-        uri: z.string().min(1),
-      }),
-    ]),
-  }),
+  z.object({ type: z.literal('image'), ...mediaContentFields }),
+  z.object({ type: z.literal('audio'), ...mediaContentFields }),
+  z.object({ type: z.literal('video'), ...mediaContentFields }),
+  z.object({ type: z.literal('document'), ...mediaContentFields }),
+  z.object({ type: z.literal('file'), ...mediaContentFields }),
   z.object({
     type: z.literal('thinking'),
     thinking: z.string(),
@@ -131,14 +164,6 @@ export const multiModalContentSchema = multiModalContentUnion.transform(
   (value): MultiModalContent => {
     // Drop absent optional fields rather than carrying `key: undefined`, so the
     // output matches the interfaces under `exactOptionalPropertyTypes`.
-    if (value.type === 'image') {
-      return {
-        type: 'image',
-        url: value.url,
-        ...(value.mimeType !== undefined ? { mimeType: value.mimeType } : {}),
-        ...(value.text !== undefined ? { text: value.text } : {}),
-      };
-    }
     if (value.type === 'text') {
       return {
         type: 'text',
@@ -382,7 +407,7 @@ export const conversationStatusSchema = z.enum([
  * Raw conversation shape for storage systems that need direct access to fields.
  */
 export const conversationShape = {
-  schemaVersion: z.number().int().min(1),
+  schemaVersion: z.literal(CURRENT_SCHEMA_VERSION),
   id: z.string(),
   title: z.string().optional(),
   status: conversationStatusSchema,

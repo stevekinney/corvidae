@@ -6,6 +6,7 @@ import type {
   MessageInput,
   ToolResult,
 } from '../../types';
+import { createMediaPart, modalityFromMimeType, parseDataUrl, sourceFromUrl } from '../media';
 import { parseJSONValue, parseToolResultText } from '../shared';
 import type { OpenAIContentPart, OpenAIMessage, OpenAITextContentPart } from './types';
 
@@ -20,11 +21,7 @@ function toConversationContent(
     return content;
   }
 
-  const parts: MultiModalContent[] = content.map((part: OpenAIContentPart): MultiModalContent =>
-    part.type === 'text'
-      ? { type: 'text', text: part.text }
-      : { type: 'image', url: part.image_url.url },
-  );
+  const parts: MultiModalContent[] = content.map(toConversationPart);
 
   if (parts.length === 0) {
     return '';
@@ -35,6 +32,29 @@ function toConversationContent(
   }
 
   return parts;
+}
+
+function toConversationPart(part: OpenAIContentPart): MultiModalContent {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  if (part.type === 'image_url') return createMediaPart('image', sourceFromUrl(part.image_url.url));
+  const { file_data: fileData, file_id: fileId, filename } = part.file;
+  const name = filename === undefined ? {} : { name: filename };
+  if (fileId !== undefined) {
+    return createMediaPart(
+      'document',
+      { kind: 'provider-file', provider: 'openai', providerFileId: fileId },
+      name,
+    );
+  }
+  const parsed = fileData === undefined ? undefined : parseDataUrl(fileData);
+  if (fileData === undefined || parsed === undefined) {
+    throw new TypeError('OpenAI file content part carries neither a file_id nor a base64 data URL');
+  }
+  return createMediaPart(
+    modalityFromMimeType(parsed.mimeType) === 'document' ? 'document' : 'file',
+    { kind: 'data-url', url: fileData },
+    { ...name, ...(parsed.mimeType !== undefined ? { mimeType: parsed.mimeType } : {}) },
+  );
 }
 
 function parseToolArguments(value: string): JSONValue {

@@ -4,7 +4,7 @@ import {
   appendMessages,
   createConversationHistory as createConversation,
 } from '../src/conversation/index';
-import { ConversationalistError } from '../src/errors';
+import { ConversationalistError, UnsupportedContentError } from '../src/errors';
 import {
   createBasicConversation,
   requireRecord,
@@ -58,7 +58,10 @@ describe('Gemini core content', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Describe this' },
-            { type: 'image', url: 'data:image/png;base64,iVBORw0KGgo=' },
+            {
+              type: 'image',
+              source: { kind: 'data-url', url: 'data:image/png;base64,iVBORw0KGgo=' },
+            },
           ],
         },
         testEnvironment,
@@ -81,7 +84,7 @@ describe('Gemini core content', () => {
           content: [
             {
               type: 'image',
-              url: 'https://example.com/image.jpg',
+              source: { kind: 'remote-url', url: 'https://example.com/image.jpg' },
               mimeType: 'image/jpeg',
             },
           ],
@@ -105,7 +108,9 @@ describe('Gemini core content', () => {
         conv,
         {
           role: 'user',
-          content: [{ type: 'image', url: 'https://example.com/image.jpg' }],
+          content: [
+            { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/image.jpg' } },
+          ],
         },
         testEnvironment,
       );
@@ -143,23 +148,18 @@ describe('Gemini core content', () => {
       ).toThrow(ConversationalistError);
     });
 
-    it('handles data URLs with missing parts', () => {
+    it('rejects data URLs with missing parts instead of dropping the image', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
         conv,
         {
           role: 'user',
-          content: [{ type: 'image', url: 'data:image/png;base64' }], // Invalid data URL
+          content: [{ type: 'image', source: { kind: 'data-url', url: 'data:image/png;base64' } }], // Invalid data URL
         },
         testEnvironment,
       );
 
-      const { contents } = toGeminiMessages(conv);
-      if (contents.length > 0) {
-        expect(contents[0]!.parts).toHaveLength(0);
-      } else {
-        expect(contents).toHaveLength(0);
-      }
+      expect(() => toGeminiMessages(conv)).toThrow(UnsupportedContentError);
     });
   });
 });

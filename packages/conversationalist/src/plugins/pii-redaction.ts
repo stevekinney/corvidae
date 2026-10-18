@@ -1,4 +1,4 @@
-import type { MultiModalContent } from '../multi-modal';
+import { isMediaContent, type MediaContent, type MultiModalContent } from '../multi-modal';
 import type { JSONValue, MessageInput, MessagePlugin } from '../types';
 
 /**
@@ -81,6 +81,28 @@ function redactJSONRecord(
   );
 }
 
+/**
+ * Redacts the portable text a media part carries (name, alt text, caption,
+ * transcript, extracted text, and metadata strings). The `source` and
+ * `mimeType` identify bytes, not prose, and stay byte-for-byte intact.
+ */
+function redactMediaFields(part: MediaContent, redact: (text: string) => string): MediaContent {
+  const redacted: MediaContent = { ...part };
+  for (const field of MEDIA_TEXT_FIELDS) {
+    const value = part[field];
+    if (value !== undefined) redacted[field] = redact(value);
+  }
+  if (part.metadata !== undefined) {
+    const metadata = redactJSONValue(part.metadata, redact);
+    if (typeof metadata === 'object' && metadata !== null && !isJSONArray(metadata)) {
+      redacted.metadata = metadata;
+    }
+  }
+  return redacted;
+}
+
+const MEDIA_TEXT_FIELDS = ['name', 'alt', 'caption', 'transcript', 'extractedText'] as const;
+
 function redactContentPart(
   part: MultiModalContent,
   redact: (text: string) => string,
@@ -96,8 +118,8 @@ function redactContentPart(
   if ('tool_use_id' in part) {
     return { ...part, content: redactJSONValue(part.content, redact) };
   }
+  if (isMediaContent(part)) return redactMediaFields(part, redact);
   // Signed thinking payloads must remain byte-for-byte intact for replay.
-  // Images, document references and upload identifiers are unchanged.
   return part;
 }
 

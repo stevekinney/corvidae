@@ -4,6 +4,7 @@ import {
   type RuntimeTimers,
 } from '@lostgradient/lifecycle';
 
+import type { ContentSource, MediaContent } from './multi-modal';
 import type {
   ConversationHistory,
   Message,
@@ -115,9 +116,11 @@ function partCharLength(part: ReturnType<typeof messageParts>[number]): number {
     case 'text':
       return part.text.length + optionalJSONLength(part.citations);
     case 'image':
-      return optionalStringLength(part.text) + optionalStringLength(part.url);
+    case 'audio':
+    case 'video':
     case 'document':
-      return part.name.length + part.mimeType.length + documentSourceLength(part.source);
+    case 'file':
+      return mediaCharLength(part);
     case 'thinking':
       return part.thinking.length + part.signature.length;
     case 'redacted_thinking':
@@ -143,8 +146,43 @@ function optionalStringLength(value: string | undefined): number {
   return value?.length ?? 0;
 }
 
-function documentSourceLength(source: import('./multi-modal').DocumentSource): number {
-  return source.kind === 'base64' ? source.data.length : source.uri.length;
+function contentSourceLength(source: ContentSource): number {
+  switch (source.kind) {
+    case 'inline':
+      return source.data.length;
+    case 'data-url':
+    case 'remote-url':
+      return source.url.length;
+    case 'local-file':
+      return source.path.length;
+    case 'upload':
+      return source.uploadId.length;
+    case 'provider-file':
+      return source.provider.length + source.providerFileId.length;
+    case 'mcp-resource':
+      return source.serverId.length + source.uri.length;
+    case 'a2a-reference':
+      return source.agentCardUrl.length + source.taskId.length + source.artifactId.length;
+    case 'managed-asset':
+      return source.assetId.length;
+  }
+}
+
+/**
+ * Character length of a media part: its source payload plus every portable text
+ * field it carries, so a media part is never estimated as zero cost.
+ */
+function mediaCharLength(part: MediaContent): number {
+  return (
+    contentSourceLength(part.source) +
+    optionalStringLength(part.name) +
+    optionalStringLength(part.mimeType) +
+    optionalStringLength(part.alt) +
+    optionalStringLength(part.caption) +
+    optionalStringLength(part.transcript) +
+    optionalStringLength(part.extractedText) +
+    optionalJSONLength(part.metadata)
+  );
 }
 
 /**

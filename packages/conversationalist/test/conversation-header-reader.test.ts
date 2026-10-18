@@ -4,9 +4,10 @@ import {
   parseConversationFrame,
   readConversationHistoryHeader,
 } from '../src/conversation/serialization';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 const validHeader = {
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   id: 'conversation',
   status: 'active',
   metadata: { tags: ['a', 1, true, null], nested: { depth: 2.5 } },

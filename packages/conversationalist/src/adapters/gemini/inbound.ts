@@ -1,11 +1,12 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
-import type { MultiModalContent } from '../../multi-modal';
+import type { MediaContent, MultiModalContent } from '../../multi-modal';
 import type {
   ConversationHistory as Conversation,
   JSONValue,
   MessageInput,
   ToolResult,
 } from '../../types';
+import { createMediaPart, inlineBase64Source, modalityFromMimeType, sourceFromUrl } from '../media';
 import { isCanonicalToolResultPayload, toJSONValue } from '../shared';
 import type {
   GeminiConversation,
@@ -72,6 +73,21 @@ function toWrappedToolResult(callId: string, value: JSONValue): ToolResult | und
   return { callId, outcome: 'success', content: Object.values(value)[0] ?? null };
 }
 
+function toMediaFromGeminiPart(part: GeminiInlineDataPart | GeminiFileDataPart): MediaContent {
+  if ('inlineData' in part) {
+    return createMediaPart(
+      modalityFromMimeType(part.inlineData.mimeType) ?? 'file',
+      inlineBase64Source(part.inlineData.data),
+      { mimeType: part.inlineData.mimeType },
+    );
+  }
+  return createMediaPart(
+    modalityFromMimeType(part.fileData.mimeType) ?? 'file',
+    sourceFromUrl(part.fileData.fileUri),
+    { mimeType: part.fileData.mimeType },
+  );
+}
+
 function toContentFromGeminiPart(
   part: GeminiTextPart | GeminiInlineDataPart | GeminiFileDataPart,
 ): MessageInput['content'] {
@@ -79,23 +95,7 @@ function toContentFromGeminiPart(
     return part.text;
   }
 
-  if ('inlineData' in part) {
-    return [
-      {
-        type: 'image',
-        url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-        mimeType: part.inlineData.mimeType,
-      },
-    ];
-  }
-
-  return [
-    {
-      type: 'image',
-      url: part.fileData.fileUri,
-      mimeType: part.fileData.mimeType,
-    },
-  ];
+  return [toMediaFromGeminiPart(part)];
 }
 
 function toSystemInstructionContent(parts: GeminiPart[]): MessageInput['content'] | undefined {
@@ -104,18 +104,8 @@ function toSystemInstructionContent(parts: GeminiPart[]): MessageInput['content'
   for (const part of parts) {
     if ('text' in part) {
       contentParts.push({ type: 'text', text: part.text });
-    } else if ('inlineData' in part) {
-      contentParts.push({
-        type: 'image',
-        url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
-        mimeType: part.inlineData.mimeType,
-      });
-    } else if ('fileData' in part) {
-      contentParts.push({
-        type: 'image',
-        url: part.fileData.fileUri,
-        mimeType: part.fileData.mimeType,
-      });
+    } else if ('inlineData' in part || 'fileData' in part) {
+      contentParts.push(toMediaFromGeminiPart(part));
     }
   }
 

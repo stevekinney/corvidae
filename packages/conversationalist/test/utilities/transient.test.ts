@@ -6,6 +6,7 @@ import {
   stripTransientFromRecord,
   stripTransientMetadata,
 } from '../../src/utilities/transient';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationOverrides = Partial<Omit<ConversationHistory, 'messages' | 'ids'>> & {
   messages?: Message[];
@@ -78,7 +79,7 @@ describe('transient utilities', () => {
       const baseIds = ids ?? messages.map((message) => message.id);
 
       return {
-        schemaVersion: 1,
+        schemaVersion: CURRENT_SCHEMA_VERSION,
         id: 'conv-1',
         status: 'active',
         metadata: {},

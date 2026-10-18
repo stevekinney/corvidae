@@ -10,36 +10,88 @@ export interface TextContent {
   citations?: JSONValue;
 }
 
-export interface ImageContent {
-  type: 'image';
-  url: string;
+/** Fields every media part carries. `source` is the AB-70 `ContentSource` (below); nothing else names bytes or a location. */
+export interface MediaContentFields {
+  source: ContentSource;
   mimeType?: string;
-  text?: string;
+  name?: string;
+  alt?: string;
+  caption?: string;
+  transcript?: string;
+  extractedText?: string;
+  metadata?: Readonly<Record<string, JSONValue>>;
 }
 
-export type DocumentSource =
-  | {
-      kind: 'base64';
-      data: string;
-    }
-  | {
-      kind: 'reference';
-      uri: string;
-    };
-
-export interface DocumentContent {
+export interface ImageContent extends MediaContentFields {
+  type: 'image';
+}
+export interface AudioContent extends MediaContentFields {
+  type: 'audio';
+}
+export interface VideoContent extends MediaContentFields {
+  type: 'video';
+}
+export interface DocumentContent extends MediaContentFields {
   type: 'document';
-  name: string;
-  mimeType: string;
-  source: DocumentSource;
+}
+export interface FileContent extends MediaContentFields {
+  type: 'file';
 }
 
-export function renderDocumentReferenceText(document: DocumentContent): string {
-  if (document.source.kind === 'reference') {
-    return `[Document: ${document.name} (${document.mimeType}) at ${document.source.uri}]`;
-  }
+export type MediaContent =
+  ImageContent | AudioContent | VideoContent | DocumentContent | FileContent;
 
-  return `[Document: ${document.name} (${document.mimeType}); base64 data omitted]`;
+/**
+ * Renders a short human-readable placeholder for a media part. Display only:
+ * no provider or compaction path may use this in place of the part itself.
+ */
+export function renderMediaPlaceholder(part: MediaContent): string {
+  const label = part.name ?? part.alt ?? part.type;
+  const mime = part.mimeType === undefined ? '' : ` (${part.mimeType})`;
+  const capitalized = part.type.charAt(0).toUpperCase() + part.type.slice(1);
+  return `[${capitalized}: ${label}${mime}${describeSourceLocation(part.source)}]`;
+}
+
+function describeSourceLocation(source: ContentSource): string {
+  switch (source.kind) {
+    case 'remote-url':
+      return ` at ${source.url}`;
+    case 'local-file':
+      return ` at ${source.path}`;
+    case 'inline':
+      return source.encoding === 'base64' ? '; base64 data omitted' : '; inline text omitted';
+    case 'data-url':
+      return '; base64 data omitted';
+    case 'managed-asset':
+      return `; managed asset ${source.assetId}`;
+    case 'provider-file':
+      return `; ${source.provider} file ${source.providerFileId}`;
+    case 'upload':
+      return `; upload ${source.uploadId}`;
+    case 'mcp-resource':
+      return ` at ${source.uri}`;
+    case 'a2a-reference':
+      return `; A2A artifact ${source.artifactId}`;
+  }
+}
+
+/**
+ * The URL a UI may display for a source: defined for `data-url` and
+ * `remote-url`, `undefined` for every other kind.
+ */
+export function contentSourceDisplayUrl(source: ContentSource): string | undefined {
+  return source.kind === 'data-url' || source.kind === 'remote-url' ? source.url : undefined;
+}
+
+/** Whether a content part is a media part (image, audio, video, document, or file). */
+export function isMediaContent(part: MultiModalContent): part is MediaContent {
+  return (
+    part.type === 'image' ||
+    part.type === 'audio' ||
+    part.type === 'video' ||
+    part.type === 'document' ||
+    part.type === 'file'
+  );
 }
 
 /**
@@ -124,8 +176,7 @@ export interface ContainerUploadContent {
 
 export type MultiModalContent =
   | TextContent
-  | ImageContent
-  | DocumentContent
+  | MediaContent
   | ThinkingContent
   | RedactedThinkingContent
   | ServerToolUseContent
@@ -157,14 +208,6 @@ export function copyMultiModalContent(item: MultiModalContent): MultiModalConten
       data: item.data,
     };
   }
-  if (item.type === 'document') {
-    return {
-      type: 'document',
-      name: item.name,
-      mimeType: item.mimeType,
-      source: { ...item.source },
-    };
-  }
   if (item.type === 'server_tool_use') {
     return {
       type: 'server_tool_use',
@@ -186,15 +229,15 @@ export function copyMultiModalContent(item: MultiModalContent): MultiModalConten
   if (item.type === 'container_upload') {
     return { type: 'container_upload', file_id: item.file_id };
   }
-  return copyImageContent(item);
+  return copyMediaContent(item);
 }
 
-function copyImageContent(image: ImageContent): ImageContent {
+function copyMediaContent(part: MediaContent): MediaContent {
+  const { metadata, source, ...rest } = part;
   return {
-    type: 'image',
-    url: image.url,
-    ...(image.mimeType !== undefined ? { mimeType: image.mimeType } : {}),
-    ...(image.text !== undefined ? { text: image.text } : {}),
+    ...rest,
+    source: { ...source },
+    ...(metadata !== undefined ? { metadata: structuredClone(metadata) } : {}),
   };
 }
 
@@ -213,13 +256,10 @@ export function copyContent(
 // ── AB-70 portable content and modality vocabulary ──────────────────────
 //
 // Transcribed verbatim from AB-70's "Portable content and modality
-// vocabulary" section (ratified 2026-09-01), additive only. Nothing above
-// this marker is renamed, reshaped, or removed by this addition; AB-72 owns
-// the eventual replacement of `MultiModalContent`/`ImageContent`/
-// `DocumentContent`/`DocumentSource`. These six type-only names exist so
-// AB-64's `BackendDescriptor` (and later AB-72/AB-75) can cite one shared
-// vocabulary instead of inventing a parallel one. See
-// `multi-modal-vocabulary.test-d.ts` for the compile-time shape proof.
+// vocabulary" section (ratified 2026-09-01). `MediaContentFields.source` above
+// is this `ContentSource`: one persisted representation of a media part's
+// bytes or location. See `multi-modal-vocabulary.test-d.ts` for the
+// compile-time shape proof.
 
 /** The six portable content modalities a backend or provider can carry. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | 'document' | 'file';
@@ -268,3 +308,30 @@ export type ModalityMatrix = Record<
   Modality,
   { input: boolean; output: boolean; sourceForms: readonly ContentSource['kind'][] }
 >;
+
+/** How a media part's source reached the provider wire format. */
+export type ContentTransform =
+  | 'passthrough' // the provider accepts this source kind natively; sent as-is
+  | 'data-url-split' // data-url → provider base64 block plus media type
+  | 'inline-base64' // inline bytes → provider base64 block
+  | 'remote-url-delegated' // the provider fetches the URL itself
+  | 'provider-file-reference' // provider-file id referenced on the wire
+  | 'resolved'; // operative replaced the source before export
+
+/**
+ * One entry per media part an adapter delivered: what the part was, what the
+ * provider received, and how it got there. A side channel on each adapter's
+ * export result; message content is never rewritten to record it.
+ */
+export interface ContentPartLineage {
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly modality: Modality;
+  readonly provider: 'openai' | 'anthropic' | 'gemini';
+  readonly from: ContentSource['kind'];
+  readonly to: ContentSource['kind'];
+  readonly transform: ContentTransform;
+  readonly providerFileId?: string | undefined;
+  readonly assetId?: string | undefined;
+  readonly revision?: number | undefined;
+}

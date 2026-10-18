@@ -28,12 +28,33 @@ describe('schemas', () => {
     expect(res.success).toBeTrue();
   });
 
-  test('multiModalContentSchema validates url', () => {
+  test('multiModalContentSchema validates a remote image source', () => {
     const ok = multiModalContentSchema.safeParse({
       type: 'image',
-      url: 'https://example.com/a.png',
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     });
     expect(ok.success).toBeTrue();
+    expect(
+      multiModalContentSchema.safeParse({
+        type: 'image',
+        source: { kind: 'remote-url', url: 'not a url' },
+      }).success,
+    ).toBeFalse();
+  });
+
+  test('multiModalContentSchema rejects the retired url and base64-source shapes', () => {
+    expect(
+      multiModalContentSchema.safeParse({ type: 'image', url: 'https://example.com/a.png' })
+        .success,
+    ).toBeFalse();
+    expect(
+      multiModalContentSchema.safeParse({
+        type: 'document',
+        name: 'a.pdf',
+        mimeType: 'application/pdf',
+        source: { kind: 'base64', data: 'cGRm' },
+      }).success,
+    ).toBeFalse();
   });
 
   test('multiModalContentSchema accepts document base64 and reference sources', () => {
@@ -42,7 +63,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'requirements.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       }).success,
     ).toBeTrue();
 
@@ -51,7 +72,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'notes.md',
         mimeType: 'text/markdown',
-        source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+        source: { kind: 'local-file', path: '/workspace/notes.md' },
       }).success,
     ).toBeTrue();
   });
@@ -62,7 +83,7 @@ describe('schemas', () => {
         type: 'document',
         name: '',
         mimeType: 'application/pdf',
-        source: { kind: 'base64', data: 'cGRm' },
+        source: { kind: 'inline', data: 'cGRm', encoding: 'base64' },
       }).success,
     ).toBeFalse();
 
@@ -71,7 +92,7 @@ describe('schemas', () => {
         type: 'document',
         name: 'empty.pdf',
         mimeType: 'application/pdf',
-        source: { kind: 'reference', uri: '' },
+        source: { kind: 'local-file', path: '' },
       }).success,
     ).toBeFalse();
   });

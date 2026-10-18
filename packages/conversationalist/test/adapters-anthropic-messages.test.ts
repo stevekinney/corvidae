@@ -4,7 +4,7 @@ import {
   appendMessages,
   createConversationHistory as createConversation,
 } from '../src/conversation/index';
-import { ConversationalistError } from '../src/errors';
+import { ConversationalistError, UnsupportedContentError } from '../src/errors';
 import {
   createBasicConversation,
   createToolCallConversation,
@@ -79,7 +79,10 @@ describe('Anthropic Adapter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Describe this' },
-            { type: 'image', url: 'data:image/png;base64,iVBORw0KGgo=' },
+            {
+              type: 'image',
+              source: { kind: 'data-url', url: 'data:image/png;base64,iVBORw0KGgo=' },
+            },
           ],
         },
         testEnvironment,
@@ -101,7 +104,7 @@ describe('Anthropic Adapter', () => {
           role: 'user',
           content: [
             { type: 'text', text: 'Describe this' },
-            { type: 'image', url: 'https://example.com/image.jpg' },
+            { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/image.jpg' } },
           ],
         },
         testEnvironment,
@@ -245,28 +248,21 @@ describe('Anthropic Adapter', () => {
       expect(toolUse?.input).toBe('{invalid');
     });
 
-    it('preserves a data URL that does not match the base64 shape as a url source (does not silently drop it)', () => {
+    it('rejects a data URL that carries no bytes instead of sending it as a url source', () => {
       let conv = createConversation({ id: 'test' }, testEnvironment);
       conv = appendMessages(
         conv,
         {
           role: 'user',
           // `data:` prefix but not a valid `data:<media>;base64,<data>` URL.
-          content: [{ type: 'image', url: 'data:image/png;base64' }],
+          content: [{ type: 'image', source: { kind: 'data-url', url: 'data:image/png;base64' } }],
         },
         testEnvironment,
       );
 
-      const { messages } = toAnthropicMessages(conv);
-      expect(messages).toHaveLength(1);
-      const blocks = requireRecordArray(messages[0]?.content);
-      // The image must survive — as a url source — rather than vanishing from
-      // the outgoing Anthropic payload.
-      expect(blocks).toHaveLength(1);
-      expect(blocks[0]).toEqual({
-        type: 'image',
-        source: { type: 'url', url: 'data:image/png;base64' },
-      });
+      // The part can neither vanish from the payload nor be sent as a bogus
+      // `url` source: the adapter rejects it before any provider call.
+      expect(() => toAnthropicMessages(conv)).toThrow(UnsupportedContentError);
     });
 
     it('rejects unknown roles before adapter formatting', () => {

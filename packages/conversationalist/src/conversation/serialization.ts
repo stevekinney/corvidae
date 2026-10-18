@@ -1,13 +1,18 @@
 import { z } from 'zod';
 
-import { createInvalidPositionError, createSerializationError } from '../errors';
+import {
+  createInvalidPositionError,
+  createSerializationError,
+  createUnsupportedSchemaVersionError,
+} from '../errors';
 import { conversationShape, messageSchema } from '../schemas';
-import type {
-  AssistantMessage,
-  ConversationHistory,
-  ConversationHistoryHeader,
-  Message,
-  ToolResult,
+import {
+  CURRENT_SCHEMA_VERSION,
+  type AssistantMessage,
+  type ConversationHistory,
+  type ConversationHistoryHeader,
+  type Message,
+  type ToolResult,
 } from '../types';
 import { createMessage, isAssistantMessage, toReadonly } from '../utilities';
 import { toIdRecord } from '../utilities/message-store';
@@ -159,6 +164,13 @@ export interface ConversationFrame {
 
 /** Parses a conversation's header, ids, and message record, leaving each message unparsed. */
 export function parseConversationFrame(json: unknown): ConversationFrame {
+  // Refuse another schema version before shape validation, so stored data from
+  // an older build is told apart from corrupt data. There is no dual reader.
+  if (isRecord(json) && typeof json['schemaVersion'] === 'number') {
+    if (json['schemaVersion'] !== CURRENT_SCHEMA_VERSION) {
+      throw createUnsupportedSchemaVersionError(json['schemaVersion'], CURRENT_SCHEMA_VERSION);
+    }
+  }
   const parsed = conversationFrameSchema.safeParse(json);
   if (!parsed.success) throw invalidDataError();
   const { ids, messages, ...header } = parsed.data;
@@ -249,6 +261,9 @@ export function readConversationHistoryHeader(value: unknown): ConversationHisto
   const { schemaVersion, id, title, status, metadata, createdAt, updatedAt } = value;
   if (typeof schemaVersion !== 'number' || !Number.isInteger(schemaVersion) || schemaVersion < 1) {
     throw invalidHeaderError('schemaVersion');
+  }
+  if (schemaVersion !== CURRENT_SCHEMA_VERSION) {
+    throw createUnsupportedSchemaVersionError(schemaVersion, CURRENT_SCHEMA_VERSION);
   }
   if (typeof id !== 'string') throw invalidHeaderError('id');
   if (title !== undefined && typeof title !== 'string') throw invalidHeaderError('title');

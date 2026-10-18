@@ -3,6 +3,7 @@ import type {
   MessageParam,
   TextBlockParam,
 } from '@anthropic-ai/sdk/resources/messages';
+import type { ContentPartLineage } from '../../multi-modal';
 import type { ConversationHistory as Conversation } from '../../types';
 import { toAnthropicMessages } from './outbound';
 import {
@@ -19,6 +20,7 @@ import type {
 export interface AnthropicSdkConversation {
   system?: string | TextBlockParam[];
   messages: MessageParam[];
+  lineage: readonly ContentPartLineage[];
 }
 
 /** Converts a neutral Anthropic conversation to the official SDK request shapes. */
@@ -43,6 +45,7 @@ export function toAnthropicMessagesForSdk(
                     : {}),
                 })),
         }),
+    lineage: neutral.lineage,
     messages: neutral.messages.map((message): MessageParam => ({
       role: message.role,
       content:
@@ -102,6 +105,10 @@ function toSdkImageBlock(
       source: { type: 'url', url: block.source.url },
       ...(cacheControl ? { cache_control: cacheControl } : {}),
     };
+  if (block.source.type === 'file')
+    throw new TypeError(
+      'Anthropic SDK image file sources cannot be submitted through this adapter.',
+    );
   if (!isAnthropicImageMediaType(block.source.media_type))
     throw new TypeError(
       `Anthropic SDK does not support image media type ${block.source.media_type}.`,

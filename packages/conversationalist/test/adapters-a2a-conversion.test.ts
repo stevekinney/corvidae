@@ -84,7 +84,7 @@ describe('A2A file parts', () => {
       type: 'document',
       name: 'report.pdf',
       mimeType: 'application/pdf',
-      source: { kind: 'base64', data: 'JVBERi0xLjQK' },
+      source: { kind: 'inline', data: 'JVBERi0xLjQK', encoding: 'base64' },
     });
     expect(roundTripPart(part)).toEqual(part);
   });
@@ -100,28 +100,27 @@ describe('A2A file parts', () => {
       type: 'document',
       name: 'report.pdf',
       mimeType: 'application/pdf',
-      source: { kind: 'reference', uri: 'https://example.com/files/report.pdf' },
+      source: { kind: 'remote-url', url: 'https://example.com/files/report.pdf' },
     });
     expect(roundTripPart(part)).toEqual(part);
   });
 
-  it('names a document from a part without a filename and drops that name on the way back', () => {
+  it('leaves a document from a part without a filename unnamed', () => {
     const part: A2APart = { raw: 'AAEC', mediaType: 'application/octet-stream' };
 
     expect(fromA2APart(part)).toEqual({
       type: 'document',
-      name: 'document',
       mimeType: 'application/octet-stream',
-      source: { kind: 'base64', data: 'AAEC' },
+      source: { kind: 'inline', data: 'AAEC', encoding: 'base64' },
     });
     expect(roundTripPart(part)).toEqual(part);
     expect(fromA2APart({ ...part, filename: '' })).toEqual(fromA2APart(part));
   });
 
-  it('brings back a part whose filename is exactly the default document name without it', () => {
+  it('keeps a filename that happens to be the word document', () => {
     const part: A2APart = { raw: 'AAEC', filename: 'document', mediaType: 'application/pdf' };
 
-    expect(roundTripPart(part)).toEqual({ raw: 'AAEC', mediaType: 'application/pdf' });
+    expect(roundTripPart(part)).toEqual(part);
   });
 
   it('round-trips an inline image part through a data URL image content', () => {
@@ -129,7 +128,7 @@ describe('A2A file parts', () => {
 
     expect(fromA2APart(part)).toEqual({
       type: 'image',
-      url: 'data:image/png;base64,iVBORw0KGgo=',
+      source: { kind: 'inline', data: 'iVBORw0KGgo=', encoding: 'base64' },
       mimeType: 'image/png',
     });
     expect(roundTripPart(part)).toEqual(part);
@@ -140,7 +139,7 @@ describe('A2A file parts', () => {
 
     expect(fromA2APart(part)).toEqual({
       type: 'image',
-      url: 'https://example.com/chart.png',
+      source: { kind: 'remote-url', url: 'https://example.com/chart.png' },
       mimeType: 'image/png',
     });
     expect(roundTripPart(part)).toEqual(part);
@@ -149,9 +148,9 @@ describe('A2A file parts', () => {
   it('round-trips image alternative text through part metadata', () => {
     const content: MultiModalContent = {
       type: 'image',
-      url: 'https://example.com/chart.png',
+      source: { kind: 'remote-url', url: 'https://example.com/chart.png' },
       mimeType: 'image/png',
-      text: 'Revenue by quarter',
+      alt: 'Revenue by quarter',
     };
 
     expect(toA2APart(content)).toEqual({
@@ -173,7 +172,7 @@ describe('A2A file parts', () => {
       type: 'document',
       name: 'chart.png',
       mimeType: 'image/png',
-      source: { kind: 'reference', uri: 'https://example.com/chart.png' },
+      source: { kind: 'remote-url', url: 'https://example.com/chart.png' },
     });
     expect(roundTripPart(part)).toEqual(part);
   });
@@ -188,7 +187,6 @@ describe('A2A data parts', () => {
     const content = fromA2APart(part);
     expect(content).toMatchObject({
       type: 'document',
-      name: 'document',
       mimeType: 'application/json',
     });
     expect(roundTripPart(part)).toEqual(part);
@@ -267,7 +265,7 @@ describe('A2A data parts', () => {
       type: 'document',
       name: 'x.json',
       mimeType: 'application/json',
-      source: { kind: 'base64', data },
+      source: { kind: 'inline', data, encoding: 'base64' },
     };
 
     expect(toA2APart(content)).toEqual({
@@ -294,7 +292,7 @@ describe('A2A part fields Conversationalist content cannot hold', () => {
     });
   });
 
-  it('drops file part metadata other than image alternative text', () => {
+  it('drops file part metadata other than the portable media fields', () => {
     const part: A2APart = {
       url: 'https://example.com/report.pdf',
       filename: 'report.pdf',
@@ -306,33 +304,35 @@ describe('A2A part fields Conversationalist content cannot hold', () => {
       url: 'https://example.com/report.pdf',
       filename: 'report.pdf',
       mediaType: 'application/pdf',
+      metadata: { text: 'Report' },
     });
   });
 
-  it('brings back an image without a media type as an octet-stream document', () => {
-    const content: MultiModalContent = { type: 'image', url: 'https://example.com/a.png' };
+  it('brings back an image without a media type as an unnamed document', () => {
+    const content: MultiModalContent = {
+      type: 'image',
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
+    };
 
     expect(toA2APart(content)).toEqual({ url: 'https://example.com/a.png' });
     expect(roundTripContent(content)).toEqual({
       type: 'document',
-      name: 'document',
-      mimeType: 'application/octet-stream',
-      source: { kind: 'reference', uri: 'https://example.com/a.png' },
+      source: { kind: 'remote-url', url: 'https://example.com/a.png' },
     });
   });
 
   it('brings back an unnamed image/* document as image content', () => {
-    for (const name of ['', 'document']) {
+    for (const name of [undefined, '']) {
       const content: MultiModalContent = {
         type: 'document',
-        name,
+        ...(name === undefined ? {} : { name }),
         mimeType: 'image/png',
-        source: { kind: 'reference', uri: 'https://example.com/a.png' },
+        source: { kind: 'remote-url', url: 'https://example.com/a.png' },
       };
 
       expect(roundTripContent(content)).toEqual({
         type: 'image',
-        url: 'https://example.com/a.png',
+        source: { kind: 'remote-url', url: 'https://example.com/a.png' },
         mimeType: 'image/png',
       });
     }

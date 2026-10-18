@@ -1,3 +1,5 @@
+import type { ContentPartLineage } from '../../multi-modal';
+
 /**
  * Gemini text part.
  */
@@ -69,4 +71,12 @@ export interface GeminiContent {
 export interface GeminiConversation {
   systemInstruction?: GeminiContent;
   contents: GeminiContent[];
+}
+
+/**
+ * Result of exporting a conversation for Gemini: the wire payload, and one
+ * lineage entry per media part delivered.
+ */
+export interface GeminiExport extends GeminiConversation {
+  lineage: readonly ContentPartLineage[];
 }
