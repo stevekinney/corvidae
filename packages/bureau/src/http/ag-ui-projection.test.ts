@@ -186,6 +186,10 @@ describe('the answer an onMaximumSteps handler leaves', () => {
     ['a handler that left no text', { content: '' }],
     ['a run that stopped on a condition', { finishReason: 'stop-condition' }],
     ['a completion with no text to read', { content: undefined }],
+    [
+      'a completion whose steps could not be read, which cannot say where the row goes',
+      { steps: [] },
+    ],
   ])('is not invented for %s', (_name, overrides) => {
     expect(projector().handleRecorded(RECORDED.runCompleted, completed(overrides)).events).toEqual(
       [],

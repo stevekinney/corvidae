@@ -355,6 +355,75 @@ describe('the answer an onMaximumSteps handler leaves', () => {
   });
 });
 
+describe('the answer an onMaximumSteps handler leaves, for a client that attached', () => {
+  it('is not announced again when the snapshot the attach opened with already holds its row', async () => {
+    await withHarness(
+      { script: [{ kind: 'block', barrier: 'hold' }, say('Done.')] },
+      async ({ handler, bureau, generate }) => {
+        let deliver: Parameters<Harness['bureau']['subscribeLiveFrames']>[0] | undefined;
+        const subscribe = bureau.subscribeLiveFrames.bind(bureau);
+        bureau.subscribeLiveFrames = (listener) => {
+          deliver = listener;
+          return subscribe(listener);
+        };
+        const starter = new FrameReader(await handler(startRequest(runAgentInput())));
+        await starter.until(EventType.STEP_STARTED);
+        await generate.reached('hold');
+        const nativeRunId = bureau.listRuns()[0]!.id;
+        // The run has already put its answer in the conversation, under the id the step
+        // after its last would have had, as a run does before this stream's completion.
+        const tailRow = {
+          id: `${nativeRunId}:step:1`,
+          role: 'assistant' as const,
+          content: 'Out of steps.',
+        };
+        const getRun = bureau.getRun.bind(bureau);
+        bureau.getRun = (runId) => {
+          const detail = getRun(runId);
+          return detail?.transcript === undefined
+            ? detail
+            : { ...detail, transcript: appendMessages(detail.transcript, tailRow) };
+        };
+        const getSession = bureau.getSession.bind(bureau);
+        bureau.getSession = async (sessionId) => {
+          const session = await getSession(sessionId);
+          return session === undefined
+            ? session
+            : {
+                ...session,
+                conversationHistory: appendMessages(session.conversationHistory, tailRow),
+              };
+        };
+        const attached = new FrameReader(await handler(attachRunRequest(nativeRunId)));
+        await attached.until(EventType.STEP_STARTED);
+
+        deliver!({
+          type: 'event',
+          event: 'run.completed',
+          runId: nativeRunId,
+          sequence: 1_000_000,
+          detail: {
+            finishReason: 'maximum-steps',
+            content: 'Out of steps.',
+            steps: [{ step: 0, content: '' }],
+          },
+        } as never);
+        const tail = await attached.rest();
+        generate.release('hold');
+
+        expect(
+          attached.received.some((frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT),
+        ).toBe(true);
+        expect(
+          attached.received.filter((frame) => frame.event.type === EventType.TEXT_MESSAGE_START),
+        ).toEqual([]);
+        expect(tail.at(-1)!.event.type).toBe(EventType.RUN_FINISHED);
+        await starter.rest();
+      },
+    );
+  });
+});
+
 describe('cleanup', () => {
   it('leaves no listener, timer, or snapshot subscription once every stream has ended', async () => {
     const runtime = createManualRuntimeServices();

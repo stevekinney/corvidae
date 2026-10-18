@@ -5,7 +5,7 @@
  */
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { type Toolbox, waitForCondition } from '@lostgradient/operative';
+import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
@@ -536,7 +536,13 @@ describe('whether a thread is busy, decided from what the store holds', () => {
   it('is not held by an approval whose binding has expired, which nobody can answer', async () => {
     const later = createManualRuntimeServices({ origin: new Date().toISOString() });
     await withHarness(
-      { script: [chargeOnce], toolbox: approvalToolbox(), storage: 'sqlite' },
+      {
+        script: [chargeOnce],
+        toolbox: approvalToolbox(),
+        storage: 'sqlite',
+        // The one clock the Bureaus issue and expire the binding by and the mount reads.
+        bureauRuntime: later,
+      },
       async (harness) => {
         const peer = await harness.peer([say('B done.')], { runtime: later });
         try {
@@ -549,10 +555,80 @@ describe('whether a thread is busy, decided from what the store holds', () => {
           const after = await readAgUiStream(await peer.handler(startWithMessage('run-c')));
 
           expect(before[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+          // The binding expired by the clock Bureau uses, not only by the mount's.
+          expect(peer.bureau.listPendingReviews()).toEqual([]);
           expect(after.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
         } finally {
           await peer.dispose();
         }
+      },
+    );
+  });
+
+  it('is held by an approval that carries no binding, which never expires, until it is cancelled', async () => {
+    const later = createManualRuntimeServices({ origin: new Date().toISOString() });
+    // No approval secret: the approval is unsigned, so nothing binds it to a lifetime.
+    const unsignedToolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+    await withHarness(
+      {
+        script: [chargeOnce, say('Waiting.'), say('B done.')],
+        toolbox: unsignedToolbox,
+        stopWhen: stopWhen.noToolCalls(),
+        storage: 'sqlite',
+        agUi: { runtime: later },
+      },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        await settled(harness);
+        const approvalId = harness.bureau.listPendingReviews()[0]!.id;
+        const gated = await harness.bureau.getSession('thread-1');
+        const overrides = gated?.metadata['pendingApprovalOverrides'] as Record<
+          string,
+          { approvalBinding?: unknown }
+        >;
+        expect(overrides[approvalId]?.approvalBinding).toBeUndefined();
+
+        // Far past any binding's lifetime.
+        await later.advance(400 * 24 * 60 * 60 * 1000);
+        const held = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
+        const cancelled = await readAgUiStream(
+          await harness.handler(
+            startRequest(
+              runAgentInput({
+                runId: 'run-cancel',
+                messages: [],
+                resume: [{ interruptId: approvalId, status: 'cancelled' }],
+              }),
+            ),
+          ),
+        );
+        const freed = await readAgUiStream(await harness.handler(startWithMessage('run-c')));
+
+        expect(held[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+        expect(cancelled.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(freed.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
       },
     );
   });
@@ -618,6 +694,148 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       } finally {
         await peer.dispose();
       }
+    });
+  });
+
+  it('is busy from the moment the first start is answered, before the run’s inline launch has flushed', async () => {
+    await withHarness(
+      { script: [say('A done.'), say('B done.')], storage: 'sqlite' },
+      async (harness) => {
+        // The Response resolves once the durable record has committed. Weft reports the
+        // workflow `pending` until its inline launch runs, and that is still unsettled.
+        const first = await harness.handler(startRequest(runAgentInput()));
+        const session = await harness.bureau.getSession('thread-1');
+        const durable = await harness.bureau.getDurableRun(
+          session?.metadata['lastRunId'] as string,
+        );
+        expect(durable?.status).toBe('pending');
+
+        const second = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
+
+        expect(second[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+        expect(harness.bureau.listRuns()).toHaveLength(1);
+        await readAgUiStream(first);
+      },
+    );
+  });
+
+  describe('when an earlier run’s terminal save lands after a newer run started', () => {
+    /** Holds the first write that would record a run as completed: run A's terminal save. */
+    function holdFirstCompletedSave(harness: Harness): {
+      readonly held: () => boolean;
+      readonly landed: () => boolean;
+      readonly release: () => void;
+    } {
+      const store = harness.bureau.sessionStore!;
+      const update = store.update.bind(store);
+      let release: (() => void) | undefined;
+      let held = false;
+      let landed = false;
+      let armed = true;
+      (store as { update: typeof store.update }).update = (async (
+        sessionId: string,
+        updater: Parameters<typeof store.update>[1],
+        ...rest: unknown[]
+      ) => {
+        let isHeldWrite = false;
+        if (armed) {
+          const next = await updater(await store.load(sessionId));
+          if (next?.metadata['lastRunStatus'] === 'completed') {
+            armed = false;
+            isHeldWrite = true;
+            held = true;
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          }
+        }
+        const result = await (update as (...args: unknown[]) => Promise<unknown>)(
+          sessionId,
+          updater,
+          ...rest,
+        );
+        if (isHeldWrite) landed = true;
+        return result;
+      }) as typeof store.update;
+      return { held: () => held, landed: () => landed, release: () => release!() };
+    }
+    const message = (runId: string, ids: string[]) =>
+      startRequest(
+        runAgentInput({
+          runId,
+          messages: ids.map((id) => ({ id, role: 'user' as const, content: id })),
+        }),
+      );
+
+    it('keeps the newer run’s marker, so a third start is refused in the same process', async () => {
+      await withHarness(
+        {
+          script: [
+            say('A done.'),
+            { kind: 'block', barrier: 'hold' },
+            say('B done.'),
+            say('C done.'),
+          ],
+          storage: 'sqlite',
+        },
+        async (harness) => {
+          const save = holdFirstCompletedSave(harness);
+          await readAgUiStream(await harness.handler(message('r1', ['user-1'])));
+          await waitForCondition(save.held, 'run A’s terminal save never reached the store');
+          const b = new FrameReader(await harness.handler(message('r2', ['user-1', 'user-2'])));
+          await b.until(EventType.STEP_STARTED);
+          await harness.generate.reached('hold');
+          const [runA, runB] = harness.bureau.listRuns().map((run) => run.id);
+          save.release();
+          await waitForCondition(save.landed, 'run A’s terminal save never landed');
+          const afterSave = await harness.bureau.getSession('thread-1');
+          expect(afterSave?.metadata['lastRunId']).toBe(runB);
+          expect(runA).not.toBe(runB);
+
+          const c = await readAgUiStream(
+            await harness.handler(message('r3', ['user-1', 'user-2', 'user-3'])),
+          );
+
+          expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+          expect(harness.bureau.listRuns()).toHaveLength(2);
+          harness.generate.release('hold');
+          await b.rest();
+        },
+      );
+    });
+
+    it('keeps the newer run’s marker when that run was started by another process', async () => {
+      await withHarness(
+        { script: [say('A done.'), say('A unused.')], storage: 'sqlite' },
+        async (harness) => {
+          const peer = await harness.peer([{ kind: 'block', barrier: 'hold' }, say('B done.')]);
+          try {
+            const save = holdFirstCompletedSave(harness);
+            await readAgUiStream(await harness.handler(message('r1', ['user-1'])));
+            await waitForCondition(save.held, 'run A’s terminal save never reached the store');
+            const b = new FrameReader(await peer.handler(message('r2', ['user-1', 'user-2'])));
+            await b.until(EventType.STEP_STARTED);
+            await peer.generate.reached('hold');
+            const runB = peer.bureau.listRuns()[0]!.id;
+            save.release();
+            await waitForCondition(save.landed, 'run A’s terminal save never landed');
+            const afterSave = await peer.bureau.getSession('thread-1');
+            expect(afterSave?.metadata['lastRunId']).toBe(runB);
+            expect(afterSave?.metadata['lastRunStatus']).toBe('running');
+
+            const c = await readAgUiStream(
+              await harness.handler(message('r3', ['user-1', 'user-2', 'user-3'])),
+            );
+
+            expect(c[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+            expect(harness.bureau.listRuns().length + peer.bureau.listRuns().length).toBe(2);
+            peer.generate.release('hold');
+            await b.rest();
+          } finally {
+            await peer.dispose();
+          }
+        },
+      );
     });
   });
 

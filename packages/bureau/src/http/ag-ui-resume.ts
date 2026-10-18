@@ -253,7 +253,12 @@ export function createResume(context: ResumeContext) {
     const reviews = new Map<string, PendingReview>();
     let sessionAgentName: Promise<string | undefined> | undefined;
     const sessionAgent = (): Promise<string | undefined> => {
-      sessionAgentName ??= bureau.getSession(threadId).then((session) => session?.agentName);
+      // A session that cannot be read names no agent, so the route is refused as an
+      // interrupt that does not exist there rather than throwing out of the resume.
+      sessionAgentName ??= bureau
+        .getSession(threadId)
+        .then((session) => session?.agentName)
+        .catch(() => undefined);
       return sessionAgentName;
     };
     for (const entry of entries) {
@@ -641,7 +646,7 @@ export function createResume(context: ResumeContext) {
       (entry) => reviews.get(entry.interruptId)?.kind === 'tool-approval',
     );
     const canContinue = hasToolApproval ? await conversationAnswerable(request.threadId) : true;
-    if (!takeover && !canContinue && approvesTool(entries, reviews)) {
+    if (!canContinue && approvesTool(entries, reviews)) {
       return refuse('CONTINUATION_UNAVAILABLE', CONTINUATION_UNAVAILABLE_MESSAGE);
     }
 
@@ -721,8 +726,9 @@ export function createResume(context: ResumeContext) {
       return completed(pendingEntry, { runId: runId!, mode: 'continued', outcomes, ...takenOver });
     }
     if (executed && !superseded && !canContinue) {
-      // Every tool approval was refused, and no run can start from the conversation: the
-      // refusals are written, the command is complete, and the settled run is shown.
+      // No tool approval was approved (an approve is refused above when no run can start
+      // from the conversation, a takeover's included): the denials are written, the command
+      // is complete, and the settled run is shown.
       return completed(pendingEntry, { runId: runId!, mode: 'superseded', outcomes, ...takenOver });
     }
     if (executed && !superseded) {

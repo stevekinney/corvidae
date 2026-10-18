@@ -3,7 +3,7 @@
  * drive it: scripted runs (no model), requests for the four routes, and the
  * credentials of a few callers.
  */
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createScriptedGenerate,
@@ -57,6 +57,8 @@ export type HarnessOptions = {
   /** `'sqlite'` keeps a durable event history, so terminal events carry cursors. */
   readonly storage?: 'memory' | 'sqlite';
   readonly agUi?: AgUiOptions;
+  /** The runtime the Bureau itself runs on (its clock included), where a test must move it. */
+  readonly bureauRuntime?: RuntimeServices;
   /** Serve with these credentials instead of the one anonymous local caller. */
   readonly authentication?: AuthConfig;
   /** Receives the Bureau's diagnostics. */
@@ -111,6 +113,7 @@ async function build(
     storage: fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
     sessionPersistenceRetryDelayMilliseconds: 0,
+    ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),

@@ -62,7 +62,7 @@ import type { OperationHandlerMount } from '@lostgradient/weft';
 import { createConversationHistory } from 'conversationalist';
 
 import { BureauLedgerConflictError } from '../command-ledger.ts';
-import { BureauError } from '../create-bureau.ts';
+import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau, OwnedResource } from '../types.ts';
 import { rowsAddedBy } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
@@ -238,9 +238,11 @@ export function createAgUiMount(
    *
    * The thread is busy when the session's last run is unsettled:
    *
-   * - live or parked on a human wait: the session says `running` and the durable run
-   *   agrees (a marker whose durable run has settled, as a crash can leave, is not
-   *   busy; a read that fails is, because a start admitted on a guess forks the thread);
+   * - live, starting, or parked on a human wait: the session says `running` and the
+   *   durable run is in Bureau's own non-terminal set (pending, running, suspended;
+   *   `pending` is a run whose inline launch has not flushed yet). A marker whose
+   *   durable run has settled, as a crash can leave, is not busy; a read that fails
+   *   is, because a start admitted on a guess forks the thread;
    * - settled with an unresolved approval: the session still holds a
    *   `pendingApprovalOverrides` entry for that run. Bureau persists the entry when an
    *   approval is gated and removes it in the same write as the resolution, whichever
@@ -259,12 +261,18 @@ export function createAgUiMount(
       if (metadata === undefined || typeof lastRunId !== 'string') return false;
       if (metadata['lastRunStatus'] === 'running') {
         const durable = await bureau.getDurableRun(lastRunId);
-        if (durable?.status === 'running') return true;
+        if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
+          return true;
+        }
       }
       const overrides = metadata['pendingApprovalOverrides'];
       if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
         return false;
       }
+      // `expiresAt` was issued by Armorer's clock, read here with the mount's: the same
+      // clock assumption the thread lease makes across processes (skew below the lease
+      // length minus its renewal interval). A fast clock here admits a start a slow
+      // holder could still approve.
       const asOf = runtime.clock.now();
       return Object.entries(overrides).some(([reviewId, approval]) => {
         if (!reviewId.startsWith(`approval:${lastRunId}:`)) return false;

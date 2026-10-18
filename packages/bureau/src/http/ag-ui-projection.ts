@@ -221,6 +221,9 @@ export class RunProjector {
     if (data['finishReason'] !== 'maximum-steps' || typeof content !== 'string') return [];
     if (content.length === 0) return [];
     const steps = Array.isArray(data['steps']) ? data['steps'].map(record) : [];
+    // With no steps to read (a checkpoint read that failed leaves none), nothing says
+    // which id the row holds: announcing it under step 0 would duplicate the last step's.
+    if (steps.length === 0) return [];
     if (steps.at(-1)?.['content'] === content) return [];
     const indexes = steps.flatMap((step) => {
       const index = step['step'];

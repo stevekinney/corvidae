@@ -1155,6 +1155,44 @@ describe('a resume through the route of another published agent', () => {
     );
   });
 
+  it('is refused as an interrupt that does not exist when the session that names the agent cannot be read', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        otherAgents: ['other'],
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const getReview = bureau.getReview.bind(bureau);
+        spyOn(bureau, 'getReview').mockImplementation(async (id) => {
+          const review = await getReview(id);
+          return review === undefined ? undefined : { ...review, agentName: undefined };
+        });
+        const getSession = bureau.getSession.bind(bureau);
+        let failed = 0;
+        spyOn(bureau, 'getSession').mockImplementation(async (...args) => {
+          if (failed === 0 && (new Error().stack ?? '').includes('sessionAgent')) {
+            failed += 1;
+            throw new Error('store unavailable');
+          }
+          return getSession(...args);
+        });
+
+        const refused = await readAgUiStream(
+          await handler(resumeRequest(entries, {}, 'client-run-2')),
+        );
+
+        expect(failed).toBe(1);
+        expect(refused[0]!.event).toMatchObject({ code: 'INTERRUPT_NOT_FOUND' });
+        expect(bureau.listPendingReviews()).toHaveLength(1);
+        expect(charges).toEqual([]);
+      },
+    );
+  });
+
   it('creates no run for that agent when it retries a resume whose first attempt died', async () => {
     const charges: number[] = [];
     const dead = createManualRuntimeServices();
@@ -1462,6 +1500,25 @@ describe('a tool approval of a run that is still going', () => {
   });
 });
 
+/** The states of the resume ledger's entries, with the mode a completed one answered in. */
+async function ledgerStates(bureau: Harness['bureau']): Promise<string[]> {
+  const kv = bureau.kv!;
+  const states: string[] = [];
+  for (const key of await kv.list('command-ledger:ag-ui-resume:v1:entry:')) {
+    const raw = await kv.get(key);
+    const value = (typeof raw === 'string' ? JSON.parse(raw) : raw) as {
+      state?: string;
+      result?: { mode?: string };
+    };
+    states.push(
+      value.result?.mode === undefined
+        ? String(value.state)
+        : `${value.state}:${value.result.mode}`,
+    );
+  }
+  return states;
+}
+
 describe('an approval no run can continue from', () => {
   // The agent goes on past the gated call, so its conversation ends in an assistant row.
   const settledWithApproval = async (charges: number[]) => ({
@@ -1562,6 +1619,70 @@ describe('an approval no run can continue from', () => {
         });
         expect(bureau.listRuns()).toHaveLength(1);
         expect(charges).toEqual([]);
+        // The retry completed the command: its entry is done, and asking again resolves
+        // and starts nothing more.
+        expect(await ledgerStates(bureau)).toEqual(['completed:superseded']);
+        const resolveCalls = (bureau.resolveReview as unknown as { mock: { calls: unknown[] } })
+          .mock.calls.length;
+        const again = await readAgUiStream(
+          await harness.remount({ runtime: living })(resumeRequest(entries, {}, 'client-run-4')),
+        );
+        expect(again.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(
+          (bureau.resolveReview as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+        ).toBe(resolveCalls);
+        expect(bureau.listRuns()).toHaveLength(1);
+      },
+    );
+  });
+
+  it('refuses an approve a retry takes over from a claimant that died before it checked, and runs nothing', async () => {
+    const charges: number[] = [];
+    const dead = createManualRuntimeServices();
+    const living = createManualRuntimeServices();
+    await withHarness(
+      { ...(await settledWithApproval(charges)), agUi: { runtime: dead } },
+      async (harness) => {
+        const { handler, bureau } = harness;
+        await readAgUiStream(await handler(startRequest(runAgentInput())));
+        await waitForCondition(
+          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          'run did not settle',
+        );
+        const id = bureau.listPendingReviews()[0]!.id;
+        // The claimant holds the command and dies inside the check that decides whether
+        // a run can continue, before it has refused or resolved anything.
+        const getSession = bureau.getSession.bind(bureau);
+        let hung = 0;
+        spyOn(bureau, 'getSession').mockImplementation(async (...args) => {
+          if (hung === 0 && (new Error().stack ?? '').includes('conversationAnswerable')) {
+            hung += 1;
+            return never();
+          }
+          return getSession(...args);
+        });
+        void handler(resumeRequest([resolved(id)]));
+        await waitForCondition(() => hung === 1, 'the claimant never reached the check');
+        await living.advance(DEFAULT_AG_UI_LEASE_MS);
+
+        const retry = await readAgUiStream(
+          await harness.remount({ runtime: living })(
+            resumeRequest([resolved(id)], {}, 'client-run-3'),
+          ),
+        );
+
+        expect(retry[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
+        expect(charges).toEqual([]);
+        expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([id]);
+        expect(bureau.listRuns()).toHaveLength(1);
+        // The refusal released the command, so the way out is still open.
+        const cancelled = await readAgUiStream(
+          await harness.remount({ runtime: living })(
+            resumeRequest([{ interruptId: id, status: 'cancelled' }], {}, 'client-run-4'),
+          ),
+        );
+        expect(cancelled.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(bureau.listPendingReviews()).toEqual([]);
       },
     );
   });

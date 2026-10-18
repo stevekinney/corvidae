@@ -513,6 +513,18 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
 /**
+ * Whether a durable run's status is one it has not settled from: Bureau's own
+ * non-terminal set ({@link DURABLE_FORCIBLY_TERMINABLE_STATUSES}), read by the
+ * AG-UI mount's busy decision so it cannot drift from what `waitForDurableRun` and
+ * `cancelDurableRun` call unsettled. `pending` counts: `createRun` returns once the
+ * durable record commits, and Weft reports the workflow `pending` until its inline
+ * launch runs.
+ */
+export function isDurableRunUnsettled(status: string): boolean {
+  return DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(status);
+}
+
+/**
  * Dependencies {@link resolveCancelDurableRun} needs, factored out for
  * direct dependency injection in tests (AB-205) — in particular the
  * "resolves `already-terminal`, never `requested`" race fixture, which needs
@@ -3631,6 +3643,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       agentName,
       baseConversationHistory,
       incarnation,
+      runId,
     );
   }
 
