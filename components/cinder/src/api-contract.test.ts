@@ -12,7 +12,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { describe, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
 import { parse } from 'svelte/compiler';
 
 import type { ComponentContract, PropSpec, SnippetSpec } from './api-contract.ts';
@@ -29,12 +29,17 @@ function toPascal(kebab: string): string {
 
 type ASTNode = any;
 
+/** Identifier keys carry `name`; quoted keys such as `'aria-label'` carry `value`. */
+function memberName(member: ASTNode): string | undefined {
+  return (member?.key?.name ?? member?.key?.value) as string | undefined;
+}
+
 function extractPropNames(typeLiteral: ASTNode): Set<string> {
   if (!typeLiteral || typeLiteral.type !== 'TSTypeLiteral') return new Set();
   return new Set(
     (typeLiteral.members ?? [])
       .filter((m: ASTNode) => m.type === 'TSPropertySignature')
-      .map((m: ASTNode) => m.key?.name as string),
+      .map((m: ASTNode) => memberName(m) as string),
   );
 }
 
@@ -45,7 +50,7 @@ function isPropOptional(member: ASTNode): boolean {
 function getMember(typeLiteral: ASTNode, name: string): ASTNode {
   if (!typeLiteral || typeLiteral.type !== 'TSTypeLiteral') return undefined;
   return (typeLiteral.members ?? []).find(
-    (m: ASTNode) => m.type === 'TSPropertySignature' && m.key?.name === name,
+    (m: ASTNode) => m.type === 'TSPropertySignature' && memberName(m) === name,
   );
 }
 
@@ -142,6 +147,12 @@ function validateArm(
     }
   }
 
+  for (const actualName of actualProps) {
+    if (!Object.hasOwn(contractProps, actualName) && !Object.hasOwn(contractSnippets, actualName)) {
+      errors.push(label(`prop "${actualName}" is in Props but not listed in the contract`));
+    }
+  }
+
   for (const snippetName of Object.keys(contractSnippets)) {
     const spec = contractSnippets[snippetName] as SnippetSpec;
     if (!actualProps.has(snippetName) && !spec.optional) {
@@ -196,6 +207,65 @@ function validateContract(
     validateArm(file, null, resolved.typeLiteral, props, snippets, errors);
   }
 }
+
+/** Parses an inline Props type the way the component test parses `<script module>`. */
+function parseFixtureProps(typeSource: string): ASTNode {
+  const wrapped = `<script module lang="ts">\nexport type FixtureProps = ${typeSource};\n</script>`;
+  const ast = parse(wrapped, { filename: 'fixture.svelte', modern: true });
+  const annotation = findPropsTypeAlias(ast.module?.content?.body as ASTNode[], 'FixtureProps');
+  return resolvePropTypeLiteral(annotation);
+}
+
+describe('validateArm unlisted members', () => {
+  test('reports a Props member the contract does not list', () => {
+    const resolved = parseFixtureProps('{ listed?: string; extra?: string }');
+    const errors: string[] = [];
+    validateArm(
+      'fixture.svelte',
+      null,
+      resolved.typeLiteral,
+      { listed: { optional: true, type_kind: 'TSStringKeyword', default: undefined } },
+      {},
+      errors,
+    );
+    expect(errors).toEqual([
+      'fixture.svelte: prop "extra" is in Props but not listed in the contract',
+    ]);
+  });
+
+  test('accepts a Props member listed under snippets', () => {
+    const resolved = parseFixtureProps('{ listed?: string; children?: Snippet }');
+    const errors: string[] = [];
+    validateArm(
+      'fixture.svelte',
+      null,
+      resolved.typeLiteral,
+      { listed: { optional: true, type_kind: 'TSStringKeyword', default: undefined } },
+      { children: { kind: 'zero-arg', optional: true } },
+      errors,
+    );
+    expect(errors).toEqual([]);
+  });
+
+  test('prefixes an unlisted member in the second arm with arm[1]', () => {
+    const resolved = parseFixtureProps('{ a?: string } | { b?: string; extra?: string }');
+    const errors: string[] = [];
+    resolved.arms.forEach((arm: ASTNode, index: number) => {
+      const name = index === 0 ? 'a' : 'b';
+      validateArm(
+        'fixture.svelte',
+        index,
+        arm.typeLiteral,
+        { [name]: { optional: true, type_kind: 'TSStringKeyword', default: undefined } },
+        {},
+        errors,
+      );
+    });
+    expect(errors).toEqual([
+      'fixture.svelte arm[1]: prop "extra" is in Props but not listed in the contract',
+    ]);
+  });
+});
 
 describe('api contract', () => {
   test('every component Props matches the frozen contract', async () => {
