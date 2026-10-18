@@ -28,12 +28,19 @@
 import type { Event, ResumeEntry } from '@ag-ui/core';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  buildSignalContinuationInput,
+  renderSignalContinuation,
+  signalMessageIdentifier,
+} from '@lostgradient/operative';
+import {
   createCommandLedger,
   BureauLedgerConflictError,
   canonicalJson,
   digestCommandPayload,
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
+import { ApprovalOutcomeNotWrittenError } from '../create-bureau.ts';
+import { humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
 import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
 import { replayCall, type AgUiStreamEnvironment, openRunStream } from './ag-ui-stream.ts';
@@ -47,11 +54,14 @@ type Principal = Parameters<OwnerAccessPredicate>[0]['principal'];
 
 /** What a claimed resume records, so a retry knows which run its stream is. */
 type ResumeClaim = { readonly threadId: string };
+type ClaimedEntry = Parameters<CommandLedger<ResumeClaim, ResumeResult>['release']>[0];
 type ResumeResult = {
   /** The native run the resume continued (a human wait) or created (a tool approval), or the old run when the policy gated again. */
   readonly runId: string;
   readonly mode: 'continued' | 'created' | 'superseded';
   readonly outcomes: ReadonlyArray<{ readonly interruptId: string; readonly outcome: string }>;
+  /** Set when a retry found the earlier attempt's effect already in place and finished it. */
+  readonly recovered?: true;
 };
 
 type Refusal = { readonly code: AgUiErrorCode; readonly message: string };
@@ -72,6 +82,11 @@ export type ResumeContext = {
   readonly environment: AgUiStreamEnvironment;
   readonly runtime: Pick<RuntimeServices, 'clock' | 'identifiers'>;
   readonly mayWrite: (principal: Principal, resourceOwner: string | undefined) => boolean;
+  /**
+   * Runs `decide` as the one decision that admits a run to `threadId` at a time,
+   * the way a start does, so a resume's new run and a start cannot both be admitted.
+   */
+  readonly admit: <T>(threadId: string, decide: () => Promise<T>) => Promise<T>;
   readonly ownerOfReview: (reviewId: string) => Promise<string | undefined>;
   readonly refuse: (code: AgUiErrorCode, message: string) => Response;
 };
@@ -146,17 +161,59 @@ export function createResume(context: ResumeContext) {
   function streamFor(
     request: ResumeRequest,
     result: ResumeResult,
-    prelude?: () => Event[],
+    fresh?: {
+      readonly prelude?: () => Event[];
+      readonly answerRows?: ReadonlyArray<{ readonly id: string; readonly content: string }>;
+    },
   ): Response {
-    const fresh = prelude !== undefined;
+    const started = fresh?.prelude !== undefined;
     return openRunStream(environment, {
       threadId: request.threadId,
       runId: request.runId,
       nativeRunId: result.runId,
-      replay: fresh ? 'beginning' : 'open-step',
-      messagesSnapshot: !fresh,
-      ...(prelude === undefined ? {} : { preludeEvents: prelude }),
+      replay: started ? 'beginning' : 'open-step',
+      messagesSnapshot: !started,
+      ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),
+      ...(fresh?.answerRows === undefined ? {} : { answerRows: fresh.answerRows }),
     });
+  }
+
+  /**
+   * The user rows a human's answers just appended to the run's conversation, as
+   * the continuation will hold them: the id the run derives for each delivery and
+   * the text it renders. The run appends them itself when it wakes; this says what
+   * they will be, so the stream that resumed it can show them first.
+   */
+  async function answerRowsOf(
+    request: ResumeRequest,
+    reviews: ReadonlyMap<string, PendingReview>,
+    result: ResumeResult,
+  ): Promise<Array<{ id: string; content: string }>> {
+    const session = await bureau.getSession(request.threadId);
+    const known = new Set(session?.conversationHistory.ids ?? []);
+    const rows: Array<{ id: string; content: string }> = [];
+    for (const entry of request.entries) {
+      const review = reviews.get(entry.interruptId);
+      const applied = result.outcomes.some(
+        (outcome) => outcome.interruptId === entry.interruptId && outcome.outcome === 'applied',
+      );
+      if (review?.kind !== 'human-wait' || !applied) continue;
+      const resolution = resolutionFor(entry, review, request.owner);
+      const payload =
+        resolution.decision === 'approve'
+          ? resolution.payload
+          : humanWaitDenialPayload(resolution.decision, resolution.reason);
+      const id = signalMessageIdentifier([...known], review.runId, review.signalName);
+      if (id === undefined) continue;
+      known.add(id);
+      rows.push({
+        id,
+        content: renderSignalContinuation(
+          buildSignalContinuationInput(review.signalName, payload, runtime.clock.nowISO()),
+        ),
+      });
+    }
+    return rows;
   }
 
   async function resume(request: ResumeRequest): Promise<Response> {
@@ -181,11 +238,14 @@ export function createResume(context: ResumeContext) {
       const review = await bureau.getReview(entry.interruptId);
       const reviewOwner =
         review === undefined ? undefined : await context.ownerOfReview(entry.interruptId);
-      if (
-        review === undefined ||
-        review.sessionId !== threadId ||
-        !context.mayWrite(request.principal, reviewOwner)
-      ) {
+      // A tool approval is the owner's alone: it authorizes a tool to run, so a write
+      // scope that lets an operator answer a human's question does not reach it. The
+      // refusal is the one a missing interrupt gets, and nothing has been resolved yet.
+      const mayAnswer =
+        review?.kind === 'tool-approval'
+          ? reviewOwner !== undefined && reviewOwner === owner
+          : context.mayWrite(request.principal, reviewOwner);
+      if (review === undefined || review.sessionId !== threadId || !mayAnswer) {
         return context.refuse(
           'INTERRUPT_NOT_FOUND',
           `Interrupt "${entry.interruptId}" was not found`,
@@ -213,6 +273,9 @@ export function createResume(context: ResumeContext) {
       ),
     });
     const key = `${identity.callerId}\u0000${identity.target}\u0000${identity.requestId}`;
+    // Entries past their retention window go when the next resume comes, as the
+    // run-creation ledger's do on the Bureau's own maintenance pass.
+    await ledger.prune().catch(() => undefined);
     let claim;
     try {
       claim = await ledger.claim(identity, digest, { threadId });
@@ -226,56 +289,122 @@ export function createResume(context: ResumeContext) {
       throw error;
     }
 
-    if (claim.outcome === 'existing') {
-      const answered = await settledResult(claim.entry, key);
+    const held = claim.entry;
+    if (held.state === 'completed') return streamFor(request, held.result);
+    const running = inFlight.get(key);
+    if (running !== undefined) {
+      // An attempt this process is settling: the retry gets that attempt's answer.
+      const answered = await running;
       if ('code' in answered) return context.refuse(answered.code, answered.message);
       return streamFor(request, answered);
     }
 
-    // 3. A fresh claim: this call applies the resume, exactly once.
-    const attempt = apply(request, reviews, claim.entry);
+    // 3. This call applies the resume: a fresh claim, or the takeover of one whose
+    //    attempt is gone (its process died, or another process holds it).
+    const attempt = context.admit(threadId, async (): Promise<ResumeResult | Refusal> => {
+      if (claim.outcome === 'claimed') return apply(request, reviews, held, false);
+      const recovered = await recover(request, reviews, held, identity, digest);
+      return 'entry' in recovered ? apply(request, reviews, recovered.entry, true) : recovered;
+    });
     inFlight.set(key, attempt);
     try {
       const outcome = await attempt;
       if ('code' in outcome) return context.refuse(outcome.code, outcome.message);
+      if (outcome.recovered === true) return streamFor(request, outcome);
+      if (outcome.mode === 'continued') {
+        return streamFor(request, outcome, {
+          answerRows: await answerRowsOf(request, reviews, outcome),
+        });
+      }
       if (outcome.mode !== 'created') return streamFor(request, outcome);
       const session = await bureau.getSession(threadId);
-      return streamFor(request, outcome, () =>
-        [...reviews.values()].flatMap((review) =>
-          review.kind === 'tool-approval'
-            ? replayCall(session?.conversationHistory, review.approval.callId, {
-                nativeRunId: outcome.runId,
-                sessionId: threadId,
-                now: () => runtime.clock.now(),
-              })
-            : [],
-        ),
-      );
+      return streamFor(request, outcome, {
+        prelude: () =>
+          [...reviews.values()].flatMap((review) =>
+            review.kind === 'tool-approval'
+              ? replayCall(session?.conversationHistory, review.approval.callId, {
+                  nativeRunId: outcome.runId,
+                  sessionId: threadId,
+                  now: () => runtime.clock.now(),
+                })
+              : [],
+          ),
+      });
     } finally {
       inFlight.delete(key);
     }
   }
 
-  /** What a claim that already existed came to: its recorded result, or the in-flight attempt's. */
-  async function settledResult(
-    entry: Awaited<ReturnType<typeof ledger.claim>>['entry'],
-    key: string,
-  ): Promise<ResumeResult | Refusal> {
-    if (entry.state === 'completed') return entry.result;
-    const running = inFlight.get(key);
-    if (running !== undefined) return running;
-    return {
-      code: 'RUN_FAILED',
-      message: 'An earlier attempt at this resume did not finish; answer the interrupts again',
-    };
+  /**
+   * A pending entry nothing in this process is settling. Its attempt either died
+   * before it took effect, after it, or somewhere between, and the answered
+   * reviews say which: while any is still pending the attempt did not finish, so
+   * the entry is taken over (released, so a claim is this call's, and applied
+   * again; a review resolved twice is refused by the Bureau, so nothing runs
+   * twice). Once every one is resolved the attempt applied them and died before
+   * it said so: the run that continues from them is found (or started, under the
+   * request id that makes starting it idempotent) and the entry completed.
+   */
+  async function recover(
+    request: ResumeRequest,
+    reviews: ReadonlyMap<string, PendingReview>,
+    entry: ClaimedEntry,
+    identity: CommandLedgerIdentity,
+    digest: string,
+  ): Promise<{ readonly entry: ClaimedEntry } | ResumeResult | Refusal> {
+    const stillPending = new Set(bureau.listPendingReviews().map((review) => review.id));
+    const answered = [...reviews.values()];
+    if (answered.some((review) => stillPending.has(review.id))) {
+      const released = await ledger.release(entry);
+      const retaken = released
+        ? await ledger.claim(identity, digest, { threadId: request.threadId })
+        : undefined;
+      if (retaken?.outcome === 'claimed') return { entry: retaken.entry };
+      return {
+        code: 'RUN_FAILED',
+        message: 'Another attempt at this resume is in progress; try again',
+      };
+    }
+    const toolApprovals = answered.some((review) => review.kind === 'tool-approval');
+    let result: ResumeResult;
+    if (toolApprovals) {
+      const created = await continuationRun(request, reviews).catch(() => undefined);
+      if (created === undefined) {
+        return {
+          code: 'RUN_FAILED',
+          message:
+            'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
+        };
+      }
+      result = { runId: created, mode: 'created', outcomes: [], recovered: true };
+    } else {
+      result = { runId: answered[0]!.runId, mode: 'continued', outcomes: [], recovered: true };
+    }
+    await ledger.complete(entry, result);
+    return result;
+  }
+
+  /** The run that continues from resolved approvals. Its request id is the command's, so asking twice starts one. */
+  async function continuationRun(
+    request: ResumeRequest,
+    reviews: ReadonlyMap<string, PendingReview>,
+  ): Promise<string> {
+    const created = await bureau.createRun({
+      sessionId: request.threadId,
+      agentName: request.agentName,
+      principal: request.owner,
+      runCreationRequestId: `ag-ui-resume:${request.threadId}:${interruptKey([...reviews.values()])}`,
+    });
+    return created.id;
   }
 
   async function apply(
     request: ResumeRequest,
     reviews: ReadonlyMap<string, PendingReview>,
-    pendingEntry: Parameters<typeof ledger.release>[0],
+    pendingEntry: ClaimedEntry,
+    takeover: boolean,
   ): Promise<ResumeResult | Refusal> {
-    const { threadId, owner, entries } = request;
+    const { entries } = request;
     const refuse = async (code: AgUiErrorCode, message: string): Promise<Refusal> => {
       await ledger.release(pendingEntry);
       return { code, message };
@@ -301,8 +430,9 @@ export function createResume(context: ResumeContext) {
       );
     }
     for (const entry of entries) {
-      // A cancelled answer to what is no longer pending is a no-op; a resolved one is not an answer to anything.
-      if (!pendingIds.has(entry.interruptId) && entry.status === 'resolved') {
+      // A cancelled answer to what is no longer pending is a no-op; a resolved one is not an answer to anything,
+      // unless an earlier attempt at this very resume is what resolved it.
+      if (!takeover && !pendingIds.has(entry.interruptId) && entry.status === 'resolved') {
         return refuse('INTERRUPT_NOT_FOUND', `Interrupt "${entry.interruptId}" was not found`);
       }
     }
@@ -311,6 +441,8 @@ export function createResume(context: ResumeContext) {
     let continued = false;
     let executed = false;
     let superseded = false;
+    let failures = 0;
+    let notWritten: ApprovalOutcomeNotWrittenError | undefined;
     for (const entry of entries) {
       const review = reviews.get(entry.interruptId)!;
       if (!pendingIds.has(entry.interruptId)) {
@@ -318,7 +450,7 @@ export function createResume(context: ResumeContext) {
         continue;
       }
       try {
-        const resolved = await bureau.resolveReview(resolutionFor(entry, review, owner));
+        const resolved = await bureau.resolveReview(resolutionFor(entry, review, request.owner));
         outcomes.push({
           interruptId: entry.interruptId,
           outcome: resolved.superseded === true ? 'superseded' : 'applied',
@@ -328,11 +460,28 @@ export function createResume(context: ResumeContext) {
         else continued = true;
       } catch (error) {
         // Another resolver won, or the review changed: the pending set decides what the stream shows.
+        failures += 1;
+        if (error instanceof ApprovalOutcomeNotWrittenError) notWritten = error;
         outcomes.push({
           interruptId: entry.interruptId,
           outcome: error instanceof Error ? error.name : 'failed',
         });
       }
+    }
+
+    if (notWritten !== undefined) {
+      // The approval was decided and its tool ran, but the conversation still shows
+      // it as pending, so a run that continued from it would be asked the same
+      // question again. No run starts; the failure is told to the client.
+      return refuse(
+        'RUN_FAILED',
+        'The approval was applied, but its outcome was not written into the conversation, so the run was not continued; send a new message to continue the thread',
+      );
+    }
+    if (failures > 0 && !continued && !executed && !superseded) {
+      // Nothing took effect and the reviews are still pending: the answers can be given
+      // again, so this command is not recorded as done.
+      return refuse('RUN_FAILED', 'The answers could not be applied; answer the interrupts again');
     }
 
     let result: ResumeResult;
@@ -344,12 +493,7 @@ export function createResume(context: ResumeContext) {
       // retry that finds the claim after a restart finds the run too.
       let created;
       try {
-        created = await bureau.createRun({
-          sessionId: threadId,
-          agentName: request.agentName,
-          principal: owner,
-          runCreationRequestId: `ag-ui-resume:${threadId}:${interruptKey([...reviews.values()])}`,
-        });
+        created = await continuationRun(request, reviews);
       } catch {
         // The approvals are resolved and their outcomes are in the conversation, so
         // a retry of this resume finds nothing pending. The thread is not stuck: a
@@ -359,7 +503,7 @@ export function createResume(context: ResumeContext) {
           'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
         );
       }
-      result = { runId: created.id, mode: 'created', outcomes };
+      result = { runId: created, mode: 'created', outcomes };
     } else {
       result = { runId: runId!, mode: 'superseded', outcomes };
     }

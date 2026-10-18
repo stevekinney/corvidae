@@ -5,7 +5,8 @@
  * for a human wait and on a fresh one for a tool approval.
  */
 import { EventType, type ResumeEntry } from '@ag-ui/core';
-import { stopWhen, type Toolbox } from '@lostgradient/operative';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
@@ -13,6 +14,7 @@ import { z } from 'zod';
 import {
   as,
   authentication,
+  cancelRequest,
   type Handler,
   type Harness,
   openHarness,
@@ -477,6 +479,241 @@ describe('a resume whose run cannot start', () => {
   });
 });
 
+describe('a resume that did not finish', () => {
+  /** A promise that never settles: a process that died mid-call. */
+  const never = <T>(): Promise<T> => new Promise<T>(() => {});
+
+  it('can be answered again when its resolution failed without effect', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const resolve = spyOn(bureau, 'resolveReview').mockRejectedValueOnce(
+          new Error('session store unavailable'),
+        );
+
+        const failed = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+        resolve.mockRestore();
+        const retry = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)], {}, 'client-run-3')),
+        );
+
+        expect(failed).toHaveLength(1);
+        expect(failed[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
+        expect(charges).toEqual([500]);
+        expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      },
+    );
+  });
+
+  it('is taken over by a retry after a restart, which applies it', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        // The first process claims the resume and dies before it resolves anything.
+        const resolve = spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(() =>
+          never(),
+        );
+        void harness.handler(resumeRequest(entries));
+        await waitForCondition(() => resolve.mock.calls.length === 1, 'the resume never started');
+        resolve.mockRestore();
+
+        const retry = await readAgUiStream(
+          await harness.remount()(resumeRequest(entries, {}, 'client-run-3')),
+        );
+
+        expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+      },
+    );
+  });
+
+  it('is finished by a retry after a restart when its approvals were applied but its run was not started', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const createRun = spyOn(harness.bureau, 'createRun').mockImplementationOnce(() => never());
+        void harness.handler(resumeRequest(entries));
+        await waitForCondition(() => createRun.mock.calls.length === 1, 'the run never started');
+        createRun.mockRestore();
+        expect(harness.bureau.listPendingReviews()).toHaveLength(0);
+
+        const retry = await readAgUiStream(
+          await harness.remount()(resumeRequest(entries, {}, 'client-run-3')),
+        );
+        const again = await readAgUiStream(
+          await harness.handler(resumeRequest(entries, {}, 'client-run-4')),
+        );
+
+        expect(retry.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(charges).toEqual([500]);
+        expect(harness.bureau.listRuns()).toHaveLength(2);
+        expect(bureauMetadata(again[0]!.event)['runId']).toBe(
+          bureauMetadata(retry[0]!.event)['runId'],
+        );
+      },
+    );
+  });
+});
+
+describe('a resume that cannot write the approval’s outcome into the conversation', () => {
+  it('answers RUN_FAILED and starts no run, because the conversation still shows the approval as pending', async () => {
+    const charges: number[] = [];
+    const diagnostics: string[] = [];
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const store = bureau.sessionStore!;
+        const update = store.update.bind(store);
+        const failing = spyOn(store, 'update').mockImplementation((id, updater, options) =>
+          update(
+            id,
+            async (session) => {
+              const next = await updater(session);
+              if (
+                session !== undefined &&
+                next !== undefined &&
+                next.conversationHistory !== session.conversationHistory
+              ) {
+                throw new Error('disk full');
+              }
+              return next;
+            },
+            options,
+          ),
+        );
+        const runsBefore = bureau.listRuns().length;
+
+        const frames = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+        failing.mockRestore();
+
+        expect(frames).toHaveLength(1);
+        expect(frames[0]!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'RUN_FAILED',
+          message: expect.stringContaining('not written'),
+        });
+        expect(bureau.listRuns()).toHaveLength(runsBefore);
+        expect(charges).toEqual([500]);
+        // The Bureau says why, through its own diagnostics, and not on the console.
+        expect(diagnostics).toEqual([expect.stringContaining('into session "thread-1"')]);
+      },
+    );
+  });
+});
+
+describe('cancelling a run that is settled with an approval pending', () => {
+  it('leaves the thread busy until the approval is answered, and answering it as cancelled frees the thread', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Understood, not charging.'), say('A fresh message.')],
+        toolbox: approvalToolbox([]),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const next = (runId: string) =>
+          startRequest(
+            runAgentInput({ runId, messages: [{ id: 'user-2', role: 'user', content: 'again' }] }),
+          );
+
+        const cancelled = await handler(cancelRequest(first.nativeRunId));
+        const busy = await readAgUiStream(await handler(next('client-run-3')));
+        const answered = await readAgUiStream(
+          await handler(
+            resumeRequest([{ interruptId: first.interruptIds[0]!, status: 'cancelled' }]),
+          ),
+        );
+        const freed = await readAgUiStream(await handler(next('client-run-4')));
+
+        expect(cancelled.status).toBe(200);
+        expect(busy[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'THREAD_BUSY' });
+        expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(bureau.listPendingReviews()).toEqual([]);
+        expect(freed.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      },
+    );
+  });
+});
+
+describe('the resume ledger’s retention', () => {
+  it('drops entries past their window when a later resume comes', async () => {
+    const runtime = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.'), chargeOnce, say('Again.')],
+        toolbox: approvalToolbox([]),
+        storage: 'sqlite',
+        agUi: { runtime },
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        await readAgUiStream(await handler(resumeRequest([resolved(first.interruptIds[0]!)])));
+        const keys = () => bureau.kv!.list('command-ledger:ag-ui-resume:v1:entry:');
+        expect(await keys()).toHaveLength(1);
+
+        await runtime.advance(25 * 60 * 60 * 1000);
+        const secondFrames = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                threadId: 'thread-2',
+                runId: 'second-start',
+                messages: [{ id: 'user-2', role: 'user', content: 'again' }],
+              }),
+            ),
+          ),
+        );
+        const secondId = (
+          secondFrames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } }
+        ).outcome.interrupts[0]!.id;
+        await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                threadId: 'thread-2',
+                runId: 'second-resume',
+                messages: [],
+                resume: [resolved(secondId)],
+              }),
+            ),
+          ),
+        );
+
+        // The first command's entry expired and went; only the second's remains.
+        expect(await keys()).toHaveLength(1);
+      },
+    );
+  });
+});
+
 describe('the resume command ledger', () => {
   it('leaves the Bureau’s own maintenance of run-creation receipts alone', async () => {
     const diagnostics: string[] = [];
@@ -509,6 +746,46 @@ describe('the resume command ledger', () => {
 });
 
 describe('resuming a human wait', () => {
+  it('streams the human’s answer as a user message under the id the conversation holds it by', async () => {
+    await withHarness(
+      {
+        script: [askHuman, say('Thanks for the answer.')],
+        humanInput: true,
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+
+        const frames = await readAgUiStream(
+          await handler(
+            resumeRequest([
+              resolved(first.interruptIds[0]!, { decision: 'approve', answer: 'yes' }),
+            ]),
+          ),
+        );
+
+        const id = `${first.nativeRunId}:signal:human-response:0`;
+        const events = frames.map((frame) => frame.event);
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: EventType.TEXT_MESSAGE_START,
+            messageId: id,
+            role: 'user',
+          }),
+        );
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: EventType.TEXT_MESSAGE_CONTENT,
+            messageId: id,
+            delta: '[signal:human-response] "yes"',
+          }),
+        );
+        // The run's own conversation holds the answer under the id the stream gave it.
+        expect(bureau.getRun(first.nativeRunId)!.transcript!.ids).toContain(id);
+      },
+    );
+  });
+
   it('continues the same native run, delivering the answer, and ends the new stream when the run does', async () => {
     await withHarness(
       {
