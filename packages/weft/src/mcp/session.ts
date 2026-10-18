@@ -80,6 +80,7 @@ const RESOURCE_EVENT_NAMES = [
   'workflow:resumed',
   'workflow:suspended',
   'signal:received',
+  'signal:waiting',
   'signal:delivered',
   'attributes:changed',
   'update:received',

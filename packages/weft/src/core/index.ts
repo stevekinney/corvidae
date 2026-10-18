@@ -100,6 +100,7 @@ export {
   ScheduleSkippedEvent,
   SignalDeliveredEvent,
   SignalReceivedEvent,
+  SignalWaitingEvent,
   StorageSizeReportedEvent,
   TaskAttemptTransitionEvent,
   TaskResultDeadLetteredEvent,

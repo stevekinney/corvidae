@@ -105,7 +105,7 @@ describe('wireEventBroadcasting', () => {
 
     const fleetEvents: FleetEventEnvelope[] = [];
     for await (const envelope of fleetEventFeed.replay()) fleetEvents.push(envelope);
-    const storedWatchEvent = await engine.storage.get(KEYS.event('wf-token', 0));
+    const storedWatchEvent = await engine.storage.get(KEYS.watchEvent('wf-token', 0));
     handle.dispose();
     engine[Symbol.dispose]();
 

@@ -177,6 +177,14 @@ export const NOTIFICATION_RULES: Readonly<Record<string, NotificationRule>> = {
     body: (frame) => workflowBody(frame, 'A workflow received a signal'),
     href: workflowHref,
   },
+  'signal:waiting': {
+    tier: 'info',
+    icon: 'radio',
+    title: (frame) =>
+      `Waiting for signal · ${stringField(frame.payload, 'signalName') ?? 'signal'}`,
+    body: (frame) => workflowBody(frame, 'A workflow is waiting for a signal'),
+    href: workflowHref,
+  },
   'signal:delivered': {
     tier: 'info',
     icon: 'radio',
