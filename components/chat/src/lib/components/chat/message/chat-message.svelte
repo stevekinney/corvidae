@@ -46,6 +46,18 @@
     onRetry?: ((messageId: string) => void) | undefined;
     /** Called when user edits a message (fires with new content). Only applies to user messages. */
     onEdit?: ((event: { messageId: string; content: string }) => void) | undefined;
+    /**
+     * Called with a piece of this assistant message's text when the reader asks
+     * to quote it. Setting it adds a Quote action to assistant messages and
+     * marks their rendered text so a selection inside it can be quoted. The
+     * text is the current selection inside this message, or, with none, the
+     * message's whole rendered text.
+     */
+    onQuote?: ((text: string) => void) | undefined;
+    /** Disables the Quote action, for example when no more quotes fit. */
+    quoteDisabled?: boolean;
+    /** The id of an element that explains why Quote is disabled. */
+    quoteDisabledDescriptionId?: string | undefined;
     /** Called when this message enters or leaves edit mode. */
     oneditingchange?: ((editing: boolean) => void) | undefined;
     /** Requests a previewed, confirmed rollback from this user message. */
@@ -114,7 +126,7 @@
     getMessageRoleLabel,
     getMessageText,
   } from '../utilities/utilities.ts';
-  import { Button, Pencil, RotateCcw, CopyButton } from '@lostgradient/cinder';
+  import { Button, Pencil, Quote, RotateCcw, CopyButton } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -137,6 +149,9 @@
     onExpandedChange,
     onRetry,
     onEdit,
+    onQuote,
+    quoteDisabled = false,
+    quoteDisabledDescriptionId,
     oneditingchange,
     onRollback,
     rollbackDiscarded = false,
@@ -158,6 +173,51 @@
     tabindex,
     ...rest
   }: ChatMessageProps = $props();
+
+  // Quote state. The rendered text of an assistant message is quotable; the
+  // parts renderer's wrapper around the markdown body carries
+  // `data-quote-source` when `onQuote` is set.
+  let articleElement = $state<HTMLElement | null>(null);
+  const canQuote = $derived(
+    message.role === 'assistant' && onQuote !== undefined && getMessageText(message).trim() !== '',
+  );
+
+  function selectionInside(sources: readonly Element[]): string | undefined {
+    const selection = document.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return undefined;
+    const range = selection.getRangeAt(0);
+    const insideOneSource = sources.some(
+      (source) => source.contains(range.startContainer) && source.contains(range.endContainer),
+    );
+    return insideOneSource ? selection.toString() : undefined;
+  }
+
+  /** What selecting all of the sources would give, leaving the reader's selection as it was. */
+  function renderedText(sources: readonly Element[]): string {
+    const first = sources[0];
+    const last = sources.at(-1);
+    const selection = document.getSelection();
+    if (!first || !last || !selection) return getMessageText(message);
+    const saved = Array.from({ length: selection.rangeCount }, (_, index) =>
+      selection.getRangeAt(index).cloneRange(),
+    );
+    const range = document.createRange();
+    range.setStartBefore(first);
+    range.setEndAfter(last);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const text = selection.toString();
+    selection.removeAllRanges();
+    for (const savedRange of saved) selection.addRange(savedRange);
+    return text;
+  }
+
+  function quoteMessage(): void {
+    const sources = Array.from(
+      articleElement?.querySelectorAll<Element>('[data-quote-source]') ?? [],
+    );
+    onQuote?.(selectionInside(sources) ?? renderedText(sources));
+  }
 
   // Edit state
   let isEditing = $state(false);
@@ -371,6 +431,7 @@
 >
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <article
+    bind:this={articleElement}
     id={messageId}
     class="chat-message chat-navigation-row"
     data-message-id={message.id}
@@ -431,6 +492,7 @@
           {messageId}
           {messagePart}
           {markdownNode}
+          quoteSource={canQuote ? message.id : undefined}
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
           {onApprovalResolve}
@@ -497,7 +559,7 @@
     </div>
   {/if}
 
-  {#if !isEditing && (actions || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
+  {#if !isEditing && (actions || canQuote || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -514,6 +576,18 @@
             confirmDuration={2000}
             class="chat-message-action-button chat-message-copy"
           />
+        {/if}
+        {#if canQuote}
+          <button
+            type="button"
+            class="chat-message-action-button chat-message-quote-button"
+            onclick={quoteMessage}
+            disabled={quoteDisabled}
+            aria-label="Quote message"
+            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
+          >
+            <Quote class="cinder-icon-xs" />
+          </button>
         {/if}
         {#if canEdit}
           <button
@@ -1109,6 +1183,11 @@
   :global(.chat-message-action-button:focus-visible) {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  :global(.chat-message-action-button:disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   /* Touch devices: without hover discoverability, bare icons read as
