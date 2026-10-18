@@ -135,13 +135,21 @@ export type BureauHandlerOptions = {
 /** A published agent name is a URL path segment, so it needs no encoding. */
 export const PUBLISHED_AGENT_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
-const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set([
-  'pathPrefix',
-  'maxStreamDurationMs',
-  'liveBufferSize',
-  'keepAliveIntervalMs',
-  'runtime',
-]);
+/**
+ * Every `agUi` option, as a record keyed by `AgUiOptions`: a key added to the type
+ * and not to this record is a compile error, so the allowlist cannot drift from
+ * what the mount reads. The value says whether the option is a positive integer.
+ */
+const AG_UI_OPTIONS: Readonly<Record<keyof AgUiOptions, 'positive-integer' | 'other'>> = {
+  pathPrefix: 'other',
+  maxStreamDurationMs: 'positive-integer',
+  liveBufferSize: 'positive-integer',
+  keepAliveIntervalMs: 'positive-integer',
+  leaseDurationMs: 'positive-integer',
+  runtime: 'other',
+};
+
+const AG_UI_OPTION_NAMES: ReadonlySet<string> = new Set(Object.keys(AG_UI_OPTIONS));
 
 const OPTION_NAMES: ReadonlySet<string> = new Set([
   'publish',
@@ -231,8 +239,11 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
   if (agUi.pathPrefix !== undefined && !/^\/[^\s?#]+$/.test(agUi.pathPrefix)) {
     fail('agUi.pathPrefix must be an absolute path with no query or fragment');
   }
-  for (const name of ['maxStreamDurationMs', 'liveBufferSize', 'keepAliveIntervalMs'] as const) {
-    const value = agUi[name];
+  for (const [name, kind] of Object.entries(AG_UI_OPTIONS) as Array<
+    [keyof AgUiOptions, 'positive-integer' | 'other']
+  >) {
+    if (kind !== 'positive-integer') continue;
+    const value = agUi[name] as number | undefined;
     if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
       fail(`agUi.${name} must be a positive integer`);
     }

@@ -2,6 +2,7 @@ import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
+import type { AgUiOptions } from './ag-ui-mount.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 
 const AGENT_NAME = 'assistant';
@@ -153,4 +154,56 @@ describe('the agUi option on createBureauHandler', () => {
       ).toThrow(/durable/);
     });
   });
+
+  // Typed by the option type: an option added there and not here is a compile error, and
+  // one the handler's allowlist does not accept fails this test.
+  const sampleValues: Required<{ [Key in keyof AgUiOptions]: AgUiOptions[Key] }> = {
+    pathPrefix: '/chat',
+    maxStreamDurationMs: 60_000,
+    liveBufferSize: 10,
+    keepAliveIntervalMs: 1000,
+    leaseDurationMs: 45_000,
+    runtime: {
+      clock: { now: () => 0, nowISO: () => new Date(0).toISOString() },
+      timers: {
+        setTimeout: () => 0,
+        clearTimeout: () => undefined,
+        setInterval: () => 0,
+        clearInterval: () => undefined,
+      },
+      identifiers: { next: () => 'id' },
+    },
+  };
+
+  it.each(Object.entries(sampleValues))(
+    'accepts the documented agUi option %s',
+    async (name, value) => {
+      await withBureau({ durable: true }, (bureau) => {
+        expect(() =>
+          createBureauHandler(bureau, {
+            unauthenticatedAccess: 'allow',
+            publish: [AGENT_NAME],
+            agUi: { [name]: value },
+          }),
+        ).not.toThrow();
+      });
+    },
+  );
+
+  it.each(['maxStreamDurationMs', 'liveBufferSize', 'keepAliveIntervalMs', 'leaseDurationMs'])(
+    'refuses %s unless it is a positive integer',
+    async (name) => {
+      await withBureau({ durable: true }, (bureau) => {
+        for (const bad of [0, -1, 1.5]) {
+          expect(() =>
+            createBureauHandler(bureau, {
+              unauthenticatedAccess: 'allow',
+              publish: [AGENT_NAME],
+              agUi: { [name]: bad },
+            }),
+          ).toThrow(/positive integer/);
+        }
+      });
+    },
+  );
 });
