@@ -33,8 +33,8 @@ export type WorkflowDefinitionSummary = Readonly<{
   name: string;
   origin: WorkflowDefinitionOrigin;
   state: WorkflowDefinitionState;
-  /** Present only when `state` is `failed`. */
-  lastFailureCategory?: FailureCategory;
+  /** The category of the last load failure when `state` is `failed`; otherwise `null`. */
+  lastFailureCategory: FailureCategory | null;
   /**
    * The revision a new instance would run: a code type's registered revision,
    * a source's only registered revision, or the active one when a source has
@@ -96,23 +96,30 @@ function resolveRevision(
   return Promise.resolve(getInternals(engine).registeredCatalogRevisions.get(name) ?? null);
 }
 
-/** A code type is always `ready`; a source reports the load state of the revision that would run. */
+/**
+ * A code type is always `ready`. A source reports the load state of the
+ * revision that would run, except that one already resolved in this process is
+ * `ready` whatever its diagnostic says: a load whose only waiter gave up keeps
+ * running, installs the revision, and still leaves a `cancelled` diagnostic.
+ */
 function resolveState(
   engine: Engine,
   name: string,
   origin: WorkflowDefinitionOrigin,
   revision: string | null,
 ): Pick<WorkflowDefinitionSummary, 'state' | 'lastFailureCategory'> {
-  if (origin === 'code') return { state: 'ready' };
-  const diagnostics =
-    revision === null
-      ? undefined
-      : getInternals(engine).sources.diagnostics.get(name)?.get(revision);
+  if (origin === 'code') return { state: 'ready', lastFailureCategory: null };
+  if (revision === null) return { state: 'idle', lastFailureCategory: null };
+  const { sources } = getInternals(engine);
+  if (sources.resolved.get(name)?.get(revision) !== undefined) {
+    return { state: 'ready', lastFailureCategory: null };
+  }
+  const diagnostics = sources.diagnostics.get(name)?.get(revision);
   const state = diagnostics?.state ?? 'idle';
-  const category = diagnostics?.lastFailureCategory;
-  return state === 'failed' && category !== undefined
-    ? { state, lastFailureCategory: category }
-    : { state };
+  return {
+    state,
+    lastFailureCategory: state === 'failed' ? (diagnostics?.lastFailureCategory ?? null) : null,
+  };
 }
 
 type ContractFields = Pick<

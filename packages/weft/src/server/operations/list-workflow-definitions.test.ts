@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
+import { getInternals } from '../../core/engine/internals.ts';
 import { buildRegistrySnapshot } from '../../core/registry-snapshot.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { query, signal, update, workflow, type WorkflowDefinition } from '../../core/types.ts';
 import { registerWorkflowDocuments } from '../../document-workflow/register.ts';
+import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { handleRequest } from '../handler.ts';
 import { generateOpenApiDocument } from '../openapi.ts';
@@ -92,6 +94,7 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
         name: 'orders',
         origin: 'code',
         state: 'ready',
+        lastFailureCategory: null,
         revision: expect.stringMatching(/^sha256:/),
         workflowVersion: '2.1.0',
         description: 'Process an order',
@@ -122,6 +125,7 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
       name: 'late-source',
       origin: 'source',
       state: 'idle',
+      lastFailureCategory: null,
       revision: late.descriptor.revision,
       workflowVersion: null,
       description: null,
@@ -139,6 +143,7 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
       name: 'late-source',
       origin: 'source',
       state: 'ready',
+      lastFailureCategory: null,
       revision: late.descriptor.revision,
       workflowVersion: '0.0.0',
       description: 'Registered late',
@@ -166,11 +171,52 @@ describe('weft.workflows.definitions.list: GET /v1/registry/definitions', () => 
       expect.objectContaining({
         name: 'broken',
         state: 'failed',
-        lastFailureCategory: expect.any(String),
+        lastFailureCategory: expect.stringMatching(
+          /^(application|timeout|cancellation|resource|system)$/,
+        ),
         workflowVersion: null,
       }),
     ]);
     expect(JSON.stringify(body)).not.toContain('secret loader path');
+  });
+
+  it('reports a source whose only waiter gave up but whose load finished as ready, with its contract', async () => {
+    engine = createOperationTestEngine();
+    const definition = trivial('orphaned', 'Loaded after its waiter left');
+    const release = Promise.withResolvers<void>();
+    const orphaned = await sourceFor(definition, async () => {
+      await release.promise;
+      return { w: definition };
+    });
+    engine.registerSource(orphaned);
+    const waiter = new AbortController();
+    const preload = engine.workflows.preload('orphaned', orphaned.descriptor.revision, {
+      signal: waiter.signal,
+    });
+    await waitForCondition(
+      async () => getInternals(engine!).sources.diagnostics.get('orphaned')?.size === 1,
+      { label: 'orphaned load to start' },
+    );
+    waiter.abort();
+    expect(await throwingRejectionOf(preload)).toThrow();
+    release.resolve();
+    await waitForCondition(
+      async () => getInternals(engine!).sources.resolved.get('orphaned')?.size === 1,
+      { label: 'orphaned load to finish' },
+    );
+    const diagnostic = getInternals(engine).sources.diagnostics.get('orphaned');
+    expect(diagnostic?.get(orphaned.descriptor.revision)?.state).toBe('cancelled');
+
+    const body = (await listDefinitions(engine)) as { definitions: Record<string, unknown>[] };
+
+    expect(body.definitions).toEqual([
+      expect.objectContaining({
+        name: 'orphaned',
+        state: 'ready',
+        description: 'Loaded after its waiter left',
+        workflowVersion: '0.0.0',
+      }),
+    ]);
   });
 
   it('names the active revision of a source with several registered revisions, and null when none is active', async () => {

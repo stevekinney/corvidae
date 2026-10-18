@@ -32,7 +32,7 @@ export const workflowDefinitionSummaryShape = {
   state: z.enum(['ready', 'idle', 'loading', 'failed', 'cancelled']),
   lastFailureCategory: z
     .enum(['application', 'timeout', 'cancellation', 'resource', 'system'])
-    .optional(),
+    .nullable(),
   revision: z.string().nullable(),
   workflowVersion: z.string().nullable(),
   description: z.string().nullable(),

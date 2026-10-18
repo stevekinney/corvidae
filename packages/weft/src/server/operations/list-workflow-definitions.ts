@@ -36,7 +36,7 @@ export const listWorkflowDefinitionsOperation = defineOperation({
     'List one entry per workflow type: those registered with `register()` (`origin: "code"`) and ' +
     'those registered with `registerSource()` (`origin: "source"`), including document-registered ' +
     "types. `state` is `ready` for a code type or a loaded source, and otherwise the source's " +
-    '`idle`, `loading`, `failed` (with `lastFailureCategory`), or `cancelled` load state. `revision` ' +
+    '`idle`, `loading`, `failed`, or `cancelled` load state; a source already loaded in this process is `ready`. `lastFailureCategory` names the failure category when `failed` and is null otherwise. `revision` ' +
     'is the revision a new instance would run: for a source with several registered revisions, the ' +
     'active one, or null when none is. A `ready` entry also carries `workflowVersion`, ' +
     '`description`, `tags`, and the names of the signals, updates, and queries its contract ' +

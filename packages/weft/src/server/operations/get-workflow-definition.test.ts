@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
 import { workflowSource } from '../../core/source/index.ts';
 import { workflow, type WorkflowDefinition } from '../../core/types.ts';
+import { registerWorkflowDocuments } from '../../document-workflow/register.ts';
 import { handleRequest } from '../handler.ts';
 import { generateOpenApiDocument } from '../openapi.ts';
 import { generateOpenRpcDocument } from '../openrpc.ts';
@@ -115,6 +116,35 @@ describe('weft.workflows.definitions.get: GET /v1/registry/definitions/:name', (
       origin: 'source',
       contract: { name: 'lazy', workflowVersion: '3.0.0' },
     });
+  });
+
+  it('lists the signals a document awaits in the contract it returns', async () => {
+    engine = createOperationTestEngine();
+    await registerWorkflowDocuments(
+      engine,
+      { activities: {}, triggerKinds: { manual: () => undefined } },
+      {
+        active: [
+          {
+            name: 'approval-flow',
+            trigger: { kind: 'manual' },
+            steps: [
+              { kind: 'await-signal', signal: 'approve' },
+              { kind: 'await-signal', signal: 'cancel' },
+            ],
+          },
+        ],
+      },
+    );
+
+    const response = await getDefinition(engine, 'approval-flow');
+    const body = (await response.json()) as {
+      signals: string[];
+      contract: { signals: Record<string, unknown> };
+    };
+
+    expect(body.signals).toEqual(['approve', 'cancel']);
+    expect(Object.keys(body.contract.signals)).toEqual(['approve', 'cancel']);
   });
 
   it('returns not-found for a name that is not a workflow type', async () => {

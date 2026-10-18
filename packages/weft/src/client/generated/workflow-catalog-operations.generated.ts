@@ -25,8 +25,8 @@ export type WorkflowCatalogOperationTypes = {
       readonly contract: Record<string, unknown> | null;
       readonly contractHash: string | null;
       readonly description: string | null;
-      readonly lastFailureCategory?:
-        'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
+      readonly lastFailureCategory:
+        'application' | 'timeout' | 'cancellation' | 'resource' | 'system' | null;
       readonly name: string;
       readonly origin: 'code' | 'source';
       readonly queries: ReadonlyArray<string> | null;
@@ -44,8 +44,8 @@ export type WorkflowCatalogOperationTypes = {
     readonly output: {
       readonly definitions: ReadonlyArray<{
         readonly description: string | null;
-        readonly lastFailureCategory?:
-          'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
+        readonly lastFailureCategory:
+          'application' | 'timeout' | 'cancellation' | 'resource' | 'system' | null;
         readonly name: string;
         readonly origin: 'code' | 'source';
         readonly queries: ReadonlyArray<string> | null;
