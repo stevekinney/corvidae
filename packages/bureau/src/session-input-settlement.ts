@@ -30,8 +30,9 @@ import { walkSessionInputMailbox } from './session-input-durability';
  *
  * ## The marker, and the sweep behind it
  *
- * `session-input-open:v1:{sessionId}` is the sweep's index of sessions that may
- * have open input. The submit side bumps it, with a compare-and-set that gives
+ * `session-input-open:v2:{sessionId}:{incarnation}` is the sweep's index of
+ * session incarnations that may have open input, one marker per incarnation
+ * because each incarnation has its own mailbox. The submit side bumps it, with a compare-and-set that gives
  * every write a fresh version, BEFORE it admits, so admitted input is never
  * missing from the index, and again AFTER the admission commits; a crash between
  * the first bump and the admission leaves a marker over an empty mailbox, which
@@ -44,10 +45,15 @@ import { walkSessionInputMailbox } from './session-input-durability';
  * listing, because a listing stops at a scan ceiling and an empty page does not
  * prove an empty mailbox.
  *
- * The boot sweep and the periodic sweep visit every marked session and cancel
- * its open input only when `liveSessionRunIdsEverywhere` reports no run at all:
- * input under an orphaned `running` workflow of a dead process stays open until
- * that workflow is recovered (its run then delivers it) or marked terminal.
+ * The boot sweep and the periodic sweep visit every marked incarnation. A
+ * current incarnation has its open input cancelled only when
+ * `liveSessionRunIdsEverywhere` reports no run at all: input under an orphaned
+ * `running` workflow of a dead process stays open until that workflow is
+ * recovered (its run then delivers it) or marked terminal. A retired
+ * incarnation (its session deleted, or recreated under the same id) has every
+ * open input cancelled, and its marker is kept until retention has emptied its
+ * mailbox: nothing else maintains a retired mailbox, so without the sweep its
+ * terminal records would never retire, one orphaned mailbox per recreation.
  */
 
 /** The cancellation reason of input that was still open when its run ended. */
@@ -74,14 +80,13 @@ const CANCELLABLE_SESSION_INPUT_STATES: ReadonlySet<string> = new Set([
 
 const CAS_ATTEMPTS = 20;
 
-/** How many open receipts one batch of a backlog operation handles. */
-export const SESSION_INPUT_BACKLOG_BATCH = 100;
-
-const MARKER_PREFIX = 'session-input-open:v1:';
-const markerKey = (sessionId: string) => `${MARKER_PREFIX}${encodeStorageKeyComponent(sessionId)}`;
+const MARKER_PREFIX = 'session-input-open:v2:';
+const markerKey = (sessionId: string, incarnation: string) =>
+  `${MARKER_PREFIX}${encodeStorageKeyComponent(sessionId)}:${encodeStorageKeyComponent(incarnation)}`;
 
 interface MarkerRecord {
   readonly sessionId: string;
+  readonly incarnation: string;
   readonly version: number;
 }
 
@@ -95,7 +100,8 @@ export interface SessionInputSettlementDependencies {
    * another process wrote is not counted.
    */
   readonly liveRunIds: (sessionId: string, incarnation: string) => Promise<readonly string[]>;
-  readonly mailboxOf: (sessionId: string) => Mailbox | undefined;
+  /** The mailbox of one incarnation of a session. */
+  readonly mailboxOf: (sessionId: string, incarnation: string) => Mailbox | undefined;
   /** Whether the bureau is shutting down, when open input is released, never cancelled. */
   readonly isClosed: () => boolean;
   readonly diagnose: (message: string, cause?: unknown) => void;
@@ -106,7 +112,7 @@ export interface SessionInputSettlement {
    * Records that the session may have open input, BEFORE the input is admitted,
    * so admitted input is never missing from the sweep's index.
    */
-  markOpen(sessionId: string): Promise<void>;
+  markOpen(sessionId: string, incarnation: string): Promise<void>;
   /**
    * Runs the mailbox's maintenance, so a lease a dead holder left behind is
    * released and a cancellation it never settled completes, then cancels every
@@ -115,11 +121,17 @@ export interface SessionInputSettlement {
    * if nothing is left open. The caller has established that no run of the
    * session is live or starting. Returns the cancelled command ids.
    */
-  cancelUndelivered(sessionId: string, delivered: ReadonlySet<string>): Promise<string[]>;
+  cancelUndelivered(
+    sessionId: string,
+    incarnation: string,
+    delivered: ReadonlySet<string>,
+  ): Promise<string[]>;
   /**
-   * Visits every marked session: one with no live or starting run has its open
-   * input cancelled; one whose session is gone has its marker removed; the rest
-   * are left for their runs. Does nothing while the bureau is closing.
+   * Visits every marked incarnation: a current one with no live or starting
+   * run has its open input cancelled, and its marker removed once nothing is
+   * open; a retired one has its open input cancelled, is maintained until
+   * retention has emptied its mailbox, and then loses its marker; the rest are
+   * left for their runs. Does nothing while the bureau is closing.
    */
   sweep(): Promise<void>;
 }
@@ -129,8 +141,14 @@ function parseMarker(raw: string | null): MarkerRecord | undefined {
   const parsed: unknown = JSON.parse(raw);
   if (typeof parsed !== 'object' || parsed === null) return undefined;
   const record = parsed as Partial<MarkerRecord>;
-  if (typeof record.sessionId !== 'string' || typeof record.version !== 'number') return undefined;
-  return { sessionId: record.sessionId, version: record.version };
+  if (
+    typeof record.sessionId !== 'string' ||
+    typeof record.incarnation !== 'string' ||
+    typeof record.version !== 'number'
+  ) {
+    return undefined;
+  }
+  return { sessionId: record.sessionId, incarnation: record.incarnation, version: record.version };
 }
 
 /**
@@ -178,12 +196,13 @@ export function createSessionInputSettlement(
 ): SessionInputSettlement {
   const { kv, diagnose } = dependencies;
 
-  async function bumpMarker(sessionId: string): Promise<void> {
-    const key = markerKey(sessionId);
+  async function bumpMarker(sessionId: string, incarnation: string): Promise<void> {
+    const key = markerKey(sessionId, incarnation);
     for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
       const raw = await kv.get(key);
       const next: MarkerRecord = {
         sessionId,
+        incarnation,
         version: (parseMarker(raw)?.version ?? 0) + 1,
       };
       if (
@@ -195,31 +214,47 @@ export function createSessionInputSettlement(
         return;
       }
     }
-    throw new Error(`The open-input marker of session "${sessionId}" kept changing.`);
+    throw new Error(
+      `The open-input marker of session "${sessionId}" (incarnation "${incarnation}") kept changing.`,
+    );
   }
 
   /**
-   * Removes the marker only if the mailbox's exhaustive open count is zero and
-   * the marker has not changed since it was read. Losing the delete means the
-   * session changed under it, so it decides again from what it reads next.
-   * Runs the mailbox's maintenance first: a command a gone holder leased stays
-   * `claimed` until its visibility lapses, and one whose cancellation that
-   * holder never settled stays `cancellation-requested`, so without it a dead
-   * lease would hold the marker forever on every path that judges it idle.
+   * What makes a mailbox idle enough to lose its marker: for a current
+   * incarnation, nothing open (the mailbox's exhaustive open count); for a
+   * retired one, no record at all, open or terminal, because the sweep is the
+   * only thing that maintains it and its retention sweep must run until the
+   * last record is gone. An unfiltered listing of one entry answers the latter
+   * exactly: it examines one index entry and is empty only when there is none.
    */
-  async function removeMarkerIfIdle(sessionId: string, mailbox: Mailbox): Promise<boolean> {
-    await mailbox.runMaintenance();
-    return removeMarkerOnceMaintained(sessionId, mailbox);
-  }
+  type Idle = 'nothing-open' | 'no-records';
 
-  /** {@link removeMarkerIfIdle} for a caller that has just run the mailbox's maintenance itself. */
-  async function removeMarkerOnceMaintained(sessionId: string, mailbox: Mailbox): Promise<boolean> {
-    const key = markerKey(sessionId);
+  /**
+   * Removes the marker only if the mailbox is idle and the marker has not
+   * changed since it was read. Losing the delete means the marker changed under
+   * it, so it decides again from what it reads next. The caller has run the
+   * mailbox's maintenance first: a command a gone holder leased stays `claimed`
+   * until its visibility lapses, and one whose cancellation that holder never
+   * settled stays `cancellation-requested`, so without it a dead lease would
+   * hold the marker forever on every path that judges it idle.
+   */
+  async function removeMarkerOnceMaintained(
+    sessionId: string,
+    incarnation: string,
+    mailbox: Mailbox,
+    idle: Idle,
+  ): Promise<boolean> {
+    const key = markerKey(sessionId, incarnation);
     for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt += 1) {
       const raw = await kv.get(key);
       if (raw === null) return true;
-      const capacity = await mailbox.capacity();
-      if (capacity.open > 0) return false;
+      if (idle === 'nothing-open') {
+        const capacity = await mailbox.capacity();
+        if (capacity.open > 0) return false;
+      } else {
+        const any = await mailbox.list({ limit: 1 });
+        if (any.length > 0) return false;
+      }
       if (await kv.conditionalBatch([{ key, expectedValue: raw }], [{ type: 'delete', key }])) {
         return true;
       }
@@ -229,45 +264,45 @@ export function createSessionInputSettlement(
 
   async function cancelUndelivered(
     sessionId: string,
+    incarnation: string,
     delivered: ReadonlySet<string>,
   ): Promise<string[]> {
-    const mailbox = dependencies.mailboxOf(sessionId);
+    const mailbox = dependencies.mailboxOf(sessionId, incarnation);
     if (mailbox === undefined) return [];
     // Maintenance before the cancel pass, so a lease a gone holder left and
     // that has lapsed is cancelled outright rather than merely requested; the
     // marker check then needs no second pass.
     await mailbox.runMaintenance();
-    return cancelMaintained(sessionId, mailbox, delivered);
+    return cancelMaintained(sessionId, incarnation, mailbox, delivered, 'nothing-open');
   }
 
   /** The cancel pass of {@link cancelUndelivered}, after maintenance has run. */
   async function cancelMaintained(
     sessionId: string,
+    incarnation: string,
     mailbox: Mailbox,
     delivered: ReadonlySet<string>,
+    idle: Idle,
   ): Promise<string[]> {
     const cancelled = await cancelOpenSessionInput(mailbox, delivered);
-    await removeMarkerOnceMaintained(sessionId, mailbox);
+    await removeMarkerOnceMaintained(sessionId, incarnation, mailbox, idle);
     return cancelled;
   }
 
-  async function sweepSession(sessionId: string): Promise<void> {
-    const mailbox = dependencies.mailboxOf(sessionId);
+  async function sweepIncarnation(sessionId: string, incarnation: string): Promise<void> {
+    const mailbox = dependencies.mailboxOf(sessionId, incarnation);
     if (mailbox === undefined) return;
-    const incarnation = await dependencies.incarnationOf(sessionId);
-    if (incarnation === undefined) {
-      // Deleting the session retired its input once, but an admission that
-      // loaded the old incarnation can commit after that pass, so whatever is
-      // open now belongs to nobody: cancel it, then drop the marker. The
-      // mailbox is keyed by session id, not incarnation, so a session
-      // recreated under the same id since the read above would have its own
-      // fresh input cancelled here; the re-read narrows that window to the
-      // cancel pass itself. What remains is within the ruling (an input that
-      // ends `canceled` is resent), and closing it would mean keying the
-      // mailbox by incarnation, a one-way door left for later.
+    const current = await dependencies.incarnationOf(sessionId);
+    if (current !== incarnation) {
+      // Retired: its session was deleted, or recreated under the same id, and
+      // the mailbox is the retired incarnation's own, so whatever is open in it
+      // belongs to nobody. Deletion's retirement pass cancelled what it saw;
+      // an admission that loaded the old incarnation can commit after that
+      // pass, under this marker, and is cancelled here. Maintenance runs on
+      // every visit until retention has emptied the mailbox, and only then
+      // does the marker go.
       await mailbox.runMaintenance();
-      if ((await dependencies.incarnationOf(sessionId)) !== undefined) return;
-      await cancelMaintained(sessionId, mailbox, new Set());
+      await cancelMaintained(sessionId, incarnation, mailbox, new Set(), 'no-records');
       return;
     }
     if (dependencies.isClosed()) return;
@@ -279,7 +314,7 @@ export function createSessionInputSettlement(
     // A live run delivers the input at its next boundary, and its end cancels
     // what it never delivered; a starting one is live in a moment.
     if (live.length > 0) return;
-    await cancelMaintained(sessionId, mailbox, new Set());
+    await cancelMaintained(sessionId, incarnation, mailbox, new Set(), 'nothing-open');
   }
 
   return {
@@ -291,7 +326,7 @@ export function createSessionInputSettlement(
         try {
           const marker = parseMarker(await kv.get(key));
           if (marker === undefined) continue;
-          await sweepSession(marker.sessionId);
+          await sweepIncarnation(marker.sessionId, marker.incarnation);
         } catch (error) {
           diagnose(`Could not settle the open session input behind marker "${key}".`, error);
         }

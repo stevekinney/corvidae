@@ -55,7 +55,13 @@ describe('submitSessionInput with no run to deliver the input (COR-1476)', () =>
       if (outcome.outcome !== 'admitted') throw new Error('expected admitted');
       expect(outcome.receipt.state).toBe('canceled');
       expect(outcome.receipt.id).toBe('input-x');
-      const mailbox = createSessionInputMailbox(seam.storage, run.sessionId, 100);
+      const session = await bureau.getSession(run.sessionId);
+      const mailbox = createSessionInputMailbox(
+        seam.storage,
+        run.sessionId,
+        session?.incarnation ?? '',
+        100,
+      );
       const [receipt] = await mailbox.list({ limit: 10 });
       expect(receipt?.state).toBe('cancelled');
       expect(receipt?.cancellationReason).toBe('the run ended before the input was delivered');
@@ -128,7 +134,7 @@ describe('submitSessionInput marks the session again once its admission commits 
       const submitting = bureau.submitSessionInput(run.sessionId, input);
       await admission.reached;
       // The first marker is written; a remover deletes it in this window.
-      const before = await kv.list('session-input-open:v1:');
+      const before = await kv.list('session-input-open:v2:');
       expect(before).toHaveLength(1);
       for (const key of before) await kv.delete(key);
       admission.release();
@@ -136,7 +142,7 @@ describe('submitSessionInput marks the session again once its admission commits 
       const outcome = await submitting;
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('accepted');
-      expect(await kv.list('session-input-open:v1:')).toHaveLength(1);
+      expect(await kv.list('session-input-open:v2:')).toHaveLength(1);
     } finally {
       holds.forEach((hold) => hold.release());
       release.resolve();
@@ -236,6 +242,81 @@ describe('submitSessionInput with a live run (COR-1476)', () => {
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('accepted');
     } finally {
       release.resolve();
+      await bureau.dispose();
+    }
+  });
+});
+
+/** A bureau whose runs park in `generate`, each signalling once it has started. */
+async function parkingBureau() {
+  const starts: Array<() => void> = [];
+  const bureau = await createBureau({
+    agents: {},
+    generate: async () =>
+      new Promise<never>(() => {
+        starts.shift()?.();
+      }),
+    toolbox: createToolbox([]),
+    storage: new MemoryStorage(),
+    durableExecution: true,
+    stopWhen: stopWhen.noToolCalls(),
+  });
+  const startRun = async (request: { message: string; sessionId?: string }) => {
+    const started = deferred();
+    starts.push(started.resolve);
+    const run = await bureau.createRun({ ...request, principal: 'alice' });
+    await started.promise;
+    return run;
+  };
+  return { bureau, startRun };
+}
+
+describe('an input id reused after the session is recreated (COR-1476)', () => {
+  it('is admitted fresh: the recreated incarnation has its own mailbox and its own identity', async () => {
+    const { bureau, startRun } = await parkingBureau();
+    const SESSION = 'session-reused';
+    try {
+      await startRun({ message: 'A', sessionId: SESSION });
+      const original = await bureau.submitSessionInput(SESSION, input);
+      expect(original.outcome).toBe('admitted');
+      await bureau.deleteSession(SESSION);
+      await startRun({ message: 'B', sessionId: SESSION });
+
+      const reused = await bureau.submitSessionInput(SESSION, input);
+      expect(reused.outcome).toBe('admitted');
+      if (reused.outcome === 'admitted') expect(reused.receipt.state).toBe('accepted');
+      // And the new incarnation replays its own record, not the deleted one's.
+      const replay = await bureau.submitSessionInput(SESSION, input);
+      expect(replay.outcome).toBe('replayed');
+      if (replay.outcome === 'replayed') expect(replay.receipt.state).toBe('accepted');
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('concurrent submissions of one id (COR-1476)', () => {
+  it('answers each on its own: a different payload is a conflict, and so is another session', async () => {
+    const { bureau, startRun } = await parkingBureau();
+    try {
+      const runA = await startRun({ message: 'A' });
+      const runB = await startRun({ message: 'B' });
+      const [first, second, elsewhere] = await Promise.all([
+        bureau.submitSessionInput(runA.sessionId, { ...input, payload: 'one' }),
+        bureau.submitSessionInput(runA.sessionId, { ...input, payload: 'two' }),
+        bureau.submitSessionInput(runB.sessionId, { ...input, payload: 'one' }),
+      ]);
+      expect(first.outcome).toBe('admitted');
+      expect(second.outcome).toBe('conflict');
+      if (second.outcome === 'conflict') expect(second.conflict.reason).toBe('payload-mismatch');
+      expect(elsewhere.outcome).toBe('conflict');
+      if (elsewhere.outcome === 'conflict') {
+        expect(elsewhere.conflict.reason).toBe('session-mismatch');
+      }
+      // Session B's mailbox holds nothing for the id.
+      const sessionB = await bureau.getSession(runB.sessionId);
+      expect(sessionB).toBeDefined();
+    } finally {
       await bureau.dispose();
     }
   });

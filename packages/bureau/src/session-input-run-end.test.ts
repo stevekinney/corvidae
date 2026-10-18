@@ -32,7 +32,6 @@ import {
   logsRunPromoted,
   pollUntil,
   readsMailbox,
-  readsSession,
   seamStorage,
   userTexts,
 } from './test/session-input-fixtures';
@@ -85,11 +84,12 @@ async function receiptState(
   const replay = await admitSessionInput({
     storage,
     kv: textValueStore(storage, { disposeUnderlyingStorage: false }),
-    sessionMailbox: createSessionInputMailbox(storage, sessionId, 100),
+    sessionMailbox: createSessionInputMailbox(storage, sessionId, incarnation, 100),
     sessionId,
     id,
     principal: 'alice',
     deliveryMode: 'steer',
+    incarnation,
     payload: { incarnation, payload },
     principalBacklogLimit: 100,
     sessionBacklogLimitForCrossSessionRead: 100,
@@ -107,7 +107,7 @@ async function incarnationOf(bureau: Bureau, sessionId: string): Promise<string>
 
 async function markers(storage: Storage): Promise<string[]> {
   return textValueStore(storage, { disposeUnderlyingStorage: false }).list(
-    'session-input-open:v1:',
+    'session-input-open:v2:',
   );
 }
 
@@ -494,12 +494,12 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
       await bureau.submitSessionInput(run.sessionId, input('input-x', 'late'));
       const incarnation = await incarnationOf(bureau, run.sessionId);
       // A gate in a process that then died claims it, on the same clock.
-      const deadHolder = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+      const deadHolder = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const deadClaim = await deadHolder.claim();
       expect(deadClaim.status).toBe('claimed');
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const state = async () => {
@@ -533,9 +533,8 @@ describe('a run that ends over a lease a gone holder left behind (COR-1476)', ()
 });
 
 describe('a run whose start fails after its promotion (COR-1476)', () => {
-  it('logs its end and settles the session, so input submitted next is cancelled rather than left for it', async () => {
-    const real = new MemoryStorage();
-    const seam = seamStorage(real);
+  it('logs its end and registers no phantom run: a shutdown that begins after the promotion refuses the start', async () => {
+    const seam = seamStorage(new MemoryStorage());
     let generations = 0;
     const bureau = await openBureau(seam.storage, async () => {
       generations += 1;
@@ -548,40 +547,27 @@ describe('a run whose start fails after its promotion (COR-1476)', () => {
         const session = await bureau.getSession(first.sessionId);
         return session?.metadata['lastRunStatus'] === 'completed';
       });
-      const incarnation = await incarnationOf(bureau, first.sessionId);
 
-      // The second run's promotion commits; the session read its gate needs
-      // fails, so the run never starts.
-      const failing = seam.failReads(
-        readsSession,
-        new Error('session read failed'),
-        seam.awaitWriteCommitted(logsRunPromoted),
-      );
+      // The second run's promotion is held before it commits; a shutdown
+      // begins meanwhile, so the start that follows the promotion is refused.
+      // Nothing between the promotion and the start reads storage any more:
+      // the run's input gate opens its incarnation's mailbox directly.
+      const promotion = seam.holdWrite(logsRunPromoted);
       const ended = seam.awaitWriteCommitted(logsRunEnded);
       let startError: unknown;
-      try {
-        await bureau.createRun({
-          message: 'Second',
-          principal: 'alice',
-          sessionId: first.sessionId,
+      const starting = bureau
+        .createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId })
+        .catch((error: unknown) => {
+          startError = error;
         });
-      } catch (error) {
-        startError = error;
-      }
+      await promotion.reached;
+      const shuttingDown = bureau.shutdown({ policy: 'abort' });
+      promotion.release();
+      await starting;
       expect(startError).toBeInstanceOf(Error);
-      expect((startError as Error).message).toBe('session read failed');
-      failing.stop();
-      // Its end is recorded once the log can be written again.
+      // Its end is logged at once: nothing counts the never-started run as live.
       await ended;
-
-      // The never-started run is over, so nothing counts it as starting: the
-      // admission finds no run and cancels its own input.
-      const outcome = await bureau.submitSessionInput(first.sessionId, input('input-x', 'hello'));
-      expect(outcome.outcome).toBe('admitted');
-      if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
-      expect(await receiptState(real, first.sessionId, incarnation, 'input-x', 'hello')).toBe(
-        'canceled',
-      );
+      await shuttingDown;
       expect(generations).toBe(1);
       expect(bureau.listRuns()).toHaveLength(1);
     } finally {
@@ -623,7 +609,7 @@ describe('a cancellation that reaches a run after it appended the turn (COR-1476
       releaseStepZero.resolve();
       await stepOneStarted.promise;
       expect(prompts[1]).toEqual(['First', 'delivered']);
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100, () =>
+      const mailbox = createSessionInputMailbox(storage, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const [receipt] = await mailbox.list({ limit: 10 });
@@ -696,7 +682,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       // The run's settlement reads the marker only after it has decided what
       // to cancel: held there, it shows what it left alone.
       const atMarkerRead = seam.holdRead(
-        (key) => key.startsWith('session-input-open:v1:'),
+        (key) => key.startsWith('session-input-open:v2:'),
         seam.awaitWriteCommitted(logsRunEnded),
       );
       holds.push(atMarkerRead);
@@ -708,7 +694,7 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
       // The run's end spares the command, whose turn its transcript holds. The
       // gate kept the lease its failed acknowledgement left, so disposal has
       // already returned the command to the mailbox: open, promoted, listed.
-      const mailbox = createSessionInputMailbox(real, run.sessionId, 100, () =>
+      const mailbox = createSessionInputMailbox(real, run.sessionId, incarnation, 100, () =>
         runtime.clock.now(),
       );
       const state = async () => {
@@ -745,55 +731,6 @@ describe('a promoted input whose command was never acknowledged (COR-1476)', () 
 });
 
 describe('what the retry loop must not hold (COR-1476)', () => {
-  it('lets createRun reject before the failing run-ended write is retried, when the start fails after promotion', async () => {
-    const seam = seamStorage(new MemoryStorage());
-    const bureau = await openBureau(
-      seam.storage,
-      async () => ({ content: 'answer', toolCalls: [] }),
-      { onDiagnostic: () => {} },
-    );
-    const stops: Array<() => void> = [];
-    try {
-      const first = await bureau.createRun({ message: 'First', principal: 'alice' });
-      await bureau.waitForDurableRun(first.id);
-      await pollUntil(async () => {
-        const session = await bureau.getSession(first.sessionId);
-        return session?.metadata['lastRunStatus'] === 'completed';
-      });
-
-      // The second run's gate cannot be built, and its `run-ended` entry can
-      // never be written: the settlement must not be what the caller waits on.
-      const failingReads = seam.failReads(
-        readsSession,
-        new Error('session read failed'),
-        seam.awaitWriteCommitted(logsRunPromoted),
-      );
-      stops.push(failingReads.stop);
-      const failingEnds = seam.failWrites(logsRunEnded, new Error('the log is unavailable'));
-      stops.push(failingEnds.stop);
-      let settledWith: string | undefined;
-      const starting = bureau
-        .createRun({ message: 'Second', principal: 'alice', sessionId: first.sessionId })
-        .then(
-          () => {
-            settledWith = 'resolved';
-          },
-          (error: unknown) => {
-            settledWith = error instanceof Error ? error.message : String(error);
-          },
-        );
-      // The settlement is retrying (each attempt reloads the session, which
-      // keeps failing, after the one write that failed): the caller already
-      // has its answer.
-      await pollUntil(() => failingEnds.attempts() >= 1 && failingReads.attempts() >= 4);
-      expect(settledWith).toBe('session read failed');
-      await starting;
-    } finally {
-      stops.forEach((stop) => stop());
-      await bureau.dispose();
-    }
-  });
-
   it('settles a cancelled run once, and returns its lease before the run-ended write', async () => {
     const real = new MemoryStorage();
     const seam = seamStorage(real);
@@ -819,9 +756,10 @@ describe('what the retry loop must not hold (COR-1476)', () => {
       const run = await bureau.createRun({ message: 'First', principal: 'alice' });
       await stepZeroStarted.promise;
       await bureau.submitSessionInput(run.sessionId, input('input-a', 'first'));
+      const incarnation = await incarnationOf(bureau, run.sessionId);
       releaseStepZero.resolve();
       await stepOneStarted.promise;
-      const mailbox = createSessionInputMailbox(real, run.sessionId, 100);
+      const mailbox = createSessionInputMailbox(real, run.sessionId, incarnation, 100);
       const state = async () => {
         const [receipt] = await mailbox.list({ limit: 10 });
         return receipt?.state;
@@ -1216,7 +1154,12 @@ describe('shutdown releases open input (COR-1476)', () => {
     // Shutdown only released them: both are still open, for the next boot.
     const afterShutdown = await resolveStorage(configuration);
     try {
-      const open = await createSessionInputMailbox(afterShutdown, run.sessionId, 100).list({
+      const open = await createSessionInputMailbox(
+        afterShutdown,
+        run.sessionId,
+        incarnation,
+        100,
+      ).list({
         limit: 10,
       });
       expect(open.map((receipt) => receipt.idempotencyKey)).toEqual(['input-a', 'input-b']);

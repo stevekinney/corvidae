@@ -248,6 +248,8 @@ import {
 } from './session-authority';
 import {
   admitSessionInput,
+  isSessionInputSessionIdAddressable,
+  type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
   type PersistedSessionInput,
   readSessionInputReceipt,
@@ -1931,10 +1933,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const steeringGates = new Map<string, BureauSteeringGate>();
 
   /**
-   * COR-435 — one session-input mailbox per session, for a
-   * durably-configured bureau. See `session-input-durability.ts`'s module
-   * doc: the cross-session identity index lives in `runtime.kv` directly,
-   * not in a second `Mailbox`. Cached for the same reason
+   * COR-435 — one session-input mailbox per session incarnation (COR-1476),
+   * for a durably-configured bureau. See `session-input-durability.ts`'s
+   * module doc: the cross-session identity index lives in `runtime.kv`
+   * directly, not in a second `Mailbox`. Cached for the same reason
    * `steeringMailboxes` is: constructing a second `Mailbox` for the same
    * `(namespace, resourceId)` would defeat the FIFO ordering that is the
    * point of using one.
@@ -1942,32 +1944,35 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const sessionInputMailboxes = new Map<string, Mailbox>();
 
   /** `undefined` for a non-durable bureau — nothing to persist against. */
-  function getSessionInputMailbox(sessionId: string): Mailbox | undefined {
+  function getSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
     const storage = runtime.durableStorage;
     if (!runtime.durable || storage === undefined) return undefined;
-    let mailbox = sessionInputMailboxes.get(sessionId);
+    const cacheKey = `${sessionId}\u0000${incarnation}`;
+    let mailbox = sessionInputMailboxes.get(cacheKey);
     if (!mailbox) {
       mailbox = createSessionInputMailbox(
         storage,
         sessionId,
+        incarnation,
         sessionInputSessionBacklogLimit,
         runtimeServices.clock.now,
       );
-      sessionInputMailboxes.set(sessionId, mailbox);
+      sessionInputMailboxes.set(cacheKey, mailbox);
     }
     return mailbox;
   }
 
   /**
-   * {@link getSessionInputMailbox}, or `undefined` when Weft refuses a mailbox
-   * for this session id as well (a resource id it cannot address, over 256
-   * bytes). Such a session still runs and steers, but admission has no mailbox
-   * to write to, so `submitSessionInput` answers it `unsupported-capability` and
-   * no input can ever be waiting for its runs.
+   * {@link getSessionInputMailbox}, or `undefined` when Weft could not carry
+   * this session id as a command's target (over its identity limit). Such a
+   * session still runs and steers, but admission has no mailbox to write to,
+   * so `submitSessionInput` answers it `unsupported-capability` and no input
+   * can ever be waiting for its runs.
    */
-  function tryGetSessionInputMailbox(sessionId: string): Mailbox | undefined {
+  function tryGetSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
+    if (!isSessionInputSessionIdAddressable(sessionId)) return undefined;
     try {
-      return getSessionInputMailbox(sessionId);
+      return getSessionInputMailbox(sessionId, incarnation);
     } catch {
       return undefined;
     }
@@ -2035,51 +2040,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * COR-1476 — the gate through which one of this session's durable runs
    * receives input `submitSessionInput` admitted while it is live. `undefined`
-   * when the bureau has no durable mailbox, no session store, or the session no
-   * longer exists, in which case there is nothing to deliver.
+   * when the bureau has no durable mailbox, or the run has no recorded
+   * incarnation, in which case there is nothing to deliver.
    *
-   * The gate is bound to `incarnation`, the one the run started in
+   * The gate drains the mailbox of `incarnation`, the one the run started in
    * (`runSessionIncarnations`, which its first save or its recovery records,
-   * or that same value read before the record is made), never to a fresh
-   * load: a session deleted and recreated between the run's
-   * promotion and this call would otherwise hand the old run a gate stamped
-   * with the new incarnation, and it would promote input admitted for the new
-   * session into its old transcript. A mismatch means the run's session is
-   * gone, so it gets no gate; its end settles the way any run's end does.
-   * Without a recorded incarnation (a run that predates the record), the
-   * loaded session's is used, as before.
+   * or that same value read before the record is made). Each incarnation has
+   * its own mailbox, so a session deleted and recreated under the same id
+   * while the run is live leaves this gate draining the retired mailbox, which
+   * its session's deletion cancelled and the sweep retires, and never the
+   * recreated session's input: no reader checks an incarnation.
    */
-  async function sessionInputGateFor(
+  function sessionInputGateFor(
     sessionId: string,
     runId: string,
     incarnation: string | undefined,
-  ): Promise<SessionInputGate | undefined> {
-    const mailbox = tryGetSessionInputMailbox(sessionId);
-    const gateSessionStore = runtime.sessionStore;
-    if (
-      mailbox === undefined ||
-      gateSessionStore === undefined ||
-      sessionInputDeliveryStore === undefined
-    ) {
-      return undefined;
-    }
-    const session = await gateSessionStore.load(sessionId);
-    if (session === undefined) return undefined;
-    if (incarnation !== undefined && session.incarnation !== incarnation) {
-      diagnose({
-        level: 'warn',
-        scope: 'session-input',
-        message: `[bureau] Run "${runId}" started in an incarnation of session "${sessionId}" that has since been recreated; it receives no session input.`,
-      });
-      return undefined;
-    }
+  ): SessionInputGate | undefined {
+    if (incarnation === undefined || sessionInputDeliveryStore === undefined) return undefined;
+    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+    if (mailbox === undefined) return undefined;
     const gate = createSessionInputDeliveryGate({
       sessionId,
       runId,
-      incarnation: session.incarnation,
+      incarnation,
       mailbox,
       deliveryStore: sessionInputDeliveryStore,
-      isOwnerLive: (ownerRunId) => isSessionRunLive(sessionId, session.incarnation, ownerRunId),
+      isOwnerLive: (ownerRunId) => isSessionRunLive(sessionId, incarnation, ownerRunId),
       now: runtimeServices.clock.now,
       timers: runtimeServices.timers,
       signal: backgroundShutdownController.signal,
@@ -2091,35 +2077,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         }),
     });
-    // Bound at every boundary too, not only at creation: a session deleted and
-    // recreated while the run is live would otherwise hand this gate the new
-    // incarnation's input, which it cannot deliver and would refuse for good.
-    // Finding its session gone, the gate releases what it holds and delivers
-    // nothing further. An input admitted to the new incarnation between this
-    // read and the claim behind it is still refused by delivery's incarnation
-    // check: that window is one boundary wide and is disclosed here.
-    let retired = false;
-    const bound: SessionInputGate = {
-      async claimPending() {
-        if (retired) return [];
-        const current = await gateSessionStore.load(sessionId);
-        if (current?.incarnation !== session.incarnation) {
-          retired = true;
-          diagnose({
-            level: 'warn',
-            scope: 'session-input',
-            message: `[bureau] The session "${sessionId}" run "${runId}" started in has been ${current === undefined ? 'deleted' : 'recreated'}; the run receives no further session input.`,
-          });
-          await gate.dispose?.();
-          return [];
-        }
-        return gate.claimPending();
-      },
-      settle: (deliveries) => gate.settle(deliveries),
-      dispose: () => gate.dispose?.() ?? Promise.resolve(),
-    };
-    sessionInputGates.set(runId, { gate: bound, sessionId });
-    return bound;
+    sessionInputGates.set(runId, { gate, sessionId });
+    return gate;
   }
 
   /**
@@ -2132,7 +2091,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     services: DurableRunDeps,
     incarnation: string | undefined,
   ): Promise<void> {
-    const gate = await sessionInputGateFor(
+    const gate = sessionInputGateFor(
       sessionId,
       runId,
       runSessionIncarnations.get(runId) ?? incarnation,
@@ -2205,26 +2164,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     await releaseSessionInputs(sessionId, runId);
     const acknowledged = await recordRunEnded(sessionId, runId);
     if (!acknowledged || sessionInputSettlement === undefined || isSessionInputClosed()) return;
+    // The cancel pass is over the mailbox of the incarnation the run started
+    // in, like its gate and its terminal save; a run with no recorded
+    // incarnation drained no mailbox and has nothing to settle.
+    const incarnation = runSessionIncarnations.get(runId);
+    if (incarnation === undefined) return;
     try {
       const session = await runtime.sessionStore?.load(sessionId);
-      // Deleting the session retired its input; the sweep drops the marker.
-      if (session === undefined) return;
-      // A session recreated under the same id since the run started holds
-      // input for its own runs: the cancel pass is bound to the incarnation
-      // the run started in, like its gate and its terminal save, and leaves a
-      // recreated session's input to the sweep or to that session's runs.
-      const started = runSessionIncarnations.get(runId);
-      if (started !== undefined && started !== session.incarnation) return;
-      const steeringKv = durableSteeringStore();
-      if (steeringKv !== undefined) {
-        await enqueueSteering(sessionId, () =>
-          catchUpSteering(steeringKv, sessionId, session.incarnation),
-        );
+      // A deleted or recreated session retired this incarnation: its mailbox
+      // is nobody's, so whatever is open in it is cancelled without a liveness
+      // read, which its steering log, gone with the incarnation, could not
+      // answer anyway. The sweep does the same for what this misses.
+      const retired = session === undefined || session.incarnation !== incarnation;
+      if (!retired) {
+        const steeringKv = durableSteeringStore();
+        if (steeringKv !== undefined) {
+          await enqueueSteering(sessionId, () =>
+            catchUpSteering(steeringKv, sessionId, incarnation),
+          );
+        }
+        const live = await liveSessionRunIdsEverywhere(sessionId, incarnation);
+        if (live.some((liveRunId) => liveRunId !== runId)) return;
       }
-      const live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
-      if (live.some((liveRunId) => liveRunId !== runId)) return;
       const delivered = await sessionInputCommandsInTranscript(runId);
-      await sessionInputSettlement.cancelUndelivered(sessionId, delivered);
+      await sessionInputSettlement.cancelUndelivered(sessionId, incarnation, delivered);
     } catch (error) {
       diagnose({
         level: 'error',
@@ -2263,7 +2226,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (isSessionInputClosed()) return false;
       try {
         const session = await runtime.sessionStore?.load(sessionId);
-        if (session === undefined) return true;
+        // Gone, or recreated under the same id since the run started: the log
+        // that promoted the run went with its incarnation, so there is nothing
+        // to write, and the current incarnation's log never counted it live.
+        const started = runSessionIncarnations.get(runId);
+        if (session === undefined || (started !== undefined && session.incarnation !== started)) {
+          return true;
+        }
         const cursor = await enqueueSteering(sessionId, () =>
           catchUpSteering(steeringKv, sessionId, session.incarnation),
         );
@@ -2341,18 +2310,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Retires the input a deleted session incarnation left pending. The mailbox is
-   * keyed by session id alone and outlives the session, so without this a
-   * session recreated under the same id would find the old incarnation's
-   * commands waiting; delivery also refuses them by incarnation, but a cancelled
-   * command no longer counts against the new session's backlog either.
+   * Retires the input a deleted session incarnation left pending: cancels what
+   * is open in that incarnation's mailbox, and marks the incarnation so the
+   * sweep keeps maintaining its mailbox until retention has emptied it, since
+   * no run will drain a retired mailbox and its terminal records would
+   * otherwise never retire. An admission that commits after this pass, under
+   * the same marker, is cancelled by the sweep.
    */
-  async function retireSessionInputs(sessionId: string): Promise<void> {
-    const mailbox = tryGetSessionInputMailbox(sessionId);
+  async function retireSessionInputs(sessionId: string, incarnation: string): Promise<void> {
+    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
     if (mailbox === undefined) return;
     await forEachOpenReceipt(mailbox, async (commandId) => {
       await mailbox.requestCancellation({ commandId, reason: 'the session was deleted' });
     });
+    await sessionInputSettlement?.markOpen(sessionId, incarnation);
   }
 
   /**
@@ -4755,7 +4726,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
-        const runSessionInputGate = await sessionInputGateFor(
+        const runSessionInputGate = sessionInputGateFor(
           sessionId,
           runId,
           runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
@@ -9328,7 +9299,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // id can never have its own pending input cancelled here. Input admitted
       // in the gap before the delete is left for delivery to refuse by
       // incarnation. A failure must not keep the session from being deleted.
-      await retireSessionInputs(id).catch((error: unknown) => {
+      await retireSessionInputs(id, session.incarnation).catch((error: unknown) => {
         diagnose({
           level: 'error',
           scope: 'session-input',
@@ -9615,7 +9586,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
     // resource (over 256 bytes) is a deployment limit, so it answers
     // `unsupported-capability` like a bureau with no mailbox rather than throwing.
-    const sessionMailbox = tryGetSessionInputMailbox(sessionId);
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
     const storage = runtime.durableStorage;
     const kv = runtime.kv;
     if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
@@ -9631,8 +9602,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     const id = request.id ?? runtimeServices.identifiers.next('session-input');
     const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
-    const existing = inFlightSessionInputAdmissions.get(reservationKey);
-    if (existing) return existing;
 
     const payload: PersistedSessionInput = {
       incarnation: session.incarnation,
@@ -9649,22 +9618,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Checked again after the awaits above: a shutdown that started during them
     // must not find a new admission outside its drain.
     assertSessionInputAdmissionOpen();
-    const admission = (async () => {
-      await sessionInputSettlement.markOpen(sessionId);
-      return admitSessionInput({
-        storage,
-        kv,
-        sessionMailbox,
-        sessionId,
-        id,
-        principal: request.principal,
-        deliveryMode: request.deliveryMode,
-        payload,
-        principalBacklogLimit: sessionInputPrincipalBacklogLimit,
-        sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
-        nowMs: runtimeServices.clock.now(),
-      });
-    })()
+    // One admission of a `(principal, id)` at a time in this process, each
+    // answered on its own: a concurrent submission with another payload reads
+    // the mailbox's `conflict`, and one for another session reads the
+    // identity's. Nothing is coalesced into another call's receipt.
+    const previous = inFlightSessionInputAdmissions.get(reservationKey);
+    const runAdmission = (): Promise<SessionInputAdmissionAttemptOutcome> =>
+      (async () => {
+        await sessionInputSettlement.markOpen(sessionId, session.incarnation);
+        return admitSessionInput({
+          storage,
+          kv,
+          sessionMailbox,
+          sessionId,
+          incarnation: session.incarnation,
+          id,
+          principal: request.principal,
+          deliveryMode: request.deliveryMode,
+          payload,
+          principalBacklogLimit: sessionInputPrincipalBacklogLimit,
+          sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+          nowMs: runtimeServices.clock.now(),
+        });
+      })();
+    const admission = (
+      previous === undefined ? runAdmission() : previous.then(runAdmission, runAdmission)
+    )
       .then(async (outcome): Promise<SessionInputAdmissionOutcome> => {
         if (outcome.outcome !== 'admitted') return outcome;
         const { receipt, commandId } = outcome;
@@ -9675,7 +9654,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // after the admission committed. Bumping it again now, with the input
         // durable, keeps the session listed whatever happened to the first bump.
         try {
-          await sessionInputSettlement.markOpen(sessionId);
+          await sessionInputSettlement.markOpen(sessionId, session.incarnation);
         } catch (error) {
           diagnose({
             level: 'error',
@@ -9734,7 +9713,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       })
       .finally(() => {
-        inFlightSessionInputAdmissions.delete(reservationKey);
+        if (inFlightSessionInputAdmissions.get(reservationKey) === admission) {
+          inFlightSessionInputAdmissions.delete(reservationKey);
+        }
       });
     inFlightSessionInputAdmissions.set(reservationKey, admission);
     return admission;

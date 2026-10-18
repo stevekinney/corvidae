@@ -279,27 +279,31 @@ export function createMailboxSessionInputGate(
 
   /**
    * Whether any command another gate leased is outstanding. Read by walking
-   * every record the mailbox holds, resumed page by page, never by one bounded
-   * listing: a listing examines a fixed number of index entries, and a lease
-   * behind more retained records than that would read as absent, letting this
-   * gate deliver a later command first. The walk stops once it has seen as many
-   * open commands as the mailbox's exhaustive open count: what lies beyond was
-   * admitted after that count was read, so it is newer than anything this call
-   * could claim.
+   * the records the mailbox holds, newest first and resumed page by page,
+   * never by one bounded listing: a listing examines a fixed number of index
+   * entries, and a lease behind more retained records than that would read as
+   * absent, letting this gate deliver a later command first. Open commands are
+   * the newest, so the walk stops once it has seen as many open commands as
+   * the mailbox's exhaustive open count, which bounds it to the open set. A
+   * command admitted after that count was read has a sequence at or past the
+   * lifetime admission count (sequences are dense from zero, one per
+   * admission) and is skipped: it is newer than anything this call could
+   * claim, so a lease on it is never ahead of what the claim returns.
    */
   async function leasedElsewhere(): Promise<boolean> {
-    const { open } = await mailbox.capacity();
+    const { open, admitted } = await mailbox.capacity();
     if (open === 0) return false;
     let openSeen = 0;
     let afterSequence: number | undefined;
     for (;;) {
       const page = await mailbox.list({
         limit: MAILBOX_SESSION_INPUT_BATCH_LIMIT,
+        reverse: true,
         ...(afterSequence === undefined ? {} : { afterSequence }),
       });
       if (page.length === 0) return false;
       for (const receipt of page) {
-        if (!OPEN_COMMAND_STATES.has(receipt.state)) continue;
+        if (receipt.sequence >= admitted || !OPEN_COMMAND_STATES.has(receipt.state)) continue;
         if (LEASED_COMMAND_STATES.has(receipt.state) && !leases.has(receipt.commandId)) return true;
         openSeen += 1;
         if (openSeen >= open) return false;

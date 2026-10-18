@@ -57,9 +57,9 @@ const durableOwnership = {
   workflowClaimRenewIntervalMs: 50,
 } as const;
 
-function killNow(sessionId: string, runId: string): never {
+function killNow(sessionId: string, incarnation: string, runId: string): never {
   // Written synchronously so it is on disk before the kill.
-  writeFileSync(markerPath!, JSON.stringify({ sessionId, runId }), 'utf8');
+  writeFileSync(markerPath!, JSON.stringify({ sessionId, incarnation, runId }), 'utf8');
   // No `bureau.dispose()`, deliberately: SIGKILL cannot be trapped, so no cleanup
   // or flush runs after this line.
   process.kill(process.pid, 'SIGKILL');
@@ -116,7 +116,8 @@ if (mode === 'running') {
     process.stderr.write(`child: expected both inputs admitted, got ${outcomes.join(',')}\n`);
     process.exit(4);
   }
-  killNow(run.sessionId, run.id);
+  const session = await bureau.getSession(run.sessionId);
+  killNow(run.sessionId, session?.incarnation ?? '', run.id);
 }
 
 // `ended`: the run finishes; its terminal session write is held so the session
@@ -136,7 +137,10 @@ const bureau = await createBureau({
 const heldTerminalSave = seam.holdWrite(savesSessionAs('completed'));
 const run = await bureau.createRun({ message: 'Start', principal: 'alice', maximumSteps: 1 });
 await heldTerminalSave.reached;
-void seam.awaitWriteCommitted(admitsSessionInput).then(() => killNow(run.sessionId, run.id));
+const endedSession = await bureau.getSession(run.sessionId);
+void seam
+  .awaitWriteCommitted(admitsSessionInput)
+  .then(() => killNow(run.sessionId, endedSession?.incarnation ?? '', run.id));
 const outcome = await submit(bureau, run.sessionId, 'input-a', 'too late');
 // Unreachable when the admission commits: the kill lands first.
 process.stderr.write(`child: survived the admission, which answered ${outcome}\n`);

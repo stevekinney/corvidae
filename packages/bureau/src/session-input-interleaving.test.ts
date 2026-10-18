@@ -13,6 +13,7 @@ import {
   cancelsSessionInput,
   deferred,
   logsRunEnded,
+  pollUntil,
   readsMailbox,
   readsSteeringHead,
   savesSessionAs,
@@ -57,8 +58,12 @@ async function openProcess(
 
 const input = { id: 'input-x', principal: 'alice', deliveryMode: 'steer' as const, payload: 'X' };
 
-async function mailboxState(storage: Storage, sessionId: string) {
-  const [receipt] = await createSessionInputMailbox(storage, sessionId, 100).list({ limit: 10 });
+/** The state of the session's one input, in its current incarnation's mailbox. */
+async function mailboxState(bureau: Bureau, storage: Storage, sessionId: string) {
+  const session = await bureau.getSession(sessionId);
+  if (session === undefined) throw new Error(`session ${sessionId} is gone`);
+  const mailbox = createSessionInputMailbox(storage, sessionId, session.incarnation, 100);
+  const [receipt] = await mailbox.list({ limit: 10 });
   return receipt?.state;
 }
 
@@ -97,7 +102,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       const cancelledByA = a.seam.awaitWrite(cancelsSessionInput);
       releaseStepZero.resolve();
       await cancelledByA;
-      expect(await mailboxState(a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
 
       // B's liveness read proceeds: no run is live, and the input it would
       // cancel is already cancelled. It reads the receipt back: canceled.
@@ -146,7 +151,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       const outcome = await b.bureau.submitSessionInput(run.sessionId, input);
       expect(outcome.outcome).toBe('admitted');
       if (outcome.outcome === 'admitted') expect(outcome.receipt.state).toBe('canceled');
-      expect(await mailboxState(a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
 
       // The run's read proceeds and finds the input already cancelled.
       heldMailboxRead.release();
@@ -154,7 +159,7 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
       expect(cancelled.status).toBe('requested');
       heldTerminalSave.release();
       await a.bureau.waitForDurableRun(run.id);
-      expect(await mailboxState(a.real, run.sessionId)).toBe('cancelled');
+      expect(await mailboxState(a.bureau, a.real, run.sessionId)).toBe('cancelled');
       expect(a.bureau.listRuns()).toHaveLength(1);
       expect(b.bureau.listRuns()).toHaveLength(0);
     } finally {
@@ -243,7 +248,7 @@ describe('a run whose session is recreated while it starts (COR-1476)', () => {
 });
 
 describe("a run's end against a session recreated while it ran (COR-1476)", () => {
-  it("leaves the recreated incarnation's open input alone: its cancel pass is bound to the incarnation it started in", async () => {
+  it("touches only its own incarnation's mailbox: it cancels what that incarnation left open and never the recreated session's input", async () => {
     const SESSION = 'session-recreated-at-end';
     const run1Started = deferred();
     const release1 = deferred();
@@ -258,12 +263,16 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
         message: 'First',
         principal: 'alice',
         sessionId: SESSION,
+        maximumSteps: 1,
       });
       await run1Started.promise;
+      const oldSession = await a.bureau.getSession(SESSION);
+      if (oldSession === undefined) throw new Error('the session is gone');
 
-      // Process B deletes and recreates the session; its run ends at once, and
-      // input for the new incarnation is admitted directly to the mailbox, with
-      // no run live to deliver it yet.
+      // Process B deletes and recreates the session; its run ends at once.
+      // Input lands in both incarnations' mailboxes with no run live for the
+      // new one: one admitted late under the old incarnation, which run 1, on
+      // its last step, can no longer deliver, and one for the new.
       await b.bureau.deleteSession(SESSION);
       const second = await b.bureau.createRun({
         message: 'Second',
@@ -272,28 +281,101 @@ describe("a run's end against a session recreated while it ran (COR-1476)", () =
       });
       await b.bureau.waitForDurableRun(second.id);
       const recreated = await b.bureau.getSession(SESSION);
-      const admission = await createSessionInputMailbox(b.real, SESSION, 100).admit({
-        caller: 'alice',
-        target: SESSION,
-        kind: 'session-input:steer',
-        payload: {
-          form: 'inline',
-          value: { incarnation: recreated?.incarnation ?? '', payload: 'for the new session' },
-        },
-        idempotencyKey: 'input-new',
-      });
-      if (admission.status !== 'admitted') throw new Error(admission.status);
+      if (recreated === undefined) throw new Error('the recreated session is gone');
+      const admitTo = async (incarnation: string, id: string) => {
+        const mailbox = createSessionInputMailbox(b.real, SESSION, incarnation, 100);
+        const admission = await mailbox.admit({
+          caller: 'alice',
+          target: SESSION,
+          kind: 'session-input:steer',
+          payload: { form: 'inline', value: { incarnation, payload: id } },
+          idempotencyKey: id,
+        });
+        if (admission.status !== 'admitted') throw new Error(admission.status);
+        return { mailbox, commandId: admission.receipt.commandId };
+      };
+      const old = await admitTo(oldSession.incarnation, 'input-old');
+      const fresh = await admitTo(recreated.incarnation, 'input-new');
 
-      // Run 1 ends. Its settlement finds a session it did not start in and
-      // cancels nothing; the new incarnation's input is the sweep's or its own
-      // run's to settle.
+      // Run 1 ends. Its settlement reads and cancels its own incarnation's
+      // mailbox, which is what it started in, and nothing else.
       release1.resolve();
       await a.bureau.waitForDurableRun(first.id);
-      // Disposal drains the run-end settlement.
-      await a.bureau.dispose();
-      expect(await mailboxState(b.real, SESSION)).toBe('available');
+      // The settlement follows the run's terminal save.
+      await pollUntil(async () => {
+        const receipt = await old.mailbox.receipt(old.commandId);
+        return receipt?.state === 'cancelled';
+      });
+      const freshReceipt = await fresh.mailbox.receipt(fresh.commandId);
+      expect(freshReceipt?.state).toBe('available');
     } finally {
       release1.resolve();
+      await a.bureau.dispose();
+      await b.bureau.dispose();
+    }
+  });
+});
+
+describe('input admitted to a recreated session while an old run still drains (COR-1476)', () => {
+  it("reaches the new incarnation's run and is never refused by the old one: each incarnation has its own mailbox", async () => {
+    const SESSION = 'session-window';
+    const stepZeroStarted = deferred();
+    const releaseStepZero = deferred();
+    const a = await openProcess(async () => {
+      stepZeroStarted.resolve();
+      await releaseStepZero.promise;
+      return { content: 'answer', toolCalls: [] };
+    });
+    const prompts2: string[][] = [];
+    const run2Started = deferred();
+    const release2 = deferred();
+    const b = await openProcess(async (context: GenerateContext) => {
+      prompts2.push(userTexts(context.conversation));
+      if (prompts2.length === 1) {
+        run2Started.resolve();
+        await release2.promise;
+      }
+      return { content: 'done', toolCalls: [] };
+    });
+    const holds: Array<{ release: () => void }> = [];
+    try {
+      const run = await a.bureau.createRun({
+        message: 'First',
+        principal: 'alice',
+        sessionId: SESSION,
+        maximumSteps: 3,
+      });
+      await stepZeroStarted.promise;
+      // The late drain after step 0: the old run's gate's first mailbox read is held.
+      const held = a.seam.holdRead(readsMailbox);
+      holds.push(held);
+      releaseStepZero.resolve();
+      await held.reached;
+
+      // Inside that window process B deletes and recreates the session, its run
+      // holds the new incarnation's step, and the client submits input to it.
+      await b.bureau.deleteSession(SESSION);
+      const second = await b.bureau.createRun({
+        message: 'Second',
+        principal: 'alice',
+        sessionId: SESSION,
+      });
+      await run2Started.promise;
+      const admitted = await b.bureau.submitSessionInput(SESSION, input);
+      expect(admitted.outcome).toBe('admitted');
+
+      // The old run drains its own, empty mailbox and ends; the new run
+      // delivers the input at its next boundary.
+      held.release();
+      await a.bureau.waitForDurableRun(run.id);
+      release2.resolve();
+      await b.bureau.waitForDurableRun(second.id);
+      expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
+      expect(await mailboxState(b.bureau, b.real, SESSION)).toBe('applied');
+    } finally {
+      releaseStepZero.resolve();
+      release2.resolve();
+      holds.forEach((hold) => hold.release());
       await a.bureau.dispose();
       await b.bureau.dispose();
     }

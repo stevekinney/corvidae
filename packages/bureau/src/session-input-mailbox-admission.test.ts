@@ -332,26 +332,21 @@ describe('createBureau submitSessionInput mailbox-backed admission (COR-435)', (
 
       // Neither call is awaited before the other starts: both admission
       // attempts for the identical (principal, id) are genuinely in flight
-      // at once. If they raced independently, one could observe no
-      // existing record yet and admit a second one before the first's
-      // write lands.
-      //
-      // Sharing an in-flight reservation is NOT the same thing as a later,
-      // sequential replay (the separate test above already covers that
-      // case): a caller who arrives while admission is still in flight
-      // gets the SAME pending promise as the first caller, not a second,
-      // independently-resolved lookup — so both settle to the identical
-      // 'admitted' outcome, not one 'admitted' and one 'replayed'. What
-      // this test actually proves is the ABSENCE of a second write: both
-      // outcomes carry the same admissionSequence, which a genuinely
-      // independent second admission would have advanced.
+      // at once. Admissions of one (principal, id) run one at a time in a
+      // process and each is answered on its own (COR-1476): the second reads
+      // the first's committed record as a replay, with the same receipt, so
+      // there is no second write, which a genuinely independent second
+      // admission would show as an advanced admissionSequence.
       const [first, second] = await Promise.all([
         bureau.submitSessionInput(sessionId, request),
         bureau.submitSessionInput(sessionId, request),
       ]);
 
       expect(first.outcome).toBe('admitted');
-      expect(second).toEqual(first);
+      expect(second.outcome).toBe('replayed');
+      if (first.outcome === 'admitted' && second.outcome === 'replayed') {
+        expect(second.receipt).toEqual(first.receipt);
+      }
     } finally {
       await bureau.dispose();
     }

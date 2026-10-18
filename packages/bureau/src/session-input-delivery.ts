@@ -15,7 +15,12 @@ export interface SessionInputDeliveryOptions {
   readonly sessionId: string;
   /** The run this gate delivers for, named in the session's delivery records. */
   readonly runId: string;
-  /** The session incarnation the run started in; input admitted to another one is refused. */
+  /**
+   * The session incarnation the run started in, which the mailbox belongs to.
+   * The mailbox is keyed by the incarnation, so every record in it was
+   * admitted to this one; decoding still asserts it, and refuses a record
+   * that says otherwise as malformed.
+   */
   readonly incarnation: string;
   /** The session's session-input mailbox, the same instance admission writes to. */
   readonly mailbox: Mailbox;

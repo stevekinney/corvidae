@@ -7,6 +7,7 @@ import {
   type SessionInputReceipt,
   type SessionInputState,
 } from '@lostgradient/operative';
+import { sha256HexSync } from '@lostgradient/cryptography';
 import {
   type ApplicationCommandReceipt,
   type ConditionalTextValueStore,
@@ -24,13 +25,19 @@ import {
  * payloadDigest)` within one `(namespace, resourceId)` scope. That is exactly
  * right for everything AC3 asks EXCEPT one case:
  *
- * - The SESSION mailbox (`resourceId: sessionId`) is the durable log AND the
- *   FIFO/backlog authority for one session. `caller` is the submitting
- *   principal, `target` is fixed to `sessionId` (trivial within this
- *   mailbox), `kind` encodes `deliveryMode`, and the payload is the
- *   caller's own content. Because `id` is unique WITHIN a session regardless
- *   of principal (AB-42's 2026-09-02 coordinator amendment), `idempotencyKey`
- *   here is `id` alone. This one mailbox, one `admit()` call, and Weft's own
+ * - The SESSION mailbox (one per session INCARNATION: `resourceId` is a
+ *   digest of `(sessionId, incarnation)`, see `createSessionInputMailbox`) is
+ *   the durable log AND the FIFO/backlog authority for one incarnation of a
+ *   session. A session deleted and recreated under the same id therefore
+ *   starts with an empty mailbox, and no reader has to check an incarnation:
+ *   a run drains the mailbox of the incarnation it started in, a deletion
+ *   retires that incarnation's mailbox, and an `id` reused in a later
+ *   incarnation is a new input. `caller` is the submitting principal,
+ *   `target` is fixed to `sessionId` (trivial within this mailbox, kept so
+ *   the session stays readable), `kind` encodes `deliveryMode`, and the
+ *   payload is the caller's own content. Because `id` is unique WITHIN a
+ *   session regardless of principal (AB-42's 2026-09-02 coordinator
+ *   amendment), `idempotencyKey` here is `id` alone. This one mailbox, one `admit()` call, and Weft's own
  *   idempotency-vs-backlog ordering (idempotency resolved BEFORE the backlog
  *   check — see `mailbox-admission.ts`) together produce `replayed`,
  *   `delivery-mode-mismatch`, `payload-mismatch`, `id-owned-by-other-principal`,
@@ -53,9 +60,12 @@ import {
  *   lines ~1731-1743, "Keep the raw Storage so the durable engine can share
  *   the exact backend with the text-value KV view"). One key per
  *   `(principal, id)`, compare-and-swapped via `kv.conditionalBatch`, holding
- *   the session the id belongs to and, as information for a reader, whether
- *   that session's mailbox had admitted it when the value was written
- *   (`pending` from the claim until the mailbox commit, `admitted` after).
+ *   the session and the incarnation the id belongs to and, as information
+ *   for a reader, whether that incarnation's mailbox had admitted it when the
+ *   value was written (`pending` from the claim until the mailbox commit,
+ *   `admitted` after). A live identity naming the same session but another
+ *   incarnation is an orphan of a deleted incarnation, taken over the way an
+ *   orphan of a refused admission is: the id is admitted fresh.
  *   The field decides nothing on its own: every decision below reads the
  *   mailbox for the record, and the fence against a concurrent writer is the
  *   compare-and-swap's expected value, the exact bytes the attempt read. The
@@ -165,17 +175,45 @@ export const SESSION_INPUT_TERMINAL_RETENTION_MS = SESSION_INPUT_IDENTITY_TTL_MS
  */
 export const SESSION_INPUT_DELIVERY_RETENTION_MS = SESSION_INPUT_IDENTITY_TTL_MS + 86_400_000;
 
-/** One session's session-input mailbox — the durable log, FIFO sequencer, and per-session backlog authority. */
+/**
+ * The most bytes a session id may encode to and still be carried as each
+ * command's `target`: Weft's identity limit. The mailbox resource itself is a
+ * fixed-length digest, so this is the one length the session id is held to.
+ */
+export const SESSION_INPUT_MAX_SESSION_ID_BYTES = 256;
+
+/** Whether a session id can be a command target in its mailbox. */
+export function isSessionInputSessionIdAddressable(sessionId: string): boolean {
+  return new TextEncoder().encode(sessionId).byteLength <= SESSION_INPUT_MAX_SESSION_ID_BYTES;
+}
+
+/**
+ * The mailbox resource of one incarnation of a session: a fixed-length digest
+ * of both, so the resource id stays within Weft's identity limit whatever the
+ * session id's length, and no boundary between the two can be forged (a JSON
+ * array, not a joined string).
+ */
+export function sessionInputMailboxResourceId(sessionId: string, incarnation: string): string {
+  return `session-input:${sha256HexSync(JSON.stringify([sessionId, incarnation]))}`;
+}
+
+/**
+ * One session incarnation's session-input mailbox — the durable log, FIFO
+ * sequencer, and per-session backlog authority. Keyed by the incarnation, so a
+ * session recreated under the same id starts with an empty mailbox and the
+ * deleted incarnation's is retired on its own.
+ */
 export function createSessionInputMailbox(
   storage: Storage,
   sessionId: string,
+  incarnation: string,
   sessionBacklogLimit: number,
   now?: () => number,
 ): Mailbox {
   return new Mailbox({
     storage,
     namespace: SESSION_INPUT_NAMESPACE,
-    resourceId: sessionId,
+    resourceId: sessionInputMailboxResourceId(sessionId, incarnation),
     maxBacklog: sessionBacklogLimit,
     commandTimeoutMs: SESSION_INPUT_COMMAND_TIMEOUT_MS,
     maxAttempts: SESSION_INPUT_MAXIMUM_ATTEMPTS,
@@ -205,6 +243,7 @@ type SessionInputIdentityAdmission = 'pending' | 'admitted';
 
 interface SessionInputIdentityRecord {
   readonly sessionId: string;
+  readonly incarnation: string;
   readonly recordedAtMs: number;
   readonly admission: SessionInputIdentityAdmission;
 }
@@ -223,10 +262,12 @@ function parseSessionInputIdentityRecord(
       typeof parsed === 'object' &&
       parsed !== null &&
       typeof (parsed as { sessionId?: unknown }).sessionId === 'string' &&
+      typeof (parsed as { incarnation?: unknown }).incarnation === 'string' &&
       typeof (parsed as { recordedAtMs?: unknown }).recordedAtMs === 'number'
     ) {
-      const { sessionId, recordedAtMs, admission } = parsed as {
+      const { sessionId, incarnation, recordedAtMs, admission } = parsed as {
         sessionId: string;
+        incarnation: string;
         recordedAtMs: number;
         admission?: unknown;
       };
@@ -234,6 +275,7 @@ function parseSessionInputIdentityRecord(
       // after an admission, so it is read as admitted.
       return {
         sessionId,
+        incarnation,
         recordedAtMs,
         admission: admission === 'pending' ? 'pending' : 'admitted',
       };
@@ -264,6 +306,7 @@ type SessionInputIdentityClaim =
   | {
       readonly kind: 'conflict';
       readonly existingSessionId: string;
+      readonly existingIncarnation: string;
       readonly record: ApplicationCommandReceipt;
     };
 
@@ -286,23 +329,25 @@ async function findSessionInputRecord(
 export const SESSION_INPUT_MAILBOX_WALK_PAGE = 100;
 
 /**
- * Visits every receipt the mailbox holds, in admission order, until `visit`
- * returns `false`. Unfiltered pages resumed by `afterSequence`, so the walk is
- * exhaustive where a single listing is bounded: this is the only way the
- * session-input code reads a set out of a mailbox, because a bounded listing
- * must never decide that something is absent, that a set is empty, or that a
- * limit is not yet reached. A retention sweep deleting an entry between the
- * index scan and the record read shortens one page, not the walk, which only
- * stops at an empty page.
+ * Visits every receipt the mailbox holds, in admission order (newest first
+ * with `reverse`), until `visit` returns `false`. Unfiltered pages resumed by
+ * `afterSequence`, so the walk is exhaustive where a single listing is
+ * bounded: this is the only way the session-input code reads a set out of a
+ * mailbox, because a bounded listing must never decide that something is
+ * absent, that a set is empty, or that a limit is not yet reached. A
+ * retention sweep deleting an entry between the index scan and the record
+ * read shortens one page, not the walk, which only stops at an empty page.
  */
 export async function walkSessionInputMailbox(
   mailbox: Mailbox,
   visit: (receipt: ApplicationCommandReceipt) => boolean | undefined | Promise<boolean | undefined>,
+  options: { readonly reverse?: boolean } = {},
 ): Promise<void> {
   let afterSequence: number | undefined;
   for (;;) {
     const page = await mailbox.list({
       limit: SESSION_INPUT_MAILBOX_WALK_PAGE,
+      ...(options.reverse === true ? { reverse: true } : {}),
       ...(afterSequence === undefined ? {} : { afterSequence }),
     });
     if (page.length === 0) return;
@@ -316,36 +361,45 @@ export async function walkSessionInputMailbox(
 async function resolveSessionInputIdentity(
   attempt: SessionInputAdmissionAttempt,
 ): Promise<SessionInputIdentityClaim> {
-  const { kv, storage, sessionMailbox, sessionId, id, principal, nowMs } = attempt;
+  const { kv, storage, sessionMailbox, sessionId, incarnation, id, principal, nowMs } = attempt;
   const key = sessionInputIdentityKey(principal, id);
   for (let cas = 0; cas < SESSION_INPUT_IDENTITY_MAX_CAS_ATTEMPTS; cas += 1) {
     const raw = await kv.get(key);
     const current = parseSessionInputIdentityRecord(raw);
     const live =
       current !== undefined && nowMs - current.recordedAtMs <= SESSION_INPUT_IDENTITY_TTL_MS;
-    if (live && current.sessionId === sessionId) {
+    if (live && current.sessionId === sessionId && current.incarnation === incarnation) {
       const record = await findSessionInputRecord(sessionMailbox, id);
       if (record === undefined) return { kind: 'fresh', expected: raw };
       return { kind: 'replay', expected: raw as string, commit: current.admission === 'pending' };
     }
-    if (live) {
+    if (live && current.sessionId !== sessionId) {
       const record = await findSessionInputRecord(
         createSessionInputMailbox(
           storage,
           current.sessionId,
+          current.incarnation,
           attempt.sessionBacklogLimitForCrossSessionRead,
         ),
         id,
       );
       if (record !== undefined) {
-        return { kind: 'conflict', existingSessionId: current.sessionId, record };
+        return {
+          kind: 'conflict',
+          existingSessionId: current.sessionId,
+          existingIncarnation: current.incarnation,
+          record,
+        };
       }
       // An orphan: a claim no admission committed under (or, unreachable while
       // the terminal retention covers the identity's lifetime, one whose record
       // has been retired). Taken over below.
     }
+    // Absent, expired, an orphan, or the same session's earlier incarnation,
+    // whose mailbox was retired with it: claimed for this incarnation.
     const pending = encodeSessionInputIdentityRecord({
       sessionId,
+      incarnation,
       recordedAtMs: nowMs,
       admission: 'pending',
     });
@@ -381,6 +435,7 @@ async function commitSessionInputIdentity(
         key,
         value: encodeSessionInputIdentityRecord({
           sessionId: attempt.sessionId,
+          incarnation: attempt.incarnation,
           recordedAtMs: attempt.nowMs,
           admission: 'admitted',
         }),
@@ -516,16 +571,25 @@ async function principalAtBacklogLimit(
   principal: string,
   limit: number,
 ): Promise<boolean> {
-  const { open } = await mailbox.capacity();
+  const { open, admitted } = await mailbox.capacity();
   if (open < limit) return false;
+  // Newest first, because open commands are the newest, and the walk stops
+  // once it has seen as many open commands as the count read above. A command
+  // admitted after that read has a sequence at or past `admitted` (sequences
+  // are dense from zero, one per admission) and is not counted, so the count
+  // is reached by the commands it described.
   let openSeen = 0;
   let ownedByPrincipal = 0;
-  await walkSessionInputMailbox(mailbox, (receipt) => {
-    if (!OPEN_STATES.has(receipt.state)) return undefined;
-    openSeen += 1;
-    if (receipt.caller === principal) ownedByPrincipal += 1;
-    return ownedByPrincipal < limit && openSeen < open;
-  });
+  await walkSessionInputMailbox(
+    mailbox,
+    (receipt) => {
+      if (receipt.sequence >= admitted || !OPEN_STATES.has(receipt.state)) return undefined;
+      openSeen += 1;
+      if (receipt.caller === principal) ownedByPrincipal += 1;
+      return ownedByPrincipal < limit && openSeen < open;
+    },
+    { reverse: true },
+  );
   return ownedByPrincipal >= limit;
 }
 
@@ -535,6 +599,8 @@ export interface SessionInputAdmissionAttempt {
   readonly kv: ConditionalTextValueStore;
   readonly sessionMailbox: Mailbox;
   readonly sessionId: string;
+  /** The session incarnation `sessionMailbox` belongs to; the identity names it. */
+  readonly incarnation: string;
   readonly id: string;
   readonly principal: string;
   readonly deliveryMode: SessionInputDeliveryMode;
@@ -573,6 +639,7 @@ export async function admitSessionInput(
     kv,
     sessionMailbox,
     sessionId,
+    incarnation,
     id,
     principal,
     deliveryMode,
@@ -651,7 +718,8 @@ export async function admitSessionInput(
       const latest = parseSessionInputIdentityRecord(
         await kv.get(sessionInputIdentityKey(principal, id)),
       );
-      if (latest?.sessionId !== sessionId && admission.status === 'admitted') {
+      const ours = latest?.sessionId === sessionId && latest.incarnation === incarnation;
+      if (!ours && admission.status === 'admitted') {
         const commandId = admission.receipt.commandId;
         await sessionMailbox.requestCancellation({
           commandId,

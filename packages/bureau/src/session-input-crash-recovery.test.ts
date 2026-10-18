@@ -48,6 +48,7 @@ type Backend = 'sqlite' | 'lmdb';
 
 interface Marker {
   readonly sessionId: string;
+  readonly incarnation: string;
   readonly runId: string;
 }
 
@@ -151,7 +152,7 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
     scope.onHang(remove);
     try {
       const storagePath = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
-      const { sessionId } = await runCrashingChild(
+      const { sessionId, incarnation } = await runCrashingChild(
         scope,
         backend,
         storagePath,
@@ -181,7 +182,12 @@ function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> 
 
       const storage = await resolveStorage({ type: backend, path: storagePath });
       try {
-        const [receipt] = await createSessionInputMailbox(storage, sessionId, 100).list({
+        const [receipt] = await createSessionInputMailbox(
+          storage,
+          sessionId,
+          incarnation,
+          100,
+        ).list({
           limit: 10,
         });
         expect(receipt?.idempotencyKey).toBe('input-a');

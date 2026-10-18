@@ -300,7 +300,13 @@ describe('createBureau delivers admitted session input at the next step boundary
       await stepOneStarted.promise;
 
       // The step already holds the input; the caller cancels it now.
-      const mailbox = createSessionInputMailbox(storage, run.sessionId, 100);
+      const session = await bureau.getSession(run.sessionId);
+      const mailbox = createSessionInputMailbox(
+        storage,
+        run.sessionId,
+        session?.incarnation ?? '',
+        100,
+      );
       const [receipt] = await mailbox.list({ states: ['claimed'], limit: 1 });
       await mailbox.requestCancellation({
         commandId: receipt!.commandId,
@@ -314,12 +320,12 @@ describe('createBureau delivers admitted session input at the next step boundary
       expect(prompts[1]).toEqual(['Start', 'cancel me later']);
       const final = await mailbox.receipt(receipt!.commandId);
       expect(final?.state).toBe('cancelled');
-      const session = await bureau.getSession(run.sessionId);
       const replay = await admitSessionInput({
         storage,
         kv: textValueStore(storage),
         sessionMailbox: mailbox,
         sessionId: run.sessionId,
+        incarnation: session?.incarnation ?? '',
         id: 'input-a',
         principal: 'alice',
         deliveryMode: 'steer',

@@ -31,7 +31,7 @@ function fixture() {
   const storage = new MemoryStorage();
   const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
   let now = START;
-  const mailbox = createSessionInputMailbox(storage, SESSION_ID, 100, () => now);
+  const mailbox = createSessionInputMailbox(storage, SESSION_ID, 'incarnation-1', 100, () => now);
   const deliveries = createSessionInputDeliveryStore(kv, {
     retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS,
     nowMs: () => now,
@@ -41,6 +41,7 @@ function fixture() {
     kv,
     sessionMailbox: mailbox,
     sessionId: SESSION_ID,
+    incarnation: 'incarnation-1',
     id,
     principal: 'alice',
     deliveryMode: 'steer' as const,
@@ -79,13 +80,14 @@ describe('the identity index (COR-1476)', () => {
   function pair(now: () => number) {
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const first = createSessionInputMailbox(storage, 'session-first', 100, now);
-    const second = createSessionInputMailbox(storage, 'session-second', 100, now);
+    const first = createSessionInputMailbox(storage, 'session-first', 'incarnation-1', 100, now);
+    const second = createSessionInputMailbox(storage, 'session-second', 'incarnation-1', 100, now);
     const attempt = (sessionId: string, mailbox: Mailbox, id = 'input-shared') => ({
       storage,
       kv,
       sessionMailbox: mailbox,
       sessionId,
+      incarnation: 'incarnation-1',
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
@@ -236,13 +238,26 @@ describe('the identity index (COR-1476)', () => {
     const now = START;
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const first = createSessionInputMailbox(storage, 'volume-first', 5000, () => now);
-    const second = createSessionInputMailbox(storage, 'volume-second', 5000, () => now);
+    const first = createSessionInputMailbox(
+      storage,
+      'volume-first',
+      'incarnation-1',
+      5000,
+      () => now,
+    );
+    const second = createSessionInputMailbox(
+      storage,
+      'volume-second',
+      'incarnation-1',
+      5000,
+      () => now,
+    );
     const attempt = (sessionId: string, mailbox: Mailbox, id: string, limit: number) => ({
       storage,
       kv,
       sessionMailbox: mailbox,
       sessionId,
+      incarnation: 'incarnation-1',
       id,
       principal: 'alice',
       deliveryMode: 'steer' as const,
@@ -330,7 +345,13 @@ describe('the identity index (COR-1476)', () => {
   it('is outlived by the terminal record the cross-session path reads, and outlives any open command', async () => {
     const storage = new MemoryStorage();
     let now = START;
-    const mailbox = createSessionInputMailbox(storage, 'retention-probe', 100, () => now);
+    const mailbox = createSessionInputMailbox(
+      storage,
+      'retention-probe',
+      'incarnation-1',
+      100,
+      () => now,
+    );
     const admission = await mailbox.admit({
       caller: 'alice',
       target: 'retention-probe',

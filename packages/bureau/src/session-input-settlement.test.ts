@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   createSessionInputMailbox,
   SESSION_INPUT_COMMAND_TIMEOUT_MS,
+  SESSION_INPUT_TERMINAL_RETENTION_MS,
 } from './session-input-durability';
 import {
   cancelOpenSessionInput,
@@ -20,12 +21,13 @@ import {
  */
 
 const SESSION_ID = 'settlement-session';
-const MARKER_PREFIX = 'session-input-open:v1:';
+const MARKER_PREFIX = 'session-input-open:v2:';
+const INCARNATION = 'incarnation-1';
 
 function fixture() {
   const storage = new MemoryStorage();
   const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-  const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000);
+  const mailbox = createSessionInputMailbox(storage, SESSION_ID, INCARNATION, 1000);
   let live: readonly string[] = [];
   let closed = false;
   let incarnation: string | undefined = 'incarnation-1';
@@ -41,7 +43,7 @@ function fixture() {
 
   /** What a submit does: marker first, then the admission. */
   async function admit(id: string): Promise<string> {
-    await settlement.markOpen(SESSION_ID);
+    await settlement.markOpen(SESSION_ID, INCARNATION);
     return admitOnly(id);
   }
   async function admitOnly(id: string): Promise<string> {
@@ -97,7 +99,7 @@ function fixture() {
 describe('the open-input marker and the sweep (COR-1476)', () => {
   it('heals a crash between the marker and the admission: the sweep removes the marker over an empty mailbox', async () => {
     const f = fixture();
-    await f.settlement.markOpen(SESSION_ID);
+    await f.settlement.markOpen(SESSION_ID, INCARNATION);
     expect(await f.markers()).toHaveLength(1);
 
     await f.settlement.sweep();
@@ -141,7 +143,11 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
     const delivered = await f.admit('input-delivered');
     await f.admit('input-open');
 
-    const cancelled = await f.settlement.cancelUndelivered(SESSION_ID, new Set([delivered]));
+    const cancelled = await f.settlement.cancelUndelivered(
+      SESSION_ID,
+      INCARNATION,
+      new Set([delivered]),
+    );
 
     expect(cancelled).toHaveLength(1);
     expect(await f.states()).toEqual([
@@ -165,7 +171,7 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
 
   it('removes the marker of a deleted session, whose deletion retired its input', async () => {
     const f = fixture();
-    await f.settlement.markOpen(SESSION_ID);
+    await f.settlement.markOpen(SESSION_ID, INCARNATION);
     f.deleteSession();
 
     await f.settlement.sweep();
@@ -179,7 +185,7 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
     await f.admitOnly('input-x');
     expect(await f.markers()).toHaveLength(0);
 
-    const cancelled = await f.settlement.cancelUndelivered(SESSION_ID, new Set());
+    const cancelled = await f.settlement.cancelUndelivered(SESSION_ID, INCARNATION, new Set());
 
     expect(cancelled).toHaveLength(1);
     expect(await f.states()).toEqual([['input-x', 'cancelled']]);
@@ -205,7 +211,7 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
   it('keeps an input listed when a remover deletes the marker between the submit bump and the admission', async () => {
     const f = fixture();
     // The submit's first bump.
-    await f.settlement.markOpen(SESSION_ID);
+    await f.settlement.markOpen(SESSION_ID, INCARNATION);
     // A remover reads the bumped marker and an empty mailbox; the admission
     // commits right after its emptiness read; its conditional delete then
     // succeeds, because the marker's version has not changed.
@@ -230,7 +236,7 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
 
     // The submit's second bump, after its admission committed, lists it again,
     // and the next sweep settles it.
-    await f.settlement.markOpen(SESSION_ID);
+    await f.settlement.markOpen(SESSION_ID, INCARNATION);
     expect(await f.markers()).toHaveLength(1);
     await f.settlement.sweep();
     expect(await f.states()).toEqual([['input-x', 'cancelled']]);
@@ -239,7 +245,7 @@ describe('the open-input marker and the sweep (COR-1476)', () => {
 
   it('does not remove a marker over input admitted after the marker was read', async () => {
     const f = fixture();
-    await f.settlement.markOpen(SESSION_ID);
+    await f.settlement.markOpen(SESSION_ID, INCARNATION);
     // The sweep reads the marker, then the mailbox: input admitted between the
     // two bumps the marker, so the sweep's conditional delete loses.
     const reads: string[] = [];
@@ -268,7 +274,7 @@ describe('a lease a gone holder left behind (COR-1476)', () => {
     let now = Date.parse('2026-10-17T12:00:00.000Z');
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, INCARNATION, 1000, () => now);
     const settlement = createSessionInputSettlement({
       kv,
       incarnationOf: () => Promise.resolve('incarnation-1'),
@@ -277,7 +283,7 @@ describe('a lease a gone holder left behind (COR-1476)', () => {
       isClosed: () => false,
       diagnose: () => {},
     });
-    await settlement.markOpen(SESSION_ID);
+    await settlement.markOpen(SESSION_ID, INCARNATION);
     await mailbox.admit({
       caller: 'alice',
       target: SESSION_ID,
@@ -312,7 +318,7 @@ describe('a deleted session over a lease a gone holder left behind (COR-1476)', 
     let now = Date.parse('2026-10-17T12:00:00.000Z');
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, INCARNATION, 1000, () => now);
     let incarnation: string | undefined = 'incarnation-1';
     const settlement = createSessionInputSettlement({
       kv,
@@ -322,7 +328,7 @@ describe('a deleted session over a lease a gone holder left behind (COR-1476)', 
       isClosed: () => false,
       diagnose: () => {},
     });
-    await settlement.markOpen(SESSION_ID);
+    await settlement.markOpen(SESSION_ID, INCARNATION);
     const admitted = await mailbox.admit({
       caller: 'alice',
       target: SESSION_ID,
@@ -352,15 +358,22 @@ describe('a deleted session over a lease a gone holder left behind (COR-1476)', 
     now += 31_000;
     await settlement.sweep();
     expect(await state()).toBe('cancelled');
+    // Retired with its session, the mailbox keeps its marker until retention
+    // has emptied it, so the sweep goes on maintaining it.
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+    now += SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000;
+    await settlement.sweep();
+    expect(await mailbox.list({ limit: 1 })).toEqual([]);
     expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
   });
 });
 
 describe('a session that no longer exists (COR-1476)', () => {
-  it('has its open input cancelled by the sweep, and its marker removed', async () => {
+  it('has its open input cancelled by the sweep, and its marker removed once its records have retired', async () => {
+    let now = Date.parse('2026-10-17T12:00:00.000Z');
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000);
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, INCARNATION, 1000, () => now);
     const settlement = createSessionInputSettlement({
       kv,
       // Admitted against an incarnation that was deleted before the admission
@@ -372,12 +385,12 @@ describe('a session that no longer exists (COR-1476)', () => {
       isClosed: () => false,
       diagnose: () => {},
     });
-    await settlement.markOpen(SESSION_ID);
+    await settlement.markOpen(SESSION_ID, INCARNATION);
     await mailbox.admit({
       caller: 'alice',
       target: SESSION_ID,
       kind: 'session-input:steer',
-      payload: { form: 'inline', value: { incarnation: 'incarnation-gone', payload: 'x' } },
+      payload: { form: 'inline', value: { incarnation: INCARNATION, payload: 'x' } },
       idempotencyKey: 'input-x',
     });
 
@@ -385,63 +398,101 @@ describe('a session that no longer exists (COR-1476)', () => {
 
     const [receipt] = await mailbox.list({ limit: 10 });
     expect(receipt?.state).toBe('cancelled');
+    // The marker outlives the cancellation: the sweep keeps maintaining a
+    // retired incarnation's mailbox until retention has emptied it, since
+    // nothing else ever will.
+    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+    now += SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000;
+    await settlement.sweep();
+    expect(await mailbox.list({ limit: 1 })).toEqual([]);
     expect(await kv.list(MARKER_PREFIX)).toHaveLength(0);
   });
 });
 
-describe('the absent-session sweep against a recreation (COR-1476)', () => {
-  it('leaves alone input admitted to a session recreated while its maintenance ran', async () => {
+describe("a retired incarnation's marker beside the current incarnation (COR-1476)", () => {
+  function recreated() {
+    let now = Date.parse('2026-10-17T12:00:00.000Z');
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const real = createSessionInputMailbox(storage, SESSION_ID, 1000);
-    let recreated = false;
-    let newCommandId: string | undefined;
-    // The session is recreated, with a live run, while the absent branch's
-    // maintenance pass runs: the input admitted to the new incarnation is
-    // that run's to deliver.
-    const mailbox = new Proxy(real, {
-      get(target, property, receiver) {
-        if (property === 'runMaintenance') {
-          return async (now?: number) => {
-            if (!recreated) {
-              recreated = true;
-              const admission = await real.admit({
-                caller: 'alice',
-                target: SESSION_ID,
-                kind: 'session-input:steer',
-                payload: {
-                  form: 'inline',
-                  value: { incarnation: 'incarnation-2', payload: 'new' },
-                },
-                idempotencyKey: 'input-new',
-              });
-              if (admission.status !== 'admitted') throw new Error(admission.status);
-              newCommandId = admission.receipt.commandId;
-            }
-            return target.runMaintenance(now);
-          };
-        }
-        const value: unknown = Reflect.get(target, property, receiver);
-        return typeof value === 'function' ? value.bind(target) : value;
-      },
-    });
+    const old = createSessionInputMailbox(storage, SESSION_ID, 'incarnation-1', 1000, () => now);
+    const current = createSessionInputMailbox(
+      storage,
+      SESSION_ID,
+      'incarnation-2',
+      1000,
+      () => now,
+    );
     const settlement = createSessionInputSettlement({
       kv,
-      incarnationOf: () => Promise.resolve(recreated ? 'incarnation-2' : undefined),
+      incarnationOf: () => Promise.resolve('incarnation-2'),
       liveRunIds: () => Promise.resolve(['run-of-incarnation-2']),
-      mailboxOf: () => mailbox,
+      mailboxOf: (_sessionId, incarnation) => (incarnation === 'incarnation-1' ? old : current),
       isClosed: () => false,
       diagnose: () => {},
     });
-    await settlement.markOpen(SESSION_ID);
+    const admitTo = async (mailbox: typeof old, incarnation: string, id: string) => {
+      const admission = await mailbox.admit({
+        caller: 'alice',
+        target: SESSION_ID,
+        kind: 'session-input:steer',
+        payload: { form: 'inline', value: { incarnation, payload: id } },
+        idempotencyKey: id,
+      });
+      if (admission.status !== 'admitted') throw new Error(admission.status);
+      return admission.receipt.commandId;
+    };
+    const stateIn = async (mailbox: typeof old, commandId: string) => {
+      const receipt = await mailbox.receipt(commandId);
+      return receipt?.state;
+    };
+    return {
+      kv,
+      old,
+      current,
+      settlement,
+      admitTo,
+      stateIn,
+      advance: (ms: number) => {
+        now += ms;
+      },
+    };
+  }
 
-    await settlement.sweep();
+  it("cancels input admitted late to the retired incarnation and leaves the current incarnation's input alone", async () => {
+    const f = recreated();
+    await f.settlement.markOpen(SESSION_ID, 'incarnation-1');
+    await f.settlement.markOpen(SESSION_ID, 'incarnation-2');
+    // Deletion's retirement pass ran before this admission committed, under
+    // the old marker; the current incarnation has its own input and a live run.
+    const late = await f.admitTo(f.old, 'incarnation-1', 'input-late');
+    const fresh = await f.admitTo(f.current, 'incarnation-2', 'input-fresh');
 
-    expect(newCommandId).toBeDefined();
-    const [receipt] = await real.list({ limit: 10 });
-    expect(receipt?.commandId).toBe(newCommandId);
-    expect(receipt?.state).toBe('available');
-    expect(await kv.list(MARKER_PREFIX)).toHaveLength(1);
+    await f.settlement.sweep();
+
+    expect(await f.stateIn(f.old, late)).toBe('cancelled');
+    expect(await f.stateIn(f.current, fresh)).toBe('available');
+    expect(await f.kv.list(MARKER_PREFIX)).toHaveLength(2);
+  });
+
+  it("retires the old incarnation's mailbox once retention has elapsed, and drops its marker", async () => {
+    const f = recreated();
+    await f.settlement.markOpen(SESSION_ID, 'incarnation-1');
+    await f.settlement.markOpen(SESSION_ID, 'incarnation-2');
+    const late = await f.admitTo(f.old, 'incarnation-1', 'input-late');
+    await f.admitTo(f.current, 'incarnation-2', 'input-fresh');
+    await f.settlement.sweep();
+    expect(await f.stateIn(f.old, late)).toBe('cancelled');
+
+    f.advance(SESSION_INPUT_TERMINAL_RETENTION_MS + 3_600_000);
+    await f.settlement.sweep();
+
+    expect(await f.old.list({ limit: 1 })).toEqual([]);
+    const markers = await f.kv.list(MARKER_PREFIX);
+    expect(markers).toHaveLength(1);
+    expect(markers[0]).toContain('incarnation-2');
+    // The current incarnation's mailbox is maintained, not retired: its input
+    // has its run, and its record is live.
+    expect(await f.current.list({ limit: 10 })).toHaveLength(1);
   });
 });
 
@@ -450,7 +501,7 @@ describe('a run parked past the command timeout (COR-1476)', () => {
     let now = Date.parse('2026-10-17T12:00:00.000Z');
     const storage = new MemoryStorage();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
-    const mailbox = createSessionInputMailbox(storage, SESSION_ID, 1000, () => now);
+    const mailbox = createSessionInputMailbox(storage, SESSION_ID, INCARNATION, 1000, () => now);
     const settlement = createSessionInputSettlement({
       kv,
       incarnationOf: () => Promise.resolve('incarnation-1'),
@@ -459,7 +510,7 @@ describe('a run parked past the command timeout (COR-1476)', () => {
       isClosed: () => false,
       diagnose: () => {},
     });
-    await settlement.markOpen(SESSION_ID);
+    await settlement.markOpen(SESSION_ID, INCARNATION);
     await mailbox.admit({
       caller: 'alice',
       target: SESSION_ID,

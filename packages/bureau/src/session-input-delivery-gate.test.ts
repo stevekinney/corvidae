@@ -157,6 +157,7 @@ describe('session input delivery gate (COR-1476)', () => {
       kv: textValueStore(fixture.storage),
       sessionMailbox: mailbox,
       sessionId: SESSION_ID,
+      incarnation: fixture.incarnation,
       id,
       principal: 'alice',
       deliveryMode: 'steer',
@@ -187,7 +188,13 @@ describe('session input delivery gate (COR-1476)', () => {
   it('still delivers an input after the mailbox default of an hour, with its receipt unspent', async () => {
     const fixture = await createFixture();
     let now = START;
-    const mailbox = createSessionInputMailbox(fixture.storage, SESSION_ID, 100, () => now);
+    const mailbox = createSessionInputMailbox(
+      fixture.storage,
+      SESSION_ID,
+      fixture.incarnation,
+      100,
+      () => now,
+    );
     await admitAs(fixture, mailbox, 'input-a', now);
 
     // The run was parked on a human reviewer for two hours.
@@ -215,7 +222,13 @@ describe('session input delivery gate (COR-1476)', () => {
   it('closes an input nobody could deliver with an honest terminal receipt, not an eternal accepted', async () => {
     const fixture = await createFixture();
     let now = START;
-    const mailbox = createSessionInputMailbox(fixture.storage, SESSION_ID, 100, () => now);
+    const mailbox = createSessionInputMailbox(
+      fixture.storage,
+      SESSION_ID,
+      fixture.incarnation,
+      100,
+      () => now,
+    );
     await admitAs(fixture, mailbox, 'input-a', now);
 
     now += SESSION_INPUT_COMMAND_TIMEOUT_MS + HOUR_MS;
@@ -229,7 +242,13 @@ describe('session input delivery gate (COR-1476)', () => {
   it('refuses input admitted to an earlier incarnation of the session, without retry', async () => {
     const fixture = await createFixture();
     const now = START;
-    const mailbox = createSessionInputMailbox(fixture.storage, SESSION_ID, 100, () => now);
+    const mailbox = createSessionInputMailbox(
+      fixture.storage,
+      SESSION_ID,
+      fixture.incarnation,
+      100,
+      () => now,
+    );
     await admitAs(fixture, mailbox, 'stale', now, 'incarnation-of-a-deleted-session');
     await admitAs(fixture, mailbox, 'fresh', now);
 
