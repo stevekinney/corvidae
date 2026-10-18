@@ -1612,12 +1612,34 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `lastRunStatus`, and authorization targets the session's sole live run,
    * falling back to `lastRunId` only when several runs are live.
    *
-   * Until `ab-42-bureau-b` lands (WFT-84's durable application command
-   * mailbox), every other authorized, non-terminal request unconditionally
-   * returns `{ outcome: 'unsupported-capability', reason:
-   * 'durable-mailbox-unavailable' }` — no `SessionInputRecord` is created and
-   * no `id` is consumed by this method today. `admitted`/`replayed`/
-   * `conflict`/`backlog-exhausted` are structurally unreachable until then.
+   * On a durably-configured Bureau every other authorized, non-terminal
+   * request is admitted to the session's durable mailbox (`admitted`,
+   * `replayed`, `conflict`, or `backlog-exhausted`). Each admitted input ends
+   * with exactly one terminal receipt. It reads `promoted` once a live run's
+   * step boundary appends its user turn to the conversation: before the run's
+   * next step generates, or once more after its last step generated while the
+   * run has a step left. The turn is appended at most once, in admission order
+   * within a run, keyed by the mailbox command so a reused `id` is a new input
+   * (an `id` must therefore be unique for the life of the session: the turn
+   * carries it as its message id, and a second turn under the same `id` takes
+   * a fresh message id instead),
+   * under the input's own `id` as its message id, and the promotion commits in
+   * the write that saves the turn, whatever that step's outcome. It reads
+   * `canceled` when the input was not appended before its run ended, however
+   * it ended (completed, failed, `abortRun`, `cancelDurableRun`, or promoted
+   * but never started), so the client resends it; Bureau never starts a run to
+   * answer input, and the ending run cancels what it never delivered unless
+   * another run of the session is live, whose end does the cancelling. With no
+   * run live or starting when the admission commits, this call cancels the
+   * input itself and returns the re-read receipt. Shutdown releases open input
+   * instead, for the next boot's recovered run to deliver or its sweep to
+   * cancel. An input still undelivered after seven days reads `expired`, one
+   * whose session is deleted reads `canceled`, and one that cannot be decoded
+   * reads `failed`. `steer` and `queue` share that one FIFO path; `expiresAt`
+   * and `supersedes` are stored but not yet honored. A Bureau with no session
+   * mailbox, durable storage, or key-value store, or a session id too long to
+   * address a mailbox, returns `{ outcome: 'unsupported-capability', reason:
+   * 'durable-mailbox-unavailable' }`.
    */
   submitSessionInput(
     sessionId: string,

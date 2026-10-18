@@ -26,6 +26,7 @@ import {
   createRecoveredRunEventSurface,
   createRunFinishedFrame,
   createRunStartedFrame,
+  createSessionInputDeliveryStore,
   createStore,
   type DurableEventEnvelope,
   type DurableEventGap,
@@ -69,6 +70,7 @@ import {
   SessionDeletedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputAdmissionRequest,
+  type SessionInputGate,
   type SessionListOptions,
   SessionOutboxAppendedEvent,
   type SessionOutboxEntry,
@@ -246,9 +248,19 @@ import {
 } from './session-authority';
 import {
   admitSessionInput,
+  isSessionInputSessionIdAddressable,
+  type SessionInputAdmissionAttemptOutcome,
   createSessionInputMailbox,
   type PersistedSessionInput,
+  readSessionInputReceipt,
+  SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
+import { createSessionInputDeliveryGate } from './session-input-delivery';
+import {
+  createSessionInputSettlement,
+  forEachOpenReceipt,
+  SESSION_INPUT_RUN_ENDED_REASON,
+} from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   normalizeRunRequestContext,
@@ -323,6 +335,16 @@ import { streamEventToFrame } from './websocket-frames';
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
+/**
+ * COR-1476 — the first wait between attempts to write an ended run's steering
+ * `run-ended` entry; each later wait doubles, up to the cap. The write is
+ * retried until it is acknowledged or the bureau closes, because the run reads
+ * the session's mailbox only after it.
+ */
+const SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS = 10;
+const SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS = 2_000;
+/** After the first failure is reported, how long passes before the next one is. */
+const SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS = 60_000;
 /**
  * How long `shutdown({ policy: 'abort' })` waits for the runs it aborted to
  * reach a terminal event before it stops waiting and tears storage down. A
@@ -1397,12 +1419,10 @@ export function createPendingApprovalPersistHook(
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
-  // AB-194: validated here (BAD_REQUEST at construction time) though not yet
-  // enforced — every reachable `submitSessionInput` outcome today is a
-  // pre-admission rejection, before any backlog could exist to check
-  // against. Enforcement lands with the mailbox-backed `ab-42-bureau-b` slice
-  // once WFT-84 ships, using these same validated values (defaulting to
-  // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`).
+  // AB-194: validated here (BAD_REQUEST at construction time). Admission
+  // enforces these same validated values (defaulting to
+  // `DEFAULT_SESSION_INPUT_BACKLOG_LIMIT`/`DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT`)
+  // against the session mailbox.
   validateSessionInputBacklogLimit(
     options.sessionInput?.sessionBacklogLimit,
     'sessionBacklogLimit',
@@ -1913,10 +1933,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const steeringGates = new Map<string, BureauSteeringGate>();
 
   /**
-   * COR-435 — one session-input mailbox per session, for a
-   * durably-configured bureau. See `session-input-durability.ts`'s module
-   * doc: the cross-session identity index lives in `runtime.kv` directly,
-   * not in a second `Mailbox`. Cached for the same reason
+   * COR-435 — one session-input mailbox per session incarnation (COR-1476),
+   * for a durably-configured bureau. See `session-input-durability.ts`'s
+   * module doc: the cross-session identity index lives in `runtime.kv`
+   * directly, not in a second `Mailbox`. Cached for the same reason
    * `steeringMailboxes` is: constructing a second `Mailbox` for the same
    * `(namespace, resourceId)` would defeat the FIFO ordering that is the
    * point of using one.
@@ -1924,16 +1944,423 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const sessionInputMailboxes = new Map<string, Mailbox>();
 
   /** `undefined` for a non-durable bureau — nothing to persist against. */
-  function getSessionInputMailbox(sessionId: string): Mailbox | undefined {
+  function getSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
     const storage = runtime.durableStorage;
     if (!runtime.durable || storage === undefined) return undefined;
-    let mailbox = sessionInputMailboxes.get(sessionId);
+    const cacheKey = `${sessionId}\u0000${incarnation}`;
+    let mailbox = sessionInputMailboxes.get(cacheKey);
     if (!mailbox) {
-      mailbox = createSessionInputMailbox(storage, sessionId, sessionInputSessionBacklogLimit);
-      sessionInputMailboxes.set(sessionId, mailbox);
+      mailbox = createSessionInputMailbox(
+        storage,
+        sessionId,
+        incarnation,
+        sessionInputSessionBacklogLimit,
+        runtimeServices.clock.now,
+      );
+      sessionInputMailboxes.set(cacheKey, mailbox);
     }
     return mailbox;
   }
+
+  /**
+   * {@link getSessionInputMailbox}, or `undefined` when Weft could not carry
+   * this session id as a command's target (over its identity limit). Such a
+   * session still runs and steers, but admission has no mailbox to write to,
+   * so `submitSessionInput` answers it `unsupported-capability` and no input
+   * can ever be waiting for its runs.
+   */
+  function tryGetSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
+    if (!isSessionInputSessionIdAddressable(sessionId)) return undefined;
+    try {
+      return getSessionInputMailbox(sessionId, incarnation);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * COR-1476 — the per-session record of which run is delivering each admitted
+   * input (`session-input-deliveries:v1:{sessionId}`), in the same text-value
+   * store the run's checkpoint is written to, so a step's promotion commits in
+   * the same batch as its transcript. Absent without a durable engine.
+   */
+  const sessionInputDeliveryStore =
+    runtime.durable !== undefined && runtime.kv !== undefined
+      ? createSessionInputDeliveryStore(runtime.kv, {
+          retentionMs: SESSION_INPUT_DELIVERY_RETENTION_MS,
+          nowMs: runtimeServices.clock.now,
+        })
+      : undefined;
+
+  /**
+   * The pending `run-ended` steering write of each run that is ending (COR-1476).
+   * It is the durable not-live write the run's session-input settlement waits
+   * for, and rejects when the write failed, so the settlement retries it.
+   */
+  const steeringRunEndWrites = new Map<string, Promise<void>>();
+
+  /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
+  const inFlightSessionInputSettlements = new Set<Promise<void>>();
+
+  /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
+  const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
+
+  /**
+   * Resolves the moment shutdown begins, so a settlement waiting out a retry
+   * backoff ends its wait at once instead of after the whole delay.
+   */
+  const sessionInputClosing = Promise.withResolvers<void>();
+
+  /** Tracks a settlement, which never rejects, so shutdown lands it before it tears the stores down. */
+  function trackSessionInputSettlement(settling: Promise<void>): void {
+    inFlightSessionInputSettlements.add(settling);
+    void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
+  }
+
+  /** The gate of each durable run that has one, disposed when the run ends however it ends. */
+  const sessionInputGates = new Map<
+    string,
+    { readonly gate: SessionInputGate; readonly sessionId: string }
+  >();
+
+  /**
+   * Whether `runId` will still replay or re-run the step that appended its
+   * input: the run is live in some process, or is starting. A run that is not
+   * live has released its claims or will never resume.
+   */
+  async function isSessionRunLive(
+    sessionId: string,
+    incarnation: string,
+    runId: string,
+  ): Promise<boolean> {
+    const live = await liveSessionRunIdsEverywhere(sessionId, incarnation, runId);
+    return live.includes(runId);
+  }
+
+  /**
+   * COR-1476 — the gate through which one of this session's durable runs
+   * receives input `submitSessionInput` admitted while it is live. `undefined`
+   * when the bureau has no durable mailbox, or the run has no recorded
+   * incarnation, in which case there is nothing to deliver.
+   *
+   * The gate drains the mailbox of `incarnation`, the one the run started in
+   * (`runSessionIncarnations`, which its first save or its recovery records,
+   * or that same value read before the record is made). Each incarnation has
+   * its own mailbox, so a session deleted and recreated under the same id
+   * while the run is live leaves this gate draining the retired mailbox, which
+   * its session's deletion cancelled and the sweep retires, and never the
+   * recreated session's input: no reader checks an incarnation.
+   */
+  function sessionInputGateFor(
+    sessionId: string,
+    runId: string,
+    incarnation: string | undefined,
+  ): SessionInputGate | undefined {
+    if (incarnation === undefined || sessionInputDeliveryStore === undefined) return undefined;
+    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+    if (mailbox === undefined) return undefined;
+    const gate = createSessionInputDeliveryGate({
+      sessionId,
+      runId,
+      incarnation,
+      mailbox,
+      deliveryStore: sessionInputDeliveryStore,
+      isOwnerLive: (ownerRunId) => isSessionRunLive(sessionId, incarnation, ownerRunId),
+      now: runtimeServices.clock.now,
+      timers: runtimeServices.timers,
+      signal: backgroundShutdownController.signal,
+      onError: (error) =>
+        diagnose({
+          level: 'error',
+          scope: 'session-input',
+          message: `[bureau] A session-input lease of run "${runId}" in session "${sessionId}" could not be kept or retired: ${serializeUnknownError(error)}`,
+          cause: error,
+        }),
+    });
+    sessionInputGates.set(runId, { gate, sessionId });
+    return gate;
+  }
+
+  /**
+   * Hands a recovered durable run its session's input gate before replay
+   * resumes, the way {@link recoverRunSteering} hands it its steering gate.
+   */
+  async function attachRecoveredSessionInput(
+    sessionId: string,
+    runId: string,
+    services: DurableRunDeps,
+    incarnation: string | undefined,
+  ): Promise<void> {
+    const gate = sessionInputGateFor(
+      sessionId,
+      runId,
+      runSessionIncarnations.get(runId) ?? incarnation,
+    );
+    if (gate !== undefined) {
+      services.options = { ...services.options, sessionId, sessionInput: gate };
+    }
+  }
+
+  /**
+   * The release half of a run's termination: disposes its gate, which returns
+   * each lease it holds to the mailbox, and releases the run's unpromoted claims
+   * so the next run can deliver them. Safe whenever it runs: an unpromoted input
+   * is in no durable transcript. Needs no live bureau beyond its stores, so
+   * shutdown runs it too, and never starts a run.
+   */
+  async function releaseSessionInputs(sessionId: string, runId: string): Promise<void> {
+    const held = sessionInputGates.get(runId);
+    sessionInputGates.delete(runId);
+    try {
+      await held?.gate.dispose?.();
+      await sessionInputDeliveryStore?.release(sessionId, runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not release the session input run "${runId}" held in session "${sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * COR-1476 — a run has ended, however it ended: completed, failed, aborted by
+   * `abortRun`, cancelled by `cancelDurableRun`, or promoted but never started.
+   * A run is settled once: every path that reports its end shares the one
+   * settlement in flight. In this order, it
+   *
+   * 1. releases what it held (its gate's leases and its unpromoted claims),
+   *    which reads no mailbox and so keeps the ordering below;
+   * 2. writes its steering `run-ended` entry, the durable not-live write every
+   *    process's `liveSessionRunIdsEverywhere` honours over the engine's status,
+   *    retrying with a growing backoff until it is acknowledged, the bureau
+   *    closes, or the log proves corrupt;
+   * 3. catches up steering;
+   * 4. reads the session's liveness without itself;
+   * 5. cancels every open input whose turn is not in its checkpoint transcript,
+   *    in admission order, so the client learns it was not delivered and
+   *    resends it, unless another run of the session is live or starting, the
+   *    bureau is closing, the write was never acknowledged, or liveness could
+   *    not be read: that run's end, or the sweep, then decides. A turn the
+   *    transcript holds was promoted by the write that saved it, and stays
+   *    `promoted`.
+   *
+   * `submitSessionInput` orders itself the other way round, admission before
+   * liveness, so one side always sees the other: see
+   * `session-input-settlement.ts`.
+   */
+  function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
+    const inFlight = sessionInputSettlementsByRun.get(runId);
+    if (inFlight !== undefined) return inFlight;
+    const settling = settleSessionInputsOnce(sessionId, runId).finally(() => {
+      sessionInputSettlementsByRun.delete(runId);
+    });
+    sessionInputSettlementsByRun.set(runId, settling);
+    return settling;
+  }
+
+  async function settleSessionInputsOnce(sessionId: string, runId: string): Promise<void> {
+    await releaseSessionInputs(sessionId, runId);
+    const acknowledged = await recordRunEnded(sessionId, runId);
+    if (!acknowledged || sessionInputSettlement === undefined || isSessionInputClosed()) return;
+    // The cancel pass is over the mailbox of the incarnation the run started
+    // in, like its gate and its terminal save; a run with no recorded
+    // incarnation drained no mailbox and has nothing to settle.
+    const incarnation = runSessionIncarnations.get(runId);
+    if (incarnation === undefined) return;
+    try {
+      const session = await runtime.sessionStore?.load(sessionId);
+      // A deleted or recreated session retired this incarnation: its mailbox
+      // is nobody's, so whatever is open in it is cancelled without a liveness
+      // read, which its steering log, gone with the incarnation, could not
+      // answer anyway. The sweep does the same for what this misses.
+      const retired = session === undefined || session.incarnation !== incarnation;
+      if (!retired) {
+        const steeringKv = durableSteeringStore();
+        if (steeringKv !== undefined) {
+          await enqueueSteering(sessionId, () =>
+            catchUpSteering(steeringKv, sessionId, incarnation),
+          );
+        }
+        const live = await liveSessionRunIdsEverywhere(sessionId, incarnation);
+        if (live.some((liveRunId) => liveRunId !== runId)) return;
+      }
+      const delivered = await sessionInputCommandsInTranscript(runId);
+      await sessionInputSettlement.cancelUndelivered(sessionId, incarnation, delivered);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not settle the open session input of session "${sessionId}" after run "${runId}" ended; the sweep will: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * Makes sure `runId`'s steering `run-ended` entry is in the log, retrying the
+   * write with a backoff that doubles from 10 ms to 2 s, and reports whether it
+   * is. A run the log never promoted, or whose session is gone or recreated, was
+   * never counted live from the log, so there is nothing to write and the answer
+   * is yes. The answer is no when the bureau closes first, or when the log
+   * proves corrupt, which no retry repairs: the input is left to the sweep. The
+   * first failure is reported at once and later ones at most once a minute.
+   */
+  async function recordRunEnded(sessionId: string, runId: string): Promise<boolean> {
+    const pending = steeringRunEndWrites.get(runId);
+    steeringRunEndWrites.delete(runId);
+    if (pending !== undefined) {
+      try {
+        await pending;
+        return true;
+      } catch {
+        // Rejected: retried below until it lands.
+      }
+    }
+    const steeringKv = durableSteeringStore();
+    if (steeringKv === undefined) return true;
+    let delay = SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS;
+    let lastReportedAt: number | undefined;
+    for (let attempt = 1; ; attempt += 1) {
+      if (isSessionInputClosed()) return false;
+      try {
+        const session = await runtime.sessionStore?.load(sessionId);
+        // Gone, or recreated under the same id since the run started: the log
+        // that promoted the run went with its incarnation, so there is nothing
+        // to write, and the current incarnation's log never counted it live.
+        const started = runSessionIncarnations.get(runId);
+        if (session === undefined || (started !== undefined && session.incarnation !== started)) {
+          return true;
+        }
+        const cursor = await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+        if (cursor.history.runs.get(runId) !== 'promoted') return true;
+        await enqueueSteering(sessionId, () =>
+          appendThenApplySteering(steeringKv, sessionId, session.incarnation, {
+            type: 'run-ended',
+            runId,
+            now: runtimeServices.clock.nowISO(),
+          }),
+        );
+        return true;
+      } catch (error) {
+        if (error instanceof SteeringLogCorruptError) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] The end of run "${runId}" in session "${sessionId}" cannot be recorded in a corrupt steering log; its open session input is left to the sweep: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return false;
+        }
+        // Contention, a storage failure, or a session recreated under this
+        // read: the next attempt reloads the session and refolds its log, so a
+        // session that is gone or no longer promotes this run ends the loop.
+        const now = runtimeServices.clock.now();
+        if (
+          lastReportedAt === undefined ||
+          now - lastReportedAt >= SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS
+        ) {
+          lastReportedAt = now;
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] The end of run "${runId}" in session "${sessionId}" could not be recorded (attempt ${String(attempt)}); retrying before its session input is settled: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // Shutdown ends the wait at once; the loop then sees the bureau closed.
+        await Promise.race([sessionPersistenceSleep(delay), sessionInputClosing.promise]);
+        delay = Math.min(delay * 2, SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS);
+      }
+    }
+  }
+
+  /** The mailbox commands whose user turns `runId`'s checkpoint transcript holds. */
+  async function sessionInputCommandsInTranscript(runId: string): Promise<Set<string>> {
+    const delivered = new Set<string>();
+    const snapshot = await runtime.durable?.checkpointStore.loadConversation(runId);
+    if (snapshot === undefined || snapshot === null) return delivered;
+    for (const message of Conversation.from(snapshot, { runtime: runtimeServices }).getMessages()) {
+      const commandId = message.metadata?.['sessionInputCommandId'];
+      if (typeof commandId === 'string') delivered.add(commandId);
+    }
+    return delivered;
+  }
+
+  /** A run abandoned to another owner: stop keeping its leases alive, but keep its claims. */
+  function abandonSessionInputGate(runId: string): void {
+    const held = sessionInputGates.get(runId);
+    sessionInputGates.delete(runId);
+    void Promise.resolve(held?.gate.dispose?.()).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not stop the leases of abandoned run "${runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
+  /** Whether the bureau is shutting down, when open input is released, never cancelled. */
+  function isSessionInputClosed(): boolean {
+    return runAdmissionClosed || maintenanceAdmissionClosed;
+  }
+
+  /**
+   * Retires the input a deleted session incarnation left pending: cancels what
+   * is open in that incarnation's mailbox, and marks the incarnation so the
+   * sweep keeps maintaining its mailbox until retention has emptied it, since
+   * no run will drain a retired mailbox and its terminal records would
+   * otherwise never retire. An admission that commits after this pass, under
+   * the same marker, is cancelled by the sweep.
+   */
+  async function retireSessionInputs(sessionId: string, incarnation: string): Promise<void> {
+    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
+    if (mailbox === undefined) return;
+    await forEachOpenReceipt(mailbox, async (commandId) => {
+      await mailbox.requestCancellation({ commandId, reason: 'the session was deleted' });
+    });
+    await sessionInputSettlement?.markOpen(sessionId, incarnation);
+  }
+
+  /**
+   * COR-1476 — the marker index of sessions that may have open input, and the
+   * sweep that cancels input no run will deliver. See
+   * `session-input-settlement.ts`. Absent without a durable mailbox.
+   */
+  const sessionInputSettlement =
+    runtime.durable !== undefined &&
+    runtime.kv !== undefined &&
+    sessionInputDeliveryStore !== undefined
+      ? createSessionInputSettlement({
+          kv: runtime.kv,
+          incarnationOf: async (sessionId) => {
+            const session = await runtime.sessionStore?.load(sessionId);
+            return session?.incarnation;
+          },
+          liveRunIds: async (sessionId, incarnation) => {
+            const steeringKv = durableSteeringStore();
+            if (steeringKv !== undefined) {
+              await enqueueSteering(sessionId, () =>
+                catchUpSteering(steeringKv, sessionId, incarnation),
+              );
+            }
+            return liveSessionRunIdsEverywhere(sessionId, incarnation);
+          },
+          mailboxOf: tryGetSessionInputMailbox,
+          isClosed: isSessionInputClosed,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'session-input',
+              message: `[bureau] ${message}${cause === undefined ? '' : ` ${serializeUnknownError(cause)}`}`,
+              ...(cause === undefined ? {} : { cause }),
+            }),
+        })
+      : undefined;
 
   /**
    * Durable steering (see `steering-log.ts` and
@@ -2515,9 +2942,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     const { incarnation } = cursor;
-    void enqueueSteering(sessionId, () =>
+    const appended = enqueueSteering(sessionId, () =>
       appendThenApplySteering(kv, sessionId, incarnation, event),
-    ).catch((error: unknown) => {
+    );
+    appended.catch((error: unknown) => {
       // Not applied locally: the gate must never hold state the log lacks,
       // or later admissions here would decide differently from every other
       // process. Nothing waits on it — an ended run's pause waiters are
@@ -2529,6 +2957,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         message: `[bureau] Could not log a steering "${event.type}" event for run "${event.runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
       });
     });
+    // COR-1476 — the `run-ended` entry is the durable write that makes the run
+    // not live to every process reading `liveSessionRunIdsEverywhere`. The run's
+    // session-input settlement awaits it, and retries it if it rejected, before
+    // it reads the session's mailbox: the ordering that keeps an admitted input
+    // from being left open.
+    if (event.type === 'run-ended') steeringRunEndWrites.set(event.runId, appended);
   }
 
   /**
@@ -3003,6 +3437,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     serializeError: serializeUnknownError,
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
+
+  /**
+   * Persists a run's terminal session state, then settles the session's input
+   * (COR-1476): the settlement reads the session as the run left it.
+   */
+  function persistTerminalSession(
+    saveSessionUpdate: () => Promise<unknown>,
+    context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
+  ): void {
+    trackSessionInputSettlement(
+      persistSessionUpdate(saveSessionUpdate, context).then(() =>
+        settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
+      ),
+    );
+  }
+
+  /** Resolves once every run-end session-input settlement already started has finished. */
+  async function drainSessionInputSettlements(): Promise<void> {
+    while (inFlightSessionInputSettlements.size > 0) {
+      await Promise.allSettled(inFlightSessionInputSettlements);
+    }
+  }
 
   /**
    * COR-718 — a run's terminal save, pinned to the session incarnation the run
@@ -4262,11 +4718,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const runSteeringGate = steeringGate.forRun(runId);
 
       // COR-690: the last admission check before the run and its toolbox are
-      // registered. Everything from here to that registration is synchronous,
-      // so a `shutdown()` that started during the awaits above rejects this
-      // run instead of letting it start outside shutdown's snapshot.
+      // registered. Everything from that check to the registration is
+      // synchronous, so a `shutdown()` that started during the awaits above
+      // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
       try {
+        // COR-1476 — inside the block below, so a gate that cannot be built
+        // (its session read fails) ends the promoted run like any other start
+        // failure: its end is logged and its session's input settled.
+        const runSessionInputGate = sessionInputGateFor(
+          sessionId,
+          runId,
+          runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
+        );
         assertRunAdmissionOpen('run');
         activeRun = createActiveRun(
           {
@@ -4282,6 +4746,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ...(runSteeringGate ? { steering: runSteeringGate } : {}),
             // COR-1269 — stamped onto this run's hook-plan observations.
             sessionId,
+            // COR-1476 — input admitted while this run is live, delivered at
+            // each of its step boundaries.
+            ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
             // COR-1265 criterion 8 — merged AFTER the trailing registration, so
             // the Bureau tier is complete before it becomes the merge's first
             // argument. A single-tier merge still copies every entry into a fresh
@@ -4350,6 +4817,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runId,
           now: runtimeServices.clock.nowISO(),
         });
+        // COR-1476 — a run that never starts has ended: it releases its gate
+        // and, with no other run on the session, cancels the input left open.
+        // Tracked rather than awaited, as a terminal listener's settlement is,
+        // so a write that must be retried never holds this caller's rejection.
+        trackSessionInputSettlement(settleSessionInputsAfterRunEnd(sessionId, runId));
         await markStartFailed(error);
         throw error;
       }
@@ -4390,14 +4862,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       emitLiveFrame({
         type: 'run-envelope',
         runId,
-        frame: createRunStartedFrame(
-          {
-            runId,
-            sessionId,
-            agentName,
-          },
-          runtimeServices.clock.now,
-        ),
+        frame: createRunStartedFrame({ runId, sessionId, agentName }, runtimeServices.clock.now),
       });
 
       // AB-13 — free this run's concurrency slot while it is parked on a
@@ -4460,7 +4925,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        persistSessionUpdate(
+        persistTerminalSession(
           () =>
             saveRunTerminalSession(
               runId,
@@ -4519,7 +4984,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
         });
 
-        persistSessionUpdate(
+        persistTerminalSession(
           () =>
             // Persist the conversation carried on the abort event, NOT the
             // launch-time `conversation` closure. On the durable path the workflow
@@ -4595,6 +5060,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (store.getRun(runId)?.status === 'running') {
             settledLocalRunIds.add(runId);
             releaseSessionSteeringPoll(sessionId, runId);
+            // COR-1476 — abandoned to whoever owns it: this process stops keeping
+            // its leases alive, but the claims stay, since the owner may yet
+            // replay the steps that hold them.
+            abandonSessionInputGate(runId);
           }
         }),
       );
@@ -5063,6 +5532,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (store.getRun(runId)?.status === 'running') {
             settledLocalRunIds.add(runId);
             releaseSessionSteeringPoll(sessionId, runId);
+            abandonSessionInputGate(runId);
           }
         }),
     );
@@ -5117,7 +5587,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
       });
 
-      persistSessionUpdate(
+      persistTerminalSession(
         () =>
           saveRunTerminalSession(runId, sessionId, completedConversation, {
             lastRunId: runId,
@@ -5158,7 +5628,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
       });
 
-      persistSessionUpdate(
+      persistTerminalSession(
         // The reattach adapter reconstructs the abort RunResult from the run's
         // final checkpoint and threads it into RunAbortedEvent.conversation, so
         // use that directly instead of re-fetching the checkpoint snapshot.
@@ -5476,6 +5946,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       loadedSession,
       info.workflowId,
       services,
+    );
+    // The incarnation `reattachRecoveredRun` records for the run below, read
+    // here before it has.
+    await attachRecoveredSessionInput(
+      info.input.sessionId,
+      info.workflowId,
+      services,
+      loadedSession?.incarnation,
     );
     const eventSurface = createRecoveredRunEventSurface(
       services,
@@ -5918,6 +6396,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               fallbackSteeringGate = undefined;
             }
           }
+          if (recoveredServices !== undefined) {
+            // The incarnation `reattachRecoveredRun` records for the run
+            // below, read here before it has.
+            await attachRecoveredSessionInput(
+              ownedSessionId!,
+              handle.id,
+              recoveredServices,
+              classifiedIncarnation,
+            );
+          }
           reattachRecoveredRun(
             handle.id,
             ownedSessionId!,
@@ -5949,7 +6437,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // foreign-input / orphaned-session residue without store.register'ing it.
             orphanCancellations.push({
               runId: handle.id,
-              cancel: durable.engine.cancel(handle.id),
+              cancel: durable.engine.cancel(handle.id).then(async () => {
+                // COR-1476 — a cancelled run owes its session's input the same
+                // settlement as one that ended on its own.
+                if (ownedSessionId !== undefined) {
+                  await settleSessionInputsAfterRunEnd(ownedSessionId, handle.id);
+                }
+                return undefined;
+              }),
             });
           }
           // 'skip' — ownership unknown; leave the run to resume without live visibility.
@@ -5996,6 +6491,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // attempt's run have both been resumed by `recoverAll()` above. Recovery
       // reports what it could not do rather than throwing.
       currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
+    }
+
+    // COR-1476 — recovered runs are reattached and visible as live now, so
+    // input left open with no run at all (a process that died between a run's
+    // end and its settlement) is cancelled, and the rest waits for its run.
+    try {
+      await sessionInputSettlement?.sweep();
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Boot recovery could not sweep the pending session input: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
@@ -6561,6 +7070,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `abortRun` uses — both are the same "run cancellation" outcome from the
     // review lifecycle's perspective.
     if (outcome.status === 'requested') {
+      // Read before anything below can end the run's bookkeeping.
+      const inputSessionId = sessionInputGates.get(runId)?.sessionId;
       await revokePendingApprovalsForRun(runId, {
         status: 'canceled',
         principal: 'system:run-abort',
@@ -6578,6 +7089,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await runTerminalCheckpointCleanup(runId);
       // COR-772 — only a committed cancellation applies the child policy.
       await childTopology.parentCancelled(runId, 'Cancelled via cancelDurableRun');
+      // COR-1476 — the run has ended: its session's input is settled here, so
+      // the caller returns with the cancellation already reflected in every
+      // receipt, and again by its terminal listener, which finds nothing left.
+      if (inputSessionId !== undefined) {
+        await settleSessionInputsAfterRunEnd(inputSessionId, runId);
+      }
     }
     return outcome;
   }
@@ -8192,6 +8709,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1476 — the backstop: input left open with no live run, by a run-end
+      // settlement that never ran, is cancelled here.
+      try {
+        await sessionInputSettlement?.sweep();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual session-input sweep failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1477 — before the audit prune, so its clamp reads the advanced floor.
       try {
         await retainEventHistory();
@@ -8404,6 +8933,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic session-outbox drain pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // COR-1476 — the backstop for input left open with no live run.
+        try {
+          await sessionInputSettlement?.sweep();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic session-input sweep failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -8755,6 +9295,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // write has settled — never before, and never merely because this
       // call returned. The plain `boolean` contract is all this call site
       // needs now.
+      // COR-1476 — before the delete commits, so a session recreated under this
+      // id can never have its own pending input cancelled here. Input admitted
+      // in the gap before the delete is left for delivery to refuse by
+      // incarnation. A failure must not keep the session from being deleted.
+      await retireSessionInputs(id, session.incarnation).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'session-input',
+          message: `[bureau] Could not retire the pending session input of session "${id}" before deleting it: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
       const removedLiveRecord = await sessionStore.delete(id);
       onStoreDeletionCommitted();
       // AB-389 — drain right here, before anything below that can stall
@@ -8964,11 +9516,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * (`unsupported-capability`) — reversing the first two would let an
    * unauthorized caller learn a session exists.
    *
-   * Every reachable outcome here is a pre-admission rejection: no adopted
-   * `@lostgradient/weft` version exposes WFT-84's durable mailbox yet, so
-   * every authorized, non-terminal request unconditionally returns
-   * `unsupported-capability`. No `SessionInputRecord` is created and no `id`
-   * is consumed by this method today.
+   * COR-435/COR-1476: on a durably-configured bureau an authorized request to
+   * a non-terminal session is admitted to the session's mailbox (`admitted`,
+   * `replayed`, `conflict`, or `backlog-exhausted`). An admitted input ends
+   * `promoted` once a live run's step boundary appends its user turn (at most
+   * once, in admission order within a run, keyed by the mailbox command, under
+   * the input's own id, and promoted in the write that saves the turn), or
+   * `canceled` when its run ends first, so the client resends it. Bureau never
+   * starts a run to answer input: after the admission commits this method
+   * reads the session's liveness, and with no run live or starting it cancels
+   * the input itself and returns the re-read receipt (see
+   * `session-input-settlement.ts`). `steer` and `queue` share that one FIFO
+   * path. A bureau with no durable mailbox, or a session id too long to
+   * address one, answers `unsupported-capability`.
    */
   /**
    * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
@@ -8983,6 +9543,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
 
+  function assertSessionInputAdmissionOpen(): void {
+    if (runAdmissionClosed) {
+      throw new BureauError('Cannot submit session input: Bureau is shutting down.', 'CONFLICT');
+    }
+  }
+
   async function submitSessionInput(
     sessionId: string,
     request: SessionInputAdmissionRequest,
@@ -8992,6 +9558,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // ephemeral bureau (no persistence/storage) is a supported configuration,
     // and every sessionId is necessarily unknown in it — the correct outcome
     // per this method's own contract is `not-found`, not a throw.
+    // A durable admission reads the engine and the log from its first await to
+    // its last, so shutdown waits for the whole of it before it disposes
+    // either; once shutdown starts, none begins, as for steering.
+    assertSessionInputAdmissionOpen();
     const sessionStoreForInput = runtime.sessionStore;
     const session = sessionStoreForInput ? await sessionStoreForInput.load(sessionId) : undefined;
     // `session` truthy implies `sessionStoreForInput` was truthy above, but
@@ -9013,40 +9583,140 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { outcome: 'session-terminal', sessionId };
     }
 
-    const sessionMailbox = getSessionInputMailbox(sessionId);
+    // `tryGet...`, not `get...`: a session id Weft cannot address as a mailbox
+    // resource (over 256 bytes) is a deployment limit, so it answers
+    // `unsupported-capability` like a bureau with no mailbox rather than throwing.
+    const sessionMailbox = tryGetSessionInputMailbox(sessionId, session.incarnation);
     const storage = runtime.durableStorage;
     const kv = runtime.kv;
     if (sessionMailbox === undefined || storage === undefined || kv === undefined) {
       return { outcome: 'unsupported-capability', reason: 'durable-mailbox-unavailable' };
     }
+    // A mailbox exists only with the durable engine (`getSessionInputMailbox`),
+    // and the engine with `kv` is what composes the settlement, so it is never
+    // absent here; this only narrows the type, and fails loudly if the
+    // composition above ever changes.
+    if (sessionInputSettlement === undefined) {
+      throw new Error('Session-input admission reached a bureau without its settlement.');
+    }
 
     const id = request.id ?? runtimeServices.identifiers.next('session-input');
     const reservationKey = `${request.principal}\u0000session-input\u0000${id}`;
-    const existing = inFlightSessionInputAdmissions.get(reservationKey);
-    if (existing) return existing;
 
     const payload: PersistedSessionInput = {
+      incarnation: session.incarnation,
       payload: request.payload,
       ...(request.expiresAt !== undefined ? { expiresAt: request.expiresAt } : {}),
       ...(request.supersedes !== undefined ? { supersedes: request.supersedes } : {}),
     };
 
-    const admission = admitSessionInput({
-      storage,
-      kv,
-      sessionStore: sessionStoreForInput,
-      sessionMailbox,
-      sessionId,
-      id,
-      principal: request.principal,
-      deliveryMode: request.deliveryMode,
-      payload,
-      principalBacklogLimit: sessionInputPrincipalBacklogLimit,
-      sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
-      nowMs: runtimeServices.clock.now(),
-    }).finally(() => {
-      inFlightSessionInputAdmissions.delete(reservationKey);
-    });
+    // ORDERING (see `session-input-settlement.ts`): the session's marker is
+    // written BEFORE the admission, so admitted input is never missing from the
+    // sweep's index; the admission commits BEFORE liveness is read below, and the
+    // ending run reads the mailbox only after its own not-live write, so one side
+    // always sees the other. A failure writing the marker refuses the admission.
+    // Checked again after the awaits above: a shutdown that started during them
+    // must not find a new admission outside its drain.
+    assertSessionInputAdmissionOpen();
+    // One admission of a `(principal, id)` at a time in this process, each
+    // answered on its own: a concurrent submission with another payload reads
+    // the mailbox's `conflict`, and one for another session reads the
+    // identity's. Nothing is coalesced into another call's receipt.
+    const previous = inFlightSessionInputAdmissions.get(reservationKey);
+    const runAdmission = (): Promise<SessionInputAdmissionAttemptOutcome> =>
+      (async () => {
+        await sessionInputSettlement.markOpen(sessionId, session.incarnation);
+        return admitSessionInput({
+          storage,
+          kv,
+          sessionMailbox,
+          sessionId,
+          incarnation: session.incarnation,
+          id,
+          principal: request.principal,
+          deliveryMode: request.deliveryMode,
+          payload,
+          principalBacklogLimit: sessionInputPrincipalBacklogLimit,
+          sessionBacklogLimitForCrossSessionRead: sessionInputSessionBacklogLimit,
+          nowMs: runtimeServices.clock.now(),
+        });
+      })();
+    const admission = (
+      previous === undefined ? runAdmission() : previous.then(runAdmission, runAdmission)
+    )
+      .then(async (outcome): Promise<SessionInputAdmissionOutcome> => {
+        if (outcome.outcome !== 'admitted') return outcome;
+        const { receipt, commandId } = outcome;
+        const admitted: SessionInputAdmissionOutcome = { outcome: 'admitted', receipt };
+        if (sessionInputSettlement === undefined) return admitted;
+        // The marker written before the admission can be removed in between by
+        // a sweep that read it, found the mailbox still empty, and deleted it
+        // after the admission committed. Bumping it again now, with the input
+        // durable, keeps the session listed whatever happened to the first bump.
+        try {
+          await sessionInputSettlement.markOpen(sessionId, session.incarnation);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not re-mark session "${sessionId}" as having open input after admitting "${id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // Shutdown releases open input rather than cancelling it; the next
+        // boot's recovered run delivers it, or the sweep cancels it.
+        if (isSessionInputClosed()) return admitted;
+        // COR-1476 — the admission above is committed. Only now is liveness
+        // read, after catching up the steering log, so a run whose `run-ended`
+        // entry another process wrote is not counted live. No run live or
+        // starting means nothing will ever deliver the input, so it is
+        // cancelled here and the caller reads `canceled`. A liveness read that
+        // fails is answered the same way: an input admitted on a guess would
+        // be left open.
+        let live: readonly string[];
+        try {
+          const steeringKv = durableSteeringStore();
+          if (steeringKv !== undefined) {
+            await enqueueSteering(sessionId, () =>
+              catchUpSteering(steeringKv, sessionId, session.incarnation),
+            );
+          }
+          live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not read the live runs of session "${sessionId}" after admitting input "${id}"; the input is cancelled rather than left open: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          live = [];
+        }
+        if (live.length > 0) return admitted;
+        try {
+          await sessionMailbox.requestCancellation({
+            commandId,
+            reason: SESSION_INPUT_RUN_ENDED_REASON,
+          });
+          return {
+            outcome: 'admitted',
+            receipt: await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId),
+          };
+        } catch (error) {
+          // Still open, and the marker written above lists it for the sweep.
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not cancel input "${id}" of session "${sessionId}", which no run is live to deliver: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return admitted;
+        }
+      })
+      .finally(() => {
+        if (inFlightSessionInputAdmissions.get(reservationKey) === admission) {
+          inFlightSessionInputAdmissions.delete(reservationKey);
+        }
+      });
     inFlightSessionInputAdmissions.set(reservationKey, admission);
     return admission;
   }
@@ -11088,6 +11758,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-690: close run admission before anything below snapshots the active
     // runs or run toolboxes, so nothing admitted afterwards escapes the drain.
     runAdmissionClosed = true;
+    sessionInputClosing.resolve();
 
     const policy: 'abort' | 'drain' = shutdownOptions?.policy ?? 'abort';
     const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
@@ -11283,6 +11954,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
 
+      // COR-1476 — every run's session input is released: the leases go back to
+      // the mailbox and the unpromoted claims are dropped, so the next boot
+      // delivers them. Shutdown only releases; it never starts a run.
+      for (const [runId, { sessionId }] of sessionInputGates) {
+        await releaseSessionInputs(sessionId, runId);
+      }
+
       // AB-363: stop the automatic-profile run-ownership pruning timer, if
       // one was started — `clearInterval` alone only cancels FUTURE ticks,
       // so a pass already in flight is also awaited here, before the
@@ -11347,6 +12025,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       await childTopology.drain();
       await sessionPersistence.drain();
+      await drainSessionInputSettlements();
       if (automaticRunOwnershipPruneTimerStarted) {
         runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
         automaticRunOwnershipPruneTimerStarted = false;
@@ -11558,8 +12237,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             runtimeServices.timers.clearInterval(poller.timer);
           }
           steeringPollers.clear();
+          // COR-1476 — session-input admissions in flight read the engine and
+          // the log the same way, and are closed with `runAdmissionClosed` too.
           await Promise.allSettled([
             ...inFlightSteeringSubmissions,
+            ...inFlightSessionInputAdmissions.values(),
             ...inFlightSteeringPolls,
             ...steeringQueues.values(),
           ]);

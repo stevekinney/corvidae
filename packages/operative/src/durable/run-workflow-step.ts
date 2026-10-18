@@ -1,6 +1,6 @@
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { WorkflowContext, WorkflowOperation } from '@lostgradient/weft';
-import { Conversation } from 'conversationalist';
+import { Conversation, type MessageInput, type MultiModalContent } from 'conversationalist';
 
 import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
@@ -22,6 +22,8 @@ import type {
   PendingHumanWait,
   PendingWakeup,
   RunCursor,
+  SessionInputDelivery,
+  SessionInputPayload,
   StepRecord,
 } from './types';
 
@@ -89,6 +91,21 @@ export interface DurableStepMemoResult {
   >;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
+  /**
+   * COR-1476 — the session inputs this step's boundary received before it
+   * generated, in admission order, each already appended to the conversation
+   * above. The workflow promotes them in the same checkpoint write as this
+   * step's transcript, whatever the step's outcome. Absent when the run has no
+   * {@link SessionInputGate} or nothing was pending, so a step that delivers
+   * nothing records exactly what it always did.
+   */
+  sessionInputDeliveries?: readonly SessionInputDelivery[] | undefined;
+  /**
+   * COR-1476 — the session inputs drained after this step generated, because it
+   * would have ended the run. They are appended and promoted with this step's
+   * transcript too; the NEXT step answers them.
+   */
+  lateSessionInputDeliveries?: readonly SessionInputDelivery[] | undefined;
 }
 
 /** Options for {@link runStepMemo}. */
@@ -101,6 +118,13 @@ export interface RunStepMemoOptions {
    * a continuation message, whose ids and timestamps change on replay.
    */
   readonly delta?: boolean;
+  /**
+   * COR-1476 — the run's step cap. A step that would end the run asks the
+   * session input gate once more only while a step remains for the answer:
+   * input never extends a run past its budget, and what is left is cancelled
+   * when the run ends, for the client to resend.
+   */
+  readonly maximumSteps?: number | undefined;
 }
 
 /**
@@ -138,13 +162,31 @@ export function runStepMemo(
       runId,
       durableOperationKeys: true,
     };
+    const sessionInputDeliveries = await deliverSessionInputs(deps, conversation, stepIndex);
+    const canAnswerLateInput =
+      options.maximumSteps === undefined || stepIndex + 1 < options.maximumSteps;
+    const lateSessionInputDeliveries: SessionInputDelivery[] = [];
     const runState = createRunState();
     runState.totalUsage = { ...carriedAccumulators.totalUsage };
     runState.cost = carriedAccumulators.cost ? { ...carriedAccumulators.cost } : undefined;
     runState.lastContent = carriedAccumulators.lastContent;
     runState.schemaAttempts = carriedAccumulators.schemaAttempts;
     runState.lastAppliedConfigVersion = carriedAccumulators.lastAppliedConfigVersion;
-    const outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
+    let outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
+    // COR-1476 — input admitted while this step generated would otherwise wait
+    // for a boundary that never comes, because the step ends the run. Ask the
+    // gate once more: pending input turns the stop into a continue, as a failed
+    // schema validation does, so the same run answers it, after the reply it
+    // arrived during and in the order admitted.
+    if (outcome.kind === 'stop' && canAnswerLateInput) {
+      const late = await deliverSessionInputs(deps, conversation, stepIndex + 1);
+      if (late.length > 0) {
+        lateSessionInputDeliveries.push(...late);
+        const stopped = runState.steps.at(-1);
+        if (stopped !== undefined) stopped.final = false;
+        outcome = { kind: 'continue' };
+      }
+    }
     deps.onStepToolbox?.(deps.toolbox);
     const pushed: StepResult | undefined = runState.steps.at(-1);
     const stepMetadata = pushed ? { ...pushed.metadata, ...deps.getStepMetadata?.() } : undefined;
@@ -199,6 +241,89 @@ export function runStepMemo(
       },
       pendingWakeup: deps.pendingWakeup,
       pendingHumanWait: deps.pendingHumanWait,
+      ...(sessionInputDeliveries.length > 0 ? { sessionInputDeliveries } : {}),
+      ...(lateSessionInputDeliveries.length > 0 ? { lateSessionInputDeliveries } : {}),
     };
   });
+}
+
+/**
+ * A session-input payload as message content. Admission keeps `citations` off
+ * text parts structurally (`citations?: undefined`); the conversation's own
+ * text part omits the key rather than holding `undefined`, so drop it here.
+ */
+function toMessageContent(payload: SessionInputPayload): string | MultiModalContent[] {
+  if (typeof payload === 'string') return payload;
+  return payload.map((part): MultiModalContent => {
+    if (part.type !== 'text') return part;
+    const { citations: _unusedCitations, ...text } = part;
+    return text;
+  });
+}
+
+/**
+ * COR-1476 — the step boundary's session-input delivery. Asks the run's
+ * {@link SessionInputGate} what is pending and appends each payload to the
+ * conversation as a user message, in the order the gate returns them, so the
+ * model sees them on the step that follows.
+ *
+ * The appended message's id is the input's own `id`, so a client can find its
+ * turn in the run's history by the id it submitted. The one exception is an id
+ * the conversation already holds a message for: a caller may reuse an input id
+ * once the mailbox has retired the earlier record, and a conversation refuses a
+ * duplicate message id, so that turn gets a fresh id rather than failing the
+ * step. Its `sessionInputId` metadata still names the input.
+ *
+ * Delivery is idempotent per command: an input whose user turn is already in the
+ * conversation (keyed by its mailbox command, which, unlike the input id, names
+ * exactly one admission) is not appended a second time.
+ *
+ * Runs inside the step's memo, so the appended messages and the list of what
+ * was delivered are checkpointed together: a replay reads the recorded result
+ * and never asks the gate again. `providerTurn` is the step whose generation
+ * answers the inputs.
+ */
+async function deliverSessionInputs(
+  deps: DurableRunDeps,
+  conversation: Conversation,
+  providerTurn: number,
+): Promise<SessionInputDelivery[]> {
+  const { options } = deps;
+  // A gate comes paired with its session id (`RunOptions`), so the narrowing
+  // on the gate is what makes the id definite below.
+  if (options.sessionInput === undefined) return [];
+  const { sessionId, sessionInput: gate } = options;
+  const deliveries: SessionInputDelivery[] = [];
+  for (const input of await gate.claimPending()) {
+    // Hidden messages count: a hidden turn still holds its command and its id.
+    const messages = conversation.getMessages({ includeHidden: true });
+    const existing = messages.find(
+      (message) => message.metadata?.['sessionInputCommandId'] === input.commandId,
+    );
+    let messageId = existing?.id;
+    if (messageId === undefined) {
+      const metadata = { sessionInputId: input.id, sessionInputCommandId: input.commandId };
+      const idIsFree = !messages.some((message) => message.id === input.id);
+      const turn: MessageInput & { readonly id?: string } = {
+        role: 'user',
+        content: toMessageContent(input.payload),
+        metadata,
+        ...(idIsFree ? { id: input.id } : {}),
+      };
+      conversation.appendMessages(turn);
+      messageId = conversation.getMessages().at(-1)?.id;
+    }
+    if (messageId === undefined) {
+      throw new Error(`Session input "${input.id}" was appended but no message was recorded.`);
+    }
+    deliveries.push({
+      id: input.id,
+      commandId: input.commandId,
+      sessionId,
+      deliveredAt: (deps.options.runtime ?? createDefaultRuntimeServices()).clock.nowISO(),
+      conversationMessageId: messageId,
+      providerTurn,
+    });
+  }
+  return deliveries;
 }

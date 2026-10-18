@@ -295,7 +295,7 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
   function persistSessionUpdate(
     saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
-  ): void {
+  ): Promise<void> {
     const persisting = (async () => {
       let lastError: unknown;
       for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
@@ -322,6 +322,8 @@ export function createSessionPersistence(dependencies: SessionPersistenceDepende
     })();
     inFlight.add(persisting);
     void persisting.finally(() => inFlight.delete(persisting));
+    // Resolves once the save has landed or been given up on; never rejects.
+    return persisting;
   }
 
   /**

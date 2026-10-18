@@ -362,6 +362,77 @@ export interface SessionInputFailure {
     | 'promotion-failed';
 }
 
+/**
+ * One admitted session input a run's step boundary received from its
+ * {@link SessionInputGate} (COR-1476). Plain data: it is read inside a step's
+ * memo and nothing live crosses a checkpoint.
+ */
+export interface ClaimedSessionInput {
+  /** The input's caller-facing identity, unique within its session while the mailbox retains it. */
+  readonly id: string;
+  /**
+   * The immutable identity of the admitted command. Unlike {@link id}, which a
+   * caller may legitimately reuse once the mailbox has retired the record, this
+   * names exactly one admission, so delivery and promotion are keyed by it.
+   */
+  readonly commandId: string;
+  readonly deliveryMode: SessionInputDeliveryMode;
+  readonly payload: SessionInputPayload;
+}
+
+/** An input a step boundary appended to the conversation, handed to {@link SessionInputGate.settle}. */
+export interface SessionInputDelivery {
+  readonly id: string;
+  readonly commandId: string;
+  /** The session the input was admitted to. */
+  readonly sessionId: string;
+  /** When the step delivered it, from the run's clock, recorded in the step's memo. */
+  readonly deliveredAt: string;
+  /** The conversation message the input became. */
+  readonly conversationMessageId: string;
+  /** The step index of the provider-turn boundary the input was consumed at. */
+  readonly providerTurn: number;
+}
+
+/**
+ * The seam through which a durable run receives session input admitted while it
+ * is live (COR-1476). The run workflow consults it at every step boundary,
+ * before the step generates, and once more if the step would otherwise end the
+ * run (while the run has steps left): whatever {@link SessionInputGate.claimPending}
+ * returns is appended to the conversation as user messages, in the order
+ * returned, as part of the same memoized step. The step's checkpoint write then
+ * promotes each input in the SAME atomic write as the transcript that holds it,
+ * and {@link SessionInputGate.settle} retires the inputs' mailbox commands.
+ *
+ * Operative owns the contract and Bureau supplies the implementation over its
+ * session-input mailbox, exactly as `SteeringGate` is supplied. Supplied via
+ * `RunOptions.sessionInput`; a run without one receives no session input.
+ *
+ * Exactly-once delivery rests on what the implementation keeps: a durable record
+ * of which run is delivering each command, written before the input is appended,
+ * honored by every other live run, and released or taken over only when its owner
+ * is no longer live.
+ */
+export interface SessionInputGate {
+  /**
+   * The inputs to deliver at this boundary, in admission order. Never returns
+   * an input out of order, and never an input another live run is delivering.
+   */
+  claimPending(): Promise<readonly ClaimedSessionInput[]>;
+  /**
+   * Retires the mailbox commands of inputs whose promotion already committed
+   * with the run's transcript. Writes nothing durable, is idempotent, and a
+   * failure to retire one is retried by the next boundary rather than failing the run.
+   */
+  settle(deliveries: readonly SessionInputDelivery[]): Promise<void>;
+  /**
+   * Releases everything the gate holds: stops keeping its claims alive and
+   * returns each unretired lease to the mailbox. Called when the run ends,
+   * however it ends. Optional.
+   */
+  dispose?(): void | Promise<void>;
+}
+
 // AB-67 — the runtime steering contract (decision record, ratified
 // 2026-09-01). Type-only export; no runtime behavior attached. See
 // `documentation/operative-type-safe-api.md`'s "## Steering commands"

@@ -424,10 +424,18 @@ function compactionFailingOnCall(failingCall: number): RunOptions['contextManage
   };
 }
 
+/**
+ * `Omit` over a union keeps only the keys every arm shares, which would flatten
+ * `RunOptions`'s discriminated pairs; distributing it keeps each arm intact.
+ */
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
 const budgetFailureSites: Array<{
   name: string;
   step: number;
-  options: () => Partial<RunOptions>;
+  // Without the session pair (COR-1476): `Partial` would make `sessionId`
+  // optional in the arm that requires it, and no site overrides either field.
+  options: () => Partial<DistributiveOmit<RunOptions, 'sessionId' | 'sessionInput'>>;
 }> = [
   {
     name: 'onMaximumSteps throws once the step limit is reached',
