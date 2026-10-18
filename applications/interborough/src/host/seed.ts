@@ -3,8 +3,9 @@
  *
  * Every agent answers from a script, so a seeded agent calls no model and needs no provider key,
  * whatever providers the host is configured with. The scripts start over whenever the host does.
- * The agents are code, so {@link createSeededAgents} rebuilds them on every start; the schedule and the goal are Bureau state, so {@link seedBureau}
- * creates each only when the Bureau does not already hold it, and a restart adds nothing.
+ * The agents are code, so {@link createSeededAgents} rebuilds them on every start; the schedule and
+ * the goal are Bureau state, so {@link seedBureau} creates each only when the Bureau does not
+ * already hold it, and a restart adds nothing.
  *
  * A session run that names one of these agents (Chat, or `createRun({ agentName })`) runs that
  * agent's script, tools, and stop conditions. The host sets `humanInput: true`, so the Bureau also
