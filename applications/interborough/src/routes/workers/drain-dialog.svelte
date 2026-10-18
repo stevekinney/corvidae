@@ -15,7 +15,8 @@
 
   export type DrainTarget =
     | { readonly kind: 'worker'; readonly id: string }
-    | { readonly kind: 'deployment'; readonly name: string };
+    | { readonly kind: 'deployment'; readonly name: string }
+    | { readonly kind: 'build'; readonly deploymentName: string; readonly buildId: string };
 
   interface DrainDialogProps {
     readonly open: boolean;
@@ -33,8 +34,20 @@
     if (open) reason = '';
   });
 
-  const targetLabel = $derived(target.kind === 'worker' ? target.id : target.name);
-  const title = $derived(target.kind === 'worker' ? 'Drain worker' : 'Drain deployment');
+  const targetLabel = $derived(
+    target.kind === 'worker'
+      ? target.id
+      : target.kind === 'deployment'
+        ? target.name
+        : `${target.deploymentName}/${target.buildId}`,
+  );
+  const title = $derived(
+    target.kind === 'worker'
+      ? 'Drain worker'
+      : target.kind === 'deployment'
+        ? 'Drain deployment'
+        : 'Drain build',
+  );
 
   function handleDrain(): void {
     const trimmed = reason.trim();

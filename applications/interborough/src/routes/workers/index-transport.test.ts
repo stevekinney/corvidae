@@ -85,4 +85,33 @@ describe('Workers route — transports', () => {
     expect(await findByText('No conformance targets')).not.toBeNull();
     expect(router.search.get('tab')).toBe('conformance');
   });
+
+  test('deployments are their own tab, fed the fleet list so builds show their workers', async () => {
+    scripted = new ScriptedFetch();
+    routeHappyPaths(scripted, {
+      workers: [worker({ id: 'wkr_b1', deploymentName: 'billing', buildId: 'build-1' })],
+    });
+    scripted.routeJsonRpcMethodBy('weft.worker.deployments.diagnostics', (params) => ({
+      versions: [
+        {
+          deploymentName: 'billing',
+          buildId: 'build-1',
+          artifactDigest: 'sha256:a',
+          manifestDigest: 'sha256:m',
+          state: 'ready',
+          firstSeenAt: 1,
+          executionReferences: 0,
+          manifest: { deployment: {}, workflows: {} },
+        },
+      ],
+      routing: params['deploymentName'] === undefined ? null : null,
+    }));
+
+    const { findByRole, findByText } = renderRoute();
+    await fireEvent.click(await findByRole('tab', { name: 'Deployments' }));
+
+    expect(await findByText('build-1')).not.toBeNull();
+    expect(await findByText(/1 worker · 1\/4 in flight/)).not.toBeNull();
+    expect(router.search.get('tab')).toBe('deployments');
+  });
 });

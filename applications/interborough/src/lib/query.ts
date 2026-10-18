@@ -54,6 +54,8 @@ export const queryKeys = {
     manifests: (workerIds: readonly string[]) => ['workers', 'manifests', workerIds] as const,
     manifest: (workerId: string) => ['workers', 'manifest', workerId] as const,
     rejections: () => ['workers', 'rejections'] as const,
+    /** Deployment versions and routing pointers (COR-277). */
+    deployments: () => ['workers', 'deployments'] as const,
   },
   queues: {
     list: () => ['queues', 'list'] as const,

@@ -92,6 +92,23 @@ export class ScriptedFetch {
     });
   }
 
+  /** Standing route whose result depends on the request's `params`, for an operation read more than one way. */
+  routeJsonRpcMethodBy(method: string, result: (params: Record<string, unknown>) => unknown): void {
+    this.#routes.push({
+      matches: (call) => parsedJsonRpcMethod(call) === method,
+      respond: (call) => {
+        const body =
+          typeof call.init?.body === 'string' ? parseJsonObject(call.init.body) : undefined;
+        const params = body?.['params'];
+        const record =
+          typeof params === 'object' && params !== null && !Array.isArray(params)
+            ? Object.fromEntries(Object.entries(params))
+            : {};
+        return Response.json({ jsonrpc: '2.0', id: 1, result: result(record) });
+      },
+    });
+  }
+
   /**
    * Standing route: any JSON-RPC request for `method` gets a JSON-RPC error
    * envelope back, in the exact shape `httpClientCatalogTransport` (`weft/src/client/http-operations.ts`)
@@ -105,6 +122,7 @@ export class ScriptedFetch {
     httpStatus: number,
     message: string,
     weftCode?: string,
+    data: Record<string, unknown> = {},
   ): void {
     this.#routes.push({
       matches: (call) => parsedJsonRpcMethod(call) === method,
@@ -115,7 +133,7 @@ export class ScriptedFetch {
           error: {
             code: -32000,
             message,
-            data: { httpStatus, ...(weftCode !== undefined ? { weftCode } : {}) },
+            data: { ...data, httpStatus, ...(weftCode !== undefined ? { weftCode } : {}) },
           },
         }),
     });

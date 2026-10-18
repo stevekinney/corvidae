@@ -49,6 +49,7 @@
   import DrainDialog from './drain-dialog.svelte';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
   import ConformancePanel from './conformance-panel.svelte';
+  import DeploymentsPanel from './deployments-panel.svelte';
   import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
   import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
@@ -157,12 +158,20 @@
     }
   });
 
-  type TabId = 'fleet' | 'list' | 'queues' | 'diagnostics' | 'conformance';
-  const TAB_IDS: readonly TabId[] = ['fleet', 'list', 'queues', 'diagnostics', 'conformance'];
+  type TabId = 'fleet' | 'list' | 'queues' | 'deployments' | 'diagnostics' | 'conformance';
+  const TAB_IDS: readonly TabId[] = [
+    'fleet',
+    'list',
+    'queues',
+    'deployments',
+    'diagnostics',
+    'conformance',
+  ];
   const TAB_LABELS: Readonly<Record<TabId, string>> = {
     fleet: 'Fleet overview',
     list: 'Workers',
     queues: 'Task queues',
+    deployments: 'Deployments',
     diagnostics: 'Diagnostics',
     conformance: 'Conformance',
   };
@@ -226,7 +235,7 @@
         workerId: drainTarget.id,
         ...(reason !== undefined ? { reason } : {}),
       });
-    } else {
+    } else if (drainTarget.kind === 'deployment') {
       drainDeployment.mutate({
         deploymentName: drainTarget.name,
         ...(reason !== undefined ? { reason } : {}),
@@ -522,6 +531,10 @@
             />
           {/await}
         {/if}
+      </TabPanel>
+
+      <TabPanel value="deployments">
+        <DeploymentsPanel workers={workersQuery.data?.items ?? []} />
       </TabPanel>
 
       <TabPanel value="conformance">

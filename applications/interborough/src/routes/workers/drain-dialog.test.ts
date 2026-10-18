@@ -70,4 +70,21 @@ describe('DrainDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Cancel' }));
     expect(cancelled).toBe(true);
   });
+
+  test('build target: names the deployment and build and drains with that title', async () => {
+    const drained: (string | undefined)[] = [];
+    const { getByText, getByRole } = render(DrainDialog, {
+      props: {
+        open: true,
+        target: { kind: 'build', deploymentName: 'billing', buildId: 'build-7' },
+        submitting: false,
+        onDrain: (reason) => drained.push(reason),
+        onCancel: () => {},
+      },
+    });
+
+    expect(getByText('billing/build-7')).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Drain build' }));
+    expect(drained).toEqual([undefined]);
+  });
 });
