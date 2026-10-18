@@ -191,6 +191,20 @@ export interface AnthropicMessageResponse {
     id?: string | undefined;
     name?: string | undefined;
     input?: unknown;
+    /** A `thinking` block's reasoning text. */
+    thinking?: string | undefined;
+    /** A `thinking` block's signature; replayed verbatim. */
+    signature?: string | undefined;
+    /** A `redacted_thinking` block's encrypted payload; replayed verbatim. */
+    data?: string | undefined;
+    /** A `text` block's citations (`null` when absent); kept opaque. */
+    citations?: unknown;
+    /** The server tool use a result block answers. */
+    tool_use_id?: string | undefined;
+    /** A server-tool result block's content; kept opaque. */
+    content?: unknown;
+    /** A `container_upload` block's file id. */
+    file_id?: string | undefined;
   }>;
   usage?:
     | {
@@ -843,12 +857,29 @@ export interface AnthropicStreamEvent {
       }
     | undefined;
   index?: number | undefined;
-  content_block?: { type: string; id?: string; name?: string; text?: string } | undefined;
+  content_block?:
+    | {
+        type: string;
+        id?: string;
+        name?: string;
+        text?: string;
+        thinking?: string;
+        signature?: string;
+        data?: string;
+        citations?: unknown;
+        tool_use_id?: string;
+        content?: unknown;
+        file_id?: string;
+        input?: unknown;
+      }
+    | undefined;
   delta?:
     | {
         type?: string;
         text?: string;
         thinking?: string;
+        signature?: string;
+        citation?: unknown;
         partial_json?: string;
         /**
          * Widened to allow `null`: the SDK's `RawMessageDeltaEvent.Delta.stop_reason`

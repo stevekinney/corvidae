@@ -794,6 +794,7 @@ describe('Anthropic provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'claude-3-5-sonnet-20241022', effectiveEffort: 'none' },

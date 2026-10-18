@@ -246,6 +246,24 @@ function finalizeContentState(
   }
 }
 
+/**
+ * Finalizes one block's state into its content part, so a caller can report the part complete when
+ * that block's stop event arrives instead of waiting for the whole stream. A client `tool_use`
+ * block is not content (it is a `tool-call` message), so it finalizes to `undefined`.
+ */
+export function finalizeBlockState(state: BlockAccumulatorState): MultiModalContent | undefined {
+  if (state.type === 'tool_use') return undefined;
+  if (state.type === 'server_tool_use') {
+    return {
+      type: 'server_tool_use',
+      id: state.id,
+      name: state.name,
+      input: parseStreamedToolInput(state.name, state.inputBuffer),
+    };
+  }
+  return finalizeContentState(state);
+}
+
 export function createStreamingAccumulator(): StreamingMessageAccumulator {
   const blocks = new Map<number, BlockAccumulator>();
 

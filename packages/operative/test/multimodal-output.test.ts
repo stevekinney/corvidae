@@ -18,9 +18,25 @@ import {
   ProviderError,
   shouldRetryProviderError,
 } from '../src/providers/errors';
+import { createAnthropicProvider, createAnthropicProviderStream } from '../src/providers/anthropic';
+import {
+  createMockAnthropicClient,
+  createMockAnthropicStreamingClient,
+} from '../src/providers/test/mock-clients';
+import { withStreaming } from '../src/streaming';
+import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
 import type { GenerateResponse, RunOptions } from '../src/types';
+import {
+  anthropicStreamEventsFor,
+  citedTextBlock,
+  type RecordedAnthropicBlock,
+  redactedThinkingBlock,
+  serverToolBlocks,
+  thinkingBlock,
+  toolUseBlock,
+} from './multimodal-fixtures';
 
 const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(options).result;
 
@@ -609,6 +625,90 @@ describe('cleanup waits for generated-media admissions', () => {
 
     expect(await closing).toEqual({ status: 'unresolved', reason: 'timed-out' });
     expect(admitter.admissions[0]?.settlement).toBeUndefined();
+  });
+});
+
+type AnthropicMode = 'non-streaming' | 'withStreaming' | 'withEnhancedStreaming';
+const ANTHROPIC_MODES: ReadonlyArray<readonly [AnthropicMode]> = [
+  ['non-streaming'],
+  ['withStreaming'],
+  ['withEnhancedStreaming'],
+];
+
+const finalTextBlock = { type: 'text', text: 'Done.' } satisfies RecordedAnthropicBlock;
+const usageOf = { input_tokens: 12, output_tokens: 7 };
+
+/** Runs two steps against recorded Anthropic output: `firstBlocks`, then a closing text answer. */
+async function runAnthropic(mode: AnthropicMode, firstBlocks: readonly RecordedAnthropicBlock[]) {
+  const replies = [firstBlocks, [finalTextBlock]];
+  let generate: RunOptions['generate'];
+  let requests: Array<{ messages: unknown }>;
+  if (mode === 'non-streaming') {
+    const client = createMockAnthropicClient(
+      replies.map((content) => ({ content, usage: usageOf })) as never,
+    );
+    generate = createAnthropicProvider({ model: 'claude-sonnet-4-6', client });
+    requests = client._calls;
+  } else {
+    const client = createMockAnthropicStreamingClient(
+      replies.map((content) => anthropicStreamEventsFor(content)),
+    );
+    const streaming = createAnthropicProviderStream({ model: 'claude-sonnet-4-6', client });
+    generate = mode === 'withStreaming' ? withStreaming(streaming) : withEnhancedStreaming(streaming);
+    requests = client._calls;
+  }
+  const result = await run(baseOptions(generate));
+  return { result, requests };
+}
+
+function assistantTurn(request: { messages: unknown } | undefined): unknown[] {
+  const messages = request?.messages as Array<{ role: string; content: unknown }>;
+  const turn = messages.find((message) => message.role === 'assistant');
+  return turn?.content as unknown[];
+}
+
+describe.each(ANTHROPIC_MODES)('Anthropic replay blocks survive the loop (%s)', (mode) => {
+  const scenarios: ReadonlyArray<readonly [string, RecordedAnthropicBlock[]]> = [
+    ['thinking, then tool_use, with no text block', [thinkingBlock, toolUseBlock]],
+    ['redacted_thinking, then tool_use', [redactedThinkingBlock, toolUseBlock]],
+    [
+      'thinking, text, then tool_use',
+      [thinkingBlock, { type: 'text', text: 'Let me check.' }, toolUseBlock],
+    ],
+    ['text with citations', [citedTextBlock]],
+    ['every server-tool block type and container_upload', [...serverToolBlocks, toolUseBlock]],
+  ];
+
+  it.each(scenarios)('keeps %s: parts in provider order, in the row, and byte-identical on the next request', async (_name, blocks) => {
+    const { result, requests } = await runAnthropic(mode, blocks);
+
+    const expectedParts = blocks.filter((block) => block['type'] !== 'tool_use');
+    expect(result.finishReason).toBe('stop-condition');
+    expect(result.steps[0]?.parts).toEqual(expectedParts as never);
+    const text = expectedParts
+      .filter((block) => block['type'] === 'text')
+      .map((block) => block['text'])
+      .join('');
+    expect(result.steps[0]?.content).toBe(text);
+
+    const [row] = result.conversation.getMessages().filter((m) => m.role === 'assistant');
+    expect(row?.id).toBe(result.steps[0]?.messageId);
+    expect(row?.content).toEqual(
+      expectedParts.length === 1 && expectedParts[0]?.['type'] === 'text' && !('citations' in expectedParts[0])
+        ? (expectedParts[0]['text'] as string)
+        : (expectedParts as never),
+    );
+
+    if (blocks.some((block) => block['type'] === 'tool_use')) {
+      // The request that carries the tool result holds each block exactly as the API returned it,
+      // with thinking before tool_use in the same assistant turn.
+      expect(JSON.stringify(assistantTurn(requests[1]))).toBe(JSON.stringify(blocks));
+    }
+  });
+
+  it('keeps the usage the response reported', async () => {
+    const { result } = await runAnthropic(mode, [thinkingBlock, toolUseBlock]);
+    expect(result.steps[0]?.usage).toMatchObject({ prompt: 12, completion: 7 });
   });
 });
 

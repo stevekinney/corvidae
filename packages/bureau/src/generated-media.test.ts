@@ -13,6 +13,9 @@ import {
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
@@ -183,6 +186,46 @@ describe('cancelling a run while its generated image is being admitted', () => {
     const descriptor = await bureau.assets!.inspect(pending!.assetId!, alice);
     expect(descriptor.state).toBe('rejected');
     expect(descriptor.rejection?.code).toBe('aborted');
+  });
+});
+
+describe('a durable run restarted over SQLite (COR-713)', () => {
+  it('keeps the run-wide parts, the committed row id and the asset after a new Bureau opens the same store', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'bureau-generated-media-'));
+    const storagePath = join(directory, 'bureau');
+    cleanups.push(async () => {
+      await rm(directory, { recursive: true, force: true });
+    });
+    const open = async () => {
+      const bureau = await createBureau({
+        agents: { painter: paintingAgent() },
+        assets: { storage: createMemoryAssetStorageFixture({}).storage },
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+      });
+      cleanups.push(async () => {
+        await bureau.dispose();
+      });
+      return bureau;
+    };
+
+    const first = await open();
+    const run = first.run('painter', 'Draw', { principal: alice.id });
+    const result = await run.result();
+    expect(result.finishReason).not.toBe('error');
+    await run.closed();
+    const image = result.parts.find((part) => part.type === 'image');
+    expect(image).toMatchObject({ source: { kind: 'managed-asset' } });
+    const runId = run.id;
+    await first.dispose();
+
+    const second = await open();
+    const durable = await second.getDurableRun(runId);
+    expect(durable?.status).toBe('completed');
+    const summary = durable?.result as { schemaVersion: number; parts: typeof result.parts };
+    expect(summary.schemaVersion).toBe(3);
+    expect(summary.parts).toEqual(result.parts);
+    expect(JSON.stringify(summary)).not.toContain(base64Of(generatedPng));
   });
 });
 
