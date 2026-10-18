@@ -174,6 +174,8 @@ export async function openBureau(
     generate?: GenerateFunction;
     toolbox?: Toolbox;
     humanInput?: boolean;
+    /** Stop a run at a tool call that needs approval, as a real host does. */
+    stopAtApproval?: boolean;
     storage?: StorageConfiguration;
     publish?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
@@ -195,7 +197,9 @@ export async function openBureau(
     stopWhen:
       options.humanInput === true
         ? stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls())
-        : stopWhen.noToolCalls(),
+        : options.stopAtApproval === true
+          ? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls())
+          : stopWhen.noToolCalls(),
   });
   const handler = createBureauHandler(bureau, {
     authentication,

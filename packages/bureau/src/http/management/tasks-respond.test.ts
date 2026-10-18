@@ -332,7 +332,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('approves it, which runs the tool, and the run finishes', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
 
@@ -356,7 +356,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('denies it, and the tool does not run', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
 
@@ -380,7 +380,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('rejects it with a reason, which comes back as feedback', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
 
@@ -404,7 +404,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('addresses an approval by callId, and a call the task is not waiting on is a conflict', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
 
@@ -431,7 +431,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('refuses an answer addressed to a tool approval, which takes a decision', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
 
@@ -451,7 +451,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('answers another owner’s approval decision as a missing task, even with bureau.tasks:write', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
         const params = { taskId: run.id, messageId: 'm1', decision: 'approve' };
@@ -484,7 +484,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('finishes a retry whose earlier attempt resolved the review but never recorded its receipt', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
         const [review] = opened.bureau.listPendingReviews();
@@ -535,7 +535,7 @@ describe('bureau.tasks.respond deciding a tool approval', () => {
   it('answers a command for an approval decided elsewhere as a conflict, never a second charge', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await parkedApproval(opened);
         const [review] = opened.bureau.listPendingReviews();

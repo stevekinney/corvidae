@@ -216,7 +216,7 @@ describe('bureau.tasks.events', () => {
   it('shows a task that finished with an approval still pending as input-required, as tasks.get does, until it is decided', async () => {
     const charges: number[] = [];
     await withBureau(
-      { generate: chargesOnce, toolbox: approvalToolbox(charges) },
+      { generate: chargesOnce, toolbox: approvalToolbox(charges), stopAtApproval: true },
       async (opened) => {
         const run = await opened.bureau.createRun({ message: 'charge', principal: OWNER.alice });
         await waitForCondition(

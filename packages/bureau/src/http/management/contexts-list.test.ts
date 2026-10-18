@@ -1,4 +1,4 @@
-import { createAgent, createMockGenerate, type GenerateFunction } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
@@ -57,8 +57,8 @@ async function finishedSession(
   return run;
 }
 
-const writer = createAgent({ name: 'writer', generate: createMockGenerate([]) });
-const editor = createAgent({ name: 'editor', generate: createMockGenerate([]) });
+const writer = createAgent({ name: 'writer', generate: answering() });
+const editor = createAgent({ name: 'editor', generate: answering() });
 const catalog = { agents: { writer, editor }, generate: answering() };
 
 describe('bureau.contexts.list', () => {
