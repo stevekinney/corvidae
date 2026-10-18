@@ -7033,6 +7033,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * The durable engine this bureau composed — see the {@link Bureau.durableEngine} doc comment.
+   */
+  function durableEngine() {
+    return runtime.durable?.engine;
+  }
+
+  /**
    * Resolve once a run's durable workflow is terminal in the durable store — see the
    * {@link Bureau.waitForDurableRun} doc comment. Built on Weft's result waiter
    * (`engine.getHandle(runId).result()`), which settles from the store for a run another engine
@@ -13129,6 +13136,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listAbortingRuns,
     deleteRun,
     getDurableRun,
+    durableEngine,
     waitForDurableRun,
     cancelDurableRun,
     listDurableRuns,

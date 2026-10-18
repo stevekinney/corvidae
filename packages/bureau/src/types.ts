@@ -51,6 +51,7 @@ import type {
   ListOptions,
   ObservabilityOptions,
   PaginatedResult,
+  RegistryAgnosticEngine,
   ScheduleFilter,
   ScheduleSummary,
   Storage,
@@ -1473,6 +1474,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * only at terminal transitions, and a recovered run is otherwise opaque.
    */
   getDurableRun(runId: string): Promise<WorkflowState | null | undefined>;
+
+  /**
+   * The durable Weft engine this bureau composed, or `undefined` when none is composed. It is the
+   * engine that checkpoints and owns this bureau's runs, so a host that serves Weft's own API or
+   * console over the same runs hands out this one rather than building a second engine over the
+   * same storage: a second engine holds no lease on these runs, so its cancel is not fenced by
+   * their owner and its live feed does not see them. The bureau still owns it. The host must not
+   * dispose it, and must not register workflows on it or start its own background tasks.
+   */
+  durableEngine(): RegistryAgnosticEngine | undefined;
 
   /**
    * Waits until a run's durable workflow has reached a terminal state in the durable store, then

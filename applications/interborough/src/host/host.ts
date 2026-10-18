@@ -36,10 +36,9 @@ import { fileURLToPath } from 'node:url';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
 import { createBureau, createBureauHandler, type Bureau } from '@lostgradient/bureau';
-import { stopWhen } from '@lostgradient/operative';
+import { stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
-  Engine,
   serve,
   type RegistryAgnosticEngine,
   type ServeOptions,
@@ -95,15 +94,18 @@ export type HostOptions = {
   /** The built application to serve. Defaults to `build/` at the package root. */
   readonly buildDirectory?: string;
   /**
-   * Builds the engine behind the Engine console over the storage the Bureau uses. The default is
-   * an engine that registers no workflows and runs no background tasks, because the Bureau's
-   * own engine already recovers its runs and fires its timers on this storage, and a second
-   * engine doing the same would act on them twice. A host that wants the console to start and
-   * inspect workflows of its own supplies an engine that registers them.
+   * Replaces the engine behind the Engine console, for a host whose console must start and inspect
+   * workflows of its own (the end-to-end fixtures). The default is the Bureau's durable engine:
+   * the one that owns the Bureau's runs, so a cancel from the console is fenced by their owner
+   * and the live feed sees them. A replacement is a second engine over the same storage and the
+   * host disposes it, so it must register its own workflows and run no background tasks of its
+   * own on the Bureau's runs.
    */
   readonly createConsoleEngine?: (
     storage: Storage,
   ) => RegistryAgnosticEngine | Promise<RegistryAgnosticEngine>;
+  /** Replaces the scripted generate the Bureau's own runs use. For tests that need a run to stay in flight. */
+  readonly generate?: GenerateFunction;
   /** The few Weft server settings a host may tune for the engine API it relays. */
   readonly engineServer?: Pick<ServeOptions, 'cancellationGracePeriodMs'>;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
@@ -115,7 +117,7 @@ export type Host = {
   readonly url: URL;
   /** The Bureau, running on Bungalow's database. */
   readonly bureau: Bureau<SeededAgents>;
-  /** The engine behind the Engine console, over the same storage as the Bureau. */
+  /** The engine behind the Engine console: the Bureau's durable engine unless the host was given another. */
   readonly engine: RegistryAgnosticEngine;
   /** Weft's server, which owns the listening socket. */
   readonly server: WeftServer;
@@ -214,7 +216,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: createSeededAgents(approvalSecret(bungalow)),
-      generate: createSeededGenerate(),
+      generate: options.generate ?? createSeededGenerate(),
       // A run that makes no tool call is finished. Without this the Bureau's own runs, such as a
       // schedule's fire, keep asking the model until the step limit.
       stopWhen: stopWhen.noToolCalls(),
@@ -228,9 +230,15 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         write: (key, value) => bungalow.writeSecret(key, value),
       });
     }
-    const engine = await (options.createConsoleEngine?.(storage) ??
-      new Engine({ storage, backgroundTasks: 'manual' }));
-    held.engine = engine;
+    // The console serves the engine that owns the Bureau's runs. A second engine over the same
+    // storage holds no lease on them, so its cancel would not be fenced by their owner and its
+    // live feed would not see them.
+    let engine = bureau.durableEngine();
+    if (engine === undefined) throw new Error('The Bureau composed no durable engine.');
+    if (options.createConsoleEngine !== undefined) {
+      engine = await options.createConsoleEngine(storage);
+      held.replacementEngine = engine;
+    }
 
     const bureauHandler = createBureauHandler(bureau, {
       unauthenticatedAccess: 'allow',
@@ -307,7 +315,7 @@ type Held = {
   readonly bungalow: Bungalow;
   storage?: BunSQLiteStorage;
   bureau?: Bureau<SeededAgents>;
-  engine?: RegistryAgnosticEngine;
+  replacementEngine?: RegistryAgnosticEngine;
   server?: WeftServer;
   publicServer?: Bun.Server<WebSocketRelayData>;
   closing?: Promise<void>;
@@ -326,7 +334,7 @@ async function teardown(held: Held): Promise<void> {
   await step(held.publicServer && (() => held.publicServer?.stop(true)));
   await step(held.server && (() => held.server?.stop()));
   await step(held.bureau && (() => held.bureau?.shutdown()));
-  await step(held.engine && (() => held.engine?.[Symbol.asyncDispose]()));
+  await step(held.replacementEngine && (() => held.replacementEngine?.[Symbol.asyncDispose]()));
   await step(held.storage && (() => held.storage?.[Symbol.dispose]()));
   await step(() => held.bungalow.close());
   if (failures.length > 0) {
