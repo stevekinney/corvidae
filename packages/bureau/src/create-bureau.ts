@@ -216,7 +216,14 @@ import {
   serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
-import { EXPIRY_ACTOR, ownerOrLocal, RECOVERY_ACTOR, SCHEDULER_ACTOR } from './owner-of-record';
+import {
+  EXPIRY_ACTOR,
+  ownerFromPrincipal,
+  ownerOrLocal,
+  principalDefect,
+  RECOVERY_ACTOR,
+  SCHEDULER_ACTOR,
+} from './owner-of-record';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
@@ -890,9 +897,8 @@ function validateBureauRunOptions(
   if (options.withTraceContext !== undefined && typeof options.withTraceContext !== 'function') {
     toBadRequest('"options.withTraceContext" must be a function');
   }
-  if (capturedPrincipal !== undefined && typeof capturedPrincipal !== 'string') {
-    toBadRequest('"options.principal" must be a string');
-  }
+  const principalReason = principalDefect(capturedPrincipal, 'options.principal');
+  if (principalReason !== undefined) toBadRequest(principalReason);
 }
 
 function validateSubmitSchedulerTaskRequest(request: SubmitSchedulerTaskRequest): void {
@@ -3794,6 +3800,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function createRunFromRequest(request: CreateRunRequest): Promise<CreatedRunSummary> {
     validateCreateRunRequest(request);
+    // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
+    // host that states no principal owns the run as `anonymous:local`; one that
+    // states anything but text is refused here, before anything is persisted.
+    const owner = ownerFromPrincipal(request.principal, toBadRequest);
     assertRunAdmissionOpen('run');
 
     if (!runtime.ready) {
@@ -3804,9 +3814,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
     const runId = runtimeServices.identifiers.next('run');
     const agentName = request.agentName ?? BUREAU_AGENT_NAME;
-    // COR-718 — the owner of record: stored once, here, and unchanged afterward.
-    // A host that states no principal owns the run as `anonymous:local`.
-    const owner = ownerOrLocal(request.principal);
     const requestContext = normalizeRunRequestContext(
       request.requestContext,
       runId,
@@ -8475,9 +8482,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * entry acknowledged.
    *
    * It is written only when an audit trail exists to consume it. A crash between
-   * this write and the store delete, or between the acknowledgement and the
-   * removal, leaves one small orphan record; that is accepted, because the record
-   * is only ever read for its own session id and incarnation.
+   * this write and the store delete, between the acknowledgement and the removal,
+   * or a process that wrote the record and then lost the delete to another
+   * process, leaves one small orphan record. That is accepted, because the record
+   * is only ever read for its own session id and incarnation. The `v1` prefix is
+   * where a future boot sweep would look for them.
    */
   const SESSION_DELETION_OWNER_PREFIX = 'session-deletion-owner:v1:';
   const sessionDeletionOwners = new Map<string, string>();
@@ -10838,6 +10847,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
     }
+    const owner = ownerFromPrincipal(definition.principal, toBadRequest);
     if (!runtime.durable) return undefined;
     // A schedule whose every fire would fail is worse than rejecting up front:
     // without a configured generate/provider, each tick's `createRunRuntime` throws
@@ -10871,7 +10881,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ...(definition.description !== undefined ? { description: definition.description } : {}),
         ...(definition.sessionId !== undefined ? { session: definition.sessionId } : {}),
         ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
-        principal: ownerOrLocal(definition.principal),
+        principal: owner,
       });
     } catch (error) {
       if (error instanceof InvalidScheduleError) {

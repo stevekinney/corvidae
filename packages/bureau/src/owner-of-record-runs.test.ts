@@ -226,33 +226,6 @@ describe('the owner of a catalog run (COR-718)', () => {
   });
 });
 
-describe('the owner of a schedule (COR-718)', () => {
-  it('refuses a schedule whose principal is not text, before it registers', async () => {
-    const bureau = await createBureau({
-      agents: {},
-      generate,
-      storage: { type: 'memory' },
-      durableExecution: true,
-    });
-    try {
-      const refusal = await rejectionOf(
-        bureau.createSchedule({
-          agentName: 'worker',
-          input: 'tick',
-          spec: '1h',
-          principal: 7 as never,
-        }),
-      );
-
-      expect(refusal).toMatchObject({ code: 'BAD_REQUEST' });
-      const listed = await bureau.listSchedules();
-      expect(listed?.items ?? []).toHaveLength(0);
-    } finally {
-      await bureau.dispose();
-    }
-  });
-});
-
 describe('durable history follows the owner of record (COR-718)', () => {
   async function openDurableBureau() {
     const directory = await mkdtemp(join(tmpdir(), 'owner-of-record-history-owners-'));

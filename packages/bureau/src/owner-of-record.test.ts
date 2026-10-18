@@ -7,7 +7,9 @@ import {
   SCHEDULER_ACTOR,
   apiKeyOwner,
   isReservedOwnerSubject,
+  ownerFromPrincipal,
   ownerOrLocal,
+  principalDefect,
 } from './owner-of-record';
 
 describe('owner of record', () => {
@@ -34,5 +36,28 @@ describe('owner of record', () => {
     expect(isReservedOwnerSubject('anonymous:local')).toBe(true);
     expect(isReservedOwnerSubject('ops')).toBe(false);
     expect(isReservedOwnerSubject('systems')).toBe(false);
+  });
+
+  it('reads text or nothing as a principal, and names anything else as a defect', () => {
+    expect(principalDefect(undefined)).toBeUndefined();
+    expect(principalDefect('api-key:alice')).toBeUndefined();
+    for (const value of [7, null, {}, [], true]) {
+      expect(principalDefect(value, 'options.principal')).toBe(
+        '"options.principal" must be a string',
+      );
+    }
+  });
+
+  it('derives an owner from a caller-supplied principal, and refuses what is not text', () => {
+    const refuse = (message: string): never => {
+      throw new Error(message);
+    };
+
+    expect(ownerFromPrincipal(undefined, refuse)).toBe('anonymous:local');
+    expect(ownerFromPrincipal('api-key:alice', refuse)).toBe('api-key:alice');
+    expect(() => ownerFromPrincipal(null, refuse)).toThrow('"principal" must be a string');
+    expect(() => ownerFromPrincipal(7, refuse, 'goal principal')).toThrow(
+      '"goal principal" must be a string',
+    );
   });
 });

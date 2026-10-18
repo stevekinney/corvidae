@@ -34,7 +34,39 @@ const RESERVED_OWNER_PREFIXES = ['system:', 'anonymous:'] as const;
  * existed, and the default for a host that passes no `principal`.
  */
 export function ownerOrLocal(principal: string | undefined): string {
-  return principal ?? ANONYMOUS_LOCAL_OWNER;
+  // Not `??`: a caller's `null` is a defect to refuse, not an absent principal.
+  return principal === undefined ? ANONYMOUS_LOCAL_OWNER : principal;
+}
+
+/**
+ * Why `principal`, as a caller supplied it, cannot become an owner, or `undefined`
+ * when it can: a principal is text, or absent. This is the one definition of that
+ * rule. Every entry point that derives an owner from a caller-supplied principal
+ * applies it before it persists anything, either through
+ * {@link ownerFromPrincipal} or, where the entry point answers with an outcome
+ * instead of throwing (`bureau.goals.create`), by reporting this reason.
+ */
+export function principalDefect(principal: unknown, name = 'principal'): string | undefined {
+  return principal === undefined || typeof principal === 'string'
+    ? undefined
+    : `"${name}" must be a string`;
+}
+
+/**
+ * The owner a caller-supplied principal stands for: the principal itself, or
+ * `anonymous:local` when it is absent. Anything else is refused through `refuse`
+ * (the entry point's own `BAD_REQUEST` thrower), so a persisted owner is always text.
+ * An entry point takes its owner from here and never from {@link ownerOrLocal},
+ * which only supplies the read-side default for a record that has none.
+ */
+export function ownerFromPrincipal(
+  principal: unknown,
+  refuse: (message: string) => never,
+  name = 'principal',
+): string {
+  const defect = principalDefect(principal, name);
+  if (defect !== undefined) refuse(defect);
+  return ownerOrLocal(principal as string | undefined);
 }
 
 /**

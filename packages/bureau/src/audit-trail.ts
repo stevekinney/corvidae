@@ -300,8 +300,11 @@ export interface AuditRecord {
    * deletion, has no authenticated caller to attribute today.
    *
    * The `principal` is the actor (COR-718), never the owner. The owner of the
-   * resource an entry concerns is derived from its `runId`, not stored:
-   * `Bureau.getOwner({ kind: 'audit', runId })`. A service principal
+   * resource an entry concerns is derived from the entry: its `runId` names a
+   * run or a schedule, whose owner `Bureau.getOwner({ kind: 'audit', runId })`
+   * reads, and a `session.deleted` entry carries the deleted session's owner as
+   * `detail.owner`, captured at deletion because the session is gone by then
+   * (`Bureau.getOwner({ kind: 'audit', runId, detail })`). A service principal
    * (`system:scheduler`, `system:recovery`, `system:expiry`) appears only here.
    */
   principal?: string;
