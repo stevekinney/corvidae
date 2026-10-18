@@ -107,6 +107,21 @@ export interface WorkflowState {
   terminalCommittedBy?: string;
   executionDeadline?: number;
   /**
+   * The signal names this running workflow is parked on in `ctx.waitForSignal`
+   * (at the top level, or in a `ctx.race` / `ctx.all` branch), in the order
+   * their waits began and without duplicates. The engine writes it into the
+   * persisted record when a wait begins, so it survives a restart, and removes
+   * a name when its signal is delivered, when the race the wait belongs to
+   * settles without it, or when the workflow leaves `running` (it completes,
+   * fails, is cancelled, times out, or is suspended).
+   *
+   * Absent, never an empty array, whenever no wait is outstanding, so a record
+   * from an engine that predates this field reads the same. A signal already
+   * buffered when the wait begins completes it at once and is never listed.
+   * Each listing is announced once, by `signal:waiting` (`SignalWaitingEvent`).
+   */
+  waitingForSignals?: readonly string[];
+  /**
    * Lineage metadata recorded when this workflow was created by a fork from
    * another workflow checkpoint. Absent for workflows started normally.
    */

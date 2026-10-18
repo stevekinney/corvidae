@@ -12,6 +12,7 @@ import { encode } from '../codec.ts';
 import type { WorkflowState, WorkflowStatus } from '../types.ts';
 import { buildTerminalWorkflowIndexOperations } from './attributes-tags.ts';
 import type { EngineInternals } from './internals.ts';
+import { withoutSignalWaits } from './signal-wait-state.ts';
 import {
   commitExternalTerminalWorkflowStateOperations,
   commitSelfWorkflowStateOperations,
@@ -149,11 +150,13 @@ async function attemptWorkflowStateUpdate(
   }
 
   const updatedAt = internals.options.getNow();
-  const updated = {
+  // Callers move the run out of `running` (fail, cancel, time out), and a run
+  // that is not running waits for no signal.
+  const updated = withoutSignalWaits({
     ...state,
     ...updates,
     updatedAt,
-  };
+  });
   const additionalOperations = additionalOperationsFor(options, state, updatedAt);
 
   // `updateWorkflowState` applies an engine-generator-owned workflow STATUS
