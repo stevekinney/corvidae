@@ -107,7 +107,15 @@ async function build(
     agents: Object.fromEntries(
       [AGENT, ...(options.otherAgents ?? [])].map((name) => [
         name,
-        createAgent({ generate, name }),
+        // A run in a session takes its stop condition and its toolbox from the agent that
+        // owns it (COR-1577), not from the Bureau, so the agent carries the ones the test chose.
+        createAgent({
+          generate,
+          name,
+          ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
+          stopWhen:
+            options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
       ]),
     ),
     generate,
