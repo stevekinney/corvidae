@@ -11,9 +11,9 @@
  * Two activation entry points exist, matching WFT-9/WFT-10's distinct
  * producers:
  *
- * - {@link WorkflowCatalog.activateRegistered} — unconditional, used
- *   exclusively by `engine.register()`'s drain path
- *   (`core/engine/catalog-readiness.ts`). Never consults
+ * - {@link WorkflowCatalog.activateRegistered} — unconditional, used by
+ *   `engine.register()`'s drain path (`core/engine/catalog-readiness.ts`) and
+ *   `activateRegisteredSourceRevision` (`core/engine/source-activation.ts`). Never consults
  *   `checkWorkflowCompatibility`; always wins via a bounded 5-attempt CAS
  *   retry loop, since registering a different version of an
  *   already-registered workflow must never hard-fail construction or
@@ -313,8 +313,9 @@ export class WorkflowCatalog {
 
   /**
    * Unconditionally activate `manifest` for `name`, installing it first if
-   * needed. Used exclusively by `engine.register()`'s drain path — never
-   * consults `checkWorkflowCompatibility`. Reactivating the currently active
+   * needed. Used by `engine.register()`'s drain path and by
+   * `activateRegisteredSourceRevision` for a host-supplied source revision —
+   * never consults `checkWorkflowCompatibility`. Reactivating the currently active
    * revision is a no-op (generation unchanged); activating a different
    * revision bumps the generation by exactly 1. Retries the CAS write up to
    * {@link MAX_ACTIVATE_REGISTERED_ATTEMPTS} times under contention, throwing

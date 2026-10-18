@@ -34,6 +34,7 @@ import {
 import { getTaskDetailOperation } from './get-task-detail.ts';
 import { getUpdateResultOperation } from './get-update-result.ts';
 import { getWorkflowAttributesOperation } from './get-workflow-attributes.ts';
+import { getWorkflowDefinitionOperation } from './get-workflow-definition.ts';
 import { getWorkflowEventsOperation } from './get-workflow-events.ts';
 import * as workflowObservability from './get-workflow-observability.ts';
 import { getWorkflowResultOperation } from './get-workflow-result.ts';
@@ -46,6 +47,7 @@ import { listCatalogSourcesOperation } from './list-catalog-sources.ts';
 import { listCheckpointsOperation } from './list-checkpoints.ts';
 import { listReviewsOperation } from './list-reviews.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
+import { listWorkflowDefinitionsOperation } from './list-workflow-definitions.ts';
 import { listWorkflowRevisionsOperation } from './list-workflow-revisions.ts';
 import { listWorkflowsOperation } from './list-workflows.ts';
 import { pauseScheduleOperation } from './pause-schedule.ts';
@@ -100,6 +102,8 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   bulkDeleteWorkflowsOperation,
   bulkMutateWorkflowTagsOperation,
   listCatalogSourcesOperation,
+  listWorkflowDefinitionsOperation,
+  getWorkflowDefinitionOperation,
   getCatalogDiagnosticsOperation,
   getRealmDiagnosticsOperation,
   getWorkflowOperation,
