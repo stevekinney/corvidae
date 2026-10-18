@@ -2377,7 +2377,10 @@ export interface CreateRunRequest {
 export interface LocateRunCreationReceiptRequest {
   /** The authenticated caller that issued the request. */
   principal: string;
-  /** The published agent the request addressed. Defaults to `bureau`. */
+  /**
+   * The agent the request ran as. When omitted, it resolves the way `createRun` resolves it: the
+   * agent bound to `sessionId` when that session exists, otherwise `bureau`.
+   */
   agentName?: string | undefined;
   /**
    * The session the request continued. A request that omitted `agentName` on an existing
