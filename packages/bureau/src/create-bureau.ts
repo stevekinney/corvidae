@@ -8535,6 +8535,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (owner !== null) sessionDeletionOwners.set(key, owner);
       return true;
     } catch (error: unknown) {
+      // A record that is present but not valid text is a definite miss, like one that
+      // is absent: nothing can ever read an owner from it, and retrying would jam
+      // every later outbox entry behind it. It is audited without an owner and
+      // removed with the rest. The store's strict decoder reports it as a
+      // `TypeError`; anything else is the store itself failing, which is retried.
+      if (error instanceof TypeError) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] The recorded owner of deleted session "${sessionId}" cannot be decoded; its deletion entry will have none: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        return true;
+      }
       diagnose({
         level: 'error',
         scope: 'durable-maintenance',

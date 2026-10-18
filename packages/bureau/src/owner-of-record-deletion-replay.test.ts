@@ -196,4 +196,41 @@ describe('a session deletion replayed after a restart (COR-718)', () => {
       await second.dispose();
     }
   });
+
+  it('treats an owner record that cannot be decoded as a definite miss, so it never jams the outbox', async () => {
+    const storage = new MemoryStorage();
+    const blocked = { value: false };
+    const { bureau: first, base } = await openBlockedBureau(storage, blocked);
+    await settled(first, 'api-key:alice', 'poisoned');
+    blocked.value = true;
+    await first.deleteSession('poisoned').catch(() => undefined);
+    await first.dispose().catch(() => undefined);
+    const [sideKey] = await base.list(SIDE_RECORD_PREFIX);
+    // Bytes that are not valid UTF-8, so every read of the record throws.
+    await storage.put(sideKey!, new Uint8Array([0xff, 0xfe, 0xfd]));
+
+    const second = await createBureau({
+      agents: {},
+      generate,
+      persistence: textValueStore(storage, { disposeUnderlyingStorage: false }),
+      stopWhen: stopWhen.noToolCalls(),
+    });
+    try {
+      // Another session's deletion queues behind the poisoned one.
+      await settled(second, 'api-key:bob', 'later');
+      await second.deleteSession('later');
+      await second.runDurableMaintenance();
+      await waitForCondition(
+        async () => (await deletionCount(second, 'later')) === 1,
+        'a later deletion never reached the audit trail behind the poisoned record',
+      );
+
+      expect(await deletionCount(second, 'poisoned')).toBe(1);
+      const [entry] = await deletionEntries(second, 'poisoned');
+      expect(entry?.detail).not.toHaveProperty('owner');
+      expect(await base.list(SIDE_RECORD_PREFIX)).toHaveLength(0);
+    } finally {
+      await second.dispose();
+    }
+  });
 });
