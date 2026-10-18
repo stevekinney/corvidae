@@ -1,20 +1,29 @@
 /**
- * Tests for `scripts/build.ts`: the atomic directory swap and the clean-build check. The real
- * build, which bundles for seconds, is in `build.slow.test.ts`.
+ * Tests for `scripts/build.ts`: the atomic directory swap, the clean-build check, the bundler
+ * options, the WebAssembly plugin, and the staging, retention and replacement that surround the
+ * bundler (driven through a fake bundler). The real build, which bundles for seconds, is in
+ * `build.slow.test.ts`.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import { rejectionOf } from '@lostgradient/testing';
 
 import {
   assertCleanBuild,
+  browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
+  buildApplication,
+  DEFAULT_BUILD_DIRECTORY,
+  ENTRY_HTML_PATH,
   replaceDirectory,
+  RETAINED_ASSETS_FILE,
   retainPreviousAssets,
+  runBuildCommand,
+  wasmPlugin,
 } from './build.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-'));
@@ -186,5 +195,185 @@ describe('retainPreviousAssets', () => {
     const staging = join(parent, 'staging');
     mkdirSync(staging);
     expect(await retainPreviousAssets(staging, join(parent, 'build'))).toEqual([]);
+  });
+});
+
+describe('browserBuildOptions', () => {
+  const entrypoints = ['index.html'];
+
+  it('compiles NODE_ENV in and the Svelte plugin for the mode asked for', () => {
+    const production = browserBuildOptions({ entrypoints, outdir: 'out', development: false });
+    const development = browserBuildOptions({ entrypoints, outdir: 'out', development: true });
+
+    expect(production.define).toEqual({ 'process.env.NODE_ENV': '"production"' });
+    expect(development.define).toEqual({ 'process.env.NODE_ENV': '"development"' });
+    for (const options of [production, development]) {
+      expect(options.entrypoints).toBe(entrypoints);
+      expect(options.outdir).toBe('out');
+      expect(options.conditions).toEqual(['browser', 'svelte', 'unwasm']);
+      expect(options.splitting).toBe(true);
+      expect(options.metafile).toBe(true);
+      expect(options.plugins?.[0]).toBe(wasmPlugin);
+      expect(options.plugins).toHaveLength(2);
+      expect(options.naming).toEqual({
+        entry: '[name].[ext]',
+        chunk: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
+        asset: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
+      });
+    }
+  });
+});
+
+describe('wasmPlugin', () => {
+  type Hook = (arguments_: { path: string }) => unknown;
+
+  /** Run the plugin's `setup` against a builder that records the hooks it registers. */
+  function registeredHooks(): { onLoad: Hook[]; onResolve: Hook[] } {
+    const hooks = { onLoad: [] as Hook[], onResolve: [] as Hook[] };
+    wasmPlugin.setup({
+      onLoad: (_constraints: unknown, callback: Hook) => hooks.onLoad.push(callback),
+      onResolve: (_constraints: unknown, callback: Hook) => hooks.onResolve.push(callback),
+    } as unknown as Bun.PluginBuilder);
+    return hooks;
+  }
+
+  it('turns a .wasm import into a module that instantiates the emitted asset', async () => {
+    const { onLoad, onResolve } = registeredHooks();
+    expect(onLoad).toHaveLength(2);
+    expect(onResolve).toHaveLength(1);
+
+    const module = (await onLoad[0]?.({ path: '/modules/engine.wasm' })) as {
+      loader: string;
+      contents: string;
+    };
+    expect(module.loader).toBe('js');
+    expect(module.contents).toContain('import url from "wasm-asset:/modules/engine.wasm"');
+    expect(module.contents).toContain('WebAssembly.instantiateStreaming(fetch(url), imports)');
+  });
+
+  it('resolves the asset import to a distinct binary path and loads the file’s bytes', async () => {
+    const { onLoad, onResolve } = registeredHooks();
+    const file = join(scratch, 'engine.wasm');
+    writeFileSync(file, new Uint8Array([0, 97, 115, 109]));
+
+    const resolved = (await onResolve[0]?.({ path: `wasm-asset:${file}` })) as {
+      path: string;
+      namespace: string;
+    };
+    expect(resolved).toEqual({ path: `${file}.binary.wasm`, namespace: 'wasm-asset' });
+
+    const loaded = (await onLoad[1]?.({ path: resolved.path })) as {
+      contents: Uint8Array;
+      loader: string;
+    };
+    expect(loaded.loader).toBe('file');
+    expect([...loaded.contents]).toEqual([0, 97, 115, 109]);
+  });
+});
+
+describe('buildApplication', () => {
+  /** A bundler that writes `files` into the staging directory it is given, as `Bun.build` would. */
+  function fakeBundle(
+    files: Record<string, string>,
+    overrides: Partial<Bun.BuildOutput> = {},
+  ): {
+    bundle: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
+    calls: Bun.BuildConfig[];
+  } {
+    const calls: Bun.BuildConfig[] = [];
+    return {
+      calls,
+      bundle: async (configuration) => {
+        calls.push(configuration);
+        const outdir = configuration.outdir ?? '';
+        for (const [name, contents] of Object.entries(files)) {
+          mkdirSync(join(outdir, name, '..'), { recursive: true });
+          writeFileSync(join(outdir, name), contents);
+        }
+        return {
+          success: true,
+          outputs: Object.keys(files).map((name) => ({ path: join(outdir, name) })),
+          logs: [],
+          metafile: { inputs: {}, outputs: {} },
+          ...overrides,
+        } as unknown as Bun.BuildOutput;
+      },
+    };
+  }
+
+  function outputDirectory(): string {
+    return join(mkdtempSync(join(scratch, 'build-')), 'build');
+  }
+
+  it('builds the production application into the output directory and lists its files', async () => {
+    const outdir = outputDirectory();
+    const { bundle, calls } = fakeBundle({
+      'index.html': 'page',
+      [`${BUILD_ASSET_DIRECTORY}/main-aaaaaaaa.js`]: 'main',
+    });
+
+    const result = await buildApplication({ outdir, bundle });
+
+    expect(result.directory).toBe(resolve(outdir));
+    expect(result.files).toEqual(['assets/main-aaaaaaaa.js', 'index.html']);
+    expect(result.metafile).toEqual({ inputs: {}, outputs: {} });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.entrypoints).toEqual([ENTRY_HTML_PATH]);
+    expect(calls[0]?.minify).toBe(true);
+    expect(calls[0]?.define).toEqual({ 'process.env.NODE_ENV': '"production"' });
+    expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('page');
+    // The staging directory is gone: only the build remains beside it.
+    expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
+  });
+
+  it('keeps the previous build’s assets in development and drops them in production', async () => {
+    const outdir = outputDirectory();
+    const planted = join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js');
+    const files = { 'index.html': 'page', [`${BUILD_ASSET_DIRECTORY}/main-bbbbbbbb.js`]: 'main' };
+
+    await buildApplication({ outdir, development: true, bundle: fakeBundle(files).bundle });
+    writeFileSync(planted, '');
+    const development = fakeBundle(files);
+    await buildApplication({ outdir, development: true, bundle: development.bundle });
+    expect(existsSync(planted)).toBe(true);
+    expect(development.calls[0]?.minify).toBe(false);
+    expect(development.calls[0]?.define).toEqual({
+      'process.env.NODE_ENV': '"development"',
+    });
+    expect(existsSync(join(outdir, RETAINED_ASSETS_FILE))).toBe(true);
+
+    await buildApplication({ outdir, bundle: fakeBundle(files).bundle });
+    expect(existsSync(planted)).toBe(false);
+    expect(existsSync(join(outdir, RETAINED_ASSETS_FILE))).toBe(false);
+  });
+
+  it('leaves the previous build intact and no staging directory when the build fails', async () => {
+    const outdir = outputDirectory();
+    await buildApplication({ outdir, bundle: fakeBundle({ 'index.html': 'old' }).bundle });
+
+    const rejection = await rejectionOf(
+      buildApplication({
+        outdir,
+        bundle: fakeBundle({ 'index.html': 'half-written' }, { success: false }).bundle,
+      }),
+    );
+
+    expect(rejection).toBeInstanceOf(AggregateError);
+    expect(await Bun.file(join(outdir, 'index.html')).text()).toBe('old');
+    expect(readdirSync(join(outdir, '..'))).toEqual(['build']);
+  });
+});
+
+describe('runBuildCommand', () => {
+  it('builds with the default options and logs where and how many files it wrote', async () => {
+    const lines: string[] = [];
+    const build = { directory: DEFAULT_BUILD_DIRECTORY, files: ['index.html'], metafile: {} };
+    const result = await runBuildCommand(
+      (line) => lines.push(line),
+      async () => build as unknown as Awaited<ReturnType<typeof buildApplication>>,
+    );
+
+    expect(result).toBe(build as unknown as typeof result);
+    expect(lines).toEqual([`Built Interborough into ${DEFAULT_BUILD_DIRECTORY} (1 files)`]);
   });
 });

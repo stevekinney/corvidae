@@ -39,6 +39,16 @@ describe('selectCoverageTestFiles', () => {
     ]);
   });
 
+  it('never selects a slow-lane test file, which `test:slow` owns', () => {
+    expect(
+      selectCoverageTestFiles([
+        'scripts/build.slow.test.ts',
+        'tests/browser-bundle-portability.slow.test.ts',
+        'src/alpha.test.ts',
+      ]),
+    ).toEqual(['src/alpha.test.ts']);
+  });
+
   it('preserves the explicit order that produced the recorded coverage baseline', () => {
     expect(
       selectCoverageTestFiles([
@@ -126,6 +136,7 @@ describe('selectCoverageTestFiles', () => {
     expect(files).toContain('scripts/check-coverage.test.ts');
     expect(new Set(files).size).toBe(files.length);
     expect(files.every((file) => !file.startsWith('tests/e2e/'))).toBeTrue();
+    expect(files.every((file) => !file.includes('.slow.test.'))).toBeTrue();
   });
 });
 describe('parseLcov', () => {

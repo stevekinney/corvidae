@@ -211,14 +211,19 @@ export type ApplicationBuild = {
  * and skips minification, for the development host.
  */
 export async function buildApplication(
-  options: { readonly outdir?: string; readonly development?: boolean } = {},
+  options: {
+    readonly outdir?: string;
+    readonly development?: boolean;
+    /** The bundler. `Bun.build` by default; a test supplies a fake so it need not bundle. */
+    readonly bundle?: (configuration: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
+  } = {},
 ): Promise<ApplicationBuild> {
   const development = options.development ?? false;
   const directory = resolve(options.outdir ?? DEFAULT_BUILD_DIRECTORY);
   const parent = dirname(directory);
   const staging = await mkdtemp(join(parent, '.build-staging-'));
   try {
-    const result = await Bun.build({
+    const result = await (options.bundle ?? Bun.build)({
       ...browserBuildOptions({
         entrypoints: [ENTRY_HTML_PATH],
         outdir: staging,
@@ -241,8 +246,9 @@ export async function buildApplication(
 /** The command-line entry: build and report what was written. */
 export async function runBuildCommand(
   log: (line: string) => void = console.log,
+  runBuild: typeof buildApplication = buildApplication,
 ): Promise<ApplicationBuild> {
-  const build = await buildApplication();
+  const build = await runBuild();
   log(`Built Interborough into ${build.directory} (${build.files.length} files)`);
   return build;
 }

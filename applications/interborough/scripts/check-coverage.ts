@@ -53,6 +53,11 @@ const COVERAGE_TEST_ROOTS = ['scripts', 'src', 'tests'] as const;
  */
 const EXCLUDED_COVERAGE_TEST_PREFIXES = ['tests/e2e/', 'src/host/'];
 const BUN_TEST_FILE_PATTERN = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]s|[jt]sx)$/;
+/**
+ * The slow lane's files. `test` ignores `**\/*.slow.test.ts` and `test:slow` runs them under its own
+ * budget, so the coverage run, which shares `test`'s 5-second per-test limit, never selects them.
+ */
+const SLOW_TEST_FILE_PATTERN = /\.slow\.test\.ts$/;
 
 function baselineCoverageTestRank(platform: NodeJS.Platform): ReadonlyMap<string, number> {
   const order =
@@ -88,7 +93,8 @@ export function selectCoverageTestFiles(
       (path) =>
         COVERAGE_TEST_ROOTS.some((root) => path.startsWith(`${root}/`)) &&
         !EXCLUDED_COVERAGE_TEST_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
-        BUN_TEST_FILE_PATTERN.test(path),
+        BUN_TEST_FILE_PATTERN.test(path) &&
+        !SLOW_TEST_FILE_PATTERN.test(path),
     )
     .toSorted((left, right) => compareCoverageTestFiles(left, right, rank));
 }
