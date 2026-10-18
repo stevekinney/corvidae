@@ -19,6 +19,47 @@ export type WorkflowCatalogOperationTypes = {
     readonly output: unknown;
     readonly faults: 'InvalidParams' | 'NotFound';
   };
+  'weft.workflows.definitions.get': {
+    readonly input: { readonly name: unknown };
+    readonly output: {
+      readonly contract: Record<string, unknown> | null;
+      readonly contractHash: string | null;
+      readonly description: string | null;
+      readonly lastFailureCategory?:
+        'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
+      readonly name: string;
+      readonly origin: 'code' | 'source';
+      readonly queries: ReadonlyArray<string> | null;
+      readonly revision: string | null;
+      readonly signals: ReadonlyArray<string> | null;
+      readonly state: 'ready' | 'idle' | 'loading' | 'failed' | 'cancelled';
+      readonly tags: ReadonlyArray<string> | null;
+      readonly updates: ReadonlyArray<string> | null;
+      readonly workflowVersion: string | null;
+    };
+    readonly faults: 'InvalidParams' | 'NotFound';
+  };
+  'weft.workflows.definitions.list': {
+    readonly input: { readonly limit?: number; readonly offset?: number };
+    readonly output: {
+      readonly definitions: ReadonlyArray<{
+        readonly description: string | null;
+        readonly lastFailureCategory?:
+          'application' | 'timeout' | 'cancellation' | 'resource' | 'system';
+        readonly name: string;
+        readonly origin: 'code' | 'source';
+        readonly queries: ReadonlyArray<string> | null;
+        readonly revision: string | null;
+        readonly signals: ReadonlyArray<string> | null;
+        readonly state: 'ready' | 'idle' | 'loading' | 'failed' | 'cancelled';
+        readonly tags: ReadonlyArray<string> | null;
+        readonly updates: ReadonlyArray<string> | null;
+        readonly workflowVersion: string | null;
+      }>;
+      readonly nextOffset?: number;
+    };
+    readonly faults: never;
+  };
   'weft.workflows.revisions.activate': {
     readonly input: {
       readonly expectedGeneration?: unknown;

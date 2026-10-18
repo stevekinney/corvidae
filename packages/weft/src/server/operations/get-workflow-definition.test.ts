@@ -1,0 +1,174 @@
+import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
+
+import { deriveWorkflowDefinitionRevision } from '../../core/engine/definition-revision.ts';
+import { workflowSource } from '../../core/source/index.ts';
+import { workflow, type WorkflowDefinition } from '../../core/types.ts';
+import { handleRequest } from '../handler.ts';
+import { generateOpenApiDocument } from '../openapi.ts';
+import { generateOpenRpcDocument } from '../openrpc.ts';
+import { createOperationRegistry, executeOperation } from '../operation-catalog.ts';
+import { principalFromApiKey } from '../principal.ts';
+import { createLiveOperationRegistry } from '../rest-bindings.ts';
+import {
+  getWorkflowDefinitionOperation,
+  getWorkflowDefinitionRestBinding,
+} from './get-workflow-definition.ts';
+import {
+  createOperationTestEngine,
+  systemReadAuthContext,
+} from './operation-registry-test-helpers.test-support.ts';
+
+const registry = createOperationRegistry([getWorkflowDefinitionOperation]);
+const requestOptions = {
+  operationRegistry: registry,
+  restBindings: [getWorkflowDefinitionRestBinding],
+};
+
+function typed(name: string): WorkflowDefinition {
+  return workflow({
+    name,
+    version: '3.0.0',
+    description: 'Typed',
+    inputSchema: z.object({ orderId: z.string() }),
+    outputSchema: z.object({ shipped: z.boolean() }),
+  }).execute(async function* () {
+    return { shipped: true };
+  });
+}
+
+async function sourceFor(definition: WorkflowDefinition, load = async () => ({ w: definition })) {
+  return workflowSource(
+    {
+      name: definition.name,
+      location: `./${definition.name}.ts`,
+      exportName: 'w',
+      revision: await deriveWorkflowDefinitionRevision(definition),
+    },
+    load,
+  );
+}
+
+async function getDefinition(engine: unknown, name: string): Promise<Response> {
+  return handleRequest(
+    new Request(`http://localhost/v1/registry/definitions/${name}`),
+    engine as never,
+    { ...requestOptions, ...systemReadAuthContext() },
+  );
+}
+
+describe('weft.workflows.definitions.get: GET /v1/registry/definitions/:name', () => {
+  let engine: ReturnType<typeof createOperationTestEngine> | undefined;
+
+  afterEach(() => {
+    engine?.[Symbol.dispose]();
+    engine = undefined;
+  });
+
+  it("returns a code type's full contract, input and output schemas included", async () => {
+    engine = createOperationTestEngine();
+    engine.register(typed('orders'));
+
+    const response = await getDefinition(engine, 'orders');
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({
+      name: 'orders',
+      origin: 'code',
+      state: 'ready',
+      workflowVersion: '3.0.0',
+      contractHash: expect.stringMatching(/^sha256:/),
+      contract: {
+        name: 'orders',
+        workflowVersion: '3.0.0',
+        inputSchema: { type: 'object', properties: { orderId: { type: 'string' } } },
+        outputSchema: { type: 'object', properties: { shipped: { type: 'boolean' } } },
+      },
+    });
+  });
+
+  it('returns the contract of a source only once it is loaded, and never loads it itself', async () => {
+    engine = createOperationTestEngine();
+    const definition = typed('lazy');
+    let loads = 0;
+    const lazy = await sourceFor(definition, async () => {
+      loads += 1;
+      return { w: definition };
+    });
+    engine.registerSource(lazy);
+
+    const idleResponse = await getDefinition(engine, 'lazy');
+    const idle = (await idleResponse.json()) as Record<string, unknown>;
+    expect(idle).toMatchObject({
+      state: 'idle',
+      revision: lazy.descriptor.revision,
+      contract: null,
+    });
+    expect(loads).toBe(0);
+
+    await engine.workflows.preload('lazy', lazy.descriptor.revision);
+    const readyResponse = await getDefinition(engine, 'lazy');
+    const ready = (await readyResponse.json()) as Record<string, unknown>;
+    expect(ready).toMatchObject({
+      state: 'ready',
+      origin: 'source',
+      contract: { name: 'lazy', workflowVersion: '3.0.0' },
+    });
+  });
+
+  it('returns not-found for a name that is not a workflow type', async () => {
+    engine = createOperationTestEngine();
+
+    const response = await getDefinition(engine, 'nonexistent');
+
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects a name outside the wire-safe grammar', async () => {
+    engine = createOperationTestEngine();
+
+    const response = await getDefinition(engine, 'not.valid');
+
+    expect(response.status).toBe(400);
+  });
+
+  it('has no owner or author field in its output', () => {
+    const keys = Object.keys(getWorkflowDefinitionOperation.outputSchema.shape);
+
+    expect(keys.filter((key) => /owner|author/i.test(key))).toEqual([]);
+  });
+
+  it('is readable with system:read or workflows:read and refuses other scopes', async () => {
+    engine = createOperationTestEngine();
+    engine.register(typed('orders'));
+    const outcomes: boolean[] = [];
+    for (const scope of ['system:read', 'workflows:read', 'workflows:write'] as const) {
+      const result = await executeOperation(
+        'weft.workflows.definitions.get',
+        { name: 'orders' },
+        {
+          principal: principalFromApiKey({ subject: 'reader', scopes: [scope] }),
+          host: engine,
+          transport: 'jsonRpcStdio',
+          registry,
+        },
+      );
+      outcomes.push(result.ok);
+    }
+
+    expect(outcomes).toEqual([true, true, false]);
+  });
+
+  it('appears in the OpenRPC document and the REST surface', () => {
+    const live = createLiveOperationRegistry();
+    const rpc = generateOpenRpcDocument({ registry: live, transports: ['http'] }) as {
+      methods: { name: string }[];
+    };
+    const openApi = generateOpenApiDocument() as { paths: Record<string, unknown> };
+
+    expect(rpc.methods.map((method) => method.name)).toContain('weft.workflows.definitions.get');
+    expect(Object.keys(openApi.paths)).toContain('/api/v1/registry/definitions/{name}');
+    expect(live.get('weft.workflows.definitions.get')?.mcpExposable).toBe(false);
+  });
+});
