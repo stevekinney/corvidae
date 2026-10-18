@@ -13,6 +13,7 @@ import {
   SESSION_INPUT_COMMAND_TIMEOUT_MS,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
+import { SESSION_INPUT_RUN_ENDED_REASON } from './session-input-settlement';
 
 /**
  * COR-1476 — a replayed `submitSessionInput` reads an honest receipt on every
@@ -147,7 +148,7 @@ describe('receipts on every way an input can end (COR-1476)', () => {
     await admitSessionInput(orphaned.attempt());
     await orphaned.mailbox.requestCancellation({
       commandId: await commandIdOf(orphaned.mailbox),
-      reason: 'the run ended before the input was delivered',
+      reason: SESSION_INPUT_RUN_ENDED_REASON,
     });
     expect(await orphaned.replayState()).toBe('canceled');
   });

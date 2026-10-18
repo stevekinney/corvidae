@@ -2,16 +2,48 @@ import type { ConditionalTextValueStore, Mailbox } from '@lostgradient/weft';
 import { encodeStorageKeyComponent } from '@lostgradient/weft';
 
 /**
- * COR-1476 — the marker index of sessions that may have open input, and the
- * sweep over it. `session-input-open:v1:{sessionId}` is written by the submit
- * side, with a compare-and-set that gives every write a fresh version, BEFORE
- * the input is admitted, so admitted input is never missing from the index; a
- * crash between the marker and the admission leaves a marker over an empty
- * mailbox, which the sweep removes. Removing a marker is conditional (read its
- * version, read the mailbox, delete only if the mailbox is idle and the version
- * is unchanged), so a marker is never deleted over input admitted after it was
- * read.
+ * COR-1476 — what becomes of session input that no run delivered. Bureau never
+ * starts a run to answer input: an input a live run's step boundary appends to
+ * its conversation ends `promoted`, and one that is still open when its run
+ * ends is cancelled, so the client learns it was not delivered and resends it.
+ *
+ * ## Who cancels, and when
+ *
+ * The run that ends does the cancelling, in `create-bureau.ts`'s run-end path:
+ * it first makes itself not live (its steering `run-ended` entry, retried until
+ * it is acknowledged), then catches up steering, reads the session's liveness
+ * without itself, and, when no other run is live or starting, cancels every
+ * open input whose turn is not in its checkpoint transcript. With another run
+ * live, it only releases what it held: that run's end cancels what is left.
+ *
+ * `submitSessionInput` runs the mirror image: it writes the marker below, commits
+ * the admission, catches up steering, and reads liveness; with no run live or
+ * starting it cancels its own input and returns the re-read receipt. The two
+ * orderings make one side always see the other: the ending run reads the mailbox
+ * only after its not-live write is acknowledged, and the submit side reads
+ * liveness only after its admission committed, so an input admitted before the
+ * run's mailbox read is cancelled by the run, and one admitted after it finds no
+ * live run and cancels itself.
+ *
+ * ## The marker, and the sweep behind it
+ *
+ * `session-input-open:v1:{sessionId}` is the sweep's index of sessions that may
+ * have open input. The submit side bumps it, with a compare-and-set that gives
+ * every write a fresh version, BEFORE it admits, so admitted input is never
+ * missing from the index; a crash between the marker and the admission leaves a
+ * marker over an empty mailbox, which the sweep removes. Removing a marker is
+ * conditional (read its version, read the mailbox, delete only if the mailbox is
+ * idle and the version is unchanged), so a marker is never deleted over input
+ * admitted after it was read.
+ *
+ * The boot sweep and the periodic sweep visit every marked session and cancel
+ * its open input only when `liveSessionRunIdsEverywhere` reports no run at all:
+ * input under an orphaned `running` workflow of a dead process stays open until
+ * that workflow is recovered (its run then delivers it) or marked terminal.
  */
+
+/** The cancellation reason of input that was still open when its run ended. */
+export const SESSION_INPUT_RUN_ENDED_REASON = 'the run ended before the input was delivered';
 
 /** Non-terminal mailbox states: what counts as open input. */
 export const OPEN_SESSION_INPUT_STATES = [
@@ -44,6 +76,13 @@ interface MarkerRecord {
 export interface SessionInputSettlementDependencies {
   readonly kv: ConditionalTextValueStore;
   /** The session's current incarnation, or `undefined` when it no longer exists. */
+  readonly incarnationOf: (sessionId: string) => Promise<string | undefined>;
+  /**
+   * The session incarnation's live and starting runs in every process, read
+   * after the steering log has been caught up, so a run whose `run-ended`
+   * another process wrote is not counted.
+   */
+  readonly liveRunIds: (sessionId: string, incarnation: string) => Promise<readonly string[]>;
   readonly mailboxOf: (sessionId: string) => Mailbox | undefined;
   /** Whether the bureau is shutting down, when open input is released, never cancelled. */
   readonly isClosed: () => boolean;
@@ -56,7 +95,18 @@ export interface SessionInputSettlement {
    * so admitted input is never missing from the sweep's index.
    */
   markOpen(sessionId: string): Promise<void>;
-  /** Visits every marked session and removes the marker of one with nothing open. */
+  /**
+   * Cancels every open input of the session except the commands in `delivered`,
+   * in admission order, with {@link SESSION_INPUT_RUN_ENDED_REASON}, then removes
+   * the marker if nothing is left open. The caller has established that no run
+   * of the session is live or starting. Returns the cancelled command ids.
+   */
+  cancelUndelivered(sessionId: string, delivered: ReadonlySet<string>): Promise<string[]>;
+  /**
+   * Visits every marked session: one with no live or starting run has its open
+   * input cancelled; one whose session is gone has its marker removed; the rest
+   * are left for their runs. Does nothing while the bureau is closing.
+   */
   sweep(): Promise<void>;
 }
 
@@ -95,6 +145,24 @@ export async function forEachOpenReceipt(
       await action(receipt.commandId);
     }
   }
+}
+
+/**
+ * Cancels every cancellable open command of `mailbox` that is not in `keep`,
+ * with {@link SESSION_INPUT_RUN_ENDED_REASON}, in admission order. Returns the
+ * ids it cancelled.
+ */
+export async function cancelOpenSessionInput(
+  mailbox: Mailbox,
+  keep: ReadonlySet<string>,
+): Promise<string[]> {
+  const cancelled: string[] = [];
+  await forEachOpenReceipt(mailbox, async (commandId) => {
+    if (keep.has(commandId)) return;
+    await mailbox.requestCancellation({ commandId, reason: SESSION_INPUT_RUN_ENDED_REASON });
+    cancelled.push(commandId);
+  });
+  return cancelled;
 }
 
 export function createSessionInputSettlement(
@@ -141,14 +209,36 @@ export function createSessionInputSettlement(
     return false;
   }
 
-  async function sweepSession(sessionId: string): Promise<void> {
+  async function cancelUndelivered(
+    sessionId: string,
+    delivered: ReadonlySet<string>,
+  ): Promise<string[]> {
     const mailbox = dependencies.mailboxOf(sessionId);
-    if (mailbox === undefined || dependencies.isClosed()) return;
+    if (mailbox === undefined) return [];
+    const cancelled = await cancelOpenSessionInput(mailbox, delivered);
     await removeMarkerIfIdle(sessionId, mailbox);
+    return cancelled;
+  }
+
+  async function sweepSession(sessionId: string): Promise<void> {
+    const incarnation = await dependencies.incarnationOf(sessionId);
+    const mailbox = dependencies.mailboxOf(sessionId);
+    if (incarnation === undefined) {
+      // Deleting the session retired its input; only the marker is left.
+      if (mailbox !== undefined) await removeMarkerIfIdle(sessionId, mailbox);
+      return;
+    }
+    if (mailbox === undefined || dependencies.isClosed()) return;
+    const live = await dependencies.liveRunIds(sessionId, incarnation);
+    // A live run delivers the input at its next boundary, and its end cancels
+    // what it never delivered; a starting one is live in a moment.
+    if (live.length > 0) return;
+    await cancelUndelivered(sessionId, new Set());
   }
 
   return {
     markOpen: bumpMarker,
+    cancelUndelivered,
     async sweep() {
       if (dependencies.isClosed()) return;
       for (const key of await kv.list(MARKER_PREFIX)) {

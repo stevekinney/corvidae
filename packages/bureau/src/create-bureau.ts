@@ -223,10 +223,15 @@ import {
   admitSessionInput,
   createSessionInputMailbox,
   type PersistedSessionInput,
+  readSessionInputReceipt,
   SESSION_INPUT_DELIVERY_RETENTION_MS,
 } from './session-input-durability';
 import { createSessionInputDeliveryGate } from './session-input-delivery';
-import { createSessionInputSettlement, forEachOpenReceipt } from './session-input-settlement';
+import {
+  createSessionInputSettlement,
+  forEachOpenReceipt,
+  SESSION_INPUT_RUN_ENDED_REASON,
+} from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import {
   normalizeRunRequestContext,
@@ -2035,14 +2040,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1476 — a run has ended, however it ended. It records its steering
-   * `run-ended` entry, the durable not-live write every process honours, and
-   * releases what it held: its gate's leases and its unpromoted claims. Input
-   * still open is left to the sweep.
+   * COR-1476 — a run has ended, however it ended: completed, failed, aborted by
+   * `abortRun`, cancelled by `cancelDurableRun`, or promoted but never started.
+   * In this order, it
+   *
+   * 1. writes its steering `run-ended` entry, the durable not-live write every
+   *    process's `liveSessionRunIdsEverywhere` honours over the engine's status,
+   *    retrying until it is acknowledged or the bureau closes;
+   * 2. catches up steering;
+   * 3. reads the session's liveness without itself;
+   * 4. releases what it held (its gate's leases and its unpromoted claims), which
+   *    is all it does when another run of the session is live or starting, the
+   *    bureau is closing, the write was never acknowledged, or liveness could
+   *    not be read: that run's end, or the sweep, decides the rest;
+   * 5. otherwise cancels every open input whose turn is not in its checkpoint
+   *    transcript, in admission order, so the client learns it was not
+   *    delivered and resends it. A turn the transcript holds was promoted by
+   *    the write that saved it, and stays `promoted`.
+   *
+   * `submitSessionInput` orders itself the other way round, admission before
+   * liveness, so one side always sees the other: see
+   * `session-input-settlement.ts`.
    */
   async function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
-    await recordRunEnded(sessionId, runId);
+    const acknowledged = await recordRunEnded(sessionId, runId);
     await releaseSessionInputs(sessionId, runId);
+    if (!acknowledged || sessionInputSettlement === undefined || isSessionInputClosed()) return;
+    try {
+      const session = await runtime.sessionStore?.load(sessionId);
+      // Deleting the session retired its input; the sweep drops the marker.
+      if (session === undefined) return;
+      const steeringKv = durableSteeringStore();
+      if (steeringKv !== undefined) {
+        await enqueueSteering(sessionId, () =>
+          catchUpSteering(steeringKv, sessionId, session.incarnation),
+        );
+      }
+      const live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+      if (live.some((liveRunId) => liveRunId !== runId)) return;
+      const delivered = await sessionInputCommandsInTranscript(runId);
+      await sessionInputSettlement.cancelUndelivered(sessionId, delivered);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'session-input',
+        message: `[bureau] Could not settle the open session input of session "${sessionId}" after run "${runId}" ended; the sweep will: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
   }
 
   /**
@@ -2083,11 +2128,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
         return true;
       } catch (error) {
-        // A recreated session's log has no promotion of this run: nothing to log.
-        if (error instanceof BureauError && error.code === 'CONFLICT' && attempt > 1) {
-          const current = await runtime.sessionStore?.load(sessionId).catch(() => undefined);
-          if (current === undefined) return true;
-        }
+        // Contention, a storage failure, or a session recreated under this
+        // read: the next attempt reloads the session and refolds its log, so a
+        // session that is gone or no longer promotes this run ends the loop.
         diagnose({
           level: 'error',
           scope: 'session-input',
@@ -2097,6 +2140,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         await sessionPersistenceSleep(SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS);
       }
     }
+  }
+
+  /** The mailbox commands whose user turns `runId`'s checkpoint transcript holds. */
+  async function sessionInputCommandsInTranscript(runId: string): Promise<Set<string>> {
+    const delivered = new Set<string>();
+    const snapshot = await runtime.durable?.checkpointStore.loadConversation(runId);
+    if (snapshot === undefined || snapshot === null) return delivered;
+    for (const message of Conversation.from(snapshot, { runtime: runtimeServices }).getMessages()) {
+      const commandId = message.metadata?.['sessionInputCommandId'];
+      if (typeof commandId === 'string') delivered.add(commandId);
+    }
+    return delivered;
   }
 
   /** A run abandoned to another owner: stop keeping its leases alive, but keep its claims. */
@@ -2144,6 +2199,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionInputDeliveryStore !== undefined
       ? createSessionInputSettlement({
           kv: runtime.kv,
+          incarnationOf: async (sessionId) => {
+            const session = await runtime.sessionStore?.load(sessionId);
+            return session?.incarnation;
+          },
+          liveRunIds: async (sessionId, incarnation) => {
+            const steeringKv = durableSteeringStore();
+            if (steeringKv !== undefined) {
+              await enqueueSteering(sessionId, () =>
+                catchUpSteering(steeringKv, sessionId, incarnation),
+              );
+            }
+            return liveSessionRunIdsEverywhere(sessionId, incarnation);
+          },
           mailboxOf: tryGetSessionInputMailbox,
           isClosed: isSessionInputClosed,
           diagnose: (message, cause) =>
@@ -9112,11 +9180,59 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         nowMs: runtimeServices.clock.now(),
       });
     })()
-      .then((outcome): SessionInputAdmissionOutcome =>
-        outcome.outcome === 'admitted'
-          ? { outcome: 'admitted', receipt: outcome.receipt }
-          : outcome,
-      )
+      .then(async (outcome): Promise<SessionInputAdmissionOutcome> => {
+        if (outcome.outcome !== 'admitted') return outcome;
+        const { receipt, commandId } = outcome;
+        const admitted: SessionInputAdmissionOutcome = { outcome: 'admitted', receipt };
+        // Shutdown releases open input rather than cancelling it; the next
+        // boot's recovered run delivers it, or the sweep cancels it.
+        if (sessionInputSettlement === undefined || isSessionInputClosed()) return admitted;
+        // COR-1476 — the admission above is committed. Only now is liveness
+        // read, after catching up the steering log, so a run whose `run-ended`
+        // entry another process wrote is not counted live. No run live or
+        // starting means nothing will ever deliver the input, so it is
+        // cancelled here and the caller reads `canceled`. A liveness read that
+        // fails is answered the same way: an input admitted on a guess would
+        // be left open.
+        let live: readonly string[];
+        try {
+          const steeringKv = durableSteeringStore();
+          if (steeringKv !== undefined) {
+            await enqueueSteering(sessionId, () =>
+              catchUpSteering(steeringKv, sessionId, session.incarnation),
+            );
+          }
+          live = await liveSessionRunIdsEverywhere(sessionId, session.incarnation);
+        } catch (error) {
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not read the live runs of session "${sessionId}" after admitting input "${id}"; the input is cancelled rather than left open: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          live = [];
+        }
+        if (live.length > 0) return admitted;
+        try {
+          await sessionMailbox.requestCancellation({
+            commandId,
+            reason: SESSION_INPUT_RUN_ENDED_REASON,
+          });
+          return {
+            outcome: 'admitted',
+            receipt: await readSessionInputReceipt(kv, sessionMailbox, sessionId, commandId),
+          };
+        } catch (error) {
+          // Still open, and the marker written above lists it for the sweep.
+          diagnose({
+            level: 'error',
+            scope: 'session-input',
+            message: `[bureau] Could not cancel input "${id}" of session "${sessionId}", which no run is live to deliver: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return admitted;
+        }
+      })
       .finally(() => {
         inFlightSessionInputAdmissions.delete(reservationKey);
       });

@@ -1,12 +1,13 @@
 /**
  * Session input admitted before a process dies is delivered, in order and once,
- * by the process that recovers the run (COR-1476).
+ * by the process that recovers the run, and input left open under a run that
+ * had already ended is cancelled by the next boot's sweep (COR-1476).
  *
- * A child process (`test/session-input-crash-child.ts`) admits two inputs while
- * its run is mid-step and SIGKILLs itself, so whatever the recovering process
- * finds was on disk before the child died. Real processes are the behavior under
- * test, so each scenario runs once at module scope, off Bun's per-test clock,
- * under one hang guard (see `test/hoisted-scenario.ts`).
+ * A child process (`test/session-input-crash-child.ts`) admits input and
+ * SIGKILLs itself, so whatever the recovering process finds was on disk before
+ * the child died. Real processes are the behavior under test, so each scenario
+ * runs once at module scope, off Bun's per-test clock, under one hang guard
+ * (see `test/hoisted-scenario.ts`).
  */
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,7 +21,10 @@ import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import { SESSION_INPUT_DELIVERY_RETENTION_MS } from './session-input-durability';
+import {
+  createSessionInputMailbox,
+  SESSION_INPUT_DELIVERY_RETENTION_MS,
+} from './session-input-durability';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 
 const CHILD = join(import.meta.dir, 'test', 'session-input-crash-child.ts');
@@ -52,8 +56,9 @@ async function runCrashingChild(
   backend: Backend,
   storagePath: string,
   markerPath: string,
+  mode: 'running' | 'ended' = 'running',
 ): Promise<Marker> {
-  const child = spawnWithHangGuard(['bun', CHILD, backend, storagePath, markerPath], {
+  const child = spawnWithHangGuard(['bun', CHILD, backend, storagePath, markerPath, mode], {
     stdout: 'pipe',
     stderr: 'pipe',
   });
@@ -133,9 +138,67 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
   }, HANG_GUARD_MILLISECONDS);
 }
 
+/**
+ * The child's run had ended, with its terminal session write held, when it
+ * admitted the input and died: the input is open, and no run is live. The
+ * recovering process has no run to reattach, and its boot sweep cancels the
+ * input once recovery has run.
+ */
+function cancelledScenario(backend: Backend): ReturnType<typeof settleScenario> {
+  return settleScenario(async (scope) => {
+    const directory = mkdtempSync(join(tmpdir(), `corvidae-session-input-ended-${backend}-`));
+    const remove = (): void => rmSync(directory, { recursive: true, force: true });
+    scope.onHang(remove);
+    try {
+      const storagePath = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
+      const { sessionId } = await runCrashingChild(
+        scope,
+        backend,
+        storagePath,
+        join(directory, 'marker.json'),
+        'ended',
+      );
+      let generations = 0;
+      const recovering = await createBureau({
+        agents: {},
+        generate: async () => {
+          generations += 1;
+          return { content: 'done', toolCalls: [] };
+        },
+        toolbox: createToolbox([nextTool]),
+        storage: { type: backend, path: storagePath },
+        durableExecution: true,
+        durableOwnership: CLAIM_OPTIONS,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+      try {
+        await recovering.waitForRecovery?.();
+        expect(generations).toBe(0);
+        expect(recovering.listRuns()).toHaveLength(0);
+      } finally {
+        await recovering.dispose();
+      }
+
+      const storage = await resolveStorage({ type: backend, path: storagePath });
+      try {
+        const [receipt] = await createSessionInputMailbox(storage, sessionId, 100).list({
+          limit: 10,
+        });
+        expect(receipt?.idempotencyKey).toBe('input-a');
+        expect(receipt?.state).toBe('cancelled');
+      } finally {
+        storage[Symbol.dispose]();
+      }
+    } finally {
+      remove();
+    }
+  }, HANG_GUARD_MILLISECONDS);
+}
+
 const outcomes = {
   sqlite: await recoveredScenario('sqlite'),
   lmdb: await recoveredScenario('lmdb'),
+  ended: await cancelledScenario('sqlite'),
 };
 
 describe.each(['sqlite', 'lmdb'] as const)(
@@ -146,3 +209,9 @@ describe.each(['sqlite', 'lmdb'] as const)(
     });
   },
 );
+
+describe('session input left open under a run that had ended when its process died (COR-1476)', () => {
+  it('is cancelled by the restarted process once its boot recovery has run', () => {
+    expectScenarioPassed(outcomes.ended);
+  });
+});
