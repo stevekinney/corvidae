@@ -87,6 +87,16 @@ const ALREADY_SCOPED_OPERATIONS: Readonly<Record<string, AuthorizationScope>> = 
 };
 
 /**
+ * The definitions catalog is readable under either of two scopes: it describes
+ * what the engine can run, which both the system-level and workflow-level
+ * readers already see in pieces (COR-1554).
+ */
+const DEFINITION_CATALOG_OPERATIONS: readonly string[] = [
+  'weft.workflows.definitions.list',
+  'weft.workflows.definitions.get',
+];
+
+/**
  * Operations that need an authenticated caller and no particular scope. None of
  * the families this test classifies is in this group today; it stays so a new
  * authenticated-only operation is a deliberate, reviewed addition.
@@ -161,6 +171,43 @@ describe('the scope an operation requires', () => {
       expect(access).toEqual({ kind: 'authenticated' });
       expect(evaluateAccess(access, principalHolding([]))).toEqual({ allowed: true });
       expect(evaluateAccess(access, anonymousPrincipal())).toMatchObject({ allowed: false });
+    });
+  }
+});
+
+describe('the definitions catalog requires system:read or workflows:read', () => {
+  for (const operationName of DEFINITION_CATALOG_OPERATIONS) {
+    describe(operationName, () => {
+      it('declares an anyOf of both read scopes', () => {
+        expect(accessOf(operationName)).toEqual({
+          kind: 'scoped',
+          scopes: { kind: 'anyOf', scopes: ['system:read', 'workflows:read'] },
+        });
+        expect(registry.get(operationName)?.discoverable).toBe(true);
+      });
+
+      it.each(['system:read', 'workflows:read'] as const)('is allowed with %s alone', (scope) => {
+        expect(evaluateAccess(accessOf(operationName), principalHolding([scope]))).toEqual({
+          allowed: true,
+        });
+      });
+
+      it('is refused with every other scope', () => {
+        const others = AUTHORIZATION_SCOPES.filter(
+          (candidate) => candidate !== 'system:read' && candidate !== 'workflows:read',
+        );
+        expect(evaluateAccess(accessOf(operationName), principalHolding(others))).toMatchObject({
+          allowed: false,
+          classification: 'forbidden',
+        });
+      });
+
+      it('is refused to an anonymous caller', () => {
+        expect(evaluateAccess(accessOf(operationName), anonymousPrincipal())).toMatchObject({
+          allowed: false,
+          classification: 'unauthorized',
+        });
+      });
     });
   }
 });
@@ -296,6 +343,7 @@ describe('public operations', () => {
       ...Object.keys(REQUIRED_SCOPE_BY_OPERATION),
       'weft.workflows.startorsignal',
       ...Object.keys(ALREADY_SCOPED_OPERATIONS),
+      ...DEFINITION_CATALOG_OPERATIONS,
       ...AUTHENTICATED_ONLY_OPERATIONS,
       ...SELECTOR_AUTHORIZED_OPERATIONS,
       'weft.system.principal',

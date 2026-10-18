@@ -489,6 +489,7 @@ The scope each operation requires:
 | `weft.schedules.create`, `weft.schedules.update`, `weft.schedules.pause`, `weft.schedules.resume`, `weft.schedules.cancel` | `schedules:write` |
 | `weft.reviews.get`, `weft.reviews.decision.submit` | `reviews:read`, `reviews:write` |
 | `weft.retention.get` | `system:read` |
+| `weft.workflows.definitions.list`, `weft.workflows.definitions.get` | `system:read` or `workflows:read` (either one) |
 | `weft.system.principal` | none (public) |
 
 Mutual TLS currently admits a principal that holds no scopes, so an mTLS caller reaches only `weft.system.principal`: every other operation in this table requires a scope, and the two workflow event feeds refuse a caller that holds neither `events:read` nor `streams:read`. Scopes are flat: `workflows:admin` does not imply `workflows:read`. Operations outside this table, such as the registry, storage, worker, and diagnostic operations, declare their own scopes through the same mechanism.
