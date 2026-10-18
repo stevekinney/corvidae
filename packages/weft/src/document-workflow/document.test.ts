@@ -14,6 +14,7 @@ const host: DocumentWorkflowHost = {
   activities: {
     notify: ({ input }) => input,
     summarize: ({ previous }) => previous,
+    'payments.charge': () => null,
   },
   triggerKinds: {
     schedule: (trigger) =>
@@ -73,6 +74,16 @@ describe('validateWorkflowDocument()', () => {
         message: 'activity handler "delete-everything" is not registered',
       },
     ]);
+  });
+
+  it('rejects a handler name that is not wire-safe with the typed error and its path', () => {
+    const issues = issuesOf(
+      document({ steps: [{ kind: 'activity', handler: 'payments.charge' }] }),
+    );
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path).toBe('steps[0].handler');
+    expect(issues[0]?.message).toContain('payments.charge');
   });
 
   it('does not resolve handler names through the prototype chain', () => {
@@ -154,6 +165,44 @@ describe('canonicalWorkflowDocumentJson()', () => {
 });
 
 describe('workflowDocumentVersion()', () => {
+  it('pins the version of a fixed document through the full validate-then-hash path', async () => {
+    // The expected hex is the SHA-256 of this exact text, computed outside Weft.
+    // A change here means every stored document's version moved: that is a
+    // one-way-door change, never a refactor.
+    const canonical =
+      '{"name":"golden-digest","steps":[{"handler":"summarize","input":{"limit":10,"window":"24h"},"kind":"activity"},{"duration":"5m","kind":"sleep"},{"kind":"await-signal","signal":"approve"},{"handler":"notify","kind":"activity"}],"trigger":{"cron":"0 9 * * *","kind":"schedule"}}';
+    const validated = validateWorkflowDocument(
+      {
+        trigger: { kind: 'schedule', cron: '0 9 * * *' },
+        steps: [
+          { input: { window: '24h', limit: 10 }, handler: 'summarize', kind: 'activity' },
+          { duration: '5m', kind: 'sleep' },
+          { signal: 'approve', kind: 'await-signal' },
+          { handler: 'notify', kind: 'activity' },
+        ],
+        name: 'golden-digest',
+      },
+      host,
+    );
+
+    expect(canonicalWorkflowDocumentJson(validated)).toBe(canonical);
+    expect(await workflowDocumentVersion(validated)).toBe(
+      'sha256:a1d566f926a4ef3a2be9a8dc54b5b41289b13aea382d58bb549beb5262807c18',
+    );
+  });
+
+  it('hashes content, not meaning: absent and null input, and 1m and 60000, differ', async () => {
+    const version = async (step: Record<string, unknown>) =>
+      workflowDocumentVersion(validateWorkflowDocument(document({ steps: [step] }), host));
+
+    expect(await version({ kind: 'activity', handler: 'notify' })).not.toBe(
+      await version({ kind: 'activity', handler: 'notify', input: null }),
+    );
+    expect(await version({ kind: 'sleep', duration: '1m' })).not.toBe(
+      await version({ kind: 'sleep', duration: 60_000 }),
+    );
+  });
+
   it('is the SHA-256 of the canonical JSON, tagged sha256', async () => {
     const validated = validateWorkflowDocument(document(), host);
     const expected = new Bun.CryptoHasher('sha256')

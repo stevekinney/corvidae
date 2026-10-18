@@ -2,7 +2,7 @@
  * Registering workflow documents with an engine. Each document becomes its own
  * workflow type through `registerSource()`, so it lists, runs, schedules, and
  * recovers like a code-defined workflow. Weft persists no documents: the host
- * supplies them, and these helpers register exactly what they are handed.
+ * supplies them, and this helper registers exactly what it is handed.
  *
  * @module document-workflow/register
  */
@@ -11,8 +11,10 @@ import { deriveWorkflowDefinitionRevision } from '../core/engine/definition-revi
 import type { Engine } from '../core/engine/index.ts';
 import { activateRegisteredSourceRevision } from '../core/engine/source-activation.ts';
 import { listWorkflowSources } from '../core/engine/source-listing.ts';
-import { workflowSource } from '../core/source/index.ts';
+import { workflowSource, type WorkflowSourceHandle } from '../core/source/index.ts';
+import type { WorkflowDefinition } from '../core/types.ts';
 import {
+  WorkflowDocumentValidationError,
   validateWorkflowDocument,
   workflowDocumentVersion,
   type DocumentWorkflowHost,
@@ -35,66 +37,103 @@ export interface WorkflowDocumentSet {
   /** The revision each workflow type runs for new instances: one document per name. */
   readonly active: readonly unknown[];
   /**
-   * Other revisions the host still holds. Register every revision that has an
-   * in-flight run or a pinned schedule, or recovery cannot load it.
+   * Every other revision the host still holds a run or a pinned schedule on.
+   * They are registered but never activated. A revision that has an in-flight
+   * run and is not supplied here cannot be loaded when that run recovers, and
+   * the run fails permanently.
    */
   readonly retained?: readonly unknown[];
 }
 
 const DOCUMENT_SOURCE_EXPORT = 'workflow';
 
-async function registerValidatedDocument(
-  engine: Engine,
-  host: DocumentWorkflowHost,
-  document: WorkflowDocument,
-): Promise<RegisteredWorkflowDocument> {
-  const workflowVersion = await workflowDocumentVersion(document);
-  const definition = await buildDocumentWorkflowDefinition(document, host);
-  const revision = await deriveWorkflowDefinitionRevision(definition);
-  const identity = { name: document.name, workflowVersion, revision };
+type PreparedDocument = Readonly<{
+  identity: RegisteredWorkflowDocument;
+  source: WorkflowSourceHandle;
+}>;
 
-  const alreadyRegistered = listWorkflowSources(engine).some(
-    (source) => source.name === document.name && source.revision === revision,
-  );
-  if (!alreadyRegistered) {
-    engine.registerSource(
-      workflowSource(
-        {
-          name: document.name,
-          location: `workflow-document:${workflowVersion}`,
-          exportName: DOCUMENT_SOURCE_EXPORT,
-          revision,
-          workflowVersion,
-        },
-        async () => ({ [DOCUMENT_SOURCE_EXPORT]: definition }),
-      ),
-    );
-  }
-  return identity;
+function nameIssue(message: string): WorkflowDocumentValidationError {
+  return new WorkflowDocumentValidationError([{ path: 'name', message }]);
 }
 
 /**
- * Validate `input` against `host` and register it as a workflow type named by
- * the document, without loading or activating it. A name with a single
- * registered revision runs that revision; use {@link registerWorkflowDocuments}
- * when a name has more than one. Registering a document whose revision is
- * already registered is a no-op.
+ * Check, before anything is registered, that every document can be registered:
+ * no active name is repeated, and no name belongs to a code workflow.
  */
-export function registerWorkflowDocument(
+function assertRegistrable(
   engine: Engine,
+  active: readonly WorkflowDocument[],
+  retained: readonly WorkflowDocument[],
+): void {
+  const activeNames = new Set<string>();
+  for (const document of active) {
+    if (activeNames.has(document.name)) {
+      throw nameIssue(
+        `workflow "${document.name}" has more than one active document; supply one active document per name`,
+      );
+    }
+    activeNames.add(document.name);
+  }
+  for (const document of [...active, ...retained]) {
+    if (engine.getWorkflowDefinition(document.name) !== undefined) {
+      throw nameIssue(
+        `workflow "${document.name}" is already registered as a code workflow, so a document cannot use that name`,
+      );
+    }
+  }
+}
+
+/** Build a document's definition and derive its revision. Registers nothing. */
+async function prepareDocument(
   host: DocumentWorkflowHost,
-  input: unknown,
-): Promise<RegisteredWorkflowDocument> {
-  return registerValidatedDocument(engine, host, validateWorkflowDocument(input, host));
+  document: WorkflowDocument,
+): Promise<PreparedDocument> {
+  const workflowVersion = await workflowDocumentVersion(document);
+  const definition: WorkflowDefinition = await buildDocumentWorkflowDefinition(document, host);
+  const revision = await deriveWorkflowDefinitionRevision(definition);
+  return {
+    identity: { name: document.name, workflowVersion, revision },
+    source: workflowSource(
+      {
+        name: document.name,
+        location: `workflow-document:${workflowVersion}`,
+        exportName: DOCUMENT_SOURCE_EXPORT,
+        revision,
+        workflowVersion,
+      },
+      async () => ({ [DOCUMENT_SOURCE_EXPORT]: definition }),
+    ),
+  };
+}
+
+function registerPrepared(engine: Engine, prepared: PreparedDocument): void {
+  const { name, revision } = prepared.identity;
+  const alreadyRegistered = listWorkflowSources(engine).some(
+    (source) => source.name === name && source.revision === revision,
+  );
+  if (!alreadyRegistered) engine.registerSource(prepared.source);
 }
 
 /**
  * Register every document the host supplies, then make each `active` document
- * the revision that new instances of its type run. Call it before starting the
- * engine's workflows and before `recoverAll()`, so recovery can load the
- * revision each in-flight run is pinned to. Every document is validated before
- * anything is registered. Returns the `active` documents' identities, then the
- * `retained` ones', in the order given.
+ * the revision that new instances of its type run. The batch is all or
+ * nothing as far as validation goes: every document is validated, checked
+ * against the engine's code workflows and against each other, and built before
+ * the first one is registered.
+ *
+ * Call it before `recoverAll()`, so recovery can load the revision each
+ * in-flight run is pinned to. `new Engine()` does not recover on its own, so
+ * register and then call `recoverAll()`. `Engine.create()` recovers by default,
+ * so pass `recover: false`, register, and then call `recoverAll()`.
+ *
+ * Activating a document revision moves the active pointer without the
+ * compatibility check `engine.workflows.activate()` applies, as re-registering
+ * changed code does. Runs that started on the previous revision stay on it.
+ * Under sustained contention for the same catalog entry the activation can
+ * throw `WorkflowCatalogActivationConflictError`.
+ *
+ * Returns the `active` documents' identities, then the `retained` ones', in the
+ * order given.
  */
 export async function registerWorkflowDocuments(
   engine: Engine,
@@ -103,27 +142,20 @@ export async function registerWorkflowDocuments(
 ): Promise<readonly RegisteredWorkflowDocument[]> {
   const active = documents.active.map((input) => validateWorkflowDocument(input, host));
   const retained = (documents.retained ?? []).map((input) => validateWorkflowDocument(input, host));
+  assertRegistrable(engine, active, retained);
 
-  const activeNames = new Set<string>();
-  for (const document of active) {
-    if (activeNames.has(document.name)) {
-      throw new Error(
-        `Workflow document "${document.name}" has more than one active revision; supply one active document per name.`,
-      );
-    }
-    activeNames.add(document.name);
-  }
+  const preparedActive = await Promise.all(
+    active.map((document) => prepareDocument(host, document)),
+  );
+  const preparedRetained = await Promise.all(
+    retained.map((document) => prepareDocument(host, document)),
+  );
 
-  const registeredRetained: RegisteredWorkflowDocument[] = [];
-  for (const document of retained) {
-    registeredRetained.push(await registerValidatedDocument(engine, host, document));
+  for (const prepared of [...preparedRetained, ...preparedActive]) {
+    registerPrepared(engine, prepared);
   }
-  const registeredActive: RegisteredWorkflowDocument[] = [];
-  for (const document of active) {
-    registeredActive.push(await registerValidatedDocument(engine, host, document));
-  }
-  for (const identity of registeredActive) {
+  for (const { identity } of preparedActive) {
     await activateRegisteredSourceRevision(engine, identity.name, identity.revision);
   }
-  return [...registeredActive, ...registeredRetained];
+  return [...preparedActive, ...preparedRetained].map(({ identity }) => identity);
 }

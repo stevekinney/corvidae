@@ -1,21 +1,18 @@
 import { describe, expect, it } from 'bun:test';
 
 import { Engine } from '../core/engine/index.ts';
+import { listWorkflowSources } from '../core/engine/source-listing.ts';
 import {
   WorkflowRevisionActivatedEvent,
   WorkflowRevisionDrainingEvent,
   WorkflowRevisionInstalledEvent,
 } from '../core/events/catalog-events.ts';
-import { KEYS } from '../storage/interface.ts';
+import { workflow } from '../core/types.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { waitForCondition } from '../testing/fake-timers.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
-import {
-  WorkflowDocumentValidationError,
-  workflowDocumentVersion,
-  type DocumentWorkflowHost,
-} from './document.ts';
-import { registerWorkflowDocument, registerWorkflowDocuments } from './register.ts';
+import { WorkflowDocumentValidationError, type DocumentWorkflowHost } from './document.ts';
+import { registerWorkflowDocuments } from './register.ts';
 
 const handlerCalls: string[] = [];
 const traces: { input: unknown; trigger: unknown; previous: unknown }[] = [];
@@ -32,6 +29,7 @@ const host: DocumentWorkflowHost = {
       throw new Error('handler exploded');
     },
     version: ({ input }) => input,
+    'payments.charge': () => null,
     trace: ({ input, trigger, previous }) => {
       traces.push({ input, trigger, previous });
       return input;
@@ -47,10 +45,14 @@ function createDocument(
   return { name, trigger: { kind: 'manual' }, steps };
 }
 
-async function waitForCheckpoint(storage: MemoryStorage, workflowId: string): Promise<void> {
-  await waitForCondition(async () => (await storage.get(KEYS.checkpoint(workflowId))) !== null, {
-    label: `checkpoint for ${workflowId}`,
-  });
+async function waitForParkedOnSignal(engine: Engine, workflowId: string): Promise<void> {
+  await waitForCondition(
+    async () => {
+      const timeline = await engine.getTimeline(workflowId);
+      return timeline.some((entry) => entry.operationType === 'wait-signal');
+    },
+    { label: `${workflowId} parked on its signal` },
+  );
 }
 
 describe('registerWorkflowDocuments()', () => {
@@ -142,6 +144,35 @@ describe('registerWorkflowDocuments()', () => {
     ]);
   });
 
+  it('declares the signals a document awaits in its contract, and none when it awaits none', async () => {
+    const awaiting = createDocument('awaiting-document', [
+      { kind: 'await-signal', signal: 'approve' },
+      { kind: 'activity', handler: 'greet' },
+      { kind: 'await-signal', signal: 'approve' },
+      { kind: 'await-signal', signal: 'cancel' },
+    ]);
+    const plain = createDocument('plain-document', [{ kind: 'activity', handler: 'greet' }]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    const [withSignals, withoutSignals] = await registerWorkflowDocuments(engine, host, {
+      active: [awaiting, plain],
+    });
+
+    const awaitingRecord = await engine.workflows.getRevision(
+      'awaiting-document',
+      withSignals!.revision,
+    );
+    const plainRecord = await engine.workflows.getRevision(
+      'plain-document',
+      withoutSignals!.revision,
+    );
+
+    expect(Object.keys(awaitingRecord?.manifest.contract.signals ?? {}).toSorted()).toEqual([
+      'approve',
+      'cancel',
+    ]);
+    expect(plainRecord?.manifest.contract.signals).toBeUndefined();
+  });
+
   it('gives identical content the same revision and a one-step change a new one', async () => {
     const steps = [
       { kind: 'activity', handler: 'shout', input: 'a' },
@@ -230,9 +261,43 @@ describe('registerWorkflowDocuments()', () => {
         registerWorkflowDocuments(engine, host, { active: [valid, invalid] }),
       ),
     ).toThrow(WorkflowDocumentValidationError);
-    expect(await throwingRejectionOf(engine.start('valid-document', null))).toThrow(
-      'valid-document',
+    expect(listWorkflowSources(engine)).toEqual([]);
+  });
+
+  it('rejects a handler that is not a wire-safe activity name before registering anything', async () => {
+    const valid = createDocument('valid-document', [{ kind: 'activity', handler: 'greet' }]);
+    const dotted = createDocument('dotted-document', [
+      { kind: 'activity', handler: 'payments.charge' },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+
+    expect(
+      await throwingRejectionOf(
+        registerWorkflowDocuments(engine, host, { active: [valid, dotted] }),
+      ),
+    ).toThrow(WorkflowDocumentValidationError);
+    expect(listWorkflowSources(engine)).toEqual([]);
+  });
+
+  it('rejects a document named like a code workflow before registering anything', async () => {
+    const valid = createDocument('valid-document', [{ kind: 'activity', handler: 'greet' }]);
+    const clashing = createDocument('code-workflow', [{ kind: 'activity', handler: 'greet' }]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    engine.register(
+      workflow({ name: 'code-workflow' }).execute(async function* () {
+        return 'code';
+      }),
     );
+
+    for (const documents of [
+      { active: [valid, clashing] },
+      { active: [valid], retained: [clashing] },
+    ]) {
+      expect(await throwingRejectionOf(registerWorkflowDocuments(engine, host, documents))).toThrow(
+        WorkflowDocumentValidationError,
+      );
+    }
+    expect(listWorkflowSources(engine)).toEqual([]);
   });
 
   it('rejects two active documents for one name', async () => {
@@ -244,25 +309,8 @@ describe('registerWorkflowDocuments()', () => {
       await throwingRejectionOf(
         registerWorkflowDocuments(engine, host, { active: [first, second] }),
       ),
-    ).toThrow('"twice"');
-  });
-});
-
-describe('registerWorkflowDocument()', () => {
-  it('registers one document without loading or activating it', async () => {
-    const document = createDocument('single', [{ kind: 'activity', handler: 'greet' }]);
-    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
-
-    const registered = await registerWorkflowDocument(engine, host, document);
-
-    expect(registered.workflowVersion).toBe(
-      await workflowDocumentVersion({
-        name: 'single',
-        trigger: { kind: 'manual' },
-        steps: [{ kind: 'activity', handler: 'greet' }],
-      }),
-    );
-    expect(await engine.workflows.getActive('single')).toBeNull();
+    ).toThrow(WorkflowDocumentValidationError);
+    expect(listWorkflowSources(engine)).toEqual([]);
   });
 });
 
@@ -308,26 +356,63 @@ describe('a Weft schedule targeting a document type', () => {
 });
 
 describe('restarting after a crash', () => {
-  it('resumes an instance parked on await-signal from that step', async () => {
+  it('resumes an instance parked on await-signal from that step, without rerunning the steps before it', async () => {
+    traces.length = 0;
     const storage = new MemoryStorage();
     const document = createDocument('crash-signal', [
-      { kind: 'activity', handler: 'shout', input: 'before' },
+      { kind: 'activity', handler: 'trace', input: 'before' },
       { kind: 'await-signal', signal: 'go' },
-      { kind: 'activity', handler: 'shout', input: 'after' },
+      { kind: 'activity', handler: 'trace', input: 'after' },
     ]);
     {
       await using original = new Engine({ storage });
       await registerWorkflowDocuments(original, host, { active: [document] });
       await original.start('crash-signal', null, { id: 'crash-signal-run' });
-      await waitForCheckpoint(storage, 'crash-signal-run');
+      await waitForParkedOnSignal(original, 'crash-signal-run');
     }
+    expect(traces.map((entry) => entry.input)).toEqual(['before']);
 
     await using restarted = new Engine({ storage });
     await registerWorkflowDocuments(restarted, host, { active: [document] });
     const [handle] = await restarted.recoverAll();
     await handle!.signal('go', 'resumed');
 
-    expect(await handle!.result()).toBe('"after":"resumed"');
+    expect(await handle!.result()).toBe('after');
+    expect(traces.map((entry) => entry.input)).toEqual(['before', 'after']);
+  });
+
+  it('finishes a run pinned to a retained revision after a restart, while new runs use the active one', async () => {
+    const storage = new MemoryStorage();
+    const version1 = createDocument('pinned', [
+      { kind: 'await-signal', signal: 'go' },
+      { kind: 'activity', handler: 'version', input: 'one' },
+    ]);
+    const version2 = createDocument('pinned', [
+      { kind: 'await-signal', signal: 'go' },
+      { kind: 'activity', handler: 'version', input: 'two' },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [version1] });
+      await original.start('pinned', null, { id: 'pinned-old-run' });
+      await waitForParkedOnSignal(original, 'pinned-old-run');
+    }
+
+    await using restarted = new Engine({ storage });
+    const [active] = await registerWorkflowDocuments(restarted, host, {
+      active: [version2],
+      retained: [version1],
+    });
+    const [recovered] = await restarted.recoverAll();
+    const fresh = await restarted.start('pinned', null, { id: 'pinned-new-run' });
+    await recovered!.signal('go', null);
+    await fresh.signal('go', null);
+
+    expect(recovered!.id).toBe('pinned-old-run');
+    expect(await recovered!.result()).toBe('one');
+    expect(await fresh.result()).toBe('two');
+    const pointer = await restarted.workflows.getActive('pinned');
+    expect(pointer?.revision).toBe(active!.revision);
   });
 
   it('resumes an instance parked on sleep from that step', async () => {

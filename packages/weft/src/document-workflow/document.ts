@@ -11,10 +11,10 @@
 
 import { z } from 'zod';
 
-import { compareCodepoint } from '../core/compare-codepoint.ts';
 import { isJSONValue, type JSONValue } from '../core/json.ts';
 import { parseDuration } from '../core/scheduler.ts';
 import { validateWorkflowOrActivityName } from '../core/types/name-grammar.ts';
+import { canonicalJsonStringify } from '../worker/manifest/canonical-json.ts';
 import { sha256Hex } from '../worker/manifest/content-digest.ts';
 
 /**
@@ -148,6 +148,16 @@ function formatPath(path: readonly PropertyKey[]): string {
   return formatted;
 }
 
+/** Why `name` cannot be an activity name, or `undefined` when it can. */
+function activityNameIssue(name: string): string | undefined {
+  try {
+    validateWorkflowOrActivityName(name, 'activity');
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+}
+
 function hostIssues(
   document: WorkflowDocument,
   host: DocumentWorkflowHost,
@@ -166,11 +176,13 @@ function hostIssues(
     if (reason !== undefined) issues.push({ path: 'trigger', message: reason });
   }
   for (const [index, step] of document.steps.entries()) {
-    if (step.kind === 'activity' && !Object.hasOwn(host.activities, step.handler)) {
-      issues.push({
-        path: `steps[${String(index)}].handler`,
-        message: `activity handler "${step.handler}" is not registered`,
-      });
+    if (step.kind !== 'activity') continue;
+    const path = `steps[${String(index)}].handler`;
+    const nameIssue = activityNameIssue(step.handler);
+    if (nameIssue !== undefined) {
+      issues.push({ path, message: nameIssue });
+    } else if (!Object.hasOwn(host.activities, step.handler)) {
+      issues.push({ path, message: `activity handler "${step.handler}" is not registered` });
     }
   }
   return issues;
@@ -201,25 +213,15 @@ export function validateWorkflowDocument(
   return document;
 }
 
-function canonicalJson(value: JSONValue): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`;
-  const record = value as Record<string, JSONValue | undefined>;
-  const members: string[] = [];
-  for (const key of Object.keys(record).toSorted(compareCodepoint)) {
-    const member = record[key];
-    if (member !== undefined) members.push(`${JSON.stringify(key)}:${canonicalJson(member)}`);
-  }
-  return `{${members.join(',')}}`;
-}
-
 /**
- * The canonical JSON of a document: object keys sorted by code point at every
+ * The canonical JSON of a document: object keys sorted by UTF-16 code unit
+ * (JavaScript's default string order, which is what RFC 8785 specifies) at every
  * depth, array order preserved, and no whitespace between tokens. Equal content
- * always serializes to the same text.
+ * always serializes to the same text. Strings are written as they are, with no
+ * Unicode normalization.
  */
 export function canonicalWorkflowDocumentJson(document: WorkflowDocument): string {
-  return canonicalJson(document as unknown as JSONValue);
+  return canonicalJsonStringify(document);
 }
 
 /**
@@ -227,6 +229,17 @@ export function canonicalWorkflowDocumentJson(document: WorkflowDocument): strin
  * {@link canonicalWorkflowDocumentJson}. It is carried as the registered
  * workflow's `workflowVersion`, so identical content always has the same
  * version and any change to a step has a different one.
+ *
+ * The version is a content identity, not a meaning identity. An absent `input`
+ * and `input: null`, or the durations `'1m'` and `60000`, mean the same to the
+ * interpreter but are different content, so they have different versions.
+ *
+ * Invariant for every future change to the schema: the hash covers exactly the
+ * value the author wrote. The parser must never add a default, rename a key, or
+ * otherwise produce a value the author did not write, because that would move
+ * the version of every existing document. A field added later is `.optional()`,
+ * and its absence means the current shape. `src/document-workflow/document.test.ts`
+ * pins the version of a fixed document to catch any drift.
  */
 export function workflowDocumentVersion(document: WorkflowDocument): Promise<string> {
   return sha256Hex(canonicalWorkflowDocumentJson(document));

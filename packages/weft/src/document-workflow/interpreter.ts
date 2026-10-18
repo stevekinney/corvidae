@@ -8,6 +8,7 @@
 
 import {
   activity,
+  signal,
   workflow,
   type WorkflowContext,
   type WorkflowDefinition,
@@ -15,22 +16,34 @@ import {
 import type { DocumentWorkflowHost, WorkflowDocument } from './document.ts';
 import { workflowDocumentVersion } from './document.ts';
 
+/** The distinct values `pick` selects from the document's steps, in first-seen order. */
+function distinctStepValues(
+  document: WorkflowDocument,
+  pick: (step: WorkflowDocument['steps'][number]) => string | undefined,
+): string[] {
+  const values = new Set<string>();
+  for (const step of document.steps) {
+    const value = pick(step);
+    if (value !== undefined) values.add(value);
+  }
+  return [...values];
+}
+
 /**
  * Build the workflow definition that interprets `document`. Its version is the
- * document's {@link workflowDocumentVersion}, and its `.activities()` map holds
- * exactly the handlers the document's activity steps name, so those steps
- * appear in the contract's activity list.
+ * document's {@link workflowDocumentVersion}. Its `.activities()` map holds
+ * exactly the handlers the document's activity steps name, and its
+ * `.signals()` map exactly the signals its `await-signal` steps wait for, so
+ * both appear in the contract.
  */
 export async function buildDocumentWorkflowDefinition(
   document: WorkflowDocument,
   host: DocumentWorkflowHost,
 ): Promise<WorkflowDefinition> {
-  const handlerNames = new Set<string>();
-  for (const step of document.steps) {
-    if (step.kind === 'activity') handlerNames.add(step.handler);
-  }
   const activities = Object.fromEntries(
-    [...handlerNames].map((name) => {
+    distinctStepValues(document, (step) =>
+      step.kind === 'activity' ? step.handler : undefined,
+    ).map((name) => {
       const handler = host.activities[name]!;
       return [
         name,
@@ -38,30 +51,42 @@ export async function buildDocumentWorkflowDefinition(
       ];
     }),
   );
+  const signalNames = distinctStepValues(document, (step) =>
+    step.kind === 'await-signal' ? step.signal : undefined,
+  );
 
-  return workflow({ name: document.name, version: await workflowDocumentVersion(document) })
-    .activities(activities)
-    .execute(async function* (context: WorkflowContext, trigger: unknown) {
-      const firedBy = trigger === undefined ? null : trigger;
-      let previous: unknown = null;
-      for (const step of document.steps) {
-        switch (step.kind) {
-          case 'activity':
-            previous = yield* context.run(step.handler, {
-              input: step.input ?? null,
-              trigger: firedBy,
-              previous,
-            });
-            break;
-          case 'sleep':
-            yield* context.sleep(step.duration);
-            previous = null;
-            break;
-          case 'await-signal':
-            previous = yield* context.waitForSignal(step.signal);
-            break;
-        }
+  const run = async function* (context: WorkflowContext, trigger: unknown) {
+    const firedBy = trigger === undefined ? null : trigger;
+    let previous: unknown = null;
+    for (const step of document.steps) {
+      switch (step.kind) {
+        case 'activity':
+          previous = yield* context.run(step.handler, {
+            input: step.input ?? null,
+            trigger: firedBy,
+            previous,
+          });
+          break;
+        case 'sleep':
+          yield* context.sleep(step.duration);
+          previous = null;
+          break;
+        case 'await-signal':
+          previous = yield* context.waitForSignal(step.signal);
+          break;
       }
-      return previous;
-    });
+    }
+    return previous;
+  };
+
+  const builder = workflow({
+    name: document.name,
+    version: await workflowDocumentVersion(document),
+  }).activities(activities);
+  // A document that awaits no signal declares none, so its contract carries no `signals` entry.
+  return signalNames.length === 0
+    ? builder.execute(run)
+    : builder
+        .signals(Object.fromEntries(signalNames.map((name) => [name, signal(name)])))
+        .execute(run);
 }
