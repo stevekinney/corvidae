@@ -440,6 +440,43 @@ describe('a resume after a supersession', () => {
   });
 });
 
+describe('a resume whose run cannot start', () => {
+  it('says the approvals were applied, and leaves the thread free for a new message', async () => {
+    const charges: number[] = [];
+    await withHarness(
+      { script: [chargeOnce, say('Charged, and carrying on.')], toolbox: approvalToolbox(charges) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const createRun = spyOn(bureau, 'createRun').mockRejectedValueOnce(new Error('disk full'));
+
+        const failed = await readAgUiStream(
+          await handler(resumeRequest([resolved(first.interruptIds[0]!)])),
+        );
+        createRun.mockRestore();
+        const next = await readAgUiStream(
+          await handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-3',
+                messages: [{ id: 'user-2', role: 'user', content: 'carry on' }],
+              }),
+            ),
+          ),
+        );
+
+        expect(failed).toHaveLength(1);
+        expect(failed[0]!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'RUN_FAILED',
+          message: expect.stringContaining('approvals were applied'),
+        });
+        expect(charges).toEqual([500]);
+        expect(next.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      },
+    );
+  });
+});
+
 describe('the resume command ledger', () => {
   it('leaves the Bureau’s own maintenance of run-creation receipts alone', async () => {
     const diagnostics: string[] = [];
