@@ -1036,12 +1036,14 @@ describe('the AG-UI routes owner predicate', () => {
       );
       await handler(cancelRequest(alice.runId, asAlice));
 
-      // The resume is decided on the interrupt's review and the cancel on the run;
-      // attach decides on the thread and on the run.
+      // The resume is decided on the interrupt's review (write) and then on the thread
+      // (read, which chooses what its stream carries); the cancel on the run; attach
+      // decides on the thread and on the run.
       expect(decisions).toEqual([
         'bureau.tasks:read',
         'bureau.tasks:read',
         'bureau.tasks:write',
+        'bureau.tasks:read',
         'bureau.tasks:write',
       ]);
     });
@@ -1225,8 +1227,16 @@ describe('what bureau.tasks:write grants on the AG-UI routes', () => {
         ),
       );
 
-      expect(bureauMetadata(answered[0]!.event)['runId']).toBe(nativeRunId);
+      // A writer is told its answer was applied and nothing of the run, which went on with it.
+      expect(answered.map((frame) => frame.event.type)).toEqual([
+        EventType.RUN_STARTED,
+        EventType.RUN_FINISHED,
+      ]);
       expect(answered.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+      await waitForCondition(
+        () => harness.bureau.getRun(nativeRunId)?.status === 'completed',
+        'the run did not continue with the answer',
+      );
 
       const second = new FrameReader(
         await harness.handler(

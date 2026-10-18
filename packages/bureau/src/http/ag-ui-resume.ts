@@ -185,11 +185,11 @@ export function createResume(context: ResumeContext) {
    * the thread or the run. Only the ids the caller supplied, and the end of the command.
    */
   function acknowledgement(request: ResumeRequest): Response {
-    const context = { now: () => runtime.clock.now() };
+    const stampContext = { now: () => runtime.clock.now() };
     return eventsResponse([
       stamp(
         { type: EventType.RUN_STARTED, threadId: request.threadId, runId: request.runId },
-        context,
+        stampContext,
         { durable: false },
       ),
       stamp(
@@ -199,7 +199,7 @@ export function createResume(context: ResumeContext) {
           runId: request.runId,
           outcome: { type: 'success' },
         },
-        context,
+        stampContext,
         { durable: false },
       ),
     ]);
