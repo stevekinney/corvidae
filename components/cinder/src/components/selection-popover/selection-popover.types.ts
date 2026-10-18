@@ -1,3 +1,4 @@
+import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 export type SelectionPopoverPosition = {
   x: number;
@@ -18,6 +19,19 @@ export type SelectionPopoverProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'
   position: SelectionPopoverPosition | null;
   /** Whether the popover is visible. */
   open?: boolean;
+  /**
+   * Accessible name of the toolbar.
+   * @default "Selection actions"
+   */
+  label?: string;
+  /**
+   * Caller-supplied actions that replace the built-in comment button and inline composer.
+   * Called with `{ close }`; `close` dismisses the popover through the same path as Escape
+   * and an outside click, so `onClose` fires. When given, `onCommentSubmit` and `onExpand`
+   * are never called, Enter and Space no longer expand the popover, and focus moves to the
+   * first action when the popover opens.
+   */
+  actions?: Snippet<[{ close: () => void }]>;
   /** Called when a comment is submitted. */
   onCommentSubmit?: (body: string) => void;
   /** Called when the compact action expands into the composer. */

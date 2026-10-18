@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequest } from '../handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import {
   createSingleWorkflowTagMutationOperation,
@@ -25,6 +25,7 @@ describe('single-workflow tag mutation helper', () => {
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
       destructive: false,
+      scope: 'tags:write',
       requiredEngineMethods: [],
       mutateTags: async (_engine, workflowId, tags) => {
         calls.push({ workflowId, tags: [...tags] });
@@ -55,6 +56,7 @@ describe('single-workflow tag mutation helper', () => {
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
       destructive: false,
+      scope: 'tags:write',
       requiredEngineMethods: [],
       mutateTags: async () => {},
     });
@@ -82,6 +84,7 @@ describe('single-workflow tag mutation helper', () => {
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
       destructive: false,
+      scope: 'tags:write',
       requiredEngineMethods: [],
       mutateTags: async () => {
         throw new Error('workflow not found');
@@ -114,6 +117,7 @@ describe('single-workflow tag mutation helper', () => {
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
       destructive: false,
+      scope: 'tags:write',
       requiredEngineMethods: [],
       mutateTags: async () => {
         throw new Error('boom');
@@ -143,6 +147,7 @@ describe('single-workflow tag mutation helper', () => {
       name: 'weft.workflows.tags.test',
       summary: 'Test workflow tag mutation',
       destructive: false,
+      scope: 'tags:write',
       requiredEngineMethods: [],
       mutateTags: async () => {},
     });

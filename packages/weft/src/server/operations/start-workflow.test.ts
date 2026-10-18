@@ -5,7 +5,7 @@ import { StartWorkflowValidationError } from '../../core/start-workflow-validati
 import type { WorkflowContext } from '../../core/types.ts';
 import { workflow } from '../../core/types.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequest } from '../handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
 import { startWorkflowOperation, startWorkflowRestBinding } from './start-workflow.ts';

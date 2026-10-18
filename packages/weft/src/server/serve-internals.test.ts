@@ -208,7 +208,7 @@ describe('MCP origin configuration posture', () => {
     try {
       resolveNetworkConfig({
         ...minimalServeOptions(),
-        auth: { apiKeys: ['test-key'] },
+        auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
         publicOrigin: 'https://api.example.com',
       });
       expect(warningSpy).not.toHaveBeenCalledWith(
@@ -227,7 +227,7 @@ describe('MCP origin configuration posture', () => {
     try {
       resolveNetworkConfig({
         ...minimalServeOptions(),
-        auth: { apiKeys: ['test-key'] },
+        auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
         trustedHosts: ['api.example.com'],
       });
       expect(warningSpy).not.toHaveBeenCalledWith(

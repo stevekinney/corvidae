@@ -205,7 +205,14 @@ export const startOrSignalWorkflowOperation = defineOperation({
   tags: ['Workflows', 'Signals'],
   inputSchema: startOrSignalWorkflowInput,
   outputSchema: startOrSignalWorkflowOutput,
-  access: { kind: 'public' },
+  // Every call carries a signal (`signalName` is required), so a caller that
+  // could start but not signal would otherwise signal a running workflow
+  // through here. Both scopes are required.
+  access: {
+    kind: 'scoped',
+    scopes: { kind: 'allOf', scopes: ['workflows:write', 'signals:write'] },
+  },
+  discoverable: true,
   producibleFaults: ['Conflict'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },

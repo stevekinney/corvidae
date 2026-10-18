@@ -4,6 +4,9 @@ import {
   principalFromApiKey,
   principalFromJwtClaims,
   principalFromMutualTls,
+  principalFromUnauthenticatedLocal,
+  SHARED_API_KEY_SUBJECT,
+  SHARED_MUTUAL_TLS_SUBJECT,
   type Principal,
 } from '../principal.ts';
 
@@ -40,9 +43,11 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
       return principalFromJwtClaims(authContext.claims);
     }
     case 'api-key':
-      return principalFromApiKey({ subject: 'api-key-caller', scopes: [] });
+      return principalFromApiKey({ subject: SHARED_API_KEY_SUBJECT, scopes: [] });
     case 'mtls':
-      return principalFromMutualTls({ subject: 'mtls-caller', scopes: [] });
+      return principalFromMutualTls({ subject: SHARED_MUTUAL_TLS_SUBJECT, scopes: [] });
+    case 'unauthenticated-local':
+      return principalFromUnauthenticatedLocal();
     case 'public':
       return anonymousPrincipal();
     default: {
@@ -50,4 +55,33 @@ export function authContextToPrincipal(authContext: AuthContext | undefined): Pr
       throw new Error(`Unknown auth context method: ${JSON.stringify(exhaustiveCheck)}`);
     }
   }
+}
+
+const UNAUTHENTICATED_LOCAL_AUTH_CONTEXT: AuthContext = Object.freeze({
+  method: 'unauthenticated-local',
+  principal: principalFromUnauthenticatedLocal(),
+});
+
+/**
+ * The context a host with exactly one caller attaches to every request: the
+ * `unauthenticated-local` principal, which holds every built-in scope.
+ *
+ * `serve()` with no `auth` attaches it for you, and `setupServiceWorker()`
+ * defaults to it. Use it as the recipe for any other single-user host, for
+ * example `createOperationHandler({ authenticate: async () =>
+ * unauthenticatedLocalAuthContext() })`. It identifies nobody and refuses no
+ * built-in operation, so never attach it to requests from callers you do not
+ * trust. It holds no package scope, so an operation that needs one registered
+ * through `additionalScopes` still needs a credential that holds it.
+ *
+ * @example
+ * ```ts
+ * import { authContextToPrincipal, unauthenticatedLocalAuthContext } from '@lostgradient/weft';
+ *
+ * const principal = authContextToPrincipal(unauthenticatedLocalAuthContext());
+ * console.log(principal.method); // 'unauthenticated-local'
+ * ```
+ */
+export function unauthenticatedLocalAuthContext(): AuthContext {
+  return UNAUTHENTICATED_LOCAL_AUTH_CONTEXT;
 }

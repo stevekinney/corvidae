@@ -20,6 +20,7 @@ export const timeoutWorkflowOperation = createSingleWorkflowControlOperation({
     'timeout had elapsed. Irreversible. Use for operator intervention on stuck workflows. ' +
     'Faults with NotFound when the workflow is not visible.',
   destructive: true,
+  scope: 'workflows:write',
   tags: ['Workflows'],
   inputSchema: timeoutWorkflowInput,
   outputSchema: z.null(),

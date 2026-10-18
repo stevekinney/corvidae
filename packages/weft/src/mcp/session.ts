@@ -1,6 +1,11 @@
 import type { Engine, RegistryAgnosticEngine } from '../core/engine.ts';
 import { WorkflowDefinitionRegisteredEvent, type WeftEventMap } from '../core/events.ts';
 import { WeftError } from '../core/weft-error.ts';
+import {
+  createConstantTimeApiKeyEntry,
+  findConstantTimeApiKeyMatch,
+  type ConstantTimeApiKeyEntry,
+} from '../server/authentication/constant-time-api-key.ts';
 import type { JsonRpcId } from '../server/json-rpc-protocol.ts';
 import type { Principal } from '../server/principal.ts';
 import { MCP_TOOLS_LIST_CHANGED_NOTIFICATION, requestIdKey, type McpResponse } from './protocol.ts';
@@ -115,6 +120,14 @@ export class McpSession {
    * and do not gate on this token.
    */
   readonly token: string;
+  /**
+   * SHA-256 digest of the API key the creating client presented, kept in memory
+   * only (never logged or audited), for a session whose principal is a shared
+   * static-key subject. A standard MCP client sends no {@link token}, but it
+   * presents the same credential on every request, so a continuation that
+   * presents the same key is admitted without one. See {@link bindCredential}.
+   */
+  #credential: ConstantTimeApiKeyEntry<undefined> | undefined;
   phase: McpSessionPhase = 'new';
   protocolVersion = '2025-11-25';
   readonly subscriptions = new Set<string>();
@@ -131,6 +144,25 @@ export class McpSession {
     this.token = crypto.randomUUID();
     this.createdAtMilliseconds = currentTimeMilliseconds;
     this.lastActivityMilliseconds = currentTimeMilliseconds;
+  }
+
+  /**
+   * Bind the session to the API key its creating client presented. Only the
+   * key's SHA-256 digest is retained, in process memory. Binds once: a later
+   * call is ignored, so a continuation can never rebind the session.
+   */
+  bindCredential(presentedKey: string): void {
+    this.#credential ??= createConstantTimeApiKeyEntry(presentedKey, undefined);
+  }
+
+  /**
+   * Whether `presentedKey` is the key this session was bound to, compared by
+   * digest in constant time. False when the session is unbound or no key was
+   * presented.
+   */
+  isBoundToCredential(presentedKey: string | null): boolean {
+    if (this.#credential === undefined || presentedKey === null) return false;
+    return findConstantTimeApiKeyMatch(presentedKey, [this.#credential]) !== null;
   }
 
   /** Mark the session as active after a successful transport-level lookup. */

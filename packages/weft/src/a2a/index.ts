@@ -5,6 +5,13 @@
  * @module a2a
  */
 
+export {
+  createEgressPolicy,
+  type EgressDecision,
+  type EgressHostResolver,
+  type EgressPolicy,
+  type EgressPolicyOptions,
+} from '../runtime/egress-policy.ts';
 export type { A2AAgentCardInput, A2ASigningOptions } from './agent-card-route.ts';
 export {
   createA2AHandler,
@@ -13,8 +20,53 @@ export {
   type A2AHandlerOptions,
 } from './handler.ts';
 export {
+  A2A_NOTIFICATION_TOKEN_HEADER,
+  A2A_PUSH_CONTENT_TYPE,
+  DEFAULT_HTTP_DELIVERY_TIMEOUT_MS,
+  createHttpDeliveryAdapter,
+  type HttpDeliveryAdapter,
+  type HttpDeliveryAdapterOptions,
+  type HttpDeliveryCredential,
+} from './http-delivery-adapter.ts';
+export {
+  DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
+  startPushDelivery,
+  type StartPushDeliveryOptions,
+} from './push-delivery.ts';
+export {
+  A2A_PUSH_DELIVERY_KIND,
+  A2A_PUSH_MAX_ATTEMPTS,
+  createOutboxPushNotificationSender,
+  pushNotificationResolvers,
+  type OutboxPushNotificationSender,
+  type OutboxPushNotificationSenderOptions,
+} from './push-notification-sender.ts';
+export {
+  createWeftPushNotificationStore,
+  type WeftPushNotificationListRequest,
+  type WeftPushNotificationStore,
+  type WeftPushNotificationStoreOptions,
+} from './push-notification-store.ts';
+export {
+  REDACTED_PUSH_CREDENTIALS,
+  withRedactedPushConfigurations,
+} from './redact-push-configurations.ts';
+export {
   securitySchemesFromAuthConfig,
   type A2AAuthConfigShape,
   type A2ASecurityDeclaration,
 } from './security-schemes.ts';
+export {
+  A2APushConfigurationConflictError,
+  A2AStoreConflictError,
+  A2AStorePageSizeError,
+  A2AStorePageTokenError,
+  A2AStoreRecordVersionError,
+} from './store-errors.ts';
 export { withStreamEventCursor } from './stream-cursors.ts';
+export {
+  DEFAULT_A2A_TERMINAL_RETENTION_MS,
+  createWeftA2ATaskStore,
+  type WeftA2ATaskStore,
+  type WeftA2ATaskStoreOptions,
+} from './task-store.ts';

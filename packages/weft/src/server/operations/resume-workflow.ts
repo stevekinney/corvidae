@@ -27,6 +27,7 @@ export const resumeWorkflowOperation = createSingleWorkflowControlOperation({
     'part of resuming. Faults with NotFound when the workflow is not visible, or Conflict when it ' +
     'is in a status that cannot be resumed (terminal or pending).',
   destructive: false,
+  scope: 'workflows:write',
   tags: ['Workflows'],
   inputSchema: resumeWorkflowInput,
   outputSchema: resumeWorkflowOutput,

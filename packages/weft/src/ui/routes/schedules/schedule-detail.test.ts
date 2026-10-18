@@ -33,6 +33,29 @@ async function waitForServerState(check: () => Promise<boolean>, label: string):
 }
 
 describe('ScheduleDetail', () => {
+  test('locks the detail with a reason, and never fetches, when schedules:read is missing', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { findByText, queryByText } = render(ScheduleDetailHarness, {
+        props: { client, id: 'nightly-rollup', scopes: ['schedules:write'] },
+      });
+
+      expect(await findByText('Schedule is locked')).not.toBeNull();
+      expect(await findByText('Requires schedules:read')).not.toBeNull();
+      expect(queryByText('0 2 * * *')).toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('renders the not-found state for an unknown id', async () => {
     const server = await startLiveSourceTestServer();
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });

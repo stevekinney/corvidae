@@ -19,19 +19,16 @@
 
   let dismissed = $state(false);
 
-  // Copy corrected against the actual per-request behavior (`scopes.svelte.ts`
-  // module doc): the server issues an anonymous principal with ZERO scopes
-  // regardless of `warn` vs `allow` — only `access: 'public'` operations
-  // (mostly workflow reads and single-item actions) actually succeed
-  // uncredentialed; scoped/authenticated operations still 401/403. The
-  // previous "all operations are accessible" wording overclaimed access this
-  // banner's own page can visibly contradict (e.g. a "authentication
-  // required" schedule/worker/review card next to it).
+  // Copy matches the actual per-request behavior (`scopes.svelte.ts` module
+  // doc): a server with no `auth` runs every request as the
+  // `unauthenticated-local` principal, which holds every scope, regardless of
+  // `warn` vs `allow`. Every operation is open to anyone who can reach the
+  // port, so the banner says so rather than implying scopes are missing.
   const COPY: Readonly<Record<'unauthenticated-warn' | 'unauthenticated-allow', string>> = {
     'unauthenticated-warn':
-      "Running without authentication. Public workflow reads are open; other operations require scopes this session doesn't have.",
+      'Running without authentication. Every operation is open to anyone who can reach this server.',
     'unauthenticated-allow':
-      "Running without authentication by deployment choice. Public workflow reads are open; other operations require scopes this session doesn't have.",
+      'Running without authentication by deployment choice. Every operation is open to anyone who can reach this server.',
   };
 
   $effect(() => {

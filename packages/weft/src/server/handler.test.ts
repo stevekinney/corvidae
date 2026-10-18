@@ -9,7 +9,8 @@ import { workflow } from '../core/types.ts';
 import { UpdateCoordinator, WorkflowTerminalError } from '../core/updates.ts';
 import { encodeStorageKeyComponent, KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
-import { getRequiredRouteParameter, handleRequest } from './handler.ts';
+import { getRequiredRouteParameter } from './handler.ts';
+import { handleRequestAsLocalUser as handleRequest } from './local-user-request.test-support.ts';
 import { principalFromApiKey } from './principal.ts';
 import type { UnknownRestBinding } from './rest-bindings.ts';
 import { storeHistoricalReviewDecisionWithoutRequestMetadata } from './review-test-support.test-support.ts';
@@ -39,7 +40,7 @@ function apiKeyAuth() {
       method: 'api-key' as const,
       principal: principalFromApiKey({
         subject: 'test',
-        scopes: ['workflows:read', 'workflows:admin'],
+        scopes: ['workflows:read', 'workflows:admin', 'schedules:read'],
       }),
     },
   };

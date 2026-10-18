@@ -19,7 +19,8 @@ export const getRetentionOverviewOperation = defineOperation({
   tags: ['System'],
   inputSchema: getRetentionOverviewInput,
   outputSchema: getRetentionOverviewOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['system:read'] } },
+  discoverable: true,
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ host: engine }): Promise<GetRetentionOverviewOutput> => {

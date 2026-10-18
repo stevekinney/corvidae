@@ -269,6 +269,7 @@ export function hashString(data: string): string {
  */
 export function tryLoadNodeBuiltin(id: 'bun:sqlite'): typeof import('bun:sqlite') | undefined;
 export function tryLoadNodeBuiltin(id: 'node:crypto'): typeof import('node:crypto') | undefined;
+export function tryLoadNodeBuiltin(id: 'node:dns'): typeof import('node:dns') | undefined;
 export function tryLoadNodeBuiltin(id: 'node:fs'): typeof import('node:fs') | undefined;
 export function tryLoadNodeBuiltin(
   id: 'node:fs/promises',

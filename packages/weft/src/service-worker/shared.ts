@@ -6,7 +6,31 @@
  * @module service-worker/shared
  */
 
+import type { AuthContext } from '../server/authentication.ts';
+import { unauthenticatedLocalAuthContext } from '../server/handler.ts';
+
 const DEFAULT_PATH_PREFIX = '/weft/';
+
+/**
+ * The handler options a Service Worker fetch listener passes to
+ * `handleRequest`: the caller's own, with `authContext` defaulting to
+ * {@link unauthenticatedLocalAuthContext} when it is `undefined`.
+ *
+ * A same-origin Service Worker has one caller, so, like a `serve()` with no
+ * `auth`, it runs requests as the local user, who holds every scope. An
+ * explicit `authContext` replaces the default; pass
+ * `{ authContext: { method: 'public' } }` to opt out and run requests as an
+ * anonymous caller that reaches only `weft.system.principal`. Both
+ * `setupServiceWorker()` and `createFetchHandler()` share this default.
+ */
+export function resolveFetchHandlerOptions<
+  Options extends { readonly authContext?: AuthContext | undefined },
+>(handlerOptions: Options | undefined): Options & { readonly authContext: AuthContext } {
+  return {
+    ...handlerOptions,
+    authContext: handlerOptions?.authContext ?? unauthenticatedLocalAuthContext(),
+  } as Options & { readonly authContext: AuthContext };
+}
 
 /**
  * Default periodic-sync tag used when callers don't pass one explicitly.

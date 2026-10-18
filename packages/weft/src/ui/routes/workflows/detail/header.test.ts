@@ -216,4 +216,25 @@ describe('WorkflowDetailHeader', () => {
     const { queryByRole } = renderHeader({ workflow: workflow({ status: 'completed' }) });
     expect(queryByRole('button', { name: 'Restart' })).toBeNull();
   });
+
+  test('disables the query Run button when the principal lacks queries:read', async () => {
+    const { getByRole, getByLabelText } = render(Header, {
+      props: {
+        workflow: workflow(),
+        now: 2_000,
+        pendingAction: null,
+        onAction: noop,
+        activeTab: 'overview',
+        onNavigateToTab: noop,
+        finalizerStatus: null,
+        onRunQuery: noopAsync,
+        activeRevision: undefined,
+        queryGate: { disabled: true, title: 'Requires queries:read' },
+      },
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Run query' }));
+    await fireEvent.input(getByLabelText('Query name'), { target: { value: 'getStatus' } });
+    expect(getByRole('button', { name: 'Run' }).hasAttribute('disabled')).toBe(true);
+  });
 });

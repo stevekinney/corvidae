@@ -44,7 +44,7 @@ const registry = createOperationRegistry([
 ]);
 
 function call(engine: Engine, method: string, scheduleId: string) {
-  const principal = principalFromApiKey({ subject: 'svc', scopes: [] });
+  const principal = principalFromApiKey({ subject: 'svc', scopes: ['schedules:write'] });
   return dispatchJsonRpc(
     JSON.stringify({ jsonrpc: '2.0', method, params: { scheduleId }, id: 1 }),
     { principal, host: engine, transport: 'jsonRpcHttp', registry },

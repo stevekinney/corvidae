@@ -641,7 +641,7 @@ describe('OpenAPI security schemes — live server honesty', () => {
     const server = serve({
       engine,
       port: 0,
-      auth: { apiKeys: ['test-key'] },
+      auth: { apiKeys: ['test-key'], defaultApiKeyScopes: ['workflows:read'] },
     });
 
     try {

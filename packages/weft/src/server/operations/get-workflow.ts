@@ -47,7 +47,8 @@ export const getWorkflowOperation = defineOperation({
   tags: ['Workflows'],
   inputSchema: getWorkflowInput,
   outputSchema: getWorkflowOutput,
-  access: { kind: 'public' },
+  access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['workflows:read'] } },
+  discoverable: true,
   producibleFaults: ['NotFound'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   // GET has no body to reject, so REST silently tolerates extra top-

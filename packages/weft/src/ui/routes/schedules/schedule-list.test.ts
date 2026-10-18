@@ -159,6 +159,23 @@ describe('ScheduleList', () => {
     }
   });
 
+  test('locks the list with a reason, and never fetches, when schedules:read is missing', async () => {
+    const server = await startLiveSourceTestServer();
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { findByText, queryByText } = render(ScheduleListHarness, {
+        props: { client, scopes: ['schedules:write'] },
+      });
+
+      expect(await findByText('Schedules are locked')).not.toBeNull();
+      expect(await findByText('Requires schedules:read')).not.toBeNull();
+      expect(queryByText('nightly-rollup')).toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('the Create schedule button is disabled with a reason when schedules:write is missing', async () => {
     const server = await startLiveSourceTestServer();
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });

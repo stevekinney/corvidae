@@ -29,6 +29,30 @@ describe('Schedules dashboard card', () => {
     resetLocation();
   });
 
+  test('shows a locked state, and never fetches, when schedules:read is missing', async () => {
+    const server = await startLiveSourceTestServer();
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'nightly-rollup',
+      cron: '0 2 * * *',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+
+    try {
+      const { findByText, queryByText } = render(DashboardCardHarness, {
+        props: { client, scopes: ['workflows:read'] },
+      });
+
+      expect(await findByText('Locked')).not.toBeNull();
+      expect(await findByText('Requires schedules:read')).not.toBeNull();
+      expect(queryByText('1 schedules')).toBeNull();
+      expect(queryByText('Active')).toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('shows active/paused counts and the total', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({

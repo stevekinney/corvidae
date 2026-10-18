@@ -35,6 +35,7 @@ export const signalWorkflowOperation = createSingleWorkflowControlOperation({
     'from the caller perspective and do not return a handler result. Faults with NotFound when ' +
     'the workflow is not visible and InvalidParams when the payload exceeds the size limit.',
   destructive: true,
+  scope: 'signals:write',
   tags: ['Signals'],
   inputSchema: signalWorkflowInput,
   outputSchema: signalWorkflowOutput,

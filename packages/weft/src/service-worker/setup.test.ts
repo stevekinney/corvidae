@@ -1057,3 +1057,92 @@ describe('setupServiceWorker recover option', () => {
     });
   });
 });
+
+describe('setupServiceWorker authorization', () => {
+  afterEach(() => {
+    resetSetupServiceWorkerRegistry();
+  });
+
+  async function dispatch(
+    handlerOptions: NonNullable<Parameters<typeof setupServiceWorker>[0]>['handlerOptions'],
+    path: string,
+  ): Promise<{ status: number; body: unknown }> {
+    const scope = createFakeServiceWorkerScope();
+    let response: Promise<Response> | undefined;
+    let result: { status: number; body: unknown } | undefined;
+    await withFakeSelf(scope, async () => {
+      const setup = await setupServiceWorker({
+        storage: new MemoryStorage(),
+        ...(handlerOptions === undefined ? {} : { handlerOptions }),
+      });
+      listenerFor(
+        scope,
+        'fetch',
+      )({
+        request: new Request(`https://example.com/weft${path}`),
+        respondWith(result) {
+          response = Promise.resolve(result);
+        },
+      });
+      if (response === undefined) throw new Error('the fetch listener did not respond');
+      const settled = await response;
+      result = { status: settled.status, body: await settled.json() };
+      setup.engine[Symbol.dispose]();
+    });
+    if (result === undefined) throw new Error('the fetch listener did not respond');
+    return result;
+  }
+
+  it('runs as the local user by default: workflows list without a 401', async () => {
+    const listed = await dispatch(undefined, '/v1/workflows');
+    expect(listed.status).toBe(200);
+    const principal = await dispatch(undefined, '/v1/principal');
+    expect(principal.body).toMatchObject({ method: 'unauthenticated-local' });
+  });
+
+  it('lets an explicit authContext replace the default', async () => {
+    const refused = await dispatch(
+      {
+        authContext: {
+          method: 'api-key',
+          principal: principalFromApiKey({ subject: 'narrow', scopes: ['system:read'] }),
+        },
+      },
+      '/v1/workflows',
+    );
+    expect(refused.status).toBe(403);
+  });
+
+  it('opts out of local trust with a public authContext', async () => {
+    const refused = await dispatch({ authContext: { method: 'public' } }, '/v1/workflows');
+    expect(refused.status).toBe(401);
+  });
+
+  it('never answers a navigation, and does not throw for one', async () => {
+    const scope = createFakeServiceWorkerScope();
+    let responded = false;
+    await withFakeSelf(scope, async () => {
+      const setup = await setupServiceWorker({ storage: new MemoryStorage() });
+      const navigation = {
+        mode: 'navigate',
+        url: 'https://example.com/weft/v1/principal',
+        clone() {
+          throw new TypeError('a navigation request cannot be cloned into a new Request');
+        },
+      };
+      expect(() =>
+        listenerFor(
+          scope,
+          'fetch',
+        )({
+          request: navigation as unknown as Request,
+          respondWith() {
+            responded = true;
+          },
+        }),
+      ).not.toThrow();
+      setup.engine[Symbol.dispose]();
+    });
+    expect(responded).toBe(false);
+  });
+});

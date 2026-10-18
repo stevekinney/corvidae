@@ -15,12 +15,10 @@
    *   the wire at all. There is no preview step and nothing to echo back for
    *   a second confirming call; `POST /v1/workflows/purge` executes
    *   immediately.
-   * - `access: { kind: 'public' }` — unlike every other bulk operation
-   *   (`bulkOperatorAccessPolicy`, `anyOf workflows:admin`), purge declares
-   *   NO required scope server-side. `bulk-selection-bar.svelte` still
-   *   gates the Purge button behind `workflows:admin` for UI consistency
-   *   with its five siblings, but this dialog itself never claims a scope
-   *   requirement it can't verify — see that file's module doc.
+   * - `access` requires `workflows:admin`, the same scope as every other
+   *   bulk operation (`bulkOperatorAccessPolicy`). `bulk-selection-bar.svelte`
+   *   gates the Purge button behind it, so this dialog never opens for a
+   *   principal without the scope — see that file's module doc.
    * - `purge()` skips `assertScopedBulkWorkflowFilter` — an EMPTY filter
    *   purges every terminal workflow the engine holds, engine-wide. The
    *   matched-count display below is deliberately labeled from "the current

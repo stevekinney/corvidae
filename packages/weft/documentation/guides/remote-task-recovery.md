@@ -17,7 +17,7 @@ await using server = serve({
   engine,
   hostname: '127.0.0.1',
   port: 7233,
-  auth: { apiKeys: [crypto.randomUUID()] },
+  auth: { apiKeys: [crypto.randomUUID()], defaultApiKeyScopes: ['workers:write'] },
   trustedHosts: ['127.0.0.1'],
 });
 

@@ -36,6 +36,32 @@ describe('ReviewDecisionForm — unsectioned', () => {
     expect(submit.disabled).toBe(false);
   });
 
+  test('keeps submit disabled without the reviews:write gate, even for a complete decision', async () => {
+    const submissions: ReviewDecisionSubmission[] = [];
+    const { getByRole, getByLabelText } = render(ReviewDecisionForm, {
+      props: {
+        reviewId: 'r1',
+        sectionKeys: [],
+        submitting: false,
+        onSubmit: (submission) => submissions.push(submission),
+        submitGate: { disabled: true, title: 'Requires reviews:write' },
+      },
+    });
+
+    await fireEvent.click(getByRole('radio', { name: 'Approve' }));
+    await fireEvent.input(requireElement(getByLabelText(/^Reviewer/), HTMLInputElement), {
+      target: { value: 'ops@example.com' },
+    });
+
+    const submit = requireElement(
+      getByRole('button', { name: 'Submit decision' }),
+      HTMLButtonElement,
+    );
+    expect(submit.disabled).toBe(true);
+    await fireEvent.click(submit);
+    expect(submissions).toEqual([]);
+  });
+
   test('approve submits without requiring feedback', async () => {
     const submissions: ReviewDecisionSubmission[] = [];
     const { getByRole, getByLabelText } = render(ReviewDecisionForm, {

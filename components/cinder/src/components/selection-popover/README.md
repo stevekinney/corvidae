@@ -100,6 +100,43 @@ The component treats that point as a Floating UI virtual anchor, not as the pane
 />
 ```
 
+## Custom actions
+
+By default the popover offers the comment flow: an "Add comment" button that expands into an inline composer. Pass an `actions` snippet to replace that flow with your own controls, such as a quote action. The snippet is called with `{ close }`; calling `close` dismisses the popover through the same path as Escape and an outside click, so `onClose` fires.
+
+```svelte
+<SelectionPopover
+  id="quote-popover"
+  open={isOpen}
+  {position}
+  label="Quote selection"
+  onClose={handleClose}
+>
+  {#snippet actions({ close })}
+    <Button
+      size="sm"
+      variant="ghost"
+      label="Quote"
+      onclick={() => {
+        quoteSelection();
+        close();
+      }}
+    />
+  {/snippet}
+</SelectionPopover>
+```
+
+With `actions` given:
+
+- `onCommentSubmit` and `onExpand` are never called, and Enter and Space no longer expand the popover.
+- Focus moves to the first action once the popover is positioned and open. If a pointer is still down, as in a drag-select, the move waits for the pointer to be released so the selection is not cut short. Open the popover once the selection gesture has finished where you can (for example on `pointerup` or `selectionchange` after a drag); keyboard selection with Shift and the arrow keys has no such release, so the move takes focus as soon as the popover is positioned.
+- The actions are one Tab stop. Left and Right arrows move focus between them, and Home and End jump to the first and last. This is the same implementation `Toolbar` uses, so editable controls keep Home and End and let Left and Right move focus only at the matching caret boundary, and disabling or enabling an action re-computes the Tab stop.
+- On close, focus returns to the element that had it before the popover opened. After a mouse selection that is usually the page body, so name a specific element yourself in `onClose` if focus should land somewhere else.
+- Escape and a pointer press outside call `onClose`, exactly as without `actions`.
+- Selection tracking stays with the caller, as in the other examples.
+
+The `label` prop sets the toolbar's accessible name and defaults to "Selection actions". Give it a name that fits the actions you render.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -108,7 +145,9 @@ The component treats that point as a Floating UI virtual anchor, not as the pane
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-selection-popover`. |
 | `id` | `string` | yes | — | Unique identifier for the popover. |
+| `label` | `string` | no | `"Selection actions"` | Accessible name of the toolbar. |
 | `open` | `boolean` | no | — | Whether the popover is visible. |
+| `actions` | `(opaque)` | no | — | Caller-supplied actions that replace the built-in comment button and inline composer. Called with `{ close }`; `close` dismisses the popover through the same path as Escape and an outside click, so `onClose` fires. When given, `onCommentSubmit` and `onExpand` are never called, Enter and Space no longer expand the popover, and focus moves to the first action when the popover opens. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when the composer is canceled. Not expressible in JSON Schema; see the component types for the signature. |
 | `onClose` | `(opaque)` | no | — | Called when the popover should close. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCommentSubmit` | `(opaque)` | no | — | Called when a comment is submitted. Not expressible in JSON Schema; see the component types for the signature. |

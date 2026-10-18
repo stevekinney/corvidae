@@ -255,6 +255,7 @@ export function tlsOptionsVerifyClientCertificates(
  * // Throws if config is invalid (e.g. missing secret for HS256)
  * validateAuthConfig({
  *   apiKeys: ['secret-key-1'],
+ *   defaultApiKeyScopes: ['workflows:read'],
  * });
  * console.log('Config is valid');
  * ```
@@ -282,6 +283,7 @@ export function validateAuthConfig(config: AuthConfig): void {
  *
  * const authenticate = await createAuthenticator({
  *   apiKeys: ['my-secret-key'],
+ *   defaultApiKeyScopes: ['workflows:read'],
  * });
  * const request = new Request('http://localhost/v1/workflows', {
  *   headers: { 'X-API-Key': 'my-secret-key' },

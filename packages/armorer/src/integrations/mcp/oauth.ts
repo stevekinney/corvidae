@@ -47,11 +47,11 @@ import {
   type StreamableHTTPClientTransportOptions,
 } from '@modelcontextprotocol/client';
 import type { Tool } from '../../is-tool';
-import { fromMcpTools } from './index';
 import {
   parseMcpAuthorizationCallback,
   validateMcpAuthorizationResponseIssuer,
 } from './oauth-callback';
+import { fromMcpTools, type FromMCPToolsOptions } from './tools';
 
 export {
   McpAuthorizationIssuerValidationError,
@@ -329,6 +329,16 @@ const DEFAULT_MCP_CLIENT_INFO: Implementation = {
 };
 
 /**
+ * Probe for protocol revision 2026-07-28 with `server/discover`, and fall
+ * back to the 2025-11-25 `initialize` handshake against a server that does
+ * not offer it. Pass `clientOptions.versionNegotiation` to pin
+ * (`{ mode: { pin: '2026-07-28' } }`) or to skip the probe (`{ mode: 'legacy' }`).
+ */
+const DEFAULT_MCP_VERSION_NEGOTIATION: NonNullable<ClientOptions['versionNegotiation']> = {
+  mode: 'auto',
+};
+
+/**
  * Connects an MCP `Client` to a server over Streamable HTTP with the given
  * OAuth provider wired in.
  *
@@ -348,7 +358,10 @@ export async function connectMcpClientWithOAuth(
     ...transportOptions,
     authProvider: provider,
   });
-  const client = new Client(clientInfo ?? DEFAULT_MCP_CLIENT_INFO, clientOptions);
+  const client = new Client(clientInfo ?? DEFAULT_MCP_CLIENT_INFO, {
+    versionNegotiation: DEFAULT_MCP_VERSION_NEGOTIATION,
+    ...clientOptions,
+  });
   await client.connect(transport);
   return client;
 }
@@ -369,11 +382,17 @@ export function isMcpUnauthorizedError(error: unknown): boolean {
 /**
  * Lists tools from a connected MCP `Client` and converts them into executable
  * Toolbox {@link Tool}s via {@link fromMcpTools}, routing calls back through
- * the client's `callTool`.
+ * the client's `callTool` with each call's abort signal and progress
+ * callback. Tool-list caching, `Mcp-Method`/`Mcp-Name` headers, and
+ * `input_required` retries stay with the SDK client.
  */
-export async function fromMcpClientTools(client: Client): Promise<Tool[]> {
+export async function fromMcpClientTools(
+  client: Client,
+  options: Pick<FromMCPToolsOptions, 'formatResult' | 'progress'> = {},
+): Promise<Tool[]> {
   const { tools } = await client.listTools();
   return fromMcpTools(tools, {
-    callTool: (request) => client.callTool(request),
+    ...options,
+    callTool: (request, callOptions) => client.callTool(request, callOptions),
   });
 }
