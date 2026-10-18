@@ -14,8 +14,8 @@
  * re-emits the interrupt on the old run.
  *
  * The command is recorded in a command ledger before anything is resolved, keyed
- * by the caller, the thread, and the sorted `id@round` list of the interrupts it
- * answers, with a digest of each entry's status and payload. Because a resume
+ * by the caller, the thread, and the sorted `[id, round]` pairs of the interrupts it
+ * answers (a JSON array, so no id can collide with another), with a digest of each entry's status and payload. Because a resume
  * must answer every interrupt pending on the run, that list identifies the
  * command without a client request id, so a client that mints a new `runId` per
  * retry is still idempotent. An exact retry attaches to the run the first attempt
@@ -27,8 +27,12 @@
  * thread (`ag-ui-lease.ts`), both renewed before each step that cannot be taken
  * back; a process that finds the command's lease held is told it is in progress,
  * and takes over a command whose lease has expired, applying again what the dead
- * attempt did not. Armorer's single-use approval binding is a second line of
- * defence for the one step a lease cannot fence (a tool that outlives it).
+ * attempt did not. What a lease cannot fence is a tool that outlives it. Inside one
+ * process Armorer's single-use approval binding stops it running twice, but that
+ * binding lives in the process's memory, so across processes only the ledger's
+ * compare-and-swap on the exact entry and the idempotent run-creation request id
+ * hold (one entry, one run): a tool that outlives its lease can run twice, a
+ * documented residual.
  *
  * @module ag-ui-resume
  */
@@ -497,6 +501,14 @@ export function createResume(context: ResumeContext) {
     return created.id;
   }
 
+  /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `createRun` requires. */
+  async function conversationAnswerable(threadId: string): Promise<boolean> {
+    const history = (await bureau.getSession(threadId))?.conversationHistory;
+    const last = history?.ids.at(-1);
+    const role = last === undefined ? undefined : history?.messages[last]?.role;
+    return role === 'user' || role === 'tool-result';
+  }
+
   async function apply(
     request: ResumeRequest,
     reviews: ReadonlyMap<string, PendingReview>,
@@ -535,6 +547,17 @@ export function createResume(context: ResumeContext) {
       if (!takeover && !pendingIds.has(entry.interruptId) && entry.status === 'resolved') {
         return refuse('INTERRUPT_NOT_FOUND', `Interrupt "${entry.interruptId}" was not found`);
       }
+    }
+
+    // Resolving a tool approval runs the tool, and the run that continues from it
+    // starts from the conversation as it stands. If no run can start from that
+    // conversation, nothing is resolved: the tool must not run to a dead end.
+    if (
+      !takeover &&
+      entries.some((entry) => reviews.get(entry.interruptId)?.kind === 'tool-approval') &&
+      !(await conversationAnswerable(request.threadId))
+    ) {
+      return refuse('CONTINUATION_UNAVAILABLE', CONTINUATION_UNAVAILABLE_MESSAGE);
     }
 
     const outcomes: Array<{ interruptId: string; outcome: string }> = [];
@@ -636,6 +659,8 @@ export function createResume(context: ResumeContext) {
   return resume;
 }
 
+const CONTINUATION_UNAVAILABLE_MESSAGE =
+  'No run can continue from this thread’s conversation as it stands (it does not end in a user or tool-result message), so the approval was left unresolved; send a new message to continue the thread';
 const LEASE_LOST: Refusal = {
   code: 'RUN_FAILED',
   message: 'This resume lost its lease to another attempt before it finished; try again',

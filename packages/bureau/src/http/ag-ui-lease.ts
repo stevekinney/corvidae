@@ -22,9 +22,22 @@
  * renew or release the lease its successor holds: both are compare-and-swap on the
  * exact record the claimant wrote. A claimant renews while it works (on an
  * interval of the injected timers, and by hand before each step it cannot take back,
- * through {@link AgUiLease.renew}, which says whether it still holds the lease), but
- * a step that outlives the lease can still be overtaken, which is why Armorer's
- * single-use approval binding is a second line of defence for a tool that runs.
+ * through {@link AgUiLease.renew}, which says whether it still holds the lease).
+ *
+ * Assumptions, stated because a lease is only as good as they are:
+ *
+ * - Each process reads expiry from its own clock, so the clock skew between
+ *   processes must stay below the lease length minus the renewal interval (two
+ *   thirds of the lease); more skew lets a live claimant's lease read as expired.
+ * - A record that cannot be read fails closed: it is not overwritten, so its thread
+ *   or command stays held until an operator clears it.
+ * - A step that outlives its lease can be overtaken. Inside one process Armorer's
+ *   single-use approval binding stops a tool running twice, but that binding is held
+ *   in the process's memory, so across processes only the ledger's compare-and-swap
+ *   on the exact entry and the idempotent run-creation request id hold (one entry,
+ *   one run) and the tool itself can run twice. It is a documented residual.
+ * - Nothing sweeps expired records. They are tiny and bounded by the number of
+ *   threads and commands, and the next acquisition of the same subject replaces one.
  *
  * @module ag-ui-lease
  */

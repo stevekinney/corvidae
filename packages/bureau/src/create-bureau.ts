@@ -89,6 +89,7 @@ import {
   StoreActionEvent,
   type StreamEventMap,
   type Subscription,
+  countHumanWaitParks,
   TaskCancelledEvent,
   TaskDispatchedEvent,
   TaskPreemptedEvent,
@@ -5490,20 +5491,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const lastStep = steps[steps.length - 1];
     if (!lastStep) return;
-    // Counts distinct parks in one step the way `humanWaitParkOrdinal` does
-    // live: consecutive parked results on the same signal within a step (for
-    // example parallel `requestHumanInput` calls) are one park.
-    const parksIn = (step: StepRecord): number => {
-      let count = 0;
-      let previousSignal: string | undefined;
-      for (const result of step.results) {
-        if (result.toolName !== 'requestHumanInput') continue;
-        if (!isParkedRequestHumanInputResult(result.result)) continue;
-        if (previousSignal !== result.result.signalName) count += 1;
-        previousSignal = result.result.signalName;
-      }
-      return count;
-    };
+    // Counts distinct parks in one step the way `humanWaitParkOrdinal` does live
+    // (consecutive parked results on the same signal within a step are one park),
+    // by the one rule Operative names the answer's row by (`human-wait-parks.ts`).
+    const parksIn = (step: StepRecord): number => countHumanWaitParks(step.results);
     // Parks committed to the checkpoint before the last step. A reconstructed
     // park carries the resulting ordinal so the review id matches the one the
     // pre-crash process minted (and persisted in `resolvedReviewIds`).

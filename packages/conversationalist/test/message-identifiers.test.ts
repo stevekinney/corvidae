@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   appendMessages,
   appendStreamingMessage,
+  appendToolCall,
   appendToolCalls,
   appendToolResults,
   appendToolResultsAsync,
@@ -110,6 +111,18 @@ describe('caller-chosen row ids', () => {
     );
 
     expect(conversation.ids).toEqual(['row-a', 'row-b']);
+  });
+
+  it('gives a single appended tool-call row the id it is named, beside its metadata', () => {
+    const conversation = appendToolCall(
+      createConversation({}, environment),
+      toolCall('a'),
+      { messageId: 'row-a', metadata: { lineage: 'x' } },
+      environment,
+    );
+
+    expect(conversation.ids).toEqual(['row-a']);
+    expect(conversation.messages['row-a']?.metadata).toEqual({ lineage: 'x' });
   });
 
   it('gives each appended tool-result row the id at its index, sync and async', async () => {

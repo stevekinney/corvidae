@@ -941,6 +941,119 @@ describe('a resume that another process is applying', () => {
   });
 });
 
+describe('a resume applied by another Bureau over the same store', () => {
+  it('takes the command over only after its lease has expired, and the tool runs once', async () => {
+    const charges: number[] = [];
+    const claimantClock = createManualRuntimeServices();
+    const otherClock = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+        agUi: { runtime: claimantClock },
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        // The second Bureau starts after the approval is pending, and restores it from the store.
+        const peer = await harness.peer([say('Charged by the peer.')], { runtime: otherClock });
+        try {
+          const held = barrier();
+          const reached = barrier();
+          const real = harness.bureau.resolveReview.bind(harness.bureau);
+          spyOn(harness.bureau, 'resolveReview').mockImplementationOnce(async (input) => {
+            reached.reach();
+            await held.released;
+            return real(input);
+          });
+          const claimant = harness.handler(resumeRequest(entries));
+          await reached.reached;
+
+          await otherClock.advance(DEFAULT_AG_UI_LEASE_MS - 1);
+          const early = await readAgUiStream(
+            await peer.handler(resumeRequest(entries, {}, 'client-run-3')),
+          );
+          await otherClock.advance(1);
+          const takenOver = await readAgUiStream(
+            await peer.handler(resumeRequest(entries, {}, 'client-run-4')),
+          );
+
+          expect(early).toHaveLength(1);
+          expect(early[0]!.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
+          expect(charges).toEqual([500]);
+          expect(takenOver.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(peer.bureau.listRuns()).toHaveLength(1);
+          expect(harness.bureau.listRuns()).toHaveLength(1);
+          // The claimant is let go only to clean up. A call that outlives its lease, as
+          // this one does, is the residual the leases cannot fence (see ag-ui-lease.ts).
+          held.release();
+          await claimant;
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+});
+
+describe('a resume whose lease was taken over before it resolved anything', () => {
+  it('resolves nothing, because it no longer holds the command', async () => {
+    const charges: number[] = [];
+    const claimantClock = createManualRuntimeServices();
+    const otherClock = createManualRuntimeServices();
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        storage: 'sqlite',
+        agUi: { runtime: claimantClock },
+      },
+      async (harness) => {
+        const first = await startUntilInterrupted(harness.handler);
+        const entries = [resolved(first.interruptIds[0]!)];
+        const resolve = spyOn(harness.bureau, 'resolveReview');
+        // The claimant is held where it renews its leases before it resolves: the
+        // first read of the command's lease is its claim, the second is that renewal.
+        const kv = harness.bureau.kv!;
+        const get = kv.get.bind(kv);
+        const reached = barrier();
+        const held = barrier();
+        let reads = 0;
+        spyOn(kv, 'get').mockImplementation(async (key) => {
+          if (key.startsWith('ag-ui-lease:v1:resume') && (reads += 1) === 2) {
+            reached.reach();
+            await held.released;
+          }
+          return get(key);
+        });
+        const claimant = harness.handler(resumeRequest(entries));
+        const where = await Promise.race([
+          reached.reached.then(() => 'renewing' as const),
+          claimant.then(() => 'finished' as const),
+        ]);
+        expect(where).toBe('renewing');
+        // Held before it has resolved anything: the renewal is what stands between it and the tool.
+        expect(resolve).not.toHaveBeenCalled();
+        expect(charges).toEqual([]);
+        await otherClock.advance(DEFAULT_AG_UI_LEASE_MS);
+        const takenOver = await readAgUiStream(
+          await harness.remount({ runtime: otherClock })(
+            resumeRequest(entries, {}, 'client-run-3'),
+          ),
+        );
+        held.release();
+        const late = await readAgUiStream(await claimant);
+
+        expect(takenOver.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(late[0]!.event.type).toBe(EventType.RUN_ERROR);
+        expect(resolve).toHaveBeenCalledTimes(1);
+        expect(charges).toEqual([500]);
+      },
+    );
+  });
+});
+
 describe('a resume whose approvals are only partly applied', () => {
   it('applies the missing decision when it is retried, and starts exactly one run', async () => {
     const charges: number[] = [];
@@ -1081,9 +1194,12 @@ describe('a resume retried after an attempt whose outcome was not written', () =
             .find((message) => message.toolResult?.callId === 'call-1');
           expect(row?.toolResult?.outcome).toBe('action_required');
           const runsBefore = harness.bureau.listRuns().length;
-          await dead.advance(DEFAULT_AG_UI_LEASE_MS);
+          await living.advance(DEFAULT_AG_UI_LEASE_MS);
 
-          const survivor = how === 'restart' ? await harness.restart([say('Unused.')]) : harness;
+          const survivor =
+            how === 'restart'
+              ? await harness.restart([say('Unused.')], { runtime: living })
+              : harness;
           try {
             const retry = await readAgUiStream(
               await (how === 'restart' ? survivor.handler : survivor.remount({ runtime: living }))(
@@ -1177,36 +1293,103 @@ describe('a step that asks a human and calls a gated tool', () => {
       },
     }) as unknown as Toolbox;
 
-  it('parks on the human wait, and its resume is not refused for the tool approval it does not yet answer', async () => {
+  type Interrupts = {
+    outcome: { type: string; interrupts?: Array<{ id: string; reason: string }> };
+  };
+  const interruptsOf = (frames: ReadonlyArray<{ event: unknown }>) =>
+    (frames.at(-1)!.event as Interrupts).outcome.interrupts ?? [];
+
+  const stops = {
+    'the fixture’s stop': undefined,
+    'a stop that also fires on the park': stopWhen.some(
+      stopWhen.toolCalled('requestHumanInput'),
+      stopWhen.pendingApproval(),
+      stopWhen.noToolCalls(),
+    ),
+  };
+
+  it.each(Object.entries(stops))(
+    'offers the human wait, then the approval, and the approval completes (%s)',
+    async (_name, stop) => {
+      const charges: number[] = [];
+      await withHarness(
+        {
+          script: [both, say('Waiting for the approval.'), say('Charged.')],
+          toolbox: gateOnlyCharges(charges),
+          humanInput: true,
+          storage: 'sqlite',
+          ...(stop === undefined ? {} : { stopWhen: stop }),
+        },
+        async ({ handler, bureau, generate }) => {
+          const first = await startUntilInterrupted(handler);
+          const parked = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
+          const wait = interruptsOf(first.frames).find((i) => i.reason === 'human-wait')!;
+
+          const answered = await readAgUiStream(
+            await handler(
+              resumeRequest([resolved(wait.id, { decision: 'approve', answer: 'visa' })]),
+            ),
+          );
+          const pending = await readAgUiStream(await handler(attachThreadRequest('thread-1')));
+          const approval = interruptsOf(answered).find((i) => i.reason === 'tool-approval')!;
+          const approved = await readAgUiStream(
+            await handler(resumeRequest([resolved(approval.id)], {}, 'client-run-3')),
+          );
+
+          // (c) while the run is parked only the human wait is offered, and the approval after it settles.
+          expect(interruptsOf(first.frames).map((i) => i.reason)).toEqual(['human-wait']);
+          expect(interruptsOf(parked).map((i) => i.reason)).toEqual(['human-wait']);
+          expect(interruptsOf(pending).map((i) => i.reason)).toEqual(['tool-approval']);
+          // (a) after the answer the run settles on the approval, and nothing has been charged.
+          expect(interruptsOf(answered).map((i) => i.reason)).toEqual(['tool-approval']);
+          expect(bureau.listRuns()[0]!.status).toBe('completed');
+          // (b) approving runs the tool once and continues from the answer.
+          expect(approved.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(charges).toEqual([500]);
+          expect(bureau.listRuns()).toHaveLength(2);
+          expect(bureau.listPendingReviews()).toEqual([]);
+          const seen = JSON.stringify(generate.calls.at(-1)!.context.conversation.getMessages());
+          expect(seen).toContain('visa');
+          expect(seen).toContain('charged');
+        },
+      );
+    },
+  );
+
+  it('refuses to resolve an approval no run can continue from, and runs nothing', async () => {
     const charges: number[] = [];
     await withHarness(
       {
-        script: [both, say('Thanks.')],
-        toolbox: gateOnlyCharges(charges),
-        humanInput: true,
-        stopWhen: stopWhen.some(
-          stopWhen.toolCalled('requestHumanInput'),
-          stopWhen.pendingApproval(),
-          stopWhen.noToolCalls(),
-        ),
+        // The run goes on past the gated call, so its conversation ends in an assistant row.
+        script: [chargeOnce, say('Waiting for the approval.'), say('Charged.')],
+        toolbox: approvalToolbox(charges),
+        stopWhen: stopWhen.noToolCalls(),
+        storage: 'sqlite',
       },
       async ({ handler, bureau }) => {
-        const first = await startUntilInterrupted(handler);
-        const interrupts = (
-          first.frames.at(-1)!.event as {
-            outcome: { interrupts: Array<{ id: string; reason: string }> };
-          }
-        ).outcome.interrupts;
-        const wait = interrupts.find((interrupt) => interrupt.reason === 'human-wait')!;
+        const start = await readAgUiStream(await handler(startRequest(runAgentInput())));
+        await waitForCondition(
+          () => bureau.getRun(bureau.listRuns()[0]!.id)?.status === 'completed',
+          'run did not settle',
+        );
+        const id = bureau.listPendingReviews()[0]!.id;
+        const entries = [resolved(id)];
 
-        const frames = await readAgUiStream(
-          await handler(resumeRequest([resolved(wait.id, { decision: 'approve', answer: 'yes' })])),
+        const refused = await readAgUiStream(await handler(resumeRequest(entries)));
+        const again = await readAgUiStream(
+          await handler(resumeRequest(entries, {}, 'client-run-3')),
         );
 
-        expect(wait).toBeDefined();
-        expect(frames.at(-1)!.event.type).not.toBe(EventType.RUN_ERROR);
-        // The approval is the run's to offer once the run has settled; nothing ran meanwhile.
+        expect(start.length).toBeGreaterThan(0);
+        expect(refused).toHaveLength(1);
+        expect(refused[0]!.event).toMatchObject({
+          type: EventType.RUN_ERROR,
+          code: 'CONTINUATION_UNAVAILABLE',
+        });
+        // The entry was released, so a retry gets the same answer rather than "in progress".
+        expect(again[0]!.event).toMatchObject({ code: 'CONTINUATION_UNAVAILABLE' });
         expect(charges).toEqual([]);
+        expect(bureau.listPendingReviews().map((review) => review.id)).toEqual([id]);
         expect(bureau.listRuns()).toHaveLength(1);
       },
     );
@@ -1321,6 +1504,42 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         await retry.rest();
 
         expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+      },
+    );
+  });
+
+  it('names the answer to a step that asks under two signals by the park the review names', async () => {
+    const askBoth = {
+      kind: 'respond' as const,
+      response: {
+        content: 'Asking twice.',
+        toolCalls: ['first-question', 'second-question'].map((signalName, index) => ({
+          id: `call-${index + 1}`,
+          name: 'requestHumanInput',
+          arguments: { signalName, prompt: `Question on ${signalName}?` },
+        })),
+      },
+    };
+    await withHarness(
+      {
+        script: [askBoth, { kind: 'block', barrier: 'after-answer' }, say('Done.')],
+        ...humanWait,
+      },
+      async ({ handler, bureau, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const answering = new FrameReader(
+          await handler(resumeRequest([answerOf(first.interruptIds.at(-1)!, 'an answer')])),
+        );
+        await generate.reached('after-answer');
+        const opening = await answering.until(EventType.STEP_STARTED);
+        generate.release('after-answer');
+        await answering.rest();
+
+        const committed = bureau
+          .getRun(first.nativeRunId)!
+          .transcript!.ids.filter((id) => id.includes(':signal:'));
+        expect(committed).toHaveLength(1);
+        expect(userRows(opening)).toEqual(committed);
       },
     );
   });

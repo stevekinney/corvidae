@@ -301,6 +301,49 @@ describe('a start that races another on the same thread in another process', () 
     });
   });
 
+  it('answers THREAD_BUSY in a Bureau that does not hold the thread’s live run, and starts nothing', async () => {
+    await withHarness(
+      {
+        script: [{ kind: 'block', barrier: 'a-generating' }, say('A done.')],
+        storage: 'sqlite',
+      },
+      async (harness) => {
+        const peer = await harness.peer([say('B done.')]);
+        try {
+          const first = new FrameReader(
+            await harness.handler(startRequest(runAgentInput({ runId: 'run-a' }))),
+          );
+          await harness.generate.reached('a-generating');
+
+          const refused = await readAgUiStream(
+            await peer.handler(
+              startRequest(
+                runAgentInput({
+                  runId: 'run-b',
+                  messages: [
+                    { id: 'user-1', role: 'user', content: 'hello' },
+                    { id: 'user-b', role: 'user', content: 'and also' },
+                  ],
+                }),
+              ),
+            ),
+          );
+          harness.generate.release('a-generating');
+          await first.rest();
+
+          expect(refused).toHaveLength(1);
+          expect(refused[0]!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'THREAD_BUSY',
+          });
+          expect(peer.bureau.listRuns()).toHaveLength(0);
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+
   it('is admitted by the other Bureau once the first one’s lease has expired', async () => {
     const dead = createManualRuntimeServices();
     const living = createManualRuntimeServices();
@@ -339,6 +382,56 @@ describe('a start that races another on the same thread in another process', () 
 
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(peer.bureau.listRuns()).toHaveLength(1);
+        } finally {
+          await peer.dispose();
+        }
+      },
+    );
+  });
+});
+
+describe('a start whose thread lease was taken over before it created its run', () => {
+  it('answers THREAD_BUSY and creates nothing', async () => {
+    const claimant = createManualRuntimeServices();
+    const other = createManualRuntimeServices();
+    await withHarness(
+      { script: [say('First.')], storage: 'sqlite', agUi: { runtime: claimant } },
+      async (harness) => {
+        const peer = await harness.peer([say('Second.')], { runtime: other });
+        try {
+          const held = Promise.withResolvers<void>();
+          const reached = Promise.withResolvers<void>();
+          const getSession = harness.bureau.getSession.bind(harness.bureau);
+          let reads = 0;
+          // The start reads the session to build its rows, then again to decide whether the
+          // thread is busy: held there, it has decided nothing yet.
+          spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+            reads += 1;
+            if (reads === 2) {
+              reached.resolve();
+              await held.promise;
+            }
+            return getSession(...args);
+          });
+          const message = (id: string) => [{ id, role: 'user' as const, content: 'hello' }];
+          const slow = harness.handler(
+            startRequest(runAgentInput({ runId: 'run-a', messages: message('user-a') })),
+          );
+          await reached.promise;
+          // Its lease expires, and another process starts and finishes a run on the thread.
+          await other.advance(DEFAULT_AG_UI_LEASE_MS);
+          const second = await readAgUiStream(
+            await peer.handler(
+              startRequest(runAgentInput({ runId: 'run-b', messages: message('user-b') })),
+            ),
+          );
+          held.resolve();
+          const refused = await readAgUiStream(await slow);
+
+          expect(second.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+          expect(refused).toHaveLength(1);
+          expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+          expect(harness.bureau.listRuns()).toHaveLength(0);
         } finally {
           await peer.dispose();
         }

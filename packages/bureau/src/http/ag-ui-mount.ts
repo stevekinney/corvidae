@@ -32,8 +32,10 @@
  * claimant and an expiry on the injected clock): a start in any process that finds
  * it held answers `THREAD_BUSY`, and the lease of a process that died expires and
  * is taken over by one claimant. A resume's command is fenced the same way
- * (`ag-ui-resume.ts`), and Armorer's single-use approval binding is a second line
- * of defence for the one step a lease cannot fence, a tool that outlives it.
+ * (`ag-ui-resume.ts`). A tool that outlives its lease is a residual a lease cannot
+ * fence: inside one process Armorer's single-use approval binding stops it running
+ * twice; across processes only the ledger's compare-and-swap and the idempotent
+ * run-creation request id hold (one entry, one run), and the tool itself can run twice.
  *
  * A tool approval is offered once its run has settled; until then only a human
  * wait is, because a run that is still going has not stored the conversation an
@@ -226,6 +228,23 @@ export function createAgUiMount(
       .listPendingReviews()
       .some((review) => review.runId === lastRunId && review.kind === 'tool-approval');
     return pending ? lastRunId : undefined;
+  }
+
+  /**
+   * Whether the thread's last run is going in a process that is not this one. The
+   * thread lease covers only a start's admission, so once it is released another
+   * process's live run is visible only in the store: the session says its last run
+   * is running, this process does not hold that run, and the durable run agrees. A
+   * marker a crash left behind is settled by durable recovery, so it cannot hold the
+   * thread for ever.
+   */
+  async function liveElsewhere(threadId: string): Promise<boolean> {
+    const metadata = (await bureau.getSession(threadId))?.metadata;
+    const lastRunId = metadata?.['lastRunId'];
+    if (metadata?.['lastRunStatus'] !== 'running' || typeof lastRunId !== 'string') return false;
+    if (bureau.getRun(lastRunId) !== undefined) return false;
+    const durable = await bureau.getDurableRun(lastRunId).catch(() => undefined);
+    return durable?.status === 'running';
   }
 
   async function attachableRun(
@@ -449,7 +468,10 @@ export function createAgUiMount(
             ),
           };
         }
-        if ((await attachableRunOfThread(input.threadId)) !== undefined) {
+        if (
+          (await attachableRunOfThread(input.threadId)) !== undefined ||
+          (await liveElsewhere(input.threadId))
+        ) {
           return {
             response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
           };

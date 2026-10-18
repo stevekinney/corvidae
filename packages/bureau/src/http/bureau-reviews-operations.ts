@@ -25,7 +25,7 @@
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../create-bureau.ts';
+import { ApprovalOutcomeNotWrittenError, BureauError } from '../create-bureau.ts';
 import type { Bureau, PendingReview, PendingToolApprovalReview, ReviewStatus } from '../types.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts';
@@ -224,6 +224,9 @@ const transports = {
   jsonRpcStdio: false,
 } as const;
 
+/** The token a client branches on to tell a decision whose outcome was not written from a lost race. */
+export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
+
 /** A payload key that is not declared is `InvalidParams`, so a client cannot name a `principal`. */
 const unknownKeyPolicy = { http: 'reject', jsonRpc: 'reject' } as const;
 
@@ -245,8 +248,24 @@ function reviewFault(error: unknown, identifier: string): unknown {
   switch (error.code) {
     case 'NOT_FOUND':
       return reviewNotFound(identifier);
-    case 'CONFLICT':
+    case 'CONFLICT': {
+      // The decision took effect and only the write into the conversation failed,
+      // which a client must not read as another resolver having won. Weft's wire for
+      // a `Conflict` carries `data.reason` and none of the other fields, so the
+      // distinguishing token travels in the reason, and in `data.code` for a host
+      // that reads the fault before it is put on a wire.
+      if (error instanceof ApprovalOutcomeNotWrittenError) {
+        return {
+          code: 'Conflict',
+          message: error.message,
+          data: {
+            reason: `${APPROVAL_OUTCOME_NOT_WRITTEN}: ${error.message}`,
+            code: APPROVAL_OUTCOME_NOT_WRITTEN,
+          },
+        };
+      }
       return { code: 'Conflict', message: error.message, data: { reason: error.message } };
+    }
     case 'BAD_REQUEST':
     case 'NOT_CONFIGURED':
     case 'RATE_LIMITED':

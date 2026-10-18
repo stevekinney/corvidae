@@ -107,6 +107,7 @@ import {
   classifyRecoveredRunDetailed,
   createBureau,
   createDefaultSessionPersistenceSleep,
+  ApprovalOutcomeNotWrittenError,
   createPendingApprovalPersistHook,
   dedupeRecoveryPerRunFailures,
   detachBestEffortPromise,
@@ -10463,6 +10464,81 @@ describe('createBureau review queue (AB-20)', () => {
     }
   });
 
+  it('rejects a retried resolution whose outcome cannot be written, rather than reporting success (COR-855)', async () => {
+    const backingStore = textValueStore(new MemoryStorage());
+    let failedSessionUpdatesRemaining = 0;
+    const persistence = createTextStoreProxy(backingStore, {
+      async conditionalBatch(conditions, operations) {
+        if (
+          failedSessionUpdatesRemaining > 0 &&
+          operations.some((operation) => operation.key.startsWith('agent-session:')) &&
+          JSON.stringify(operations).includes('resolvedReviewIds')
+        ) {
+          failedSessionUpdatesRemaining -= 1;
+          throw new Error('override cleanup unavailable');
+        }
+        return backingStore.conditionalBatch(conditions, operations);
+      },
+    });
+    const charges: number[] = [];
+    const bureau = await createBureau({
+      agents: {},
+      generate: createSequentialGenerate([
+        {
+          content: '',
+          toolCalls: [{ id: 'cleanup-call', name: 'charge-card', arguments: { cents: 425 } }],
+        },
+      ]),
+      toolbox: createNeedsApprovalToolbox('cleanup-secret', charges),
+      stopWhen: stopWhen.toolOutcome('action_required'),
+      persistence,
+      sessionPersistenceRetryDelayMilliseconds: 0,
+      onDiagnostic: () => undefined,
+    });
+    try {
+      const run = await bureau.createRun({ message: 'Charge despite cleanup storage failure' });
+      await waitForRunCompletion(bureau, run.id);
+      const [review] = bureau.listPendingReviews();
+      failedSessionUpdatesRemaining = 3;
+      const input = { id: review!.id, decision: 'approve' as const, principal: 'api-key:reviewer' };
+      await bureau.resolveReview(input).then(
+        () => undefined,
+        () => undefined,
+      );
+      failedSessionUpdatesRemaining = 0;
+      // The retry's write of the outcome into the conversation fails too.
+      const store = bureau.sessionStore!;
+      const update = store.update.bind(store);
+      spyOn(store, 'update').mockImplementation((id, updater, options) =>
+        update(
+          id,
+          async (session) => {
+            const next = await updater(session);
+            if (
+              session !== undefined &&
+              next !== undefined &&
+              next.conversationHistory !== session.conversationHistory
+            ) {
+              throw new Error('disk full');
+            }
+            return next;
+          },
+          options,
+        ),
+      );
+
+      const retried = await bureau.resolveReview(input).then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+
+      expect(retried).toBeInstanceOf(ApprovalOutcomeNotWrittenError);
+      expect(charges).toEqual([425]);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+
   it('retries an initial approval binding persistence failure before exposing the live review', async () => {
     const backingStore = textValueStore(new MemoryStorage());
     let failedApprovalPersistence = false;
@@ -11346,6 +11422,44 @@ describe('createBureau review lifecycle (AB-46)', () => {
 
         const resolved = await bureau.getReview(review!.id);
         expect(resolved).toBeUndefined();
+      } finally {
+        bureau.dispose();
+      }
+    });
+
+    it('reads a resolved approval recorded before reviews had a round as round 0', async () => {
+      const bureau = await createBureau({
+        agents: {},
+        generate: createMockGenerate(),
+        toolbox: createEmptyToolbox(),
+        persistence: textValueStore(new MemoryStorage()),
+      });
+
+      try {
+        const id = 'approval:run-legacy:call-legacy';
+        // The shape the audit trail held before COR-855: no `round` on the review.
+        await bureau.auditTrail!.record({
+          runId: 'run-legacy',
+          type: 'review.approved',
+          principal: 'operator-legacy',
+          detail: {
+            review: {
+              kind: 'tool-approval',
+              id,
+              runId: 'run-legacy',
+              sessionId: 'session-legacy',
+              agentName: undefined,
+              approval: { callId: 'call-legacy', toolName: 'charge-card', arguments: {} },
+              requestedAt: 0,
+              ageMilliseconds: 0,
+              status: 'pending',
+            },
+          },
+        });
+
+        const found = await bureau.getReview(id);
+
+        expect(found).toMatchObject({ id, kind: 'tool-approval', status: 'approved', round: 0 });
       } finally {
         bureau.dispose();
       }

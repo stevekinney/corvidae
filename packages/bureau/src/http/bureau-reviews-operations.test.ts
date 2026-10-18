@@ -9,7 +9,7 @@ import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError, createBureau } from '../create-bureau.ts';
+import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
 import type { PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
 import {
@@ -393,6 +393,33 @@ describe('bureau.reviews.resolve', () => {
     expect(notFound.error?.data?.httpStatus).toBe(404);
     expect(conflict.error?.data?.httpStatus).toBe(409);
     expect(unprocessable.error?.data?.httpStatus).toBe(422);
+  });
+
+  it('tells a decision whose outcome was not written from a resolver that lost', async () => {
+    const input = { id: 'approval:run-1:call-1', decision: 'approve' };
+    const failing = (error: BureauError) =>
+      serve(
+        stubHost({
+          resolveReview: async () => {
+            throw error;
+          },
+        }),
+      );
+
+    const unwritten = await call(
+      failing(new ApprovalOutcomeNotWrittenError('resolved, but not written')),
+      'bureau.reviews.resolve',
+      input,
+    );
+    const lost = await call(
+      failing(new BureauError('already resolved', 'CONFLICT')),
+      'bureau.reviews.resolve',
+      input,
+    );
+
+    expect(unwritten.error?.data?.httpStatus).toBe(409);
+    expect(JSON.stringify(unwritten.error)).toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
+    expect(JSON.stringify(lost.error)).not.toContain('APPROVAL_OUTCOME_NOT_WRITTEN');
   });
 
   it('answers Forbidden to an authenticated caller it cannot attribute, even one that holds the scope', async () => {
