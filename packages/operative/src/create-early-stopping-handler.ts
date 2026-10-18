@@ -18,6 +18,11 @@ const DEFAULT_MESSAGE =
  * without tools, prompting it to summarize its findings. This is the
  * recommended pattern from production agent loop literature for graceful
  * early stopping.
+ *
+ * The loop derives `context.resolvedSources` for the conversation it hands
+ * this handler (COR-716); the handler forwards it, and the one message it
+ * appends is text, so the media the final call sends is exactly what was
+ * admitted.
  */
 export function createEarlyStoppingHandler(
   generate: GenerateFunction,
@@ -33,6 +38,7 @@ export function createEarlyStoppingHandler(
       step: context.step,
       signal: context.signal,
       toolbox: createToolbox(),
+      resolvedSources: context.resolvedSources,
     });
 
     return response.content;

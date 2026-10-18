@@ -1,6 +1,7 @@
 import type { RuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 
 import type { AgentRun } from '../agent-run';
+import type { SessionInputPayload } from '../durable/types';
 import type { OperativeEventMap } from '../events';
 import { SessionMonitorDoneEvent, SessionMonitorTickEvent } from '../events';
 import type { DeclaredWait, StallWatchdog, StallWatchdogClock } from '../liveness';
@@ -23,7 +24,7 @@ export interface SessionMonitorDependencies {
   livenessClock: StallWatchdogClock;
   setTimeoutFunction: (callback: () => void, milliseconds: number) => unknown;
   clearTimeoutFunction: (timer: unknown) => void;
-  run: (input: string) => AgentRun;
+  run: (input: SessionInputPayload) => AgentRun;
   setLivenessState: (status: 'created' | 'running' | 'waiting', wait?: DeclaredWait) => void;
   processLocalDelay: (milliseconds: number, signal: AbortSignal | undefined) => Promise<void>;
   processLocalAbortError: () => DOMException;

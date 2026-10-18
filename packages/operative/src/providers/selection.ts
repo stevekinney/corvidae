@@ -120,6 +120,18 @@
  */
 
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
+import type {
+  ContentSource,
+  Conversation,
+  MediaContent,
+  MimeFamily,
+  Modality,
+  MultiModalContent,
+  ResolvedMediaSources,
+} from 'conversationalist';
+import { isMediaContent } from 'conversationalist';
+
+import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
 
 import type { SteeringRequestedValue } from '../durable/types.ts';
 import type { BackendDescriptor, ModelCatalog } from './model-catalog.ts';
@@ -170,6 +182,180 @@ export interface SelectionRequest {
   readonly catalogRevision: number;
   readonly policyRevision: number;
   readonly availabilitySnapshotRevision: number;
+  /**
+   * The input media the request will carry (see {@link describeInputMedia}). A
+   * candidate that cannot take it is excluded with `incompatible-modality`
+   * before any ranking happens. Absent means the request carries no media.
+   */
+  readonly inputMedia?: readonly InputMediaRequirement[] | undefined;
+}
+
+/** One media part a request needs a backend to accept. */
+export interface InputMediaRequirement {
+  readonly modality: Modality;
+  readonly sourceForm: ContentSource['kind'];
+  /** For a `provider-file` source: the provider that issued the file handle. */
+  readonly provider?: string | undefined;
+  readonly mimeFamily?: MimeFamily | undefined;
+  readonly byteLength?: number | undefined;
+  readonly count: number;
+}
+
+/** One media part of a conversation and what it requires of a backend. */
+export interface LocatedInputMedia {
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly part: MediaContent;
+  readonly requirement: InputMediaRequirement;
+}
+
+/**
+ * The media parts of a conversation's visible messages, in order, each described by
+ * the source it takes once a resolver has projected it: a resolved part is judged as
+ * the inline bytes or provider-fetched URL it resolves to, with the resolver's media
+ * type and size. Hidden messages are not sent, so they require nothing.
+ */
+export function locateInputMedia(
+  conversation: Conversation,
+  resolvedSources: ResolvedMediaSources | undefined,
+): LocatedInputMedia[] {
+  const located: LocatedInputMedia[] = [];
+  const { ids, messages } = conversation.current;
+  for (const id of ids) {
+    const message = messages[id];
+    if (message === undefined || message.hidden || typeof message.content === 'string') continue;
+    message.content.forEach((part, partIndex) => {
+      if (!isMediaContent(part)) return;
+      const resolved = resolvedSources?.get(`${message.id}:${partIndex}`);
+      const effective: MediaContent =
+        resolved === undefined
+          ? part
+          : {
+              ...part,
+              source: resolved.source,
+              ...(resolved.mimeType !== undefined ? { mimeType: resolved.mimeType } : {}),
+            };
+      const [described] = describeInputMedia([effective]);
+      if (described === undefined) return;
+      located.push({
+        messageId: message.id,
+        partIndex,
+        part,
+        requirement:
+          resolved?.byteLength === undefined
+            ? described
+            : { ...described, byteLength: resolved.byteLength },
+      });
+    });
+  }
+  return located;
+}
+
+/**
+ * Derives the media requirements of `parts`: one per media part, in order. A
+ * pure function of the parts, so a selection request is replayable.
+ */
+export function describeInputMedia(
+  parts: ReadonlyArray<MultiModalContent>,
+): readonly InputMediaRequirement[] {
+  const requirements: InputMediaRequirement[] = [];
+  for (const part of parts) {
+    if (!isMediaContent(part)) continue;
+    const mimeFamily = mimeFamilyOf(part.mimeType);
+    const byteLength = sourceByteLength(part.source);
+    requirements.push({
+      modality: part.type,
+      sourceForm: part.source.kind,
+      ...(part.source.kind === 'provider-file' ? { provider: part.source.provider } : {}),
+      ...(mimeFamily !== undefined ? { mimeFamily } : {}),
+      ...(byteLength !== undefined ? { byteLength } : {}),
+      count: 1,
+    });
+  }
+  return requirements;
+}
+
+interface MediaVerdict {
+  readonly eligible: boolean;
+  readonly exclusionReason?: string | undefined;
+}
+
+/** Checks one candidate's descriptor against a request's media requirements. */
+export function evaluateInputMedia(
+  descriptor: BackendDescriptor,
+  requirements: readonly InputMediaRequirement[],
+): MediaVerdict {
+  const label = `${descriptor.provider}/${descriptor.model}`;
+  const counts = new Map<Modality, number>();
+  for (const requirement of requirements) {
+    const entry = descriptor.modalities[requirement.modality];
+    if (!entry.input) {
+      return refuse(`${label} accepts no ${requirement.modality} input`);
+    }
+    if (!entry.sourceForms.includes(requirement.sourceForm)) {
+      return refuse(
+        `${label} does not accept a ${requirement.sourceForm} source for ${requirement.modality}`,
+      );
+    }
+    if (
+      requirement.sourceForm === 'provider-file' &&
+      requirement.provider !== undefined &&
+      requirement.provider !== descriptor.provider
+    ) {
+      return refuse(
+        `${label} cannot use a ${requirement.provider} file handle for ${requirement.modality}`,
+      );
+    }
+    if (requirement.sourceForm === 'remote-url' && !descriptor.providerFetchesRemoteUrls) {
+      return refuse(`${label} does not fetch remote URLs itself`);
+    }
+    if (
+      requirement.mimeFamily !== undefined &&
+      !descriptor.mimeFamilies.includes(requirement.mimeFamily)
+    ) {
+      return refuse(`${label} does not accept the ${requirement.mimeFamily} MIME family`);
+    }
+    const exceeded = descriptor.mediaLimits.find(
+      (limit) =>
+        limit.modality === requirement.modality &&
+        limit.scope === 'per-part' &&
+        limit.maxBytes !== undefined &&
+        requirement.byteLength !== undefined &&
+        requirement.byteLength > limit.maxBytes,
+    );
+    if (exceeded) {
+      return refuse(
+        `${label} accepts at most ${exceeded.maxBytes} bytes per ${requirement.modality} part`,
+      );
+    }
+    counts.set(requirement.modality, (counts.get(requirement.modality) ?? 0) + requirement.count);
+  }
+  // An aggregate limit caps the bytes a request carries for a modality. Only the
+  // sizes the requirements declare count; a part of unknown size adds nothing.
+  for (const limit of descriptor.mediaLimits) {
+    if (limit.scope !== 'aggregate' || limit.maxBytes === undefined) continue;
+    const total = requirements
+      .filter((requirement) => requirement.modality === limit.modality)
+      .reduce((sum, requirement) => sum + (requirement.byteLength ?? 0), 0);
+    if (total > limit.maxBytes) {
+      return refuse(
+        `${label} accepts at most ${limit.maxBytes} bytes across ${limit.modality} parts`,
+      );
+    }
+  }
+  for (const cap of descriptor.mediaCounts) {
+    const requested = counts.get(cap.modality) ?? 0;
+    if (requested > cap.maxPerRequest) {
+      return refuse(
+        `${label} accepts at most ${cap.maxPerRequest} ${cap.modality} parts per request`,
+      );
+    }
+  }
+  return { eligible: true };
+}
+
+function refuse(exclusionReason: string): MediaVerdict {
+  return { eligible: false, exclusionReason };
 }
 
 /**
@@ -698,6 +884,18 @@ export function select(request: SelectionRequest, options: SelectOptions): Selec
 
   const candidates: SelectionCandidate[] = policyCandidates.map((policyCandidate) => {
     if (!policyCandidate.eligible) return toSelectionCandidate(policyCandidate);
+    // Media compatibility comes before effort and before any ranking: a backend
+    // that cannot take the request's media is never a candidate to rank.
+    if (request.inputMedia !== undefined && request.inputMedia.length > 0) {
+      const mediaVerdict = evaluateInputMedia(policyCandidate.descriptor, request.inputMedia);
+      if (!mediaVerdict.eligible) {
+        return toSelectionCandidate(policyCandidate, {
+          eligible: false,
+          exclusionCode: 'incompatible-modality',
+          exclusionReason: mediaVerdict.exclusionReason,
+        });
+      }
+    }
     if (requested === undefined) return toSelectionCandidate(policyCandidate);
     const verdict = evaluateEffort(policyCandidate.descriptor, requested, effortMode);
     return toSelectionCandidate(policyCandidate, {

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+import type { MultiModalContent } from 'conversationalist';
+import { Conversation } from 'conversationalist';
 
+import { MediaAdmissionError } from '../../errors.ts';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -515,5 +519,106 @@ describe('createRoutingGenerate — descriptor union (AB-64 AC2, AB-245)', () =>
     // reports the original descriptor.
     expect(result.content).toBe('original-response');
     expect(readBackendDescriptors(generate)).toEqual([anthropic]);
+  });
+});
+
+describe('createRoutingGenerate: media constrains the routes (COR-716)', () => {
+  const catalog = createModelCatalog();
+  const openai = catalog.descriptors.find((d) => d.provider === 'openai' && d.model === 'gpt-4o')!;
+  const gemini = catalog.descriptors.find((d) => d.provider === 'gemini')!;
+
+  function recordingRoute(name: string, descriptor: BackendDescriptor, calls: string[]) {
+    return {
+      name,
+      generate: withBackendDescriptors(async () => {
+        calls.push(name);
+        return makeResponse(`${name}-response`);
+      }, [descriptor]),
+    } satisfies ModelRoute;
+  }
+
+  function contextWith(content: string | MultiModalContent[]): GenerateContext {
+    const conversation = new Conversation();
+    conversation.appendUserMessage(content);
+    return makeContext({ conversation });
+  }
+
+  const audio = [
+    { type: 'audio', source: { kind: 'inline', data: 'QUJD', encoding: 'base64' } },
+  ] as const;
+
+  it('sends audio to the route that accepts it, though the strategy prefers one that does not', async () => {
+    const calls: string[] = [];
+    const generate = createRoutingGenerate({
+      routes: [recordingRoute('openai', openai, calls), recordingRoute('gemini', gemini, calls)],
+      strategy: () => ({ route: 'openai', reason: 'cheapest' }),
+      fallback: 'openai',
+    });
+
+    const result = await generate(contextWith([...audio]));
+
+    expect(calls).toEqual(['gemini']);
+    expect(result.content).toBe('gemini-response');
+  });
+
+  it('hands the strategy only the routes that admit the media', async () => {
+    const calls: string[] = [];
+    const offered: string[][] = [];
+    const generate = createRoutingGenerate({
+      routes: [recordingRoute('openai', openai, calls), recordingRoute('gemini', gemini, calls)],
+      strategy: (_context, routes) => {
+        offered.push(routes.map((route) => route.name));
+        return { route: routes[0]!.name, reason: 'first offered' };
+      },
+      fallback: 'openai',
+    });
+
+    await generate(contextWith([...audio]));
+
+    expect(offered).toEqual([['gemini']]);
+  });
+
+  it('refuses, typed, before any provider call when no route admits the media', async () => {
+    const calls: string[] = [];
+    const generate = createRoutingGenerate({
+      routes: [recordingRoute('openai', openai, calls)],
+      strategy: () => ({ route: 'openai', reason: 'only' }),
+      fallback: 'openai',
+    });
+
+    const error = await rejectionOf(generate(contextWith([...audio])));
+
+    expect(error).toBeInstanceOf(MediaAdmissionError);
+    expect(calls).toEqual([]);
+  });
+
+  it('refuses a steering override that names a route the media does not fit', async () => {
+    const calls: string[] = [];
+    const generate = createRoutingGenerate({
+      routes: [recordingRoute('openai', openai, calls), recordingRoute('gemini', gemini, calls)],
+      strategy: () => ({ route: 'gemini', reason: 'strategy' }),
+      fallback: 'gemini',
+    });
+    const context = contextWith([...audio]);
+
+    const error = await rejectionOf(
+      generate({ ...context, steering: { route: 'openai' } as never }),
+    );
+
+    expect(error).toBeInstanceOf(MediaAdmissionError);
+    expect(calls).toEqual([]);
+  });
+
+  it('routes a step with no media exactly as before', async () => {
+    const calls: string[] = [];
+    const generate = createRoutingGenerate({
+      routes: [recordingRoute('openai', openai, calls), recordingRoute('gemini', gemini, calls)],
+      strategy: () => ({ route: 'openai', reason: 'cheapest' }),
+      fallback: 'openai',
+    });
+
+    await generate(contextWith('just text'));
+
+    expect(calls).toEqual(['openai']);
   });
 });

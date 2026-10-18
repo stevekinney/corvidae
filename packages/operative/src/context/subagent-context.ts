@@ -6,8 +6,8 @@
  * the subagent's result back into the parent conversation.
  */
 
-import type { Conversation, JSONValue, Message } from 'conversationalist';
-import { Conversation as ConversationClass } from 'conversationalist';
+import type { Conversation, JSONValue, Message, MultiModalContent } from 'conversationalist';
+import { Conversation as ConversationClass, copyContent, isMediaContent } from 'conversationalist';
 
 /** Options for preparing a subagent's conversation context. */
 export interface PrepareSubagentContextOptions {
@@ -26,6 +26,23 @@ export interface MergeSubagentResultOptions {
   content: string;
   /** Name of the subagent, stored in metadata for provenance tracking. */
   agentName?: string | undefined;
+}
+
+/**
+ * Projects a parent message's content for a child conversation: text and media
+ * parts are carried over unchanged and in order, so a document the parent was
+ * given is the same document in the child, never an empty string or a line of
+ * prose about it. Provider-private blocks (reasoning with its signature, server
+ * tool use and results, container uploads) belong to the parent's provider
+ * session and are not replayed into a child. A message left with nothing to
+ * carry is skipped, not appended empty.
+ */
+function projectContentForChild(
+  content: Message['content'],
+): string | MultiModalContent[] | undefined {
+  if (typeof content === 'string') return content;
+  const carried = content.filter((part) => part.type === 'text' || isMediaContent(part));
+  return carried.length === 0 ? undefined : copyContent(carried);
 }
 
 /**
@@ -51,7 +68,8 @@ export function prepareSubagentContext(
   // Copy system messages from parent
   const systemMessages = parentMessages.filter((m: Message) => m.role === 'system');
   for (const msg of systemMessages) {
-    child.appendSystemMessage(typeof msg.content === 'string' ? msg.content : '');
+    const content = projectContentForChild(msg.content);
+    if (content !== undefined) child.appendMessages({ role: 'system', content });
   }
 
   // Inject subagent instructions
@@ -62,7 +80,8 @@ export function prepareSubagentContext(
   const recentMessages = nonSystem.slice(-recentParentMessageCount);
 
   for (const msg of recentMessages) {
-    const content = typeof msg.content === 'string' ? msg.content : '';
+    const content = projectContentForChild(msg.content);
+    if (content === undefined) continue;
     if (msg.role === 'user') {
       child.appendUserMessage(content);
     } else if (msg.role === 'assistant') {

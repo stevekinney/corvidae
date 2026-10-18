@@ -27,7 +27,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessagesGrouped(conv);
+      const messages = toOpenAIMessagesGrouped(conv).messages;
 
       // Should be: user, assistant (with 2 tool_calls)
       expect(messages).toHaveLength(2);
@@ -61,7 +61,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessagesGrouped(conv);
+      const messages = toOpenAIMessagesGrouped(conv).messages;
 
       // Should be: user, assistant (with tool_calls), tool, assistant
       expect(messages).toHaveLength(4);
@@ -91,7 +91,7 @@ describe('OpenAI Adapter', () => {
         testEnvironment,
       );
 
-      const messages = toOpenAIMessagesGrouped(conv);
+      const messages = toOpenAIMessagesGrouped(conv).messages;
       expect(messages).toHaveLength(1);
     });
   });

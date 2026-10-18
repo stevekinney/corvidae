@@ -298,6 +298,31 @@ describe('versioned frame parsing', () => {
     ).toThrow(UnsupportedRunResultVersionError);
   });
 
+  it('refuses the previous envelope version by version, not as a malformed result', () => {
+    // Version 2 stored an image as `{ type: 'image', url }`. Its transcript no
+    // longer parses, and the version gate must fire first so the failure names
+    // the version instead of reporting an unreadable transcript.
+    const stale = {
+      schemaVersion: RUN_ENVELOPE_SCHEMA_VERSION - 1,
+      type: 'run-finished',
+      runId: 'stale-run',
+      timestamp: 1,
+      report: {
+        schemaVersion: RUN_ENVELOPE_SCHEMA_VERSION - 1,
+        runId: 'stale-run',
+        status: 'succeeded',
+        usage: { prompt: 1, completion: 2, total: 3 },
+        transcript: {
+          schemaVersion: 5,
+          messages: { m1: { content: [{ type: 'image', url: 'https://example.com/a.png' }] } },
+        },
+      },
+    };
+
+    expect(() => parseRunFrame(stale)).toThrow(UnsupportedRunResultVersionError);
+    expect(RUN_ENVELOPE_SCHEMA_VERSION).toBe(3);
+  });
+
   it('rejects unknown envelope versions', () => {
     expect(() => parseRunFrame({ schemaVersion: 99, type: 'run-started' })).toThrow(
       UnsupportedRunResultVersionError,

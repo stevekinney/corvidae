@@ -3,16 +3,29 @@ import {
   unionBackendDescriptors,
   withBackendDescriptors,
 } from './providers/backend-descriptor-attachment';
+import {
+  generateAdmitsMedia,
+  noBackendAdmitsMedia,
+  requestMediaRequirements,
+} from './providers/media-dispatch';
 import type { GenerateFunction, GenerateMiddleware } from './types';
 
 /**
  * Applies middleware right-to-left (first in list = outermost wrapper).
+ *
+ * The composed function reports the base's backend descriptors when the
+ * outermost middleware attached none of its own (COR-716): a wrapper that
+ * drops them would leave media admission with nothing to cost against, so
+ * every part would be refused as `no-estimator`.
  */
 export function composeGenerate(
   base: GenerateFunction,
   ...middleware: GenerateMiddleware[]
 ): GenerateFunction {
-  return middleware.reduceRight((next, mw) => mw(next), base);
+  const composed = middleware.reduceRight((next, mw) => mw(next), base);
+  return readBackendDescriptors(composed).length > 0 || composed === base
+    ? composed
+    : withBackendDescriptors(composed, readBackendDescriptors(base));
 }
 
 /**
@@ -35,8 +48,12 @@ export function createFallbackGenerate(options: {
   }
 
   const wrapped: GenerateFunction = async (context) => {
+    // COR-716: only the providers whose backends admit every media part are tried.
+    const requirements = requestMediaRequirements(context);
+    const admitting = providers.filter((provider) => generateAdmitsMedia(provider, requirements));
+    if (admitting.length === 0) throw noBackendAdmitsMedia(context, 'no-backend-admits-media');
     let lastError: unknown;
-    for (const provider of providers) {
+    for (const provider of admitting) {
       try {
         return await provider(context);
       } catch (error) {

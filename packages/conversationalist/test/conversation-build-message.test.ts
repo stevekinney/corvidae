@@ -19,8 +19,8 @@ describe('buildMessage', () => {
           content: [
             {
               type: 'document',
-              name: 'missing-mime-type',
-              source: { kind: 'base64', data: 'cGRm' },
+              name: 'empty-inline-data',
+              source: { kind: 'inline', data: '', encoding: 'base64' },
             },
           ],
         },

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { toMarkdown } from '../../src';
 import type { AssistantMessage, ConversationHistory, Message } from '../../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationMessage = Message | AssistantMessage;
 
@@ -26,7 +27,7 @@ describe('toMarkdown', () => {
     const baseIds = ids ?? baseMessages.map((message) => message.id);
 
     return {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conv-1',
       status: 'active',
       metadata: {},
@@ -157,7 +158,13 @@ describe('toMarkdown', () => {
         {
           id: 'msg-1',
           role: 'user',
-          content: [{ type: 'image', url: 'https://example.com/photo.jpg', text: 'A cat' }],
+          content: [
+            {
+              type: 'image',
+              source: { kind: 'remote-url', url: 'https://example.com/photo.jpg' },
+              alt: 'A cat',
+            },
+          ],
           position: 0,
           createdAt: '2024-01-15T10:00:00.000Z',
           metadata: {},
@@ -174,7 +181,9 @@ describe('toMarkdown', () => {
         {
           id: 'msg-1',
           role: 'user',
-          content: [{ type: 'image', url: 'https://example.com/photo.jpg' }],
+          content: [
+            { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/photo.jpg' } },
+          ],
           position: 0,
           createdAt: '2024-01-15T10:00:00.000Z',
           metadata: {},
@@ -196,7 +205,7 @@ describe('toMarkdown', () => {
               type: 'document',
               name: 'notes.md',
               mimeType: 'text/markdown',
-              source: { kind: 'reference', uri: 'sandbox:/workspace/notes.md' },
+              source: { kind: 'local-file', path: '/workspace/notes.md' },
             },
           ],
           position: 0,
@@ -207,9 +216,7 @@ describe('toMarkdown', () => {
       ]);
 
       const result = toMarkdown(conversation);
-      expect(result).toContain(
-        '[Document: notes.md (text/markdown) at sandbox:/workspace/notes.md]',
-      );
+      expect(result).toContain('[Document: notes.md (text/markdown) at /workspace/notes.md]');
     });
 
     test('skips empty text parts', () => {

@@ -21,7 +21,7 @@ import {
   type AgentRunWorkflowResult,
   normalizeAgentRunWorkflowResult,
 } from './run-workflow-result';
-import type { DurableRunDeps } from './types';
+import type { DurableRunDeps, SessionInputPayload } from './types';
 
 export async function driveDurableRun(
   context: DurableActiveRunContext,
@@ -32,7 +32,7 @@ export async function driveDurableRun(
   conversation: Conversation,
   signal: AbortSignal,
   emitter: OperativeEventEmitter,
-  prompt: string | undefined,
+  prompt: SessionInputPayload | undefined,
   onServices: ((services: DurableRunDeps) => void) | undefined,
   reachability: { unreachable: boolean },
   // AB-339: true when `abort()` was called before this run's deferred

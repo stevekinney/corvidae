@@ -1,10 +1,13 @@
 import type {
   ContentSource,
+  ImageContent,
+  MediaContent,
   MediaLimits,
   MediaLimitScope,
   MimeFamily,
   Modality,
   ModalityMatrix,
+  MultiModalContent,
 } from './multi-modal';
 
 // Modality: exactly the six named modalities, nothing else.
@@ -124,3 +127,26 @@ const invalidMatrixSourceForm: ModalityMatrix = {
   file: { input: false, output: false, sourceForms: [] },
 };
 void invalidMatrixSourceForm;
+
+// MediaContent: one member per non-text modality, so its discriminant is exactly
+// `Exclude<Modality, 'text'>` and a part's `type` can index a `ModalityMatrix`.
+type MediaType = MediaContent['type'];
+type ExpectedMediaType = Exclude<Modality, 'text'>;
+const mediaTypeCoversEveryNonTextModality: [ExpectedMediaType] extends [MediaType] ? true : never =
+  true;
+const mediaTypeNamesNothingElse: [MediaType] extends [ExpectedMediaType] ? true : never = true;
+void mediaTypeCoversEveryNonTextModality;
+void mediaTypeNamesNothingElse;
+
+// Each media interface keeps a literal `type`, so narrowing a MultiModalContent
+// by `type` resolves to that interface rather than `never`.
+const narrowedImage: Extract<MultiModalContent, { type: 'image' }> extends ImageContent
+  ? true
+  : never = true;
+void narrowedImage;
+// @ts-expect-error An image part has no `url`; its location is a ContentSource.
+const imageWithUrl: ImageContent = { type: 'image', url: 'https://example.com/a.png' };
+void imageWithUrl;
+// @ts-expect-error A media part requires a source.
+const imageWithoutSource: ImageContent = { type: 'image' };
+void imageWithoutSource;

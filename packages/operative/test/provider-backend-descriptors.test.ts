@@ -157,15 +157,22 @@ describe('createGeminiProvider / createGeminiProviderStream — backend descript
     expect(readBackendDescriptors(generate)).not.toEqual([]);
   });
 
-  it('leaves the streaming variant opaque because the seed catalog has no generateContentStream-specific row', () => {
-    // The seed catalog only has a `generateContent` row for Gemini, but this
-    // factory calls the distinct `generateContentStream` operation.
-    // Attaching the `generateContent` row would misreport the endpoint this
-    // function actually invokes, so it attaches nothing instead.
+  it('attaches the seed descriptor under the generateContentStream endpoint on the streaming variant', () => {
+    // This factory calls the distinct `generateContentStream` operation, whose
+    // model, modalities, limits, and pricing are those of the seed's
+    // `generateContent` row. The attached descriptor names the operation this
+    // function actually invokes, so admission can cost media against it
+    // (COR-716) without misreporting the endpoint.
     const client = createMockGeminiStreamingModel([geminiStreamTextChunks]);
     const generate = createGeminiProviderStream({ model: 'gemini-2.5-flash', client });
+    const expected = seedDescriptor('gemini', 'gemini-2.5-flash');
+    if (!expected) throw new Error('expected a seed row for gemini-2.5-flash');
 
-    expect(readBackendDescriptors(generate)).toEqual([]);
+    const attached = readBackendDescriptors(generate);
+    expect(attached).toHaveLength(1);
+    expect(withoutFreshness(attached[0]!)).toEqual(
+      withoutFreshness({ ...expected, endpoint: 'generateContentStream' }),
+    );
   });
 
   it('attaches nothing for a model with no seed row', () => {

@@ -27,13 +27,25 @@
  */
 
 import {
+  type InputMediaRequirement,
   select,
   type SelectionPlan,
   type SelectionRequest,
   type SelectOptions,
 } from './providers/selection.ts';
 
-export type { SelectionPlan, SelectionRequest, SelectOptions };
+export type { InputMediaRequirement, SelectionPlan, SelectionRequest, SelectOptions };
+
+/**
+ * What the step boundary knows that the gate's source cannot: the media the
+ * step's conversation carries (COR-716), described by the form each part's
+ * source takes once the run's resolver has projected it. Absent when the step
+ * carries no media, which leaves the request exactly as it was before media
+ * existed.
+ */
+export interface SelectionBoundaryContext {
+  readonly inputMedia?: readonly InputMediaRequirement[] | undefined;
+}
 
 /**
  * Per-run gate `runStep` consults at its AB-67-sibling boundary to
@@ -60,8 +72,12 @@ export interface SelectionGate {
    * Never mutates a superseded plan's `selected` — a replacement plan is a
    * new, distinct `SelectionPlan` value; the one it replaces is returned
    * unchanged by any earlier `getPlan()` caller that still holds it.
+   *
+   * A step that carries media passes it as `context.inputMedia`, so a backend
+   * that cannot accept it is excluded here, typed, rather than failing at the
+   * provider.
    */
-  revalidate(): SelectionPlan;
+  revalidate(context?: SelectionBoundaryContext): SelectionPlan;
 }
 
 /**
@@ -73,7 +89,7 @@ export interface SelectionGateSource {
    *  fresh on every `revalidate()` call so it reflects Bureau's CURRENT
    *  catalog/policy/availability revisions, never a value captured once at
    *  gate-construction time. */
-  request(): SelectionRequest;
+  request(context?: SelectionBoundaryContext): SelectionRequest;
   /** The catalog and five policy layers `select` composes against. Read
    *  fresh on every `revalidate()` call for the same reason as `request()`. */
   options(): SelectOptions;
@@ -122,8 +138,8 @@ export interface CreateSelectionGateOptions extends SelectionGateSource {
 export function createSelectionGate(options: CreateSelectionGateOptions): SelectionGate {
   let current: SelectionPlan | undefined = options.initialPlan;
 
-  function revalidate(): SelectionPlan {
-    const request = options.request();
+  function revalidate(context?: SelectionBoundaryContext): SelectionPlan {
+    const request = options.request(context);
     const selectOptions = options.options();
 
     if (current === undefined) {
@@ -143,7 +159,10 @@ export function createSelectionGate(options: CreateSelectionGateOptions): Select
     const unchanged =
       current.catalogRevision === request.catalogRevision &&
       current.policyRevision === request.policyRevision &&
-      current.request.availabilitySnapshotRevision === request.availabilitySnapshotRevision;
+      current.request.availabilitySnapshotRevision === request.availabilitySnapshotRevision &&
+      // The media a step carries is part of what the plan answered, so a plan made for other
+      // media is not the plan for this step even when no revision moved.
+      JSON.stringify(current.request.inputMedia) === JSON.stringify(request.inputMedia);
     if (unchanged) return current;
 
     // `select`'s `revalidate` option requires a real `priorSelected`

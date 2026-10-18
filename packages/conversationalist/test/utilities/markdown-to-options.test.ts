@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import { toMarkdown } from '../../src';
 import type { AssistantMessage, ConversationHistory, Message } from '../../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationMessage = Message | AssistantMessage;
 
@@ -26,7 +27,7 @@ describe('toMarkdown', () => {
     const baseIds = ids ?? baseMessages.map((message) => message.id);
 
     return {
-      schemaVersion: 1,
+      schemaVersion: CURRENT_SCHEMA_VERSION,
       id: 'conv-1',
       status: 'active',
       metadata: {},

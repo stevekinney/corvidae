@@ -132,6 +132,43 @@ describe('composePolicy: Agent requirements and preferences', () => {
     expect(candidate?.eligible).toBe(true);
   });
 
+  it('excludes a candidate with no input for a required modality', () => {
+    const verdicts = composePolicy({
+      descriptors: [anthropic, openai, gemini],
+      agent: { requiredInputModalities: [{ modality: 'audio' }] },
+    });
+    expect(verdicts.map((candidate) => [candidate.provider, candidate.eligible])).toEqual([
+      ['anthropic', false],
+      ['openai', false],
+      ['gemini', true],
+    ]);
+    expect(verdicts[0]?.exclusionCode).toBe('missing-required-capability');
+    expect(verdicts[0]?.exclusionReason).toBe('missing required input modality: audio');
+  });
+
+  it('excludes a candidate missing a required source form for an accepted modality', () => {
+    const [candidate] = composePolicy({
+      descriptors: [openai],
+      agent: { requiredInputModalities: [{ modality: 'image', sourceForms: ['provider-file'] }] },
+    });
+    expect(candidate?.eligible).toBe(false);
+    expect(candidate?.exclusionCode).toBe('missing-required-capability');
+    expect(candidate?.exclusionReason).toBe('missing required image source form: provider-file');
+  });
+
+  it('keeps a candidate that accepts every required modality and source form', () => {
+    const [candidate] = composePolicy({
+      descriptors: [gemini],
+      agent: {
+        requiredInputModalities: [
+          { modality: 'video', sourceForms: ['remote-url', 'inline'] },
+          { modality: 'image' },
+        ],
+      },
+    });
+    expect(candidate?.eligible).toBe(true);
+  });
+
   it('treats a non-empty array-valued field as a present capability', () => {
     // `aliases` is array-typed; claude-fable-5 has at least one alias in the
     // seed, so this exercises hasCapability's Array.isArray branch on the

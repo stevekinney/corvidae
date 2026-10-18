@@ -24,7 +24,7 @@ describe('conversation functional queries and appends', () => {
     c = appendUserMessage(c, 'hello');
     c = appendAssistantMessage(c, [
       { type: 'text', text: 'ok' },
-      { type: 'image', url: 'https://example.com/i.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/i.png' } },
     ]);
 
     const stats = getStatistics(c);

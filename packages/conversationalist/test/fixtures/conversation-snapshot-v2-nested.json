@@ -1,6 +1,6 @@
 {
   "snapshotFormatVersion": 2,
-  "conversationSchemaVersion": 5,
+  "conversationSchemaVersion": 6,
   "controllerRevision": 2,
   "conversationId": "conversation-id",
   "currentBranchId": "conversation-id:2",
@@ -32,14 +32,14 @@
   },
   "integrity": {
     "algorithm": "fnv1a-64",
-    "digest": "fd15f78c0e03824e"
+    "digest": "c8dd6e8edfd70f0c"
   },
   "root": {
     "id": "conversation-id:0",
     "revision": 0,
     "parentId": null,
     "conversation": {
-      "schemaVersion": 5,
+      "schemaVersion": 6,
       "id": "conversation-id",
       "status": "active",
       "metadata": {},
@@ -55,7 +55,7 @@
         "revision": 1,
         "parentId": "conversation-id:0",
         "conversation": {
-          "schemaVersion": 5,
+          "schemaVersion": 6,
           "id": "conversation-id",
           "status": "active",
           "metadata": {},
@@ -71,7 +71,7 @@
             "revision": 2,
             "parentId": "conversation-id:1",
             "conversation": {
-              "schemaVersion": 5,
+              "schemaVersion": 6,
               "id": "conversation-id",
               "status": "active",
               "metadata": {},

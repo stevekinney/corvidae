@@ -42,6 +42,45 @@ interface BackendDescriptorBearing {
 const EMPTY_DESCRIPTORS: readonly BackendDescriptor[] = Object.freeze([]);
 
 /**
+ * Marker on a descriptor array saying the union it holds is incomplete: at
+ * least one candidate the function can dispatch to reports no descriptor at
+ * all (COR-716). Media admission then cannot refuse a request on eligibility
+ * grounds from the described rows alone, because the opaque candidate may take
+ * it; dispatch decides through `generateAdmitsMedia`. Carried on the array
+ * rather than the function so a wrapper that re-attaches
+ * `readBackendDescriptors(inner)` propagates it without knowing about it.
+ *
+ * @internal
+ */
+const OPERATIVE_DESCRIPTOR_UNION_INCOMPLETE: unique symbol = Symbol.for(
+  '@lostgradient/operative/descriptor-union-incomplete',
+);
+
+interface IncompleteUnionBearing {
+  readonly [OPERATIVE_DESCRIPTOR_UNION_INCOMPLETE]?: true | undefined;
+}
+
+/** Whether a descriptor array, or a function's attached array, is marked incomplete. */
+export function isDescriptorUnionIncomplete(
+  subject: DescriptorBearingFunction | readonly BackendDescriptor[],
+): boolean {
+  const descriptors = typeof subject === 'function' ? readBackendDescriptors(subject) : subject;
+  return (descriptors as IncompleteUnionBearing)[OPERATIVE_DESCRIPTOR_UNION_INCOMPLETE] === true;
+}
+
+/** A frozen copy of `descriptors` marked as an incomplete union. */
+export function markDescriptorUnionIncomplete(
+  descriptors: readonly BackendDescriptor[],
+): readonly BackendDescriptor[] {
+  const copy: BackendDescriptor[] = [...descriptors];
+  Object.defineProperty(copy, OPERATIVE_DESCRIPTOR_UNION_INCOMPLETE, {
+    value: true,
+    enumerable: false,
+  });
+  return Object.freeze(copy);
+}
+
+/**
  * Recursively freezes `value`'s own object graph in place: `value` itself,
  * then every own-property value reachable from it, depth-first — including
  * beneath a node that is already frozen. That last part matters: a node can
@@ -102,7 +141,14 @@ export function withBackendDescriptors<T extends DescriptorBearingFunction>(
   generate: T,
   descriptors: readonly BackendDescriptor[],
 ): T {
-  const frozenDescriptors = Object.freeze(descriptors.map((descriptor) => deepFreeze(descriptor)));
+  const copy = descriptors.map((descriptor) => deepFreeze(descriptor));
+  if (isDescriptorUnionIncomplete(descriptors)) {
+    Object.defineProperty(copy, OPERATIVE_DESCRIPTOR_UNION_INCOMPLETE, {
+      value: true,
+      enumerable: false,
+    });
+  }
+  const frozenDescriptors = Object.freeze(copy);
   const target = generate as T & {
     [OPERATIVE_BACKEND_DESCRIPTORS]?: readonly BackendDescriptor[] | undefined;
   };
@@ -178,7 +224,13 @@ export function unionBackendDescriptors(
       }
     }
   }
-  return [...byKey.entries()]
+  const union = [...byKey.entries()]
     .toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
     .map(([, descriptor]) => descriptor);
+  // A candidate with no descriptor, or one whose own union is incomplete,
+  // makes this union incomplete: it does not describe every reachable backend.
+  const incomplete = descriptorLists.some(
+    (descriptors) => descriptors.length === 0 || isDescriptorUnionIncomplete(descriptors),
+  );
+  return incomplete ? markDescriptorUnionIncomplete(union) : union;
 }

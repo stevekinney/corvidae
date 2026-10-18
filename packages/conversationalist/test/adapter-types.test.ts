@@ -7,10 +7,11 @@ import type { AnthropicConversation } from '../src/adapters/anthropic/types';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import { toOpenAIMessages, toOpenAIMessagesGrouped } from '../src/adapters/openai/outbound';
 import type { ConversationHistory } from '../src/types';
+import { CURRENT_SCHEMA_VERSION } from '../src/versioning';
 
 describe('Adapter Type Compatibility', () => {
   const conv: ConversationHistory = {
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: 'test',
     status: 'active',
     metadata: {},
@@ -22,8 +23,8 @@ describe('Adapter Type Compatibility', () => {
 
   describe('OpenAI Adapter', () => {
     it('should be compatible with OpenAI SDK types', () => {
-      const messages = toOpenAIMessages(conv);
-      const groupedMessages = toOpenAIMessagesGrouped(conv);
+      const messages = toOpenAIMessages(conv).messages;
+      const groupedMessages = toOpenAIMessagesGrouped(conv).messages;
 
       expectTypeOf(messages).toExtend<ChatCompletionMessageParam[]>();
       expectTypeOf(groupedMessages).toExtend<ChatCompletionMessageParam[]>();

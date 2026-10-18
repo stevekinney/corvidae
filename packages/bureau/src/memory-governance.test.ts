@@ -152,6 +152,43 @@ describe('Bureau memory hooks enforce governance (COR-41)', () => {
     });
   });
 
+  it('recalls against the text parts of the current user message when it carries media (COR-716)', async () => {
+    const { memory } = governedMemoryFixture();
+    await seed(memory, authority, 'The user prefers aisle seats.');
+    const queries: string[] = [];
+    const observed: GovernedMemory = {
+      ...memory,
+      recallForModel: (as, query, options) => {
+        queries.push(query);
+        return memory.recallForModel(as, query, options);
+      },
+    };
+    const hook = createMemoryRecallHook(observed, authority, 'session-1');
+    const parts = [
+      { type: 'text' as const, text: 'What seat does the user prefer?' },
+      {
+        type: 'image' as const,
+        mimeType: 'image/png',
+        source: { kind: 'inline' as const, data: 'QUJD', encoding: 'base64' as const },
+      },
+    ];
+
+    // The current prompt is a part array: recall runs on its text, not on an older message.
+    const withHistory = new Conversation();
+    withHistory.appendUserMessage('an earlier, unrelated question');
+    withHistory.appendAssistantMessage('answered');
+    withHistory.appendUserMessage(parts);
+    await hook({ step: 0, conversation: withHistory });
+    expect(queries).toEqual(['What seat does the user prefer?']);
+
+    // A part-array prompt with no earlier string message is not skipped.
+    const alone = new Conversation();
+    alone.appendUserMessage(parts);
+    await hook({ step: 0, conversation: alone });
+    const [injected] = alone.getMessages().filter((message) => message.role === 'system');
+    expect(injected?.content).toContain('aisle seats');
+  });
+
   it('withholds and quarantines poisoned memory, and never reads another owner or tenant', async () => {
     const { memory, storage } = governedMemoryFixture();
     const permissive = createGovernedMemory({

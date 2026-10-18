@@ -6,6 +6,7 @@ import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
 import { ProviderError, ToolCallParseError } from './errors.ts';
 import { createModelCatalog } from './model-catalog.ts';
 import { resolveOpenAIEffort } from './shared/effort.ts';
+import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveOpenAIModel } from './shared/model-registry.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import { toOpenAIResponseFormat } from './structured-output/response-format-adapters.ts';
@@ -130,7 +131,9 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
     context: GenerateContext,
   ): Promise<GenerateResponse> => {
     const client = await getClient();
-    const messages = toOpenAIMessagesGrouped(context.conversation.current);
+    const { messages, lineage } = toOpenAIMessagesGrouped(context.conversation.current, {
+      sources: context.resolvedSources,
+    });
     const tools = await context.toolbox.toOpenAITools();
     const hasTools = tools.length > 0;
 
@@ -172,15 +175,18 @@ export function createOpenAIProvider(options: OpenAIProviderOptions): GenerateFu
 
       const usage = response.usage ? buildOpenAIUsage(response.usage) : undefined;
 
-      return {
-        content,
-        toolCalls,
-        usage,
-        metadata: {
-          effectiveModel: resolvedModel,
-          effectiveEffort: resolvedEffort ?? 'none',
+      return withInputLineage(
+        {
+          content,
+          toolCalls,
+          usage,
+          metadata: {
+            effectiveModel: resolvedModel,
+            effectiveEffort: resolvedEffort ?? 'none',
+          },
         },
-      };
+        lineage,
+      );
     } catch (error) {
       throw new ProviderError({ provider: 'openai', cause: error });
     }
@@ -230,7 +236,9 @@ export function createOpenAIProviderStream(
   ): Promise<GenerateResponse> => {
     const client = await getClient();
     const { streaming } = context;
-    const messages = toOpenAIMessagesGrouped(context.conversation.current);
+    const { messages, lineage } = toOpenAIMessagesGrouped(context.conversation.current, {
+      sources: context.resolvedSources,
+    });
     const tools = await context.toolbox.toOpenAITools();
     const hasTools = tools.length > 0;
 
@@ -402,15 +410,18 @@ export function createOpenAIProviderStream(
         }
       }
 
-      return {
-        content: accumulatedText,
-        toolCalls,
-        usage,
-        metadata: {
-          effectiveModel: resolvedModel,
-          effectiveEffort: resolvedEffort ?? 'none',
+      return withInputLineage(
+        {
+          content: accumulatedText,
+          toolCalls,
+          usage,
+          metadata: {
+            effectiveModel: resolvedModel,
+            effectiveEffort: resolvedEffort ?? 'none',
+          },
         },
-      };
+        lineage,
+      );
     } catch (error) {
       if (error instanceof ProviderError) throw error;
       throw new ProviderError({ provider: 'openai', cause: error });

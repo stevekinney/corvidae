@@ -1,6 +1,7 @@
 import { appendMessages, createConversationHistory } from '../../conversation/index';
 import type { MultiModalContent } from '../../multi-modal';
 import type { ConversationHistory as Conversation, MessageInput, ToolResult } from '../../types';
+import { createMediaPart, inlineBase64Source, sourceFromUrl } from '../media';
 import { isCanonicalToolResultPayload, parseJSONValue, toJSONValue } from '../shared';
 import type {
   AnthropicContentBlock,
@@ -89,41 +90,48 @@ function toGroupableContentPart(block: AnthropicContentBlock): MultiModalContent
       content: toJSONValue(block.content),
     };
   if (block.type === 'document') return toDocumentPart(block);
-  if (block.type === 'image')
-    return block.source.type === 'url'
-      ? { type: 'image', url: block.source.url }
-      : {
-          type: 'image',
-          url: `data:${block.source.media_type};base64,${block.source.data}`,
-          mimeType: block.source.media_type,
-        };
+  if (block.type === 'image') return toImagePart(block);
   return toServerResultPart(block);
 }
+function toImagePart(block: Extract<AnthropicContentBlock, { type: 'image' }>): MultiModalContent {
+  const { source } = block;
+  if (source.type === 'url') return createMediaPart('image', sourceFromUrl(source.url));
+  if (source.type === 'file') {
+    return createMediaPart('image', {
+      kind: 'provider-file',
+      provider: 'anthropic',
+      providerFileId: source.file_id,
+    });
+  }
+  return createMediaPart('image', inlineBase64Source(source.data), {
+    mimeType: source.media_type,
+  });
+}
+
 function toDocumentPart(
   block: Extract<AnthropicContentBlock, { type: 'document' }>,
 ): MultiModalContent {
-  const name = block.title ?? 'document';
-  if (block.source.type === 'base64')
-    return {
-      type: 'document',
-      name,
-      mimeType: block.source.media_type,
-      source: { kind: 'base64', data: block.source.data },
-    };
-  if (block.source.type === 'text') return { type: 'text', text: block.source.data };
-  if (block.source.type === 'url')
-    return {
-      type: 'document',
-      name,
-      mimeType: 'application/octet-stream',
-      source: { kind: 'reference', uri: block.source.url },
-    };
-  return {
-    type: 'document',
+  const name = block.title === undefined ? {} : { name: block.title };
+  const { source } = block;
+  if (source.type === 'base64') {
+    return createMediaPart('document', inlineBase64Source(source.data), {
+      ...name,
+      mimeType: source.media_type,
+    });
+  }
+  if (source.type === 'text') {
+    return createMediaPart(
+      'document',
+      { kind: 'inline', data: source.data, encoding: 'utf8' },
+      { ...name, mimeType: source.media_type },
+    );
+  }
+  if (source.type === 'url') return createMediaPart('document', sourceFromUrl(source.url), name);
+  return createMediaPart(
+    'document',
+    { kind: 'provider-file', provider: 'anthropic', providerFileId: source.file_id },
     name,
-    mimeType: 'application/octet-stream',
-    source: { kind: 'reference', uri: `file:${block.source.file_id}` },
-  };
+  );
 }
 function toServerResultPart(block: AnthropicContentBlock): MultiModalContent | undefined {
   if (block.type === 'container_upload')

@@ -24,7 +24,7 @@ const fixedNow = () => FIXED_NOW;
  * rather than corrupting another test.
  */
 const FULL_DESCRIPTOR: BackendDescriptor = Object.freeze({
-  descriptorVersion: 1,
+  descriptorVersion: 2,
   provider: 'openai',
   endpoint: 'https://proxy.internal.example.com/v1/chat/completions',
   model: 'gpt-4.1',
@@ -44,6 +44,8 @@ const FULL_DESCRIPTOR: BackendDescriptor = Object.freeze({
   }),
   mimeFamilies: Object.freeze(['text'] as const),
   mediaLimits: Object.freeze([]),
+  mediaCounts: Object.freeze([]),
+  providerFetchesRemoteUrls: false,
   generatedAssetBehavior: Object.freeze([
     Object.freeze({
       modality: 'image' as const,

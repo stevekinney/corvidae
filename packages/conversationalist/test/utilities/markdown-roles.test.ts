@@ -135,7 +135,7 @@ Hello
 
     test('preserves all allowlisted frontmatter keys', () => {
       const markdown = `---
-schemaVersion: 5
+schemaVersion: 6
 id: conv-2
 title: "Test Chat"
 status: active

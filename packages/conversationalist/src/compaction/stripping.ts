@@ -2,7 +2,6 @@ import {
   type MultiModalContent,
   type ServerToolResultContent,
   type WebSearchToolResultContent,
-  renderDocumentReferenceText,
 } from '../multi-modal';
 import type { Message } from '../types';
 
@@ -50,8 +49,6 @@ function stripBlock(part: MultiModalContent): MultiModalContent[] {
       const { citations: _citations, ...rest } = part;
       return [rest];
     }
-    case 'document':
-      return [{ type: 'text', text: renderDocumentReferenceText(part) }];
     case 'thinking':
     case 'redacted_thinking':
       // Drop the block — a mutated thinking/redacted block is an invalid

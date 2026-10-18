@@ -118,8 +118,12 @@ function assertAnthropicMultimodalConversion(
     'user',
   ]);
   expect(messages[1]?.content).toEqual([
-    { type: 'image', url: 'https://example.com/chart.png' },
-    { type: 'image', url: 'data:image/png;base64,YWJjMTIz', mimeType: 'image/png' },
+    { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/chart.png' } },
+    {
+      type: 'image',
+      source: { kind: 'inline', data: 'YWJjMTIz', encoding: 'base64' },
+      mimeType: 'image/png',
+    },
   ]);
   expect(toolCalls[0]?.toolCall).toMatchObject({
     id: 'tool-array',

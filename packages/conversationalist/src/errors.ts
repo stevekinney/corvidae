@@ -1,3 +1,5 @@
+import type { ContentSource, MultiModalContent } from './multi-modal';
+
 /**
  * Error codes for Conversationalist errors (kebab-case with `error:` prefix).
  */
@@ -14,7 +16,9 @@ export type ConversationalistErrorCode =
   | 'error:conversation-closed'
   | 'error:conversation-disposed'
   | 'error:revision-conflict'
-  | 'error:operation-cancelled';
+  | 'error:operation-cancelled'
+  | 'error:unsupported-schema-version'
+  | 'error:unsupported-content';
 
 /**
  * Base error class for all Conversationalist errors.
@@ -219,4 +223,68 @@ export function createRevisionConflictError(
     `conversation ${conversationId} expected revision ${expectedRevision}, received ${actualRevision}`,
     { context: { conversationId, expectedRevision, actualRevision } },
   );
+}
+
+/**
+ * Creates an unsupported-schema-version error. Thrown when stored data names a
+ * schema version other than the one this build reads. There is no migration or
+ * dual-read path: stored data from another version is refused, not coerced.
+ */
+export function createUnsupportedSchemaVersionError(
+  schemaVersion: unknown,
+  expected: number,
+): ConversationalistError {
+  return new ConversationalistError(
+    'error:unsupported-schema-version',
+    `unsupported schema version: expected ${expected}, got ${String(schemaVersion)}`,
+    { context: { schemaVersion, expected } },
+  );
+}
+
+export type UnsupportedContentProvider = 'openai' | 'anthropic' | 'gemini';
+
+export type UnsupportedContentReason =
+  | 'modality-not-accepted'
+  | 'source-form-not-accepted'
+  | 'mime-family-not-accepted'
+  | 'mime-type-required'
+  | 'role-not-accepted'
+  | 'part-type-not-accepted';
+
+export interface UnsupportedContentOptions {
+  provider: UnsupportedContentProvider;
+  messageId: string;
+  partIndex: number;
+  partType: MultiModalContent['type'];
+  sourceKind?: ContentSource['kind'] | undefined;
+  reason: UnsupportedContentReason;
+}
+
+/**
+ * Thrown by a provider adapter before any provider call when a message part
+ * cannot be delivered to that provider without loss. Adapters never substitute
+ * marker prose, an empty string, or text alone for a part they cannot carry.
+ */
+export class UnsupportedContentError extends ConversationalistError {
+  readonly provider: UnsupportedContentProvider;
+  readonly messageId: string;
+  readonly partIndex: number;
+  readonly partType: MultiModalContent['type'];
+  readonly sourceKind?: ContentSource['kind'] | undefined;
+  readonly reason: UnsupportedContentReason;
+
+  constructor(options: UnsupportedContentOptions) {
+    super(
+      'error:unsupported-content',
+      `${options.provider} cannot accept ${options.partType} part ${options.partIndex} of message ${options.messageId}: ${options.reason}`,
+      { context: { ...options } },
+    );
+    this.name = 'UnsupportedContentError';
+    this.provider = options.provider;
+    this.messageId = options.messageId;
+    this.partIndex = options.partIndex;
+    this.partType = options.partType;
+    this.sourceKind = options.sourceKind;
+    this.reason = options.reason;
+  }
 }

@@ -1,11 +1,6 @@
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
 import type { JSONValue, ToolCall } from 'armorer/protocol';
-import type {
-  ConversationSnapshot,
-  DocumentContent,
-  ImageContent,
-  TextContent,
-} from 'conversationalist';
+import type { ConversationSnapshot, MediaContent, TextContent } from 'conversationalist';
 
 import type { AccumulatedCost } from '../cost-estimation';
 import type { Effort } from '../providers/types';
@@ -217,18 +212,19 @@ export interface DurableRunDeps {
 export type SessionInputDeliveryMode = 'steer' | 'queue';
 
 /** The subset of `MultiModalContent` (`packages/conversationalist/src/multi-modal.ts`) a caller
- *  may submit as session input: `TextContent` (citation metadata omitted — see below),
- *  `ImageContent`, and `DocumentContent`. An explicit allowlist, not `Exclude<MultiModalContent,
- *  ...>` against the provider-generated/response-only kinds (`ThinkingContent`,
- *  `RedactedThinkingContent`, `ServerToolUseContent`, `WebSearchToolResultContent`,
- *  `ServerToolResultContent`, `ContainerUploadContent`): `conversationalist` is consumed at a
- *  `^` semver range, and a blacklist silently admits any new `MultiModalContent` variant a future
- *  compatible release adds, defeating AB-70's ownership of widening this union deliberately. Every
- *  excluded kind is either rejected outright (the Anthropic adapter throws serializing
- *  `container_upload` and the other response-only blocks as request content), silently dropped
- *  (the OpenAI and Gemini adapters serialize only text, document, and image content), or
- *  misattributed if replayed as if the user had sent it. AB-42's coordinator amendments
- *  (2026-09-02) own this exclusion; AB-70 owns any future widening.
+ *  may submit as session input: `TextContent` (citation metadata omitted — see below) and every
+ *  `MediaContent` member (`ImageContent`, `AudioContent`, `VideoContent`, `DocumentContent`,
+ *  `FileContent`), each addressed by a `ContentSource`. An explicit allowlist, not
+ *  `Exclude<MultiModalContent, ...>` against the provider-generated/response-only kinds
+ *  (`ThinkingContent`, `RedactedThinkingContent`, `ServerToolUseContent`,
+ *  `WebSearchToolResultContent`, `ServerToolResultContent`, `ContainerUploadContent`):
+ *  `conversationalist` is consumed at a `^` semver range, and a blacklist silently admits any new
+ *  `MultiModalContent` variant a future compatible release adds, defeating the deliberate ownership of
+ *  widening this union. Every excluded kind is either rejected outright (the
+ *  Anthropic adapter throws serializing `container_upload` and the other response-only blocks as
+ *  request content; the OpenAI and Gemini adapters reject `container_upload` with an
+ *  `UnsupportedContentError`) or misattributed if replayed as if the user had sent it. AB-42's
+ *  coordinator amendments (2026-09-02) own this exclusion; COR-716 widened the media members.
  *
  *  The text branch forbids `citations` structurally (`citations?: undefined`), not merely via
  *  `Omit<TextContent, 'citations'>`: because TypeScript is structurally typed, `Omit<>` alone
@@ -237,9 +233,7 @@ export type SessionInputDeliveryMode = 'steer' | 'queue';
  *  properties on a non-literal source go unchecked. `citations?: undefined` makes any non-`undefined`
  *  `citations` a type error at every call site, literal or not. */
 export type UserAdmissibleContent =
-  | (Omit<TextContent, 'citations'> & { readonly citations?: undefined })
-  | ImageContent
-  | DocumentContent;
+  (Omit<TextContent, 'citations'> & { readonly citations?: undefined }) | MediaContent;
 
 /** The message-shaped subset of the document's `AgentInput` this contract accepts: exactly
  *  what one `Message.content` can hold (`string | ReadonlyArray<MultiModalContent>`, matching

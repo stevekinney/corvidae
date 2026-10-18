@@ -62,7 +62,7 @@ describe('redactPii', () => {
         role: 'user',
         content: [
           { type: 'text', text: 'My email is test@example.com' },
-          { type: 'image', url: 'https://example.com/image.png' },
+          { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/image.png' } },
         ],
       },
       env,
@@ -70,7 +70,7 @@ describe('redactPii', () => {
 
     expect(getOrderedMessages(conv)[0]!.content).toEqual([
       { type: 'text', text: 'My email is [EMAIL_REDACTED]' },
-      { type: 'image', url: 'https://example.com/image.png' },
+      { type: 'image', source: { kind: 'remote-url', url: 'https://example.com/image.png' } },
     ]);
   });
 

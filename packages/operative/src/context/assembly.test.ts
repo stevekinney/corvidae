@@ -1,10 +1,11 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { describe, expect, it } from 'bun:test';
-import type { JSONValue } from 'conversationalist';
+import type { JSONValue, MediaContent, MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import { createContextAssembler } from './assembly';
 import { createTokenBudget } from './token-budget';
+import type { MediaCostEstimator } from './types';
 
 // AB-330: incidental message timestamps read through a manual runtime instead
 // of the real clock so this file's real-runtime reads are deterministic.
@@ -477,5 +478,121 @@ describe('createContextAssembler stable-prefix mode', () => {
     const result = assembler({ conversation, budget, stablePrefix: true });
 
     expect(result.messages.every((m) => m.cacheBoundary !== true)).toBe(true);
+  });
+});
+
+describe('createContextAssembler: media is costed, never admitted at zero (COR-716)', () => {
+  const pdf: MediaContent = {
+    type: 'document',
+    name: 'spec.pdf',
+    alt: 'abcd',
+    mimeType: 'application/pdf',
+    source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+  };
+  const estimated: MediaCostEstimator = (part, position) => ({
+    ...position,
+    modality: part.type,
+    outcome: 'estimated',
+    tokens: 500,
+    basis: 'catalog-estimate',
+  });
+
+  function withMedia(...content: MultiModalContent[]): Conversation {
+    const conversation = new Conversation();
+    conversation.appendUserMessage(content);
+    return conversation;
+  }
+
+  it('prices each media part and reports the media share of the total', () => {
+    const conversation = withMedia({ type: 'text', text: 'abcdefgh' }, pdf);
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 10_000 }),
+      mediaCostEstimator: estimated,
+    });
+
+    // text 8 chars (2) + media prose "spec.pdf\nabcd" (13 chars, 4) + 500 media tokens
+    expect(result.budgetReport.mediaTokens).toBe(500);
+    expect(result.budgetReport.historyTokens).toBe(2 + 4 + 500);
+    expect(result.messages).toHaveLength(1);
+    expect(result.mediaCosts).toEqual([
+      expect.objectContaining({ outcome: 'estimated', partIndex: 1, tokens: 500 }),
+    ]);
+  });
+
+  it('prices a structural block instead of treating array content as empty', () => {
+    const conversation = new Conversation();
+    conversation.appendAssistantMessage([
+      { type: 'thinking', thinking: 'a'.repeat(400), signature: 'sig' },
+    ]);
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 10_000 }),
+    });
+    expect(result.budgetReport.historyTokens).toBeGreaterThanOrEqual(100);
+  });
+
+  it('leaves a message out, with its typed outcome, when the budget has no media estimator', () => {
+    const conversation = withMedia({ type: 'text', text: 'look' }, pdf);
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 10_000 }),
+    });
+
+    expect(result.messages).toHaveLength(0);
+    expect(result.budgetReport.totalTokens).toBe(0);
+    expect(result.mediaCosts).toEqual([
+      expect.objectContaining({
+        outcome: 'unbounded',
+        reason: 'no-estimator',
+        modality: 'document',
+      }),
+    ]);
+  });
+
+  it('uses the budget’s own estimator when the options name none', () => {
+    const conversation = withMedia(pdf);
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 10_000, mediaCostEstimator: estimated }),
+    });
+    expect(result.messages).toHaveLength(1);
+    expect(result.budgetReport.mediaTokens).toBe(500);
+  });
+
+  it('keeps the admissible messages and reports only the refused part as unadmitted', () => {
+    const conversation = withMedia(pdf);
+    conversation.appendUserMessage('plain follow-up');
+    const refuse: MediaCostEstimator = (part, position) => ({
+      ...position,
+      modality: part.type,
+      outcome: 'unsupported',
+      reason: 'modality-not-accepted',
+    });
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 10_000 }),
+      mediaCostEstimator: refuse,
+    });
+
+    expect(result.messages.map((message) => message.content)).toEqual(['plain follow-up']);
+    expect(result.mediaCosts).toEqual([
+      expect.objectContaining({ outcome: 'unsupported', reason: 'modality-not-accepted' }),
+    ]);
+  });
+
+  it('drops an expensive media message under budget pressure but still reports its cost', () => {
+    const conversation = new Conversation();
+    conversation.appendUserMessage([pdf]);
+    for (let index = 0; index < 6; index++) conversation.appendUserMessage(`filler ${index}`);
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({ maxTokens: 800, minimumResponseTokens: 0 }),
+      mediaCostEstimator: estimated,
+      recentMessageCount: 2,
+    });
+
+    expect(result.messages.some((message) => typeof message.content !== 'string')).toBe(false);
+    expect(result.mediaCosts).toEqual([expect.objectContaining({ outcome: 'estimated' })]);
   });
 });

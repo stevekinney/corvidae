@@ -17,7 +17,7 @@ import type { MultiModalContent } from './multi-modal';
  * Current schema version for serialized conversation data.
  * Increment when making breaking changes to the schema.
  */
-export const CURRENT_SCHEMA_VERSION = 5;
+export const CURRENT_SCHEMA_VERSION = 6 as const;
 
 /** Shared JSON value types have one definition in @lostgradient/tool-protocol. */
 export type { JSONPrimitive, JSONValue } from 'armorer/protocol';

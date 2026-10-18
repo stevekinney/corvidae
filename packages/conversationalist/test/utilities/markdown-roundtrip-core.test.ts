@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { fromMarkdown, toMarkdown } from '../../src';
 import type { AssistantMessage, ConversationHistory, Message } from '../../src/types';
 import { isAssistantMessage } from '../../src/utilities';
+import { CURRENT_SCHEMA_VERSION } from '../../src/versioning';
 
 type ConversationMessage = Message | AssistantMessage;
 type ConversationOverrides = Partial<Omit<ConversationHistory, 'messages' | 'ids'>> & {
@@ -46,7 +47,7 @@ const createConversation = (
   const baseMessages = overrideMessages ?? messages;
   const baseIds = ids ?? baseMessages.map((message) => message.id);
   return {
-    schemaVersion: 1,
+    schemaVersion: CURRENT_SCHEMA_VERSION,
     id: 'conv-1',
     status: 'active',
     metadata: {},
@@ -279,9 +280,9 @@ describe('markdown-roundtrip-core', () => {
           { type: 'text', text: 'Check out this image:' },
           {
             type: 'image',
-            url: 'https://example.com/photo.png',
+            source: { kind: 'remote-url', url: 'https://example.com/photo.png' },
             mimeType: 'image/png',
-            text: 'A beautiful sunset',
+            alt: 'A beautiful sunset',
           },
         ],
       }),
@@ -296,9 +297,9 @@ describe('markdown-roundtrip-core', () => {
     expect(content[0]).toEqual({ type: 'text', text: 'Check out this image:' });
     expect(content[1]).toEqual({
       type: 'image',
-      url: 'https://example.com/photo.png',
+      source: { kind: 'remote-url', url: 'https://example.com/photo.png' },
       mimeType: 'image/png',
-      text: 'A beautiful sunset',
+      alt: 'A beautiful sunset',
     });
   });
 });

@@ -29,7 +29,11 @@ const ANTHROPIC_MODALITIES: ModalityMatrix = Object.freeze({
     output: false,
     sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
   },
-  document: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
+  document: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
   audio: UNSUPPORTED_MODALITY_ENTRY,
   video: UNSUPPORTED_MODALITY_ENTRY,
   file: UNSUPPORTED_MODALITY_ENTRY,
@@ -40,13 +44,16 @@ const ANTHROPIC_MODALITIES: ModalityMatrix = Object.freeze({
 // 2026-09-02: both pages document base64/URL image and file input; neither
 // documents a `file_id` (Files-API) input path for `chat.completions`
 // specifically — that capability is scoped to the Responses API — so
-// `chat.completions` document/image source forms stay inline-only.
+// `chat.completions` takes a PDF as `inline` bytes, a `data-url`, or a Files API
+// `provider-file` id (https://developers.openai.com/api/docs/guides/pdf-files:
+// "Chat Completions supports only .pdf (application/pdf) for both file_data and
+// file_id"), and a `remote-url` as well for an image.
 // `chat.completions` has no audio or video input/output and no image or
 // audio generation (that is the Responses/Realtime API's surface).
 const OPENAI_MODALITIES: ModalityMatrix = Object.freeze({
   text: { input: true, output: true, sourceForms: ['inline'] },
   image: { input: true, output: false, sourceForms: ['inline', 'data-url', 'remote-url'] },
-  document: { input: true, output: false, sourceForms: ['inline'] },
+  document: { input: true, output: false, sourceForms: ['inline', 'data-url', 'provider-file'] },
   audio: UNSUPPORTED_MODALITY_ENTRY,
   video: UNSUPPORTED_MODALITY_ENTRY,
   file: UNSUPPORTED_MODALITY_ENTRY,
@@ -60,12 +67,31 @@ const OPENAI_MODALITIES: ModalityMatrix = Object.freeze({
 // 2.5/2.0 family this seed covers. Neither page documents audio or video
 // *output* on `generateContent` (that is a separate Live/TTS surface), so
 // both stay output: false.
+// `remote-url` is listed for every Gemini model: on a Gemini 2.0 row it is the
+// `providerFetchesRemoteUrls: false` flag (`model-catalog-rows.ts`), not this
+// list, that refuses a remote URL, so the host resolves it instead.
 const GEMINI_MODALITIES: ModalityMatrix = Object.freeze({
   text: { input: true, output: true, sourceForms: ['inline'] },
-  image: { input: true, output: false, sourceForms: ['inline', 'data-url', 'remote-url'] },
-  document: { input: true, output: false, sourceForms: ['inline', 'remote-url'] },
-  audio: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
-  video: { input: true, output: false, sourceForms: ['inline', 'remote-url', 'provider-file'] },
+  image: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  document: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  audio: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
+  video: {
+    input: true,
+    output: false,
+    sourceForms: ['inline', 'data-url', 'remote-url', 'provider-file'],
+  },
   file: UNSUPPORTED_MODALITY_ENTRY,
 });
 

@@ -272,3 +272,60 @@ describe('createSelectionGate: availability-only change', () => {
     expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
   });
 });
+
+describe('createSelectionGate: the step’s input media (COR-716)', () => {
+  const audio = [{ modality: 'audio', sourceForm: 'inline', count: 1 }] as const;
+  const image = [{ modality: 'image', sourceForm: 'inline', count: 1 }] as const;
+
+  /** A source whose request carries whatever media the boundary hands `revalidate`. */
+  function mediaGate(descriptors: readonly BackendDescriptor[]) {
+    return createSelectionGate({
+      request: (context) => ({
+        agentName: 'test-agent',
+        catalogRevision: 1,
+        policyRevision: 1,
+        availabilitySnapshotRevision: 1,
+        ...(context?.inputMedia === undefined ? {} : { inputMedia: context.inputMedia }),
+      }),
+      options: () => ({ catalog: catalogOf(descriptors), now, newPlanId: freshNewPlanId() }),
+    });
+  }
+
+  it('fails a step whose media no candidate accepts, typed, instead of leaving it to the provider', () => {
+    const gate = mediaGate([anthropic]);
+    const first = gate.revalidate();
+    expect(first.outcome).toBe('selected');
+
+    // Anthropic takes no audio input.
+    const second = gate.revalidate({ inputMedia: audio });
+
+    expect(second.outcome).toBe('no-candidate');
+    expect(second.failure?.exclusionCode).toBe('incompatible-modality');
+    expect(first.selected).toEqual({ provider: 'anthropic', model: 'claude-fable-5' });
+  });
+
+  it('selects normally when the media is one the candidate accepts', () => {
+    const gate = mediaGate([anthropic]);
+    gate.revalidate();
+
+    expect(gate.revalidate({ inputMedia: image }).outcome).toBe('selected');
+  });
+
+  it('returns the same plan by reference when neither the revisions nor the media moved', () => {
+    const gate = mediaGate([anthropic]);
+    const first = gate.revalidate({ inputMedia: image });
+
+    expect(gate.revalidate({ inputMedia: [...image] })).toBe(first);
+  });
+
+  it('re-evaluates when only the media changed, though no revision moved', () => {
+    const gate = mediaGate([anthropic]);
+    const withImage = gate.revalidate({ inputMedia: image });
+
+    const withAudio = gate.revalidate({ inputMedia: audio });
+
+    expect(withImage.outcome).toBe('selected');
+    expect(withAudio).not.toBe(withImage);
+    expect(withAudio.outcome).toBe('no-candidate');
+  });
+});

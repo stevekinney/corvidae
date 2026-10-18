@@ -104,6 +104,52 @@ describe('SessionHandle.startFreshAttempt()', () => {
     ).toEqual([]);
   });
 
+  it('carries none of the source transcript’s media into the fresh attempt, only the artifact’s own text', async () => {
+    const runtime = createManualRuntimeServices({ origin: new Date(FIXTURE_NOW).toISOString() });
+    const store = createSessionStore(textValueStore(new MemoryStorage()), { runtime });
+    const handle = createSessionHandle('session-media', {
+      store,
+      agentName: 'implementer',
+      runOptions: {
+        ...createTestRunOptions(createInstantGenerate('Looked at the document.')),
+        mediaCostEstimator: (part, position) => ({
+          ...position,
+          modality: part.type,
+          outcome: 'estimated',
+          tokens: 10,
+          basis: 'catalog-estimate',
+        }),
+      },
+      runtime,
+      resolveFreshAttemptSource: resolverFor(createFixtureSource()),
+    });
+    await handle
+      .run([
+        { type: 'text', text: 'Read this.' },
+        {
+          type: 'document',
+          name: 'secret-plan.pdf',
+          source: { kind: 'managed-asset', assetId: 'asset-secret', revision: 2 },
+        },
+      ])
+      .result();
+    await yieldToPortableEventLoop();
+
+    const fresh = await handle.startFreshAttempt({
+      artifact: await distinctArtifact(),
+      instructions: INSTRUCTIONS,
+    });
+    const { conversationHistory } = await fresh.getSession();
+    const seeded = Object.values(conversationHistory.messages);
+
+    // The handoff is an explicit projection of validated fields: the seed is
+    // text, and nothing of the source's document reaches it.
+    expect(seeded.every((message) => typeof message.content === 'string')).toBe(true);
+    const seed = seeded.map((message) => textOf(message.content)).join('\n');
+    expect(seed).not.toContain('asset-secret');
+    expect(seed).not.toContain('secret-plan.pdf');
+  });
+
   it('seeds only the approved instructions and one rendering of the artifact', async () => {
     const { handle } = createSourceFixture({
       resolveFreshAttemptSource: resolverFor(createFixtureSource()),

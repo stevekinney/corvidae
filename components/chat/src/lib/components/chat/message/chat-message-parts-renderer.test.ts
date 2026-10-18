@@ -36,7 +36,11 @@ afterEach(() => {
 });
 
 function imagePart(index: number, url: string): ImageMessagePart {
-  return { type: 'image', key: `m:image:${index}`, image: { type: 'image', url } };
+  return {
+    type: 'image',
+    key: `m:image:${index}`,
+    image: { type: 'image', source: { kind: 'remote-url', url } },
+  };
 }
 
 describe('toRenderUnits', () => {

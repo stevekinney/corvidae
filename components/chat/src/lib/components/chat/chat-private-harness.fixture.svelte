@@ -87,7 +87,6 @@
   let unrelatedTooltipTrigger = $state<HTMLButtonElement | null>(null);
   let streaming = $state(false);
   let streamingStatus = $state('');
-  const submittedImageUrls = new Set<string>();
 
   // --- Tool-call controls ---
   let toolName = $state('exports_check');
@@ -460,7 +459,6 @@
   function clearConversation(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
-    revokeSubmittedImageUrls();
     conversation = createConversation({ id: 'harness-cleared' });
     readReceipts = undefined;
     directTypingParticipants = undefined;
@@ -468,10 +466,32 @@
     historyPage = 0;
   }
 
-  type HarnessImageContent = Extract<MultiModalContent, { type: 'image' }> & {
+  /**
+   * What a Playwright test hands the append hook: an image addressed by URL,
+   * with optional intrinsic dimensions. The harness turns it into the
+   * `ImageContent` a transcript holds (a `source`, `alt`, and `metadata`).
+   */
+  type HarnessImageInput = {
+    type: 'image';
+    url: string;
+    mimeType?: string;
+    text?: string;
     width?: number;
     height?: number;
   };
+  function toImageContent(input: HarnessImageInput): Extract<MultiModalContent, { type: 'image' }> {
+    return {
+      type: 'image',
+      source: input.url.startsWith('data:')
+        ? { kind: 'data-url', url: input.url }
+        : { kind: 'remote-url', url: input.url },
+      ...(input.mimeType === undefined ? {} : { mimeType: input.mimeType }),
+      ...(input.text === undefined ? {} : { alt: input.text }),
+      ...(input.width !== undefined && input.height !== undefined
+        ? { metadata: { width: input.width, height: input.height } }
+        : {}),
+    };
+  }
   type ToolScenario =
     | 'pending'
     | 'text-success'
@@ -482,7 +502,7 @@
     | 'grouped-navigation';
 
   type ChatHarnessWindow = Window & {
-    corvidaeChatHarnessAppendImages?: (images: HarnessImageContent[]) => void;
+    corvidaeChatHarnessAppendImages?: (images: HarnessImageInput[]) => void;
     corvidaeChatHarnessAppendToolScenario?: (scenario: ToolScenario) => void;
     corvidaeChatHarnessSetCustomMessageSnippets?: (enabled: boolean) => void;
     corvidaeChatHarnessUseAdapter?: () => void;
@@ -510,14 +530,24 @@
     },
   };
 
-  function createSubmittedImageContent(attachment: { file: File }): HarnessImageContent {
-    const url = URL.createObjectURL(attachment.file);
-    submittedImageUrls.add(url);
+  /**
+   * Stores a submitted image as a data URL: a transcript holds only addresses
+   * that survive being persisted, and a `blob:` URL does not.
+   */
+  async function createSubmittedImageContent(attachment: {
+    file: File;
+  }): Promise<Extract<MultiModalContent, { type: 'image' }>> {
+    const bytes = new Uint8Array(await attachment.file.arrayBuffer());
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
     return {
       type: 'image',
-      url,
+      source: {
+        kind: 'data-url',
+        url: `data:${attachment.file.type || 'application/octet-stream'};base64,${btoa(binary)}`,
+      },
       mimeType: attachment.file.type,
-      text: attachment.file.name,
+      alt: attachment.file.name,
     };
   }
 
@@ -697,17 +727,12 @@
     conversation = appendMessages(conversation, firstCall, secondCall, firstResult, secondResult);
   }
 
-  function revokeSubmittedImageUrls(): void {
-    for (const url of submittedImageUrls) URL.revokeObjectURL(url);
-    submittedImageUrls.clear();
-  }
-
   onMount(() => {
     const harnessWindow = window as ChatHarnessWindow;
     harnessWindow.corvidaeChatHarnessAppendImages = (images) => {
       conversation = appendMessages(conversation, {
         role: 'user',
-        content: images,
+        content: images.map(toImageContent),
       });
     };
     harnessWindow.corvidaeChatHarnessAppendToolScenario = appendToolScenario;
@@ -743,12 +768,14 @@
   });
 
   // --- Chat callbacks ---
-  function handleSubmit(event: ChatSubmitEvent): void {
+  async function handleSubmit(event: ChatSubmitEvent): Promise<void> {
     const content = typeof event.message.content === 'string' ? event.message.content : '';
     record('onSubmit', JSON.stringify({ content, attachments: event.attachments.length }));
-    const imageParts: MultiModalContent[] = event.attachments
-      .filter((attachment) => attachment.kind === 'image')
-      .map((attachment) => createSubmittedImageContent(attachment));
+    const imageParts: MultiModalContent[] = await Promise.all(
+      event.attachments
+        .filter((attachment) => attachment.kind === 'image')
+        .map((attachment) => createSubmittedImageContent(attachment)),
+    );
     const messageContent =
       imageParts.length > 0
         ? [
@@ -806,7 +833,6 @@
   onDestroy(() => {
     cancelPending('destroy');
     cancelPendingHistoryRequest();
-    revokeSubmittedImageUrls();
   });
 
   const surfaceMode = $derived<'default' | 'transparent'>(
