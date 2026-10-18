@@ -1,4 +1,8 @@
-import type { EvidenceProjectionRecord, ProjectionStatus } from './evidence-projection-schema';
+import type {
+  EmbeddingProfile,
+  EvidenceProjectionRecord,
+  ProjectionStatus,
+} from './evidence-projection-schema';
 import type { EvidenceRecord, EvidenceSupersession } from './evidence-schema';
 
 /**
@@ -11,6 +15,37 @@ export interface EvidenceProjectionCommit {
   readonly evidence?: readonly EvidenceRecord[];
   /** One new revision per (namespace, id); revision 1 creates. */
   readonly projections?: readonly EvidenceProjectionRecord[];
+  /**
+   * An opaque record written in the same batch, conditioned on `key` being
+   * absent. The store never reads or decodes what `build` returns; the
+   * transition engine writes its receipt here so a transition is applied with its
+   * receipt or not at all.
+   *
+   * `build` runs once for every planning attempt, with that attempt's per-record
+   * outcomes, and the bytes it returns ride in the batch that attempt hands to
+   * the backend. A batch that is lost and re-planned therefore builds the
+   * receipt again over what the store now holds, so a receipt records exactly
+   * what the batch that carries it did, never a prediction. The key must not be
+   * any key the commit's records write, nor lie in the evidence or projection
+   * key families; the commit is `invalid-commit` otherwise.
+   */
+  readonly receipt?: {
+    readonly key: string;
+    readonly build: (outcomes: EvidenceProjectionCommitResult) => Uint8Array;
+  };
+  /**
+   * Keys the caller read to decide this commit, with the raw bytes it saw
+   * (`undefined` when the key was absent). Each becomes a condition of the batch,
+   * counted against the batch cap: the stored bytes must still equal the recorded
+   * ones, or the key must still be absent. The store never interprets an entry. A
+   * change to any of them since the caller read it fails the commit with
+   * `ProjectionRevisionConflictError`, so a decision made on state that has since
+   * moved cannot apply.
+   */
+  readonly readSet?: ReadonlyArray<{
+    readonly key: string;
+    readonly value: Uint8Array | undefined;
+  }>;
 }
 
 export interface EvidenceProjectionCommitResult {
@@ -46,14 +81,63 @@ export interface EvidenceProjectionCommitResult {
  * A backend whose `Storage` cannot do compare-and-swap fails loudly at the first
  * commit instead of losing a write.
  *
- * This contract writes no receipt, emits no event, and takes no operation id;
- * those belong to the transition engine layered over it.
+ * This contract interprets no receipt, emits no event, and takes no operation
+ * id; those belong to the transition engine layered over it. A commit may carry
+ * one opaque receipt put, which the store writes in the same batch and never
+ * reads.
  */
+/**
+ * One stored record as the store returned it: the key it lives under, the exact
+ * bytes read there (`undefined` when the key is absent), and the record they
+ * decode to. A caller that binds its reads to a commit records `key` and `raw`,
+ * never a re-encoding of `record`: bytes a store holds that decode validly but
+ * are not the canonical encoding must still match themselves.
+ */
+export interface RawRead<Record> {
+  readonly key: string;
+  readonly raw: Uint8Array | undefined;
+  readonly record: Record | undefined;
+}
+
+/** The reads whose bytes a commit's `readSet` is made of. */
+export interface EvidenceProjectionRawReads {
+  evidence(tenantId: string, id: string): Promise<RawRead<EvidenceRecord>>;
+  evidenceSupersession(tenantId: string, id: string): Promise<RawRead<EvidenceSupersession>>;
+  projection(
+    tenantId: string,
+    namespace: string,
+    id: string,
+  ): Promise<RawRead<EvidenceProjectionRecord>>;
+  projectionRevision(
+    tenantId: string,
+    namespace: string,
+    id: string,
+    revision: number,
+  ): Promise<RawRead<EvidenceProjectionRecord>>;
+}
+
+/**
+ * The key of the raw-read path. It is internal to this package: the transition
+ * engine reaches it to record what it read, and nothing else should. It keeps
+ * the key layout out of the storage contract.
+ */
+export const RAW_READS = Symbol('EvidenceProjectionRawReads');
+
 export interface EvidenceProjectionStorage {
+  readonly [RAW_READS]: EvidenceProjectionRawReads;
   init(): Promise<void>;
   close(): Promise<void>;
   /** Applies everything in one atomic batch, or nothing. */
   commit(commit: EvidenceProjectionCommit): Promise<EvidenceProjectionCommitResult>;
+  /** The bytes under a commit's receipt key, or `null`. The store attaches no meaning to them. */
+  getReceipt(key: string): Promise<Uint8Array | null>;
+  /**
+   * The embedding profile the namespace's recallable embeddings share, or
+   * `undefined` when no commit has written an embedded record there. Every commit
+   * that creates or rebuilds an embedded record plans this marker in its own
+   * batch, so two commits cannot give a namespace incompatible embeddings.
+   */
+  getEmbeddingProfile(tenantId: string, namespace: string): Promise<EmbeddingProfile | undefined>;
   /** `commit({ tenantId: record.tenantId, evidence: [record] })`, returning that record's outcome. */
   appendEvidence(record: EvidenceRecord): Promise<'appended' | 'duplicate'>;
   /** `commit({ tenantId: record.tenantId, projections: [record] })`, returning that record's outcome. */
@@ -136,7 +220,9 @@ export type EvidenceProjectionCommitErrorCode =
   | 'evidence-not-found'
   | 'evidence-superseded'
   | 'projection-not-found'
-  | 'projection-terminal';
+  | 'projection-terminal'
+  | 'receipt-exists'
+  | 'embedding-profile-conflict';
 
 export class EvidenceProjectionCommitError extends Error {
   constructor(

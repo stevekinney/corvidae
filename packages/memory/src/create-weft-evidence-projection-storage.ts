@@ -8,7 +8,10 @@ import {
   DEFAULT_PROJECTION_KEY_PREFIX,
 } from './evidence-projection-keys';
 import type { EvidenceProjectionStorage } from './evidence-projection-storage';
-import { createEvidenceProjectionStoreCore } from './evidence-projection-store-core';
+import {
+  createEvidenceProjectionStoreCore,
+  type WrapApply,
+} from './evidence-projection-store-core';
 
 export interface CreateWeftEvidenceProjectionStorageOptions {
   /** Key prefix of the evidence family. Must be disjoint from every other prefix in use. */
@@ -21,6 +24,8 @@ export interface CreateWeftEvidenceProjectionStorageOptions {
    * engine.
    */
   disposeUnderlyingStorage?: boolean;
+  /** Wraps the store's one write boundary. For tests: fail, count, or park a batch. */
+  wrapApply?: WrapApply;
 }
 
 /**
@@ -49,6 +54,7 @@ export function createWeftEvidenceProjectionStorage(
   const core = createEvidenceProjectionStoreCore({
     keys: createEvidenceProjectionKeys(evidencePrefix, projectionPrefix),
     reader: { get: (key) => storage.get(key), keys: (prefix) => storageKeys(storage, prefix) },
+    ...(options?.wrapApply === undefined ? {} : { wrapApply: options.wrapApply }),
     apply: (batch) => storageConditionalBatch(storage, batch.conditions, batch.operations),
   });
 

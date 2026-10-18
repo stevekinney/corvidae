@@ -16,6 +16,7 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
 - [Core API](#core-api)
 - [Storage Backends](#storage-backends)
 - [Evidence and Projections](#evidence-and-projections)
+- [Memory Transitions](#memory-transitions)
 - [Hooks](#hooks)
 - [Tools](#tools)
 - [Ingestion](#ingestion)
@@ -496,9 +497,114 @@ const indexes = await rebuildDerivedIndexes({ storage, tenantId, namespace, auth
 indexes.lexical.query('denver', { limit: 5 });
 ```
 
+A vector index takes one embedding model and one dimension, so each namespace keeps an _embedding profile_ marker: the model, the dimensions, and a generation. Every `commit()` that creates or rebuilds an embedded projection conditions on the marker's exact bytes (or on its absence) and puts it back with the generation plus one, in the same batch. A condition alone would serialize a commit only against commits that write the same key, so the bump is what makes concurrent embedded writes to one namespace serialize through the marker: a write that loses its batch re-plans against the winner's result, up to the store's bounded attempt budget (three attempts). Writes that share a profile therefore land one after the other, but when more of them contend than the budget covers, the ones that run out of attempts are `conflicted` (`revision-conflict`) with nothing written, and can be resubmitted. A creation or a migration that would leave incompatible embeddings fails with `EvidenceProjectionCommitError` code `embedding-profile-conflict`, which the transition engine reports as `conflicted`, whoever submits it. The profile can change only when the commit leaves no recallable (`active` or `demoted`) embedded projection of the old profile, so a summary may adopt a new model when it supersedes every embedded candidate and may not when it only demotes them. `getEmbeddingProfile(tenantId, namespace)` reads the marker. A commit that only retires or demotes projections never touches it, and no transition makes a retired projection recallable again.
+
 `createInMemoryEvidenceProjectionStorage({ maxEvidence, maxProjectionRevisions })` satisfies the same contract without Weft and refuses a commit that would exceed either bound. Bureau supplies durable storage by passing the `Storage` it already holds to `createWeftEvidenceProjectionStorage()`; the key layout is an implementation detail.
 
-`commit()` is the one write primitive. It checks the whole commit (tenant, digests, supersession, revision order, terminal statuses, references) and applies it in a single conditional batch, or applies nothing. It writes no receipt and emits no event. `consolidateProjections()` and `projectAssetChunks()` are the projection-based successors of in-place consolidation and chunked ingestion.
+`commit()` is the one write primitive. It checks the whole commit (tenant, digests, supersession, revision order, terminal statuses, references) and applies it in a single conditional batch, or applies nothing. It interprets no receipt and emits no event: both belong to the transition engine in [Memory Transitions](#memory-transitions), which hands `commit()` an opaque receipt to write in the same batch. `consolidateProjections()` and `projectAssetChunks()` are the projection-based successors of in-place consolidation and chunked ingestion.
+
+## Memory Transitions
+
+`commit()` makes one change atomic. It does not decide whether the change should happen, remember that it already did, or tell anyone. The transition engine adds those three things. You hand it a typed _proposal_; it validates the proposal, applies it through `commit()` together with a durable _receipt_, and reports one of five outcomes. The receipt is written in the same conditional batch as the records, so a transition exists with its receipt or not at all, and asking again with the same operation id returns the receipt instead of applying the change twice.
+
+Transitions act on evidence and projections only. `MemoryRecord.version` is not part of this path.
+
+```ts
+import {
+  createInMemoryEvidenceProjectionStorage,
+  createMemoryAuthority,
+  createTransitionEngine,
+} from '@lostgradient/memory';
+
+const storage = createInMemoryEvidenceProjectionStorage();
+const engine = createTransitionEngine({
+  storage,
+  sink: (event) => console.log(event.kind, event.operationId),
+  now: () => Date.now(),
+});
+
+const authority = createMemoryAuthority({
+  principal: { kind: 'user', id: 'user-1' },
+  tenantId: 'tenant-a',
+  ownerId: 'owner-1',
+  purpose: 'correct a fact',
+  capabilities: ['memory:write'],
+  policyRevision: 'authorization:1',
+  projection: 'bureau',
+});
+
+const result = await engine.submit({
+  kind: 'correct-evidence',
+  operationId: 'correction-42',
+  tenantId: 'tenant-a',
+  authority,
+  successor: newEvidence, // an evidence record without `writtenAt`, whose `supersedes` names the old one
+  projections: [newFact], // created from the successor, without the fields the engine stamps
+  revisions: [
+    {
+      namespace: 'notes',
+      id: 'old-fact',
+      expectedRevision: 1,
+      change: { kind: 'superseded', supersededBy: { id: 'new-fact', revision: 1 } },
+    },
+  ],
+});
+```
+
+### Proposals
+
+A proposal carries a stable `operationId`, the `tenantId`, and a `MemoryAuthority`. The authority's `policyRevision` is the proposal's policy revision. A proposal does not carry the fields the engine stamps from its clock: `writtenAt` on evidence, `transition.at` on a projection, and the `revision`, `status`, and `policyRevision` of a created projection.
+
+- **`append-evidence`**: new evidence records.
+- **`correct-evidence`**: a successor evidence record that names the evidence it supersedes. It may carry, in the same proposal and so the same batch, projections created from the successor and revisions that supersede the old projections.
+- **`create-projection`**: new projections, each at revision 1.
+- **`revise-projection`**: one or more revisions. Each names `expectedRevision` and one change: `demoted`, `superseded`, `revoked`, or `rebuilt`.
+- **`consolidate`**: fold two or more projections into a summary, with the candidates retired or demoted in the same batch. `consolidateProjections()` builds this proposal from your `summarize` and `embed` functions and submits it; it takes the engine and nothing else to read with, reading the candidates through `engine.storage`, so it cannot read one store and submit to another.
+
+A supersession names both sides: a projection the proposal creates lists, in its `supersedes`, exactly the revisions the proposal retires into it, and each of those revisions names it as its `supersededBy`. A successor that is rebuilt or already stored has no list to compare, so only the retired side is checked for it.
+
+A proposal made only of revocations needs `memory:revoke`; anything else it carries needs `memory:write`. Every change is authorized against the evidence the projection it replaces rests on, and a rebuild is authorized against the evidence it brings as well.
+
+A proposal that fails its schema throws `MemoryTransitionProposalError` before anything is read or emitted. Every other submission ends in one of the outcomes below.
+
+### Outcomes
+
+- **`committed`**: applied. `receipt` is the stored `TransitionReceipt`, and `replayed` is `true` when the receipt already existed (an exact retry, or a lost batch that turned out to have landed).
+- **`rejected`**: refused, with a `reason` and a `detail` naming the record. The validator's reasons are `consolidation-requires-two-candidates`, `unauthorized`, `evidence-not-covered`, `source-digest-mismatch`, `prior-state-not-preserved`, `temporal-inconsistency`, `retention-expired`, and `type-invariant-violated`. The store's own codes (`invalid-commit`, `evidence-not-found`, `projection-not-found`, a record rejection code, `batch-limit`, `capacity`) are reasons too.
+- **`conflicted`**: stored state contradicts the proposal's premise: `stale-revision` (an expected revision is not the current one), `revision-conflict`, `evidence-superseded`, `projection-terminal`, or `evidence-immutable`. Nothing was written. Read the current state and propose again.
+- **`canceled`**: the `AbortSignal` passed to `submit()` was aborted before the batch call, including while the proposal was being validated, in which case it wins over a `rejected` or `conflicted` result decided before the batch. After the batch call, aborting changes nothing and the result is `committed`.
+- **`unknown`**: the batch call or a step after it failed and the receipt could not settle it. `error` is the cause. Submit the same proposal again: if the batch had landed the retry returns its receipt, and if it had not the retry commits.
+
+The validator runs its checks in a fixed order and the first failure decides the reason: candidate count (consolidation only), authorization, evidence coverage, source faithfulness, prior-state preservation, temporal consistency, retention, then the type-specific invariants of each projection kind. It runs to completion before the engine looks for a stale revision, so a proposal that is both invalid and stale is `rejected`, not `conflicted`: a revision that expects an older revision is checked against that revision (or the current one, when the expected revision does not exist). A revision of a projection that does not exist at all has nothing to check against and is `conflicted` as stale.
+
+Everything validation read is bound to the batch: `commit()` takes a `readSet`, the keys the engine read with the exact bytes the store returned (or their absence, never a re-encoding, so a valid record stored in non-canonical bytes guards itself), and turns each into a condition. A decision made on state that has since changed, a successor revoked or a predecessor superseded between validation and the batch, cannot apply, and the submission is `conflicted`. Before any `rejected` or `conflicted` that was decided ahead of the batch, the engine re-reads the receipt for the operation id: an identical submission that committed first has advanced the very state this one found stale, and its receipt is the answer.
+
+Reusing an operation id with a different proposal throws `TransitionIdentifierConflictError` and changes nothing. An operation id is unique per tenant. The idempotency digest is `sha256:` over the canonical JSON of the parsed proposal, with every object's keys sorted and arrays left in order. It covers every field of the proposal, including caller-supplied times such as `eventAt`, and none of the fields the engine stamps, so retrying under a later clock is still an exact retry. Two identical submissions in flight at once commit once and both callers receive the same receipt.
+
+### Receipts
+
+A `TransitionReceipt` records the operation id, tenant, proposal kind and digest, the authority it ran under, when it was requested and committed, the checks that ran, and each evidence record and projection revision it wrote with its digest. A consolidation receipt adds the candidates and their digests, the projector and prompt revisions, the summary, and what was superseded or demoted. A receipt holds references and digests, never content. Each `outcome` on an evidence record or projection revision (`appended`, `written`, or `duplicate`) is what the batch that carried the receipt did with it: the store builds the receipt for every planning attempt of the commit, so a record another writer stored byte for byte in the meantime reads `duplicate`, and the receipt is never a prediction. Only committed receipts are stored. `engine.getReceipt(tenantId, operationId)` reads one, and another tenant's receipt is unreachable with your id because the tenant is part of the key.
+
+Receipts are kept for at least the tenant's audit-receipt retention. The engine does not prune them.
+
+### Events
+
+The engine awaits an injected `sink` for each lifecycle event and never writes to the fleet event feed. A sink that throws changes nothing. Delivery is at most once per attempt. Every event carries the operation id as its causal identifier, and source references carry ids and digests, never content.
+
+| Outcome | Events |
+| --- | --- |
+| `committed` | `requested`, `validation-started`, `committed`, then one `superseded` for each projection or evidence record superseded |
+| `rejected` | `requested`, `validation-started`, `rejected` |
+| `conflicted` | `requested`, `validation-started`, `conflicted` |
+| `canceled` | what was already emitted, then `canceled` |
+| `unknown` | `requested`, `validation-started`, `failed` |
+| An existing receipt found before validation | `requested`, `recovery-reconciled` |
+| A receipt found only after a lost batch | `requested`, `validation-started`, `recovery-reconciled` |
+| A reused operation id | `requested`, then the thrown `TransitionIdentifierConflictError` |
+
+### Testing a failure
+
+`createInMemoryEvidenceProjectionStorage()` and `createWeftEvidenceProjectionStorage()` accept `wrapApply`, which wraps the store's one write boundary so a test can fail, count, or park a batch. The engine's `hooks` (`beforeBatch`, `afterBatch`, `beforeEvents`) mark its own boundaries; a test abandons work by never resolving one. Production code sets neither.
 
 ## Hooks
 
