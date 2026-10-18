@@ -34,6 +34,7 @@ import { getTaskDetailRestBinding } from './get-task-detail.ts';
 import { getTaskDiagnosticsRestBinding } from './get-task-diagnostics.ts';
 import { getUpdateResultRestBinding } from './get-update-result.ts';
 import { getWorkflowAttributesRestBinding } from './get-workflow-attributes.ts';
+import { getWorkflowDefinitionRestBinding } from './get-workflow-definition.ts';
 import { getWorkflowEventsRestBinding } from './get-workflow-events.ts';
 import * as workflowObservability from './get-workflow-observability.ts';
 import { getWorkflowResultRestBinding } from './get-workflow-result.ts';
@@ -46,6 +47,7 @@ import { listCatalogSourcesRestBinding } from './list-catalog-sources.ts';
 import { listCheckpointsRestBinding } from './list-checkpoints.ts';
 import { listReviewsRestBinding } from './list-reviews.ts';
 import { listSchedulesRestBinding } from './list-schedules.ts';
+import { listWorkflowDefinitionsRestBinding } from './list-workflow-definitions.ts';
 import { listWorkflowRevisionsRestBinding } from './list-workflow-revisions.ts';
 import { listWorkflowsRestBinding } from './list-workflows.ts';
 import { pauseScheduleRestBinding } from './pause-schedule.ts';
@@ -99,6 +101,8 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   bulkDeleteWorkflowsRestBinding,
   bulkMutateWorkflowTagsRestBinding,
   listCatalogSourcesRestBinding,
+  listWorkflowDefinitionsRestBinding,
+  getWorkflowDefinitionRestBinding,
   getCatalogDiagnosticsRestBinding,
   getRealmDiagnosticsRestBinding,
   getWorkflowRestBinding,

@@ -1,4 +1,5 @@
 export {
+  WorkflowCatalogActivationConflictError,
   WorkflowCatalogConflictError,
   WorkflowRefreshCoordinator,
   WorkflowRevisionNotInstalledError,
