@@ -65,6 +65,7 @@
     EAGER_REVISION_HEDGE,
     type WorkflowCatalogActivePointerLike,
   } from '../../../lib/workflow-revision.ts';
+  import { readWorkflowWorkerState } from '../../../lib/workflow-worker-binding.ts';
   import { failureCategoryLabel } from './failure-category.ts';
   import {
     actionConfirmTier,
@@ -127,6 +128,8 @@
   const presentation = $derived(finalizerStatusPresentation(workflow.status, finalizerStatus));
   const actions = $derived(availableActions(workflow.status));
   const canRestart = $derived(onRestart !== undefined && isTerminalStatus(workflow.status));
+
+  const workerReading = $derived(readWorkflowWorkerState(workflow));
 
   const revisionComparison = $derived(
     classifyRevisionAgainstActive(workflow.revision, activeRevision),
@@ -255,6 +258,22 @@
             text="This run predates revision pinning (WFT-17) — no persisted revision to compare against the active one."
           >
             <Badge variant="neutral">Unpinned (pre-revision record)</Badge>
+          </Tooltip>
+        {/if}
+        {#if workerReading.kind === 'bound'}
+          <Tooltip
+            text={`Worker versioning policy. Build ${workerReading.record.current.buildId} of deployment ${workerReading.record.current.deploymentName}. See the Overview tab for the binding and history.`}
+          >
+            <Badge variant={workerReading.policy.mode === 'auto-upgrade' ? 'accent' : 'neutral'}>
+              Worker: {workerReading.policy.mode === 'auto-upgrade' ? 'auto-upgrade' : 'pinned'}
+            </Badge>
+          </Tooltip>
+        {:else if workerReading.kind === 'malformed'}
+          <Tooltip text={`The worker binding could not be read: ${workerReading.reason}.`}>
+            <Badge variant="warning">
+              <TriangleAlert aria-hidden="true" size={11} />
+              Worker binding unreadable
+            </Badge>
           </Tooltip>
         {/if}
         {#if presentation.tooltip}

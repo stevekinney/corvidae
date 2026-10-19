@@ -101,3 +101,53 @@ describe('FleetView — deployment groups empty state', () => {
     expect(queryByText('No workers connected')).toBeNull();
   });
 });
+
+describe('FleetView — one fleet across both transports (COR-160)', () => {
+  test('counts WebSocket and long-poll workers together and names each deployment’s transports', () => {
+    const { getAllByText, getByText } = render(FleetView, {
+      props: {
+        workers: [
+          worker({ id: 'wkr_ws', transport: 'websocket' }),
+          worker({ id: 'wkr_lp_1', transport: 'long-poll' }),
+          worker({ id: 'wkr_lp_2', transport: 'long-poll' }),
+        ],
+        deployments: [
+          deployment({
+            deploymentName: 'api-prod',
+            transports: ['websocket', 'long-poll'],
+            workers: 3,
+          }),
+          deployment({ deploymentName: 'batch', transports: ['long-poll'], workers: 0 }),
+        ],
+        adminGate: OPEN_GATE,
+        onDrainDeployment: () => {},
+        onResumeDeployment: () => {},
+      },
+    });
+
+    expect(getByText('Total workers').nextElementSibling?.textContent).toBe('3');
+    expect(
+      getByText('Transports').nextElementSibling?.textContent?.replace(/\s+/g, ' ').trim(),
+    ).toBe('1 WebSocket / 2 HTTP long-poll');
+    expect(getByText('WebSocket, HTTP long-poll')).not.toBeNull();
+    expect(getAllByText('HTTP long-poll').length).toBeGreaterThan(0);
+  });
+});
+
+describe('FleetView — two builds of one deployment', () => {
+  test('lists each build as its own group instead of failing on a duplicate key', () => {
+    const { getByText, getAllByText } = render(FleetView, {
+      props: {
+        workers: [worker({ id: 'wkr_a' }), worker({ id: 'wkr_b' })],
+        deployments: [deployment({ buildId: 'build-1' }), deployment({ buildId: 'build-2' })],
+        adminGate: OPEN_GATE,
+        onDrainDeployment: () => {},
+        onResumeDeployment: () => {},
+      },
+    });
+
+    expect(getAllByText('api-prod')).toHaveLength(2);
+    expect(getByText(/build-1/)).not.toBeNull();
+    expect(getByText(/build-2/)).not.toBeNull();
+  });
+});

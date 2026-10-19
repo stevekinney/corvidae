@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Badge, EmptyState, Table } from '@lostgradient/cinder';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import {
@@ -102,7 +103,7 @@
           </Table.Row>
         </Table.Header>
         <Table.Body>
-          {#each rejections as rejection (`${rejection.rejectedAt}:${rejection.workerId ?? ''}`)}
+          {#each keyedByOccurrence(rejections, (rejection) => `${rejection.rejectedAt}:${rejection.workerId ?? ''}`) as { key, item: rejection } (key)}
             <Table.Row>
               <Table.Cell>
                 <Badge variant="danger">{REGISTRATION_REJECTION_LABELS[rejection.code]}</Badge>

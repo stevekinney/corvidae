@@ -15,6 +15,7 @@ function diagnostic(workerId: string): unknown {
       instance: {
         workerId,
         queue: 'default',
+        transport: 'websocket',
         health: 'active',
         connectedAt: 1,
         startedAt: 1,

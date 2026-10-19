@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { startHost, type Host } from './host.ts';
+import { deriveStartOverrideSigningSecret, startHost, type Host } from './host.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -143,6 +143,30 @@ describe('the relay to Weft’s server', () => {
     const body = (await response.json()) as { id: number; result: Principal };
     expect(body.id).toBe(7);
     expect(body.result.subject).toBe('anonymous:local');
+  });
+
+  test('signs worker start-override previews, so a missing workflow is not found rather than unsupported', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/jsonrpc', host.url), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'weft.worker.startoverrides.preview',
+        params: { workflowId: 'no-such-workflow' },
+      }),
+    });
+    const body = (await response.json()) as { error?: { data?: { weftCode?: string } } };
+    expect(body.error?.data?.weftCode).toBe('NotFound');
+  });
+
+  test('derives the signing secret from the key without echoing it', () => {
+    const secret = deriveStartOverrideSigningSecret('a-process-key');
+    expect(secret).toMatch(/^[0-9a-f]{64}$/);
+    expect(secret).not.toContain('a-process-key');
+    expect(deriveStartOverrideSigningSecret('a-process-key')).toBe(secret);
+    expect(deriveStartOverrideSigningSecret('another-key')).not.toBe(secret);
   });
 
   test('carries JSON-RPC over a WebSocket', async () => {

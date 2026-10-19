@@ -12,6 +12,7 @@ function diagnostics(): WorkerManifestDiagnostics {
     instance: {
       workerId: 'worker-a',
       queue: 'payments',
+      transport: 'websocket',
       health: 'active',
       connectedAt: 1,
       startedAt: 1,

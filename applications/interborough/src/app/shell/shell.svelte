@@ -14,6 +14,7 @@
    */
   import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
+  import { useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
 
@@ -22,6 +23,7 @@
   import { providePrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { EngineStatusController, provideFleetEventSource } from '../engine-status.svelte.ts';
   import { NotificationStore } from '../notifications.svelte.ts';
+  import { subscribeTaskEvidenceInvalidation } from '../task-event-queries.ts';
   import { ThemeStore } from '../theme.svelte.ts';
   import AuthModeBanner from './auth-mode-banner.svelte';
   import CommandPaletteLauncher from './command-palette.svelte';
@@ -70,6 +72,11 @@
   $effect(() => {
     return () => engineStatus.dispose();
   });
+
+  // A dead-lettered or delivered task result refreshes the task evidence on screen and the
+  // Dashboard's alerts without a manual refresh. This rides the one shared fleet subscription.
+  const queryClient = useQueryClient();
+  $effect(() => subscribeTaskEvidenceInvalidation(engineStatus.fleetSource, queryClient));
 
   /**
    * `collapsed` doubles as "drawer closed" once Cinder's `Sidebar` switches

@@ -8,6 +8,7 @@ import {
 } from '../operation-fault.ts';
 import type { RestInputContext } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
+import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 /** Type guard distinguishing an `OperationFault` from a value type. */
 export function isOperationFault(value: unknown): value is OperationFault {
@@ -36,6 +37,20 @@ export function invalidParamsFault(message: string, weftCode?: WeftErrorCode): O
     code: 'InvalidParams',
     message,
     data: weftCode === undefined ? { issues: [] } : { issues: [], weftCode },
+  };
+}
+
+/**
+ * The `Conflict` a start answers when its worker start-override token cannot
+ * authorize it (expired, already used, for another workflow, stale against the
+ * accepted binding, or unverifiable). The reason is a stable machine-readable
+ * string, not the message, so a client branches on it.
+ */
+export function workerStartOverrideRejectedFault(message: string): OperationFault {
+  return {
+    code: 'Conflict',
+    message,
+    data: { reason: WORKER_CONFLICT_REASONS.overrideTokenRejected },
   };
 }
 

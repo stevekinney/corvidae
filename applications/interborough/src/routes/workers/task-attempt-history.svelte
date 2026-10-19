@@ -66,9 +66,20 @@
     return `Recorded at ${at}`;
   }
 
+  /** The routing requirement an attempt was dispatched under, spelled out field by field. */
+  function requirementText(record: AttemptHistoryEntry['record']): string {
+    const fields = Object.entries(record.executionRequirement ?? {}).filter(
+      ([, value]) => value !== undefined && value !== '',
+    );
+    return fields.length === 0
+      ? 'No constraint recorded'
+      : fields.map(([key, value]) => `${key}: ${value}`).join(', ');
+  }
+
   function detailItems(entry: AttemptHistoryEntry) {
     const { record } = entry;
     return [
+      { term: 'Routing requirement', definition: requirementText(record) },
       { term: 'Lease window', definition: windowText(entry) },
       { term: 'Disposition', definition: dispositionText(entry) },
       { term: 'Reason', definition: record.dispositionReason ?? 'None recorded' },
@@ -94,6 +105,10 @@
             { term: 'Build', definition: record.executionIdentity.buildId },
             { term: 'Artifact', definition: record.executionIdentity.artifactDigest },
             { term: 'Workflow revision', definition: record.executionIdentity.workflowRevision },
+            {
+              term: 'Activity contract',
+              definition: record.executionIdentity.activityContractHash,
+            },
           ]
         : [{ term: 'Build identity', definition: 'Not recorded' }]),
       {
@@ -138,6 +153,13 @@
               <Badge variant={entry.dispositionVariant}>{entry.dispositionLabel}</Badge>
               {#if entry.supersededBy && !entry.owning}
                 <Badge variant="neutral">Superseded</Badge>
+              {/if}
+              {#if entry.identityChange}
+                <Badge variant="warning">Crossed build</Badge>
+                <p class="weft-task-attempts__identity-change">
+                  Ran on a different worker artifact than attempt {entry.identityChange
+                    .previousAttempt}: {entry.identityChange.summary}.
+                </p>
               {/if}
               <DescriptionList items={detailItems(entry)} />
             </div>

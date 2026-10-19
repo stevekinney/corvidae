@@ -63,6 +63,23 @@ describe('ForkDialog', () => {
     expect(getByText(/^Retains/)).not.toBeNull();
   });
 
+  test('states the fork worker-binding inheritance rule (COR-164)', async () => {
+    const { getByText } = render(ForkDialogHarness, {
+      props: {
+        client: baseClient(),
+        workflowId: 'wf-1',
+        initialStep: 3,
+        workflowType: 'order-processing',
+        sourceRevision: 'order-processing-rev-current',
+        principal: allScopesPrincipal(),
+        queryClient: newQueryClient(),
+      },
+    });
+
+    expect(getByText('Worker binding for a fork')).not.toBeNull();
+    expect(getByText(/unless it names an explicit revision that differs/)).not.toBeNull();
+  });
+
   test("qualifies the default retention promise as a snapshot, not a guarantee (Codex review, PR #978, round 5) — sourceRevision is threaded from the detail page's own fetch, which can be stale by the time the operator submits", async () => {
     const { getByText } = render(ForkDialogHarness, {
       props: {

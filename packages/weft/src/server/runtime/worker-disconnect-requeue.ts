@@ -146,8 +146,8 @@ export function endWorkerReconnectGracePeriods(
   options: ServeOptions,
   cleanupWorkflowIndex: (operationId: string) => void,
 ): void {
-  for (const [workerId, timer] of context.pendingWorkerRequeues) {
-    clearTimeout(timer);
+  for (const [workerId, pending] of context.pendingWorkerRequeues) {
+    clearTimeout(pending.timer);
     void runWorkerDisconnectRequeue(context, options, workerId, cleanupWorkflowIndex);
   }
   context.pendingWorkerRequeues.clear();

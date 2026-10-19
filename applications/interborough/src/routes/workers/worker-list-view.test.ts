@@ -60,3 +60,20 @@ describe('WorkerListView', () => {
     expect(getByTitle('wkr_running')).not.toBeNull();
   });
 });
+
+describe('WorkerListView — transports (COR-160)', () => {
+  test('lists WebSocket and long-poll workers in one table with a Transport column', () => {
+    const { getByRole, getByText } = render(WorkerListView, {
+      props: {
+        workers: [
+          worker({ id: 'wkr_ws', transport: 'websocket' }),
+          worker({ id: 'wkr_lp', transport: 'long-poll' }),
+        ],
+      },
+    });
+
+    expect(getByRole('columnheader', { name: 'Transport' })).not.toBeNull();
+    expect(getByText('WebSocket')).not.toBeNull();
+    expect(getByText('HTTP long-poll')).not.toBeNull();
+  });
+});

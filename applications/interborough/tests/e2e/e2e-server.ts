@@ -17,7 +17,7 @@
  * The fixtures start workflows after the host is listening, so their lifecycle events land in the
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
-import { Engine, RemoteWorker } from '@lostgradient/weft';
+import { Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,10 +30,15 @@ import { startHost } from '../../src/host/host.ts';
 import {
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
+  E2E_LONG_POLL_BUILD_ID,
+  E2E_LONG_POLL_DEPLOYMENT_NAME,
+  E2E_LONG_POLL_QUEUE,
   E2E_PORT,
+  E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const buildDirectory = join(scratch, 'build');
@@ -53,7 +58,10 @@ const host = await startHost({
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => (fixtureEngine = await createFixtureEngine()),
-  engineServer: { cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS },
+  engineServer: {
+    cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS,
+    workerReconnectGracePeriodMs: E2E_RECONNECT_GRACE_PERIOD_MS,
+  },
 });
 if (fixtureEngine === undefined) throw new Error('The host did not create the console engine.');
 const engine = fixtureEngine;
@@ -101,6 +109,22 @@ const fleetWorker = new RemoteWorker({
 
 await fleetWorker.connect();
 
+// COR-160: one worker on the HTTP long-poll transport, so the Workers surfaces show both
+// transports in one fleet. It advertises no workflow and its queue has no task, so it only
+// polls and heartbeats, which is the session state the spec reads.
+const longPollWorker = new LongPollWorker({
+  serverUrl: `http://127.0.0.1:${E2E_PORT}`,
+  deploymentName: E2E_LONG_POLL_DEPLOYMENT_NAME,
+  buildId: E2E_LONG_POLL_BUILD_ID,
+  queue: E2E_LONG_POLL_QUEUE,
+  workflows: {},
+  pollTimeout: 5_000,
+  heartbeatIntervalMs: 2_000,
+});
+longPollWorker.start();
+for (let wait = 0; wait < 200 && !longPollWorker.ready; wait += 1) await Bun.sleep(25);
+if (!longPollWorker.ready) throw new Error('The E2E long-poll worker did not register.');
+
 await server.dispatchTask({
   operationId: E2E_TASK_OPERATION_ID,
   workflowId: 'e2e-ledger-workflow',
@@ -128,18 +152,27 @@ for (let attempt = 0; attempt < 5; attempt += 1) {
 // COR-124: a leased task on its second, heartbeating attempt, plus requested
 // and acknowledged cancellations, all produced by a real worker against this
 // server's real task ledger. See `ledger-evidence-seed.ts`.
-await seedLedgerEvidence(server);
+const ledgerWorkers = await seedLedgerEvidence(server);
+
+// COR-164: two real builds of one deployment, a pinned and an auto-upgrade workflow, and one
+// finished run of each. See `versioned-run-seed.ts`.
+const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 
 process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
+    'Seeded COR-281 cross-build retry storm',
+    'Seeded COR-164 pinned and auto-upgrade runs',
     'Registered dynamic workflow sources for invoice-reconciliation',
   ].join('\n') + '\n',
 );
 
 async function shutDown(): Promise<void> {
+  for (const ledgerWorker of ledgerWorkers) ledgerWorker[Symbol.dispose]();
+  for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
+  await longPollWorker.stop();
   await fleetWorker.disconnect();
   await host.close();
   await rm(scratch, { recursive: true, force: true });

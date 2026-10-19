@@ -42,6 +42,7 @@
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import WorkerInheritanceNote from '../../lib/worker-inheritance-note.svelte';
   import { workflowStatusPresentation } from '../workflows/detail/workflow-status.ts';
   import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
@@ -265,6 +266,8 @@
           {/snippet}
           {overlapConsequence(schedule.overlap)}
         </Callout>
+
+        <WorkerInheritanceNote surface="schedule" />
 
         <Card title="Current & queued runs">
           {#if schedule.currentWorkflowId !== undefined}

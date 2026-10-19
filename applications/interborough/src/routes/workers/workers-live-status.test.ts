@@ -121,3 +121,33 @@ test('unmounting releases an active subscription', async () => {
   view.unmount();
   await waitFor(() => expect(view.events.aborts).toBe(1));
 });
+
+function renderWithLongPoll(longPollWorkers: number) {
+  const queryClient = createQueryClient();
+  queryClients.add(queryClient);
+  // One stream per test: a second would replace the first before `afterEach` could restore its fetch.
+  events ??= new WorkerEventStream();
+  return render(WorkersRouteTestHarness, {
+    client: realClient(),
+    queryClient,
+    component: WorkersLiveStatus,
+    componentProps: { longPollWorkers },
+    principalScopes: ['system:read', 'events:read'],
+  });
+}
+
+test('says nothing about long-poll when no listed worker uses it', () => {
+  const view = renderWithLongPoll(0);
+  expect(view.queryByText(/HTTP long-poll workers have no server push/)).toBeNull();
+});
+
+test('states the long-poll limitation, with the count, wherever Live would imply push', () => {
+  const one = renderWithLongPoll(1);
+  expect(one.getByText(/1 worker uses the HTTP long-poll transport\./)).toBeVisible();
+  expect(one.getByText(/HTTP long-poll workers have no server push/)).toBeVisible();
+  expect(one.getByText(/refreshes this view on WebSocket worker events only/)).toBeVisible();
+  one.unmount();
+
+  const many = renderWithLongPoll(3);
+  expect(many.getByText(/3 workers use the HTTP long-poll transport\./)).toBeVisible();
+});

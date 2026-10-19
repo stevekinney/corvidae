@@ -169,12 +169,12 @@ export function projectDeploymentSummary(
  * Project a flat list of worker snapshots into grouped, sorted
  * {@link WorkerDeploymentSummary} entries.
  *
- * `isDrainActive` receives the deployment name and returns whether a
- * deployment-level drain marker is set for it.
+ * `isDrainActive` receives a group's deployment name and build id and returns
+ * whether a deployment-level or build-level drain marker is set for it.
  */
 export function projectDeploymentSummaries(
   snapshots: WorkerSnapshot[],
-  isDrainActive: (deploymentName: string) => boolean,
+  isDrainActive: (deploymentName: string, buildId: string | undefined) => boolean,
 ): WorkerDeploymentSummary[] {
   const groups = new Map<string, WorkerSnapshot[]>();
 
@@ -191,7 +191,8 @@ export function projectDeploymentSummaries(
   return [...groups.values()]
     .map((group) => {
       const deploymentName = group[0]?.deploymentName;
-      const drainActive = deploymentName !== undefined ? isDrainActive(deploymentName) : false;
+      const drainActive =
+        deploymentName !== undefined ? isDrainActive(deploymentName, group[0]?.buildId) : false;
       return projectDeploymentSummary(group, drainActive);
     })
     .toSorted(compareDeploymentSummaries);

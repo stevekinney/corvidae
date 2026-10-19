@@ -12,6 +12,7 @@ import { tick } from 'svelte';
 
 import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
+import { invalidateForTaskEvent } from '../../app/task-event-queries.ts';
 import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
 import CriticalAlertsBandHarness from './critical-alerts-band-test-harness.test-harness.svelte';
 
@@ -292,5 +293,37 @@ describe('CriticalAlertsBand', () => {
     expect(
       reviewLink?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })),
     ).toBe(false);
+  });
+
+  test('a task:dead-lettered event refreshes the dead-letter chip without waiting for the poll', async () => {
+    let diagnostics: unknown = { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 };
+    const client = new HttpClient({ baseUrl: 'http://weft.test/api' });
+    Object.defineProperty(client, 'operations', {
+      value: { 'weft.tasks.diagnostics': () => Promise.resolve(diagnostics) },
+    });
+    Object.defineProperty(client, 'listReviews', { value: () => Promise.resolve([]) });
+
+    let queryClient!: QueryClient;
+    const { container, findByText } = render(CriticalAlertsBandHarness, {
+      props: { client, onQueryClientReady: (value) => (queryClient = value) },
+    });
+    await waitForSettledQueries(queryClient);
+    expect(container.textContent).toBe('');
+
+    // The server dead-letters a result; the fleet feed's event is all the band hears.
+    diagnostics = {
+      items: [],
+      summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+      limit: 50,
+    };
+    invalidateForTaskEvent(queryClient, {
+      kind: 'task:dead-lettered',
+      sequence: 7,
+      cursor: '7',
+      emittedAtMs: 1,
+      payload: { operationId: 'op_dead' },
+    });
+
+    expect(await findByText('1 dead-lettered task')).not.toBeNull();
   });
 });

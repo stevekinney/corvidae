@@ -13,6 +13,7 @@
   import {
     heartbeatSeverity,
     heartbeatSeverityCssVariable,
+    TRANSPORT_LABEL,
     workerHealthPresentation,
   } from './worker-presentation.ts';
 
@@ -46,6 +47,7 @@
       <col style="width: 200px" />
       <col style="width: 120px" />
       <col style="width: 140px" />
+      <col style="width: 140px" />
       <col style="width: 120px" />
       <col style="width: 200px" />
       <col style="width: 110px" />
@@ -55,6 +57,7 @@
         <Table.HeaderCell>Worker ID</Table.HeaderCell>
         <Table.HeaderCell>Queue</Table.HeaderCell>
         <Table.HeaderCell>Deployment</Table.HeaderCell>
+        <Table.HeaderCell>Transport</Table.HeaderCell>
         <Table.HeaderCell>Health</Table.HeaderCell>
         <Table.HeaderCell>In-flight</Table.HeaderCell>
         <Table.HeaderCell align="right">Heartbeat</Table.HeaderCell>
@@ -77,6 +80,7 @@
           </Table.Cell>
           <Table.Cell><span class="weft-workers-mono">{worker.queue}</span></Table.Cell>
           <Table.Cell>{worker.deploymentName ?? '—'}</Table.Cell>
+          <Table.Cell>{TRANSPORT_LABEL[worker.transport]}</Table.Cell>
           <Table.Cell
             ><Badge variant={presentation.variant} size="sm">{presentation.label}</Badge
             ></Table.Cell

@@ -4,7 +4,7 @@
    * banner, drain/resume actions, and the server-reported session
    * (`weft.workers.diagnostics`, COR-124).
    */
-  import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
+  import { Alert, Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
   import { formatDuration, truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
@@ -13,7 +13,11 @@
   import WorkerContractVerificationPanel from './worker-contract-verification-panel.svelte';
   import WorkerManifestPanel from './worker-manifest-panel.svelte';
   import type { WorkerManifestDiagnostics } from './worker-manifest-diagnostics.ts';
-  import { workerHealthPresentation } from './worker-presentation.ts';
+  import {
+    LONG_POLL_LIMITATION,
+    TRANSPORT_LABEL,
+    workerHealthPresentation,
+  } from './worker-presentation.ts';
   import WorkerSessionPanel from './worker-session-panel.svelte';
 
   interface WorkerDetailViewProps {
@@ -54,6 +58,7 @@
 
   const connectionItems = $derived([
     { term: 'Queue', definition: worker.queue },
+    { term: 'Transport', definition: TRANSPORT_LABEL[worker.transport] },
     { term: 'Connected', definition: formatDuration(Date.now() - worker.connectedAt) + ' ago' },
     {
       term: 'Build',
@@ -90,6 +95,10 @@
       Draining — finishing {worker.inFlight} in-flight task{worker.inFlight === 1 ? '' : 's'},
       accepting no new work.
     </div>
+  {/if}
+
+  {#if worker.transport === 'long-poll'}
+    <Alert variant="info">{LONG_POLL_LIMITATION}</Alert>
   {/if}
 
   <WorkerSessionPanel

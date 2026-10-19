@@ -18,6 +18,7 @@ import {
   createGetWorkerDiagnosticsRestBinding,
   getWorkerDiagnosticsOperation,
   type GetWorkerDiagnosticsOutput,
+  type WorkerSessionTiming,
 } from './get-worker-diagnostics.ts';
 import {
   assertOperationRejectsInsufficientScope,
@@ -114,6 +115,74 @@ describe('weft.workers.diagnostics — REST GET /v1/workers/:workerId/diagnostic
           },
         },
       },
+    });
+  });
+
+  describe('session lifecycle timing', () => {
+    async function instanceFor(sessionTiming?: WorkerSessionTiming) {
+      engine?.[Symbol.dispose]();
+      engine = createOperationTestEngine();
+      const workerRegistry = new WorkerRegistry();
+      workerRegistry.register({
+        manifest: manifestWithWorkflow(),
+        acceptedManifestDigest: 'sha256:accepted',
+        id: 'worker-1',
+        queue: 'payments',
+        activities: ['checkout.charge'],
+        concurrency: 3,
+      });
+      const response = await handleRequest(
+        new Request('http://localhost/v1/workers/worker-1/diagnostics', { method: 'GET' }),
+        engine,
+        {
+          operationRegistry: createOperationRegistry([
+            createGetWorkerDiagnosticsOperation({
+              workerRegistry,
+              clock: () => 5000,
+              ...(sessionTiming === undefined ? {} : { sessionTiming }),
+            }),
+          ]),
+          restBindings: [binding],
+          ...systemReadAuthContext(),
+        },
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as GetWorkerDiagnosticsOutput;
+      return body.worker?.instance;
+    }
+
+    it('reports reconnectGraceEndsAt and sessionLeaseExpiresAt when the server tracks them', async () => {
+      const instance = await instanceFor(() => ({
+        reconnectGraceEndsAt: 7_000,
+        sessionLeaseExpiresAt: 65_000,
+      }));
+      expect(instance).toMatchObject({
+        reconnectGraceEndsAt: 7_000,
+        sessionLeaseExpiresAt: 65_000,
+      });
+    });
+
+    it('omits each field that does not apply instead of reporting null or zero', async () => {
+      const graceOnly = await instanceFor(() => ({ reconnectGraceEndsAt: 7_000 }));
+      expect(graceOnly).toHaveProperty('reconnectGraceEndsAt', 7_000);
+      expect(graceOnly).not.toHaveProperty('sessionLeaseExpiresAt');
+
+      const leaseOnly = await instanceFor(() => ({ sessionLeaseExpiresAt: 65_000 }));
+      expect(leaseOnly).toHaveProperty('sessionLeaseExpiresAt', 65_000);
+      expect(leaseOnly).not.toHaveProperty('reconnectGraceEndsAt');
+
+      const neither = await instanceFor(() => ({
+        reconnectGraceEndsAt: undefined,
+        sessionLeaseExpiresAt: undefined,
+      }));
+      expect(neither).not.toHaveProperty('reconnectGraceEndsAt');
+      expect(neither).not.toHaveProperty('sessionLeaseExpiresAt');
+    });
+
+    it('reports neither when no session timing source is wired in', async () => {
+      const instance = await instanceFor();
+      expect(instance).not.toHaveProperty('reconnectGraceEndsAt');
+      expect(instance).not.toHaveProperty('sessionLeaseExpiresAt');
     });
   });
 

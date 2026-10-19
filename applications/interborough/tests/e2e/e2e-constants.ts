@@ -45,7 +45,48 @@ export const E2E_CANCELLING_TASK_OPERATION_ID = 'e2e-ledger-cancel-requested';
 /** Task whose cancellation the owning attempt acknowledged with a cancelled result. */
 export const E2E_CANCELLED_TASK_OPERATION_ID = 'e2e-ledger-cancel-acknowledged';
 
+/**
+ * COR-281: a task that crossed a build boundary and then a retry storm. Three
+ * workers on the previous build (`E2E_PREVIOUS_BUILD_ID`) claim it and
+ * disappear, and a fourth on the current ledger build holds attempt 4. It runs
+ * on its own queue so the three ledger tasks above keep their two-attempt
+ * histories, and the retry storm (three requeues) makes it a Diagnostics item
+ * that names its current worker.
+ */
+export const E2E_CROSS_BUILD_TASK_OPERATION_ID = 'e2e-ledger-cross-build-storm';
+export const E2E_CROSS_BUILD_QUEUE = 'provenance-evidence';
+export const E2E_CROSS_BUILD_WORKER_ID = 'provenance-evidence-worker-1';
+export const E2E_PREVIOUS_BUILD_ID = 'e2e-ledger-build-0';
+export const E2E_CURRENT_BUILD_ID = 'e2e-ledger-build-1';
+
+/** Reconnect grace period the E2E host uses, short so the seeded requeues take a fraction of a second. */
+export const E2E_RECONNECT_GRACE_PERIOD_MS = 250;
+
+/**
+ * COR-160: a real HTTP long-poll worker registered on its own deployment and
+ * queue. It advertises no workflow, so it never claims work and never joins a
+ * workflow's contract verification; it exists to give the Workers surfaces a
+ * long-poll session to read.
+ */
+export const E2E_LONG_POLL_DEPLOYMENT_NAME = 'long-poll-fleet';
+export const E2E_LONG_POLL_QUEUE = 'long-poll-evidence';
+export const E2E_LONG_POLL_BUILD_ID = 'e2e-long-poll-build-1';
+
 export const E2E_CANCELLATION_REASON = 'operator stopped the e2e ledger run';
 
 /** Weft's maximum cancellation grace period (`serve-internals.ts`). */
 export const E2E_CANCELLATION_GRACE_PERIOD_MS = 300_000;
+
+/**
+ * COR-164: worker versioning. Two real builds of one deployment register through the worker
+ * protocol, routing is set on the first, and two workflow types start and finish against it: one
+ * pinned, one auto-upgrade. The auto-upgrade policy names the first build's exact digests, which
+ * `versioned-run-seed.ts` reads back from the server's catalog after the workers register.
+ */
+export const E2E_VERSIONED_DEPLOYMENT_NAME = 'versioned-order-fleet';
+export const E2E_VERSIONED_FIRST_BUILD_ID = 'e2e-versioned-build-1';
+export const E2E_VERSIONED_SECOND_BUILD_ID = 'e2e-versioned-build-2';
+export const E2E_PINNED_WORKFLOW_TYPE = 'e2e-pinned-order';
+export const E2E_AUTO_UPGRADE_WORKFLOW_TYPE = 'e2e-auto-upgrade-order';
+export const E2E_PINNED_RUN_ID = 'e2e-versioned-pinned-run';
+export const E2E_AUTO_UPGRADE_RUN_ID = 'e2e-versioned-auto-upgrade-run';

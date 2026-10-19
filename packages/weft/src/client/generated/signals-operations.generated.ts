@@ -26,6 +26,7 @@ export type SignalsOperationTypes = {
       readonly startAt?: unknown;
       readonly tags?: unknown;
       readonly type: unknown;
+      readonly workerStartOverridePreview?: unknown;
     };
     readonly output: { readonly id: string; readonly outcome: 'started' | 'signalled' };
     readonly faults: 'Conflict';
