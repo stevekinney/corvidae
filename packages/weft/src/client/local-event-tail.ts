@@ -21,8 +21,18 @@
 import type { Engine } from '../core/engine.ts';
 import { WORKFLOW_TERMINAL_EVENT_TYPES } from '../core/events/workflow-events.ts';
 import type { WorkflowEvent } from '../core/types.ts';
+import { CLIENT_VISIBLE_EVENT_TYPES } from '../server/runtime/client-visible-events.ts';
 import { dropOverlappingLiveFrames } from './event-stream-transport.ts';
 import type { WorkflowEventTail } from './event-tail.ts';
+
+/**
+ * The event kinds the server's watch channel broadcasts. The handle iterator
+ * yields every workflow-scoped kind the engine dispatches, including some the
+ * watch channel never sends (`activity:remote-queued`,
+ * `task:attempt-transition`, and others), so the local tail drops anything
+ * outside this set to deliver the same live records as the HTTP tail.
+ */
+const CLIENT_VISIBLE_EVENT_TYPE_SET: ReadonlySet<string> = new Set(CLIENT_VISIBLE_EVENT_TYPES);
 
 /**
  * Serialize a dispatched engine `Event` into a {@link WorkflowEvent}. Mirrors
@@ -152,6 +162,7 @@ export function createLocalWorkflowEventTail(
         if (typeof next === 'symbol') return;
         if (closed) return;
         if (next.done === true) return;
+        if (!CLIENT_VISIBLE_EVENT_TYPE_SET.has(next.value.type)) continue;
         deliverLive(serializeEngineEvent(next.value));
         if (terminated) return;
       }

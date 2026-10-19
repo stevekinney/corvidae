@@ -71,6 +71,11 @@ import { getWorkflowIdFromEvent } from '../events/workflow-event-id.ts';
 import { WORKFLOW_TERMINAL_EVENT_TYPES } from '../events/workflow-events.ts';
 import { ReviewCompletedEvent, ReviewRequestedEvent } from '../review/events.ts';
 import { activity, workflow, type ActivityContext, type WorkflowContext } from '../types.ts';
+import {
+  WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT,
+  WorkflowHandleEventOverflowError,
+  createWorkflowHandleEventIterator,
+} from './handle-iteration.ts';
 import type { WorkflowHandle } from './handles.ts';
 import { Engine } from './index.ts';
 import { nextSignalWaiting } from './signal-wait-tracking.test-support.ts';
@@ -463,6 +468,62 @@ describe('workflow handle event isolation and replay', () => {
       .map((event) => event.changes['index']);
     expect(indexes).toEqual(Array.from({ length: total }, (_, index) => index));
     expect(events.at(-1)).toBeInstanceOf(WorkflowCancelledEvent);
+    expect(added.mock.calls.length).toBeGreaterThan(0);
+    expect(removed.mock.calls.map(([type]) => type).toSorted()).toEqual(
+      added.mock.calls.map(([type]) => type).toSorted(),
+    );
+  });
+
+  it('bounds the buffer for a consumer that stops pulling, then reports the overflow', async () => {
+    // Regression (COR-1605 spec audit): the handle now receives every workflow
+    // event, so an unbounded per-iterator queue would grow for the rest of the
+    // workflow's life behind a consumer that stopped pulling.
+    const handle = new EventTarget();
+    const added = jest.spyOn(handle, 'addEventListener');
+    const removed = jest.spyOn(handle, 'removeEventListener');
+    const iterator = createWorkflowHandleEventIterator(
+      handle,
+      async () => null,
+      () => null,
+    );
+
+    // The first pull attaches the listeners; nothing is pulled after it while
+    // the burst arrives, so the consumer falls behind by `overflow` events.
+    const first = iterator.next();
+    const overflow = 25;
+    for (let index = 0; index < WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT + overflow; index += 1) {
+      handle.dispatchEvent(new AttributesChangedEvent('bounded-1', { index }));
+    }
+
+    const indexes: unknown[] = [];
+    let caught: unknown;
+    try {
+      for (let next = await first; next.done !== true; next = await iterator.next()) {
+        if (next.value instanceof AttributesChangedEvent) indexes.push(next.value.changes['index']);
+        if (indexes.length === 1) {
+          // Pulling frees room, but nothing after the first drop is buffered:
+          // the consumer must not see later events past a silent gap, and the
+          // terminal event that arrives after the overflow is dropped too.
+          handle.dispatchEvent(new AttributesChangedEvent('bounded-1', { index: 'late' }));
+          handle.dispatchEvent(new WorkflowCompletedEvent('bounded-1', null, 0));
+          handle.dispatchEvent(
+            new AttributesChangedEvent('bounded-1', { index: 'after-terminal' }),
+          );
+        }
+      }
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(indexes).toEqual(
+      Array.from({ length: WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT }, (_, index) => index),
+    );
+    expect(caught).toBeInstanceOf(WorkflowHandleEventOverflowError);
+    expect(caught).toMatchObject({
+      code: 'WorkflowHandleEventOverflowError',
+      droppedCount: overflow + 2,
+      limit: WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT,
+    });
     expect(added.mock.calls.length).toBeGreaterThan(0);
     expect(removed.mock.calls.map(([type]) => type).toSorted()).toEqual(
       added.mock.calls.map(([type]) => type).toSorted(),

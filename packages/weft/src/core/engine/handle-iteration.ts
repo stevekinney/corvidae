@@ -1,9 +1,46 @@
 import type { WeftEventMap } from '../events/event-map.ts';
 import { WORKFLOW_TERMINAL_EVENT_TYPES } from '../events/workflow-events.ts';
 import type { WorkflowState } from '../types.ts';
+import { WeftError } from '../weft-error.ts';
+
+/**
+ * The most events one handle iterator holds for a consumer that has not pulled
+ * them yet. It matches the server's per-subscriber live buffer
+ * (`DEFAULT_LIVE_BUFFER_SIZE` in `server/workflow-event-feed.ts`), and overflow
+ * is handled the same way: the iterator stops buffering and ends with an error
+ * instead of growing for the rest of the workflow's life.
+ */
+export const WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT = 1000;
+
+/**
+ * Thrown by a workflow handle's event iterator once its consumer has fallen
+ * more than {@link WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT} events behind. The
+ * events buffered before the overflow are yielded first; `droppedCount` is how
+ * many arrived after the buffer filled and were discarded, the terminal event
+ * among them if it arrived. Read `handle.result()` or the persisted history to
+ * learn how the workflow ended.
+ */
+export class WorkflowHandleEventOverflowError extends WeftError<'WorkflowHandleEventOverflowError'> {
+  /** Events discarded after the buffer filled. */
+  readonly droppedCount: number;
+  /** The buffer limit the consumer exceeded. */
+  readonly limit: number;
+
+  constructor(droppedCount: number, limit: number) {
+    super(
+      'WorkflowHandleEventOverflowError',
+      `Workflow handle event iterator overflowed: the consumer fell more than ${String(limit)} ` +
+        `events behind and ${String(droppedCount)} later events were dropped.`,
+    );
+    this.droppedCount = droppedCount;
+    this.limit = limit;
+  }
+}
 
 type WorkflowHandleEventQueue = {
   events: Event[];
+  /** Events discarded because `events` was already at the buffer limit. */
+  droppedCount: number;
   resolver: (() => void) | undefined;
 };
 
@@ -94,14 +131,19 @@ const WORKFLOW_HANDLE_NON_TERMINAL_EVENT_TYPES: readonly string[] = Object.keys(
  *
  * Buffering: events wait in an in-order FIFO queue per iterator until the
  * consumer pulls them, and the queue is released when iteration ends. The
- * engine never waits on a slow consumer.
+ * engine never waits on a slow consumer; instead the queue is bounded at
+ * {@link WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT} events. Once it is full, later
+ * events are dropped and counted, and after yielding what it buffered the
+ * iterator throws a {@link WorkflowHandleEventOverflowError}. A consumer that
+ * stops pulling, or abandons the iterator without calling `return()`, therefore
+ * holds at most that many events.
  */
 export async function* createWorkflowHandleEventIterator(
   handle: EventTarget,
   loadWorkflowState: () => Promise<WorkflowState | null>,
   synthesizeTerminalEvent: (state: WorkflowState) => Event | null,
 ): AsyncIterableIterator<Event> {
-  const queue: WorkflowHandleEventQueue = { events: [], resolver: undefined };
+  const queue: WorkflowHandleEventQueue = { events: [], droppedCount: 0, resolver: undefined };
   const state = { done: false };
   const removeListeners = addWorkflowHandleIteratorListeners(handle, queue, state);
 
@@ -115,13 +157,18 @@ export async function* createWorkflowHandleEventIterator(
       );
     }
 
-    while (!state.done || queue.events.length > 0) {
-      if (queue.events.length === 0) {
-        await waitForWorkflowHandleIteratorEvent(queue);
-      }
+    while (true) {
       while (queue.events.length > 0) {
         yield queue.events.shift()!;
       }
+      if (queue.droppedCount > 0) {
+        throw new WorkflowHandleEventOverflowError(
+          queue.droppedCount,
+          WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT,
+        );
+      }
+      if (state.done) return;
+      await waitForWorkflowHandleIteratorEvent(queue);
     }
   } finally {
     removeListeners();
@@ -165,7 +212,13 @@ function enqueueNonTerminalWorkflowHandleEvent(
 }
 
 function enqueueWorkflowHandleEvent(queue: WorkflowHandleEventQueue, event: Event): void {
-  queue.events.push(event);
+  // Once one event has been dropped, keep dropping, so the consumer never sees
+  // a gap followed by later events as if nothing were missing.
+  if (queue.droppedCount > 0 || queue.events.length >= WORKFLOW_HANDLE_EVENT_BUFFER_LIMIT) {
+    queue.droppedCount += 1;
+  } else {
+    queue.events.push(event);
+  }
   queue.resolver?.();
 }
 
@@ -190,8 +243,7 @@ function synthesizeIteratorTerminalEvent(
   const synthetic = synthesizeTerminalEvent(persisted);
   if (!synthetic) return;
 
-  queue.events.push(synthetic);
-  state.done = true;
+  finishWorkflowHandleIteration(state, queue, synthetic);
 }
 
 async function waitForWorkflowHandleIteratorEvent(queue: WorkflowHandleEventQueue): Promise<void> {
