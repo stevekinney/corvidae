@@ -478,9 +478,10 @@ export function createAgUiMount(
       });
       // The attach route's own predicate: a write scope alone answers, and reads nothing.
       // Read alongside the resume rather than ahead of it, and a read that fails reads as no
-      // access, so the caller is told no more than it was. The predicate runs when the resume asks,
-      // after it has decided on the interrupts, and resolves to the owner of the session it
-      // decided on, which is the owner the stream reads the thread as.
+      // access, so the caller is told no more than it was. The session read starts now and is
+      // eager; only the decision is deferred. The predicate runs when the resume asks, after it
+      // has decided on the interrupts, and resolves to the owner of the session it decided on,
+      // which is the owner the stream reads the thread as.
       const thread = bureau.getSession(input.threadId).then(ownedSession, () => undefined);
       const readableAs = async (): Promise<string | undefined> => {
         const loaded = await thread;

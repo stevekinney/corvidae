@@ -2411,12 +2411,15 @@ export interface RunSummary {
    */
   agentName: string | undefined;
   /**
-   * The authenticated principal that created this run (e.g. `api-key:<id>`
-   * or `static-token`), when the request carried an `x-auth-principal`
-   * header. Captured only at creation time (in-memory, Layer A) — a run
-   * reattached after durable recovery has no principal, since it is not
-   * persisted durably. `undefined` for scheduler-fired runs, which have no
-   * human principal.
+   * The owner of record of the run: the principal it was created with
+   * (e.g. `api-key:<id>`), from the run's attribution, or the owner its
+   * `bureau.run()` handle reports when no attribution was recorded (one
+   * reader, shared with {@link Bureau.getOwner}). A run reattached after
+   * durable recovery keeps it: it is rehydrated from the owning session's
+   * `lastRunOwningPrincipals` (AB-359). `undefined` only for a run with no
+   * principal, which {@link Bureau.getOwner} reads as `anonymous:local`; the
+   * AG-UI mount compares it, through that same default, with the owner it
+   * authorized.
    */
   principal: string | undefined;
   /**

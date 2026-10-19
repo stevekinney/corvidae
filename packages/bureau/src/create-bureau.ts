@@ -7784,10 +7784,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (catalogRunIds.has(runState.id)) continue;
 
       const sessionId = getRunSessionIdentifier(runState);
-      summaries.push(serializeRunState(runState, sessionId, runAttribution.get(runState.id)));
+      summaries.push(serializeRunState(runState, sessionId, attributionOf(runState.id)));
     }
 
     return summaries;
+  }
+
+  /**
+   * COR-1588 — the one reader of what a held run is attributed to: its recorded attribution,
+   * with a `principal` it lacks filled from the handle's liveness owner. A live `bureau.run()`
+   * dispatch that is not durable seeds no attribution, but its handle's liveness snapshot carries
+   * the principal it was given. `runOwner` and every serialized `principal` (`RunSummary`,
+   * `RunDetail`) read it here, so the owner the AG-UI mount authorizes on is the owner the run
+   * reports.
+   */
+  function attributionOf(runId: string): RunAttribution | undefined {
+    const recorded = runAttribution.get(runId);
+    if (recorded?.principal !== undefined) return recorded;
+    const owner = findCatalogRun(runId)?.handle.snapshot().owner;
+    return owner === undefined ? recorded : { ...recorded, principal: owner };
   }
 
   /**
@@ -7797,12 +7812,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * names no run this Bureau knows.
    */
   async function runOwner(runId: string): Promise<string | undefined> {
-    const attribution = runAttribution.get(runId);
-    const catalogRun = findCatalogRun(runId);
-    if (attribution !== undefined || store.getRun(runId) !== undefined || catalogRun) {
-      // A live `bureau.run()` dispatch that is not durable seeds no attribution, but
-      // its handle's liveness snapshot carries the principal it was given.
-      return ownerOrLocal(attribution?.principal ?? catalogRun?.handle.snapshot().owner);
+    if (
+      runAttribution.get(runId) !== undefined ||
+      store.getRun(runId) !== undefined ||
+      findCatalogRun(runId)
+    ) {
+      return ownerOrLocal(attributionOf(runId)?.principal);
     }
     const child = await childTopologyStore.get(runId);
     if (child !== undefined) return ownerOrLocal(child.principal);
@@ -7907,7 +7922,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       );
     }
 
-    return serializeRunDetail(runState, getRunSessionIdentifier(runState), runAttribution.get(id));
+    return serializeRunDetail(runState, getRunSessionIdentifier(runState), attributionOf(id));
   }
 
   function subscribeRunSnapshot(
@@ -7930,7 +7945,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * name the run was dispatched under.
    */
   function undispatchedCatalogRunAttribution(id: string, agentName: string): RunAttribution {
-    const recorded = runAttribution.get(id);
+    const recorded = attributionOf(id);
     return {
       agentName: recorded?.agentName ?? agentName,
       ...(recorded?.principal === undefined ? {} : { principal: recorded.principal }),
@@ -8003,7 +8018,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // invisible-leak failure mode this issue exists to close. The entry is
       // cleared exclusively by the `closed()` continuation, the one place
       // that actually knows cleanup settled.
-      return serializeRunState(runState, getRunSessionIdentifier(runState), runAttribution.get(id));
+      return serializeRunState(runState, getRunSessionIdentifier(runState), attributionOf(id));
     }
 
     if (!abortingRunIds.has(id)) {
@@ -8037,7 +8052,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     return {
-      ...serializeRunState(runState, getRunSessionIdentifier(runState), runAttribution.get(id)),
+      ...serializeRunState(runState, getRunSessionIdentifier(runState), attributionOf(id)),
       status: 'aborting',
     };
   }

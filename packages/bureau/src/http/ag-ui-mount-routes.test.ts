@@ -901,6 +901,27 @@ describe('whether a thread is busy, decided from what the store holds', () => {
       expect(harness.bureau.listRuns()).toHaveLength(1);
     });
   });
+
+  it('is busy when the durable run of the session’s last run cannot be read', async () => {
+    await withHarness({ script: [say('A done.'), say('B done.')] }, async (harness) => {
+      await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+      const getSession = harness.bureau.getSession.bind(harness.bureau);
+      // The session says its last run is still running, so the busy decision reads the durable
+      // run, and that read fails.
+      spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
+        const session = await getSession(...args);
+        return session === undefined
+          ? undefined
+          : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } };
+      });
+      spyOn(harness.bureau, 'getDurableRun').mockRejectedValue(new Error('store unavailable'));
+
+      const refused = await readAgUiStream(await harness.handler(startWithMessage('run-b')));
+
+      expect(refused[0]!.event).toMatchObject({ code: 'THREAD_BUSY' });
+      expect(harness.bureau.listRuns()).toHaveLength(1);
+    });
+  });
 });
 
 describe('a start whose lease cannot be released', () => {

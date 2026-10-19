@@ -706,10 +706,9 @@ export function openRunStream(
 
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
-      if (!runIsOwnedBy(request.child, request.owner)) {
-        fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
-        return;
-      }
+      // No owner check on the record: the route authorized the child on the owner of this same
+      // record (`getOwner` reads the child's `principal`, which is written once at registration and
+      // never changed, and a child run id is minted once), so a second comparison could not fail.
       await openChild(request.child);
       return;
     }

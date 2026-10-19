@@ -12,11 +12,11 @@
 import { EventType } from '@ag-ui/core';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type AgentSession, stopWhen } from '@lostgradient/operative';
-import { createOperationHandler, principalFromApiKey } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import type { RunSummary } from '../types.ts';
 import {
+  aliceHandlerOver,
   as,
   attachThreadRequest,
   authentication,
@@ -26,12 +26,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { createAgUiLeases } from './ag-ui-lease.ts';
-import {
-  type AgUiAuthorization,
-  type AgUiBureau,
-  createAgUiMount,
-  DEFAULT_AG_UI_PATH_PREFIX,
-} from './ag-ui-mount.ts';
+import { type AgUiAuthorization, DEFAULT_AG_UI_PATH_PREFIX } from './ag-ui-mount.ts';
 import { type AgUiStreamBureau, openRunStream } from './ag-ui-stream.ts';
 import { bureauMetadata, readAgUiStream } from './ag-ui-stream.test-support.ts';
 import { mayAccessOwnedResource } from './owner-predicate.ts';
@@ -116,27 +111,6 @@ async function withScene<T>(body: (scene: Scene) => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * A handler over `bureau`, authenticating alice, whose authorization says every owner of record is
- * alice's: what the owner-of-record read said before the thread was recreated.
- */
-function mountFor(bureau: AgUiBureau, options: { readonly leaseDurationMs?: number } = {}) {
-  const authorization: AgUiAuthorization = {
-    mayAccess: mayAccessOwnedResource,
-    ownerOf: async () => ALICE,
-  };
-  const mount = createAgUiMount(bureau, authorization, ['assistant'], options);
-  return createOperationHandler({
-    operations: [],
-    host: {} as never,
-    authenticate: async () => ({
-      method: 'api-key' as const,
-      principal: principalFromApiKey({ subject: 'alice', scopes: [] }),
-    }),
-    mounts: [mount],
-  });
-}
-
 function bobsData(scene: Scene): readonly string[] {
   return [BOB_MESSAGE, scene.bob.runId, scene.bobSession.id];
 }
@@ -150,7 +124,7 @@ const THREAD_NOT_FOUND = { type: EventType.RUN_ERROR, code: 'THREAD_NOT_FOUND' }
 describe('a thread whose session is another owner’s than the one authorized', () => {
   it('is a missing thread on GET /threads/<id>/messages', async () => {
     await withScene(async (scene) => {
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         getSession: async () => scene.bobSession,
         listRuns: () => [scene.bobLiveRun],
@@ -174,7 +148,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
 
   it('is one THREAD_NOT_FOUND event on an attach by thread', async () => {
     await withScene(async (scene) => {
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         getSession: async () => scene.bobSession,
         listRuns: () => [scene.bobLiveRun],
@@ -193,7 +167,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
   it('is one THREAD_NOT_FOUND event on a new start, decided before the thread lease', async () => {
     await withScene(async (scene) => {
       const runtime = createDefaultRuntimeServices();
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         getSession: async () => scene.bobSession,
         listRuns: () => [scene.bobLiveRun],
@@ -223,7 +197,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
       // The thread is free when the owner is first checked, and another owner's by the time the
       // start reads it under the lease.
       let reads = 0;
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         getSession: async () => (reads++ === 0 ? undefined : scene.bobSession),
         listRuns: () => [scene.bobLiveRun],
@@ -244,7 +218,7 @@ describe('a thread whose session is another owner’s than the one authorized', 
 
   it('is acknowledged only, with no MESSAGES_SNAPSHOT, on a resume', async () => {
     await withScene(async (scene) => {
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         getSession: async () => scene.bobSession,
         listRuns: () => [scene.bobLiveRun],
@@ -339,7 +313,7 @@ describe('a live run of another owner on an authorized thread', () => {
   it('is not attached to by thread', async () => {
     await withScene(async (scene) => {
       // The session is alice's own, and the only live run `listRuns` names on it is bob's.
-      const handler = mountFor({
+      const handler = aliceHandlerOver({
         ...scene.harness.bureau,
         listRuns: () => [scene.bobLiveRun],
       });
