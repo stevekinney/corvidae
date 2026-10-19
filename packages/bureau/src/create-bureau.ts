@@ -235,6 +235,7 @@ import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
   ScheduledFireNotice,
+  ScheduledFireServicesNotice,
   ScheduledFireSettlement,
   ScheduledSessionNotice,
   SessionAgentRun,
@@ -244,6 +245,7 @@ import {
   createSchedulerServiceRequestContext,
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
+  isScheduledFireAuthority,
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
@@ -1621,6 +1623,30 @@ export function createPendingApprovalPersistHook(
   };
 }
 
+/**
+ * COR-1596 — the trailing `onStep` hook that hands each tool approval a schedule fire's step left
+ * pending to `register`, registered as `bureau:scheduled-fire-approvals`.
+ *
+ * A named factory for the reason `createPendingApprovalPersistHook` is one: COR-567 classifies the
+ * registration `effectful`, so a replayed step runs it again, and it is idempotent because the
+ * review id is `approval:${runId}:${callId}`, derived from the step's own tool call.
+ */
+export function createScheduledFireApprovalHook(
+  runId: string,
+  register: (
+    reviewId: string,
+    approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
+  ) => void,
+): OnStepHook {
+  return (stepResult) => {
+    for (const result of stepResult.results) {
+      if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
+      register(`approval:${runId}:${result.pendingApproval.callId}`, result.pendingApproval);
+    }
+    return Promise.resolve();
+  };
+}
+
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
@@ -1812,6 +1838,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     Promise.withResolvers<(settlement: ScheduledFireSettlement) => Promise<void>>();
   const scheduledSessionKnownHandler =
     Promise.withResolvers<(session: ScheduledSessionNotice) => Promise<void>>();
+  // COR-1596: a fire's reviews are registered from its services, which the composition builds
+  // before the run store, the review maps, and the human-wait index exist.
+  const scheduledFireServicesHandler =
+    Promise.withResolvers<
+      (fire: ScheduledFireServicesNotice, services: DurableRunDeps) => Promise<void>
+    >();
   // COR-718: the session store exists before the audit trail that consumes the owner
   // record an expiring session needs, so the hook waits for the recorder the same way.
   const sessionCleanupHandler =
@@ -1890,6 +1922,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       onScheduledSessionKnown: async (session) => {
         const handler = await scheduledSessionKnownHandler.promise;
         await handler(session);
+      },
+      onScheduledFireServices: async (fire, services) => {
+        const handler = await scheduledFireServicesHandler.promise;
+        await handler(fire, services);
       },
       beforeSessionCleanup: async (sessions) => {
         const handler = await sessionCleanupHandler.promise;
@@ -2256,6 +2292,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     string,
     { sessionId: string; agentName: string; requestedAt: number }
   >();
+  /**
+   * COR-1596 — the runs of schedule fires that have a tool approval registered. A fire has no
+   * `ActiveRun` on `store`, so its approval is not found by the store scan in
+   * `listPendingReviews`; it is registered here as it appears, and the terminal-run loop at the
+   * end of that function lists it, which is the loop that lists any approval of a run that is
+   * not on the store. This set is the loop's gate for fires, and what lets
+   * `releaseTerminalRunReviewState` end a fire's per-run state once its last approval resolves.
+   */
+  const scheduledFireApprovalRuns = new Set<string>();
+
   // A persisted approval can be stale by the time a process restarts. Keep
   // that failure scoped to its review rather than preventing the bureau from
   // recovering unrelated runs.
@@ -5079,12 +5125,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return;
     }
     const recoveredAgentName = requestContext.agentId ?? session.agentName;
-    // COR-1577 — a named run's approvals resume against that agent's own tools.
-    const recoveredSessionAgent = await resolveRecoveredSessionAgent(
-      recoveredAgentName,
-      runId,
-      session.metadata,
-    );
+    // COR-1577 — a named run's approvals resume against that agent's own tools. COR-1596: a
+    // schedule fire's do not: it ran on the Bureau-wide runtime, whatever its agent name says.
+    const scheduledFire = isScheduledFireAuthority(session.metadata, runId);
+    const recoveredSessionAgent = scheduledFire
+      ? undefined
+      : await resolveRecoveredSessionAgent(recoveredAgentName, runId, session.metadata);
     if (recoveredSessionAgent === 'unavailable') {
       terminalReviewSessions.delete(runId);
       return;
@@ -5111,6 +5157,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     runRequestContexts.set(runId, requestContext);
     runToolboxesByRunId.set(runId, runRuntime.toolbox);
+    if (scheduledFire) scheduledFireApprovalRuns.add(runId);
     await restorePendingApprovalStates(runRuntime.toolbox, session.metadata, runId, session.id);
     if (
       !Array.from(pendingApprovalOverrides.keys()).some((reviewId) =>
@@ -5120,6 +5167,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       terminalReviewSessions.delete(runId);
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
+      scheduledFireApprovalRuns.delete(runId);
     }
   }
 
@@ -6865,8 +6913,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       // COR-1577 — a recovered `bureau.run()` run that was parked on `requestHumanInput` is a
       // review again, under the id it had, and the parks it makes from here on are heard.
-      await runHumanWaits.restore(info.workflowId, info.input.agentName);
-      runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
+      await runHumanWaits.attach(
+        info.workflowId,
+        { agentName: info.input.agentName },
+        info.services as DurableRunDeps,
+      );
       // COR-1524: a recovered run is in no store and has no handle of its own, so its snapshot
       // reference settles from the catalog settlement hook, as it ends (see the subscription
       // beside the hook's creation).
@@ -12396,13 +12447,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   function releaseTerminalRunReviewState(runId: string): void {
     const runState = store.getRun(runId);
-    if (!runState || runState.status === 'running') return;
+    // COR-1596: a fire's approvals outlive a run that was never on the store.
+    if (
+      runState === undefined ? !scheduledFireApprovalRuns.has(runId) : runState.status === 'running'
+    ) {
+      return;
+    }
     for (const review of listPendingReviews()) {
       if (review.runId === runId) return;
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
     recoveredRunIds.delete(runId);
+    // COR-1596: a fire is never removed from the store, which is what ends a session run's
+    // resolved-review ids, so its own end here.
+    if (scheduledFireApprovalRuns.delete(runId)) {
+      for (const id of resolvedReviewIds) {
+        if (id.startsWith(`approval:${runId}:`)) resolvedReviewIds.delete(id);
+      }
+    }
   }
 
   /** Whether this process holds the run and it has not recorded its end. */
@@ -14648,6 +14711,71 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     diagnose,
   });
 
+  /**
+   * COR-1596 — lists a schedule fire's tool approval as a review, in memory. The fire's session
+   * records it durably, in the same write as its conversation (`scheduledFireApprovalMetadata`).
+   * Idempotent by key: a replayed step lists the same review once, and never replaces a
+   * replacement approval a re-gate has already put in its place.
+   */
+  function registerScheduledFireApproval(
+    fire: ScheduledFireServicesNotice,
+    services: DurableRunDeps,
+    reviewId: string,
+    approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
+  ): void {
+    if (resolvedReviewIds.has(reviewId) || invalidApprovalReviewIds.has(reviewId)) return;
+    if (!pendingApprovalOverrides.has(reviewId)) pendingApprovalOverrides.set(reviewId, approval);
+    scheduledFireApprovalRuns.add(fire.runId);
+    if (!terminalReviewSessions.has(fire.runId)) {
+      terminalReviewSessions.set(fire.runId, {
+        sessionId: fire.sessionId,
+        agentName: fire.agentName,
+        requestedAt: runtimeServices.clock.now(),
+      });
+    }
+    runRequestContexts.set(fire.runId, fire.requestContext);
+    runToolboxesByRunId.set(fire.runId, services.toolbox);
+  }
+
+  /**
+   * COR-1596 — registers a schedule fire's human waits and tool approvals as pending reviews,
+   * live and recovered alike: the composition builds a fire's services the same way for a tick
+   * and for a recovery, and hands them here before the fire takes a step.
+   *
+   * The human waits go through `runHumanWaits.attach`, the registration a recovered
+   * `bureau.run()` run uses: neither has an `ActiveRun` on the store, and both are heard through
+   * the emitter `attach` gives their services. The approvals go through the hook above.
+   */
+  async function registerScheduledFireReviews(
+    fire: ScheduledFireServicesNotice,
+    services: DurableRunDeps,
+  ): Promise<void> {
+    await runHumanWaits.attach(
+      fire.runId,
+      { agentName: fire.agentName, sessionId: fire.sessionId },
+      services,
+    );
+    // A fire's hook registry is built by `buildScheduledRunServices`; one that is missing would
+    // leave the fire's approvals unlisted, so it is refused loudly, and the composition
+    // diagnoses it.
+    const hooks = services.options.hooks;
+    if (hooks === undefined) {
+      throw new Error(`Schedule fire "${fire.runId}" has no hook registry to list its approvals.`);
+    }
+    // Registered after the merge `registerTrailingOnStep` documents avoiding (COR-1265), and
+    // that is sound here: a fire's registry holds the Bureau's tier alone, so the merge's tier
+    // offset is zero and the raw trailing priority lands exactly where a registration before the
+    // merge would have put it. The hook only records in memory, so it needs no order against the
+    // session write-back, which records the same approval durably.
+    registerTrailingOnStep(
+      hooks,
+      'bureau:scheduled-fire-approvals',
+      createScheduledFireApprovalHook(fire.runId, (reviewId, approval) =>
+        registerScheduledFireApproval(fire, services, reviewId, approval),
+      ),
+    );
+  }
+
   const {
     runAgent,
     planChildRun,
@@ -15293,6 +15421,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // COR-1482: how a fire's task ends, from the engine's own terminal event for its run, and which
   // session incarnation it ran in.
   scheduledFireSettledHandler.resolve(async (settlement) => {
+    // COR-1596: a settled fire has no wait left to answer.
+    runHumanWaits.forget(settlement.runId);
     const status =
       settlement.status === 'completed'
         ? settledTaskState('completed', settlement.finishReason)
@@ -15322,6 +15452,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   scheduledSessionKnownHandler.resolve(async (session) => {
     await tasks.bindIncarnation(session.runId, session.incarnation);
   });
+  scheduledFireServicesHandler.resolve(registerScheduledFireReviews);
 
   // Wire the online eval sampler (AB-53) now that the audit trail and webhook
   // notifier exist (a sampled score is recorded to the former; a threshold

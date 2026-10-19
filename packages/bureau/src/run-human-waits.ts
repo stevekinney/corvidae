@@ -101,6 +101,15 @@ type Wait = {
   readonly ordinal: number;
   readonly requestedAt: number;
   readonly agentName: string | undefined;
+  /** The session a schedule fire runs in; absent for a `bureau.run()` run, which has none. */
+  readonly sessionId: string | undefined;
+};
+
+/** What a registered run is known by besides its id. */
+export type RunHumanWaitTarget = {
+  readonly agentName: string | undefined;
+  /** Set for a schedule fire (COR-1596), whose reviews name the session it runs in. */
+  readonly sessionId?: string | undefined;
 };
 
 /** Statuses a workflow can still be parked in; anything else has settled. */
@@ -148,6 +157,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         ordinal: humanWaitParkOrdinal(run.actions, baselines.get(runId) ?? 0),
         requestedAt: parked.timestamp,
         agentName: runAttribution.get(runId)?.agentName,
+        sessionId: undefined,
       });
     }
     return waits;
@@ -159,6 +169,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       id: reviewId(wait),
       runId: wait.runId,
       agentName: wait.agentName,
+      ...(wait.sessionId === undefined ? {} : { sessionId: wait.sessionId }),
       signalName: wait.signalName,
       prompt: wait.prompt,
       requestedAt: wait.requestedAt,
@@ -183,7 +194,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
    * Re-derive the park of a run a restart recovered, from its checkpoint, if it is still
    * outstanding in the engine. Called before the run's workflow is allowed to advance.
    */
-  async function restore(runId: string, agentName: string | undefined): Promise<void> {
+  async function restore(runId: string, target: RunHumanWaitTarget): Promise<void> {
     const engine = dependencies.engine();
     if (engine === undefined) return;
     let steps: readonly CheckpointStep[];
@@ -226,7 +237,8 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       prompt: outstanding.prompt,
       ordinal: outstanding.ordinal,
       requestedAt: dependencies.now(),
-      agentName,
+      agentName: target.agentName,
+      sessionId: target.sessionId,
     });
   }
 
@@ -236,7 +248,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
    * each park it reports is numbered by the same rule as every other, continuing from the parks
    * the checkpoint committed.
    */
-  function observe(runId: string, agentName: string | undefined, services: DurableRunDeps): void {
+  function observe(runId: string, target: RunHumanWaitTarget, services: DurableRunDeps): void {
     const seeded = restored.get(runId);
     const actions: ParkAction[] =
       seeded === undefined
@@ -269,10 +281,25 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         prompt: event.prompt,
         ordinal: humanWaitParkOrdinal(actions, baselines.get(runId) ?? 0),
         requestedAt: dependencies.now(),
-        agentName,
+        agentName: target.agentName,
+        sessionId: target.sessionId,
       });
     });
     services.emitter = emitter;
+  }
+
+  /**
+   * The one registration of a run's human waits that has no `ActiveRun` on the store: a recovered
+   * `bureau.run()` run and every schedule fire, live or recovered (COR-1596). It restores the park
+   * the run's checkpoint holds, then hears the parks it makes from here on.
+   */
+  async function attach(
+    runId: string,
+    target: RunHumanWaitTarget,
+    services: DurableRunDeps,
+  ): Promise<void> {
+    await restore(runId, target);
+    observe(runId, target, services);
   }
 
   /** Drop everything held for a run, once it has settled. */
@@ -340,8 +367,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     list,
     find,
     has: (id: string) => find(id) !== undefined,
-    restore,
-    observe,
+    attach,
     forget,
     resolve,
   };
