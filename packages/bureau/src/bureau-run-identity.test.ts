@@ -165,8 +165,11 @@ describe('bureau.run() run identity (COR-1302)', () => {
           expect(live?.liveness.id).toBe(run.id);
           expect(live?.liveness.owner).toBe('alice');
           // Only the durable branch records a catalog run's attribution
-          // (AB-241); registering the run does not widen that.
-          expect(live?.principal).toBe(branch.durable ? 'alice' : undefined);
+          // (AB-241), but the run's owner is read in one place (COR-1588): the
+          // handle's own owner stands in where none was recorded, so the
+          // principal a run reports is the owner `getOwner` reports, on both
+          // branches.
+          expect(live?.principal).toBe('alice');
 
           // A catalog run has no bureau session, and `listRuns` keeps listing
           // only the runs `createRun` started (run listing is COR-1304's).

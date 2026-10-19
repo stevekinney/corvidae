@@ -18,6 +18,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
 import {
+  aliceHandlerOver,
   as,
   attachRunRequest,
   authentication,
@@ -242,6 +243,35 @@ describe('child runs', () => {
         code: 'RUN_NOT_FOUND',
       });
       expect(mask(stranger, childId)).toBe(mask(random, 'child-run-never-was'));
+    });
+  });
+
+  it('refuse an authorized attach whose located record is another owner’s (COR-1588)', async () => {
+    await withParentAndChild(async ({ bureau, childId }) => {
+      // The route authorizes the id as alice's, but the record located under it is bob's, as when
+      // whoever dispatches a child chooses an id another owner's run already answers to. The
+      // stream checks the record it opens, not only the id the route authorized.
+      const handler = aliceHandlerOver({
+        ...bureau,
+        children: {
+          ...bureau.children,
+          locate: async (id) => {
+            const record = await bureau.children.locate(id);
+            return record === undefined ? undefined : { ...record, principal: 'api-key:bob' };
+          },
+        },
+      });
+
+      // The first frame decides it, so a stream that wrongly opens fails here rather than hanging
+      // on a child that is still held.
+      const attached = new FrameReader(await handler(attachRunRequest(childId, as('alice-key'))));
+      try {
+        const first = await attached.next();
+        expect(first?.event).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_NOT_FOUND' });
+        expect(await attached.next()).toBeUndefined();
+      } finally {
+        await attached.cancel();
+      }
     });
   });
 
