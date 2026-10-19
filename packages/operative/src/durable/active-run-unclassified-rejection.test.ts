@@ -294,10 +294,12 @@ describe('a reattached run the recovery resolver already failed before replay', 
 describe('a run a real engine failed before replay', () => {
   it('stays write-free when the recovery resolver reports its services unavailable', async () => {
     const storage = new MemoryStorage();
+    // Parks on a signal nobody sends, so the run is still in flight when the first engine goes
+    // away and no timer decides whether the second engine finds it running.
     const runWorkflow = workflow({ name: 'agentRun' })
       .services<{ marker: number }>()
       .execute(async function* (ctx) {
-        yield* ctx.sleep(50);
+        yield* ctx.waitForSignal('proceed');
         return 'unreachable';
       });
     const first = await createRunEngine({
@@ -314,7 +316,11 @@ describe('a run a real engine failed before replay', () => {
         { id: runId, services: { marker: 1 } },
       );
       void handle.result().catch(() => {});
-      for (let turn = 0; turn < 5; turn++) await yieldToPortableEventLoop();
+      for (let turn = 0; turn < 500; turn++) {
+        const state = await first.engine.get(runId);
+        if (state?.status === 'running') break;
+        await yieldToPortableEventLoop();
+      }
     } finally {
       first.engine[Symbol.dispose]();
     }
@@ -323,7 +329,7 @@ describe('a run a real engine failed before replay', () => {
       storage,
       runWorkflow,
       recover: false,
-      startScheduler: true,
+      startScheduler: false,
       resolveWorkflowServices: () => ({ status: 'unavailable', reason: 'run not reconstructable' }),
     });
     const originalConsoleError = console.error;
