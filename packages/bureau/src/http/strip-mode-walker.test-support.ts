@@ -73,17 +73,26 @@ function describePath(segments: readonly string[]): string {
 
 /**
  * Every nested object under `root` that does not refuse undeclared keys, in discovery order. `root` itself is
- * excluded, because `unknownKeyPolicy` governs it. A visited set ends a self-referencing schema
- * such as `z.json()`. A Zod type that has children this walk does not know throws, so a schema kind
+ * excluded, because `unknownKeyPolicy` governs it. Only the schemas on the current path are tracked,
+ * so a schema reused at two paths is walked at both, and a self-referencing one such as `z.json()`
+ * still ends. A Zod type that has children this walk does not know throws, so a schema kind
  * added later fails the guard instead of being skipped.
  */
 export function findStripModeObjects(root: z.core.$ZodType): StripModeFinding[] {
   const findings: StripModeFinding[] = [];
-  const visited = new Set<z.core.$ZodType>();
+  const ancestors = new Set<z.core.$ZodType>();
 
   const visit = (schema: z.core.$ZodType, segments: readonly string[], isRoot: boolean): void => {
-    if (visited.has(schema)) return;
-    visited.add(schema);
+    if (ancestors.has(schema)) return;
+    ancestors.add(schema);
+    try {
+      descend(schema, segments, isRoot);
+    } finally {
+      ancestors.delete(schema);
+    }
+  };
+
+  const descend = (schema: z.core.$ZodType, segments: readonly string[], isRoot: boolean): void => {
     const definition = definitionOf(schema);
     switch (definition.type) {
       case 'object': {

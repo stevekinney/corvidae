@@ -402,6 +402,9 @@ describe('faults', () => {
       weftCode: 'Unprocessable',
       reason: 'invalid-document',
     });
+    // The refusal names the unknown key: a stripped trigger would lose `spec` with it and be refused
+    // for that instead.
+    expect(response.error?.message).toContain('extra');
     expect(await Bun.file(join(served.directory, 'digest.json')).exists()).toBe(false);
     expect(served.bureau.workflows?.list()).toEqual([]);
   });

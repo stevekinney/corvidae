@@ -68,6 +68,14 @@ describe('findStripModeObjects', () => {
     ]);
   });
 
+  it('reports a schema reused at two paths at both, so listing one cannot excuse the other', () => {
+    const shared = z.looseObject({ kind: z.string() });
+    expect(findStripModeObjects(z.strictObject({ a: shared, b: shared }))).toEqual([
+      { path: 'a', mode: 'loose' },
+      { path: 'b', mode: 'loose' },
+    ]);
+  });
+
   it('tells a loose object from a strip-mode one, and passes the root and a strict object', () => {
     expect(findStripModeObjects(z.object({ a: z.string() }))).toEqual([]);
     expect(findStripModeObjects(z.object({ strict: z.strictObject({ a: z.string() }) }))).toEqual(
@@ -102,7 +110,7 @@ describe('the input of every served Bureau operation', () => {
       const allowed = LOOSE_BY_DESIGN[operation.name] ?? {};
       for (const { path, mode } of findStripModeObjects(operation.inputSchema)) {
         // A strip-mode object is never excused: only a loose one, listed by name and path.
-        if (mode === 'loose' && path in allowed) used.add(`${operation.name} ${path}`);
+        if (mode === 'loose' && Object.hasOwn(allowed, path)) used.add(`${operation.name} ${path}`);
         else unlisted.push(`${operation.name} ${path}`);
       }
     }
