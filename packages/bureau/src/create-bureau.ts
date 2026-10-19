@@ -244,6 +244,7 @@ import {
   createTaskRegistry,
   originatingMessageText,
   settledTaskState,
+  TASK_ARTIFACT_TEXT_LIMIT,
   type LiveTask,
 } from './task-registry';
 import {
@@ -9597,13 +9598,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
   const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
-  async function deleteSession(id: string): Promise<ContextDeletionReport> {
+  async function deleteSession(
+    id: string,
+    deleteOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
     if (existing) return existing;
     let releaseCoalescing: (() => void) | undefined = () => {
       inFlightSessionDeletions.delete(id);
     };
-    const deletion = performDeleteSession(id, () => {
+    const deletion = performDeleteSession(id, deleteOptions?.incarnation, () => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
     }).finally(() => {
@@ -9784,10 +9788,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function performDeleteSession(
     id: string,
+    expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
   ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
     const session = await sessionStore.load(id);
+    // COR-1481 — the caller authorized one incarnation of this id. An id reused since is
+    // another context, and nothing of it is cancelled or deleted here.
+    if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
+      return { deleted: false, tasks: [] };
+    }
     if (session) {
       await recordSessionDeletionOwner(session);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
@@ -9856,19 +9866,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
-      const removedLiveRecord = await sessionStore.delete(id);
+      // COR-1481 — the user's message text does not outlive the context it belonged to:
+      // each task of the incarnation keeps its status and cleanup and loses its history.
+      // Cleared before the deletion commits, so a failure fails the deletion with the
+      // context still there, and a retry finds it.
+      await tasks.clearHistory(id, session.incarnation);
+      const removedLiveRecord =
+        expectedIncarnation === undefined
+          ? await sessionStore.delete(id)
+          : await sessionStore.delete(id, { expectedIncarnation });
       onStoreDeletionCommitted();
-      // COR-1481 — the user's message text does not outlive the context it belonged
-      // to: each task of the deleted incarnation keeps its status and cleanup and
-      // loses its history.
-      await tasks.clearHistory(id, session.incarnation).catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'task-registry',
-          message: `[bureau] Could not clear the task history of deleted session "${id}": ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
       // AB-389 — drain right here, before anything below that can stall
       // (a genuinely stuck run's terminal await further down must never
       // block this durable fact from landing): this is the ONE call site
@@ -9968,7 +9975,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
         }
       }
-      return { deleted: true, tasks: liveTasks };
+      return { deleted: removedLiveRecord, tasks: liveTasks };
     }
     await sessionStore.delete(id);
     return { deleted: false, tasks: [] };
@@ -13691,6 +13698,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 at: runtimeServices.clock.nowISO(),
                 status,
                 finishReason: result.finishReason ?? null,
+                ...(status === 'completed' && result.content !== ''
+                  ? {
+                      answer: {
+                        text: result.content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+                        truncated: result.content.length > TASK_ARTIFACT_TEXT_LIMIT,
+                      },
+                    }
+                  : {}),
                 message:
                   result.error === undefined || result.error === null
                     ? null

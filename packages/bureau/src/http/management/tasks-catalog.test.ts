@@ -9,6 +9,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../../test';
 import {
+  answering,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -73,6 +74,31 @@ describe('a catalog task', () => {
         run.abort('test over');
         await run.closed();
       }
+    });
+  });
+
+  it('carries the answer of a completed catalog task in its snapshot, as an artifact', async () => {
+    const answerer = createAgent({ name: 'answerer', generate: answering('the catalog answer') });
+    await withBureau({ agents: { answerer }, durableHistory: true }, async (opened) => {
+      const run = opened.bureau.run('answerer', 'question', { principal: OWNER.alice });
+      await run.result();
+      await waitForCondition(async () => {
+        const task = await opened.bureau.tasks.get(run.id);
+        return task?.status === 'completed';
+      }, 'the task never settled as completed');
+
+      const frames = await readFrames(
+        await opened.handler(
+          subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key'),
+        ),
+        { timeoutMs: 1_500 },
+      );
+
+      expect(frames.map((frame) => frame.event)).toEqual(['task.snapshot']);
+      expect(frames[0]?.data).toMatchObject({
+        status: 'completed',
+        artifact: { artifactId: `${run.id}:result`, text: 'the catalog answer', truncated: false },
+      });
     });
   });
 

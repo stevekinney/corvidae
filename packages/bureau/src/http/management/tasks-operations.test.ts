@@ -330,6 +330,45 @@ describe('bureau.tasks.cancel', () => {
     });
   });
 
+  it('answers a caller that can only write with the receipt alone, and one that can read with the task too', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened, OWNER.alice);
+      const writerOnly = await rpc(
+        opened.handler,
+        'bureau.tasks.cancel',
+        { taskId: run.id },
+        'tasks-writer-key',
+      );
+      const repeat = await rpc(
+        opened.handler,
+        'bureau.tasks.cancel',
+        { taskId: run.id },
+        'tasks-writer-key',
+      );
+      const owner = await rpc(
+        opened.handler,
+        'bureau.tasks.cancel',
+        { taskId: run.id },
+        'alice-key',
+      );
+      const operator = await rpc(
+        opened.handler,
+        'bureau.tasks.cancel',
+        { taskId: run.id },
+        'tasks-operator-key',
+      );
+
+      // Nothing the write scope alone could not read with `tasks.get`: no owner, context, agent or waits.
+      for (const body of [writerOnly, repeat]) {
+        expect(Object.keys(body.result ?? {}).toSorted()).toEqual(['receipt', 'taskId']);
+        expect(JSON.stringify(body)).not.toContain(OWNER.alice);
+        expect(JSON.stringify(body)).not.toContain(run.sessionId);
+      }
+      expect(owner.result).toHaveProperty('task');
+      expect(operator.result).toHaveProperty('task');
+    });
+  });
+
   it('answers cancel-requested without waiting, and the settled cleanup state afterwards', async () => {
     await withBureau({}, async (opened) => {
       const run = await startRun(opened, OWNER.alice);

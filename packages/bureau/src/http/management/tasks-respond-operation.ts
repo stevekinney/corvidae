@@ -291,8 +291,14 @@ export const tasksRespondOperation = defineOperation<
       try {
         const review = await host.reviews.getReview(reviewId);
         if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
-        if (review.status === EXPECTED_STATUS[decision] && review.resolvedBy === actor) {
-          // The earlier attempt of this caller resolved it before it could record its receipt.
+        if (
+          !ownClaim &&
+          review.status === EXPECTED_STATUS[decision] &&
+          review.resolvedBy === actor
+        ) {
+          // An earlier attempt of this same command (it left its claim pending) resolved it
+          // before it could record its receipt. A fresh claim has no such history: the review
+          // was decided by another command, whoever made it, and its text was never delivered.
           result = {
             taskId: input.taskId,
             messageId: input.messageId,

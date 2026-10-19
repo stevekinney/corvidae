@@ -49,6 +49,9 @@ export const TASK_CONTEXT_INDEX_KEY_PREFIX = 'bureau-task-context:v1:';
 /** How many times a record update retries a lost compare-and-swap. */
 const MAX_UPDATE_ATTEMPTS = 10;
 
+/** The most a task's answer may carry as its artifact. */
+export const TASK_ARTIFACT_TEXT_LIMIT = 64 * 1024;
+
 /** The longest status message a task view carries. */
 export const TASK_STATUS_MESSAGE_LIMIT = 1000;
 
@@ -83,6 +86,11 @@ export interface TaskSettlement {
   readonly status: Extract<TaskState, 'completed' | 'failed' | 'canceled'>;
   readonly finishReason: string | null;
   readonly message: string | null;
+  /**
+   * The answer of a catalog task that completed (bounded). A session run's answer lives in
+   * its durable history; a catalog run records none, so its snapshot reads it from here.
+   */
+  readonly answer?: { readonly text: string; readonly truncated: boolean } | undefined;
 }
 
 /** The durable record of one task. */

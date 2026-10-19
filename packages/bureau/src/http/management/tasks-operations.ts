@@ -156,7 +156,11 @@ const tasksCancelOutput = z.object({
   taskId: z.string(),
   receipt: taskCancelReceiptSchema,
   reason: z.literal('already-terminal').optional(),
-  task: taskViewSchema,
+  /**
+   * The task as it stands. Present only for a caller that may read it (its owner, or
+   * `bureau.tasks:read`): a caller that can only write is given the receipt and nothing else.
+   */
+  task: taskViewSchema.optional(),
 });
 
 export const tasksCancelOperation = defineOperation<
@@ -183,13 +187,17 @@ export const tasksCancelOperation = defineOperation<
       throw resourceNotFound('task', input.taskId);
     }
     const outcome = await host.tasks.cancel(input.taskId, input.waitMilliseconds ?? 0);
-    const task = outcome === undefined ? undefined : await host.tasks.get(input.taskId);
-    if (outcome === undefined || task === undefined) throw resourceNotFound('task', input.taskId);
-    return {
+    if (outcome === undefined) throw resourceNotFound('task', input.taskId);
+    const receipt = {
       taskId: input.taskId,
       receipt: outcome.receipt,
       ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
-      task: { ...task, openWaits: [...task.openWaits] },
     };
+    // The write scope does not imply the read scope: the task view goes only to a caller that
+    // could read it.
+    if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:read'))) return receipt;
+    const task = await host.tasks.get(input.taskId);
+    if (task === undefined) throw resourceNotFound('task', input.taskId);
+    return { ...receipt, task: { ...task, openWaits: [...task.openWaits] } };
   },
 });

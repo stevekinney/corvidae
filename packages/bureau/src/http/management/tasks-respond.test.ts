@@ -67,15 +67,19 @@ async function parkedRun(opened: OpenedBureau, principal = OWNER.alice) {
 /** The same Bureau, with every `resolveReview` it receives recorded. */
 function recording(opened: OpenedBureau) {
   const resolved: ResolveReviewInput[] = [];
+  /** The resolutions the Bureau accepted: what was delivered to a run. */
+  const delivered: ResolveReviewInput[] = [];
   const source = Object.create(opened.bureau, {
     resolveReview: {
-      value: (input: ResolveReviewInput) => {
+      value: async (input: ResolveReviewInput) => {
         resolved.push(input);
-        return opened.bureau.resolveReview(input);
+        const result = await opened.bureau.resolveReview(input);
+        delivered.push(input);
+        return result;
       },
     },
   }) as BureauHandlerSource;
-  return { resolved, handler: createBureauHandler(source, { authentication }) };
+  return { resolved, delivered, handler: createBureauHandler(source, { authentication }) };
 }
 
 async function parkedApproval(opened: OpenedBureau, principal = OWNER.alice) {
@@ -181,6 +185,36 @@ describe('bureau.tasks.respond answering a human wait', () => {
         receipt: 'applied',
         kind: 'human-wait',
       });
+    });
+  });
+
+  it('applies one of two different commands that answer one wait at once, and delivers only its text', async () => {
+    await withBureau({ generate: parksThenAnswers(), humanInput: true }, async (opened) => {
+      const run = await parkedRun(opened);
+      const { delivered, handler } = recording(opened);
+
+      const [first, second] = await Promise.all([
+        rpc(
+          handler,
+          'bureau.tasks.respond',
+          { taskId: run.id, messageId: 'a', answer: 'FIRST' },
+          'alice-key',
+        ),
+        rpc(
+          handler,
+          'bureau.tasks.respond',
+          { taskId: run.id, messageId: 'b', answer: 'SECOND' },
+          'alice-key',
+        ),
+      ]);
+
+      const applied = [first, second].filter((body) => body.result?.['receipt'] === 'applied');
+      const refused = [first, second].filter((body) => body.error?.data?.httpStatus === 409);
+      expect(applied).toHaveLength(1);
+      expect(refused).toHaveLength(1);
+      expect(delivered).toHaveLength(1);
+      const winner = applied[0] === first ? 'FIRST' : 'SECOND';
+      expect(delivered[0]?.payload).toBe(winner);
     });
   });
 

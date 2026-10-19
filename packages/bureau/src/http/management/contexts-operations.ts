@@ -11,11 +11,21 @@
  * @module contexts-operations
  */
 
-import { type SessionSummary, summarizeSession } from '@lostgradient/operative';
+import {
+  type AgentSession,
+  type SessionSummary,
+  sessionOwnerOf,
+  summarizeSession,
+} from '@lostgradient/operative';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { aggregateCleanup, type ContextActivity, type TaskRegistry } from '../../task-registry.ts';
+import {
+  aggregateCleanup,
+  type ContextActivity,
+  type TaskCleanupState,
+  type TaskRegistry,
+} from '../../task-registry.ts';
 import type { Bureau } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -40,17 +50,23 @@ export type BureauContextsOperationHost = BureauOwnershipHost & {
   readonly tasks: Pick<TaskRegistry, 'settleCleanup' | 'activityOf'>;
 };
 
-/** Whether `principal` may act on the context `contextId` with `operatorScope`. */
-async function mayAccessContext(
+/**
+ * Whether `principal` may act, with `operatorScope`, on the session it has just loaded.
+ * The owner is the loaded session's own, not a second lookup of the id: a context id can
+ * be deleted and created again for another owner, so authorization is bound to the exact
+ * session the operation then reads or deletes.
+ */
+function mayAccessLoadedContext(
   host: BureauContextsOperationHost,
   principal: Principal,
-  contextId: string,
+  session: AgentSession,
   operatorScope: 'bureau.contexts:write' | 'bureau.contexts:read',
-): Promise<boolean> {
-  const resourceOwner = holdsScope(principal, operatorScope)
-    ? undefined
-    : await host.contexts.getOwner({ kind: 'session', id: contextId });
-  return host.ownership.mayAccess({ principal, resourceOwner, operatorScope });
+): boolean {
+  return host.ownership.mayAccess({
+    principal,
+    resourceOwner: sessionOwnerOf(session.metadata) ?? undefined,
+    operatorScope,
+  });
 }
 
 const contextsDeleteInput = z.object({
@@ -73,8 +89,12 @@ const contextsDeleteOutput = z.object({
   contextId: z.string(),
   receipt: contextDeleteReceiptSchema,
   reason: z.literal('shutting-down').optional(),
-  /** Every live task the deletion cancelled, each with where its own cleanup stands. */
-  tasks: z.array(z.object({ taskId: z.string(), cleanup: taskCleanupSchema })),
+  /**
+   * Every live task the deletion cancelled, each with where its own cleanup stands. Only the
+   * context's owner, or a caller that can read both contexts and tasks, is told which tasks
+   * they were: a caller that can only write is told the receipt.
+   */
+  tasks: z.array(z.object({ taskId: z.string(), cleanup: taskCleanupSchema })).optional(),
 });
 
 export const contextsDeleteOperation = defineOperation<
@@ -105,26 +125,38 @@ export const contextsDeleteOperation = defineOperation<
         data: { capability: 'session-store' },
       } satisfies OperationFault;
     }
-    // Missing, a catalog run's id, and not the caller's all answer alike.
+    // Missing, a catalog run's id, and not the caller's all answer alike. The one session
+    // loaded here is the one authorized and the one deleted.
+    const session = await host.contexts.getSession(contextId);
     if (
-      !(await mayAccessContext(host, principal, contextId, 'bureau.contexts:write')) ||
-      (await host.contexts.getSession(contextId)) === undefined
+      session === undefined ||
+      !mayAccessLoadedContext(host, principal, session, 'bureau.contexts:write')
     ) {
       throw resourceNotFound('context', contextId);
     }
+    // Who may be told which tasks were cancelled: the owner, or a caller that can read both.
+    const mayNameTasks =
+      sessionOwnerOf(session.metadata) === ownerOfPrincipal(principal) ||
+      (holdsScope(principal, 'bureau.contexts:read') && holdsScope(principal, 'bureau.tasks:read'));
+    const named = (tasks: readonly { taskId: string; cleanup: TaskCleanupState }[]) =>
+      mayNameTasks ? { tasks: tasks.map((task) => ({ ...task })) } : {};
     if (host.contexts.lifecycle !== 'ready') {
       return {
         contextId,
         receipt: 'rejected' as const,
         reason: 'shutting-down' as const,
-        tasks: [],
+        ...named([]),
       };
     }
-    const report = await host.contexts.deleteSession(contextId);
-    if (report.tasks.length === 0) return { contextId, receipt: 'applied' as const, tasks: [] };
+    const report = await host.contexts.deleteSession(contextId, {
+      incarnation: session.incarnation,
+    });
+    // The id holds another incarnation now (or none): the context authorized is gone.
+    if (!report.deleted) throw resourceNotFound('context', contextId);
+    if (report.tasks.length === 0) return { contextId, receipt: 'applied' as const, ...named([]) };
     const cleanups = await host.tasks.settleCleanup(report.tasks, input.waitMilliseconds ?? 0);
     const receipt = aggregateCleanup(cleanups.map((task) => task.cleanup)) ?? 'applied';
-    return { contextId, receipt, tasks: cleanups.map((task) => ({ ...task })) };
+    return { contextId, receipt, ...named(cleanups) };
   },
 });
 
@@ -263,11 +295,13 @@ export const contextsGetOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const { contextId } = input;
     if (host.contexts.sessionStore === undefined) throw noSessions();
-    if (!(await mayAccessContext(host, principal, contextId, 'bureau.contexts:read'))) {
+    const session = await host.contexts.getSession(contextId);
+    if (
+      session === undefined ||
+      !mayAccessLoadedContext(host, principal, session, 'bureau.contexts:read')
+    ) {
       throw resourceNotFound('context', contextId);
     }
-    const session = await host.contexts.getSession(contextId);
-    if (session === undefined) throw resourceNotFound('context', contextId);
     const activity = await host.tasks.activityOf([contextId]);
     return projectContext(summarizeSession(session), activity.get(contextId));
   },

@@ -2875,3 +2875,38 @@ describe('session summaries carry a title, a last-message preview and an owner (
     expect(local.map((summary) => summary.id)).toEqual(['unowned']);
   });
 });
+
+describe('deleting only the incarnation a caller read (COR-1481)', () => {
+  it('removes the incarnation it names and leaves a reused id’s new body alone', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    const first = makeSession({ id: 'reused' });
+    await store.save(first);
+    const oldIncarnation = (await store.load('reused'))!.incarnation;
+    await store.delete('reused');
+    await store.save(makeSession({ id: 'reused' }));
+    const newIncarnation = (await store.load('reused'))!.incarnation;
+
+    const refused = await store.delete('reused', { expectedIncarnation: oldIncarnation });
+    const stillThere = await store.load('reused');
+    const removed = await store.delete('reused', { expectedIncarnation: newIncarnation });
+
+    expect(newIncarnation).not.toBe(oldIncarnation);
+    expect(refused).toBe(false);
+    expect(stillThere?.incarnation).toBe(newIncarnation);
+    expect(removed).toBe(true);
+    expect(await store.exists('reused')).toBe(false);
+  });
+
+  it('reports the incarnation it found when it declines', async () => {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(makeSession({ id: 'kept' }));
+    const incarnation = (await store.load('kept'))!.incarnation;
+
+    const outcome = await store.delete('kept', {
+      returnIncarnation: true,
+      expectedIncarnation: 'someone-else',
+    });
+
+    expect(outcome).toEqual({ removed: false, incarnation });
+  });
+});

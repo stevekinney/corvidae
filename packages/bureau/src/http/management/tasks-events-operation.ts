@@ -30,6 +30,7 @@
  */
 
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
+import type { DurableEventEnvelope } from '@lostgradient/operative';
 import {
   createReplayAwareClosableIterable,
   decodeCursor,
@@ -41,16 +42,15 @@ import { z } from 'zod';
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
 import {
   settledTaskState,
+  TASK_ARTIFACT_TEXT_LIMIT,
   TASK_STATUS_MESSAGE_LIMIT,
   type TaskRegistry,
+  type TaskView,
 } from '../../task-registry.ts';
 import type { Bureau } from '../../types.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { resourceNotFound, taskStateSchema } from './management-schemas.ts';
 import { mayAccessTask } from './tasks-operations.ts';
-
-/** The most a task's answer may carry as its artifact text. */
-export const TASK_ARTIFACT_TEXT_LIMIT = 64 * 1024;
 
 /** How many elements may wait for a slow reader before its stream ends and it resumes. */
 const MAX_QUEUED_ELEMENTS = 1_000;
@@ -72,7 +72,16 @@ const statusFields = {
 
 /** One element of a task's stream. */
 export const taskEventSchema = z.discriminatedUnion('kind', [
-  z.object({ ...common, kind: z.literal('task.snapshot'), ...statusFields }),
+  z.object({
+    ...common,
+    kind: z.literal('task.snapshot'),
+    ...statusFields,
+    /** The answer of a completed catalog task, whose stream is this snapshot alone. */
+    artifact: z
+      .object({ artifactId: z.string(), text: z.string(), truncated: z.boolean() })
+      .nullable()
+      .optional(),
+  }),
   z.object({
     ...common,
     kind: z.literal('task.status'),
@@ -137,9 +146,25 @@ type TerminalSettlement = {
  * `ended` is true once the task's story is over: a terminal status with no review
  * open, or its removal.
  */
-export function createTaskEventProjector(taskId: string) {
-  const open = new Set<string>();
-  let settlement: TerminalSettlement | undefined;
+export function createTaskEventProjector(
+  taskId: string,
+  snapshot?: Pick<TaskView, 'status' | 'finishReason' | 'statusMessage' | 'openWaits'>,
+) {
+  // Retention can drop the events that settled a task and keep ones after them, so the
+  // projector starts from what the task is now: its terminal state, and the reviews open.
+  const open = new Set<string>(snapshot?.openWaits.map((wait) => wait.reviewId));
+  let settlement: TerminalSettlement | undefined =
+    snapshot !== undefined &&
+    (snapshot.status === 'completed' ||
+      snapshot.status === 'failed' ||
+      snapshot.status === 'canceled')
+      ? {
+          status: snapshot.status,
+          finishReason: snapshot.finishReason,
+          message: snapshot.statusMessage,
+          artifact: null,
+        }
+      : undefined;
   let ended = false;
 
   const element = (
@@ -272,6 +297,12 @@ export function createTaskEventProjector(taskId: string) {
   };
 }
 
+const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
+  'run.completed',
+  'run.error',
+  'run.aborted',
+]);
+
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
   readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record'>;
@@ -368,6 +399,11 @@ export const tasksEventsOperation = defineOperation<
     if (task === undefined) throw resourceNotFound('task', taskId);
     const stored = await host.tasks.record(taskId);
     const catalog = stored?.incarnation === '';
+    const answer = stored?.settled?.answer;
+    const answerArtifact =
+      answer === undefined
+        ? null
+        : { artifactId: `${taskId}:result`, text: answer.text, truncated: answer.truncated };
     const owner = { kind: 'run', id: taskId } as const;
     const history = host.taskHistory;
     // A resume is probed here, so a Bureau with no durable history to follow answers
@@ -386,9 +422,9 @@ export const tasksEventsOperation = defineOperation<
 
     const controller = new AbortController();
     const queue = createQueue<TaskEvent>();
-    const projector = createTaskEventProjector(taskId);
     const runtime = host.runtime ?? createDefaultRuntimeServices();
     let subscription: { unsubscribe(): void } | undefined;
+    let projector = createTaskEventProjector(taskId, task);
 
     const pump = async (onReplayComplete: () => void): Promise<void> => {
       // Elements are emitted only for events after this sequence. The projector reads the
@@ -404,6 +440,7 @@ export const tasksEventsOperation = defineOperation<
           status: task.status,
           finishReason: task.finishReason,
           message: task.statusMessage,
+          ...(catalog ? { artifact: answerArtifact } : {}),
         });
       } else if ('outcome' in probe && probe.outcome === 'gap') {
         const lastBefore = Math.max(probe.firstRetainedSequence - 1, -1);
@@ -426,6 +463,9 @@ export const tasksEventsOperation = defineOperation<
         return;
       }
 
+      // Read what the history retains first: whether its terminal event survived retention
+      // decides how the projector starts.
+      const retained: DurableEventEnvelope[] = [];
       let since: string | undefined;
       for (;;) {
         if (controller.signal.aborted) return;
@@ -441,18 +481,29 @@ export const tasksEventsOperation = defineOperation<
         if (!('events' in page)) break;
         for (const event of page.events) {
           since = event.cursor;
-          const element = projector.project(event);
-          if (element !== undefined && (decodeCursor(event.cursor) ?? -1) > emitAfter) {
-            queue.push(element);
-          }
-          if (projector.ended) {
-            queue.end();
-            onReplayComplete();
-            return;
-          }
+          retained.push(event);
         }
         if (!page.hasMore) break;
         since = page.nextCursor ?? since;
+      }
+      // A task whose terminal event was pruned is still the terminal state its snapshot
+      // reports: a retained review event must not undo it. When the event survived, the
+      // events themselves say how the task ended, answer included.
+      const settledEventRetained = retained.some((event) => TERMINAL_RUN_EVENTS.has(event.kind));
+      projector = createTaskEventProjector(
+        taskId,
+        settledEventRetained ? { ...task, status: 'working' } : task,
+      );
+      for (const event of retained) {
+        const element = projector.project(event);
+        if (element !== undefined && (decodeCursor(event.cursor) ?? -1) > emitAfter) {
+          queue.push(element);
+        }
+        if (projector.ended) {
+          queue.end();
+          onReplayComplete();
+          return;
+        }
       }
       onReplayComplete();
       if (controller.signal.aborted) return;

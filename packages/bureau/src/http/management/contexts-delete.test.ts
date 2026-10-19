@@ -11,6 +11,7 @@ import {
   answering,
   authentication,
   createStorageGate,
+  createStorageInterleaver,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -76,6 +77,21 @@ describe('bureau.contexts.delete access', () => {
       expect(operator.result).toMatchObject({ contextId: theirs.sessionId, receipt: 'applied' });
       expect(await opened.bureau.getSession(mine.sessionId)).toBeUndefined();
       expect(await opened.bureau.getSession(theirs.sessionId)).toBeUndefined();
+    });
+  });
+
+  it('tells a caller that can only write the receipt, and no task, and tells the owner which tasks it cancelled', async () => {
+    await withBureau({}, async (opened) => {
+      const mine = await startRun(opened);
+      const theirs = await startRun(opened);
+
+      const writerOnly = await deleteContext(opened, mine.sessionId, 'contexts-writer-key', 2_000);
+      const owner = await deleteContext(opened, theirs.sessionId, 'alice-key', 2_000);
+
+      expect(Object.keys(writerOnly.result ?? {}).toSorted()).toEqual(['contextId', 'receipt']);
+      expect(JSON.stringify(writerOnly)).not.toContain(mine.id);
+      expect(writerOnly.result?.['receipt']).toBe('cleaned-up');
+      expect(owner.result?.['tasks']).toEqual([{ taskId: theirs.id, cleanup: 'cleaned-up' }]);
     });
   });
 
@@ -224,8 +240,13 @@ describe('bureau.contexts.delete receipts that depend on the cleanup acknowledge
         })),
       };
       const source = Object.create(opened.bureau, {
-        getOwner: { value: async () => OWNER.alice },
-        getSession: { value: async () => ({ id: 'context-1' }) },
+        getSession: {
+          value: async () => ({
+            id: 'context-1',
+            incarnation: 'incarnation-1',
+            metadata: { sessionOwner: OWNER.alice },
+          }),
+        },
         deleteSession: { value: async () => report },
       }) as BureauHandlerSource;
       const handler = createBureauHandler(source, { authentication });
@@ -447,5 +468,116 @@ describe('the fence around a context being deleted', () => {
       await opened.dispose();
       await fixture.dispose();
     }
+  });
+});
+
+describe('erasing the originating messages of a deleted context', () => {
+  it('fails the deletion, leaving the context, when the history cannot be cleared, and a retry finishes it', async () => {
+    let failing = false;
+    const fixture = createMemoryStorageFixture({
+      wrapStorage: (raw) =>
+        new Proxy(raw, {
+          get(target, property) {
+            const member = Reflect.get(target, property, target) as unknown;
+            if (typeof member !== 'function') return member;
+            return (...args: unknown[]) =>
+              failing && JSON.stringify(args).includes('bureau-task:v1:')
+                ? Promise.reject(new Error('injected: task record write failed'))
+                : (member as (...a: unknown[]) => unknown).apply(target, args);
+          },
+        }),
+    });
+    const opened = await openBureau({ storage: fixture.configuration, generate: answering() });
+    try {
+      const run = await opened.bureau.createRun({
+        message: 'ERASE-ME',
+        principal: OWNER.alice,
+      });
+      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(async () => {
+        const task = await opened.bureau.tasks.get(run.id);
+        return task?.status === 'completed';
+      }, 'the task never settled');
+
+      failing = true;
+      const failed = await deleteContext(opened, run.sessionId, 'alice-key');
+      failing = false;
+
+      expect(failed.result).toBeUndefined();
+      expect(await opened.bureau.getSession(run.sessionId)).toBeDefined();
+      const retried = await deleteContext(opened, run.sessionId, 'alice-key');
+      expect(retried.result).toMatchObject({ receipt: 'applied' });
+      expect(await opened.bureau.getSession(run.sessionId)).toBeUndefined();
+      expect(await opened.bureau.tasks.history(run.id)).toEqual([]);
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  });
+});
+
+describe('a context id that is reused while a request for it is in flight', () => {
+  /**
+   * A Bureau where the first read of a session body completes and then, before its reader
+   * goes on, alice's context is deleted and created again for bob under the same id.
+   */
+  async function withContextReusedAfterTheFirstRead<T>(
+    body: (context: {
+      opened: OpenedBureau;
+      contextId: string;
+      recreate: () => void;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const contextId = 'reused-context';
+    let bureau: OpenedBureau['bureau'] | undefined;
+    const interleaver = createStorageInterleaver(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+      async () => {
+        await bureau!.deleteSession(contextId);
+        await bureau!.createRun({
+          message: 'BOB-PRIVATE-OPENING',
+          principal: OWNER.bob,
+          sessionId: contextId,
+        });
+      },
+    );
+    const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => interleaver.wrap(raw) });
+    const opened = await openBureau({ storage: fixture.configuration });
+    bureau = opened.bureau;
+    try {
+      await opened.bureau.createRun({
+        message: 'alice opening',
+        principal: OWNER.alice,
+        sessionId: contextId,
+      });
+      return await body({ opened, contextId, recreate: () => interleaver.arm() });
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  }
+
+  it('does not hand bob’s new context to a read alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate }) => {
+      recreate();
+
+      const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+
+      expect(JSON.stringify(body)).not.toContain('BOB-PRIVATE-OPENING');
+      expect(JSON.stringify(body)).not.toContain(OWNER.bob);
+    });
+  });
+
+  it('does not delete bob’s new context on a request alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate }) => {
+      recreate();
+
+      const body = await deleteContext(opened, contextId, 'alice-key');
+
+      expect(body.error?.data?.httpStatus).toBe(404);
+      const survivor = await opened.bureau.getSession(contextId);
+      expect(survivor).toBeDefined();
+      expect(survivor?.metadata['sessionOwner']).toBe(OWNER.bob);
+    });
   });
 });

@@ -270,8 +270,16 @@ export interface SessionStore {
    */
   delete(
     id: string,
-    options: { returnIncarnation: true },
+    options: { returnIncarnation: true; expectedIncarnation?: string | undefined },
   ): Promise<{ removed: boolean; incarnation: string | undefined }>;
+  /**
+   * The same atomic delete as `delete(id)`, but only of the body whose
+   * `AgentSession.incarnation` is `expectedIncarnation`. An id reused since the caller
+   * read the session (deleted and created again) holds another incarnation, and that one
+   * is left untouched: the call removes nothing and resolves `false`. The incarnation is
+   * compared with the value the same compare-and-swap verifies is still current.
+   */
+  delete(id: string, options: { expectedIncarnation: string }): Promise<boolean>;
 
   /** List sessions with optional filtering, pagination, and sorting. */
   list(options?: SessionListOptions): Promise<SessionSummary[]>;

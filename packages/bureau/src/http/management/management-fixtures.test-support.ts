@@ -29,6 +29,10 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'bob-key': { subject: 'bob', scopes: [] },
   'tasks-reader-key': { subject: 'tasks-reader', scopes: ['bureau.tasks:read'] },
   'tasks-writer-key': { subject: 'tasks-writer', scopes: ['bureau.tasks:write'] },
+  'tasks-operator-key': {
+    subject: 'tasks-operator',
+    scopes: ['bureau.tasks:read', 'bureau.tasks:write'],
+  },
   'contexts-writer-key': { subject: 'contexts-writer', scopes: ['bureau.contexts:write'] },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
 };
@@ -283,6 +287,41 @@ export function createStorageGate(matches: (verb: string, args: readonly unknown
             held = true;
             reached.resolve();
             return open.promise.then(call);
+          };
+        },
+      });
+    },
+  };
+}
+
+/**
+ * A storage wrapper that lets the first call matching `matches` complete, then runs `hook`
+ * before handing back its result, so a test can change the world between a read and whatever
+ * the reader does with it. Nothing happens until `arm()`, and the hook runs once.
+ */
+export function createStorageInterleaver(
+  matches: (verb: string, args: readonly unknown[]) => boolean,
+  hook: () => Promise<void>,
+) {
+  let armed = false;
+  return {
+    arm(): void {
+      armed = true;
+    },
+    wrap(raw: Storage): Storage {
+      return new Proxy(raw, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function') return member;
+          if (typeof property !== 'string') return member.bind(target);
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (!armed || !matches(property, args)) return call();
+            armed = false;
+            return Promise.resolve(call()).then(async (result) => {
+              await hook();
+              return result;
+            });
           };
         },
       });

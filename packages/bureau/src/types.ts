@@ -1633,10 +1633,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * id, session input to it, and a signal to it read as a session that does not
    * exist. It cancels every live run in the session, not only the latest, then
    * deletes the session, and empties the originating message history of each of
-   * its tasks. It resolves when every run it cancelled has ended; each task's
+   * its tasks. With `options.incarnation` it deletes only that incarnation of the
+   * session: an id reused since the caller read the session is left untouched and the
+   * report says nothing was deleted. It resolves when every run it cancelled has ended; each task's
    * `closed` acknowledgement may settle later.
    */
-  deleteSession(id: string): Promise<ContextDeletionReport>;
+  deleteSession(
+    id: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextDeletionReport>;
 
   /**
    * Deliver a fire-and-forget signal to a session's current in-flight durable run.

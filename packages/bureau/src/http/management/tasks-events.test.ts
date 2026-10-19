@@ -16,11 +16,8 @@ import {
   subscribeRequest,
   type SseFrame,
 } from './management-fixtures.test-support.ts';
-import {
-  createTaskEventProjector,
-  TASK_ARTIFACT_TEXT_LIMIT,
-  type TaskEventSource,
-} from './tasks-events-operation.ts';
+import { createTaskEventProjector, type TaskEventSource } from './tasks-events-operation.ts';
+import { TASK_ARTIFACT_TEXT_LIMIT } from '../../task-registry.ts';
 
 async function withBureau<T>(
   options: Parameters<typeof openBureau>[0],
@@ -403,6 +400,37 @@ describe('the task event projection', () => {
       status: 'completed',
       artifact: { artifactId: 'run-1:result', text: 'the held answer', truncated: false },
     });
+  });
+
+  it('starts from the task’s snapshot, so a retained review event cannot undo a settlement that was pruned', () => {
+    const projector = createTaskEventProjector('run-1', {
+      status: 'completed',
+      finishReason: 'stop-condition',
+      statusMessage: null,
+      openWaits: [],
+    });
+
+    // Only the resolution survived the retention floor; the run.completed below it did not.
+    const element = projector.project(at('review.approved', { reviewId: 'a' }, '9'));
+
+    expect(element).toMatchObject({ status: 'completed', finishReason: 'stop-condition' });
+    expect(projector.ended).toBe(true);
+  });
+
+  it('knows the reviews the snapshot says are open', () => {
+    const projector = createTaskEventProjector('run-1', {
+      status: 'input-required',
+      finishReason: null,
+      statusMessage: null,
+      openWaits: [{ kind: 'human-wait', reviewId: 'a', signalName: 'answer' }],
+    });
+
+    const element = projector.project(
+      at('run.completed', { finishReason: 'stop-condition', content: 'x' }, '3'),
+    );
+
+    expect(element).toMatchObject({ status: 'input-required' });
+    expect(projector.ended).toBe(false);
   });
 
   it('shows a failed or canceled run as that, whatever review is open', () => {

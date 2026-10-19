@@ -895,11 +895,12 @@ export function createSessionStore(
   function deleteSession(id: string): Promise<boolean>;
   function deleteSession(
     id: string,
-    options: { returnIncarnation: true },
+    options: { returnIncarnation: true; expectedIncarnation?: string | undefined },
   ): Promise<{ removed: boolean; incarnation: string | undefined }>;
+  function deleteSession(id: string, options: { expectedIncarnation: string }): Promise<boolean>;
   function deleteSession(
     id: string,
-    deleteOptions?: { returnIncarnation?: boolean },
+    deleteOptions?: { returnIncarnation?: boolean; expectedIncarnation?: string | undefined },
   ): Promise<boolean | { removed: boolean; incarnation: string | undefined }> {
     return runMutation(async () => {
       await readBody('summary-index');
@@ -940,6 +941,15 @@ export function createSessionStore(
           ? ((currentRaw !== null ? parseSession(currentRaw)?.incarnation : undefined) ??
             (legacyRaw !== null ? parseSession(legacyRaw)?.incarnation : undefined))
           : undefined;
+        // Another incarnation holds the id now: it is not what the caller meant to delete.
+        if (
+          deleteOptions?.expectedIncarnation !== undefined &&
+          (!willRemove || (removedIncarnation ?? '') !== deleteOptions.expectedIncarnation)
+        ) {
+          return deleteOptions.returnIncarnation
+            ? { removed: false, incarnation: removedIncarnation }
+            : false;
+        }
         const nextOrdinal = parseOutboxOrdinal(ordinalRaw) + 1;
         const outboxEntry: SessionOutboxEntry = {
           ordinal: nextOrdinal,

@@ -237,3 +237,19 @@ describe('bureau.tasks.respond when the approval was gated again', () => {
     expect(resolutions).toBe(1);
   });
 });
+
+describe('bureau.tasks.respond and a fresh claim', () => {
+  it('never inherits a decision another command made, even when the same principal made it', async () => {
+    const ledger = newLedger();
+
+    const refused = await faultOf(
+      hostOver(ledger, {
+        openWaits: [openWait],
+        getReview: async () => resolved('approved', owner),
+      }),
+    );
+
+    expect(refused).toMatchObject({ code: 'Conflict' });
+    expect(await ledger.read(identity)).toBeUndefined();
+  });
+});

@@ -13,7 +13,9 @@ import { waitForCondition } from '../../test';
 import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import {
+  approvalToolbox,
   authentication,
+  chargesOnce,
   OWNER,
   readFrames,
   subscribeRequest,
@@ -165,6 +167,70 @@ describe('bureau.tasks.events below the retention floor', () => {
         'task.status',
         'task.status',
       ]);
+    } finally {
+      await bureau.dispose();
+      await fixture.dispose();
+    }
+  });
+
+  it('does not undo a terminal snapshot with a retained review event whose settlement was pruned', async () => {
+    const charges: number[] = [];
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const fixture = createSqliteStorageFixture({ runtime });
+    const bureau = await createBureau({
+      id: 'retention-bureau-three',
+      agents: {},
+      generate: chargesOnce,
+      toolbox: approvalToolbox(charges),
+      runtime,
+      storage: fixture.configuration,
+      durableExecution: true,
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      // A short window, so the floor passes the settlement while the approval is still valid.
+      eventRetention: { olderThan: 1_000 },
+      durableOwnership: { ownership: 'none' },
+      durableBackgroundTasks: 'manual',
+    });
+    try {
+      const handler = createBureauHandler(bureau, { authentication });
+      const run = await bureau.createRun({ message: 'charge', principal: OWNER.alice });
+      await waitForCondition(
+        () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+        'the approval never became pending',
+      );
+      await waitForCondition(async () => {
+        const page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        return 'events' in page && page.events.some((event) => event.kind === 'run.completed');
+      }, 'run.completed never reached the history');
+      await runtime.deferred.drain();
+
+      // The request and the settlement fall out of the window; the decision comes after it.
+      runtime.setTime(Date.parse(ORIGIN) + 2_000);
+      await bureau.runDurableMaintenance();
+      const [review] = bureau.listPendingReviews();
+      await bureau.resolveReview({ id: review!.id, decision: 'deny', principal: OWNER.alice });
+      await waitForCondition(async () => {
+        let page = await bureau.eventHistory({ kind: 'run', id: run.id });
+        if ('outcome' in page && page.outcome === 'gap') {
+          page = await bureau.eventHistory(
+            { kind: 'run', id: run.id },
+            { since: String(page.firstRetainedSequence - 1) },
+          );
+        }
+        return 'events' in page && page.events.some((event) => event.kind === 'review.denied');
+      }, 'review.denied never reached the history');
+      await runtime.deferred.drain();
+      const task = await bureau.tasks.get(run.id);
+
+      const frames = await readFrames(
+        await handler(subscribeRequest('bureau.tasks.events', { taskId: run.id }, 'alice-key')),
+      );
+
+      expect(task?.status).toBe('completed');
+      const statuses = frames.map((frame) => (frame.data as { status: string }).status);
+      expect(statuses[0]).toBe('completed');
+      expect(statuses).not.toContain('working');
+      expect(statuses.at(-1)).toBe('completed');
     } finally {
       await bureau.dispose();
       await fixture.dispose();
