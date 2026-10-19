@@ -110,12 +110,12 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // when that one file is measured alone), so they are Bun's per-line attribution for compiled
   // Svelte and not code the tests miss. The Linux counts below are not re-measured.
   measuredAt: '2026-10-20T00:00:00.000Z',
-  overall: { linesFound: 68150, linesHit: 66281, functionsFound: 13469, functionsHit: 13096 },
+  overall: { linesFound: 68225, linesHit: 66356, functionsFound: 13483, functionsHit: 13109 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3650, linesHit: 3583, functionsFound: 643, functionsHit: 625 },
+    'src/app': { linesFound: 3651, linesHit: 3584, functionsFound: 643, functionsHit: 625 },
     'src/lib': { linesFound: 3440, linesHit: 3424, functionsFound: 542, functionsHit: 538 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
@@ -125,10 +125,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 327,
     },
     'src/routes/agents': {
-      linesFound: 1831,
-      linesHit: 1824,
-      functionsFound: 388,
-      functionsHit: 383,
+      linesFound: 1900,
+      linesHit: 1893,
+      functionsFound: 402,
+      functionsHit: 396,
     },
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
