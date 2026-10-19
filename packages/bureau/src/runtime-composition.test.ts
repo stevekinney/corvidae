@@ -7200,7 +7200,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       durableExecution: true,
     });
     try {
-      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({});
+      expect(runtime.mediaOptionsFor('api-key:alice', 'session')).toEqual({});
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
@@ -7215,7 +7215,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       durableExecution: true,
     });
     try {
-      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({
+      expect(runtime.mediaOptionsFor('api-key:alice', 'session')).toEqual({
         assetSafety: { unknown: 'block' },
       });
 

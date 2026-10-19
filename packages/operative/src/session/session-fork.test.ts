@@ -22,6 +22,7 @@ import {
   createTestRunOptions,
   fixtureRuntime,
 } from './session-handle-test-support';
+import { SESSION_OWNER_METADATA_KEY } from './session-owner';
 import type { SessionStore } from './types';
 
 // Drain Weft's deferred inline-launch queue between tests — prevents one test's
@@ -576,5 +577,55 @@ describe('regression — historical forks never orphan or leak tool interactions
     expect(getPendingToolCalls(branchHistory)).toEqual([]);
     const sourceAfterBranch = await loadSession(store, source.id);
     expect(toolCallIds(sourceAfterBranch.conversationHistory)).toEqual(sourceToolCallIds);
+  });
+});
+
+describe('session.fork() and the session owner (COR-1581)', () => {
+  async function ownedSource(metadata: Record<string, string>) {
+    const store = createSessionStore(textValueStore(new MemoryStorage()));
+    await store.save(
+      createAgentSession({
+        id: 'owned-source',
+        agentName: 'fork-agent',
+        conversationHistory: createConversationHistory(),
+        metadata,
+        runs: [],
+      }),
+    );
+    const handle = createSessionHandle('owned-source', {
+      store,
+      agentName: 'fork-agent',
+      runOptions: createTestRunOptions(),
+    });
+    return { store, handle };
+  }
+
+  it('copies the source session owner, and only that key', async () => {
+    const { handle } = await ownedSource({
+      [SESSION_OWNER_METADATA_KEY]: 'alice',
+      lastRunId: 'run-9',
+      note: 'not carried',
+    });
+
+    const forked = await loadFork(handle);
+
+    expect(forked.metadata).toEqual({ [SESSION_OWNER_METADATA_KEY]: 'alice' });
+  });
+
+  it('gives a fork of an owner-less session no owner either', async () => {
+    const { handle } = await ownedSource({ note: 'not carried' });
+
+    const forked = await loadFork(handle);
+
+    expect(forked.metadata).toEqual({});
+  });
+
+  it('copies the owner on a fork from an earlier run, too', async () => {
+    const { handle } = await ownedSource({ [SESSION_OWNER_METADATA_KEY]: 'alice' });
+    await completeRun(handle, 'first run');
+
+    const forked = await loadFork(handle, { throughRun: 0 });
+
+    expect(forked.metadata[SESSION_OWNER_METADATA_KEY]).toBe('alice');
   });
 });

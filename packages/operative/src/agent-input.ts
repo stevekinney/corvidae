@@ -14,7 +14,7 @@ import type {
   JSONValue,
   MultiModalContent,
 } from 'conversationalist';
-import { isMediaContent, multiModalContentSchema } from 'conversationalist';
+import { isMediaContent, multiModalContentSchema, withMessageId } from 'conversationalist';
 
 import type { SessionInputPayload } from './durable/types';
 import { AgentContractError } from './errors';
@@ -96,15 +96,22 @@ export function appendAgentInput(
   conversation: Conversation,
   input: SessionInputPayload,
   metadata?: Record<string, JSONValue>,
+  /** The id to give the row, when the caller needs it to be the same every time it is appended. */
+  id?: string,
 ): void {
-  if (typeof input === 'string') {
-    conversation.appendUserMessage(input, metadata);
+  const content: string | MultiModalContent[] =
+    typeof input === 'string'
+      ? input
+      : input.map((part): MultiModalContent =>
+          part.type === 'text' ? { type: 'text', text: part.text } : structuredClone(part),
+        );
+  if (id === undefined) {
+    conversation.appendUserMessage(content, metadata);
     return;
   }
-  const parts: MultiModalContent[] = input.map((part): MultiModalContent =>
-    part.type === 'text' ? { type: 'text', text: part.text } : structuredClone(part),
+  conversation.appendMessages(
+    withMessageId({ role: 'user', content, ...(metadata === undefined ? {} : { metadata }) }, id),
   );
-  conversation.appendUserMessage(parts, metadata);
 }
 
 /**

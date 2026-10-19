@@ -1,3 +1,5 @@
+import { validateStoredResponseParts } from '../stored-parts';
+
 /**
  * The version of the cursor and step records a durable run persists (COR-713).
  *
@@ -34,10 +36,11 @@ export class UnsupportedCheckpointRecordVersionError extends Error {
 }
 
 /**
- * Checks a parsed record is at the current version and carries its parts. A record at another
- * version throws {@link UnsupportedCheckpointRecordVersionError}; a current-version record whose
- * parts are missing is malformed, which is reported as `false` so the caller applies its own strict
- * or tolerant rule.
+ * Checks a parsed record is at the current version and carries valid parts: an array whose elements
+ * are content parts without inline bytes (COR-1581, through {@link validateStoredResponseParts}). A
+ * record at another version throws {@link UnsupportedCheckpointRecordVersionError}; a current-version
+ * record whose parts are missing or invalid is malformed, which is reported as `false` so the caller
+ * applies its own strict or tolerant rule.
  */
 export function isCurrentCheckpointRecord(
   kind: CheckpointRecordKind,
@@ -49,16 +52,16 @@ export function isCurrentCheckpointRecord(
     throw new UnsupportedCheckpointRecordVersionError(kind, record['schemaVersion']);
   }
   const partsField = kind === 'cursor' ? 'lastParts' : 'parts';
-  return Array.isArray(record[partsField]);
+  return validateStoredResponseParts(record[partsField]).valid;
 }
 
-/** Throws unless a record about to be written is at the current version and carries its parts. */
+/** Throws unless a record about to be written is at the current version and carries valid parts. */
 export function assertWritableCheckpointRecord(kind: CheckpointRecordKind, value: unknown): void {
   if (!isCurrentCheckpointRecord(kind, value)) {
     const record = (value ?? {}) as Record<string, unknown>;
     throw new UnsupportedCheckpointRecordVersionError(
       kind,
-      `${String(record['schemaVersion'])} without parts`,
+      `${String(record['schemaVersion'])} without valid parts`,
     );
   }
 }
@@ -76,7 +79,7 @@ export function assertCurrentStepMemo(memo: {
 }): void {
   if (memo.record !== null) assertWritableCheckpointRecord('step', memo.record);
   const { lastParts, finalRowIsReplacement } = memo.nextAccumulators as Record<string, unknown>;
-  if (!Array.isArray(lastParts) || typeof finalRowIsReplacement !== 'boolean') {
+  if (!validateStoredResponseParts(lastParts).valid || typeof finalRowIsReplacement !== 'boolean') {
     throw new UnsupportedCheckpointRecordVersionError('cursor', undefined);
   }
 }
