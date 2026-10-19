@@ -16,6 +16,7 @@
     countByTransport,
     deploymentHealthPresentation,
     formatDeploymentIdentity,
+    deploymentGroupKey,
     formatDeploymentName,
     formatTransports,
     presentationStatusDotStatus,
@@ -110,7 +111,7 @@
     />
   {:else}
     <ul class="weft-deployment-list">
-      {#each deployments as deployment (formatDeploymentName(deployment) + deployment.health)}
+      {#each deployments as deployment (deploymentGroupKey(deployment))}
         {@const presentation = deploymentHealthPresentation(deployment)}
         <li class="weft-deployment-row">
           <StatusDot

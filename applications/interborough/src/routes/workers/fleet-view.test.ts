@@ -133,3 +133,21 @@ describe('FleetView — one fleet across both transports (COR-160)', () => {
     expect(getAllByText('HTTP long-poll').length).toBeGreaterThan(0);
   });
 });
+
+describe('FleetView — two builds of one deployment', () => {
+  test('lists each build as its own group instead of failing on a duplicate key', () => {
+    const { getByText, getAllByText } = render(FleetView, {
+      props: {
+        workers: [worker({ id: 'wkr_a' }), worker({ id: 'wkr_b' })],
+        deployments: [deployment({ buildId: 'build-1' }), deployment({ buildId: 'build-2' })],
+        adminGate: OPEN_GATE,
+        onDrainDeployment: () => {},
+        onResumeDeployment: () => {},
+      },
+    });
+
+    expect(getAllByText('api-prod')).toHaveLength(2);
+    expect(getByText(/build-1/)).not.toBeNull();
+    expect(getByText(/build-2/)).not.toBeNull();
+  });
+});

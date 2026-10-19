@@ -194,6 +194,19 @@ export function formatDeploymentIdentity(deployment: WorkerDeploymentSummary): s
   );
 }
 
+/**
+ * Identity of one deployment group in a keyed list. The server groups workers by deployment name,
+ * build id, and runtime version, so a deployment mid-rollout appears as one group per build; a key
+ * on the name alone repeats and Svelte refuses to render the list.
+ */
+export function deploymentGroupKey(deployment: WorkerDeploymentSummary): string {
+  return [
+    formatDeploymentName(deployment),
+    asDisplayString(deployment.buildId),
+    asDisplayString(deployment.runtimeVersion),
+  ].join('\u0000');
+}
+
 /** Grouping/display name for a deployment rollup — `deploymentName` is `unknown` per the generated-client gap above; workers with no deployment metadata roll up under this label. */
 export function formatDeploymentName(deployment: WorkerDeploymentSummary): string {
   return asDisplayString(deployment.deploymentName, '(no deployment)');
