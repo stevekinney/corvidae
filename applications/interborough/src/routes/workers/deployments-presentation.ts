@@ -11,6 +11,7 @@ import {
   type DeploymentRoutingCandidate,
   type WorkerDeploymentRouting,
   type WorkerDeploymentVersion,
+  type WorkerDeploymentVersionReport,
 } from '@lostgradient/weft';
 
 import type { WorkerSummary } from './worker-catalog-types.ts';
@@ -73,20 +74,24 @@ export function versionFleet(
 
 /**
  * Why a build cannot be removed right now, in terms of this build, or
- * `undefined` when it can. "No available capacity" is never a reason removal is
+ * `undefined` when it can. Only a draining build can be removed, so a ready
+ * build is told to drain first. "No available capacity" is never a reason removal is
  * allowed or refused: capacity says nothing about whether anything still
  * depends on the build.
  */
 export function removalBlockedReason(
-  version: WorkerDeploymentVersion,
+  version: WorkerDeploymentVersionReport,
   routing: WorkerDeploymentRouting | null,
   fleet: VersionFleet,
 ): string | undefined {
   const label = `${version.deploymentName}/${version.buildId}`;
   if (version.state === 'removed') return `Build ${label} is already removed.`;
+  if (version.state !== 'draining') {
+    return `Build ${label} is ${version.state}, so it is not draining. Drain it first; only a draining build can be removed.`;
+  }
   if (version.executionReferences > 0) {
     const count = version.executionReferences;
-    return `Build ${label} is still referenced by ${count} execution${count === 1 ? '' : 's'} (pinned runs, schedules, pending requirements, attempts, or realms), so it stays reachable.`;
+    return `Build ${label} is still referenced by ${count} piece${count === 1 ? '' : 's'} of work (runs that are not finished and task-ledger entries that require it), so it stays reachable.`;
   }
   const role = versionRole(routing, version.buildId);
   if (role !== 'none') {

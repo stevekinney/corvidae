@@ -7,7 +7,11 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  invalidParamsFault,
+  workerVersionRemovedFault,
+} from './operation-helpers.ts';
 import { mapRevisionUnavailableToFault } from './revision-unavailable-fault.ts';
 
 // `fromStep` is intentionally `unknown` at the schema boundary. The exact
@@ -79,10 +83,12 @@ function validateForkInput(input: ForkWorkflowInput): ForkOptions | undefined {
  *      (Codex review, item 6 — the source run was replaced by a concurrent
  *      `start-new` while this fork was still resolving or committing, a
  *      legitimate retryable race, not an engine failure)
- *   4. 'fromStep' / 'Checkpoint not found at step' → InvalidParams (400)
- *   5. 'Checkpoint not found'                       → NotFound, resource: 'checkpoint'
- *   6. 'not found'                                  → NotFound, resource: 'workflow'
- *   7. otherwise                                    → EngineFailure
+ *   4. `WorkerDeploymentVersionRemovedError`        → Conflict (409), `reason: "version-removed"`
+ *      (the source run's worker binding names a removed deployment build)
+ *   5. 'fromStep' / 'Checkpoint not found at step' → InvalidParams (400)
+ *   6. 'Checkpoint not found'                       → NotFound, resource: 'checkpoint'
+ *   7. 'not found'                                  → NotFound, resource: 'workflow'
+ *   8. otherwise                                    → EngineFailure
  */
 export function resolveForkAccess(error: unknown): never {
   const revisionFault = mapRevisionUnavailableToFault(error);
@@ -125,6 +131,9 @@ export function resolveForkAccess(error: unknown): never {
     };
     throw fault;
   }
+
+  const removedFault = workerVersionRemovedFault(error);
+  if (removedFault !== undefined) throw removedFault;
 
   const message = error instanceof Error ? error.message : String(error);
 

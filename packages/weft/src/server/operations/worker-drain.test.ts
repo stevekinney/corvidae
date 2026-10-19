@@ -5,6 +5,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { seedBoundRun } from '../../worker/deployment-build-references.test-support.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import {
   TEST_ACCEPTED_MANIFEST_DIGEST,
@@ -38,7 +39,8 @@ async function faultOf(promise: Promise<unknown>): Promise<OperationFault> {
 
 async function fixture() {
   const registry = new WorkerRegistry();
-  const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
+  const storage = new MemoryStorage();
+  const catalog = new WorkerDeploymentCatalog(storage);
   for (const [id, buildId] of [
     ['old-1', 'build-1'],
     ['new-1', 'build-2'],
@@ -67,6 +69,7 @@ async function fixture() {
   }
   return {
     registry,
+    storage,
     catalog,
     drain: createDrainDeploymentOperation({ workerRegistry: registry, catalog, clock: () => 5 }),
     resume: createClearDeploymentDrainOperation({ workerRegistry: registry, catalog }),
@@ -167,8 +170,12 @@ describe('weft.worker.deployments.drain and .resume — build-scoped', () => {
   });
 
   it('keeps the drain on a build that has executions bound to it', async () => {
-    const { catalog, drain } = await fixture();
-    await catalog.reference('payments', 'build-1', 1);
+    const { storage, catalog, drain } = await fixture();
+    await seedBoundRun(storage, {
+      workflowId: 'run-1',
+      deploymentName: 'payments',
+      buildId: 'build-1',
+    });
 
     await invoke(drain, { deploymentName: 'payments', buildId: 'build-1' });
 
@@ -325,6 +332,7 @@ describe('build-scoped drain over REST and the live registry', () => {
     const resumed = await catalog.getVersion('payments', 'build-1');
     expect(resumed?.state).toBe('ready');
 
+    await catalog.setVersionState('payments', 'build-2', 'draining');
     await catalog.removeVersion('payments', 'build-2');
     const refused = await call('weft.worker.deployments.resume', 'build-2');
     engine[Symbol.dispose]();

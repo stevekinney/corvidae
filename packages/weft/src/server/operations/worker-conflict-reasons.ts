@@ -13,8 +13,14 @@ export const WORKER_CONFLICT_REASONS = {
   staleGeneration: 'stale-generation',
   /** The named build exists but is not `ready`, so it cannot be a routing target. */
   versionNotReady: 'version-not-ready',
-  /** An execution, schedule, attempt, or realm still references the build. */
+  /** The build is not `draining`, so it cannot be removed; only a draining build can be. */
+  versionNotDraining: 'version-not-draining',
+  /** Non-terminal durable work is still bound to the build: a run's current binding or a ledger entry's requirement. */
   versionReferenced: 'version-referenced',
+  /** Work would be bound to a build that has been removed: a start, restart, fork, child, upgrade, retry or ledger entry. */
+  versionRemoved: 'version-removed',
+  /** Bindings kept landing on the build while a removal scanned it, so the removal gave up; retry. */
+  versionBusy: 'version-busy',
   /** The routing pointer names the build as its current or ramping build. */
   versionRouted: 'version-routed',
   /** A start's override preview is expired, used, for another workflow, stale, or forged. */

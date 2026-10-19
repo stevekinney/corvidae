@@ -125,8 +125,14 @@
   /** What a failed drain, resume, or removal says, branching on the fault's reason, never its text. */
   function actionErrorMessage(failure: unknown): string {
     const reason = conflictReasonOf(failure);
+    if (reason === WORKER_CONFLICT_REASONS.versionNotDraining) {
+      return 'That build is not draining, so it was not removed. Drain it first, then remove it.';
+    }
     if (reason === WORKER_CONFLICT_REASONS.versionReferenced) {
-      return 'That build is now referenced by an execution, so it was not removed. Reload to see its references.';
+      return 'Work is still bound to that build, so it was not removed. Reload to see its references.';
+    }
+    if (reason === WORKER_CONFLICT_REASONS.versionBusy) {
+      return 'New work kept landing on that build while it was checked for removal, so it was not removed. Try again.';
     }
     if (reason === WORKER_CONFLICT_REASONS.versionRouted) {
       return 'That build is now a routing target, so it was not removed. Route new traffic to another build first.';
@@ -214,7 +220,7 @@
 <ConfirmDialog
   bind:open={removeOpen}
   title="Remove build"
-  description={`Marks ${removeTarget.deploymentName}/${removeTarget.buildId} removed so it can no longer be routed to. The server refuses if anything still references it. This cannot be undone.`}
+  description={`Marks ${removeTarget.deploymentName}/${removeTarget.buildId} removed so it can no longer be routed to. Only a draining build can be removed, and the server refuses while a run that is not finished or a task-ledger entry that requires it is still bound to it. This cannot be undone.`}
   confirmLabel="Remove build"
   destructive
   typeToConfirm={removeTarget.buildId}
