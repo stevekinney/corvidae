@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
 import {
   bureauSpecOf,
   createAgentSchedule,
@@ -8,6 +7,7 @@ import {
   pauseAgentSchedule,
   updateAgentSchedule,
 } from './bureau-schedules.ts';
+import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -58,7 +58,8 @@ describe('the Bureau’s schedules', () => {
           ? { schedules: [VIEW], nextOffset: 1 }
           : { schedules: [{ ...VIEW, id: 's-2' }], nextOffset: null },
     });
-    expect((await listBureauSchedules()).map((schedule) => schedule.id)).toEqual(['s-1', 's-2']);
+    const listed = await listBureauSchedules();
+    expect(listed.map((schedule) => schedule.id)).toEqual(['s-1', 's-2']);
     expect(stub.callsTo('bureau.schedules.list').map((call) => call.params['offset'])).toEqual([
       0, 1,
     ]);

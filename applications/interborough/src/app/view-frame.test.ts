@@ -62,6 +62,28 @@ function codeSummary() {
   return summary;
 }
 
+const GOAL = {
+  goalRunId: 'goal-1',
+  owner: 'anonymous:local',
+  agentName: 'assistant',
+  status: 'running',
+  terminalReason: null,
+  revision: 1,
+  createdAt: '2026-10-19T08:00:00.000Z',
+  updatedAt: '2026-10-19T08:00:00.000Z',
+  closedAt: null,
+  cancellation: null,
+  bounds: {
+    maximumAttempts: 3,
+    maximumTotalDurationMs: null,
+    maximumTotalSteps: null,
+    maximumTotalTokens: null,
+    maximumTotalCostUsd: null,
+  },
+  usage: { attempts: 0, steps: 0, tokens: 0, costUsd: null, durationMs: 0 },
+  attempts: [],
+};
+
 const AUDIT_RECORD = {
   sequence: 1,
   timestamp: '2026-10-19T08:00:00.000Z',
@@ -94,6 +116,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   if (call !== undefined && call.method === 'bureau.audit.query') {
     const records = empty ? [] : [AUDIT_RECORD];
     return Response.json({ jsonrpc: '2.0', id: call.id, result: { records, nextCursor: null } });
+  }
+  if (call !== undefined && call.method === 'bureau.goals.list') {
+    const goals = empty ? [] : [GOAL];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
   }
   if (call !== undefined) {
     // The Bureau's list operations answer their own shapes, and an empty one has nothing in it.

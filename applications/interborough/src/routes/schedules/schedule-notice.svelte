@@ -25,7 +25,13 @@
   );
 </script>
 
-<Alert variant="warning" dismissible {onDismiss} data-testid="schedule-notice" data-notice={notice.kind}>
+<Alert
+  variant="warning"
+  dismissible
+  {onDismiss}
+  data-testid="schedule-notice"
+  data-notice={notice.kind}
+>
   <p class="weft-schedule-notice__title">{title}</p>
   <p class="weft-schedule-notice__body">{description}</p>
 </Alert>

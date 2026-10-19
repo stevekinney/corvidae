@@ -256,7 +256,7 @@ describe('a link to a schedule', () => {
 
   test('is never the old query-string form anywhere in the source', async () => {
     // Spelled in two halves so that this file is not an offender itself.
-    const old = 'schedules' + '?id=';
+    const old = ['schedules', 'id='].join('?');
     const offenders: string[] = [];
     for await (const path of new Glob('**/*.{svelte,ts,md}').scan(sourceRoot)) {
       const text = await Bun.file(join(sourceRoot, path)).text();

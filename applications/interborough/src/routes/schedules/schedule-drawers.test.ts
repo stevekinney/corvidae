@@ -212,7 +212,9 @@ describe('editing a code-defined schedule', () => {
     const dialog = within(await drawer('Edit schedule'));
     await dialog.findByLabelText('Jitter');
 
-    expect(dialog.getByLabelText('Backfill missed occurrences', { selector: '[role="switch"]' })).not.toBeNull();
+    expect(
+      dialog.getByLabelText('Backfill missed occurrences', { selector: '[role="switch"]' }),
+    ).not.toBeNull();
     expect(dialog.getByRole('group', { name: /Which revision future occurrences/ })).not.toBeNull();
     const overlap = within(dialog.getByRole('group', { name: OVERLAP }));
     expect(overlap.getAllByRole('radio')).toHaveLength(4);
@@ -244,7 +246,9 @@ describe('creating a schedule', () => {
   test('asks what to start, and an agent run takes an agent, an input, an optional session, a cadence, a description, and an overlap policy', async () => {
     open('/schedules?create=1');
     const dialog = within(await drawer('Create schedule'));
-    await fireEvent.click(await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
 
     const agent = await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel);
     expect([...(agent as HTMLSelectElement).options].map((option) => option.value)).toEqual([
@@ -268,7 +272,9 @@ describe('creating a schedule', () => {
   test('creates an agent run through bureau.schedules.create, and opens it', async () => {
     open('/schedules?create=1');
     const dialog = within(await drawer('Create schedule'));
-    await fireEvent.click(await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
 
     expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
     await fireEvent.change(await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel), {
@@ -305,7 +311,9 @@ describe('creating a schedule', () => {
   test('refuses an overlap of allow for a schedule that continues a session, before it asks the Bureau', async () => {
     open('/schedules?create=1');
     const dialog = within(await drawer('Create schedule'));
-    await fireEvent.click(await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
     await fireEvent.change(await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel), {
       target: { value: 'tool-runner' },
     });
@@ -329,7 +337,9 @@ describe('creating a schedule', () => {
       }),
     );
     const dialog = within(await drawer('Create schedule'));
-    await fireEvent.click(await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
     await fireEvent.change(await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel), {
       target: { value: 'tool-runner' },
     });
@@ -350,7 +360,9 @@ describe('creating a schedule', () => {
     const dialog = within(await drawer('Create schedule'));
 
     // The typed name stands in until the registry answers, and then the list of types replaces it.
-    const type = (await dialog.findByRole('combobox', { name: 'Workflow type' })) as HTMLSelectElement;
+    const type = (await dialog.findByRole('combobox', {
+      name: 'Workflow type',
+    })) as HTMLSelectElement;
     const values = () => [...type.options].map((option) => option.value);
     // Both types the Bureau owns are in the registry, and neither is offered.
     await waitFor(() => expect(values()).toContain('order-processing'));
@@ -386,7 +398,9 @@ describe('creating a schedule', () => {
   test('creates a code-defined workflow’s schedule through the engine', async () => {
     open('/schedules?create=1');
     const dialog = within(await drawer('Create schedule'));
-    const type = (await dialog.findByRole('combobox', { name: 'Workflow type' })) as HTMLSelectElement;
+    const type = (await dialog.findByRole('combobox', {
+      name: 'Workflow type',
+    })) as HTMLSelectElement;
 
     // The first type is the one chosen, as for the agent above.
     await fireEvent.change(type, { target: { value: 'inventory-sync' } });

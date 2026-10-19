@@ -84,7 +84,9 @@
 
   /** What is reserved to another owner: `agentRun` to the agent choice, a workflow file's type to its file. */
   function reservedTypes(overlay: ScheduleOverlay | undefined): ReadonlyMap<string, string> {
-    const reserved = new Map<string, string>([[AGENT_RUN_TYPE, SCHEDULE_COPY.form.reservedAgentRun]]);
+    const reserved = new Map<string, string>([
+      [AGENT_RUN_TYPE, SCHEDULE_COPY.form.reservedAgentRun],
+    ]);
     for (const id of overlay?.files.keys() ?? []) {
       reserved.set(id, SCHEDULE_COPY.form.reservedAgentAuthored);
     }
@@ -289,7 +291,12 @@
   /** A workflow type is only chosen once the Bureau has said which are agent-authored. */
   const checking = $derived(mode === 'create' && starts === 'workflow' && !overlayQuery.isSuccess);
   const canSubmit = $derived(
-    draft !== undefined && draft.isValid && !checking && !stale && !writeGate.disabled && !submitting,
+    draft !== undefined &&
+      draft.isValid &&
+      !checking &&
+      !stale &&
+      !writeGate.disabled &&
+      !submitting,
   );
 
   function submit(): void {
@@ -430,12 +437,7 @@
     <div class="weft-schedule-drawer__footer">
       <span class="weft-schedule-drawer__service-note">Runs as schedules service account</span>
       <Button variant="ghost" size="sm" onclick={() => (open = false)}>Cancel</Button>
-      <Button
-        variant="primary"
-        size="sm"
-        disabled={!canSubmit}
-        onclick={submit}
-      >
+      <Button variant="primary" size="sm" disabled={!canSubmit} onclick={submit}>
         {mode === 'create' ? 'Create schedule' : 'Save changes'}
       </Button>
       {#if writeGate.disabled}

@@ -404,8 +404,7 @@
             <li data-schedule={schedule.id} data-status={schedule.status}>
               <a
                 href={router.href(scheduleDetailPath(schedule.id))}
-                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}
-                >{schedule.id}</a
+                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}>{schedule.id}</a
               >
               <span>{scheduleLabel(schedule)}</span>
               <Badge variant={schedule.status === 'active' ? 'success' : 'neutral'} size="sm"

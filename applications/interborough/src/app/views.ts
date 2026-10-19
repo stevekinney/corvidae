@@ -18,6 +18,7 @@ export const VIEW_NAMES = [
   'storage',
   'system',
   'audit',
+  'goals',
   'engine',
 ] as const;
 
@@ -74,5 +75,12 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
   // principal that may see none is answered with an empty page, so owner scoping is the gate.
   audit: { scopes: [], canBeEmpty: true },
+  // Reached by address and by the empty states that link to it, and not from the sidebar. Holds no
+  // console scope, as the audit trail holds none: a caller sees the goals it owns.
+  goals: {
+    scopes: [],
+    canBeEmpty: true,
+    creating: (search) => search.get('create') === '1',
+  },
   engine: { scopes: ['workflows:read'], canBeEmpty: false },
 };

@@ -13,10 +13,12 @@ describe('the audit filter', () => {
 
   test('sends only what is set, trimmed, and the resource under the name the Bureau takes it by', () => {
     expect(filterOf(EMPTY_AUDIT_DRAFT)).toEqual({});
-    expect(filterOf({ since: '', type: ' schedule.created ', resource: ' schedule:s-1 ' })).toEqual({
-      type: 'schedule.created',
-      resource: 'schedule:s-1',
-    });
+    expect(filterOf({ since: '', type: ' schedule.created ', resource: ' schedule:s-1 ' })).toEqual(
+      {
+        type: 'schedule.created',
+        resource: 'schedule:s-1',
+      },
+    );
   });
 
   test('round-trips through the address, and an empty search is the bare path', () => {

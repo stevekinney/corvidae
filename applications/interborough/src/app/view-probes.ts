@@ -4,6 +4,7 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
+import { listGoals } from '../lib/bureau-goals.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import { queryKeys } from '../lib/query.ts';
 import {
@@ -47,6 +48,12 @@ function notFound(what: string): ViewProbeFault {
 async function probeAudit(): Promise<ViewProbeResult> {
   const page = await queryAudit({}, undefined, { limit: 1 });
   return { empty: page.records.length === 0 };
+}
+
+/** The goals: empty when the caller has none. The Bureau answers any caller with the goals it owns. */
+async function probeGoals(): Promise<ViewProbeResult> {
+  const page = await listGoals({ limit: 1 });
+  return { empty: page.goals.length === 0 };
 }
 
 /** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
@@ -153,6 +160,8 @@ export function probeFor(
       };
     case 'audit':
       return probeAudit;
+    case 'goals':
+      return probeGoals;
     case 'agent-editor': {
       const id = parameters['id'];
       return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);

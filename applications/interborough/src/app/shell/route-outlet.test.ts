@@ -41,7 +41,11 @@ function mount() {
 /** An audit trail with nothing in it, which is how the Bureau answers the view's probe. */
 function emptyTrail(): () => Promise<Response> {
   return async () =>
-    Response.json({ jsonrpc: '2.0', id: 'bureau.audit.query', result: { records: [], nextCursor: null } });
+    Response.json({
+      jsonrpc: '2.0',
+      id: 'bureau.audit.query',
+      result: { records: [], nextCursor: null },
+    });
 }
 
 describe('the route outlet', () => {

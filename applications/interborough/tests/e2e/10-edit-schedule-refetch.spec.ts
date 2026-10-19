@@ -41,7 +41,7 @@ test('operator edits a schedule across a background refetch and the unsaved chan
     .selectOption('order-processing');
   await createDrawer.getByRole('button', { name: 'Create schedule' }).click();
   await expect(createDrawer).not.toBeVisible();
-  await expect(page).toHaveURL(/\/schedules\?id=/);
+  await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
 
   await page.getByRole('button', { name: 'Edit' }).click();
   const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
@@ -115,7 +115,7 @@ test('the schedule edit drawer is usable across supported widths and themes', as
       await page.addInitScript((selectedTheme) => {
         localStorage.setItem('weft-ui-theme', selectedTheme);
       }, theme);
-      await page.goto(`/schedules?id=${SCHEDULE_ID}&edit=1`);
+      await page.goto(`/schedules/${SCHEDULE_ID}?edit=1`);
 
       const drawer = page.getByRole('dialog', { name: 'Edit schedule' });
       await expect(drawer).toBeVisible();

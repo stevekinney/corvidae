@@ -56,9 +56,7 @@ export async function queryAudit(
     limit: options?.limit ?? AUDIT_PAGE_SIZE,
     ...(filter.since === undefined ? {} : { since: filter.since }),
     ...(filter.type === undefined || filter.type === '' ? {} : { type: filter.type }),
-    ...(filter.resource === undefined || filter.resource === ''
-      ? {}
-      : { runId: filter.resource }),
+    ...(filter.resource === undefined || filter.resource === '' ? {} : { runId: filter.resource }),
     ...(cursor === undefined ? {} : { cursor }),
   };
   return pageSchema.parse(await callBureau('bureau.audit.query', params, options));

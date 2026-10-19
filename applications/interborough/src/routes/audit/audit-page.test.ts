@@ -152,7 +152,10 @@ describe('the filters', () => {
       'bureau.audit.query': (params) =>
         isProbe(params)
           ? { records: [record(1)], nextCursor: null }
-          : { records: [record(1, { resource: `for-${String(params['runId'])}` })], nextCursor: null },
+          : {
+              records: [record(1, { resource: `for-${String(params['runId'])}` })],
+              nextCursor: null,
+            },
     });
     landAt('/audit?type=schedule.created&resource=schedule%3As-9');
 
@@ -220,10 +223,14 @@ describe('the filters', () => {
 
 describe('Load more', () => {
   const pageOf = (params: Query): Page => {
-    const filter = String(params['runId'] ?? '');
+    const runId = params['runId'];
+    const filter = typeof runId === 'string' ? runId : '';
     if (params['cursor'] === undefined) {
       return {
-        records: [record(1, { resource: `first${filter}` }), record(2, { resource: `second${filter}` })],
+        records: [
+          record(1, { resource: `first${filter}` }),
+          record(2, { resource: `second${filter}` }),
+        ],
         nextCursor: '1760860920000:2',
       };
     }
@@ -261,7 +268,10 @@ describe('Load more', () => {
 
 describe('who may see it', () => {
   test('a principal holding no console scope sees the records, not a forbidden view', async () => {
-    const { container, findByText } = open({ records: [record(1)], nextCursor: null }, { scopes: [] });
+    const { container, findByText } = open(
+      { records: [record(1)], nextCursor: null },
+      { scopes: [] },
+    );
 
     await findByText('run-1');
     expect(frameState(container)).toBe('ready');
@@ -301,7 +311,8 @@ describe('who may see it', () => {
     await fireEvent.input(await findByLabelText(AUDIT_COPY.typeLabel), { target: { value: 'x' } });
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.searchAction }));
 
-    expect((await findByRole('alert')).textContent).toContain(AUDIT_COPY.failed.title);
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toContain(AUDIT_COPY.failed.title);
     failing = false;
     await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     await findByText('back-again');

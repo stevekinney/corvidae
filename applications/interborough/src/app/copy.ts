@@ -273,6 +273,16 @@ export const WORKFLOW_COPY = {
   },
 } as const;
 
+/**
+ * What a write that named the revision, or the hash, it had read says when the thing had changed
+ * since: nothing was written, and the page has read it again. The schedules and the goals say it.
+ */
+export const STALE_COPY = {
+  title: (id: string): string => `“${id}” changed since you loaded it`,
+  description:
+    'Someone or something changed it after this page read it, so nothing was changed. It has been reloaded, and what you see is what it is now. Try again if you still want to.',
+} as const;
+
 /** The words the schedules area (`/schedules` and under it) uses outside its view states. */
 export const SCHEDULE_COPY = {
   /** What a schedule starts, by the service that owns it. */
@@ -289,11 +299,7 @@ export const SCHEDULE_COPY = {
   editWorkflowNote:
     'This schedule is the trigger in a workflow’s file, so its cadence, overlap, and the rest are edited in the workflow, and it ends when the workflow is deleted.',
   /** A write that named the revision of the schedule, or the hash of the file, that the caller read. */
-  stale: {
-    title: (id: string): string => `“${id}” changed since you loaded it`,
-    description:
-      'Someone or something changed it after this page read it, so nothing was changed. It has been reloaded, and what you see is what it is now. Try again if you still want to.',
-  },
+  stale: STALE_COPY,
   /** The Bureau changed the workflow’s file, and the engine could not follow yet. */
   unapplied: {
     title: 'Saved, but the engine could not apply it yet',
@@ -341,6 +347,61 @@ export const SCHEDULE_COPY = {
   },
 } as const;
 
+/** The words the goals (`/goals`) use outside its view states. */
+export const GOALS_COPY = {
+  newAction: 'New goal',
+  loadMore: 'Load more',
+  /** The caption of the table. */
+  caption: 'Goals, oldest first',
+  goalColumn: 'Goal',
+  agentColumn: 'Agent',
+  statusColumn: 'Status',
+  attemptsColumn: 'Attempts',
+  createdColumn: 'Created',
+  actionsColumn: 'Actions',
+  /** The words for attempts used, of the most the goal may make. */
+  attempts: (used: number, most: number): string => `${String(used)} of ${String(most)}`,
+  cancelAction: 'Cancel',
+  /** A goal that has been asked to stop, and has not yet. */
+  cancelRequested: 'Cancel requested',
+  cancelDialog: {
+    title: 'Cancel this goal?',
+    description: (id: string): string =>
+      `“${id}” stops: its controller and its attempt’s run are stopped, and it ends as canceled. This can’t be undone.`,
+    confirm: 'Cancel goal',
+  },
+  cancelFailed: 'The goal was not cancelled',
+  /** The Bureau answered a cancel with how far it got. */
+  cancelPending: 'The cancellation is recorded and will finish. The goal ends as canceled.',
+  form: {
+    title: 'New goal',
+    agentLabel: 'Agent',
+    agentPlaceholder: 'Choose an agent',
+    agentDescription: 'The agent that runs each attempt.',
+    agentFreeTextDescription: 'The list of agents is unavailable. Enter the agent’s name.',
+    promptLabel: 'Prompt',
+    promptDescription:
+      'What the agent is asked to do. The goal runs it until the validator passes.',
+    identityNameLabel: 'Identity name',
+    identityVersionLabel: 'Identity version',
+    identityDescription: 'Names this goal, with a version, for the people who read about it.',
+    validatorNameLabel: 'Validator name',
+    validatorVersionLabel: 'Validator version',
+    validatorDescription:
+      'The exact name and version of a validator this Bureau was configured with. One it lacks is refused.',
+    maximumAttemptsLabel: 'Maximum attempts',
+    maximumAttemptsDescription: 'The most attempts the goal makes before it ends as exhausted.',
+    maximumAttemptsInvalid: 'Enter a whole number of attempts, one or more.',
+    maximumTotalStepsLabel: 'Maximum total steps',
+    maximumTotalStepsDescription:
+      'The most steps the goal takes across all its attempts. The Bureau needs a bound on the attempts together, and this is it.',
+    maximumTotalStepsInvalid: 'Enter a whole number of steps, one or more.',
+    createAction: 'Create goal',
+    cancelAction: 'Cancel',
+    failed: 'The goal was not created',
+  },
+} as const;
+
 /** The words the audit trail (`/audit`) uses outside its view states. */
 export const AUDIT_COPY = {
   /** The accessible name of the search form. */
@@ -369,7 +430,8 @@ export const AUDIT_COPY = {
   },
   failed: {
     title: 'The search failed',
-    description: 'The Bureau did not answer this search. Check that the host is running, then try again.',
+    description:
+      'The Bureau did not answer this search. Check that the host is running, then try again.',
   },
 } as const;
 
@@ -613,6 +675,21 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'The audit trail is locked' },
+  },
+  goals: {
+    label: 'Goals',
+    loading: { title: 'Loading goals', description: 'Reading the goals the Bureau is running.' },
+    empty: {
+      title: 'No goals yet',
+      description:
+        'A goal runs an agent on a prompt until a validator passes. Create one to see it here.',
+      action: { label: 'Create a goal', href: '/goals?create=1' },
+    },
+    error: {
+      title: 'Goals are unavailable',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Goals are locked' },
   },
   engine: {
     label: 'Engine',

@@ -832,7 +832,7 @@ describe('the links on a type’s page', () => {
     const links = [
       ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
       ['/workflows/digest/edit', root.querySelector<HTMLAnchorElement>('a[href$="/edit"]')],
-      ['/schedules', root.querySelector<HTMLAnchorElement>('[data-schedule] a')],
+      ['/schedules/every-6', root.querySelector<HTMLAnchorElement>('[data-schedule] a')],
     ] as const;
     for (const [path, link] of links) {
       link?.dispatchEvent(

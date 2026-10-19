@@ -21,6 +21,15 @@ export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 export const E2E_BARRIER_PORT = E2E_PORT + 1;
 export const E2E_BARRIER_URL = `http://127.0.0.1:${E2E_BARRIER_PORT}`;
 
+/**
+ * The second host the suite runs, on the port after the barrier's. Its console runs on the Bureau's
+ * own engine, which is how every real host runs, so the schedules the Bureau holds (an agent run, and
+ * the trigger of a workflow file) are listed beside the engine's. The main host gives its console an
+ * engine of its own for the fixtures, which cannot see them. The schedules specs open this one.
+ */
+export const E2E_BUREAU_PORT = E2E_PORT + 2;
+export const E2E_BUREAU_URL = `http://127.0.0.1:${E2E_BUREAU_PORT}`;
+
 /** `deploymentName` the E2E `RemoteWorker` registers under (flow (e), drain-a-deployment). */
 export const E2E_DEPLOYMENT_NAME = 'checkout-worker-fleet';
 

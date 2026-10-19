@@ -214,7 +214,9 @@
             disabled={writeGate.disabled || actions.busy}
             title={writeGate.title}
             onclick={() =>
-              schedule.status === 'paused' ? actions.resume.mutate(target) : actions.pause.mutate(target)}
+              schedule.status === 'paused'
+                ? actions.resume.mutate(target)
+                : actions.pause.mutate(target)}
           >
             {#if schedule.status === 'paused'}
               <Play aria-hidden="true" size={14} /> Resume
@@ -229,7 +231,11 @@
           </Button>
         {/if}
         {#if allowed.editInWorkflow}
-          <Button variant="secondary" size="sm" onclick={() => openWorkflowEditor(schedule.workflowType)}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onclick={() => openWorkflowEditor(schedule.workflowType)}
+          >
             <Pencil aria-hidden="true" size={14} />
             {SCHEDULE_COPY.editWorkflowAction}
           </Button>

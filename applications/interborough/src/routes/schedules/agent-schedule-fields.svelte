@@ -31,7 +31,9 @@
 
   const copy = SCHEDULE_COPY.form;
   const creating = $derived(form.mode === 'create');
-  const overlaps = OVERLAP_POLICIES.filter((policy) => policy.value === 'skip' || policy.value === 'allow');
+  const overlaps = OVERLAP_POLICIES.filter(
+    (policy) => policy.value === 'skip' || policy.value === 'allow',
+  );
 
   function onCadenceChange(next: ScheduleValue): void {
     form.cadence = next;

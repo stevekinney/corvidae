@@ -401,7 +401,9 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       counter += 1;
       const spec = String(params['spec']);
       const schedule = scheduleFixture(`schedule-created-${String(counter)}`, 'agentRun', {
-        ...(typeof params['description'] === 'string' ? { description: params['description'] } : {}),
+        ...(typeof params['description'] === 'string'
+          ? { description: params['description'] }
+          : {}),
         overlap: typeof params['overlap'] === 'string' ? params['overlap'] : 'skip',
       });
       if (/^\d+(?:ms|s|m|h|d)$/.test(spec)) {
@@ -543,9 +545,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
         const created = scheduleFixture(
           typeof request['id'] === 'string' ? request['id'] : `schedule-engine-${String(counter)}`,
           String(request['type']),
-          typeof request['description'] === 'string'
-            ? { description: request['description'] }
-            : {},
+          typeof request['description'] === 'string' ? { description: request['description'] } : {},
         );
         if (typeof request['cronExpression'] === 'string') {
           created.cronExpression = request['cronExpression'];

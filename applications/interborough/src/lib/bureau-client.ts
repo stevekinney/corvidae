@@ -151,3 +151,14 @@ export async function getThreadMessages(
   }
   return threadMessagesSchema.parse(await response.json()).messages;
 }
+
+/**
+ * The wire fault code a Bureau answer carried (`NotFound`, `Unprocessable`, and so on), or
+ * `undefined` for an error that did not come from the Bureau. The status says only what kind of fault
+ * it was; the code says which.
+ */
+export function wireCodeOf(error: unknown): string | undefined {
+  if (!(error instanceof HttpClientError)) return undefined;
+  const code = error.data?.['weftCode'];
+  return typeof code === 'string' ? code : undefined;
+}

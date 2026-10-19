@@ -356,6 +356,9 @@
               >
                 {schedule.id}
               </a>
+              {#if schedule.description !== undefined && schedule.description !== ''}
+                <span class="weft-schedule-list__description">{schedule.description}</span>
+              {/if}
             </Table.Cell>
             <Table.Cell>
               <ScheduleTarget {schedule} kind={target.kind} stopPropagation />
@@ -516,6 +519,13 @@
   .weft-schedule-list__id-link {
     color: inherit;
     text-decoration: none;
+  }
+
+  .weft-schedule-list__description {
+    display: block;
+    color: var(--cinder-text-muted);
+    font-family: var(--cinder-font-sans, inherit);
+    font-size: var(--cinder-text-xs);
   }
 
   @media (hover: hover) {

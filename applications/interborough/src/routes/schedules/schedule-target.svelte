@@ -57,8 +57,10 @@
   {/if}
   {#if target.path !== null}
     {@const path = target.path}
-    <a class="weft-schedule-target__link" href={router.href(path)} onclick={(event) => go(event, path)}
-      >{target.label}</a
+    <a
+      class="weft-schedule-target__link"
+      href={router.href(path)}
+      onclick={(event) => go(event, path)}>{target.label}</a
     >
   {:else}
     <span>{target.label}</span>

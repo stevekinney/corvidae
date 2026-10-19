@@ -9,7 +9,8 @@ export function isContinuousIntegration(): boolean {
 }
 
 /**
- * The port the end-to-end host listens on, and the one after it for the barrier's control. It is
+ * The port the end-to-end host listens on, and the two after it: one for the barrier's control, and
+ * one for the host whose console runs on the Bureau's own engine. It is
  * fixed (7399) because the config, the server, and the specs must agree on it, but a checkout that
  * runs the suite beside another can set `INTERBOROUGH_E2E_PORT` for all three at once. A value
  * that is not a port is refused rather than replaced.
@@ -18,8 +19,8 @@ export function endToEndPort(): number {
   const raw = process.env['INTERBOROUGH_E2E_PORT'];
   if (raw === undefined || raw === '') return 7399;
   const port = Number(raw);
-  if (!Number.isInteger(port) || port < 1 || port > 65534) {
-    throw new Error(`INTERBOROUGH_E2E_PORT must be a port number below 65535, not "${raw}".`);
+  if (!Number.isInteger(port) || port < 1 || port > 65533) {
+    throw new Error(`INTERBOROUGH_E2E_PORT must be a port number below 65534, not "${raw}".`);
   }
   return port;
 }

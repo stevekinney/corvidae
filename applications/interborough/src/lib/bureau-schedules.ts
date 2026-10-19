@@ -40,7 +40,11 @@ const viewSchema = z.object({
 /** One schedule as `bureau.schedules.list`, `get`, and `create` show it. */
 export type BureauSchedule = z.infer<typeof viewSchema>;
 
-const receiptSchema = z.object({ id: z.string(), status: statusSchema, revision: z.number().int() });
+const receiptSchema = z.object({
+  id: z.string(),
+  status: statusSchema,
+  revision: z.number().int(),
+});
 
 /** What a write answers: the schedule's status and its revision after the change. */
 export type BureauScheduleReceipt = z.infer<typeof receiptSchema>;

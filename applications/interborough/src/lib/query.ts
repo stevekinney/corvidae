@@ -69,6 +69,10 @@ export const queryKeys = {
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
   },
+  /** The caller's goals (`bureau.goals.list`). */
+  goals: {
+    list: () => ['goals', 'list'] as const,
+  },
   /** The audit trail, narrowed by a search (`bureau.audit.query`). */
   audit: {
     list: (filter: AuditFilter) => ['audit', 'list', filter] as const,

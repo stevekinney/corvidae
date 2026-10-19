@@ -20,12 +20,7 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import {
-    draftFromSearch,
-    EMPTY_AUDIT_DRAFT,
-    filterOf,
-    pathOf,
-  } from './audit-filter.ts';
+  import { draftFromSearch, EMPTY_AUDIT_DRAFT, filterOf, pathOf } from './audit-filter.ts';
 
   // The filters the address holds are the ones the trail is asked with.
   const applied = $derived(draftFromSearch(router.current.search));
@@ -110,9 +105,7 @@
       bind:value={resource}
     />
     <div class="weft-audit__actions">
-      <Button type="submit" variant="primary" size="sm"
-        >{AUDIT_COPY.searchAction}</Button
-      >
+      <Button type="submit" variant="primary" size="sm">{AUDIT_COPY.searchAction}</Button>
       <Button type="button" variant="secondary" size="sm" onclick={clear}
         >{AUDIT_COPY.clearAction}</Button
       >
@@ -131,10 +124,10 @@
     <p role="status" aria-busy="true" class="weft-audit__muted">{VIEW_COPY.audit.loading.title}</p>
   {:else if records.length === 0}
     <EmptyState
-      title={filtered ? AUDIT_COPY.noMatches.title : VIEW_COPY.audit.empty?.title ?? ''}
+      title={filtered ? AUDIT_COPY.noMatches.title : (VIEW_COPY.audit.empty?.title ?? '')}
       description={filtered
         ? AUDIT_COPY.noMatches.description
-        : VIEW_COPY.audit.empty?.description ?? ''}
+        : (VIEW_COPY.audit.empty?.description ?? '')}
     >
       {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
