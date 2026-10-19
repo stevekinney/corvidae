@@ -499,3 +499,98 @@
     padding: 16px 16px 40px;
   }
 }
+
+/* ---------------------------------------------------------------------- */
+/* Bureau reviews (bureau-review-row/-detail/-form.svelte)                 */
+/* ---------------------------------------------------------------------- */
+
+.weft-bureau-review-row {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--cinder-border-muted);
+}
+
+.weft-bureau-review-row .weft-review-row {
+  border-bottom: 0;
+}
+
+.weft-bureau-review-row__agent {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-bureau-review-row__link {
+  padding: 0 15px 12px calc(15px + 3px);
+  color: inherit;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-bureau-review-facts {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-4);
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-bureau-review-facts dt {
+  color: var(--cinder-text-muted);
+}
+
+.weft-bureau-review-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.weft-bureau-review-arguments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.weft-bureau-review-arguments__label {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-bureau-review-arguments__body {
+  margin: 0;
+  padding: var(--cinder-space-3);
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.weft-bureau-review-prompt {
+  margin: 0;
+  font-weight: 600;
+}
+
+.weft-bureau-review-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+.weft-bureau-review-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+}
+
+.weft-bureau-review-outcome__title,
+.weft-bureau-review-outcome__message {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .weft-bureau-review-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .weft-bureau-review-facts dd {
+    margin-block-end: var(--cinder-space-2);
+  }
+}

@@ -118,6 +118,20 @@ export const queryKeys = {
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
   },
+  /** The Bureau's tasks (`bureau.tasks.*`), apart from `tasks`, which is the engine's task ledger. */
+  bureauTasks: {
+    /** One list: a filter and no page, because the page is the infinite query's own. */
+    list: (filter: { agentName?: string; status?: string; contextId?: string }) =>
+      ['bureau-tasks', 'list', filter] as const,
+    detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
+    /** The tasks of one chat session, read whole. It is apart from `list`, which pages. */
+    ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
+  },
+  /** The Bureau's reviews (`bureau.reviews.*`), apart from `reviews`, which is the engine's. */
+  bureauReviews: {
+    list: () => ['bureau-reviews', 'list'] as const,
+    detail: (reviewId: string) => ['bureau-reviews', 'detail', reviewId] as const,
+  },
   /** Raw `weft.system.registry` response (and projections of it) for consumers that read it unvalidated. */
   registry: () => ['registry'] as const,
   /**

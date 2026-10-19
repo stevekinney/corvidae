@@ -1,18 +1,19 @@
 <script lang="ts">
   /**
-   * Two-panel review inbox (plan §9.5: "Two-panel inbox (ResizablePanels):
-   * pending list (countdown, red when <20% of the review window remains) +
-   * detail/decision surface; stacks vertically <900px per the responsive
-   * rules"). `index.svelte` owns the queries/mutation and the
-   * `reviews:read` scope gate; this component owns the tri-state filter,
-   * selection, the live toggle, and layout.
+   * The reviews inbox: everything waiting on a person, in one two-panel view. The list holds the
+   * Bureau's pending reviews (tool approvals and questions of the agents' runs) and, when the
+   * principal may read them, the engine's human reviews, longest-waiting first, with one count. The
+   * detail pane shows the selected review with the decision form its kind needs: the Bureau's own
+   * (`bureau-review-form.svelte`, an approval or denial, or a rejection with its reason) or the
+   * engine's (`review-decision-form.svelte`). `index.svelte` owns the queries, the mutations, and
+   * the scope that decides whether the engine is read; this component owns the tri-state filter,
+   * selection, the live toggle, and layout. The Decided and Timed out states are the engine's: the
+   * Bureau lists no resolved review, so it has no Archive to offer either.
    *
-   * Lists default Live OFF (plan §5 UI treatment) — the operator opts in
-   * per visit. Turning Live on subscribes to the shell's ONE shared
+   * The live toggle defaults off. Turning it on subscribes to the shell's ONE shared
    * `FleetEventSource` from context (`getFleetEventSource()`, provided in
-   * `src/app/shell/shell.svelte`); toggle-off/unmount only unsubscribes —
-   * never `close()` — because the source is shared with the notification
-   * center and every other live surface (plan §5 connection budget).
+   * `src/app/shell/shell.svelte`); toggle-off/unmount only unsubscribes, never `close()`, because
+   * the source is shared with the notification center and every other live surface.
    */
   import {
     ConnectionIndicator,
@@ -27,11 +28,16 @@
   import type { ReviewListEntry } from '@lostgradient/weft';
   import { MediaQuery } from 'svelte/reactivity';
 
+  import { REVIEWS_COPY } from '../../app/copy.ts';
+  import type { BureauHumanWait, BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
+
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { invalidateReviewQueries } from '../../lib/review-queries.ts';
+  import BureauReviewDetail, { type ReviewOutcome } from './bureau-review-detail.svelte';
+  import BureauReviewRow from './bureau-review-row.svelte';
   import CompletedReviewRow from './completed-review-row.svelte';
   import PendingReviewRow from './pending-review-row.svelte';
   import QueryFaultBanner from './query-fault-banner.svelte';
@@ -45,15 +51,44 @@
     type ReviewQuery,
     type ReviewInboxState,
   } from './review-domain.ts';
+  import { mergePendingReviews, weftReviewItem, type ReviewItem } from './review-items.ts';
 
   interface ReviewsInboxProps {
+    /** The Bureau's pending reviews. */
+    readonly bureauQuery: ReviewQuery<readonly BureauReview[]>;
+    /** The engine's pending reviews. Read only while `weftEnabled`. */
     readonly pendingQuery: ReviewQuery<ReviewListEntry[]>;
+    /** The engine's decided reviews. Read only while `weftEnabled`. */
     readonly completedQuery: ReviewQuery<ReviewListEntry[]>;
+    /** Whether the engine's reviews are read at all: only for a principal that holds `reviews:read`. */
+    readonly weftEnabled: boolean;
+    /** Whether a decision on one of the engine's reviews is being sent. */
     readonly submitting: boolean;
     readonly onSubmit: (reviewId: string, submission: ReviewDecisionSubmission) => void;
+    /** Whether a decision or an answer on one of the Bureau's reviews is being sent. */
+    readonly resolving: boolean;
+    /** What became of the last decision or answer on a Bureau review, when it did not simply take effect. */
+    readonly outcome: ReviewOutcome | undefined;
+    readonly onResolve: (
+      review: BureauReview,
+      decision: ReviewDecision,
+      reason: string | undefined,
+    ) => void;
+    readonly onAnswer: (review: BureauHumanWait, answer: string) => void;
   }
 
-  let { pendingQuery, completedQuery, submitting, onSubmit }: ReviewsInboxProps = $props();
+  let {
+    bureauQuery,
+    pendingQuery,
+    completedQuery,
+    weftEnabled,
+    submitting,
+    onSubmit,
+    resolving,
+    outcome,
+    onResolve,
+    onAnswer,
+  }: ReviewsInboxProps = $props();
 
   const principalStore = getPrincipalStore();
   const queryClient = useQueryClient();
@@ -67,7 +102,7 @@
   const NARROW_VIEWPORT_QUERY = '(max-width: 899px)';
 
   let inboxState = $state<ReviewInboxState>('pending');
-  let selectedReviewId = $state<string | null>(null);
+  let selectedKey = $state<string | null>(null);
   let live = $state(false);
   let now = $state(Date.now());
 
@@ -80,38 +115,44 @@
 
   const isNarrowViewport = new MediaQuery(NARROW_VIEWPORT_QUERY, false);
 
-  const pending = $derived(pendingEntriesOnly(pendingQuery.data ?? []));
-  const completed = $derived(completedEntriesOnly(completedQuery.data ?? []));
+  const bureauReviews = $derived(bureauQuery.data ?? []);
+  const pending = $derived(weftEnabled ? pendingEntriesOnly(pendingQuery.data ?? []) : []);
+  const completed = $derived(weftEnabled ? completedEntriesOnly(completedQuery.data ?? []) : []);
   const partitioned = $derived(partitionPendingReviews(pending, now));
 
-  const visibleEntries = $derived(
+  /** One list from both sources while reviews are pending, and the engine's alone once decided or timed out. */
+  const visibleItems = $derived<readonly ReviewItem[]>(
     inboxState === 'pending'
-      ? partitioned.pending
+      ? mergePendingReviews(bureauReviews, partitioned.pending)
       : inboxState === 'timeout'
-        ? partitioned.timedOut
-        : completed,
+        ? partitioned.timedOut.map(weftReviewItem)
+        : completed.map(weftReviewItem),
   );
 
   /**
-   * The query backing the currently visible tab — 'pending' and 'timeout'
-   * both partition `pendingQuery`'s single `status=pending` fetch (see
-   * `review-domain.ts`'s `partitionPendingReviews`); only 'completed' reads
-   * `completedQuery`. A query error here must render the same fault banner
-   * every other route surfaces (plan §10.4), not the false "all caught up" /
-   * "no decisions yet" empty state a failed fetch would otherwise fall
-   * through to via `?? []`.
+   * The queries behind the visible state. A query error must render the same fault banner every
+   * other route surfaces (plan §10.4), not the false "all caught up" / "no decisions yet" empty
+   * state a failed fetch would otherwise fall through to via `?? []`, and one source failing does
+   * not hide the other's reviews.
    */
-  const activeQuery = $derived(inboxState === 'completed' ? completedQuery : pendingQuery);
+  const faults = $derived<readonly { error: unknown; retry: () => void }[]>(
+    (inboxState === 'completed'
+      ? weftEnabled
+        ? [completedQuery]
+        : []
+      : [bureauQuery, ...(weftEnabled ? [pendingQuery] : [])]
+    )
+      .filter((query) => query.isError)
+      .map((query) => ({ error: query.error, retry: () => void query.refetch() })),
+  );
 
   $effect(() => {
-    if (!visibleEntries.some((entry) => entry.reviewId === selectedReviewId)) {
-      selectedReviewId = visibleEntries[0]?.reviewId ?? null;
+    if (!visibleItems.some((item) => item.key === selectedKey)) {
+      selectedKey = visibleItems[0]?.key ?? null;
     }
   });
 
-  const selectedEntry = $derived(
-    visibleEntries.find((entry) => entry.reviewId === selectedReviewId) ?? null,
-  );
+  const selectedItem = $derived(visibleItems.find((item) => item.key === selectedKey) ?? null);
 
   const fleetSource = getFleetEventSource();
   const liveToggleGate = $derived(scopeGate(principalStore, ['events:read']));
@@ -123,20 +164,17 @@
 
     return fleetSource.subscribe((frame) => {
       if (!isReviewFleetEventKind(frame.kind)) return;
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.reviews.list({ status: 'pending' }),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.reviews.list({ status: 'completed' }),
-      });
+      void invalidateReviewQueries(queryClient);
     });
   });
 
-  const isLoading = $derived(pendingQuery.isPending || completedQuery.isPending);
+  const isLoading = $derived(
+    bureauQuery.isPending || (weftEnabled && (pendingQuery.isPending || completedQuery.isPending)),
+  );
 
   function emptyStateCopy(state: ReviewInboxState): { title: string; description: string } {
     if (state === 'pending') {
-      return { title: 'All caught up', description: 'No reviews are waiting on a decision.' };
+      return { title: REVIEWS_COPY.allCaughtUp, description: REVIEWS_COPY.nothingWaiting };
     }
     if (state === 'timeout') {
       return {
@@ -204,39 +242,46 @@
       {#snippet children(pane)}
         {#if pane.id === 'list'}
           <div class="weft-reviews-inbox__list-pane">
-            {#if activeQuery.isError}
-              <QueryFaultBanner
-                error={activeQuery.error}
-                onRetry={() => void activeQuery.refetch()}
-              />
-            {:else if visibleEntries.length === 0}
-              {@const copy = emptyStateCopy(inboxState)}
-              <EmptyState
-                title={copy.title}
-                description={copy.description}
-                class="weft-reviews-inbox__empty-state"
-              />
+            {#each faults as fault, index (index)}
+              <QueryFaultBanner error={fault.error} onRetry={fault.retry} />
+            {/each}
+            {#if visibleItems.length === 0}
+              {#if faults.length === 0}
+                {@const copy = emptyStateCopy(inboxState)}
+                <EmptyState
+                  title={copy.title}
+                  description={copy.description}
+                  class="weft-reviews-inbox__empty-state"
+                />
+              {/if}
             {:else}
               <div class="weft-reviews-inbox__count">
-                {visibleEntries.length}
+                {visibleItems.length}
                 {STATE_LABELS[inboxState].toLowerCase()}
               </div>
               <ul class="weft-reviews-inbox__list">
-                {#each visibleEntries as entry (entry.reviewId)}
+                {#each visibleItems as item (item.key)}
                   <li>
-                    {#if entry.status === 'pending'}
-                      <PendingReviewRow
-                        {entry}
+                    {#if item.source === 'bureau'}
+                      <BureauReviewRow
+                        review={item.review}
                         {now}
-                        selected={entry.reviewId === selectedReviewId}
-                        onSelect={(id) => (selectedReviewId = id)}
+                        selected={item.key === selectedKey}
+                        onSelect={(key) => (selectedKey = key)}
+                      />
+                    {:else if item.entry.status === 'pending'}
+                      <PendingReviewRow
+                        entry={item.entry}
+                        {now}
+                        selected={item.key === selectedKey}
+                        onSelect={() => (selectedKey = item.key)}
                       />
                     {:else}
                       <CompletedReviewRow
-                        {entry}
+                        entry={item.entry}
                         {now}
-                        selected={entry.reviewId === selectedReviewId}
-                        onSelect={(id) => (selectedReviewId = id)}
+                        selected={item.key === selectedKey}
+                        onSelect={() => (selectedKey = item.key)}
                       />
                     {/if}
                   </li>
@@ -244,15 +289,37 @@
               </ul>
             {/if}
           </div>
-        {:else if selectedEntry}
+        {:else if selectedItem}
           <div class="weft-reviews-inbox__detail-pane">
-            <ReviewDetailPanel entry={selectedEntry} {now} {submitting} {onSubmit} {submitGate} />
+            {#key selectedItem.key}
+              {#if selectedItem.source === 'bureau'}
+                {@const review = selectedItem.review}
+                <BureauReviewDetail
+                  {review}
+                  {now}
+                  submitting={resolving}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
+                  onResolve={(decision, reason) => onResolve(review, decision, reason)}
+                  onAnswer={(answer) => {
+                    if (review.kind === 'human-wait') onAnswer(review, answer);
+                  }}
+                />
+              {:else}
+                <ReviewDetailPanel
+                  entry={selectedItem.entry}
+                  {now}
+                  {submitting}
+                  {onSubmit}
+                  {submitGate}
+                />
+              {/if}
+            {/key}
           </div>
         {:else}
           <div class="weft-reviews-inbox__detail-pane">
             <EmptyState
-              title="No review selected"
-              description="Choose a review from the list."
+              title={REVIEWS_COPY.noReviewSelected}
+              description={REVIEWS_COPY.chooseReview}
               class="weft-reviews-inbox__empty-state"
             />
           </div>

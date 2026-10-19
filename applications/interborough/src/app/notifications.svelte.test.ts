@@ -105,7 +105,7 @@ describe('classifyFleetEvent', () => {
 
   test('non-workflow kinds route to their owning domain list', () => {
     expect(classifyFleetEvent(frame('schedule:missed-fire'))?.href).toBe('/schedules');
-    expect(classifyFleetEvent(frame('human-review:requested'))?.href).toBe('/inbox');
+    expect(classifyFleetEvent(frame('human-review:requested'))?.href).toBe('/reviews');
     expect(classifyFleetEvent(frame('storage:size-reported'))?.href).toBe('/storage');
     expect(classifyFleetEvent(frame('development:warning'))?.href).toBe('/system');
   });

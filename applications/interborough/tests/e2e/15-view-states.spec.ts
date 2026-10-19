@@ -21,7 +21,8 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
-  inbox: '/inbox',
+  tasks: '/tasks',
+  reviews: '/reviews',
   workers: '/workers',
   storage: '/storage',
   system: '/system',
@@ -79,7 +80,8 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
     empty: { items: [], total: 0 },
   },
   schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
-  inbox: { matches: (url) => url.pathname === '/v1/reviews', empty: { items: [] } },
+  tasks: bureauProbe('bureau.tasks.list', { tasks: [], nextOffset: null }),
+  reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
   system: jsonRpcProbe('weft.system.registry'),
@@ -142,8 +144,9 @@ for (const view of VIEW_NAMES) {
         checkA11y,
       }) => {
         await page.setViewportSize({ width, height: 900 });
-        // The chat list has something to show once the caller has a session.
-        if (view === 'chat' && outcome === 'ready') {
+        // The chat list and the task list have something to show once the caller has a session,
+        // whose run is a task.
+        if ((view === 'chat' || view === 'tasks') && outcome === 'ready') {
           await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
         }
         await drive(page, view, outcome);

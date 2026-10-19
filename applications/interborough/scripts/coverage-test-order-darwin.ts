@@ -101,7 +101,6 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/reviews/index.test.ts',
   'src/routes/reviews/artifact-view.test.ts',
   'src/routes/reviews/review-detail-panel.test.ts',
-  'src/routes/reviews/reviews-archive.test.ts',
   'src/routes/reviews/pending-review-row.test.ts',
   'src/routes/reviews/review-domain.test.ts',
   'src/routes/reviews/review-decision-form.test.ts',
