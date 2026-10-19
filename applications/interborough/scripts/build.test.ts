@@ -17,6 +17,8 @@ import {
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
+  CURATED_SHIKI_REGISTRIES,
+  curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   replaceDirectory,
@@ -214,7 +216,8 @@ describe('browserBuildOptions', () => {
       expect(options.splitting).toBe(true);
       expect(options.metafile).toBe(true);
       expect(options.plugins?.[0]).toBe(wasmPlugin);
-      expect(options.plugins).toHaveLength(2);
+      expect(options.plugins?.[1]).toBe(curatedShikiPlugin);
+      expect(options.plugins).toHaveLength(3);
       expect(options.naming).toEqual({
         entry: '[name].[ext]',
         chunk: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
@@ -268,6 +271,47 @@ describe('wasmPlugin', () => {
     };
     expect(loaded.loader).toBe('file');
     expect([...loaded.contents]).toEqual([0, 97, 115, 109]);
+  });
+});
+
+describe('curatedShikiPlugin', () => {
+  type Hook = (arguments_: { path: string }) => unknown;
+
+  function registered() {
+    const constraints: Array<{ filter: RegExp; namespace?: string }> = [];
+    const hooks: Hook[] = [];
+    curatedShikiPlugin.setup({
+      onResolve: (constraint: { filter: RegExp }, callback: Hook) => {
+        constraints.push(constraint);
+        hooks.push(callback);
+      },
+      onLoad: (constraint: { filter: RegExp; namespace?: string }, callback: Hook) => {
+        constraints.push(constraint);
+        hooks.push(callback);
+      },
+    } as unknown as Bun.PluginBuilder);
+    return { constraints, hooks };
+  }
+
+  it('claims only the complete language and theme registries', () => {
+    const { constraints } = registered();
+
+    expect(constraints[0]?.filter.test('shiki/langs')).toBe(true);
+    expect(constraints[0]?.filter.test('shiki/themes')).toBe(true);
+    expect(constraints[0]?.filter.test('shiki/core')).toBe(false);
+    expect(constraints[0]?.filter.test('@shikijs/langs/typescript')).toBe(false);
+  });
+
+  it('resolves each registry to the module of curated tables, which are not empty', async () => {
+    const { hooks } = registered();
+
+    for (const path of ['shiki/langs', 'shiki/themes']) {
+      expect(await hooks[0]?.({ path })).toEqual({ path: CURATED_SHIKI_REGISTRIES });
+    }
+    // Empty tables once broke Chat's highlighter, which renders every block as plain text then.
+    const registries = await import(CURATED_SHIKI_REGISTRIES);
+    expect(Object.keys(registries.bundledLanguages)).toContain('json');
+    expect(Object.keys(registries.bundledThemes)).toContain('github-light');
   });
 });
 

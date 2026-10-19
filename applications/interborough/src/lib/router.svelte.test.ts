@@ -193,3 +193,54 @@ describe('router singleton', () => {
     expect(router.search.get('view')).toBe('list');
   });
 });
+
+describe('the key the outlet mounts a route under', () => {
+  beforeEach(() => resetLocation('/'));
+
+  test('is the pathname, so a new path is a new page', () => {
+    router.navigate('/chat/new');
+    expect(router.viewKey).toBe('/chat/new');
+
+    router.navigate('/chat/session-1');
+    expect(router.viewKey).toBe('/chat/session-1');
+  });
+
+  test('a navigation that keeps the page leaves the key as it was, and the address changes', () => {
+    router.navigate('/chat/new');
+
+    router.navigate('/chat/session-1', { replace: true, keep: true });
+
+    expect(router.pathname).toBe('/chat/session-1');
+    expect(router.viewKey).toBe('/chat/new');
+    expect(router.current.params).toEqual({ sessionId: 'session-1' });
+  });
+
+  test('any later navigation ends the keeping', () => {
+    router.navigate('/chat/new');
+    router.navigate('/chat/session-1', { replace: true, keep: true });
+
+    router.navigate('/agents');
+
+    expect(router.viewKey).toBe('/agents');
+  });
+
+  test('going back ends the keeping too', () => {
+    router.navigate('/agents');
+    router.navigate('/chat/new');
+    router.navigate('/chat/session-1', { replace: true, keep: true });
+
+    router.back();
+    window.dispatchEvent(new PopStateEvent('popstate'));
+
+    expect(router.viewKey).toBe(router.pathname);
+  });
+
+  test('keeping replaces the history entry, so the length does not grow', () => {
+    router.navigate('/chat/new');
+    const length = window.history.length;
+
+    router.navigate('/chat/session-1', { replace: true, keep: true });
+
+    expect(window.history.length).toBe(length);
+  });
+});

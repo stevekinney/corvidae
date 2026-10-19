@@ -101,6 +101,7 @@ describe('bureau.deployment.get', () => {
         'bureau.tasks.cancel': 'command',
         'bureau.tasks.respond': 'command',
         'bureau.contexts.delete': 'command',
+        'bureau.contexts.input': 'command',
         'bureau.tasks.events': 'subscription',
         'bureau.events': 'subscription',
       });
@@ -188,6 +189,7 @@ describe('bureau.agents.list', () => {
               displayName: 'Writer',
               description: 'Drafts documents',
               definitionRevision: expect.any(Number) as unknown,
+              kind: 'code',
               publishState: 'published',
             },
             {
@@ -195,6 +197,7 @@ describe('bureau.agents.list', () => {
               displayName: 'plain-agent',
               description: null,
               definitionRevision: expect.any(Number) as unknown,
+              kind: 'code',
               publishState: 'published',
             },
           ],

@@ -51,6 +51,10 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
 import {
+  type BureauContextsInputOperationHost,
+  contextsInputOperation,
+} from './management/contexts-input-operation.ts';
+import {
   type BureauContextsOperationHost,
   contextsDeleteOperation,
   contextsGetOperation,
@@ -129,6 +133,9 @@ export type BureauHandlerSource = Pick<
   | 'modelCatalog'
   | 'auditTrail'
   | 'workflows'
+  | 'submitSessionInput'
+  | 'whenRunRecorded'
+  | 'sessionInputsDeliveredBy'
 > & {
   readonly agents: {
     has(name: string): boolean;
@@ -160,6 +167,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
+  BureauContextsInputOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost;
 
@@ -381,6 +389,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsListOperation,
   contextsGetOperation,
   contextsDeleteOperation,
+  contextsInputOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
@@ -460,16 +469,20 @@ function publishedAgentsOf(
   bureau: BureauHandlerSource,
   publish: readonly string[],
 ): readonly PublishedAgent[] {
-  const code = publish.flatMap((name): PublishedAgent[] => {
-    const agent = bureau.agents.find(name);
+  // Every code-defined agent is described, and the `publish` allowlist says which are offered: the
+  // rest are `unpublished`, which only a caller who may read definitions is told of.
+  const code = bureau.agents.list().flatMap((listing): PublishedAgent[] => {
+    if (listing.source !== 'code') return [];
+    const agent = bureau.agents.find(listing.id);
     if (agent === undefined) return [];
     return [
       {
-        name,
-        displayName: agent.name === '' || agent.name === '(agent)' ? name : agent.name,
+        name: listing.id,
+        kind: 'code',
+        displayName: agent.name === '' || agent.name === '(agent)' ? listing.id : agent.name,
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
-        publishState: 'published',
+        publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
       },
     ];
   });
@@ -480,6 +493,7 @@ function publishedAgentsOf(
     return [
       {
         name: listing.id,
+        kind: 'file',
         displayName: listing.name,
         description: listing.description,
         definitionRevision: readGenerationProfile(agent as never).revision,
