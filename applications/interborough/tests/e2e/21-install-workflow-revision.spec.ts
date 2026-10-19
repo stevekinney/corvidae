@@ -6,8 +6,9 @@
  * shows the operation's fault and adds nothing.
  *
  * Installing never activates, and the revision id is fixed, so the spec is
- * safe to leave installed for the rest of the suite (an identical reinstall
- * is idempotent).
+ * safe to leave installed for the rest of the suite and to run twice against
+ * one server: an identical reinstall is idempotent, and the refused manifest
+ * names a revision nothing installs.
  */
 import {
   buildConsoleInstallableManifest,
@@ -27,15 +28,17 @@ test('operator installs a revision manifest and reads the installed revision', a
   const revisionsPanel = page.getByRole('region', { name: 'Installed revisions' });
   await expect(revisionsPanel).toBeVisible();
 
-  // A manifest the server refuses: its fault is shown and no row appears.
+  // A manifest the server refuses: its fault is shown and no row appears. It carries a revision of
+  // its own that nothing ever installs, so the check holds on a second run against one server.
+  const refusedRevision = `${ORDER_PROCESSING_CONSOLE_INSTALLED_REVISION}-refused`;
   const manifestField = revisionsPanel.getByLabel('Revision manifest (JSON)');
-  await manifestField.fill(JSON.stringify({ ...manifest, contractHash: 'sha256:wrong' }));
+  await manifestField.fill(
+    JSON.stringify({ ...manifest, revision: refusedRevision, contractHash: 'sha256:wrong' }),
+  );
   await revisionsPanel.getByRole('button', { name: 'Install revision' }).click();
   await expect(revisionsPanel.getByRole('alert')).toBeVisible();
   await expect(
-    revisionsPanel.getByRole('button', {
-      name: `View detail for revision ${ORDER_PROCESSING_CONSOLE_INSTALLED_REVISION}`,
-    }),
+    revisionsPanel.getByRole('button', { name: `View detail for revision ${refusedRevision}` }),
   ).toHaveCount(0);
 
   // The valid manifest installs and the list then includes it.
