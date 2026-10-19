@@ -7,6 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { EventType } from '@ag-ui/core';
 import {
   createModelCatalog,
   projectDescriptor,
@@ -660,17 +661,17 @@ describe('publication', () => {
           await handler(startRequest(runAgentInput({ threadId }), {}, 'researcher')),
         ),
       );
-    expect(await start('thread-withdrawn')).toEqual(['RUN_ERROR']);
+    expect(await start('thread-withdrawn')).toEqual([EventType.RUN_ERROR]);
     const published = await callAs(handler, 'bureau.agents.definitions.publish', {
       id: 'researcher',
       expectedHash: hash,
     });
-    expect(await start('thread-published')).toContain('RUN_FINISHED');
+    expect(await start('thread-published')).toContain(EventType.RUN_FINISHED);
     await callAs(handler, 'bureau.agents.definitions.withdraw', {
       id: 'researcher',
       expectedHash: published.result?.['hash'],
     });
-    expect(await start('thread-withdrawn-again')).toEqual(['RUN_ERROR']);
+    expect(await start('thread-withdrawn-again')).toEqual([EventType.RUN_ERROR]);
   });
 });
 
