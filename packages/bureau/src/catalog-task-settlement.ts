@@ -9,6 +9,10 @@
  * A fresh dispatch whose own admission write failed has no such record to write from and is left
  * unrecorded, as the failure was diagnosed when it happened.
  *
+ * What it filters: the hook also publishes a recovered child run and a recovered goal attempt, and
+ * neither is a task. A run the child topology holds, and a goal attempt, is never given a record
+ * here; a record that exists is settled whatever kind of run it is.
+ *
  * @module catalog-task-settlement
  */
 import type { CatalogRunSettlement } from './catalog-run-settlement';
@@ -22,6 +26,11 @@ export interface CatalogTaskSettlerDependencies {
   readonly loadRecoveryRecord: (runId: string) => Promise<CatalogRunRecoveryLoad>;
   /** When the durable run was created (ISO 8601), or `undefined` when the engine has no record of it. */
   readonly durableCreatedAt: (runId: string) => Promise<string | undefined>;
+  /**
+   * Whether the run is a child run: one the child topology holds, or, failing that, one whose
+   * identifier is not a catalog run's (`agent-run-`). A child run is not a task.
+   */
+  readonly isChildRun: (runId: string) => Promise<boolean>;
   readonly now: () => string;
   readonly ownerOf: (principal: string | undefined) => string;
   readonly originatingMessage: (input: AgentInput) => string | undefined;
@@ -32,6 +41,7 @@ export function createCatalogTaskSettler({
   tasks,
   loadRecoveryRecord,
   durableCreatedAt,
+  isChildRun,
   now,
   ownerOf,
   originatingMessage,
@@ -54,6 +64,7 @@ export function createCatalogTaskSettler({
     };
     if (await tasks.recordSettled(settlement.runId, taskSettlement)) return;
     if (!settlement.recovered) return;
+    if (await isChildRun(settlement.runId)) return;
     const loaded = await loadRecoveryRecord(settlement.runId);
     if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) return;
     const createdAt = await durableCreatedAt(settlement.runId);

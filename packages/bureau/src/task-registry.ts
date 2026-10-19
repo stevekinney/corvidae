@@ -47,7 +47,7 @@ export const TASK_RECORD_KEY_PREFIX = 'bureau-task:v1:';
 /** The key prefix of the index from a context to its tasks. */
 export const TASK_CONTEXT_INDEX_KEY_PREFIX = 'bureau-task-context:v1:';
 
-/** How many event-loop turns {@link TaskRegistry.idle} waits for acknowledgements that have not arrived. */
+/** How many event-loop turns {@link TaskRegistry.idle} waits, by default, for acknowledgements that have not arrived. */
 const IDLE_MAXIMUM_TURNS = 50;
 
 /** How many times a record update retries a lost compare-and-swap. */
@@ -221,12 +221,17 @@ export interface TaskRegistry {
    */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
   /**
-   * Resolves once every cleanup acknowledgement the registry is following has arrived (or has
-   * been waited for through a bounded number of event-loop turns) and every write it started has
-   * landed. A shutdown awaits it after the runs have been ended, so the cleanup of a run that
-   * ended as the engine was disposed is recorded before storage closes.
+   * A bound, not a barrier. Waits up to `maximumTurns` event-loop turns (default 50; by turn, not
+   * by clock) for the cleanup acknowledgements the registry is following to arrive, then waits
+   * for every write it started to land. An acknowledgement that arrives within the bound is
+   * recorded before this resolves; one that arrives later is not waited for, so after a shutdown
+   * it is not recorded and its task keeps `cleanup-pending`: nothing here can know that an
+   * acknowledgement is never coming. A
+   * shutdown awaits it after the runs have been ended, so the cleanup of a run that ended as the
+   * engine was disposed is recorded when the engine acknowledges it promptly, before storage
+   * closes.
    */
-  idle(): Promise<void>;
+  idle(maximumTurns?: number): Promise<void>;
   /**
    * Resolves once every settlement and cleanup write now in flight has landed (or failed),
    * including any that begin while it waits. A shutdown awaits it before storage closes.
@@ -660,11 +665,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       );
     },
 
-    async idle() {
+    async idle(maximumTurns = IDLE_MAXIMUM_TURNS) {
       // Wait, by event-loop turn rather than by clock, for every cleanup acknowledgement being
-      // followed to arrive. One that never does is abandoned after IDLE_MAXIMUM_TURNS, as a
+      // followed to arrive. One that has not arrived after `maximumTurns` is abandoned, as a
       // shutdown abandons any other cleanup that is stuck, and the task keeps `cleanup-pending`.
-      for (let turn = 0; turn < IDLE_MAXIMUM_TURNS; turn += 1) {
+      for (let turn = 0; turn < maximumTurns; turn += 1) {
         if ([...watchers.keys()].every((taskId) => observed.has(taskId))) break;
         await yieldToPortableEventLoop();
       }

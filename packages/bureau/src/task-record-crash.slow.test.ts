@@ -8,7 +8,10 @@
  *
  * 1. a session run that finished but whose settlement was never written is settled from the
  *    durable state, not left `working` for ever;
- * 2. a durable `bureau.run()` run whose task record was never written has one.
+ * 2. a durable `bureau.run()` run whose task record was never written has one;
+ * 3. a recovered run that a graceful shutdown interrupts is not reported as over: it is still
+ *    open (`working` or `input-required`) and cancelable at the boot after, and the engine
+ *    still holds it `running`.
  *
  * It spawns a process, so it lives in the `test:slow` lane, each scenario once at module
  * scope off Bun's per-test clock (see `test/hoisted-scenario.ts`).
@@ -29,6 +32,23 @@ import { createAskingAgent, finishes } from './test/task-record-crash-agent';
 import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
+
+/** The Bureau every scenario boots over the dead process's storage. */
+function openBureau(storagePath: string) {
+  return createBureau({
+    id: 'task-record-crash',
+    agents: { asker: createAskingAgent() },
+    generate: finishes,
+    toolbox: createToolbox([]),
+    storage: { type: 'sqlite', path: storagePath },
+    durableExecution: true,
+    humanInput: true,
+    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    durableOwnership: { ownership: 'none' },
+    // Shutting down while the recovered parked run is still in flight reports it as cut short.
+    onDiagnostic: () => undefined,
+  });
+}
 
 async function crashScenario(
   mode: 'settlement' | 'admission',
@@ -54,25 +74,65 @@ async function crashScenario(
     expect(unexpectedChildStderr(stderr)).toBe('');
     const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
 
-    const bureau = await createBureau({
-      id: 'task-record-crash',
-      agents: { asker: createAskingAgent() },
-      generate: finishes,
-      toolbox: createToolbox([]),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      humanInput: true,
-      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
-      durableOwnership: { ownership: 'none' },
-      // Shutting down while the recovered parked run is still in flight reports it as cut short.
-      onDiagnostic: () => undefined,
-    });
+    const bureau = await openBureau(storagePath);
     scope.onHang(() => bureau.shutdown());
     try {
       await bureau.waitForRecovery?.();
       await verify(bureau, runId);
     } finally {
       await bureau.shutdown();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+/** The task states of a run that is not over. */
+const OPEN_STATES: ReadonlySet<string | undefined> = new Set(['working', 'input-required']);
+
+async function taskStatusOf(bureau: Pick<Bureau, 'tasks'>, runId: string) {
+  const task = await bureau.tasks.get(runId);
+  return task?.status;
+}
+
+/** Process 2 recovers the parked run and is disposed; process 3 boots over what it left. */
+async function disposedScenario(scope: ScenarioScope): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'corvidae-task-record-crash-disposed-'));
+  const storagePath = join(directory, 'bureau.sqlite');
+  const markerPath = join(directory, 'marker.json');
+  scope.onHang(() => rmSync(directory, { recursive: true, force: true }));
+  try {
+    const child = spawnWithHangGuard(['bun', CHILD, 'admission', storagePath, markerPath], {
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+    scope.onHang(() => child.kill());
+    await child.exited;
+    const stderr = await new Response(child.stderr).text();
+    expect(child.signalCode ?? stderr).toBe('SIGKILL');
+    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+
+    const second = await openBureau(storagePath);
+    await second.waitForRecovery?.();
+    expect(OPEN_STATES.has(await taskStatusOf(second, runId))).toBe(true);
+    // Disposing the engine rejects the recovered run's result: the run is cut short, not over.
+    await second.dispose();
+
+    const third = await openBureau(storagePath);
+    scope.onHang(() => third.shutdown());
+    try {
+      await third.waitForRecovery?.();
+      const durable = await third.getDurableRun(runId);
+      expect(durable?.status).toBe('running');
+      expect(OPEN_STATES.has(await taskStatusOf(third, runId))).toBe(true);
+      await third.tasks.cancel(runId, 0);
+      for (let attempt = 0; attempt < 400; attempt += 1) {
+        if ((await taskStatusOf(third, runId)) === 'canceled') break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(await taskStatusOf(third, runId)).toBe('canceled');
+    } finally {
+      await third.shutdown();
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -119,6 +179,7 @@ const outcomes = {
       }),
     HANG_GUARD_MILLISECONDS,
   ),
+  disposed: await settleScenario((scope) => disposedScenario(scope), HANG_GUARD_MILLISECONDS),
 };
 
 describe('a task record survives SIGKILL', () => {
@@ -128,5 +189,9 @@ describe('a task record survives SIGKILL', () => {
 
   it('gives a durable bureau.run() run whose admission write was lost a task record, which settles when the run ends', () => {
     expectScenarioPassed(outcomes.admission);
+  });
+
+  it('leaves a recovered run that a graceful shutdown interrupted working and cancelable at the next boot', () => {
+    expectScenarioPassed(outcomes.disposed);
   });
 });

@@ -1,5 +1,10 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { MemoryStorage, textValueStore, WEFT_RESERVED_KEY_PREFIXES } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  textValueStore,
+  WEFT_RESERVED_KEY_PREFIXES,
+  yieldToPortableEventLoop,
+} from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -740,4 +745,38 @@ describe('an unreadable task record', () => {
       expect(diagnostics.length).toBeGreaterThan(0);
     },
   );
+});
+
+describe('idle', () => {
+  /** An acknowledgement that arrives after `turns` event-loop turns. */
+  function acknowledgedAfter(turns: number): Promise<{ status: 'completed' }> {
+    return (async () => {
+      for (let turn = 0; turn < turns; turn += 1) await yieldToPortableEventLoop();
+      return { status: 'completed' as const };
+    })();
+  }
+
+  it('records an acknowledgement that arrives within its turn limit', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    void registry.watchCleanup('run-1', acknowledgedAfter(5));
+
+    await registry.idle();
+
+    const record = await registry.record('run-1');
+
+    expect(record?.cleanup).toBe('cleaned-up');
+  });
+
+  it('is a bound, not a barrier: it stops waiting at its turn limit, and a limit of zero waits for no acknowledgement', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    void registry.watchCleanup('run-1', acknowledgedAfter(5));
+
+    await registry.idle(0);
+
+    const record = await registry.record('run-1');
+
+    expect(record?.cleanup).toBeUndefined();
+  });
 });

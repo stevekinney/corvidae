@@ -17,7 +17,7 @@ const settlement: CatalogRunSettlement = {
   recovered: true,
 };
 
-function build(loaded: CatalogRunRecoveryLoad) {
+function build(loaded: CatalogRunRecoveryLoad, childRunIds: readonly string[] = []) {
   const runtime = createManualRuntimeServices({ origin: '2026-10-18T00:00:00.000Z' });
   const registry = createTaskRegistry({
     kv: textValueStore(new MemoryStorage()),
@@ -38,6 +38,7 @@ function build(loaded: CatalogRunRecoveryLoad) {
     tasks: registry,
     loadRecoveryRecord: async () => loaded,
     durableCreatedAt: async () => '2026-10-17T12:00:00.000Z',
+    isChildRun: async (runId) => childRunIds.includes(runId),
     now: runtime.clock.nowISO,
     ownerOf: (principal) => principal ?? 'anonymous:local',
     originatingMessage: (input) => (typeof input === 'string' ? input : undefined),
@@ -57,6 +58,16 @@ const found: CatalogRunRecoveryLoad = {
 };
 
 describe('settling a catalog task from the hook', () => {
+  it('writes no record for a recovered child run, which is not a task', async () => {
+    const { registry, settler } = build(found, ['agent-run-1']);
+
+    await settler(settlement);
+
+    expect(await registry.record('agent-run-1')).toBeUndefined();
+    const listed = await registry.list({ limit: 10, offset: 0 });
+    expect(listed.tasks).toEqual([]);
+  });
+
   it('writes the record of a recovered run that settles with none, dated from the durable run, and settles it', async () => {
     const { registry, settler } = build(found);
 

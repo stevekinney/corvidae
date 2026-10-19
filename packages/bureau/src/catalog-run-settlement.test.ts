@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import {
   type CatalogRunSettlement,
   createCatalogRunSettlementHook,
+  type DurableEnd,
   type FreshCatalogRunHandle,
   publishFreshCatalogRun,
 } from './catalog-run-settlement';
@@ -55,7 +56,11 @@ describe('the catalog-run settlement hook', () => {
 });
 
 describe('publishing a fresh catalog dispatch', () => {
-  function observed(handle: Partial<FreshCatalogRunHandle>, admit: () => Promise<void>) {
+  function observed(
+    handle: Partial<FreshCatalogRunHandle>,
+    admit: () => Promise<void>,
+    durableEnd?: () => Promise<DurableEnd>,
+  ) {
     const hook = createCatalogRunSettlementHook(() => undefined);
     const published: CatalogRunSettlement[] = [];
     const second: CatalogRunSettlement[] = [];
@@ -74,6 +79,7 @@ describe('publishing a fresh catalog dispatch', () => {
       admit,
       hook,
       followCleanup: (closed) => void followed.push(closed),
+      durableEnd,
       diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     return { run, published, second, followed, diagnostics };
@@ -105,6 +111,58 @@ describe('publishing a fresh catalog dispatch', () => {
       { status: 'failed', finishReason: 'error', recovered: false, content: null },
     ]);
     expect(published[0]?.message).toContain('the engine fell over');
+  });
+
+  it('publishes nothing when the handle rejects while the durable run is still running, as it does when the engine is disposed', async () => {
+    const reads: string[] = [];
+    const { run, published } = observed(
+      {
+        result: () =>
+          Promise.reject(new Error('Engine was disposed before the workflow completed')),
+      },
+      async () => undefined,
+      async () => {
+        reads.push('read');
+        return 'in-flight';
+      },
+    );
+
+    await run;
+
+    expect(reads).toEqual(['read']);
+    expect(published).toEqual([]);
+  });
+
+  it('publishes nothing when the durable run cannot be read after the handle rejects', async () => {
+    const { run, published } = observed(
+      { result: () => Promise.reject(new Error('rejected')) },
+      async () => undefined,
+      () => Promise.reject(new Error('Cannot use a closed database')),
+    );
+
+    await run;
+
+    expect(published).toEqual([]);
+  });
+
+  it('publishes the terminal state the durable run reached when the handle rejects', async () => {
+    const outcomes: Array<[DurableEnd, string]> = [
+      ['failed', 'failed'],
+      ['canceled', 'canceled'],
+      ['completed', 'completed'],
+      ['not-durable', 'failed'],
+    ];
+    for (const [end, status] of outcomes) {
+      const { run, published } = observed(
+        { result: () => Promise.reject(new Error('rejected')) },
+        async () => undefined,
+        async () => end,
+      );
+
+      await run;
+
+      expect(published).toMatchObject([{ status, recovered: false }]);
+    }
   });
 
   it('follows the cleanup of a canceled run before publishing it', async () => {

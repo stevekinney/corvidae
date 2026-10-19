@@ -32,9 +32,35 @@
  *   processes can each own a copy of one run, so each publishes once for it; a subscriber that
  *   acts twice on the same settlement must reach the same state. (The task registry's settler
  *   does: it writes the same settlement, and a record is written once.)
- * - It publishes for every end, however the record or the handle fared: a fresh dispatch whose
- *   task record could not be written still publishes, and a handle whose `result()` rejects
- *   publishes `failed`.
+ * - It publishes for every end, however the record fared: a fresh dispatch whose task record
+ *   could not be written still publishes.
+ * - It publishes only an end the durable run actually reached. A handle whose `result()` rejects
+ *   is read against the durable run (see {@link DurableEndReader}): a run the durable engine
+ *   holds `failed` publishes `failed`, and one it holds `completed` or `canceled` publishes
+ *   that. A run that is still running, or whose state cannot be read, publishes nothing, because
+ *   the rejection was the engine being disposed (a graceful shutdown) rather than the run
+ *   ending: the run resumes at the next boot, and a subscriber that treated the rejection as an
+ *   end would settle a task and a snapshot reference the resumed run still needs. Only a run
+ *   with no durable record (a Bureau without a durable engine) publishes `failed` for a
+ *   rejection.
+ *
+ * ## Who publishes, and what a subscriber filters
+ *
+ * The hook publishes for every run that goes through the recovery path, and for fresh
+ * `bureau.run()` dispatches, which is not the same set as "every top-level task":
+ *
+ * - a fresh dispatch publishes with `recovered: false`; a child run or a goal attempt that is
+ *   dispatched fresh does not go through `bureau.run()` and does not publish;
+ * - a run recovered after a restart publishes with `recovered: true`, and that includes a
+ *   recovered child run (one the child topology holds) and a recovered goal attempt, which are
+ *   not tasks.
+ *
+ * A subscriber therefore filters what it needs. The snapshot-reference subscriber (in
+ * `create-bureau.ts`) filters on `recovered`, because a fresh dispatch settles its own
+ * reference where it is dispatched; it settles a child run's or a goal attempt's reference too,
+ * which is right, as those hold a snapshot as well. The task settler
+ * (`catalog-task-settlement.ts`) settles a record that exists for any run, and writes one only
+ * for a recovered top-level run: it skips a run the child topology holds and a goal attempt.
  *
  * @module catalog-run-settlement
  */
@@ -92,6 +118,50 @@ export function createCatalogRunSettlementHook(diagnose: DiagnosticSink): Catalo
   };
 }
 
+/**
+ * Where a durable run stands, as far as a rejected handle is concerned: `completed`, `failed`
+ * and `canceled` are terminal states the durable engine holds; `in-flight` is every other state
+ * it holds, or one that could not be read; `not-durable` is a run the engine has no record of.
+ */
+export type DurableEnd = 'completed' | 'failed' | 'canceled' | 'in-flight' | 'not-durable';
+
+/** Reads a run's {@link DurableEnd}. Never rejects: a read that fails is `in-flight`. */
+export type DurableEndReader = (runId: string) => Promise<DurableEnd>;
+
+/**
+ * What a handle whose `result()` rejected published: the terminal state the durable run reached,
+ * or `undefined` when it reached none, and the rejection says nothing about the run (an engine
+ * disposal). Shared by the fresh and the recovered path, so the rule is one.
+ */
+export async function settlementForRejection(options: {
+  readonly runId: string;
+  readonly agentName: string;
+  readonly error: unknown;
+  readonly recovered: boolean;
+  readonly durableEnd: DurableEndReader | undefined;
+}): Promise<CatalogRunSettlement | undefined> {
+  const { runId, agentName, error, recovered } = options;
+  let end: DurableEnd = 'not-durable';
+  if (options.durableEnd !== undefined) {
+    try {
+      end = await options.durableEnd(runId);
+    } catch {
+      end = 'in-flight';
+    }
+  }
+  if (end === 'in-flight') return undefined;
+  const status = end === 'not-durable' ? 'failed' : end;
+  return {
+    runId,
+    agentName,
+    status,
+    finishReason: status === 'canceled' ? 'aborted' : status === 'failed' ? 'error' : null,
+    message: status === 'failed' ? serializeUnknownError(error).slice(0, 1000) : null,
+    content: null,
+    recovered,
+  };
+}
+
 /** What {@link publishFreshCatalogRun} needs of a dispatch's handle. */
 export interface FreshCatalogRunHandle {
   readonly id: string;
@@ -108,7 +178,8 @@ export interface FreshCatalogRunHandle {
  *
  * `admit` writes the run's task record; a failure is diagnosed and does not stop the publish,
  * because the record is the task's and the settlement is the run's. A handle whose `result()`
- * rejects is a run that failed, and publishes `failed`. A run that was canceled has its cleanup
+ * rejects publishes the terminal state the durable run reached, and nothing when it reached
+ * none (see {@link settlementForRejection}). A run that was canceled has its cleanup
  * followed (`followCleanup`) before it is published, so the task never shows `canceled` without
  * a cleanup to report. Never rejects.
  */
@@ -119,6 +190,8 @@ export async function publishFreshCatalogRun(options: {
   readonly hook: Pick<CatalogRunSettlementHook, 'publish'>;
   readonly followCleanup: (closed: Promise<unknown>) => void;
   readonly diagnose: DiagnosticSink;
+  /** Reads the durable run when the handle rejects. Omit for a Bureau without a durable engine. */
+  readonly durableEnd?: DurableEndReader | undefined;
 }): Promise<void> {
   const { handle, agentName, hook, diagnose } = options;
   try {
@@ -131,7 +204,7 @@ export async function publishFreshCatalogRun(options: {
       cause: error,
     });
   }
-  let settlement: CatalogRunSettlement;
+  let settlement: CatalogRunSettlement | undefined;
   try {
     const result = await handle.result();
     settlement = {
@@ -147,16 +220,15 @@ export async function publishFreshCatalogRun(options: {
       recovered: false,
     };
   } catch (error) {
-    settlement = {
+    settlement = await settlementForRejection({
       runId: handle.id,
       agentName,
-      status: 'failed',
-      finishReason: 'error',
-      message: serializeUnknownError(error).slice(0, 1000),
-      content: null,
+      error,
       recovered: false,
-    };
+      durableEnd: options.durableEnd,
+    });
   }
+  if (settlement === undefined) return;
   if (settlement.status === 'canceled') options.followCleanup(handle.closed());
   await hook.publish(settlement);
 }
