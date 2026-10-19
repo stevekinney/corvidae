@@ -7,6 +7,8 @@
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createGovernedMemory,
+  createHashingEmbedder,
+  createWeftMemoryRecordStorage,
   createInMemoryMemoryRecordStorage,
   createMemoryAuthority,
   createMemoryGovernanceLedger,
@@ -79,11 +81,18 @@ const faultOf = (body: RpcBody) => ({
   reason: body.error?.data?.reason,
 });
 
-function governedMemory(runtime = createManualRuntimeServices({ identifierSeed: 'memory-ops' })) {
+function governedMemory(
+  runtime = createManualRuntimeServices({ identifierSeed: 'memory-ops' }),
+  backend: 'in-memory' | 'weft' = 'in-memory',
+) {
+  const durable = new MemoryStorage();
   return createGovernedMemory({
-    storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
-    ledger: createMemoryGovernanceLedger(new MemoryStorage()),
-    embedder: createMockEmbedder(64),
+    storage:
+      backend === 'weft'
+        ? createWeftMemoryRecordStorage(durable)
+        : createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
+    ledger: createMemoryGovernanceLedger(durable),
+    embedder: backend === 'weft' ? createHashingEmbedder() : createMockEmbedder(64),
     policy: createMemoryGovernancePolicy({ revision: 'governance:memory-operations' }),
     runtime,
   });
@@ -619,4 +628,46 @@ describe('bureau.memory.correct', () => {
     );
     expect(faultOf(refused).status).toBe(400);
   });
+});
+
+describe('two concurrent corrections of one memory', () => {
+  for (const backend of ['in-memory', 'weft'] as const) {
+    it(`give one result and one Conflict, and leave one successor (${backend} record storage)`, async () => {
+      const { bureau, handler } = await open({
+        memory: governedMemory(createManualRuntimeServices({ identifierSeed: backend }), backend),
+      });
+      await chat(bureau, ALICE, 'Alice prefers aisle seats.', 'alice-chat');
+      const id = onlyId(
+        await rpc(handler, 'bureau.memory.list', { agentId: 'assistant' }, 'alice-key'),
+      );
+      const correct = (content: string) =>
+        rpc(handler, 'bureau.memory.correct', { agentId: 'assistant', id, content }, 'alice-key');
+
+      const answers = await Promise.all([
+        correct('Alice prefers window seats.'),
+        correct('Alice prefers the exit row.'),
+      ]);
+
+      const winners = answers.filter((answer) => answer.result !== undefined);
+      const losers = answers.filter((answer) => answer.error !== undefined);
+      expect([winners.length, losers.length]).toEqual([1, 1]);
+      expect(faultOf(losers[0]!)).toEqual({ status: 409, reason: 'memory-superseded' });
+      const successorId = String(resultOf(winners[0]!)['memory'].id);
+      // The list shows the one successor, and the original's lineage names it.
+      const listed = await rpc(
+        handler,
+        'bureau.memory.list',
+        { agentId: 'assistant' },
+        'alice-key',
+      );
+      expect(idsOf(listed)).toEqual([successorId]);
+      const original = await rpc(
+        handler,
+        'bureau.memory.get',
+        { agentId: 'assistant', id },
+        'alice-key',
+      );
+      expect(resultOf(original)['lineage']).toMatchObject({ correctedBy: successorId });
+    });
+  }
 });
