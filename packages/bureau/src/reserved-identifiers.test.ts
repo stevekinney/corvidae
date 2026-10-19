@@ -10,8 +10,10 @@ import {
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
+import * as auditTrail from './audit-trail';
 import { encodeOwner } from './durable-event-history';
 import { attemptSessionId, goalAttemptRunId, goalSessionId, goalWorkflowId } from './goal-state';
+import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
 
 describe('the identifiers a goal derives', () => {
   const goalRunIds = ['g1', 'nightly:build', 'a-a0', 'x y'];
@@ -53,4 +55,30 @@ describe('reservedIdentifierReason', () => {
       expect(reservedIdentifierReason('session id', id)).toBeUndefined();
     },
   );
+});
+
+describe("reservedWorkflowIdentifierReason and the audit trail's synthetic owners", () => {
+  // Every `AUDIT_*_OWNER_PREFIX` the audit trail files entries under is a `runId` that
+  // `getOwner` resolves without a run. A caller-chosen run id with that prefix would have its
+  // own audit entries attributed to that synthetic owner, so each one is reserved. Enumerating
+  // the exports keeps a prefix added later from being missed.
+  const prefixes = Object.entries(auditTrail)
+    .filter(
+      ([name, value]) => /^AUDIT_[A-Z_]+_OWNER_PREFIX$/.test(name) && typeof value === 'string',
+    )
+    .map(([, value]) => value as string);
+
+  it('finds the synthetic owner prefixes', () => {
+    expect(prefixes).toEqual(expect.arrayContaining(['schedule:', 'session:', 'agent:']));
+  });
+
+  it.each(prefixes.map((prefix) => `${prefix}researcher`))('refuses %s as a workflow id', (id) => {
+    expect(reservedWorkflowIdentifierReason('child run identifier', id)).toContain(
+      'reserved-identifier',
+    );
+  });
+
+  it.each(['agents', 'agent-1', 'researcher'])('leaves %p free', (id) => {
+    expect(reservedWorkflowIdentifierReason('child run identifier', id)).toBeUndefined();
+  });
 });

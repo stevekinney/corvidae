@@ -919,6 +919,17 @@ export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
 export const AUDIT_AGENT_OWNER_PREFIX = 'agent:';
 
 /**
+ * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
+ * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
+ * caller chooses; `reserved-identifiers.test.ts` fails when an `AUDIT_*_OWNER_PREFIX` is missing.
+ */
+export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
+  AUDIT_SCHEDULE_OWNER_PREFIX,
+  AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_AGENT_OWNER_PREFIX,
+];
+
+/**
  * The synthetic `runId` a write to an agent definition is filed under, `agent:<id>`: a write to
  * an agent file belongs to no run, and the file's owner is the deployment's. `query({ runId })`
  * with it retrieves one agent's writes, in order.
