@@ -103,8 +103,8 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // `src/routes/goals`, and `src/routes/schedules`). Every area is re-measured on darwin with the
   // command in `run-coverage.ts`. The Linux baseline below is not re-measured: it needs a Linux
   // host, so `src/routes/tasks` has no Linux floor yet.
-  measuredAt: '2026-10-19T22:30:00.000Z',
-  overall: { linesFound: 70059, linesHit: 68187, functionsFound: 13842, functionsHit: 13465 },
+  measuredAt: '2026-10-19T23:30:00.000Z',
+  overall: { linesFound: 70108, linesHit: 68247, functionsFound: 13855, functionsHit: 13479 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 965, linesHit: 965, functionsFound: 68, functionsHit: 68 },
@@ -137,10 +137,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2885,
-      linesHit: 2831,
-      functionsFound: 603,
-      functionsHit: 586,
+      linesFound: 2918,
+      linesHit: 2864,
+      functionsFound: 610,
+      functionsHit: 593,
     },
     // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
@@ -163,10 +163,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1491, measured on darwin: the Tasks view.
     'src/routes/tasks': {
-      linesFound: 1820,
-      linesHit: 1700,
-      functionsFound: 349,
-      functionsHit: 334,
+      linesFound: 1836,
+      linesHit: 1727,
+      functionsFound: 355,
+      functionsHit: 341,
     },
     'src/routes/workers': {
       linesFound: 12913,
