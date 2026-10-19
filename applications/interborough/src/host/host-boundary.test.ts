@@ -71,7 +71,13 @@ describe('a rebound Host', () => {
   test('is refused on the engine API, on Bureau, and on the application', async () => {
     const host = await start();
     const foreign = `attacker.example:${host.url.port}`;
-    for (const path of ['/api/v1/principal', '/bureau/v1/health', '/', '/assets/main.js']) {
+    for (const path of [
+      '/api/v1/principal',
+      '/bureau/v1/health',
+      '/host/paths',
+      '/',
+      '/assets/main.js',
+    ]) {
       expect(await rawStatus(host, path, foreign), path).toBe(403);
     }
   });
@@ -112,7 +118,7 @@ describe('a cross-site request', () => {
 
   test('is refused on Bureau and on the application too', async () => {
     const host = await start();
-    for (const path of ['/bureau/v1/health', '/']) {
+    for (const path of ['/bureau/v1/health', '/host/paths', '/']) {
       const response = await fetch(new URL(path, host.url), {
         headers: { origin: 'https://attacker.example' },
       });

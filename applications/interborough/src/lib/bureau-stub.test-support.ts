@@ -1,0 +1,173 @@
+/**
+ * A stand-in for the Bureau's management plane, for component tests. It installs a `fetch` that
+ * answers `/bureau/jsonrpc` with the handler a test names for each method, in the JSON-RPC
+ * envelope the real handler uses, and `/host/paths` with a fixed agent directory. It records every
+ * call, so a test can say what was sent. The real Bureau is exercised end to end in the Playwright
+ * suite; this is for the component's own branches.
+ */
+import type { AgentCatalog, AgentDetail, AgentRevision } from './agent-definitions.ts';
+import { installFetchImplementation } from './live-source/fetch.test-support.ts';
+
+export type BureauCall = { readonly method: string; readonly params: Record<string, unknown> };
+
+/** A fault a handler throws, answered as the Bureau would: the wire fault code and its payload. */
+export class StubFault extends Error {
+  readonly weftCode: string;
+  readonly httpStatus: number;
+  readonly data: Record<string, unknown>;
+
+  constructor(
+    weftCode: string,
+    httpStatus: number,
+    message: string,
+    data: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = 'StubFault';
+    this.weftCode = weftCode;
+    this.httpStatus = httpStatus;
+    this.data = data;
+  }
+}
+
+export type BureauHandler = (params: Record<string, unknown>) => unknown;
+
+/** The directory the stub reports for agent files. */
+export const STUB_AGENT_DIRECTORY = '/home/tester/.interborough/agents';
+
+export type BureauStub = {
+  readonly calls: BureauCall[];
+  /** The calls made to one method, in order. */
+  callsTo(method: string): BureauCall[];
+  /** Replaces a method's handler, such as to make the next call fail. */
+  on(method: string, handler: BureauHandler): void;
+  restore(): void;
+};
+
+/** The URL a `fetch` input names. */
+export function urlOf(input: RequestInfo | URL): string {
+  return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Install the stub. `hostPaths: null` makes `/host/paths` fail, as a host that does not say would. */
+export function installBureauStub(
+  handlers: Record<string, BureauHandler>,
+  options: { readonly hostPaths?: string | null } = {},
+): BureauStub {
+  const table = new Map(Object.entries(handlers));
+  const calls: BureauCall[] = [];
+  const restoreFetch = installFetchImplementation(async (input, init) => {
+    const url = new URL(urlOf(input), 'http://localhost');
+    if (url.pathname === '/host/paths') {
+      const directory = options.hostPaths === undefined ? STUB_AGENT_DIRECTORY : options.hostPaths;
+      return directory === null
+        ? new Response('Not found', { status: 404 })
+        : Response.json({ agentDirectory: directory });
+    }
+    if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
+      return new Response('Not found', { status: 404 });
+    }
+    const body: unknown = JSON.parse(init.body);
+    if (!isRecord(body) || typeof body['method'] !== 'string') {
+      return new Response('Bad request', { status: 400 });
+    }
+    const method = body['method'];
+    const params = isRecord(body['params']) ? body['params'] : {};
+    calls.push({ method, params });
+    const handler = table.get(method);
+    if (handler === undefined) {
+      return Response.json({ error: `The stub has no handler for ${method}.` }, { status: 500 });
+    }
+    try {
+      return Response.json({ jsonrpc: '2.0', id: body['id'], result: await handler(params) });
+    } catch (error) {
+      if (!(error instanceof StubFault)) throw error;
+      return Response.json({
+        jsonrpc: '2.0',
+        id: body['id'],
+        error: {
+          code: -32000,
+          message: error.message,
+          data: { ...error.data, weftCode: error.weftCode, httpStatus: error.httpStatus },
+        },
+      });
+    }
+  });
+  return {
+    calls,
+    callsTo: (method) => calls.filter((call) => call.method === method),
+    on: (method, handler) => {
+      table.set(method, handler);
+    },
+    restore: restoreFetch,
+  };
+}
+
+/** The faults the Bureau's agent operations answer with. */
+export const faults = {
+  stale: (currentRevision: string, expectedRevision = 'old') =>
+    new StubFault('StaleRevision', 409, 'The agent file changed on disk.', {
+      currentRevision,
+      expectedRevision,
+    }),
+  notFound: (id: string) => new StubFault('NotFound', 404, `No agent ${id}.`),
+  taken: (reason: 'agent-file-exists' | 'shadows-code-agent') =>
+    new StubFault('Conflict', 409, 'That identifier is taken.', { reason }),
+  unprocessable: (message: string) =>
+    new StubFault('Unprocessable', 422, message, { reason: 'unknown-model' }),
+};
+
+/** The catalog a deployment with one provider offers: two models, one with an alias, and one tool. */
+export function catalogFixture(overrides: Partial<AgentCatalog> = {}): AgentCatalog {
+  return {
+    models: [
+      {
+        provider: 'anthropic',
+        model: 'claude-sonnet-5',
+        aliases: [{ alias: 'sonnet', resolvesTo: 'claude-sonnet-5' }],
+      },
+      { provider: 'anthropic', model: 'claude-haiku-5', aliases: [] },
+    ],
+    tools: [{ name: 'lookup-order', description: 'Look an order up by its identifier.' }],
+    ...overrides,
+  };
+}
+
+/** A persisted agent that loaded, as `bureau.agents.definitions.get` shows it. */
+export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
+  return {
+    id: 'researcher',
+    source: 'file',
+    state: 'ready',
+    name: 'Researcher',
+    description: 'Finds and cites sources',
+    published: false,
+    hash: 'hash-1',
+    problem: null,
+    definition: {
+      name: 'Researcher',
+      description: 'Finds and cites sources',
+      model: 'anthropic/sonnet',
+      tools: ['lookup-order'],
+      skills: [
+        {
+          id: 'cite',
+          name: 'Cite',
+          description: 'Cites the sources it used',
+          tags: ['research'],
+        },
+      ],
+      published: false,
+      instructions: 'You are a careful researcher.',
+    },
+    ...overrides,
+  };
+}
+
+export function revisionFixture(hash: string, lastRunAt: string): AgentRevision {
+  return { hash, firstRunAt: lastRunAt, lastRunAt };
+}

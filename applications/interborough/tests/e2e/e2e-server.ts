@@ -18,7 +18,7 @@
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
 import { Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -27,6 +27,7 @@ import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
+import { fakeProvider, writeProviderHome } from '../../src/host/fake-provider.test-support.ts';
 import { startHost } from '../../src/host/host.ts';
 import {
   BARRIER_AGENT_NAME,
@@ -52,6 +53,15 @@ const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const buildDirectory = join(scratch, 'build');
 await buildApplication({ outdir: buildDirectory });
 
+// The host's model catalog holds a model, so the agent editor can save an agent: the home names the
+// `anthropic` provider with a fixture key in its secrets, and the provider path runs against a fake
+// client that answers with a fixed reply. No model is called and no real key is read.
+const home = join(scratch, 'home');
+await mkdir(home, { recursive: true });
+// Two models, so a spec can change an agent's model and save it.
+await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
+const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
+
 // The fixtures run on an engine of their own over memory storage, as they always have. Sharing the
 // Bureau's database would put two engines' timers and ownership claims on one set of keys, which
 // the fixtures' own sleeps and restarts would trip over.
@@ -69,7 +79,8 @@ const host = await startHost({
     agents: createBarrierAgents(barrier),
     published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME],
   },
-  environment: { INTERBOROUGH_HOME: join(scratch, 'home') },
+  environment: { INTERBOROUGH_HOME: home },
+  resolveProviderGenerate: provider.resolver,
   port: E2E_PORT,
   buildDirectory,
   createConsoleEngine: async () => {

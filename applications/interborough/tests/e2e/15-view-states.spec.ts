@@ -17,6 +17,7 @@ const WIDTHS = [375, 1280] as const;
 const PATHS: Readonly<Record<ViewName, string>> = {
   chat: '/chat',
   agents: '/agents',
+  'agent-editor': '/agents/new',
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
@@ -56,6 +57,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   chat: bureauProbe('bureau.contexts.list', { contexts: [], nextOffset: null }),
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
+  'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
   workflows: jsonRpcProbe('weft.workflows.definitions.list'),
   runs: {
     matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',

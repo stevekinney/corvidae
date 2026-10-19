@@ -30,6 +30,8 @@
  *   operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
  *   served by `createBureauHandler` with the `/bureau` prefix removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+ * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor can
+ *   show an agent's file path.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -59,6 +61,7 @@ import {
 } from '@lostgradient/weft';
 
 import { routes as clientRoutes } from '../app/routes.ts';
+import { HOST_PATHS_ROUTE } from '../lib/host-paths.ts';
 import {
   createLocalAuthentication,
   isEngineRequestPath,
@@ -290,6 +293,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         apiKeys: providers.apiKeys,
         resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
       });
+    const agentDirectory = bungalow.directory(AGENT_DIRECTORY_NAME);
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: {
@@ -308,7 +312,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       storage,
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
-      agentDirectory: bungalow.directory(AGENT_DIRECTORY_NAME),
+      agentDirectory,
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
       workflowDirectory: bungalow.directory(WORKFLOW_DIRECTORY_NAME),
@@ -359,6 +363,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
           refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
+        // Where a person edits what the host keeps by hand. The editor shows an agent's file path.
+        [HOST_PATHS_ROUTE]: {
+          GET: (request: Request) => refuse(request) ?? Response.json({ agentDirectory }),
+        },
       },
       async fetch(request, listener) {
         const refusal = refuse(request);
