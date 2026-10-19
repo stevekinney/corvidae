@@ -201,3 +201,51 @@ describe('RoutingDialog — set routing', () => {
     expect(preview.hasAttribute('disabled')).toBe(true);
   });
 });
+
+describe('RoutingDialog — one invocation at a time', () => {
+  test('a slow preview from a closed session never replaces the next session, so confirm applies the build shown', async () => {
+    let releaseFirst!: (result: PreviewResult) => void;
+    const slowFirst = new Promise<PreviewResult>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const applied: { action: RoutingAction; expectedGeneration: number }[] = [];
+    const view = render(RoutingDialog, {
+      props: {
+        open: true,
+        request: { kind: 'promote', deploymentName: 'billing', buildId: 'build-a' },
+        versions: VERSIONS,
+        initial: {},
+        onPreview: async (change: RoutingChange) =>
+          change.currentBuildId === 'build-a'
+            ? slowFirst
+            : { valid: true, message: `Ready for ${change.currentBuildId}.`, currentGeneration: 8 },
+        onApply: async (action: RoutingAction, expectedGeneration: number) => {
+          applied.push({ action, expectedGeneration });
+        },
+        onApplied: () => {},
+        onClose: () => {},
+      },
+    });
+
+    // Close the first dialog while its preview is still running, then open it for another build.
+    await view.rerender({ open: false });
+    await view.rerender({
+      open: true,
+      request: { kind: 'promote', deploymentName: 'billing', buildId: 'build-b' },
+    });
+    expect(await view.findByText('Ready for build-b.')).not.toBeNull();
+
+    // The first preview finishes late, with its own generation and message.
+    releaseFirst({ valid: true, message: 'Ready for build-a.', currentGeneration: 99 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(view.queryByText('Ready for build-a.')).toBeNull();
+    expect(view.getByText('Ready for build-b.')).not.toBeNull();
+    await fireEvent.click(await view.findByRole('button', { name: 'Confirm promote build' }));
+    await waitFor(() => expect(applied).toHaveLength(1));
+    expect(applied[0]).toEqual({
+      action: { kind: 'promote', deploymentName: 'billing', buildId: 'build-b' },
+      expectedGeneration: 8,
+    });
+  });
+});

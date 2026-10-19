@@ -29,6 +29,29 @@ function parsedJsonRpcMethod(body: string): string | undefined {
   return typeof method === 'string' ? method : undefined;
 }
 
+/** One recorded JSON-RPC request: the operation it named and its `params`. */
+export interface RecordedJsonRpcRequest {
+  readonly method: string;
+  readonly params: unknown;
+}
+
+/** Every recorded call that was a JSON-RPC request for `method`, in order. */
+export function jsonRpcRequests(
+  calls: readonly FetchCall[],
+  method: string,
+): readonly RecordedJsonRpcRequest[] {
+  const requests: RecordedJsonRpcRequest[] = [];
+  for (const call of calls) {
+    const body = call.init?.body;
+    if (typeof body !== 'string') continue;
+    const parsed: unknown = JSON.parse(body);
+    if (parsed === null || typeof parsed !== 'object') continue;
+    if (Reflect.get(parsed, 'method') !== method) continue;
+    requests.push({ method, params: Reflect.get(parsed, 'params') });
+  }
+  return requests;
+}
+
 interface RouteRule {
   readonly matches: (call: FetchCall) => boolean;
   readonly respond: (call: FetchCall) => Response;
@@ -157,6 +180,31 @@ export class ScriptedFetch {
         }
       },
       respond: () => Response.json({ jsonrpc: '2.0', id: 1, result }),
+    });
+  }
+
+  /**
+   * Standing route: the Nth JSON-RPC request for `method` gets `results[N]` as a success envelope,
+   * and every request after the last gets the last — for an operation whose answer changes after a
+   * mutation (a list that includes a revision once it is installed).
+   */
+  routeJsonRpcMethodSequence(method: string, results: readonly unknown[]): void {
+    if (results.length === 0) throw new Error('routeJsonRpcMethodSequence needs a result');
+    let served = 0;
+    this.#routes.push({
+      matches: (call) => {
+        if (typeof call.init?.body !== 'string') return false;
+        try {
+          return parsedJsonRpcMethod(call.init.body) === method;
+        } catch {
+          return false;
+        }
+      },
+      respond: () => {
+        const result = results[Math.min(served, results.length - 1)];
+        served += 1;
+        return Response.json({ jsonrpc: '2.0', id: 1, result });
+      },
     });
   }
 

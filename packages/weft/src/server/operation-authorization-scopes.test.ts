@@ -79,6 +79,8 @@ const ALREADY_SCOPED_OPERATIONS: Readonly<Record<string, AuthorizationScope>> = 
   'weft.workflows.revisions.install': 'workflows:admin',
   'weft.workflows.revisions.activate': 'workflows:admin',
   'weft.workflows.revisions.preload': 'workflows:admin',
+  'weft.workflows.refresh': 'workflows:admin',
+  'weft.workflows.refresh.diagnostics': 'workflows:read',
   'weft.workflows.revisions.get': 'workflows:read',
   'weft.workflows.revisions.list': 'workflows:read',
   'weft.workflows.active.get': 'workflows:read',

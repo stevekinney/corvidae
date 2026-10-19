@@ -23,6 +23,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { seedDynamicSources } from '../../fixtures/dynamic-sources.ts';
+import { seedRefreshSources } from '../../fixtures/workflow-refresh.ts';
 import { seedWorkflowRevisions } from '../../fixtures/workflow-revisions.ts';
 import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
@@ -71,7 +72,15 @@ const host = await startHost({
   environment: { INTERBOROUGH_HOME: join(scratch, 'home') },
   port: E2E_PORT,
   buildDirectory,
-  createConsoleEngine: async () => (fixtureEngine = await createFixtureEngine()),
+  createConsoleEngine: async () => {
+    fixtureEngine = await createFixtureEngine();
+    // One conditional-refresh source on each of three eager workflows (COR-166),
+    // registered before the host listens: the refresh panel reads its sources once,
+    // and the first spec loads it the moment the server answers. See
+    // `fixtures/workflow-refresh.ts`'s module doc.
+    await seedRefreshSources(fixtureEngine);
+    return fixtureEngine;
+  },
   engineServer: {
     cancellationGracePeriodMs: E2E_CANCELLATION_GRACE_PERIOD_MS,
     workerReconnectGracePeriodMs: E2E_RECONNECT_GRACE_PERIOD_MS,
@@ -196,6 +205,7 @@ process.stdout.write(
     'Seeded COR-281 cross-build retry storm',
     'Seeded COR-164 pinned and auto-upgrade runs',
     'Registered dynamic workflow sources for invoice-reconciliation',
+    'Registered conditional-refresh sources',
   ].join('\n') + '\n',
 );
 

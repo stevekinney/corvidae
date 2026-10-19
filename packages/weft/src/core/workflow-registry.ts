@@ -7,10 +7,13 @@ export {
   type WorkflowRefreshArtifact,
   type WorkflowRefreshCoordinatorOptions,
   type WorkflowRefreshDiagnostics,
+  type WorkflowRefreshFailureReason,
   type WorkflowRefreshOptions,
+  type WorkflowRefreshPollingStatus,
   type WorkflowRefreshResponse,
   type WorkflowRefreshResult,
   type WorkflowRefreshSource,
+  type WorkflowRefreshStatus,
 } from './catalog/index.ts';
 export type {
   WorkflowCatalogActivationResult,
