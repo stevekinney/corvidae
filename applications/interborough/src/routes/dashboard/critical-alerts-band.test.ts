@@ -145,6 +145,40 @@ describe('CriticalAlertsBand', () => {
     expect(link?.getAttribute('href')).toBe('/workers?diagnostic=deadLettered');
   });
 
+  test('a chip whose items all belong to one workflow also links to that run', async () => {
+    const client = alertClient({
+      diagnostics: {
+        items: [
+          {
+            kind: 'dead-lettered',
+            state: 'dead-lettered',
+            operationId: 'op-1',
+            workflowId: 'wf-owner',
+            retryCount: 0,
+            requeueCount: 0,
+            evidence: [],
+          },
+        ],
+        summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+        limit: 50,
+      },
+      reviews: [],
+    });
+
+    const { getByText, getByRole } = render(CriticalAlertsBandHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('1 dead-lettered task')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    expect(getByText('1 dead-lettered task').closest('a')?.getAttribute('href')).toBe(
+      '/workers?diagnostic=deadLettered',
+    );
+    expect(getByRole('link', { name: 'Open workflow wf-owner' }).getAttribute('href')).toBe(
+      '/runs/wf-owner',
+    );
+  });
+
   test('renders a reviews-near-timeout chip that deep-links to /inbox', async () => {
     const now = Date.now();
     const client = alertClient({

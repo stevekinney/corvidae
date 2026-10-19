@@ -108,7 +108,6 @@
   }
 
   async function runCheck(
-    source: RefreshSourceView,
     activate: boolean,
     expectedGeneration: number | undefined,
   ): Promise<ActionResult> {
@@ -175,7 +174,7 @@
     mutationFn: ({ action, source, expectedGeneration }) =>
       action === 'activate-candidate'
         ? runActivation(source, expectedGeneration)
-        : runCheck(source, action === 'check-and-activate', expectedGeneration),
+        : runCheck(action === 'check-and-activate', expectedGeneration),
     onSuccess: invalidateAfterAction,
   }));
 

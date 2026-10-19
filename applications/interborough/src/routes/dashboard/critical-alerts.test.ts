@@ -33,6 +33,52 @@ function review(overrides: Partial<PendingReviewEntry> = {}): PendingReviewEntry
   };
 }
 
+describe('buildDiagnosticChips workflow links', () => {
+  function diagnosticItem(kind: string, workflowId?: string) {
+    return {
+      kind,
+      state: 'inflight',
+      retryCount: 0,
+      requeueCount: 0,
+      evidence: [],
+      ...(workflowId === undefined ? {} : { workflowId }),
+    } as never;
+  }
+
+  test('a kind whose items all belong to one workflow links to that run, at /runs/:id', () => {
+    const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, staleInflight: 2 }, [
+      diagnosticItem('stale-inflight', 'wf-1'),
+      diagnosticItem('stale-inflight', 'wf-1'),
+    ]);
+
+    expect(chips[0]?.href).toBe('/workers?diagnostic=staleInflight');
+    expect(chips[0]?.workflow).toEqual({ id: 'wf-1', href: '/runs/wf-1' });
+  });
+
+  test('a kind spread over several workflows, or with none named, offers no single workflow', () => {
+    const several = buildDiagnosticChips({ ...ZERO_SUMMARY, retryStorms: 2 }, [
+      diagnosticItem('retry-storm', 'wf-1'),
+      diagnosticItem('retry-storm', 'wf-2'),
+    ]);
+    const none = buildDiagnosticChips({ ...ZERO_SUMMARY, delayed: 1 }, [diagnosticItem('delayed')]);
+
+    expect(several[0]?.workflow).toBeUndefined();
+    expect(none[0]?.workflow).toBeUndefined();
+  });
+
+  test('items of another kind never decide a chip', () => {
+    const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, deadLettered: 1 }, [
+      diagnosticItem('stale-inflight', 'wf-other'),
+    ]);
+
+    expect(chips[0]?.workflow).toBeUndefined();
+  });
+
+  test('without items the chips are exactly what the summary alone gave', () => {
+    expect(buildDiagnosticChips({ ...ZERO_SUMMARY, deadLettered: 1 })[0]?.workflow).toBeUndefined();
+  });
+});
+
 describe('buildDiagnosticChips', () => {
   test('returns no chips when every count is zero', () => {
     expect(buildDiagnosticChips(ZERO_SUMMARY)).toEqual([]);

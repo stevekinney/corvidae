@@ -52,6 +52,7 @@
   } from './async-activity/async-activity-query.ts';
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
   import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
+  import RemoteActivityPanel from './remote-activity-panel.svelte';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -171,6 +172,45 @@
         candidate.status !== 'running' &&
         candidate.taskOperationId !== undefined,
     );
+  }
+
+  /** The timeline step whose remote task is open. */
+  let remoteTaskStep = $state<number | null>(null);
+
+  /**
+   * The ledger record behind a mapped activity step, when the step is remote. The entry's own
+   * `taskOperationId` is what marks it (present on remote `ctx.run()` entries only). A running
+   * entry does not carry it until the next checkpoint, so a running step with a live
+   * pending-activity observation is offered by that observation's operation id, and the panel
+   * says the dispatch record is not yet available if the ledger has none.
+   */
+  function remoteTaskFor(
+    stepId: string,
+  ): { step: number; label: string; operationId: string; awaiting: boolean } | undefined {
+    const stepNumber = stepNumberFromRunStepId(stepId);
+    if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
+    const found = entries.find(
+      (candidate) => candidate.step === stepNumber && candidate.operationType === 'activity',
+    );
+    if (found === undefined) return undefined;
+    if (found.taskOperationId !== undefined) {
+      return {
+        step: stepNumber,
+        label: found.operationLabel,
+        operationId: found.taskOperationId,
+        awaiting: false,
+      };
+    }
+    if (found.status !== 'running') return undefined;
+    const pending = attachedPendingActivities.find((candidate) => candidate.stepId === stepId);
+    return pending === undefined
+      ? undefined
+      : {
+          step: stepNumber,
+          label: found.operationLabel,
+          operationId: pending.operationId,
+          awaiting: true,
+        };
   }
 
   let openDrawerToken = $state<string | null>(null);
@@ -300,6 +340,27 @@
                 />
               </div>
             {/if}
+          {/if}
+          {@const remote = readTask === undefined ? undefined : remoteTaskFor(step.id)}
+          {#if remote !== undefined && readTask !== undefined}
+            <div class="weft-timeline-tab__step-provenance">
+              <Button
+                variant="ghost"
+                size="sm"
+                label={`Remote task for ${remote.label}`}
+                aria-expanded={remoteTaskStep === remote.step}
+                onclick={() =>
+                  (remoteTaskStep = remoteTaskStep === remote.step ? null : remote.step)}
+              />
+              {#if remoteTaskStep === remote.step}
+                <RemoteActivityPanel
+                  operationId={remote.operationId}
+                  {readTask}
+                  label={remote.label}
+                  awaitingDispatchRecord={remote.awaiting}
+                />
+              {/if}
+            </div>
           {/if}
           {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
           {#if settled?.taskOperationId !== undefined && readTask !== undefined}

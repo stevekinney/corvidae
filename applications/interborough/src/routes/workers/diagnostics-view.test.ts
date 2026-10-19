@@ -149,6 +149,39 @@ describe('DiagnosticsView — grouped kinds', () => {
     expect(getByText('heartbeat missed for 90s')).not.toBeNull();
   });
 
+  test('links every item that carries a workflowId to its run, at /runs/:id', () => {
+    const { getByRole, queryByRole } = render(DiagnosticsView, {
+      props: {
+        items: [
+          item({
+            kind: 'stale-inflight',
+            workflowId: 'wf_abcdefghijklmnop',
+            operationId: 'op_one',
+            evidence: ['heartbeat missed for 90s'],
+          }),
+          item({
+            kind: 'retry-storm',
+            workflowId: 'wf with/slash',
+            operationId: 'op_two',
+            evidence: ['retried 9 times'],
+          }),
+          item({ kind: 'stuck-queued', operationId: 'op_three', evidence: ['stuck'] }),
+        ],
+        summary: { ...EMPTY_SUMMARY, staleInflight: 1, retryStorms: 1, stuckQueued: 1 },
+        now: NOW,
+      },
+    });
+
+    expect(
+      getByRole('link', { name: 'Open workflow wf_abcdefghijklmnop' }).getAttribute('href'),
+    ).toBe('/runs/wf_abcdefghijklmnop');
+    expect(getByRole('link', { name: 'Open workflow wf with/slash' }).getAttribute('href')).toBe(
+      '/runs/wf%20with%2Fslash',
+    );
+    // An item with no workflowId has no workflow to link to.
+    expect(queryByRole('link', { name: /Open workflow op_three/ })).toBeNull();
+  });
+
   test('evidence rows show at most 3 items per group even when more are present', () => {
     const items = Array.from({ length: 5 }, (_, index) =>
       item({
