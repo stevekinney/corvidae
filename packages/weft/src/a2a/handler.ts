@@ -43,6 +43,7 @@ import {
   type A2AStreamTimerScheduler,
   createA2AEventStreamResponse,
   type JsonRpcResponseEnvelope,
+  REQUEST_SIGNAL_STATE_KEY,
   scheduleWithTimeout,
 } from './sse-response.ts';
 import { recordStreamCursors, type StreamCursorEntry } from './stream-cursors.ts';
@@ -295,6 +296,9 @@ export function createA2AHandlerWithScheduler(
       requestedVersion: A2A_PROTOCOL_VERSION,
       ...(tenant === undefined ? {} : { tenant }),
     });
+    // Ends with the request: its client going away, or its stream closing.
+    const ended = new AbortController();
+    context.state.set(REQUEST_SIGNAL_STATE_KEY, AbortSignal.any([request.signal, ended.signal]));
     const cursors: StreamCursorEntry[] = [];
     const transport = new JsonRpcTransportHandler(
       recordStreamCursors(options.requestHandler, cursors),
@@ -317,6 +321,9 @@ export function createA2AHandlerWithScheduler(
       maxStreamDurationMs,
       schedule,
       headers: rpcHeaders(context),
+      onClose: () => {
+        ended.abort();
+      },
     });
   }
 
