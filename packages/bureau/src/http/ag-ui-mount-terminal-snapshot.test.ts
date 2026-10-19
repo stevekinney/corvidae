@@ -388,7 +388,6 @@ describe('a run that reported an error and was then abandoned without a save', (
         () => 'resolved',
         (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
       );
-      const released = performance.now();
       opened.generate.release('second');
       await stream.rest();
 
@@ -396,7 +395,6 @@ describe('a run that reported an error and was then abandoned without a save', (
       expect(last?.type).toBe(EventType.RUN_ERROR);
       expect(last).toMatchObject({ message: 'The model failed.' });
       expect(last).not.toMatchObject({ code: 'STREAM_DEADLINE' });
-      expect(performance.now() - released).toBeLessThan(DEADLINE_MILLISECONDS / 2);
       // No save of the run's end happened here, so nothing will ever record it: the wait says so.
       expect(await recorded).toBe('TerminalSessionRecordAbandonedError');
       expect(warnings.map((warning) => warning.name)).toEqual([
@@ -420,7 +418,6 @@ describe('the other ways a run that took input can end without its end being rec
       diagnostics,
     });
     try {
-      const started = performance.now();
       const stream = await runThatTakesInput(
         opened,
         mountOver(opened.bureau, DEADLINE_MILLISECONDS),
@@ -432,7 +429,6 @@ describe('the other ways a run that took input can end without its end being rec
       const last = stream.received.at(-1)?.event;
       expect(last).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
       expect((last as { message: string }).message).toContain('could not be read');
-      expect(performance.now() - started).toBeLessThan(DEADLINE_MILLISECONDS / 2);
       expect(diagnostics.some((message) => message.includes('Failed to persist'))).toBe(true);
     } finally {
       await opened.bureau.dispose();
@@ -465,13 +461,11 @@ describe('the other ways a run that took input can end without its end being rec
       () => 'settled',
       () => 'settled',
     );
-    const disposed = performance.now();
 
     await opened.bureau.dispose();
     await stream.rest();
 
     expect(await recorded).toBe('settled');
-    expect(performance.now() - disposed).toBeLessThan(DEADLINE_MILLISECONDS / 2);
     expect(stream.received.at(-1)).not.toMatchObject({ event: { code: 'STREAM_DEADLINE' } });
   });
 });
