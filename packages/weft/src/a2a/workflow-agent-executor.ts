@@ -364,6 +364,8 @@ export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOption
     log,
     runtime,
     pushStore: sender.pushStore,
+    storage,
+    namespace,
     now,
     toInput: options.input ?? payloadAsInput,
     respond: options.respond,

@@ -27,6 +27,7 @@ import type { Storage } from '../storage/interface.ts';
 import { A2APushConfigurationConflictError } from './store-errors.ts';
 import {
   type A2ACallerScope,
+  type A2ACompareAndSwapAttempt,
   type A2APageCursor,
   callerScope,
   compareIdentifiers,
@@ -190,6 +191,74 @@ function requirePushStorage(storage: Storage): void {
   }
 }
 
+async function readHead(
+  storage: Storage,
+  headKey: string,
+): Promise<{ bytes: Uint8Array | null; sequence: number }> {
+  const bytes = await storage.get(headKey);
+  return {
+    bytes,
+    sequence: bytes === null ? 0 : Number(decodeRecord(headKey, bytes)['sequence']),
+  };
+}
+
+async function readTaskConfigurations(
+  storage: Storage,
+  scope: A2ACallerScope,
+  taskId: string,
+): Promise<StoredConfiguration[]> {
+  const records = await scanRecords(storage, `${scopedKey('push', scope, taskId)}:`);
+  return records.map(({ record }) => readConfiguration(record));
+}
+
+/**
+ * Plan one create of a push configuration: the existing configuration it repeats, or
+ * the conditional batch that stores it, conditioned on the task's push head and
+ * bumping it. {@link createWeftPushNotificationStore}'s `create` commits the batch on
+ * its own; a workflow agent folds it into the batch that creates the task, so a task
+ * and the inline configuration of its first message are stored together or not at
+ * all. Both write the same records under the same keys.
+ *
+ * @throws {A2APushConfigurationConflictError} As
+ *   {@link WeftPushNotificationStore.create} does.
+ */
+export async function planPushConfigurationCreate(
+  options: { readonly storage: Storage; readonly namespace: string; readonly now: () => number },
+  taskId: string,
+  context: ServerCallContext,
+  input: TaskPushNotificationConfig,
+): Promise<A2ACompareAndSwapAttempt<TaskPushNotificationConfig>> {
+  const { storage, namespace, now } = options;
+  const scope = callerScope(namespace, context);
+  const headKey = scopedKey('push-head', scope, taskId);
+  const head = await readHead(storage, headKey);
+  const resolution = resolveCreate(
+    taskId,
+    await readTaskConfigurations(storage, scope, taskId),
+    input,
+  );
+  if ('existing' in resolution) return { result: resolution.existing };
+  const config: TaskPushNotificationConfig = {
+    ...structuredClone(input),
+    id: resolution.id,
+    taskId,
+  };
+  const record = encodeRecord({
+    state: 'live',
+    config: TaskPushNotificationConfig.toJSON(config),
+    createdAt: now(),
+    wireVersion: context.requestedVersion,
+  });
+  return {
+    conditions: [{ key: headKey, expectedValue: head.bytes }],
+    operations: [
+      { type: 'put', key: scopedKey('push', scope, taskId, config.id), value: record },
+      { type: 'put', key: headKey, value: encodeRecord({ sequence: head.sequence + 1 }) },
+    ],
+    result: config,
+  };
+}
+
 /**
  * Create an A2A `PushNotificationStore` over a Weft storage adapter, scoped by
  * `ServerCallContext.tenant`, the caller's `user`, and `namespace` exactly as
@@ -208,29 +277,11 @@ export function createWeftPushNotificationStore(
   requirePushStorage(storage);
   const now = options.now ?? Date.now;
 
-  async function readHead(
-    headKey: string,
-  ): Promise<{ bytes: Uint8Array | null; sequence: number }> {
-    const bytes = await storage.get(headKey);
-    return {
-      bytes,
-      sequence: bytes === null ? 0 : Number(decodeRecord(headKey, bytes)['sequence']),
-    };
-  }
-
-  async function readTaskConfigurations(
-    scope: A2ACallerScope,
-    taskId: string,
-  ): Promise<StoredConfiguration[]> {
-    const records = await scanRecords(storage, `${scopedKey('push', scope, taskId)}:`);
-    return records.map(({ record }) => readConfiguration(record));
-  }
-
   async function liveConfigurations(
     taskId: string,
     context: ServerCallContext,
   ): Promise<LiveConfiguration[]> {
-    const stored = await readTaskConfigurations(callerScope(namespace, context), taskId);
+    const stored = await readTaskConfigurations(storage, callerScope(namespace, context), taskId);
     return stored
       .filter((entry): entry is LiveConfiguration => entry.kind === 'live')
       .toSorted(compareCreationOrder);
@@ -241,32 +292,10 @@ export function createWeftPushNotificationStore(
     context: ServerCallContext,
     input: TaskPushNotificationConfig,
   ): Promise<TaskPushNotificationConfig> {
-    const scope = callerScope(namespace, context);
-    const headKey = scopedKey('push-head', scope, taskId);
-    return withCompareAndSwap(storage, headKey, async () => {
-      const head = await readHead(headKey);
-      const resolution = resolveCreate(taskId, await readTaskConfigurations(scope, taskId), input);
-      if ('existing' in resolution) return { result: resolution.existing };
-      const config: TaskPushNotificationConfig = {
-        ...structuredClone(input),
-        id: resolution.id,
-        taskId,
-      };
-      const record = encodeRecord({
-        state: 'live',
-        config: TaskPushNotificationConfig.toJSON(config),
-        createdAt: now(),
-        wireVersion: context.requestedVersion,
-      });
-      return {
-        conditions: [{ key: headKey, expectedValue: head.bytes }],
-        operations: [
-          { type: 'put', key: scopedKey('push', scope, taskId, config.id), value: record },
-          { type: 'put', key: headKey, value: encodeRecord({ sequence: head.sequence + 1 }) },
-        ],
-        result: config,
-      };
-    });
+    const headKey = scopedKey('push-head', callerScope(namespace, context), taskId);
+    return withCompareAndSwap(storage, headKey, () =>
+      planPushConfigurationCreate({ storage, namespace, now }, taskId, context, input),
+    );
   }
 
   return {
@@ -321,7 +350,7 @@ export function createWeftPushNotificationStore(
       const headKey = scopedKey('push-head', scope, taskId);
       const key = scopedKey('push', scope, taskId, configId);
       await withCompareAndSwap(storage, headKey, async () => {
-        const head = await readHead(headKey);
+        const head = await readHead(storage, headKey);
         const bytes = await storage.get(key);
         const stored = bytes === null ? undefined : readConfiguration(decodeRecord(key, bytes));
         if (stored?.kind !== 'live') return { result: undefined };
