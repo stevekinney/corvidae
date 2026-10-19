@@ -13,6 +13,7 @@ import { RequestMalformedError } from '@a2a-js/sdk/errors';
 import type { ServerCallContext } from '@a2a-js/sdk/server';
 
 import type { Storage } from '../storage/interface.ts';
+import { MemoryStorage } from '../storage/memory.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   a2aStoreBackends,
@@ -67,8 +68,8 @@ type Harness = {
 
 /**
  * The clocks of the agent and of its push store, each `Date.now` when absent, and
- * whether the sender hands the agent a hand-written copy of the push store rather than
- * the store `createWeftPushNotificationStore` made.
+ * whether the push store is a hand-written one that keeps its records apart from the
+ * agent's storage rather than one `createWeftPushNotificationStore` made over it.
  */
 type AgentOptions = {
   readonly agent?: () => number;
@@ -90,14 +91,19 @@ async function withAgent(
   const raw = open();
   const { storage } = interposedStorage(raw, interpose);
   const engine = createFixtureEngine(raw);
-  const pushStore = createWeftPushNotificationStore({
+  const builtIn = createWeftPushNotificationStore({
     storage,
     namespace: NAMESPACE,
     ...(clocks.push === undefined ? {} : { now: clocks.push }),
   });
+  const ownStorage = new MemoryStorage();
+  const pushStore: WeftPushNotificationStore =
+    clocks.handWrittenStore === true
+      ? { ...createWeftPushNotificationStore({ storage: ownStorage, namespace: NAMESPACE }) }
+      : builtIn;
   const sent: Sent[] = [];
   const sender: OutboxPushNotificationSender = {
-    pushStore: clocks.handWrittenStore === true ? { ...pushStore } : pushStore,
+    pushStore,
     async send(event: StreamResponse, context: ServerCallContext) {
       const payload = event.payload;
       const taskId =
@@ -127,6 +133,7 @@ async function withAgent(
   } finally {
     agent[Symbol.dispose]();
     await engine[Symbol.asyncDispose]();
+    ownStorage[Symbol.dispose]();
   }
 }
 
@@ -199,7 +206,7 @@ for (const backend of a2aStoreBackends) {
       );
     });
 
-    test('is stored before the first status is sent through a hand-written push store too', async () => {
+    test('is saved by a hand-written push store itself, before the first status is sent', async () => {
       await withAgent(
         open,
         () => undefined,
@@ -215,7 +222,8 @@ for (const backend of a2aStoreBackends) {
           const stored = await pushStore.load(taskIdOf(result), east());
           expect(stored.map((config) => config.token)).toEqual(['copied']);
           expect(sent.map((entry) => entry.configurations)).toEqual(sent.map(() => 1));
-          expect(await pushKeysOf(storage, east())).toHaveLength(2);
+          // Nothing in the built-in format, which the hand-written store would never read.
+          expect(await pushKeysOf(storage, east())).toEqual([]);
         },
         { handWrittenStore: true },
       );

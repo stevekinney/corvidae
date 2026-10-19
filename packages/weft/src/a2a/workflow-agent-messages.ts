@@ -29,13 +29,8 @@ import {
 import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/server';
 
 import type { Engine } from '../core/engine.ts';
-import type { Storage } from '../storage/interface.ts';
 import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
-import {
-  planPushConfigurationCreate,
-  type PushConfigurationCreatePlanner,
-  pushConfigurationCreatePlannerOf,
-} from './push-notification-store.ts';
+import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';
 import { type StoredWorkflowTask, taskEventCursor, type TaskEventLog } from './task-event-log.ts';
 import type { WorkflowAgentInputMode } from './workflow-agent-card.ts';
@@ -196,26 +191,16 @@ export function createWorkflowAgentMessaging(options: {
   readonly log: TaskEventLog;
   readonly runtime: WorkflowTaskRuntime;
   readonly pushStore: PushNotificationStore;
-  /**
-   * The storage and namespace of the agent's records, which its push store shares. A
-   * first message's inline configuration is planned with them, and with `now`, only
-   * when `pushStore` did not come from `createWeftPushNotificationStore`.
-   */
-  readonly storage: Storage;
-  readonly namespace: string;
   readonly now: () => number;
   readonly toInput: WorkflowAgentInput;
   readonly respond: WorkflowAgentResponder | undefined;
 }): WorkflowAgentMessaging {
   const { engine, workflowType, inputMode, inputModes, log, runtime, pushStore, now } = options;
-  const { storage, namespace } = options;
   const { toInput, respond } = options;
-  // The push store's own planner stamps a configuration with the store's clock, so the
-  // first message's configuration sorts among later ones by the same clock.
-  const planPushCreate: PushConfigurationCreatePlanner =
-    pushConfigurationCreatePlannerOf(pushStore) ??
-    ((taskId, context, input) =>
-      planPushConfigurationCreate({ storage, namespace, now }, taskId, context, input));
+  // The planner of a store `createWeftPushNotificationStore` made writes its records,
+  // stamped with its clock, in the batch that creates a task. Any other store keeps its
+  // own records, so only its own `save` can store a configuration in it.
+  const planPushCreate = pushConfigurationCreatePlannerOf(pushStore);
 
   /**
    * Save the message's inline push configuration for its task, under the store's
@@ -241,7 +226,10 @@ export function createWorkflowAgentMessaging(options: {
    * before the task's first status is sent, so a status as fast as a workflow that
    * completes at once reaches it. A create that loses to another caller, fails, or
    * never commits because the process stops leaves no configuration in this caller's
-   * scope, where no task record would lead pruning to it.
+   * scope, where no task record would lead pruning to it. A push store that did not
+   * come from `createWeftPushNotificationStore` saves the configuration itself before
+   * the task is created, so it too has it before the first status, without that
+   * guarantee.
    */
   async function createTask(
     message: Message,
@@ -265,18 +253,21 @@ export function createWorkflowAgentMessaging(options: {
     };
     const task = withStatus(submitted, status);
     const config = params.configuration?.taskPushNotificationConfig;
+    if (planPushCreate === undefined) await installPushConfiguration(params, taskId, context);
     const created = await log.create(
       runtime.scopeOf(context),
       taskOwnerOf(context),
       { task, events: [statusUpdateEvent(task, status)] },
-      config === undefined
+      config === undefined || planPushCreate === undefined
         ? undefined
         : () => planPushCreate(taskId, context, { ...config, taskId }),
     );
     if (created === 'foreign') throw foreignMessage(message);
     // Another request for the same message created the task first, so this one reached
     // an existing task, as a retry does.
-    if (created === undefined) await installPushConfiguration(params, taskId, context);
+    if (created === undefined && planPushCreate !== undefined) {
+      await installPushConfiguration(params, taskId, context);
+    }
     await runtime.publish(created, context);
   }
 
