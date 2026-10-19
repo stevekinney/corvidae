@@ -247,3 +247,91 @@ describe('a file the composer refuses', () => {
     unmount(instance);
   });
 });
+
+describe('attachments already in the composer when its limits change', () => {
+  async function mountFixture(props: Record<string, unknown>) {
+    const { default: Fixture } = await import('./chat-input-upload-fixture.svelte');
+    const target = document.createElement('div');
+    document.body.append(target);
+    const instance = mount(Fixture, {
+      target,
+      props: { acceptedTypes: ['image/*'], maxFileSize: 1024, ...props },
+    }) as unknown as {
+      setLimits(next: { acceptedTypes?: string[]; maxFileSize?: number }): void;
+      addFiles(files: File[]): void;
+    };
+    return { target, instance };
+  }
+
+  test('a ready attachment the new limits refuse becomes an error row, is not sent, and tells the failure hook', async () => {
+    const failed: Array<{ file: File; error: string }> = [];
+    const submitted: ChatAttachment[][] = [];
+    const { target, instance } = await mountFixture({
+      uploadAttachment: async () => ({ id: 'asset-1' }),
+      formatAttachmentError: (failure: ChatAttachmentFailure) => `refused ${failure.kind}`,
+      onAttachmentFailure: (file: File, error: string) => failed.push({ file, error }),
+      onsubmit: (_message: MessageInput, attachments: ChatAttachment[]) =>
+        submitted.push(attachments),
+      value: 'hello',
+    });
+    instance.addFiles([png()]);
+    await tick();
+    await tick();
+    expect(stateOf(target)).toEqual(['ready']);
+
+    instance.setLimits({ acceptedTypes: ['application/pdf'] });
+    await tick();
+
+    expect(stateOf(target)).toEqual(['error']);
+    expect(target.textContent).toContain('refused type-not-accepted');
+    expect(failed.map((entry) => entry.error)).toEqual(['refused type-not-accepted']);
+    await fireEvent.submit(target.querySelector('form')!);
+    expect(submitted[0]).toEqual([]);
+  });
+
+  test('an upload still going is aborted when the new limits refuse its file', async () => {
+    const { upload, calls } = heldUpload();
+    const { target, instance } = await mountFixture({ uploadAttachment: upload });
+    instance.addFiles([png()]);
+    await tick();
+
+    instance.setLimits({ acceptedTypes: [] });
+    await tick();
+
+    expect(calls[0]!.signal.aborted).toBe(true);
+    expect(stateOf(target)).toEqual(['error']);
+    calls[0]!.resolve({ id: 'late' });
+    await tick();
+    expect(stateOf(target)).toEqual(['error']);
+  });
+
+  test('a file over a smaller size limit is refused, and one the limits still take is left alone', async () => {
+    const { target, instance } = await mountFixture({
+      uploadAttachment: async () => ({ id: 'asset-1' }),
+      maxFileSize: 1024,
+    });
+    const small = new File(['xx'], 'small.png', { type: 'image/png' });
+    const bigger = new File([new Uint8Array(512)], 'bigger.png', { type: 'image/png' });
+    instance.addFiles([small, bigger]);
+    await tick();
+    await tick();
+
+    instance.setLimits({ maxFileSize: 100 });
+    await tick();
+
+    expect(stateOf(target)).toEqual(['ready', 'error']);
+  });
+
+  test('an attachment that was already an error keeps its own words', async () => {
+    const { target, instance } = await mountFixture({ acceptedTypes: ['image/*'] });
+    instance.addFiles([new File(['x'], 'a.zip', { type: 'application/zip' })]);
+    await tick();
+    const before = target.textContent;
+
+    instance.setLimits({ acceptedTypes: [] });
+    await tick();
+
+    expect(stateOf(target)).toEqual(['error']);
+    expect(target.textContent).toBe(before);
+  });
+});

@@ -85,7 +85,9 @@ function attachedAssets(message: Message): ChatAsset[] {
 
 /** The managed assets `message` carries: those an agent returned, or those the person attached. */
 export function assetsOf(message: Message): ChatAsset[] {
-  if (message.role === 'assistant') return announcedAssets(message);
+  // A step that returned assets and only called tools has no text row, so its assets stand on the
+  // first call's row, which is a `tool-call` row.
+  if (message.role === 'assistant' || message.role === 'tool-call') return announcedAssets(message);
   if (message.role === 'user') return attachedAssets(message);
   return [];
 }
@@ -120,8 +122,9 @@ export function withoutAssetParts(conversation: ConversationHistory): Conversati
   return changed ? { ...conversation, messages } : conversation;
 }
 
-/** Whether a row has anything of its own to show: some text, or a part that is not text. */
+/** Whether a row has anything of its own to show: a tool call or result, some text, or a part that is not text. */
 export function hasContent(message: Message): boolean {
+  if (message.toolCall !== undefined || message.toolResult !== undefined) return true;
   if (typeof message.content === 'string') return message.content.trim() !== '';
   return message.content.some((part) => part.type !== 'text' || part.text.trim() !== '');
 }

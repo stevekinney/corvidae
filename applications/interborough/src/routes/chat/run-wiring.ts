@@ -129,6 +129,12 @@ export type ChatRunWiring = {
    * leaves the chat. Without it the end of the signal is a Stop, which cancels the Bureau's run.
    */
   detach(): void;
+  /**
+   * The assets the last turn announced that no terminal frame stamped on a row: a turn that ended
+   * in an error or a stop carries no history to stamp them on. Answers them once, and the caller
+   * puts them on the rows with {@link withAssetParts}.
+   */
+  drainAssets(): readonly AssetAnnouncement[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -272,7 +278,7 @@ async function* parkApprovals(
   frames: AsyncIterable<ChatStreamEvent>,
   interrupts: () => readonly Interrupt[],
   answerRowId: string | undefined,
-  announced: readonly AssetAnnouncement[],
+  announced: AssetAnnouncement[],
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
     if (frame.type !== 'run.completed') {
@@ -280,6 +286,8 @@ async function* parkApprovals(
       continue;
     }
     const parked = withAssetParts(withApprovalRows(frame.conversation, interrupts()), announced);
+    // Stamped, so nothing is left for the end of the turn to put on a row a second time.
+    announced.splice(0);
     yield {
       ...frame,
       conversation:
@@ -333,7 +341,7 @@ function resultFor(toolCallId: string, resolution: ApprovalResolution): ToolResu
 }
 
 /** One `bureau.asset-part` event: an asset the assistant row `messageId` carries. */
-type AssetAnnouncement = AssetPartReference & { readonly messageId: string };
+export type AssetAnnouncement = AssetPartReference & { readonly messageId: string };
 
 /** The announcement a `CUSTOM` event carries, or `undefined` for any other event. */
 function announcementOf(event: unknown): AssetAnnouncement | undefined {
@@ -364,7 +372,7 @@ function announcementOf(event: unknown): AssetAnnouncement | undefined {
  * holds, so a live row and a reloaded one are read the same way. An announcement for a row the
  * conversation does not hold is dropped.
  */
-function withAssetParts(
+export function withAssetParts(
   conversation: ConversationHistory,
   announced: readonly AssetAnnouncement[],
 ): ConversationHistory {
@@ -469,6 +477,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
   let detached = false;
+  /** The assets the turn on screen announced that no terminal frame has put on a row. */
+  let unstamped: AssetAnnouncement[] = [];
 
   /**
    * Stops the Bureau's run: a stop on this page ends this page's stream, and the run goes on
@@ -663,6 +673,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         : { events: attachedStream, answerRowId: undefined };
     attached = undefined;
     const announced: AssetAnnouncement[] = [];
+    unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
     const frames = mapAGUIEventsToChatStream(
@@ -733,6 +744,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     detach() {
       detached = true;
+    },
+    drainAssets() {
+      return unstamped.splice(0);
     },
     async discardAttach() {
       const dropped = attached;

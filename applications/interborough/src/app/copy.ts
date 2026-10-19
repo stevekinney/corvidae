@@ -498,7 +498,7 @@ export const CHAT_COPY = {
     expired: 'The upload expired before it finished. Remove the file and attach it again.',
     /** The run was refused because the model could not take an attachment. */
     modelRefusedMedia:
-      'The agent’s model could not take an attached file. Remove it and send again.',
+      'The agent’s model could not take an attached file. Send again without the file.',
   },
 } as const;
 

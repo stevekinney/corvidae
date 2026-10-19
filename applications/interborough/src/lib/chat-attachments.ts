@@ -30,22 +30,28 @@ export type AgentMedia = z.infer<typeof agentMediaSchema>;
  */
 export const DEFAULT_MAX_ATTACHMENT_BYTES = 100 * 1024 * 1024;
 
-/** The types the file picker accepts for each family a model takes. A family not here has no type to offer. */
-const ACCEPT_BY_FAMILY: Readonly<Record<string, string>> = {
-  image: 'image/*',
-  audio: 'audio/*',
-  video: 'video/*',
-  document: 'application/pdf',
-  text: 'text/*',
+/**
+ * What the page can offer for a MIME family, and how the file travels. A file goes out as a media
+ * part, and the Bureau checks it against the model by that part's modality, not by the file's
+ * family: an image, audio or video file is its own modality, and a PDF or a text file is a
+ * `document` part. So a text file needs the model to take documents (and the `text` family), and
+ * is held to the document limit, whether or not the model takes text input.
+ */
+const OFFERS: Readonly<Record<string, { readonly accept: string; readonly modality: string }>> = {
+  image: { accept: 'image/*', modality: 'image' },
+  audio: { accept: 'audio/*', modality: 'audio' },
+  video: { accept: 'video/*', modality: 'video' },
+  document: { accept: 'application/pdf', modality: 'document' },
+  text: { accept: 'text/*', modality: 'document' },
 };
 
-/** The modality a file's media type belongs to, or `undefined` for a type no family covers. */
+/** The modality a file travels as, or `undefined` for a type no family covers. */
 function modalityOf(type: string): string | undefined {
-  if (type.startsWith('image/')) return 'image';
-  if (type.startsWith('audio/')) return 'audio';
-  if (type.startsWith('video/')) return 'video';
-  if (type === 'application/pdf') return 'document';
-  if (type.startsWith('text/')) return 'text';
+  if (type.startsWith('image/')) return OFFERS['image']?.modality;
+  if (type.startsWith('audio/')) return OFFERS['audio']?.modality;
+  if (type.startsWith('video/')) return OFFERS['video']?.modality;
+  if (type === 'application/pdf') return OFFERS['document']?.modality;
+  if (type.startsWith('text/')) return OFFERS['text']?.modality;
   return undefined;
 }
 
@@ -66,16 +72,17 @@ export function attachmentSettings(
   media: AgentMedia | null | undefined,
 ): AttachmentSettings | null {
   if (media === null || media === undefined) return null;
-  const families = media.mimeFamilies.filter(
-    (family) => ACCEPT_BY_FAMILY[family] !== undefined && media.modalities[family]?.input === true,
-  );
-  if (families.length === 0) return null;
+  const offered = media.mimeFamilies.flatMap((family) => {
+    const offer = OFFERS[family];
+    return offer !== undefined && media.modalities[offer.modality]?.input === true ? [offer] : [];
+  });
+  if (offered.length === 0) return null;
   const limits = new Map(media.mediaLimits.map((limit) => [limit.modality, limit.maxBytes]));
   const limitOf = (modality: string | undefined): number =>
     (modality === undefined ? undefined : limits.get(modality)) ?? DEFAULT_MAX_ATTACHMENT_BYTES;
   return {
-    acceptedTypes: families.flatMap((family) => ACCEPT_BY_FAMILY[family] ?? []),
-    maxFileSize: Math.max(...families.map((family) => limitOf(family))),
+    acceptedTypes: offered.map((offer) => offer.accept),
+    maxFileSize: Math.max(...offered.map((offer) => limitOf(offer.modality))),
     limitFor: (file) => limitOf(modalityOf(file.type)),
   };
 }

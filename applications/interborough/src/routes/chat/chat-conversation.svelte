@@ -89,9 +89,14 @@
   );
   const upload = $derived(settings === null ? undefined : createAttachmentUpload(settings));
   // A follow-up and an answer to the run's question carry text only, so a file attached then
-  // would be dropped without a word. The picker is off for both.
+  // would be dropped without a word. The picker is off for both, and while the page is still
+  // finding out whether the session has a run going, which would make the next message a
+  // follow-up.
   const attachable = $derived(
-    settings !== null && !session.streaming && session.humanRequests.length === 0,
+    settings !== null &&
+      !session.attaching &&
+      !session.streaming &&
+      session.humanRequests.length === 0,
   );
 
   // Once the session exists its title comes from the Bureau, and it is read again when a run ends.
@@ -212,7 +217,7 @@
       streaming={session.streaming}
       capabilities={{ attachments: attachable, editing: false, quote: false }}
       uploadAttachment={upload}
-      acceptedTypes={settings?.acceptedTypes}
+      acceptedTypes={settings?.acceptedTypes ?? []}
       maxFileSize={settings?.maxFileSize}
       formatAttachmentError={chatAttachmentErrorMessage}
     >

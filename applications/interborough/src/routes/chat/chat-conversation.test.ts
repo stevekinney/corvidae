@@ -537,6 +537,68 @@ describe('attachments', () => {
     },
   );
 
+  test('refuses, without sending, a file already attached when the agent is switched to one that takes none', async () => {
+    const plain = { ...AGENT, name: 'plain', displayName: 'Plain', media: null };
+    const state = served([SEER, plain]);
+    landAt('/chat/new?agent=seer');
+    const { container, findByRole, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'seer',
+      isNew: true,
+    });
+    await attach(container, png());
+    await waitFor(() => expect(states(container)).toEqual(['ready']));
+
+    const chooser = await findByRole('combobox', { name: 'Agent' });
+    await fireEvent.input(chooser, { target: { value: '' } });
+    await fireEvent.focus(chooser);
+    const listbox = await findByRole('listbox');
+    const option = [...listbox.querySelectorAll('[role="option"]')].find((entry) =>
+      (entry.textContent ?? '').includes('Plain'),
+    );
+    if (option === undefined) throw new Error('Expected the plain agent to be offered.');
+    await fireEvent.mouseDown(option);
+
+    await waitFor(() => expect(states(container)).toEqual(['error']));
+    expect(await findByText(/does not accept that type of file/)).not.toBeNull();
+    await sendMessage(container, 'Hello');
+    await waitFor(() => expect(state.runs).toHaveLength(1));
+    expect(state.runs[0]?.messages[0]?.content).toBe('Hello');
+  });
+
+  test('offers no file picker while the page is still joining the session’s run', async () => {
+    // The attach never answers, so the page is still joining when the picker would otherwise show.
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'seer' }),
+        'bureau.agents.list': () => ({ agents: [SEER] }),
+      },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/') && url.endsWith('/run')) {
+          return new Response(new ReadableStream({ start() {} }), {
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'seer',
+    });
+    await findByText('Plan the week');
+    // The agents are known by now, which is what would turn the picker on.
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(picker(container)).toBeNull();
+  });
+
   test('turns the picker off while a run is going', async () => {
     served(
       [SEER],
@@ -748,6 +810,156 @@ describe('the files on a row', () => {
       expect(container.querySelector('img[src="/bureau/assets/mine-1/content"]')).not.toBeNull(),
     );
     expect(container.querySelectorAll('.chat-message-wrapper[data-role="user"]')).toHaveLength(0);
+  });
+
+  const TOOL_STEP_ASSET = { index: 0, assetId: 'step-image', mediaType: 'image/png' };
+
+  test('shows an asset a step with tool calls and no text returned, after a reload, and keeps the tool call', async () => {
+    const { container, findByText } = reload([
+      { id: 'u1', role: 'user', content: 'Draw it' },
+      {
+        id: 'step-0',
+        role: 'assistant',
+        toolCalls: [
+          { id: 'call-1', type: 'function', function: { name: 'lookup-order', arguments: '{}' } },
+        ],
+        metadata: { 'bureau:assetParts': [TOOL_STEP_ASSET] },
+      },
+      { id: 't1', role: 'tool', toolCallId: 'call-1', content: 'found' },
+      { id: 'a2', role: 'assistant', content: 'Done.' },
+    ]);
+
+    expect(await findByText('lookup-order')).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/step-image/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('shows an asset a step with tool calls and no text returned, live, and keeps the tool call', async () => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          {
+            type: 'TOOL_CALL_START',
+            toolCallId: 'call-1',
+            toolCallName: 'lookup-order',
+            parentMessageId: 'step-0',
+          },
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call-1', delta: '{}' },
+          { type: 'TOOL_CALL_END', toolCallId: 'call-1' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'step-0', ...TOOL_STEP_ASSET },
+          },
+          {
+            type: 'TOOL_CALL_RESULT',
+            messageId: 'r1',
+            toolCallId: 'call-1',
+            content: 'found',
+            role: 'tool',
+          },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Done.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: 'run-1',
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'seer',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    expect(await findByText('lookup-order')).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/step-image/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  /** A session of `seer` whose run announces an image in a reply, then ends as `ending`. */
+  const endingRun = (ending: unknown) => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Here it is.' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'reply', index: 1, assetId: 'returned-1', mediaType: 'image/png' },
+          },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+          ending,
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
+  };
+
+  test('shows the assets a run announced when it is stopped, on the row the stop leaves', async () => {
+    const { container, findByText } = endingRun({
+      type: 'RUN_FINISHED',
+      threadId: 'session-1',
+      runId: 'run-1',
+      outcome: { type: 'cancelled' },
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    await findByText('Here it is.');
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/returned-1/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('shows no asset for a run that ends in an error, whose rows the chat rolls back, and says it failed', async () => {
+    const { container, findByText, queryByText } = endingRun({
+      type: 'RUN_ERROR',
+      message: 'The model failed.',
+      code: 'UNKNOWN',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    expect(await findByText('The model failed.')).not.toBeNull();
+    expect(queryByText('Here it is.')).toBeNull();
+    expect(container.querySelector('img[src="/bureau/assets/returned-1/content"]')).toBeNull();
   });
 
   test('shows the person’s own attachments on their row after a reload, by kind', async () => {

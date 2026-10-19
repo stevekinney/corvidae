@@ -347,6 +347,38 @@
     return undefined;
   }
 
+  /** `attachment` as an `error` row: its upload reference is dropped, so it can never be sent. */
+  function refused(attachment: ChatAttachment, message: string): ChatAttachment {
+    const { reference: _reference, ...others } = attachment;
+    return { ...others, status: 'error', error: message };
+  }
+
+  /**
+   * The limits are the host's to change after files are in the composer (it changes the agent a
+   * person writes to, and the agent's model decides what it takes). A file the new limits refuse
+   * is stopped, shown as an `error` row with the reason, and never sent, as one refused when it
+   * was added is. A file the limits still take is left alone.
+   */
+  $effect(() => {
+    // Only a change to the limits runs this; the attachments are read without being tracked.
+    void acceptedTypes;
+    void maxFileSize;
+    untrack(() => {
+      for (const attachment of attachments) {
+        if (attachment.status === 'error' || attachment.restoreText !== undefined) continue;
+        const refusal = refusalOf(attachment.file);
+        if (refusal === undefined) continue;
+        abortUploads([attachment.id]);
+        const message = describeFailure(refusal);
+        attachments = attachments.map((entry) =>
+          entry.id === attachment.id ? refused(entry, message) : entry,
+        );
+        onAttachmentFailure?.(attachment.file, message);
+        announcer.announce(`${attachment.file.name} was not attached: ${message}`);
+      }
+    });
+  });
+
   function addAttachment(
     file: File,
     restoreText: string | undefined = undefined,

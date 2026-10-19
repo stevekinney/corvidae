@@ -55,6 +55,16 @@ describe('mediaCapabilitiesOf', () => {
     expect(media.mediaLimits.filter((limit) => limit.modality === 'image')).toHaveLength(1);
   });
 
+  it('keeps only the families every route takes, whichever route comes first', () => {
+    // Gemini takes audio and video as well; Anthropic does not. Listed first, Gemini's broader
+    // families would survive a union, so the order is what tells an intersection from a union.
+    const media = mediaCapabilitiesOf([gemini, anthropic])!;
+
+    expect(media.mimeFamilies).toEqual(['text', 'image', 'document']);
+    expect(media.mimeFamilies).not.toContain('audio');
+    expect(media.mimeFamilies).not.toContain('video');
+  });
+
   it('does not let a descriptor with no limit for a modality remove another’s limit', () => {
     const media = mediaCapabilitiesOf([without(anthropic, []), anthropic])!;
 

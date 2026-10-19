@@ -83,6 +83,15 @@ const REJECTED_REASONS: ReadonlySet<string> = new Set([
   'media-type-mismatch',
 ]);
 
+/**
+ * Whether the Bureau answered `NotFound`: the fault code, which the JSON-RPC envelope carries as
+ * `weftCode`. A 404 alone is not enough, because `MethodNotFound` and a bare gateway 404 share the
+ * status and mean the upload session was never the thing missing.
+ */
+function isNotFound(error: HttpClientError): boolean {
+  return error.faultCode === 'NotFound' || error.data?.['weftCode'] === 'NotFound';
+}
+
 function reasonOf(error: HttpClientError): string | undefined {
   const reason: unknown = error.data?.['reason'];
   return typeof reason === 'string' ? reason : undefined;
@@ -91,7 +100,7 @@ function reasonOf(error: HttpClientError): string | undefined {
 /** What a fault from `step` is, for a person. */
 function faultOf(error: unknown, step: 'create' | 'append' | 'complete'): AttachmentUploadError {
   if (error instanceof HttpClientError) {
-    if (error.status === 404 && step !== 'create') {
+    if (isNotFound(error) && step !== 'create') {
       return new AttachmentUploadError('expired', { cause: error });
     }
     const reason = reasonOf(error);

@@ -154,7 +154,9 @@ const agentsListOutput = z.object({
         .object({
           modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
           mimeFamilies: z.array(z.string()),
-          mediaLimits: z.array(z.object({ modality: z.string(), maxBytes: z.number() })),
+          mediaLimits: z.array(
+            z.object({ modality: z.string(), maxBytes: z.number().int().nonnegative() }),
+          ),
         })
         .nullable(),
     }),

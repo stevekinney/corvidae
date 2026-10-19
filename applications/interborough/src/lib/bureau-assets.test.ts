@@ -198,6 +198,28 @@ describe('the faults of an upload', () => {
     expect(error.kind).toBe('upload-failed');
   });
 
+  test.each(['bureau.assets.uploads.append', 'bureau.assets.uploads.complete'] as const)(
+    'a 404 that is not a NotFound fault, such as MethodNotFound, from %s is a failed upload, not an expired one',
+    async (method) => {
+      const { send } = bureau({ ...happy, [method]: () => fault(404, 'MethodNotFound') });
+
+      const error = await failure(uploadAsset(png(), { fetch: send }));
+
+      expect(error.kind).toBe('upload-failed');
+    },
+  );
+
+  test('a bare 404 with no fault body is a failed upload, not an expired one', async () => {
+    const { send } = bureau({
+      ...happy,
+      'bureau.assets.uploads.append': () => new Response('Not found', { status: 404 }),
+    });
+
+    const error = await failure(uploadAsset(png(), { fetch: send }));
+
+    expect(error.kind).toBe('upload-failed');
+  });
+
   test('a NotFound from create is a failed upload, not an expired one', async () => {
     const { send } = bureau({
       ...happy,

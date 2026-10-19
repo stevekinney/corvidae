@@ -1192,3 +1192,42 @@ describe('the assets a run announces', () => {
     expect(JSON.stringify(terminal.conversation)).not.toContain('asset-a');
   });
 });
+
+describe('the assets of a turn that ends without a terminal history', () => {
+  const announced = {
+    type: 'CUSTOM',
+    name: 'bureau.asset-part',
+    value: { messageId: 'reply-1', index: 1, assetId: 'asset-a', mediaType: 'image/png' },
+  };
+
+  async function turn(ending: unknown) {
+    const conversation = appendUserMessage(empty(), 'Draw it');
+    const { wiring } = wiringOver(
+      [stream([started(), ...text('reply-1', 'Here.'), announced, ending])],
+      () => conversation,
+    );
+    await frames(wiring, conversation).catch(() => undefined);
+    return wiring;
+  }
+
+  test('are handed over once when the run was stopped, for the caller to put on the rows', async () => {
+    const wiring = await turn(finished({ type: 'cancelled' }));
+
+    expect(wiring.drainAssets()).toEqual([
+      { messageId: 'reply-1', index: 1, assetId: 'asset-a', mediaType: 'image/png' },
+    ]);
+    expect(wiring.drainAssets()).toEqual([]);
+  });
+
+  test('are handed over when the run ended in an error', async () => {
+    const wiring = await turn({ type: 'RUN_ERROR', message: 'No.', code: 'UNKNOWN' });
+
+    expect(wiring.drainAssets()).toHaveLength(1);
+  });
+
+  test('are not handed over again once a completed run has stamped them on its rows', async () => {
+    const wiring = await turn(finished());
+
+    expect(wiring.drainAssets()).toEqual([]);
+  });
+});

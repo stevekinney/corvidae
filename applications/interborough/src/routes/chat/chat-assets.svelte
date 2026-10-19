@@ -22,7 +22,7 @@
 
 {#if assets.length > 0}
   <ul class="weft-chat-assets" data-role={role} aria-label={CHAT_COPY.assets.listLabel}>
-    {#each assets as asset, index (asset.assetId)}
+    {#each assets as asset, index (index)}
       {@const kind = kindOf(asset.mediaType)}
       {@const source = assetContentPath(asset.assetId)}
       <li class="weft-chat-asset" data-kind={kind} data-asset-id={asset.assetId}>

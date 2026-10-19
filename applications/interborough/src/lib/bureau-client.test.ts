@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -220,6 +221,28 @@ describe('the lists and details the chat and agents views read', () => {
     // An answer with no `media` is an agent that names no model, which can take no attachment.
     expect(agents).toEqual([{ ...agent, media: null } as never]);
     expect(stub.calls[0]?.body.method).toBe('bureau.agents.list');
+  });
+
+  test.each([-1, 1.5])('listAgents refuses a per-part byte limit of %s', async (maxBytes) => {
+    const agent = {
+      name: 'seer',
+      displayName: 'Seer',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+      media: {
+        modalities: {},
+        mimeFamilies: [],
+        mediaLimits: [{ modality: 'image', maxBytes }],
+      },
+    };
+
+    const refusal = await rejectionOf(
+      withStub(answering(result({ agents: [agent] })).fetch, () => listAgents()),
+    );
+
+    expect(refusal).toBeInstanceOf(Error);
   });
 
   test('listAgents carries what each agent’s model takes in the way of media', async () => {

@@ -24,7 +24,12 @@ import {
 
 import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
-import { createChatRunWiring, type ChatRunWiring, type HumanRequest } from './run-wiring.ts';
+import {
+  createChatRunWiring,
+  withAssetParts,
+  type ChatRunWiring,
+  type HumanRequest,
+} from './run-wiring.ts';
 
 export type ChatSessionOptions = {
   /** The session's identifier, which is the conversation's and the AG-UI thread's. */
@@ -107,6 +112,9 @@ export class ChatSessionState {
           this.streaming = streaming;
           // A new turn is a new attempt, and what failed before it is not what it will say.
           if (streaming) this.failure = undefined;
+          // A turn that ended in an error or a stop has no history to carry the assets it
+          // announced, so they are put on their rows here, as a completed turn's are.
+          else this.#stampAnnouncedAssets();
         },
         onError: (error) => {
           this.failure =
@@ -134,6 +142,11 @@ export class ChatSessionState {
             },
           }),
     };
+  }
+
+  #stampAnnouncedAssets(): void {
+    const announced = this.#wiring.drainAssets();
+    if (announced.length > 0) this.conversation = withAssetParts(this.conversation, announced);
   }
 
   /** Stops telling the person of the last failure. */

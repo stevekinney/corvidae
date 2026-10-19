@@ -88,6 +88,18 @@ describe('chat-assets.svelte shows each kind of asset', () => {
     );
   });
 
+  test('names the same asset twice without failing, each at its own position', () => {
+    const { container } = render(ChatAssets, {
+      assets: [
+        { assetId: 'asset-1', mediaType: 'image/png' },
+        { assetId: 'asset-1', mediaType: 'image/png' },
+      ],
+      role: 'assistant',
+    });
+
+    expect(container.querySelectorAll('li')).toHaveLength(2);
+  });
+
   test('nothing for a row with no asset', () => {
     const { container } = render(ChatAssets, { assets: [], role: 'assistant' });
 
@@ -114,6 +126,15 @@ describe('chat-assets.ts reads the assets of a row', () => {
       { assetId: 'b', mediaType: 'audio/wav' },
       { assetId: 'c', mediaType: 'application/octet-stream' },
     ]);
+  });
+
+  test('lists the assets of a tool-call row, which is where a step with calls and no text keeps them', () => {
+    const message = row({
+      role: 'tool-call',
+      metadata: { 'bureau:assetParts': [{ index: 0, assetId: 'a', mediaType: 'image/png' }] },
+    });
+
+    expect(assetsOf(message)).toEqual([{ assetId: 'a', mediaType: 'image/png' }]);
   });
 
   test('is none for an assistant row whose metadata lists nothing, or something that is not a list', () => {
@@ -215,5 +236,15 @@ describe('chat-assets.ts hides the files a row carries from its text', () => {
     expect(hasContent(row({ content: [] }))).toBe(false);
     expect(hasContent(row({ content: [{ type: 'text', text: 'Hi' }] }))).toBe(true);
     expect(hasContent(row({ content: [elsewhere] }))).toBe(true);
+    // A tool call or its result is a row's content even though its text is empty.
+    expect(
+      hasContent(
+        row({
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: 'c', name: 'lookup', arguments: {} },
+        }),
+      ),
+    ).toBe(true);
   });
 });

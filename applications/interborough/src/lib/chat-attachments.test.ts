@@ -98,6 +98,60 @@ describe('attachmentSettings', () => {
   });
 });
 
+describe('a text file, which is sent as a document part (A1)', () => {
+  const noTextButDocument = () =>
+    media({
+      modalities: {
+        text: { input: false, output: false },
+        image: { input: false, output: false },
+        document: { input: true, output: false },
+      },
+      mimeFamilies: ['text', 'document'],
+      mediaLimits: [{ modality: 'document', maxBytes: MIB }],
+    });
+
+  test('is accepted by a model that takes documents and has no text input, and checked against the document limit', () => {
+    const settings = attachmentSettings(noTextButDocument())!;
+
+    expect(settings.acceptedTypes).toEqual(['text/*', 'application/pdf']);
+    expect(settings.limitFor(file('text/plain'))).toBe(MIB);
+    expect(settings.limitFor(file('application/pdf'))).toBe(MIB);
+    expect(settings.maxFileSize).toBe(MIB);
+  });
+
+  test('is not accepted by a model that takes text input but no documents, because it is sent as a document', () => {
+    const settings = attachmentSettings(
+      media({
+        modalities: {
+          text: { input: true, output: true },
+          image: { input: true, output: false },
+          document: { input: false, output: false },
+        },
+      }),
+    )!;
+
+    expect(settings.acceptedTypes).toEqual(['image/*']);
+  });
+
+  test('is refused by the upload hook over the document limit, before the Bureau hears of it', async () => {
+    const calls: string[] = [];
+    const send: Fetcher = async (_input, init) => {
+      calls.push(typeof init?.body === 'string' ? init.body : '');
+      return Response.json({ jsonrpc: '2.0', id: 1, result: {} });
+    };
+    const upload = createAttachmentUpload(attachmentSettings(noTextButDocument())!, {
+      fetch: send,
+    });
+
+    const refusal = await rejectionOf(
+      upload(file('text/plain', MIB + 1), { signal: new AbortController().signal }),
+    );
+
+    expect(refusal).toMatchObject({ kind: 'too-large', limit: MIB });
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('the words for an attachment that cannot be attached', () => {
   const big = file('image/png');
 
@@ -178,6 +232,11 @@ describe('the words for a run that was refused over an attachment', () => {
       );
     },
   );
+
+  test('modelRefusedMedia does not tell the person to remove a file, which the send already cleared', () => {
+    expect(CHAT_COPY.attachments.modelRefusedMedia).not.toMatch(/remove/i);
+    expect(CHAT_COPY.attachments.modelRefusedMedia).toMatch(/send again/i);
+  });
 
   test('modelRefusedMedia, for the door’s INVALID_INPUT on a turn that carried attachments, never the raw message', () => {
     const message = runFailureMessage(runError('INVALID_INPUT'), { hadAttachments: true });

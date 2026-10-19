@@ -6,6 +6,7 @@
 import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { agentsListOperation } from './deployment-operations.ts';
 import { callAs, disposeServed, listOf, serve } from './agent-definitions-fixtures.test-support.ts';
 
 afterEach(disposeServed);
@@ -42,5 +43,32 @@ describe('bureau.agents.list media', () => {
       mimeFamilies: ['text', 'image', 'document'],
       mediaLimits: [{ modality: 'image', maxBytes: 10 * 1024 * 1024 }],
     });
+  });
+});
+
+describe('the bureau.agents.list output schema (COR-1548)', () => {
+  const entry = (maxBytes: number) => ({
+    name: 'seer',
+    displayName: 'Seer',
+    description: null,
+    definitionRevision: 1,
+    kind: 'code',
+    publishState: 'published',
+    media: {
+      modalities: { image: { input: true, output: false } },
+      mimeFamilies: ['image'],
+      mediaLimits: [{ modality: 'image', maxBytes }],
+    },
+  });
+  const parse = (maxBytes: number) =>
+    agentsListOperation.outputSchema.safeParse({ agents: [entry(maxBytes)] }).success;
+
+  it('takes a per-part byte limit that is a non-negative whole number', () => {
+    expect(parse(0)).toBe(true);
+    expect(parse(10 * 1024 * 1024)).toBe(true);
+  });
+
+  it.each([-1, 1.5, Number.NaN])('refuses a byte limit of %s', (maxBytes) => {
+    expect(parse(maxBytes)).toBe(false);
   });
 });
