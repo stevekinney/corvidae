@@ -1915,6 +1915,19 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
 
   /**
+   * The human waits a run is still parked on, read from durable state (COR-1579), so a process
+   * that shares a durable store with the one holding the run can list, read and resolve its park.
+   * When this process holds the run it returns the run's entries from
+   * {@link Bureau.listPendingReviews}. Otherwise it derives the park as recovery does: the park,
+   * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
+   * `waitingForSignals` names its signal. A session run's review carries the session from the
+   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
+   * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
+   * not derived.
+   */
+  pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]>;
+
+  /**
    * Approve, deny, or reject a pending review (AB-46). Approve resumes the
    * run: a `tool-approval` calls `Toolbox.resumeApproval` on the bureau's
    * toolbox and returns its `ToolExecutionResult`; a `human-wait` calls

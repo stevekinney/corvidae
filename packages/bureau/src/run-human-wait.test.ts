@@ -724,8 +724,15 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
     const original = await nextReview(crashed, run.id);
     const before = spyOn(crashed.durableEngine()!, 'signal');
     before.mockRejectedValueOnce(new Error('transport lost'));
+    // COR-1579: the failed attempt keeps its durable claim, so the retry after the restart makes
+    // the same decision, payload included, to re-drive it; a different one would be refused.
     await rejectionOf(
-      crashed.resolveReview({ id: original.id, decision: 'approve', principal: 'operator' }),
+      crashed.resolveReview({
+        id: original.id,
+        decision: 'approve',
+        principal: 'operator',
+        payload: { environment: 'production' },
+      }),
     );
 
     const after = newSeen();

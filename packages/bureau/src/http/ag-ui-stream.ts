@@ -47,6 +47,7 @@ export type AgUiStreamBureau = Pick<
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
   | 'listPendingReviews'
+  | 'pendingHumanWaitsOfRun'
   | 'eventHistory'
   | 'children'
   | 'getDurableRun'
