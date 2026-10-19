@@ -101,6 +101,7 @@ describe('bureau.deployment.get', () => {
         'bureau.tasks.cancel': 'command',
         'bureau.tasks.respond': 'command',
         'bureau.contexts.delete': 'command',
+        'bureau.contexts.input': 'command',
         'bureau.tasks.events': 'subscription',
         'bureau.events': 'subscription',
       });

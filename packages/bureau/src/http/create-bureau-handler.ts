@@ -50,6 +50,10 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
 import {
+  type BureauContextsInputOperationHost,
+  contextsInputOperation,
+} from './management/contexts-input-operation.ts';
+import {
   type BureauContextsOperationHost,
   contextsDeleteOperation,
   contextsGetOperation,
@@ -122,6 +126,7 @@ export type BureauHandlerSource = Pick<
   | 'children'
   | 'getDurableRun'
   | 'workflows'
+  | 'submitSessionInput'
 > & {
   readonly agents: { has(name: string): boolean; find(name: string): AgentDescription | undefined };
 };
@@ -139,6 +144,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
+  BureauContextsInputOperationHost &
   BureauWorkflowsOperationHost;
 
 export type BureauHandlerOptions = {
@@ -355,6 +361,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsListOperation,
   contextsGetOperation,
   contextsDeleteOperation,
+  contextsInputOperation,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
