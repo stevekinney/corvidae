@@ -26,13 +26,14 @@ import { createBureau } from './create-bureau';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
+import type { Bureau } from './types';
 
 const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 
 async function crashScenario(
   mode: 'settlement' | 'admission',
   scope: ScenarioScope,
-  verify: (bureau: Awaited<ReturnType<typeof createBureau>>, runId: string) => Promise<void>,
+  verify: (bureau: Pick<Bureau, 'tasks'>, runId: string) => Promise<void>,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-task-record-crash-${mode}-`));
   const storagePath = join(directory, 'bureau.sqlite');
