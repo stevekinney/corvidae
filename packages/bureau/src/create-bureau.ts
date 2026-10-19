@@ -10684,7 +10684,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       } = abandonSessionRuns(id);
       // COR-1482: a schedule fire is a live task of its context too, though it is not in the run
       // store, so deleting the context stops it as it stops every other live task in it.
-      for (const fire of await tasks.unsettledFiresOfContext(id)) {
+      for (const fire of await tasks.unsettledFiresOfContext(id, session.incarnation)) {
         const cancelled = await tasks.cancel(fire.taskId, 0).catch((error: unknown) => {
           diagnose({
             level: 'error',

@@ -1025,9 +1025,9 @@ describe('a schedule fire in the registry (COR-1482)', () => {
     const ownRecord = await registry.record('own-1');
     expect(fireRecord?.kind).toBe('schedule-fire');
     expect(ownRecord?.kind).toBeUndefined();
-    const unsettled = await registry.unsettledFiresOfContext('context-1');
+    const unsettled = await registry.unsettledFiresOfContext('context-1', 'incarnation-1');
     expect(unsettled.map((record) => record.taskId)).toEqual(['fire-1']);
-    expect(await registry.unsettledFiresOfContext('context-2')).toEqual([]);
+    expect(await registry.unsettledFiresOfContext('context-2', 'incarnation-1')).toEqual([]);
 
     await registry.bindIncarnation('fire-1', 'incarnation-1');
     await registry.recordSettled('fire-1', {
@@ -1040,7 +1040,7 @@ describe('a schedule fire in the registry (COR-1482)', () => {
 
     const record = await registry.record('fire-1');
     expect(record?.settled?.answer).toEqual({ text: 'the answer', truncated: false });
-    expect(await registry.unsettledFiresOfContext('context-1')).toEqual([]);
+    expect(await registry.unsettledFiresOfContext('context-1', 'incarnation-1')).toEqual([]);
   });
 
   it('keeps its context running while it is unsettled, bound to the session or not', async () => {
@@ -1106,5 +1106,56 @@ describe('a schedule fire in the registry (COR-1482)', () => {
     expect(
       diagnostics.some((message) => message.includes('listener of task "fire-1" failed')),
     ).toBe(true);
+  });
+});
+
+describe('a context’s activity with a schedule fire in it (COR-1482)', () => {
+  it('is decided by the latest task, the fires and the runs of the store sorted together', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'old-fire', {
+      incarnation: '',
+      kind: 'schedule-fire',
+      createdAt: '2026-10-18T00:00:00.000Z',
+    });
+    await admit(registry, 'newer-run', { createdAt: '2026-10-18T00:00:05.000Z' });
+    held.live.set('newer-run', running);
+    held.contexts.set('newer-run', 'context-1');
+    held.reviews.push(humanWait('newer-run'));
+
+    // The older fire is still running, but the context's latest task is waiting on its requester.
+    const activity = await registry.activityOf(['context-1']);
+
+    expect(activity.get('context-1')).toBe('awaiting-input');
+  });
+
+  it('counts a fire bound to an earlier incarnation of the context as no part of a recreated one', async () => {
+    const { registry } = build();
+    await admit(registry, 'unbound-fire', { incarnation: '', kind: 'schedule-fire' });
+    await admit(registry, 'previous-fire', {
+      incarnation: 'incarnation-0',
+      kind: 'schedule-fire',
+    });
+    await admit(registry, 'current-fire', { incarnation: 'incarnation-1', kind: 'schedule-fire' });
+
+    const unsettled = await registry.unsettledFiresOfContext('context-1', 'incarnation-1');
+    expect(unsettled.map((record) => record.taskId).toSorted()).toEqual([
+      'current-fire',
+      'unbound-fire',
+    ]);
+    // With no current incarnation, only a fire not yet bound to one is the context's.
+    const none = await registry.unsettledFiresOfContext('context-1', undefined);
+    expect(none.map((record) => record.taskId)).toEqual(['unbound-fire']);
+  });
+
+  it('reads a context whose only fire belongs to an earlier incarnation as idle', async () => {
+    const { registry } = build();
+    await admit(registry, 'previous-fire', {
+      incarnation: 'incarnation-0',
+      kind: 'schedule-fire',
+    });
+
+    const activity = await registry.activityOf(['context-1']);
+
+    expect(activity.get('context-1')).toBe('idle');
   });
 });

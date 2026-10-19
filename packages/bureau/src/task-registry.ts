@@ -254,9 +254,15 @@ export interface TaskRegistry {
   /**
    * The records of a context's schedule fires that have not been settled: the fires running, as
    * far as this registry knows. They are not in Bureau's run store, so they are what makes a
-   * context live (and what deleting it must cancel) beside the runs the store holds.
+   * context live (and what deleting it must cancel) beside the runs the store holds. A fire
+   * not yet bound to a session incarnation is the context's whichever incarnation it has; a
+   * bound one belongs to `incarnation` like any task, so a context recreated under the same id
+   * does not inherit its predecessor's fire.
    */
-  unsettledFiresOfContext(contextId: string): Promise<readonly TaskRecord[]>;
+  unsettledFiresOfContext(
+    contextId: string,
+    incarnation: string | undefined,
+  ): Promise<readonly TaskRecord[]>;
   /**
    * Calls `listener` with the task's view once it is settled, and once only, whether the
    * settlement was recorded by the run's end or by a cancellation. Returns the function that
@@ -843,10 +849,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       return recorded;
     },
 
-    async unsettledFiresOfContext(contextId) {
+    async unsettledFiresOfContext(contextId, incarnation) {
       const records = await recordsOfContext(contextId);
       return records.filter(
-        (record) => record.kind === 'schedule-fire' && record.settled === undefined,
+        (record) =>
+          record.kind === 'schedule-fire' &&
+          record.settled === undefined &&
+          (record.incarnation === '' || belongsToIncarnation(record, incarnation)),
       );
     },
 
@@ -976,8 +985,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const waiting = new Set(host.pendingReviews().map((review) => review.runId));
       const activity = new Map<string, ContextActivity>();
       for (const contextId of contextIds) {
+        const incarnation =
+          incarnations?.get(contextId) ?? (await host.currentIncarnation(contextId));
         // A schedule fire is live while it is unsettled, though it holds no run in the run store.
-        const fires = await this.unsettledFiresOfContext(contextId);
+        const fires = await this.unsettledFiresOfContext(contextId, incarnation);
         const held = [
           ...(live.get(contextId) ?? []),
           ...fires.map((record) => ({ taskId: record.taskId, phase: 'running' as const })),
@@ -986,21 +997,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           activity.set(contextId, 'idle');
           continue;
         }
-        const incarnation =
-          incarnations?.get(contextId) ?? (await host.currentIncarnation(contextId));
-        const owned: (typeof held)[number][] = [];
+        const owned: { task: (typeof held)[number]; createdAt: string }[] = [];
         for (const task of held) {
           const record = await read(task.taskId);
-          // A fire written before its session had an incarnation is still the context's fire.
           if (
             record !== undefined &&
-            (belongsToIncarnation(record, incarnation) || record.kind === 'schedule-fire')
+            (record.kind === 'schedule-fire' || belongsToIncarnation(record, incarnation))
           ) {
-            owned.push(task);
+            owned.push({ task, createdAt: record.createdAt });
           }
         }
+        // Oldest first, the runs of the store and the fires together, so the latest is the latest.
+        owned.sort((left, right) =>
+          left.createdAt < right.createdAt ? -1 : left.createdAt > right.createdAt ? 1 : 0,
+        );
         // The context's latest task alone decides: an older parked or working task does not.
-        const latest = owned.at(-1);
+        const latest = owned.at(-1)?.task;
         activity.set(
           contextId,
           latest === undefined

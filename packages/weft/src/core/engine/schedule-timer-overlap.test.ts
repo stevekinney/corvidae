@@ -5,13 +5,15 @@
  * tick writes back only what it read after its wait, a run queued during the wait does not
  * strand, and the schedule keeps exactly one timer.
  */
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { decode } from '../codec.ts';
 import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
+import { EngineDisposedError } from './errors.ts';
+import { getInternals } from './internals.ts';
 import {
   createEngine,
   MINUTE,
@@ -295,6 +297,204 @@ describe('the timer of a schedule whose tick is in flight', () => {
       ]);
     } finally {
       reborn[Symbol.dispose]();
+    }
+  });
+});
+
+/**
+ * Makes the run's turn reject once, as it does when the engine's handling of the run's message
+ * fails (a storage fault while the run is saved), and hands back the way to reject it later.
+ */
+function rejectNextTurn(
+  engine: Engine,
+  mode: 'at-once' | 'later',
+  failure: Error = new Error('the run’s turn failed'),
+) {
+  const strategy = getInternals(engine).inlineStrategy!;
+  const original = strategy.waitForWorkflowTurn.bind(strategy);
+  const pending = Promise.withResolvers<void>();
+  let armed = true;
+  strategy.waitForWorkflowTurn = (workflowId: string) => {
+    if (!armed) return original(workflowId);
+    armed = false;
+    return mode === 'at-once'
+      ? Promise.reject(new Error('the run’s turn failed'))
+      : pending.promise;
+  };
+  return { reject: () => pending.reject(failure) };
+}
+
+describe('a backfilled tick whose wait for its run fails', () => {
+  for (const overlap of ['skip', 'queue', 'cancel-running'] as const) {
+    it(`pauses the schedule once, and later polls do not plan its occurrence again (overlap ${overlap})`, async () => {
+      const clock = { now: START };
+      const engine = createEngine(clock);
+      const gate = Promise.withResolvers<void>();
+      const counts = gatedWorkflow(engine, gate.promise);
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        rejectNextTurn(engine, 'at-once');
+        const handle = await engine.schedule('slow', null, '* * * * *', {
+          id: 'failing',
+          backfill: true,
+          overlap,
+        });
+        const first = requireNextFireAt(await handle.describe());
+        clock.now = first + 2 * MINUTE; // three occurrences due
+
+        await engine.scheduler.tick(clock.now);
+        await turns(20);
+        const paused = await engine.getSchedule('failing');
+        expect(paused).toMatchObject({ status: 'paused', revision: 2 });
+
+        // Several more polls: the schedule is paused, so nothing is planned, skipped, or queued.
+        for (let poll = 0; poll < 4; poll += 1) {
+          await engine.scheduler.tick(clock.now);
+          await turns(10);
+        }
+        gate.resolve();
+        await turns(30);
+        const after = await engine.getSchedule('failing');
+        const runs = await engine.list({ type: 'slow' });
+        expect(counts.starts).toBe(1);
+        expect(runs.items).toHaveLength(1);
+        expect(after).toMatchObject({ status: 'paused', revision: 2, skippedCount: 0 });
+        expect(after?.queuedRuns).toEqual([]);
+      } finally {
+        gate.resolve();
+        consoleError.mockRestore();
+        engine[Symbol.dispose]();
+      }
+    });
+  }
+
+  it('leaves a transition made during the wait as it is, with no pause on top of it', async () => {
+    for (const change of ['pause', 'update'] as const) {
+      const clock = { now: START };
+      const engine = createEngine(clock);
+      const gate = Promise.withResolvers<void>();
+      gatedWorkflow(engine, gate.promise);
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const turn = rejectNextTurn(engine, 'later');
+        const handle = await engine.schedule('slow', null, '* * * * *', {
+          id: 'changing',
+          backfill: true,
+          overlap: 'skip',
+        });
+        const first = requireNextFireAt(await handle.describe());
+        clock.now = first + 2 * MINUTE;
+        const tick = engine.scheduler.tick(clock.now);
+        await turns(20);
+
+        if (change === 'pause') await engine.pauseSchedule('changing');
+        else await engine.updateSchedule('changing', '*/10 * * * *');
+        const changed = await engine.getSchedule('changing');
+        turn.reject();
+        await tick;
+        await turns(20);
+
+        const after = await engine.getSchedule('changing');
+        expect(after?.revision, change).toBe(changed?.revision);
+        expect(after?.status, change).toBe(change === 'pause' ? 'paused' : 'active');
+        if (change === 'update') expect(after?.cronExpression).toBe('*/10 * * * *');
+      } finally {
+        gate.resolve();
+        consoleError.mockRestore();
+        engine[Symbol.dispose]();
+      }
+    }
+  });
+
+  it('does not pause the schedule for the engine’s own disposal error, or for any failure once the engine is disposed', async () => {
+    for (const how of ['disposal-error', 'disposed-engine'] as const) {
+      const clock = { now: START };
+      const storage = new MemoryStorage();
+      const engine = createEngine(clock, storage);
+      const gate = Promise.withResolvers<void>();
+      gatedWorkflow(engine, gate.promise);
+      const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const turn = rejectNextTurn(
+          engine,
+          'later',
+          how === 'disposal-error' ? new EngineDisposedError() : new Error('a storage fault'),
+        );
+        const handle = await engine.schedule('slow', null, '* * * * *', {
+          id: 'closing',
+          backfill: true,
+          overlap: 'skip',
+        });
+        const first = requireNextFireAt(await handle.describe());
+        clock.now = first + 2 * MINUTE;
+        const tick = engine.scheduler.tick(clock.now).catch(() => undefined);
+        await turns(20);
+        if (how === 'disposed-engine') engine[Symbol.dispose]();
+        turn.reject();
+        await tick;
+        await turns(20);
+
+        const survivor = how === 'disposed-engine' ? createEngine(clock, storage) : engine;
+        const after = await survivor.getSchedule('closing');
+        expect(after, how).toMatchObject({ status: 'active', revision: 1 });
+        if (survivor !== engine) survivor[Symbol.dispose]();
+      } finally {
+        gate.resolve();
+        consoleError.mockRestore();
+        engine[Symbol.dispose]();
+      }
+    }
+  });
+
+  it('does not pause the schedule when the engine is disposed during the wait, so a new engine fires it once', async () => {
+    const clock = { now: START };
+    const storage = new MemoryStorage();
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const closing = createEngine(clock, storage);
+      const gate = Promise.withResolvers<void>();
+      gatedWorkflow(closing, gate.promise);
+      const handle = await closing.schedule('slow', null, '* * * * *', {
+        id: 'shutdown',
+        backfill: true,
+        overlap: 'skip',
+      });
+      const first = requireNextFireAt(await handle.describe());
+      clock.now = first;
+      const tick = closing.scheduler.tick(first).catch(() => undefined);
+      await turns(20);
+      closing[Symbol.dispose]();
+      gate.resolve();
+      await tick;
+      await turns(20);
+
+      const reborn = createEngine(clock, storage);
+      const counts = gatedWorkflow(reborn, Promise.resolve());
+      try {
+        await reborn.recoverAll();
+        // The recovered run finishes before the next occurrence comes due.
+        await turns(60);
+        const waiting = await reborn.getSchedule('shutdown');
+        expect(waiting).toMatchObject({ status: 'active', revision: 1 });
+        clock.now = first + MINUTE;
+        await reborn.scheduler.tick(first + MINUTE);
+        await turns(60);
+
+        const after = await reborn.getSchedule('shutdown');
+        const runs = await reborn.list({ type: 'slow' });
+        expect(after).toMatchObject({
+          status: 'active',
+          revision: 1,
+          nextFireAt: first + 2 * MINUTE,
+        });
+        // The run the first engine started, recovered, and the one occurrence due since.
+        expect(runs.items).toHaveLength(2);
+        expect(counts.starts).toBeGreaterThanOrEqual(2);
+      } finally {
+        reborn[Symbol.dispose]();
+      }
+    } finally {
+      consoleError.mockRestore();
     }
   });
 });

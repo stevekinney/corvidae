@@ -1,5 +1,6 @@
 import { ScheduleMissedFireEvent } from '../events/schedule-events.ts';
 import type { ScheduleState, TimerEntry } from '../types.ts';
+import { WeftError } from '../weft-error.ts';
 import type { EngineInternals } from './internals.ts';
 import { awaitScheduledRunTurn } from './schedule-current-run.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
@@ -63,11 +64,52 @@ export async function handleScheduleTimer(
   );
   while (step.kind === 'settle') {
     const pending = step;
-    await awaitScheduledRunTurn(internals, pending.workflowId, callbacks);
+    try {
+      await awaitScheduledRunTurn(internals, pending.workflowId, callbacks);
+    } catch (error) {
+      await failScheduleTimerWait(internals, entry.workflowId, pending, error);
+      return;
+    }
     step = await runSerializedScheduleStateOperation(internals, entry.workflowId, () =>
       resumeScheduleTimer(internals, entry.workflowId, pending, callbacks),
     );
   }
+}
+
+/**
+ * The wait for a backfilled run's turn failed, as it does when the engine's handling of the run
+ * fails (a storage fault while the run is saved). The whole tick used to sit inside one failure
+ * boundary, and the schedule was paused once; the wait is outside it now, so the boundary is
+ * rebuilt here. Left to escape, the failure would make the scheduler retry the entry, and every
+ * poll would plan the same occurrence again, whose `nextFireAt` a non-final occurrence leaves
+ * unchanged.
+ *
+ * The pause is made in a serialized section, from the schedule as it is now, and only if it is
+ * still active at the `revision` this tick left it: a pause, an update, or a cancel made during
+ * the wait owns the schedule, and a pause written on top of it, or from the state this tick last
+ * wrote, would undo it. A failure that is the engine shutting down is not a fault of the
+ * schedule: pausing it would leave it paused for good after the restart, so it is left as it
+ * is for boot recovery.
+ */
+async function failScheduleTimerWait(
+  internals: EngineInternals,
+  scheduleId: string,
+  pending: Extract<ScheduleTimerStep, { kind: 'settle' }>,
+  error: unknown,
+): Promise<void> {
+  if (isEngineShutdown(internals, error)) return;
+  await runSerializedScheduleStateOperation(internals, scheduleId, async () => {
+    const current = await loadScheduleState(internals, scheduleId);
+    if (current === null || current.status !== 'active' || current.revision !== pending.revision) {
+      return;
+    }
+    await pauseScheduleAfterTimerFailure(internals, current, error);
+  });
+}
+
+/** Whether `error` is the engine going away rather than something the schedule's run did. */
+function isEngineShutdown(internals: EngineInternals, error: unknown): boolean {
+  return internals.disposed || (error instanceof WeftError && error.code === 'EngineDisposedError');
 }
 
 /** Where a tick stands between its serialized sections. */
