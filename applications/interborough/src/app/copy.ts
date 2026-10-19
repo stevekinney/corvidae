@@ -1,3 +1,4 @@
+import { formatBytes } from '../lib/format/index.ts';
 import type { ViewName } from './views.ts';
 
 /** The words for one state of one view. */
@@ -470,6 +471,35 @@ export const CHAT_COPY = {
   dismiss: 'Dismiss',
   /** The accessible name of the transcript and composer region. */
   regionLabel: 'Conversation',
+  /** The names of the files a row carries: attached by the person, or returned by the agent. */
+  assets: {
+    listLabel: 'Files',
+    image: (position: number) => `Image ${position}`,
+    audio: (position: number) => `Audio ${position}`,
+    video: (position: number) => `Video ${position}`,
+    download: (mediaType: string) => `Download file (${mediaType})`,
+  },
+  /**
+   * What a person is told when a file cannot be attached or sent. An upload fault shows on the
+   * attachment's `error` state; a run fault shows in the failure alert. Neither shows a raw
+   * message, which can name an asset or an upload.
+   */
+  attachments: {
+    /** The file is over the limit the selected agent's model states. */
+    tooLarge: (limit: number) =>
+      `This file is larger than the ${formatBytes(limit)} this agent accepts.`,
+    /** The file is of a type the selected agent's model does not take. */
+    typeNotAccepted: 'This agent does not accept that type of file.',
+    /** The upload did not finish, for a reason the person cannot act on beyond trying again. */
+    uploadFailed: 'The file could not be uploaded. Remove it and attach it again.',
+    /** The Bureau looked at the bytes and refused them: a safety gate flagged the file, or it is not the type it says. */
+    rejected: 'The Bureau would not accept this file. Its content was refused.',
+    /** The upload session was gone before the file finished arriving. */
+    expired: 'The upload expired before it finished. Remove the file and attach it again.',
+    /** The run was refused because the model could not take an attachment. */
+    modelRefusedMedia:
+      'The agent’s model could not take an attached file. Remove it and send again.',
+  },
 } as const;
 
 /**

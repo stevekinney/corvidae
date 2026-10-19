@@ -35,8 +35,9 @@
 <div
   class={classNames('chat-attachment-preview', className)}
   data-kind={attachment.kind}
+  data-state={attachment.status}
   data-error={attachment.status === 'error' || undefined}
-  data-pending={attachment.status === 'pending' || undefined}
+  data-pending={attachment.status === 'pending' || attachment.status === 'uploading' || undefined}
 >
   {#if attachment.kind === 'image'}
     <img
@@ -74,8 +75,12 @@
     >
   {/if}
 
-  {#if attachment.status === 'pending'}
-    <div class="chat-attachment-preview-loading" role="status" aria-label="Reading file">
+  {#if attachment.status === 'pending' || attachment.status === 'uploading'}
+    <div
+      class="chat-attachment-preview-loading"
+      role="status"
+      aria-label={attachment.status === 'uploading' ? 'Uploading file' : 'Reading file'}
+    >
       <div class="chat-attachment-preview-loading-bar"></div>
     </div>
   {/if}

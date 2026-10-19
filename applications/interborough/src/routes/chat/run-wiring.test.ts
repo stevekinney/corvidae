@@ -3,7 +3,12 @@
  * how an approval is carried, and what an attach restores. The mount is a stub `fetch` that
  * answers with the events a real one writes (`packages/bureau/src/http/ag-ui-mount.ts`).
  */
-import type { ChatSessionRequest, ChatStreamEvent, ConversationHistory } from '@lostgradient/chat';
+import type {
+  ChatAttachment,
+  ChatSessionRequest,
+  ChatStreamEvent,
+  ConversationHistory,
+} from '@lostgradient/chat';
 import {
   appendMessages,
   appendToolCall,
@@ -22,7 +27,7 @@ type Sent = { url: string; method: string; body: unknown };
 
 type SentInput = {
   runId: string;
-  messages: Array<{ id: string; content?: string }>;
+  messages: Array<{ id: string; content?: unknown }>;
   resume?: Array<{ interruptId: string; status: string; payload?: unknown }>;
 };
 
@@ -904,5 +909,286 @@ describe('a run that waits on a person’s answer', () => {
     await frames(run.wiring, run.conversation());
 
     expect(run.requests.at(-1)).toEqual([]);
+  });
+});
+
+describe('a message that carries attachments', () => {
+  const attachment = (
+    id: string,
+    type: string,
+    overrides: Partial<ChatAttachment> = {},
+  ): ChatAttachment => ({
+    id: `attachment-${id}`,
+    file: new File(['x'], `${id}.bin`, { type }),
+    previewUrl: `blob:${id}`,
+    kind: 'document',
+    status: 'ready',
+    reference: { id, mimeType: type },
+    ...overrides,
+  });
+
+  function withoutReference(source: ChatAttachment): ChatAttachment {
+    const { reference: _reference, ...rest } = source;
+    return rest;
+  }
+
+  function requestWith(conversation: ConversationHistory, attachments: ChatAttachment[]) {
+    return { ...request(conversation), attachments };
+  }
+
+  async function startWith(attachments: ChatAttachment[], content = 'What is this?') {
+    const conversation = appendUserMessage(empty(), content);
+    const { wiring, sent } = wiringOver(
+      [stream([started(), ...text('reply-1', 'A cat.'), finished()])],
+      () => conversation,
+    );
+    await Array.fromAsync(
+      (await wiring.transport(
+        requestWith(conversation, attachments),
+      )) as AsyncIterable<ChatStreamEvent>,
+    );
+    return { sent, conversation };
+  }
+
+  test('sends each ready attachment as a file part from the bureau provider on the user message', async () => {
+    const { sent } = await startWith([
+      attachment('asset-1', 'image/png'),
+      attachment('asset-2', 'audio/mpeg'),
+      attachment('asset-3', 'video/mp4'),
+      attachment('asset-4', 'application/pdf'),
+      attachment('asset-5', 'text/plain'),
+    ]);
+
+    expect(inputOf(sent[0]).messages[0]?.content).toEqual([
+      { type: 'text', text: 'What is this?' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+      {
+        type: 'audio',
+        source: { type: 'file', provider: 'bureau', value: 'asset-2', mimeType: 'audio/mpeg' },
+      },
+      {
+        type: 'video',
+        source: { type: 'file', provider: 'bureau', value: 'asset-3', mimeType: 'video/mp4' },
+      },
+      {
+        type: 'document',
+        source: { type: 'file', provider: 'bureau', value: 'asset-4', mimeType: 'application/pdf' },
+      },
+      {
+        type: 'document',
+        source: { type: 'file', provider: 'bureau', value: 'asset-5', mimeType: 'text/plain' },
+      },
+    ]);
+  });
+
+  test('has no text part for a message with no text, and keeps a plain message a plain string', async () => {
+    const attached = await startWith([attachment('asset-1', 'image/png')], '');
+    const plain = await startWith([]);
+
+    expect(inputOf(attached.sent[0]).messages[0]?.content).toEqual([
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+    ]);
+    expect(inputOf(plain.sent[0]).messages[0]?.content).toBe('What is this?');
+  });
+
+  test('sends only an attachment that is ready and holds a reference', async () => {
+    const { sent } = await startWith([
+      attachment('asset-1', 'image/png'),
+      attachment('asset-2', 'image/png', { status: 'uploading' }),
+      attachment('asset-3', 'image/png', { status: 'error' }),
+      withoutReference(attachment('asset-4', 'image/png')),
+    ]);
+
+    expect(inputOf(sent[0]).messages[0]?.content).toEqual([
+      { type: 'text', text: 'What is this?' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+    ]);
+  });
+
+  test('names the file’s own type when the upload did not report one, and none when neither did', async () => {
+    const { sent } = await startWith([
+      attachment('asset-1', 'image/png', { reference: { id: 'asset-1' } }),
+      attachment('asset-2', '', { reference: { id: 'asset-2' } }),
+    ]);
+
+    expect(inputOf(sent[0]).messages[0]?.content).toEqual([
+      { type: 'text', text: 'What is this?' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+      { type: 'document', source: { type: 'file', provider: 'bureau', value: 'asset-2' } },
+    ]);
+  });
+
+  test('does not send a file twice when the row already names its asset', async () => {
+    const conversation = appendMessages(empty(), {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'What is this?' },
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'provider-file', provider: 'bureau', providerFileId: 'asset-1' },
+        },
+      ],
+    });
+    const { wiring, sent } = wiringOver(
+      [stream([started(), ...text('reply-1', 'A cat.'), finished()])],
+      () => conversation,
+    );
+
+    await Array.fromAsync(
+      (await wiring.transport(
+        requestWith(conversation, [
+          attachment('asset-1', 'image/png'),
+          attachment('asset-2', 'image/png'),
+        ]),
+      )) as AsyncIterable<ChatStreamEvent>,
+    );
+
+    expect(inputOf(sent[0]).messages[0]?.content).toEqual([
+      { type: 'text', text: 'What is this?' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-2', mimeType: 'image/png' },
+      },
+    ]);
+  });
+
+  test('puts them on the opening turn when a decision resumes the run, and not on a follow-up', async () => {
+    const opener = appendUserMessage(empty(), 'Refund it');
+    const withFollowUp = appendMessages(opener, {
+      role: 'user',
+      content: 'And another thing',
+      metadata: { _followUp: true },
+    });
+    const { wiring, sent } = wiringOver(
+      [
+        stream([
+          started(),
+          { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{}' },
+          { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+          finished({
+            type: 'interrupt',
+            interrupts: [
+              {
+                id: 'approval:native-1:call-refund',
+                reason: 'tool-approval',
+                toolCallId: 'call-refund',
+              },
+            ],
+          }),
+        ]),
+        stream([started('run-2'), ...text('reply-2', 'Done.'), finished(undefined, 'run-2')]),
+      ],
+      () => withFollowUp,
+    );
+    const attached = [attachment('asset-1', 'image/png')];
+    await Array.fromAsync(
+      (await wiring.transport(requestWith(opener, attached))) as AsyncIterable<ChatStreamEvent>,
+    );
+    await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+
+    await Array.fromAsync(
+      (await wiring.transport(
+        requestWith(withFollowUp, attached),
+      )) as AsyncIterable<ChatStreamEvent>,
+    );
+
+    const resumed = inputOf(sent[1]);
+    expect(resumed.messages).toHaveLength(1);
+    expect(resumed.messages[0]?.content).toEqual([
+      { type: 'text', text: 'Refund it' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+    ]);
+  });
+});
+
+describe('the assets a run announces', () => {
+  const asset = (messageId: string, index: number, assetId: string, mediaType: string) => ({
+    type: 'CUSTOM',
+    name: 'bureau.asset-part',
+    value: { messageId, index, assetId, mediaType },
+  });
+
+  async function completed(events: readonly unknown[]) {
+    const conversation = appendUserMessage(empty(), 'Draw it');
+    const { wiring } = wiringOver([stream(events)], () => conversation);
+    const result = await frames(wiring, conversation);
+    const terminal = result.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+    return terminal.conversation;
+  }
+
+  test('are stamped on the assistant row they were announced in, as bureau:assetParts, in index order', async () => {
+    const conversation = await completed([
+      started(),
+      { type: 'TEXT_MESSAGE_START', messageId: 'reply-1', role: 'assistant' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply-1', delta: 'Here.' },
+      asset('reply-1', 1, 'asset-a', 'image/png'),
+      asset('reply-1', 2, 'asset-b', 'audio/wav'),
+      { type: 'TEXT_MESSAGE_END', messageId: 'reply-1' },
+      finished(),
+    ]);
+
+    const row = conversation.messages['reply-1'];
+    expect(row?.metadata?.['bureau:assetParts']).toEqual([
+      { index: 1, assetId: 'asset-a', mediaType: 'image/png' },
+      { index: 2, assetId: 'asset-b', mediaType: 'audio/wav' },
+    ]);
+  });
+
+  test('leave a row with none untouched, and an announcement for a row the run did not make is dropped', async () => {
+    const conversation = await completed([
+      started(),
+      ...text('reply-1', 'Plain.'),
+      asset('somewhere-else', 0, 'asset-a', 'image/png'),
+      finished(),
+    ]);
+
+    expect(conversation.messages['reply-1']?.metadata?.['bureau:assetParts']).toBeUndefined();
+    expect(JSON.stringify(conversation)).not.toContain('asset-a');
+  });
+
+  test('are not carried into the next run’s turn', async () => {
+    const first = await completed([
+      started(),
+      ...text('reply-1', 'One.'),
+      asset('reply-1', 0, 'asset-a', 'image/png'),
+      finished(),
+    ]);
+    expect(first.messages['reply-1']).toBeDefined();
+    const { wiring } = wiringOver(
+      [
+        stream([started(), ...text('reply-1', 'One.'), finished()]),
+        stream([started('run-2'), ...text('reply-2', 'Two.'), finished(undefined, 'run-2')]),
+      ],
+      () => appendUserMessage(empty(), 'Draw it'),
+    );
+    const conversation = appendUserMessage(empty(), 'Draw it');
+    await frames(wiring, conversation);
+    const second = await frames(wiring, conversation);
+    const terminal = second.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+
+    expect(JSON.stringify(terminal.conversation)).not.toContain('asset-a');
   });
 });

@@ -23,6 +23,7 @@ import {
 } from '@lostgradient/chat';
 
 import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
+import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import { createChatRunWiring, type ChatRunWiring, type HumanRequest } from './run-wiring.ts';
 
 export type ChatSessionOptions = {
@@ -64,6 +65,8 @@ export class ChatSessionState {
    */
   readonly adapter: ChatSessionController['adapter'];
   #attachment: Promise<void> = Promise.resolve();
+  /** Whether the turn on screen carried files, which decides what the door's `INVALID_INPUT` is about. */
+  #turnHadAttachments = false;
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
@@ -106,7 +109,9 @@ export class ChatSessionState {
           if (streaming) this.failure = undefined;
         },
         onError: (error) => {
-          this.failure = error instanceof Error ? error.message : String(error);
+          this.failure =
+            runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
+            (error instanceof Error ? error.message : String(error));
         },
       },
     });
@@ -114,8 +119,9 @@ export class ChatSessionState {
     this.adapter = {
       ...adapter,
       sendMessage: async (message, attachments) => {
+        this.#turnHadAttachments = attachments.length > 0;
         await this.#attachment;
-        return adapter.sendMessage(message, attachments);
+        return adapter.sendMessage(messageWithAttachments(message, attachments), attachments);
       },
       ...(adapter.sendRunInput === undefined
         ? {}

@@ -17,7 +17,11 @@ import type {
   ChatUnreadIndicatorChangeEvent,
 } from './container/chat-events.ts';
 import type { ConversationHistory, Message, ToolCallPair } from './conversation-model.ts';
-import type { ChatAttachment } from './input/chat-attachment.ts';
+import type {
+  ChatAttachment,
+  ChatAttachmentErrorFormatter,
+  ChatAttachmentUpload,
+} from './input/chat-attachment.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ReasoningInfo, StepInfo } from './utilities/types.ts';
 
@@ -306,6 +310,21 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onScrollStateChange?: (event: ChatScrollStateChangeEvent) => void;
   onUnreadIndicatorChange?: (event: ChatUnreadIndicatorChangeEvent) => void;
   onExpandedChange?: (expanded: boolean) => void;
+  /**
+   * Uploads each file the person attaches, as soon as it is attached. The composer shows the
+   * attachment as `uploading` (`data-state` on its preview), keeps Send disabled until every
+   * upload has settled, and hands back the hook's reference on the attachment it submits as
+   * `ChatAttachment.reference`. A rejection puts the attachment in the `error` state, shown with
+   * {@link ChatProps.formatAttachmentError}'s words. A file refused for its size or type never
+   * reaches the hook. The signal aborts when the person removes the attachment.
+   */
+  uploadAttachment?: ChatAttachmentUpload | undefined;
+  /** Largest file the composer takes, in bytes. A larger file shows as an `error` attachment and is never uploaded. Default 10 MiB. */
+  maxFileSize?: number | undefined;
+  /** MIME types the composer takes, as exact types or `type/*` families; also the file picker's `accept`. A file of another type shows as an `error` attachment and is never uploaded. */
+  acceptedTypes?: string[] | undefined;
+  /** The words shown for an attachment in the `error` state (too large, a type not accepted, or a failed upload). Defaults to plain English messages. */
+  formatAttachmentError?: ChatAttachmentErrorFormatter | undefined;
   onAttachmentAdd?: (attachment: ChatAttachment) => void;
   onAttachmentRemove?: (attachment: ChatAttachment) => void;
   onAttachmentFailure?: (file: File, error: string) => void;

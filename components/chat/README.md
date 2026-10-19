@@ -82,6 +82,12 @@ Pass a `mermaidRenderer` snippet to delegate only the Mermaid branch to an appli
 
 The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `ArtifactViewer` invokes it only when `type` is `mermaid`; HTML, SVG, and code continue through their built-in renderers unless a code snippet is supplied. The application-owned component is responsible for loading Mermaid, handling asynchronous rendering and errors, and applying its required content-safety policy.
 
+## Attachments
+
+`ChatInput` (and `Chat`, which forwards the props) takes files by picker, paste and drop. `maxFileSize` and `acceptedTypes` bound them, and a file that fails either shows as an `error` attachment, with the words from `formatAttachmentError`, and is never read or uploaded.
+
+`uploadAttachment(file, { signal })` uploads each file as soon as it is attached and answers a reference (`{ id, mimeType? }`). The attachment is `uploading` until the hook settles, then `ready` (carrying the reference as `ChatAttachment.reference`) or `error` when it rejects; the preview's `data-state` says which, Send stays disabled while any attachment is `uploading`, and the signal aborts when the attachment is removed or the composer goes away. A promoted text paste is sent inline and is not uploaded. Chat reads neither field of the reference: the host's `adapter` receives the attachments, with their references, on submit. `capabilities.attachments` turns the picker, paste and drop off.
+
 ## Overriding built-in rendering
 
 `Chat`'s per-row and per-part overrides (`row`, `messagePart`) are inversion-of-control snippets: each receives the thing being rendered plus a `renderDefault` snippet that renders Chat's own built-in output for it. Supplying an override wraps the built-in rendering rather than replacing it outright—a consumer adds markup around `renderDefault()`'s output, or conditionally calls it, but the built-in behavior stays reachable:
