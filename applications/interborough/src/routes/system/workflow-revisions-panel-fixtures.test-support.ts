@@ -6,6 +6,7 @@
  * Activate/Refresh mutation and its outcomes) once the combined file
  * crossed the repo's 500-line implementation-file cap.
  */
+import type { QueryClient } from '@tanstack/svelte-query';
 import { render } from '@testing-library/svelte';
 
 import ToastHost from '../../app/toast-host.svelte';
@@ -36,12 +37,13 @@ export function activePointer(revision: string, generation = 1) {
 
 export async function renderPanel(
   principalScopes?: readonly (typeof AUTHORIZATION_SCOPES)[number][],
+  queryClient: QueryClient = createQueryClient(),
 ) {
   render(ToastHost);
   return render(SystemRouteTestHarness, {
     props: {
       client: realClient(),
-      queryClient: createQueryClient(),
+      queryClient,
       component: WorkflowRevisionsPanelFixture,
       ...(principalScopes === undefined ? {} : { principalScopes }),
     },

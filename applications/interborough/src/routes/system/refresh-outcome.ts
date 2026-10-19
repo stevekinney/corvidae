@@ -96,6 +96,7 @@ export type RefreshOutcome =
   | { readonly kind: 'source-unavailable'; readonly message: string }
   | { readonly kind: 'catalog-conflict'; readonly message: string }
   | { readonly kind: 'no-source'; readonly message: string }
+  | { readonly kind: 'revision-removed'; readonly message: string }
   | { readonly kind: 'invalid'; readonly message: string }
   | { readonly kind: 'denied'; readonly message: string }
   | { readonly kind: 'malformed'; readonly message: string }
@@ -167,6 +168,16 @@ function faultReason(error: HttpClientError): string | undefined {
   return typeof data?.['reason'] === 'string' ? data['reason'] : undefined;
 }
 
+function faultResource(error: HttpClientError): string | undefined {
+  const resource = asRecord(error.data)?.['resource'];
+  return typeof resource === 'string' ? resource : undefined;
+}
+
+function faultIdentifier(error: HttpClientError): string | undefined {
+  const identifier = asRecord(error.data)?.['identifier'];
+  return typeof identifier === 'string' ? identifier : undefined;
+}
+
 function describeConflict(error: HttpClientError): RefreshOutcome {
   const reason = faultReason(error)?.replace(/^refresh-/, '');
   if (reason !== undefined && isRefusalReason(reason)) {
@@ -182,6 +193,12 @@ function describeConflict(error: HttpClientError): RefreshOutcome {
 function describeFault(error: HttpClientError, name: string): RefreshOutcome {
   switch (error.faultCode) {
     case 'NotFound':
+      if (faultResource(error) === 'workflow-revision') {
+        return {
+          kind: 'revision-removed',
+          message: `The revision ${faultIdentifier(error) ?? 'the check needed'} is no longer installed. It was removed while the check ran.`,
+        };
+      }
       return {
         kind: 'no-source',
         message: `No refresh source is registered for "${name}". The host registers a source with engine.workflows.registerRefreshSource().`,

@@ -95,13 +95,15 @@
         ? 'Source unavailable'
         : outcome.kind === 'no-source'
           ? 'No source'
-          : outcome.kind === 'catalog-conflict'
-            ? 'Conflict'
-            : outcome.kind === 'invalid'
-              ? 'Invalid request'
-              : outcome.kind === 'malformed'
-                ? 'Malformed response'
-                : 'Failed'}
+          : outcome.kind === 'revision-removed'
+            ? 'Revision removed'
+            : outcome.kind === 'catalog-conflict'
+              ? 'Conflict'
+              : outcome.kind === 'invalid'
+                ? 'Invalid request'
+                : outcome.kind === 'malformed'
+                  ? 'Malformed response'
+                  : 'Failed'}
   <div class="weft-refresh-outcome weft-refresh-outcome--danger" role="alert">
     <CircleAlert aria-hidden="true" size={16} />
     <div>

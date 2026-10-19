@@ -172,6 +172,19 @@ describe('describeRefreshOutcome (faulted)', () => {
 
   test('NotFound means no source is registered', () => {
     expect(fault('NotFound', 404).kind).toBe('no-source');
+    expect(fault('NotFound', 404, { resource: 'workflow-refresh-source' }).kind).toBe('no-source');
+  });
+
+  test('NotFound for a removed revision is not reported as a missing source', () => {
+    const outcome = fault('NotFound', 404, {
+      resource: 'workflow-revision',
+      identifier: 'order-processing:rev-2',
+    });
+
+    if (outcome.kind !== 'revision-removed')
+      throw new Error(`expected revision-removed, got ${outcome.kind}`);
+    expect(outcome.message).not.toMatch(/No refresh source/);
+    expect(outcome.message).toContain('rev-2');
   });
 
   test('InvalidParams, Forbidden, and Unauthorized read as invalid and denied', () => {

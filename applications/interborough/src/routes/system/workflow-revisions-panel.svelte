@@ -168,6 +168,7 @@
   function invalidateAfterActivation(): void {
     void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.revisions(workflowName) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.active(workflowName) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.catalog.refresh(workflowName) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.registry() });
   }
 

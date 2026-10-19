@@ -134,6 +134,37 @@ describe('RefreshPanel', () => {
     expect(settled.queryByRole('button', { name: 'Activate candidate' })).toBeNull();
   });
 
+  test('a failed check with no candidate never offers Activate candidate', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod(DIAGNOSTICS_METHOD, {
+      sources: [
+        {
+          name: 'order-processing',
+          state: 'failed',
+          reason: 'warming',
+          current: { revision: 'rev-1', generation: 3 },
+        },
+      ],
+    });
+
+    const { findByText, queryByRole } = await renderRefreshPanel();
+    await findByText(/Last check failed: Warming failed/);
+
+    expect(queryByRole('button', { name: 'Activate candidate' })).toBeNull();
+  });
+
+  test('an installed candidate followed by a 304 stays activatable', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod(DIAGNOSTICS_METHOD, {
+      sources: [installedSource({ state: 'not-modified' })],
+    });
+
+    const { findByRole, findByText } = await renderRefreshPanel();
+
+    expect(await findByText('Not modified')).not.toBeNull();
+    expect(await findByRole('button', { name: 'Activate candidate' })).not.toBeNull();
+  });
+
   test('shows an empty state when no refresh source is registered', async () => {
     scripted = new ScriptedFetch();
     scripted.routeJsonRpcMethod(DIAGNOSTICS_METHOD, { sources: [] });

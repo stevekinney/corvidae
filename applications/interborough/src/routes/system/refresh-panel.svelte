@@ -102,11 +102,16 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.registry() });
   }
 
-  async function runCheck(source: RefreshSourceView, activate: boolean): Promise<ActionResult> {
-    const expectedGeneration = resolveExpectedGeneration(
-      pendingExpectedGeneration,
-      activeGeneration(source),
-    );
+  /** The generation fence an activating action will send, as of now. */
+  function fenceFor(source: RefreshSourceView): number | undefined {
+    return resolveExpectedGeneration(pendingExpectedGeneration, activeGeneration(source));
+  }
+
+  async function runCheck(
+    source: RefreshSourceView,
+    activate: boolean,
+    expectedGeneration: number | undefined,
+  ): Promise<ActionResult> {
     let outcome: RefreshOutcome;
     try {
       const value = await client.operations['weft.workflows.refresh']({
@@ -126,12 +131,11 @@
     return { kind: 'check', outcome };
   }
 
-  async function runActivation(source: RefreshSourceView): Promise<ActionResult> {
+  async function runActivation(
+    source: RefreshSourceView,
+    expectedGeneration: number | undefined,
+  ): Promise<ActionResult> {
     if (source.candidate === undefined) throw new Error('There is no candidate to activate.');
-    const expectedGeneration = resolveExpectedGeneration(
-      pendingExpectedGeneration,
-      activeGeneration(source),
-    );
     let outcome: WorkflowActivationOutcome;
     try {
       const raw = await client.operations['weft.workflows.revisions.activate']({
@@ -167,24 +171,32 @@
     );
   }
 
-  const actionMutation = createMutation<
-    ActionResult,
-    unknown,
-    { readonly action: Action; readonly source: RefreshSourceView }
-  >(() => ({
-    mutationFn: ({ action, source }) =>
+  const actionMutation = createMutation<ActionResult, unknown, ConfirmedAction>(() => ({
+    mutationFn: ({ action, source, expectedGeneration }) =>
       action === 'activate-candidate'
-        ? runActivation(source)
-        : runCheck(source, action === 'check-and-activate'),
+        ? runActivation(source, expectedGeneration)
+        : runCheck(source, action === 'check-and-activate', expectedGeneration),
     onSuccess: invalidateAfterAction,
   }));
 
-  let confirming = $state<{ action: Action; source: RefreshSourceView } | null>(null);
+  /**
+   * What the open confirmation will do, captured when it opened: the source as
+   * the operator saw it and the generation fence the dialog names. The dialog's
+   * words and the request both read this one snapshot, so nothing that changes
+   * while the dialog is open (a refetch, a stale refusal) can make them differ.
+   */
+  interface ConfirmedAction {
+    readonly action: Action;
+    readonly source: RefreshSourceView;
+    readonly expectedGeneration: number | undefined;
+  }
+
+  let confirming = $state<ConfirmedAction | null>(null);
   let confirmOpen = $state(false);
   let triggerRef = $state<HTMLElement | null>(null);
 
   function confirmAction(action: Action, source: RefreshSourceView, trigger: HTMLElement): void {
-    confirming = { action, source };
+    confirming = { action, source, expectedGeneration: fenceFor(source) };
     triggerRef = trigger;
     confirmOpen = true;
   }
@@ -252,12 +264,14 @@
           <p class="weft-refresh-panel__note">{mode.description}</p>
           {#if mode.mode === 'polling'}
             <DescriptionList
+              class="weft-refresh-panel__fields"
               variant="two-column"
               items={mode.fields.map((field) => ({ term: field.term, definition: field.value }))}
             />
           {/if}
 
           <DescriptionList
+            class="weft-refresh-panel__fields"
             variant="two-column"
             items={sourceFields(source, now).map((field) => ({
               term: field.term,
@@ -274,7 +288,8 @@
               loading={actionMutation.isPending &&
                 actionMutation.variables?.source.name === source.name}
               title={adminGate.title}
-              onclick={() => actionMutation.mutate({ action: 'check', source })}
+              onclick={() =>
+                actionMutation.mutate({ action: 'check', source, expectedGeneration: undefined })}
             />
             <Button
               size="sm"
@@ -328,7 +343,7 @@
     ? ''
     : confirming.action === 'activate-candidate'
       ? `Activate "${confirming.source.candidate?.revision ?? ''}" as the active revision for ${workflowName}? Weft evaluates compatibility against the active revision first; an incompatible candidate is refused with no durable change.`
-      : `Check ${workflowName}'s refresh source and, when the new candidate is compatible, activate it under generation ${String(activeGeneration(confirming.source))}. A stale generation or an incompatible candidate leaves it installed and inactive.`}
+      : `Check ${workflowName}'s refresh source and, when the new candidate is compatible, activate it under generation ${String(confirming.expectedGeneration)}. A stale generation or an incompatible candidate leaves it installed and inactive.`}
   confirmLabel={confirming?.action === 'activate-candidate' ? 'Activate' : 'Check and activate'}
   onConfirm={() => {
     if (confirming !== null) actionMutation.mutate(confirming);
@@ -381,6 +396,7 @@
   }
 
   .weft-refresh-panel__source {
+    min-width: 0;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -388,6 +404,14 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
+  }
+
+  /* A content hash or ETag has no break opportunity: wrap it anywhere so the whole value stays
+     visible and selectable at 375 and 768 pixels instead of running past the card. */
+  :global(.weft-refresh-panel__fields dt),
+  :global(.weft-refresh-panel__fields dd) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .weft-refresh-panel__source-identity {

@@ -235,6 +235,27 @@ describe('RefreshPanel Check and activate', () => {
     expect(refreshRequests(fetch.calls)[1]).toMatchObject({ expectedGeneration: 7 });
   });
 
+  test('after a stale refusal the dialog names the generation the request will send', async () => {
+    const fetch = script();
+    fetch.routeJsonRpcMethod(REFRESH_METHOD, {
+      status: 'installed',
+      revision: 'rev-2',
+      activation: { applied: false, reason: 'stale-generation', currentGeneration: 7 },
+    });
+    const panel = await panelFor();
+    await fireEvent.click(panel.panel.getByRole('button', { name: 'Check and activate' }));
+    const first = await panel.findByRole('dialog');
+    expect(first.textContent).toContain('generation 3');
+    await fireEvent.click(within(first).getByRole('button', { name: 'Check and activate' }));
+    await panel.panel.findByText(/current generation 7/);
+
+    await fireEvent.click(panel.panel.getByRole('button', { name: 'Check and activate' }));
+
+    const second = await panel.findByRole('dialog');
+    expect(second.textContent).toContain('generation 7');
+    expect(second.textContent).not.toContain('generation 3');
+  });
+
   test('an incompatible refusal lists the workflow-version and contract-hash reasons', async () => {
     const fetch = script();
     fetch.routeJsonRpcMethod(REFRESH_METHOD, {

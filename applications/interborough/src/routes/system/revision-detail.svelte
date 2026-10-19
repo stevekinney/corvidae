@@ -53,6 +53,7 @@
     </div>
   {:else}
     <DescriptionList
+      class="weft-revision-detail__fields"
       items={detail.fields.map((field) => ({
         term: field.term,
         definition: field.value,
@@ -88,6 +89,13 @@
     margin: 0;
     font-size: var(--cinder-text-sm);
     font-weight: 600;
+  }
+
+  /* The contract hash is one unbroken string: wrap it so the whole value stays visible. */
+  :global(.weft-revision-detail__fields dt),
+  :global(.weft-revision-detail__fields dd) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .weft-revision-detail__malformed {

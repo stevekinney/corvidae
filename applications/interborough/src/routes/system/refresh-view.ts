@@ -5,7 +5,7 @@
  * next-check time itself, and a response that fails the guard below is a
  * malformed response, never a partial one.
  */
-import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+import { formatRelativeTime } from '../../lib/format/index.ts';
 
 /** The states `WorkflowRefreshDiagnostics.state` reports. */
 export const REFRESH_STATES = [
@@ -211,7 +211,7 @@ export interface RefreshField {
 const NOT_REPORTED = 'Not reported';
 
 function hashField(term: string, value: string | undefined): RefreshField {
-  return { term, value: value === undefined ? NOT_REPORTED : truncateId(value) };
+  return { term, value: value ?? NOT_REPORTED };
 }
 
 /** Current identity, then candidate identity, ETag, and the last check, in display order. */
@@ -245,12 +245,16 @@ export function activeGeneration(source: RefreshSourceView): number {
   return source.current?.generation ?? 0;
 }
 
-/** A duration as the largest whole unit that fits, such as `90s` or `15m`. */
+/**
+ * A duration in the largest unit that shows it exactly: `500ms`, `90s`, `15m`,
+ * `2h`. Never rounded, so the policy reads as the server set it.
+ */
 export function formatPollDuration(milliseconds: number): string {
-  const seconds = Math.round(milliseconds / 1000);
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.round(seconds / 60);
-  return minutes < 60 ? `${minutes}m` : `${Math.round(minutes / 60)}h`;
+  if (milliseconds % 1000 !== 0) return `${milliseconds}ms`;
+  const seconds = milliseconds / 1000;
+  if (seconds % 3600 === 0 && seconds !== 0) return `${seconds / 3600}h`;
+  if (seconds % 60 === 0 && seconds !== 0) return `${seconds / 60}m`;
+  return `${seconds}s`;
 }
 
 /** The checking mode: manual maintenance, or polling with its policy. */

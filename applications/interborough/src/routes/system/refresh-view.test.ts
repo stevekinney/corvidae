@@ -90,6 +90,9 @@ describe('sourceFields', () => {
     expect(fields.find((field) => field.term === 'Current revision')?.value).toBe('rev-1');
     expect(fields.find((field) => field.term === 'Candidate revision')?.value).toBe('rev-2');
     expect(fields.find((field) => field.term === 'ETag')?.value).toBe('sha256:abc');
+    // Hashes are shown whole (the panel wraps them), never cut to an ellipsis.
+    expect(fields.find((field) => field.term === 'Candidate digest')?.value).toBe('sha256:d2');
+    expect(fields.find((field) => field.term === 'Current contract hash')?.value).toBe('sha256:c1');
     expect(fields.find((field) => field.term === 'Last check')?.value).toContain('2m ago');
   });
 
@@ -182,10 +185,16 @@ describe('modeSummary', () => {
 
 describe('formatPollDuration', () => {
   test.each([
+    [500, '500ms'],
     [1_000, '1s'],
-    [90_000, '2m'],
+    [90_000, '90s'],
+    [150_000, '150s'],
+    [60_000, '1m'],
+    [900_000, '15m'],
+    [5_400_000, '90m'],
     [3_600_000, '1h'],
-  ])('%d ms reads %s', (milliseconds, expected) => {
+    [7_200_000, '2h'],
+  ])('%d ms reads %s, never rounded to another value', (milliseconds, expected) => {
     expect(formatPollDuration(milliseconds)).toBe(expected);
   });
 });
