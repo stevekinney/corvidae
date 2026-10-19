@@ -55,12 +55,35 @@ export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
   return undefined;
 };
 
+/** The longest signal name: what `bureau.workflows.signal` admits, so a trigger can always be signalled. */
+export const SIGNAL_NAME_MAXIMUM_LENGTH = 256;
+
 /**
- * The trigger kinds a workflow file may use. A kind is added here by the issue that owns it
- * (`signal`: COR-1528); a kind that is not here makes the file `invalid`.
+ * Why `trigger` is not a valid `signal` trigger, or `undefined` when it is. A signal trigger is
+ * exactly `{ kind: 'signal', name }`, where `name` is a non-empty string of at most
+ * {@link SIGNAL_NAME_MAXIMUM_LENGTH} characters.
+ */
+export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
+  const extra = Object.keys(trigger).filter((key) => key !== 'kind' && key !== 'name');
+  if (extra.length > 0) {
+    return `a signal trigger takes only "name"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
+  }
+  const name = trigger['name'];
+  if (typeof name !== 'string' || name === '') {
+    return 'a signal trigger needs a "name": the non-empty name of the signal that starts it';
+  }
+  if (name.length > SIGNAL_NAME_MAXIMUM_LENGTH) {
+    return `a signal trigger's "name" may be at most ${String(SIGNAL_NAME_MAXIMUM_LENGTH)} characters`;
+  }
+  return undefined;
+};
+
+/**
+ * The trigger kinds a workflow file may use; a kind that is not here makes the file `invalid`.
  */
 export const WORKFLOW_TRIGGER_KINDS: Readonly<Record<string, DocumentTriggerValidator>> = {
   schedule: validateScheduleTrigger,
+  signal: validateSignalTrigger,
 };
 
 /** What an `agent` step's run returns, and what the next step receives as `previous`. */

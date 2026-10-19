@@ -104,6 +104,8 @@ type CatalogOperation = (typeof BUREAU_HANDLER_OPERATIONS)[number];
  * definition that never loads, so a probe can never create a file.
  */
 const WORKFLOW_PARAMETERS = {
+  // `bureau.workflows.signal` names a signal; nothing waits for or is triggered by this one.
+  name: 'x',
   expectedHash: 'x',
   definition: { trigger: { kind: 'schedule', spec: '1s' }, steps: [] },
 } as const;
@@ -668,10 +670,14 @@ describe('identifiers grant nothing', () => {
   /** The string-valued id parameters an operation declares, found from its own schema. */
   function idParameters(operation: (typeof BUREAU_HANDLER_OPERATIONS)[number]): string[] {
     const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
-    // `messageId` is a caller's idempotency key and `callId` selects a wait within a task:
-    // neither is the id of a resource, and each needs its task named beside it.
+    // `messageId` and `signalId` are a caller's idempotency keys and `callId` selects a wait
+    // within a task: none is the id of a resource, and `callId` needs its task named beside it.
     return Object.keys(shape).filter(
-      (key) => key !== 'messageId' && key !== 'callId' && (key === 'id' || key.endsWith('Id')),
+      (key) =>
+        key !== 'messageId' &&
+        key !== 'signalId' &&
+        key !== 'callId' &&
+        (key === 'id' || key.endsWith('Id')),
     );
   }
 
