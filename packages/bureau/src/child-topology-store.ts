@@ -209,6 +209,14 @@ function isWorkflowIdentity(value: unknown): value is BureauChildWorkflowIdentit
   );
 }
 
+/** A child's recorded part is a valid content part and, like a run result's, never carries inline bytes. */
+function isStoredPart(part: unknown): boolean {
+  const parsed = multiModalContentSchema.safeParse(part);
+  if (!parsed.success) return false;
+  const source = (parsed.data as { source?: { kind?: string } }).source;
+  return source?.kind !== 'inline';
+}
+
 function isOutcome(value: unknown): value is BureauChildOutcome {
   return (
     isRecord(value) &&
@@ -216,9 +224,7 @@ function isOutcome(value: unknown): value is BureauChildOutcome {
     isOptional(value['content'], 'string') &&
     (value['parts'] === undefined ||
       (Array.isArray(value['parts']) &&
-        (value['parts'] as unknown[]).every(
-          (part) => multiModalContentSchema.safeParse(part).success,
-        ))) &&
+        (value['parts'] as unknown[]).every((part) => isStoredPart(part)))) &&
     isOptional(value['reason'], 'string')
   );
 }

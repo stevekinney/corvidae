@@ -122,6 +122,11 @@ function assetsOf(row: Message): string[] {
   );
 }
 
+async function assetIdsOf(opened: Opened, sessionId: string): Promise<string[]> {
+  const rows = await rowsOf(opened, sessionId);
+  return rows.flatMap(assetsOf);
+}
+
 async function resolves({ bureau }: Opened, assetId: string): Promise<boolean> {
   try {
     await bureau.assets!.resolve({ kind: 'managed-asset', assetId }, alice);
@@ -136,7 +141,7 @@ describe('a generated image a session row references', () => {
     const opened = await openBureau();
     const { bureau, runtime } = opened;
     const created = await paint(opened, 'trunk');
-    const [assetId] = (await rowsOf(opened, 'trunk')).flatMap(assetsOf);
+    const [assetId] = await assetIdsOf(opened, 'trunk');
 
     await runtime.advance(5_000);
     const report = await collect(opened);
@@ -181,7 +186,7 @@ describe('a row copied into another session (appendMessages)', () => {
       { id: 'again', role: 'user', content: 'Again.' },
     );
     await paint(opened, 'copy', { appendMessages: copied });
-    expect((await rowsOf(opened, 'copy')).flatMap(assetsOf)).toContain(assetId!);
+    expect(await assetIdsOf(opened, 'copy')).toContain(assetId!);
     return { opened, assetId: assetId! };
   }
 
@@ -257,7 +262,7 @@ describe('an expiring session', () => {
   it('releases its claims once the store has removed it, so its assets fall back to the floor', async () => {
     const opened = await openBureau();
     await paint(opened, 'old');
-    const [assetId] = (await rowsOf(opened, 'old')).flatMap(assetsOf);
+    const [assetId] = await assetIdsOf(opened, 'old');
 
     await opened.runtime.advance(5_000);
     expect(await opened.bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
@@ -272,8 +277,9 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
   it('claims the copied rows itself, so deleting the trunk leaves the copy able to resolve them', async () => {
     const opened = await openBureau();
     await paint(opened, 'trunk');
-    const trunk = (await opened.bureau.getSession('trunk'))!;
-    const [assetId] = (await rowsOf(opened, 'trunk')).flatMap(assetsOf);
+    const loaded = await opened.bureau.getSession('trunk');
+    const trunk = loaded!;
+    const [assetId] = await assetIdsOf(opened, 'trunk');
 
     await opened.bureau.sessionStore!.save(
       createAgentSession({
