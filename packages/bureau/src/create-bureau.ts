@@ -7106,6 +7106,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // (`goals.recover`, below), by what the goal's own record says.
         if (await goalsComposition.ownsWorkflow(handle.id)) continue;
 
+        // COR-1527: an instance of a workflow file carries a document's trigger, not an agent
+        // run's input, so the classification below would read it as a foreign run and cancel it.
+        // The workflow runtime registered its revision before this recovery; the engine resumes it.
+        if (workflowRuntime !== undefined) {
+          const instance = await durable.engine.get(handle.id);
+          if (instance !== null && (await workflowRuntime.isWorkflowType(instance.type))) continue;
+        }
+
         const readError = 'error' in rest ? rest.error : undefined;
         if (readError !== undefined) {
           diagnose({

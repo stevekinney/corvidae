@@ -154,6 +154,14 @@ export interface WorkflowStartReport {
   readonly retained: readonly { readonly id: string; readonly workflowVersion: string }[];
 }
 
+/** In-flight instances Bureau cannot register a revision for. */
+interface Unrecoverable {
+  readonly id: string;
+  readonly workflowVersion: string;
+  readonly runIds: readonly string[];
+  readonly reason: string;
+}
+
 /** What {@link createWorkflowRuntime} builds. */
 export interface WorkflowRuntime {
   readonly workflows: BureauWorkflows;
@@ -254,21 +262,29 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return desired;
   }
 
-  /** The distinct `workflowVersion`s of the instances of `type` that have not finished, with their start times. */
-  async function inFlightVersions(type: string): Promise<Map<string, number>> {
-    const earliest = new Map<string, number>();
+  /**
+   * The instances of `type` that have not finished, by the `workflowVersion` each is pinned to, with
+   * the earliest start of each version.
+   */
+  async function inFlightRuns(
+    type: string,
+  ): Promise<Map<string, { startedAt: number; runIds: string[] }>> {
+    const byVersion = new Map<string, { startedAt: number; runIds: string[] }>();
     for (let offset = 0; ;) {
       const page = await engine.list({ type, status: [...IN_FLIGHT_STATUSES], limit: 100, offset });
       for (const summary of page.items) {
-        const known = earliest.get(summary.version);
-        if (known === undefined || summary.createdAt < known) {
-          earliest.set(summary.version, summary.createdAt);
+        const known = byVersion.get(summary.version);
+        if (known === undefined) {
+          byVersion.set(summary.version, { startedAt: summary.createdAt, runIds: [summary.id] });
+        } else {
+          known.startedAt = Math.min(known.startedAt, summary.createdAt);
+          known.runIds.push(summary.id);
         }
       }
       offset += page.items.length;
       if (page.items.length === 0 || offset >= page.total) break;
     }
-    return earliest;
+    return byVersion;
   }
 
   /** Register the files' documents, and the older revisions that still have an instance in flight. */
@@ -284,36 +300,62 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     for (const entry of registered) registeredTypes.add(entry.name);
   }
 
-  /** The stored documents of the in-flight revisions that are not any file's current one. */
-  async function retainedDocuments(): Promise<
-    { id: string; version: string; document: WorkflowDocument }[]
-  > {
+  /** Whether `id` is the name of a workflow the engine has from code, not one Bureau registered. */
+  const isCodeName = (id: string): boolean =>
+    engine.getWorkflowDefinition(id) !== undefined && !registeredTypes.has(id);
+
+  /**
+   * What startup does about the in-flight instances of the workflow files: the stored documents of
+   * the revisions that are not any file's current one, to register as `retained`, and the
+   * instances Bureau cannot register a revision for at all.
+   *
+   * An instance whose type has no registration makes the engine's `recoverAll()` refuse the whole
+   * batch, so one such instance would strand every durable run in the store on every boot. Each is
+   * therefore cancelled (see {@link cancelUnrecoverable}) before the engine recovers.
+   */
+  async function planRecovery(): Promise<{
+    retained: { id: string; version: string; document: WorkflowDocument }[];
+    unrecoverable: Unrecoverable[];
+  }> {
     const identifiers = new Set([
       ...catalog.list().map((listing) => listing.id),
       ...(await snapshots.identifiers()),
     ]);
     const retained: { id: string; version: string; document: WorkflowDocument }[] = [];
+    const unrecoverable: Unrecoverable[] = [];
     for (const id of identifiers) {
       const current = catalog.find(id)?.version;
-      for (const [version, startedAt] of await inFlightVersions(id)) {
+      const collides = isCodeName(id);
+      // When the name is a code workflow's, only an instance pinned to a revision Bureau stored is
+      // Bureau's; the code workflow's own instances are left alone.
+      const storedRevisions = collides ? await snapshots.snapshotsOf(id) : [];
+      const stored = collides
+        ? new Set(storedRevisions.map((snapshot) => snapshot.workflowVersion))
+        : undefined;
+      const inFlight = await inFlightRuns(id);
+      for (const [version, { startedAt, runIds }] of inFlight) {
+        if (stored !== undefined && !stored.has(version)) continue;
         // An instance that started before a crash can have lost its history stamp: restore it.
         await snapshots.stampRun(id, version, new Date(startedAt).toISOString());
         if (version === current) continue;
+        const cannot = (reason: string): void => {
+          unrecoverable.push({ id, workflowVersion: version, runIds, reason });
+        };
+        if (collides) {
+          cannot(`workflow "${id}" is now the name of a code-defined workflow`);
+          continue;
+        }
         let snapshot: WorkflowSnapshot | undefined;
         try {
           snapshot = await snapshots.load(id, version);
         } catch (error) {
-          options.diagnose(
-            `The stored revision ${version} of workflow "${id}" cannot be used, so its instances cannot resume.`,
-            error,
+          cannot(
+            `the stored revision ${version} of workflow "${id}" cannot be used (${error instanceof Error ? error.message : String(error)})`,
           );
           continue;
         }
         if (snapshot === undefined) {
-          options.diagnose(
-            `Workflow "${id}" has an instance in flight on revision ${version}, which is not stored, so it cannot resume.`,
-            undefined,
-          );
+          cannot(`the revision ${version} of workflow "${id}" is not stored`);
           continue;
         }
         try {
@@ -324,14 +366,48 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
           });
         } catch (error) {
           if (!(error instanceof WorkflowDocumentValidationError)) throw error;
+          cannot(
+            `the stored revision ${version} of workflow "${id}" no longer validates against this Bureau (${error.message})`,
+          );
+        }
+      }
+    }
+    return { retained, unrecoverable };
+  }
+
+  /**
+   * Cancel every instance in `unrecoverable` through the engine, which accepts a stored instance
+   * that has not been recovered. The reason is recorded first, so a crash between the two leaves
+   * the instance to be cancelled again at the next boot, and each cancellation is reported as an
+   * error naming the instance, the workflow, and why. The instance stays readable through
+   * `bureau.workflows.runs.*`, ending `cancelled` with that reason.
+   */
+  async function cancelUnrecoverable(unrecoverable: readonly Unrecoverable[]): Promise<void> {
+    for (const entry of unrecoverable) {
+      for (const runId of entry.runIds) {
+        const reason = `Cancelled at startup because it cannot resume: ${entry.reason}.`;
+        try {
+          await snapshots.recordCancellation({
+            schemaVersion: 1,
+            runId,
+            id: entry.id,
+            workflowVersion: entry.workflowVersion,
+            reason,
+            cancelledAt: options.runtime.clock.nowISO(),
+          });
+          await engine.cancel(runId);
           options.diagnose(
-            `The stored revision ${version} of workflow "${id}" no longer validates, so its instances cannot resume.`,
+            `Cancelled instance "${runId}" of workflow "${entry.id}": ${entry.reason}.`,
+            undefined,
+          );
+        } catch (error) {
+          options.diagnose(
+            `Could not cancel instance "${runId}" of workflow "${entry.id}", which cannot resume (${entry.reason}); recovery of the engine may refuse it.`,
             error,
           );
         }
       }
     }
-    return retained;
   }
 
   async function applyChange(): Promise<void> {
@@ -390,8 +466,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     };
     return exclusive(async () => {
       await catalog.refresh();
-      const retained = await retainedDocuments();
+      const { retained, unrecoverable } = await planRecovery();
       await register(retained.map((entry) => entry.document));
+      await cancelUnrecoverable(unrecoverable);
       await reconcileWorkflowSchedules(engine, desiredSchedules());
       return {
         retained: retained.map((entry) => ({ id: entry.id, workflowVersion: entry.version })),
@@ -547,6 +624,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (state === null || state === undefined || !(await isWorkflowType(state.type))) {
         return undefined;
       }
+      // Weft's cancellation carries no reason; one Bureau cancelled at startup has its own.
+      const cancellation =
+        state.error === undefined && state.status === 'cancelled'
+          ? await snapshots.cancellationOf(runId)
+          : undefined;
+      const error = state.error ?? cancellation?.reason;
       return {
         ...summarize({
           id: state.id,
@@ -558,7 +641,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
         }),
         trigger: state.input,
         ...(state.result === undefined ? {} : { result: state.result }),
-        ...(state.error === undefined ? {} : { error: state.error }),
+        ...(error === undefined ? {} : { error }),
       };
     },
 
@@ -590,11 +673,11 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     },
 
     async pruneSnapshots(cutoff) {
-      const inFlight = new Map<string, Map<string, number>>();
+      const inFlight = new Map<string, Map<string, unknown>>();
       const versionsOf = async (type: string) => {
         const cached = inFlight.get(type);
         if (cached !== undefined) return cached;
-        const found = await inFlightVersions(type);
+        const found = await inFlightRuns(type);
         inFlight.set(type, found);
         return found;
       };

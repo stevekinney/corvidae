@@ -158,3 +158,46 @@ describe('the workflow snapshot store', () => {
     expect(await snapshots.snapshotsOf('digest')).toHaveLength(1);
   });
 });
+
+describe('the cancellation records', () => {
+  const cancellation = {
+    schemaVersion: 1,
+    runId: 'run-1',
+    id: 'gone',
+    workflowVersion: 'sha256:abc',
+    reason: 'Cancelled at startup because it cannot resume: nothing is stored.',
+    cancelledAt: '2026-10-18T00:00:00.000Z',
+  } as const;
+
+  it('keeps the reason of a cancelled instance and names its workflow among the identifiers', async () => {
+    const { snapshots } = setup();
+    expect(await snapshots.cancellationOf('run-1')).toBeUndefined();
+    await snapshots.recordCancellation(cancellation);
+    expect(await snapshots.cancellationOf('run-1')).toEqual(cancellation);
+    expect(await snapshots.identifiers()).toEqual(['gone']);
+  });
+
+  it('ignores a record that is not a cancellation', async () => {
+    const { store, snapshots } = setup();
+    await store.set('bureau-workflow-cancelled-run:v1:run-2', '{"runId":"run-2"}');
+    await store.set('bureau-workflow-cancelled-run:v1:run-3', '{');
+    expect(await snapshots.cancellationOf('run-2')).toBeUndefined();
+    expect(await snapshots.cancellationOf('run-3')).toBeUndefined();
+    expect(await snapshots.identifiers()).toEqual([]);
+  });
+
+  it('is deleted by the pass that prunes snapshots once it is older than the cutoff, and not before', async () => {
+    const { snapshots } = setup();
+    await snapshots.recordCancellation(cancellation);
+    const prune = (cutoff: string) =>
+      snapshots.pruneUnheld({
+        cutoff: Date.parse(cutoff),
+        isHeld: () => false,
+        lastActivityAt: async () => undefined,
+      });
+    await prune('2026-10-17T00:00:00.000Z');
+    expect(await snapshots.cancellationOf('run-1')).toBeDefined();
+    await prune('2026-10-19T00:00:00.000Z');
+    expect(await snapshots.cancellationOf('run-1')).toBeUndefined();
+  });
+});

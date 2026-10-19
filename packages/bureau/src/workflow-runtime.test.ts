@@ -9,7 +9,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
-import { Engine, MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/weft';
+import {
+  Engine,
+  MemoryStorage,
+  textValueStore,
+  type TextValueStore,
+  workflow,
+} from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createWorkflowRuntime, type WorkflowRuntime } from './workflow-runtime';
@@ -43,7 +49,11 @@ interface World {
   put(id: string, overrides: Record<string, unknown>): Promise<void>;
   remove(id: string): Promise<void>;
   /** A fresh engine over the same storage, with a runtime over the same directory and snapshots. */
-  boot(options?: { nowISO?: () => string }): Promise<{
+  boot(options?: {
+    nowISO?: () => string;
+    /** Runs on the new engine before the runtime starts, to give it a workflow of its own. */
+    prepare?: (engine: Engine) => void;
+  }): Promise<{
     readonly engine: Engine;
     readonly runtime: WorkflowRuntime;
     readonly start: Awaited<ReturnType<WorkflowRuntime['start']>>;
@@ -69,6 +79,7 @@ async function world(): Promise<World> {
     async boot(options = {}) {
       const engine = new Engine({ storage });
       cleanups.push(() => engine[Symbol.asyncDispose]());
+      options.prepare?.(engine);
       const runtime = createWorkflowRuntime({
         directory,
         engine,
@@ -220,7 +231,7 @@ describe('instances in flight across a restart', () => {
     expect(third.start.retained).toEqual([]);
   });
 
-  it('reports an instance whose revision was never stored, and carries on', async () => {
+  it('cancels, with its reason, an instance whose revision was never stored, and carries on', async () => {
     const w = await world();
     await w.put('digest', parked('digest', 'version one'));
     {
@@ -238,8 +249,13 @@ describe('instances in flight across a restart', () => {
     }
     const second = await w.boot();
     expect(second.start.retained).toEqual([]);
-    expect(w.diagnostics.some((message) => message.includes('which is not stored'))).toBe(true);
+    expect(w.diagnostics.some((message) => message.includes('is not stored'))).toBe(true);
     expect(second.runtime.workflows.list()[0]?.state).toBe('ready');
+    // Recovery goes ahead and the instance that cannot resume is cancelled, with its reason.
+    expect(await second.engine.recoverAll()).toEqual([]);
+    const cancelled = await second.runtime.workflows.getRun('parked-run');
+    expect(cancelled?.status).toBe('cancelled');
+    expect(cancelled?.error).toContain('is not stored');
   });
 });
 
@@ -364,5 +380,143 @@ describe('assertStartable', () => {
     const hash = runtime.workflows.list().find((entry) => entry.id === 'digest')?.hash ?? '';
     await runtime.workflows.pause('digest', { expectedHash: hash });
     expect(() => runtime.workflows.assertStartable('digest')).toThrow('does not exist');
+  });
+});
+
+describe('an instance Bureau cannot register', () => {
+  /** Two workflows, each with an instance parked on `go`, then the first engine goes away. */
+  async function strandedWorld() {
+    const w = await world();
+    await w.put('stranded', parked('stranded', 'stranded question'));
+    await w.put('healthy', parked('healthy', 'healthy question'));
+    const first = await w.boot();
+    await first.engine.start('stranded', null, { id: 'stranded-run' });
+    await first.engine.start('healthy', null, { id: 'healthy-run' });
+    await parkedOnSignal(first.engine, 'stranded-run');
+    await parkedOnSignal(first.engine, 'healthy-run');
+    // The file is edited once, so a later revision of the workflow is stored beside the pinned one.
+    await w.put('stranded', parked('stranded', 'stranded question, edited'));
+    await first.runtime.workflows.refresh();
+    await first.engine[Symbol.asyncDispose]();
+    return w;
+  }
+
+  /** The key of the stored revision the stranded instance is pinned to (the first one registered). */
+  async function pinnedKey(w: World): Promise<string> {
+    for (const key of await w.store.list('bureau-workflow-snapshot:v1:stranded:')) {
+      const stored = JSON.parse((await w.store.get(key)) ?? '{}');
+      if (stored.document?.steps?.[1]?.input?.message === 'stranded question') return key;
+    }
+    throw new Error('the pinned revision is not stored');
+  }
+
+  /** Recovery goes ahead, the stranded instance is cancelled with its reason, and the rest resumes. */
+  async function expectStrandedCancelled(
+    w: World,
+    second: Awaited<ReturnType<World['boot']>>,
+    reasonPart: string,
+  ) {
+    const handles = await second.engine.recoverAll();
+    expect(handles.map((handle) => handle.id)).toEqual(['healthy-run']);
+    await handles[0]?.signal('go', null);
+    const outcome = (await handles[0]?.result()) as { content: string } | undefined;
+    expect(outcome?.content).toBe('healthy question');
+
+    const stranded = await second.runtime.workflows.getRun('stranded-run');
+    expect(stranded?.status).toBe('cancelled');
+    expect(stranded?.error).toContain(reasonPart);
+    expect(stranded?.error).toContain('stranded');
+    const listed = await second.runtime.workflows.listRuns({ limit: 10, offset: 0 });
+    expect(listed.runs.map((run) => run.id)).toContain('stranded-run');
+    const diagnosed = w.diagnostics.filter((message) => message.includes('stranded-run'));
+    expect(diagnosed).toHaveLength(1);
+    expect(diagnosed[0]).toContain('"stranded"');
+    expect(diagnosed[0]).toContain(reasonPart);
+  }
+
+  for (const fileState of ['deleted', 'invalid'] as const) {
+    for (const snapshotState of ['absent', 'unusable'] as const) {
+      it(`recovers everything else when its file is ${fileState} and its snapshot is ${snapshotState}`, async () => {
+        const w = await strandedWorld();
+        if (fileState === 'deleted') await w.remove('stranded');
+        else await writeFile(join(w.directory, 'stranded.json'), '{');
+        const key = await pinnedKey(w);
+        if (snapshotState === 'absent') await w.store.delete(key);
+        else await w.store.set(key, '{"schemaVersion":1,"not":"a snapshot"}');
+
+        const second = await w.boot();
+
+        await expectStrandedCancelled(
+          w,
+          second,
+          snapshotState === 'absent' ? 'is not stored' : 'cannot be used',
+        );
+      });
+    }
+  }
+
+  it('cancels it for good: the next boot finds nothing to cancel and still lists it', async () => {
+    const w = await strandedWorld();
+    await w.remove('stranded');
+    await w.store.delete(await pinnedKey(w));
+    const second = await w.boot();
+    await second.engine.recoverAll();
+    await second.engine[Symbol.asyncDispose]();
+    w.diagnostics.length = 0;
+
+    const third = await w.boot();
+    await third.engine.recoverAll();
+    expect(w.diagnostics.filter((message) => message.includes('stranded-run'))).toEqual([]);
+    const stranded = await third.runtime.workflows.getRun('stranded-run');
+    expect(stranded?.status).toBe('cancelled');
+    expect(stranded?.error).toContain('is not stored');
+  });
+
+  it('cancels an instance whose stored revision has become the name of a code-defined workflow, and leaves the code workflow alone', async () => {
+    const w = await strandedWorld();
+    await w.remove('stranded');
+    const second = await w.boot({
+      prepare: (engine) => {
+        engine.register(
+          workflow({ name: 'stranded' }).execute(async function* () {
+            return 'code workflow';
+          }),
+        );
+      },
+    });
+
+    await expectStrandedCancelled(w, second, 'code-defined workflow');
+    const own = await second.engine.start('stranded', null, { id: 'code-run' });
+    expect(await own.result()).toBe('code workflow');
+  });
+
+  it('does not cancel a code-defined workflow’s own instances that share the name', async () => {
+    const w = await world();
+    const first = new Engine({ storage: w.storage });
+    cleanups.push(() => first[Symbol.asyncDispose]());
+    first.register(
+      workflow({ name: 'shared' }).execute(async function* (context) {
+        yield* context.waitForSignal('go');
+        return 'code result';
+      }),
+    );
+    await first.start('shared', null, { id: 'code-instance' });
+    await parkedOnSignal(first, 'code-instance');
+    await first[Symbol.asyncDispose]();
+    await w.put('shared', parked('shared', 'file question'));
+    // A snapshot for the identifier exists, so Bureau knows the name; the instance is not its own.
+    const second = await w.boot({
+      prepare: (engine) => {
+        engine.register(
+          workflow({ name: 'shared' }).execute(async function* (context) {
+            yield* context.waitForSignal('go');
+            return 'code result';
+          }),
+        );
+      },
+    });
+    const [handle] = await second.engine.recoverAll();
+    await handle?.signal('go', null);
+    expect(await handle?.result()).toBe('code result');
   });
 });

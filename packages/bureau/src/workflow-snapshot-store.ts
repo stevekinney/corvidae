@@ -43,6 +43,22 @@ import {
 import { workflowVersionOf } from './workflow-file';
 
 export const WORKFLOW_SNAPSHOT_KEY_PREFIX = 'bureau-workflow-snapshot:v1:';
+export const WORKFLOW_CANCELLATION_KEY_PREFIX = 'bureau-workflow-cancelled-run:v1:';
+
+/**
+ * Why Bureau cancelled an instance it could not register before the engine recovered (see
+ * `workflow-runtime.ts`). Weft's cancellation carries no reason, so the reason is kept here and
+ * read back by `bureau.workflows.runs.get`, which is how an operator learns what happened.
+ */
+export interface WorkflowRunCancellation {
+  readonly schemaVersion: 1;
+  readonly runId: string;
+  /** The workflow's identifier. */
+  readonly id: string;
+  readonly workflowVersion: string;
+  readonly reason: string;
+  readonly cancelledAt: string;
+}
 
 /** A document as Bureau registered it with the engine. */
 export interface WorkflowSnapshot {
@@ -89,8 +105,12 @@ export interface WorkflowSnapshotStore {
    * stored but not valid throws {@link WorkflowSnapshotError}.
    */
   readonly load: (id: string, workflowVersion: string) => Promise<WorkflowSnapshot | undefined>;
-  /** Every identifier that has a snapshot. */
+  /** Every identifier that has a snapshot or a cancelled instance. */
   readonly identifiers: () => Promise<readonly string[]>;
+  /** Record that Bureau cancels `runId`, before it does. */
+  readonly recordCancellation: (cancellation: WorkflowRunCancellation) => Promise<void>;
+  /** The reason Bureau cancelled `runId`, or `undefined` when it did not. */
+  readonly cancellationOf: (runId: string) => Promise<WorkflowRunCancellation | undefined>;
   /** The valid snapshots of `id`, whether or not they have run. */
   readonly snapshotsOf: (id: string) => Promise<readonly WorkflowSnapshot[]>;
   /** Record that an instance of this revision started at `at`. A revision with no snapshot is ignored. */
@@ -165,6 +185,27 @@ function parseSnapshot(text: string | null, id: string, workflowVersion: string)
   };
 }
 
+function parseCancellation(text: string | null): WorkflowRunCancellation | undefined {
+  if (text === null) return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (
+      isRecord(value) &&
+      value['schemaVersion'] === 1 &&
+      typeof value['runId'] === 'string' &&
+      typeof value['id'] === 'string' &&
+      typeof value['workflowVersion'] === 'string' &&
+      typeof value['reason'] === 'string' &&
+      typeof value['cancelledAt'] === 'string'
+    ) {
+      return value as unknown as WorkflowRunCancellation;
+    }
+  } catch {
+    // A record that is not JSON is not a cancellation.
+  }
+  return undefined;
+}
+
 export function createWorkflowSnapshotStore(
   options: WorkflowSnapshotStoreOptions,
 ): WorkflowSnapshotStore {
@@ -236,7 +277,22 @@ export function createWorkflowSnapshotStore(
         const named = splitKey(key);
         if (named !== undefined) found.add(named.id);
       }
+      for (const key of await store.list(WORKFLOW_CANCELLATION_KEY_PREFIX)) {
+        const cancellation = parseCancellation(await store.get(key));
+        if (cancellation !== undefined) found.add(cancellation.id);
+      }
       return [...found].toSorted();
+    },
+
+    async recordCancellation(cancellation) {
+      await store.set(
+        `${WORKFLOW_CANCELLATION_KEY_PREFIX}${cancellation.runId}`,
+        JSON.stringify(cancellation),
+      );
+    },
+
+    async cancellationOf(runId) {
+      return parseCancellation(await store.get(`${WORKFLOW_CANCELLATION_KEY_PREFIX}${runId}`));
     },
 
     snapshotsOf: validSnapshotsOf,
@@ -307,6 +363,13 @@ export function createWorkflowSnapshotStore(
           if (!(own < cutoff)) continue;
           await store.delete(key);
           removed += 1;
+        }
+        // A cancellation record lives as long as the snapshots do: it keeps the run readable.
+        for (const key of await store.list(WORKFLOW_CANCELLATION_KEY_PREFIX)) {
+          const cancellation = parseCancellation(await store.get(key));
+          if (cancellation === undefined || Date.parse(cancellation.cancelledAt) < cutoff) {
+            await store.delete(key);
+          }
         }
         return removed;
       });

@@ -101,7 +101,7 @@ Bureau stores each revision in its database under `bureau-workflow-snapshot:v1:<
 
 ### At startup
 
-Before the engine recovers, Bureau asks the engine which `workflowVersion`s still have an instance in flight (`pending`, `running`, or `suspended`) for every workflow it has a file or a snapshot for. It registers every ready file's current document as `active`, and each in-flight version that is no longer the file's as `retained` from its snapshot. So an instance parked in a `sleep` or an `await-signal` whose file was edited or deleted resumes on its original revision after a restart. A version with no stored snapshot cannot be resumed; Bureau reports it through the diagnostic sink and carries on.
+Before the engine recovers, Bureau asks the engine which `workflowVersion`s still have an instance in flight (`pending`, `running`, or `suspended`) for every workflow it has a file or a snapshot for. It registers every ready file's current document as `active`, and each in-flight version that is no longer the file's as `retained` from its snapshot. So an instance parked in a `sleep` or an `await-signal` whose file was edited or deleted resumes on its original revision after a restart. An instance Bureau cannot register a revision for is cancelled before the engine recovers, because the engine refuses to recover anything while an in-flight instance of an unregistered type remains, and one such instance would strand every durable run in the store on every boot. That is an instance pinned to a revision whose snapshot is not stored, is not valid, or no longer validates against this Bureau, or whose workflow's name is now a code-defined workflow's (an instance of that code workflow itself is never touched). Each cancellation is reported through the diagnostic sink as an error naming the instance, the workflow, and the reason. The reason is stored (`bureau-workflow-cancelled-run:v1:<runId>`), so `bureau.workflows.runs.get` returns the instance as `cancelled` with it in `error`, and `runs.list` still lists it. Bureau can only do this for a workflow it still holds a trace of: a file, a stored revision of any version, or an earlier cancellation. An instance of a type Bureau has no trace of is left to the engine, whose recovery refuses it until it is removed or the type is registered.
 
 ### Retention
 
@@ -110,7 +110,7 @@ Two steps, deliberately separate:
 - **Leaving the `retained` set.** Nothing is stored to release. A revision is registered as `retained` at a startup only while the engine still has an instance in flight on it; once none is, the next startup does not register it.
 - **Deleting the stored snapshot.** The durable maintenance pass deletes a snapshot that is not the current file's revision, has no instance in flight, and whose last activity (its registration, its last start, and the latest update of any of its instances in the engine) is older than `BureauOptions.taskRetention` (default 30 days; `'forever'` deletes nothing). A record that cannot be read is deleted.
 
-`BureauOptions.taskRetention` is therefore the window in which `bureau.workflows.revisions(id)` can list a revision of a deleted workflow.
+`BureauOptions.taskRetention` is therefore the window in which `bureau.workflows.revisions(id)` can list a revision of a deleted workflow, and in which `runs.list` and `runs.get` can still answer for the instances of a workflow whose file and snapshots are gone. A cancellation record is deleted by the same pass once it is older than the window.
 
 ## The schedule
 
