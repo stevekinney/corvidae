@@ -7,6 +7,7 @@
 import { Engine, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { describe, expect, it, spyOn } from 'bun:test';
 
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { reattachDurableActiveRun } from './active-run-reattach';
 import { createCheckpointStore } from './checkpoint-store';
 import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';
@@ -40,7 +41,7 @@ describe('reattaching a run with an old-shape checkpoint (COR-713)', () => {
         runId,
         handle: { id: runId, result: () => Promise.reject(timeout) },
       });
-      await expect(run.result).rejects.toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+      expect(await rejectionOf(run.result)).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
     } finally {
       context.engine[Symbol.dispose]();
     }
@@ -61,7 +62,7 @@ describe('reattaching a run with an old-shape checkpoint (COR-713)', () => {
         },
       });
       run.abort();
-      await expect(run.result).rejects.toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+      expect(await rejectionOf(run.result)).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
     } finally {
       context.engine[Symbol.dispose]();
     }
