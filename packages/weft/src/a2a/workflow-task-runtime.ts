@@ -19,9 +19,18 @@
  * up. The record is in memory: a restart forgets it, and the persisted list is then
  * read as it stands.
  *
+ * Engine retention can purge a terminal workflow before the runtime has reconciled
+ * its outcome, for example while no handler runs. A task whose workflow then reads
+ * as `null` is settled as `FAILED`, with a status message saying the workflow record
+ * is gone, since the engine keeps no trace of a purged run's outcome. That is safe to
+ * conclude from a task record alone: the executor writes a task only after
+ * `engine.get` has returned its workflow, so a workflow still being started has no
+ * task record to settle, and its reads find no task.
+ *
  * @module a2a/workflow-task-runtime
  */
 
+import { type Task, TaskState, type TaskStatus } from '@a2a-js/sdk';
 import type { PushNotificationSender, User } from '@a2a-js/sdk/server';
 import { ServerCallContext } from '@a2a-js/sdk/server';
 
@@ -29,8 +38,21 @@ import type { Engine } from '../core/engine.ts';
 import type { SignalWaitingEvent } from '../core/events/signal-events.ts';
 import type { WorkflowState } from '../core/types/state.ts';
 import { type A2ACallerScope, callerScope } from './store-support.ts';
-import type { StoredWorkflowTask, TaskCommit, TaskEventLog, TaskOwner } from './task-event-log.ts';
-import { reconcileTask, type WorkflowResultArtifacts } from './workflow-task-projection.ts';
+import type {
+  StoredWorkflowTask,
+  TaskCommit,
+  TaskEventLog,
+  TaskMutation,
+  TaskOwner,
+} from './task-event-log.ts';
+import {
+  agentMessage,
+  isTerminalTaskState,
+  reconcileTask,
+  statusUpdateEvent,
+  withStatus,
+  type WorkflowResultArtifacts,
+} from './workflow-task-projection.ts';
 
 /** The engine events after which a workflow's task may read differently. */
 const RECONCILING_EVENTS = [
@@ -47,6 +69,22 @@ const RECONCILING_EVENTS = [
 ] as const;
 
 const SIGNAL_WAITING = 'signal:waiting';
+
+/** The status message of a task settled because its workflow was purged. */
+export const PURGED_WORKFLOW_MESSAGE =
+  'The workflow record is gone: the engine purged it before this task recorded its outcome.';
+
+/** The change that settles `task` once its workflow is purged, or `undefined` if it ended. */
+function settlePurgedTask(task: Task, timestamp: string): TaskMutation | undefined {
+  if (isTerminalTaskState(task.status?.state)) return undefined;
+  const status: TaskStatus = {
+    state: TaskState.TASK_STATE_FAILED,
+    message: agentMessage(task, PURGED_WORKFLOW_MESSAGE),
+    timestamp,
+  };
+  const next = withStatus(task, status);
+  return { task: next, events: [statusUpdateEvent(next, status)] };
+}
 
 /** The owner record a caller's tasks carry. */
 export function taskOwnerOf(context: ServerCallContext): TaskOwner {
@@ -194,10 +232,17 @@ export function createWorkflowTaskRuntime(
     return serialize(`${scope.tenant}\0${scope.owner}\0${taskId}`, async () => {
       const readAt = recorded;
       const state = await engine.get(taskId);
-      if (state === null) return log.read(scope, taskId);
+      const timestamp = new Date(now()).toISOString();
+      if (state === null) {
+        trackers.delete(taskId);
+        const commit = await log.commit(scope, taskId, (stored) =>
+          settlePurgedTask(stored.task, timestamp),
+        );
+        await publish(commit, context);
+        return commit?.stored;
+      }
       forgetDroppedWaits(state, readAt);
       const waits = liveWaits(state);
-      const timestamp = new Date(now()).toISOString();
       const commit = await log.commit(scope, taskId, (stored) =>
         reconcileTask(stored.task, state, waits, timestamp, artifactsOf),
       );
