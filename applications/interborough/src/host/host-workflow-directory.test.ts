@@ -61,6 +61,25 @@ describe('the host’s workflow directory', () => {
     );
   });
 
+  test('is where /host/paths says a file is written, so the page can show its path', async () => {
+    const { host, home } = await startAt();
+    const response = await fetch(new URL('/host/paths', host.url));
+    expect(response.status).toBe(200);
+    const paths = (await response.json()) as { workflowDirectory: string };
+    expect(paths.workflowDirectory).toBe(join(home, 'workflows'));
+    await host.bureau.workflows?.create('digest', {
+      agent: 'assistant',
+      trigger: { kind: 'schedule', spec: '1h' },
+      steps: [
+        { kind: 'activity', handler: 'agent', input: { agent: 'assistant', message: 'Hello' } },
+      ],
+    });
+    // The path the page shows is a file that exists.
+    expect(
+      JSON.parse(await readFile(join(paths.workflowDirectory, 'digest.json'), 'utf8')).name,
+    ).toBe('digest');
+  });
+
   test('loads a file at start, owns it as the deployment’s owner, and runs its agent step', async () => {
     const { host } = await startAt({ 'digest.json': DIGEST });
     expect(host.bureau.workflows?.list()).toMatchObject([

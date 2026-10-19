@@ -1,8 +1,17 @@
 import type { HttpClient } from '@lostgradient/weft';
+import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
+import { queryKeys } from '../lib/query.ts';
+import {
+  CATALOG_STALE_TIME_MS,
+  loadCatalog,
+  orNotFound,
+  resolveWorkflow,
+} from '../lib/workflow-catalog.ts';
+import { getWorkflowFile } from '../lib/workflow-files.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -26,7 +35,7 @@ export type ViewProbeParameters = Readonly<Record<string, string>>;
  * The one request a view makes before it shows its content, to learn whether the view is loading,
  * empty, failing, or forbidden. A probe asks for the least that settles the question.
  */
-export type ViewProbe = (client: HttpClient) => Promise<ViewProbeResult>;
+export type ViewProbe = (client: HttpClient, queryClient: QueryClient) => Promise<ViewProbeResult>;
 
 /** The Bureau's health route, mounted beside the engine API (`src/host/host.ts`). */
 const BUREAU_HEALTH_PATH = '/bureau/v1/health';
@@ -59,6 +68,47 @@ async function probeEditableAgent(id: string): Promise<ViewProbeResult> {
   const agent = await getAgentDefinition(id);
   if (agent.source === 'code') {
     throw new ViewProbeFault(`The agent "${id}" is defined in code, so it cannot be edited.`, 404);
+  }
+  return { empty: false };
+}
+
+/**
+ * The list: empty when neither the engine nor the Bureau has a workflow to list. The load goes
+ * through the query cache under the list's own key, so the page that follows takes it instead of
+ * reading every page of both services again.
+ */
+async function probeWorkflowList(
+  client: HttpClient,
+  queryClient: QueryClient,
+): Promise<ViewProbeResult> {
+  const rows = await queryClient.fetchQuery({
+    queryKey: queryKeys.workflowCatalog.list(),
+    queryFn: ({ signal }) => loadCatalog(client, { signal }),
+    staleTime: CATALOG_STALE_TIME_MS,
+    // The frame's probe never retries on its own, and the load it shares does not either.
+    retry: false,
+  });
+  return { empty: rows.length === 0 };
+}
+
+/**
+ * One workflow type's page, its runs, or its editor. The page and the runs need the type to exist,
+ * by the rule `resolveWorkflow` states; the editor needs a file, because a code-defined type has
+ * none to edit. The runs are empty when the engine lists none of that type's.
+ */
+async function probeWorkflowType(
+  client: HttpClient,
+  type: string,
+  pattern: string | undefined,
+): Promise<ViewProbeResult> {
+  if (pattern === '/workflows/:type/edit') {
+    if ((await orNotFound(getWorkflowFile(type))) === undefined) throw notFound('workflow');
+    return { empty: false };
+  }
+  if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
+  if (pattern === '/workflows/:type/runs') {
+    const page = await client.list({ type, limit: 1 });
+    return { empty: page.items.length === 0 };
   }
   return { empty: false };
 }
@@ -112,11 +162,12 @@ export function probeFor(
       const id = parameters['id'];
       return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
     }
-    case 'workflows':
-      return async (client) => {
-        await client.operations['weft.workflows.definitions.list']({});
-        return { empty: true };
-      };
+    case 'workflows': {
+      const type = parameters['type'];
+      return type === undefined
+        ? probeWorkflowList
+        : (client) => probeWorkflowType(client, type, pattern);
+    }
     case 'runs':
       if (parameters['id'] !== undefined) return undefined;
       return async (client) => {

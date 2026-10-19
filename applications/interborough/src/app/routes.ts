@@ -27,6 +27,7 @@ export interface RouteDefinition {
 
 const placeholder = () => import('../routes/placeholder/index.svelte');
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
+const workflowArea = () => import('../routes/workflow-definitions/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
@@ -49,9 +50,12 @@ export const routes: readonly RouteDefinition[] = [
     view: 'agents',
     load: () => import('../routes/agents/agent-detail.svelte'),
   },
-  // `/workflows` is the catalog of workflow definitions. A run of one lives under `/runs`.
-  { pattern: '/workflows', view: 'workflows', load: placeholder },
-  { pattern: '/workflows/:type', view: 'workflows', load: placeholder },
+  // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
+  // its editor. A run lives under `/runs`. One component dispatches on the pattern.
+  { pattern: '/workflows', view: 'workflows', load: workflowArea },
+  { pattern: '/workflows/:type', view: 'workflows', load: workflowArea },
+  { pattern: '/workflows/:type/runs', view: 'workflows', load: workflowArea },
+  { pattern: '/workflows/:type/edit', view: 'workflows', load: workflowArea },
   { pattern: '/runs', view: 'runs', load: () => import('../routes/workflows/index.svelte') },
   { pattern: '/runs/:id', view: 'runs', load: () => import('../routes/workflows/index.svelte') },
   {

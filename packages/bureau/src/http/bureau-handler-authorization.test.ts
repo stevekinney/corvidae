@@ -17,6 +17,11 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
+import {
+  CHECK,
+  createCheckValidator,
+  hangUntilAborted,
+} from '../testing/goal-fixtures.test-support';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
 import {
@@ -120,8 +125,26 @@ const AGENT_DEFINITION_PARAMETERS = {
   definition: { model: 'nobody/none', instructions: '' },
 } as const;
 
+/**
+ * What the schedule operations need beside an identifier: an agent the catalog lacks, so a probe
+ * of `bureau.schedules.create` is answered `NotFound` and can never create a schedule, and the
+ * cadence `bureau.schedules.update` needs.
+ */
+const SCHEDULE_PARAMETERS = { agentName: 'nobody', spec: '1h', input: 'x' } as const;
+
+/** The same for goals: an agent the catalog lacks, so `bureau.goals.create` can never create one. */
+const GOAL_PARAMETERS = {
+  agentName: 'nobody',
+  prompt: 'x',
+  identity: { name: 'goal', version: '1' },
+  validator: { name: 'check', version: '1' },
+  bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
+} as const;
+
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
+  if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
+  if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
   return operation.name.startsWith('bureau.agents.')
     ? AGENT_DEFINITION_PARAMETERS
     : WORKFLOW_PARAMETERS;
@@ -216,7 +239,12 @@ async function openBureau(id = 'authorization-bureau') {
   return createBureau<AgentDefinitions>({
     id,
     // One code-defined agent, so an agent operation has a real identifier to be probed with.
-    agents: { support: createAgent({ name: 'support', generate: parkingGenerate() }) },
+    agents: {
+      support: createAgent({ name: 'support', generate: parkingGenerate() }),
+      // The agent of bob's goal. It never answers, so it parks no review of its own.
+      worker: createAgent({ name: 'worker', generate: hangUntilAborted }),
+    },
+    validators: [createCheckValidator()],
     generate: parkingGenerate(),
     toolbox: createToolbox([]),
     storage: { type: 'memory' },
@@ -246,14 +274,40 @@ async function withTwoOwners<T>(
     handler: Handler;
     alice: Awaited<ReturnType<typeof parkRun>>;
     bob: Awaited<ReturnType<typeof parkRun>>;
+    /** Bob's schedule and goal, so an id that names a real resource can be probed. */
+    bobScheduleId: string;
+    bobGoalRunId: string;
   }) => Promise<T>,
 ): Promise<T> {
   const bureau = await openBureau();
   try {
     const alice = await parkRun(bureau, 'api-key:alice', `alice ${SENTINEL}`);
     const bob = await parkRun(bureau, 'api-key:bob', `bob ${SENTINEL}`);
+    const schedule = await bureau.createSchedule({
+      agentName: 'support',
+      spec: '1h',
+      input: 'tick',
+      principal: 'api-key:bob',
+    });
+    const bobGoalRunId = 'goal-of-bob';
+    await bureau.goals.create({
+      agentName: 'worker',
+      prompt: 'work',
+      identity: { name: 'goal', version: '1' },
+      validator: CHECK,
+      bounds: { maximumAttempts: 1, maximumTotalSteps: 10 },
+      principal: 'api-key:bob',
+      goalRunId: bobGoalRunId,
+    });
     const handler = createBureauHandler(bureau, { authentication: authentication() });
-    return await body({ bureau, handler, alice, bob });
+    return await body({
+      bureau,
+      handler,
+      alice,
+      bob,
+      bobScheduleId: schedule!.id,
+      bobGoalRunId,
+    });
   } finally {
     await bureau.dispose();
   }
@@ -573,6 +627,8 @@ describe('credentials', () => {
           id: 'x',
           runId: 'x',
           taskId: 'x',
+          scheduleId: 'x',
+          goalRunId: 'x',
           contextId: 'x',
           messageId: 'x',
           bureauId: bureau.id,
@@ -683,11 +739,13 @@ describe('identifiers grant nothing', () => {
   }
 
   it('answers real and random ids identically to a non-owner without operator scopes', async () => {
-    await withTwoOwners(async ({ bureau, handler, bob }) => {
+    await withTwoOwners(async ({ bureau, handler, bob, bobScheduleId, bobGoalRunId }) => {
       const realIds: Record<string, string> = {
         id: bob.reviewId,
         runId: bob.run.id,
         taskId: bob.run.id,
+        scheduleId: bobScheduleId,
+        goalRunId: bobGoalRunId,
         contextId: bob.run.sessionId,
         bureauId: bureau.id,
       };
@@ -724,7 +782,10 @@ describe('identifiers grant nothing', () => {
           // for a malformed request, and not a success.
           // A list filtered by another owner's id leaves that owner's rows out: it answers
           // an empty page, which the identical-text check above shows for a random id too.
-          const refused = operation.name === 'bureau.tasks.list' ? [200] : [403, 404];
+          // So does the audit query, which filters by a resource and shows the caller only its own.
+          const filtersByResource =
+            operation.name === 'bureau.tasks.list' || operation.name === 'bureau.audit.query';
+          const refused = filtersByResource ? [200] : [403, 404];
           expect([operation.name, parameter, refused.includes(real.status)]).toEqual([
             operation.name,
             parameter,
@@ -732,6 +793,9 @@ describe('identifiers grant nothing', () => {
           ]);
           if (operation.name === 'bureau.tasks.list') {
             expect(real.text).toContain('"tasks":[]');
+          }
+          if (operation.name === 'bureau.audit.query') {
+            expect(real.text).toContain('"records":[]');
           }
           probed += 1;
         }
@@ -841,6 +905,8 @@ describe('transcripts stay inside the Bureau', () => {
           id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
+          scheduleId: 'schedule-none',
+          goalRunId: 'goal-none',
           // Not alice's own context for the one operation that would remove what the rest reads.
           contextId:
             operation.name === 'bureau.contexts.delete' ? 'no-such-context' : alice.run.sessionId,

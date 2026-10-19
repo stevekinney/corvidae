@@ -636,6 +636,7 @@ describe('LocalClient delegation surface', () => {
       nextFireAt: 2,
       missedFireCount: 0,
       skippedCount: 0,
+      revision: 1,
       queuedRuns: [],
     };
 

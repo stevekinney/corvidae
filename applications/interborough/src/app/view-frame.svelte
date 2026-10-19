@@ -20,11 +20,11 @@
 
   import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { Inbox, Lock, SearchX } from '@lucide/svelte';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
   import { classifyFault } from '../lib/faults.ts';
-  import { queryKeys } from '../lib/query.ts';
+  import { queryKeys, workflowViewInstance } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
@@ -43,6 +43,7 @@
   let { view, parameters = {}, pattern, children }: ViewFrameProps = $props();
 
   const client = getClient();
+  const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
 
   // A frame belongs to one route: the outlet mounts a new one when the path changes, so the
@@ -55,6 +56,7 @@
   }));
   const copy = VIEW_COPY[initial.view];
   const notFoundCopy = copy.notFoundByPattern?.[initial.pattern ?? ''] ?? copy.notFound;
+  const emptyCopy = copy.emptyByPattern?.[initial.pattern ?? ''] ?? copy.empty;
   const definition = VIEWS[initial.view];
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
@@ -69,9 +71,13 @@
         initial.view,
         initial.parameters['id'] ??
           initial.parameters['sessionId'] ??
+          // A type's page, runs, and editor ask different questions about one type.
+          (initial.parameters['type'] === undefined
+            ? null
+            : workflowViewInstance(initial.pattern ?? '', initial.parameters['type'])) ??
           (initial.pattern === '/chat/new' ? `new:${initial.search.get('agent') ?? ''}` : null),
       ),
-      queryFn: () => (probe ? probe(client) : Promise.resolve({ empty: false })),
+      queryFn: () => (probe ? probe(client, queryClient) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
       staleTime: 5_000,
@@ -104,7 +110,7 @@
           : 'error';
       }
       if (probeQuery.isPending) return 'loading';
-      return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
+      return probeQuery.data.empty && emptyCopy !== undefined ? 'empty' : 'ready';
     },
   );
 
@@ -151,8 +157,7 @@
       <Skeleton height="1.5rem" width="40%" />
       <Skeleton height="10rem" />
     </div>
-  {:else if state === 'empty' && copy.empty}
-    {@const emptyCopy = copy.empty}
+  {:else if state === 'empty' && emptyCopy}
     <EmptyState title={emptyCopy.title} description={emptyCopy.description} headingLevel={1}>
       {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
       {#snippet action()}

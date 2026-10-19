@@ -71,6 +71,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     updatedAt: FIXED_NOW,
     missedFireCount: 0,
     skippedCount: 0,
+    revision: 1,
     nextFireAt: null,
     queuedRuns: [],
     ...overrides,
@@ -215,7 +216,7 @@ const MAIN_VALUE_DIGESTS: Record<string, string> = {
   [KEYS.scheduleRunBySchedule(SCHEDULE_ID, WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.terminalCleanupNeeded(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
   [KEYS.workflowHasServices(WORKFLOW_ID)]: EMPTY_VALUE_DIGEST,
-  [KEYS.schedule(SCHEDULE_ID)]: 'eb320cee97dea7f255efc4ebdf98392157748fe5f676c2283a72b6822a061b6b',
+  [KEYS.schedule(SCHEDULE_ID)]: '5285574ad3d8c04f61aea5846088bb7f3949d11a8d81ffbbbdc67558c6b2cfaf',
   // Generation 1, as an 8-byte big-endian counter.
   [KEYS.workflowGeneration(WORKFLOW_ID)]:
     'cd2662154e6d76b2b2b92e70c0cac3ccf534f9b74eb5b89819ec509083d00a50',

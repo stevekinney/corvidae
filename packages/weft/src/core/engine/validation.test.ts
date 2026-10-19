@@ -716,6 +716,7 @@ describe('engine validation helpers', () => {
         skippedCount: 0,
         queuedRuns: [{ workflowId: 'queued-run', queuedAt: 2, occurrence: 3 }],
         jitterMs: 30_000,
+        revision: 0,
       } satisfies Pick<
         ScheduleState,
         | 'backfill'
@@ -729,6 +730,7 @@ describe('engine validation helpers', () => {
         | 'skippedCount'
         | 'queuedRuns'
         | 'jitterMs'
+        | 'revision'
       >);
       expect(decodeScheduleRuntimeFields(createScheduleRecord(), 'schedule-id')).toMatchObject({
         missedFireCount: 0,

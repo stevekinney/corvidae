@@ -1,8 +1,10 @@
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 
 import type { WorkflowFinalizerStatus, WorkflowState } from '@lostgradient/weft';
 
+import { router } from '../../../lib/router.svelte.ts';
 import type { WorkflowCatalogActivePointerLike } from '../../../lib/workflow-revision.ts';
 import Header from './header.svelte';
 import type { WorkflowContextualAction } from './workflow-status.ts';
@@ -61,6 +63,21 @@ describe('WorkflowDetailHeader', () => {
     expect(getByText('order-fulfillment')).not.toBeNull();
     expect(getByText('v2.4.1')).not.toBeNull();
     expect(getByText('Running')).not.toBeNull();
+  });
+
+  test('links the workflow type back to its page, and leaves a modified click to the browser', async () => {
+    if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+    window.happyDOM.setURL('http://localhost/');
+    const { getByRole } = renderHeader();
+
+    const link = getByRole('link', { name: 'order-fulfillment' });
+    expect(link.getAttribute('href')).toBe('/workflows/order-fulfillment');
+    // The type is still the page's heading, so its name and level are as they were.
+    expect(link.closest('h1')).not.toBeNull();
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).not.toBe('/workflows/order-fulfillment');
+    link.click();
+    expect(router.pathname).toBe('/workflows/order-fulfillment');
   });
 
   test('renders a distinct revision badge when the workflow has one', async () => {

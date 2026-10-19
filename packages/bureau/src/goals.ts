@@ -483,6 +483,12 @@ export function createBureauGoals<TName extends string = string>(
     const options: BureauGoalCancelOptions = {
       ...(supplied['principal'] === undefined ? {} : { principal: supplied['principal'] }),
       ...(typeof supplied['reason'] === 'string' ? { reason: supplied['reason'] } : {}),
+      // Untyped like the rest: a revision that is not a non-negative integer names none.
+      ...(typeof supplied['expectedRevision'] === 'number' &&
+      Number.isSafeInteger(supplied['expectedRevision']) &&
+      supplied['expectedRevision'] >= 0
+        ? { expectedRevision: supplied['expectedRevision'] }
+        : {}),
     };
     const record = await authorized(goalRunId, options);
     return record === undefined

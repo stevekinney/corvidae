@@ -1,12 +1,17 @@
 /**
  * The route table: Chat is the home screen, sessions live under `/chat/:sessionId`, runs moved
- * from `/workflows` to `/runs`, and `/workflows` is free for the catalog of definitions.
+ * from `/workflows` to `/runs`, and `/workflows` is the catalog of definitions.
  */
 import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
 import { matchRoute, workflowDetailPath } from '../lib/router.svelte.ts';
+import {
+  workflowEditPath,
+  workflowRunsPath,
+  workflowTypePath,
+} from '../lib/workflow-type-paths.ts';
 import { routes } from './routes.ts';
 import { VIEW_NAMES } from './views.ts';
 
@@ -83,22 +88,40 @@ describe('the route table', () => {
     }
   });
 
-  test('keeps /workflows free for the catalog, as a placeholder and not the runs list', async () => {
+  test('serves the Workflows area at /workflows and under /workflows/:type, apart from the runs list', async () => {
     const runsComponent = await defaultOf(import('../routes/workflows/index.svelte'));
-    const placeholder = await defaultOf(import('../routes/placeholder/index.svelte'));
+    const area = await defaultOf(import('../routes/workflow-definitions/index.svelte'));
     expect(matchRoute('/workflows')?.pattern).toBe('/workflows');
     expect(matchRoute('/workflows/invoice')).toEqual({
       pattern: '/workflows/:type',
       params: { type: 'invoice' },
     });
-    for (const pattern of ['/workflows', '/workflows/:type']) {
+    expect(matchRoute('/workflows/invoice/runs')).toEqual({
+      pattern: '/workflows/:type/runs',
+      params: { type: 'invoice' },
+    });
+    expect(matchRoute('/workflows/invoice/edit')).toEqual({
+      pattern: '/workflows/:type/edit',
+      params: { type: 'invoice' },
+    });
+    for (const pattern of [
+      '/workflows',
+      '/workflows/:type',
+      '/workflows/:type/runs',
+      '/workflows/:type/edit',
+    ]) {
       const loaded = await componentOf(pattern);
-      expect(loaded, pattern).toBe(placeholder);
+      expect(loaded, pattern).toBe(area);
       expect(loaded, pattern).not.toBe(runsComponent);
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
         'workflows',
       );
     }
+  });
+
+  test('never reads a type’s runs or editor as a type, because a path segment is one name', () => {
+    expect(matchRoute('/workflows/a/b/c')).toBeNull();
+    expect(matchRoute('/workflows/runs')?.pattern).toBe('/workflows/:type');
   });
 
   test('names the routes the sidebar links to, and no route the old navigation had', () => {
@@ -149,6 +172,16 @@ describe('the agent editor’s routes', () => {
   });
 });
 
+describe('a link to a workflow type', () => {
+  test('is built in one module, so no other file spells /workflows/ for a run', () => {
+    expect(workflowTypePath('order-processing')).toBe('/workflows/order-processing');
+    expect(workflowTypePath('a/b')).toBe('/workflows/a%2Fb');
+    expect(workflowRunsPath('order-processing')).toBe('/workflows/order-processing/runs');
+    expect(workflowEditPath('order-processing')).toBe('/workflows/order-processing/edit');
+    expect(matchRoute(workflowRunsPath('a/b'))?.params).toEqual({ type: 'a/b' });
+  });
+});
+
 describe('a link to a run', () => {
   test('starts with /runs/', () => {
     expect(workflowDetailPath('run-1')).toBe('/runs/run-1');
@@ -160,10 +193,13 @@ describe('a link to a run', () => {
     const offenders: string[] = [];
     for await (const path of new Glob('**/*.{svelte,ts}').scan(sourceRoot)) {
       if (/\.test(?:-support|-harness)?\.|(^|\/)host\//.test(path)) continue;
-      if (path === 'app/routes.ts') continue;
+      // The one module that builds a workflow type's address, which is never a run's.
+      if (path === 'app/routes.ts' || path === 'lib/workflow-type-paths.ts') continue;
       const text = await Bun.file(join(sourceRoot, path)).text();
-      // A quoted path, or a template literal, that begins `/workflows/` or `/workflows?`.
-      if (/['"`]\/workflows[/?]/.test(text)) offenders.push(path);
+      // A quoted path, or a template literal, that begins `/workflows/` or `/workflows?`. A route's
+      // pattern, which names a workflow type as `:type`, is how the Workflows area is addressed and
+      // is not a link to a run.
+      if (/['"`]\/workflows[/?](?!:type)/.test(text)) offenders.push(path);
     }
     expect(offenders).toEqual([]);
   });
