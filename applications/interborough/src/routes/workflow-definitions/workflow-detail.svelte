@@ -42,6 +42,7 @@
   import { workflowEditPath, workflowRunsPath } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
+    isApplyFailure,
     parseWorkflowText,
     pauseWorkflowFile,
     resumeWorkflowFile,
@@ -101,6 +102,8 @@
   /** A write failed for a reason the person can act on, in the Bureau's words. */
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
   let confirmingDelete = $state(false);
+  /** The Bureau changed the file and the engine could not follow, so what is on disk is the change. */
+  let unapplied = $state(false);
 
   /** A file that is gone, or never was: the frame owns that state, so it is asked to look again. */
   function workflowIsGone(): void {
@@ -143,13 +146,30 @@
     void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.schedules(type) });
   }
 
+  /** The write reached the file: take what is on disk, and say the engine has not followed yet. */
+  async function adoptWhatIsOnDisk(): Promise<void> {
+    unapplied = true;
+    await queryClient.invalidateQueries({ queryKey: detailKey });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
+  }
+
+  /** Sorts a refused write: one the Bureau made and the engine could not apply is not a failure. */
+  function writeFailed(error: unknown, title: string): void {
+    if (isApplyFailure(error)) {
+      void adoptWhatIsOnDisk();
+      return;
+    }
+    failWith(agentFaultOf(error), title);
+  }
+
   const pause = createMutation(() => ({
     mutationFn: (hash: string) => pauseWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
+      unapplied = false;
     },
     onSuccess: (result) => adopt(result, true),
-    onError: (error) => failWith(agentFaultOf(error), copy.pauseFailed),
+    onError: (error) => writeFailed(error, copy.pauseFailed),
   }));
 
   const resume = createMutation(() => ({
@@ -158,7 +178,7 @@
       failure = null;
     },
     onSuccess: (result) => adopt(result, false),
-    onError: (error) => failWith(agentFaultOf(error), copy.resumeFailed),
+    onError: (error) => writeFailed(error, copy.resumeFailed),
   }));
 
   const removal = createMutation(() => ({
@@ -170,7 +190,7 @@
       router.navigate('/workflows');
       void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
     },
-    onError: (error) => failWith(agentFaultOf(error), copy.deleteFailed),
+    onError: (error) => writeFailed(error, copy.deleteFailed),
   }));
 
   const busy = $derived(pause.isPending || resume.isPending || removal.isPending);
@@ -189,9 +209,16 @@
       return;
     }
     stale = false;
+    unapplied = false;
     failure = null;
     if (result.data === null) workflowIsGone();
   }
+
+  // Both services no longer know the type: it was deleted after the frame looked. That is the
+  // frame's not-found state, so it is asked to look again.
+  $effect(() => {
+    if (resolution.data === null) untrack(workflowIsGone);
+  });
 
   function go(event: MouseEvent, target: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -277,6 +304,13 @@
     </Alert>
   {/if}
 
+  {#if unapplied}
+    <Alert variant="warning">
+      <p class="weft-workflow-type__alert-title">{copy.applyFailed.title}</p>
+      <p class="weft-workflow-type__alert-body">{copy.applyFailed.description}</p>
+    </Alert>
+  {/if}
+
   {#if failure !== null}
     <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
       <p class="weft-workflow-type__alert-title">{failure.title}</p>
@@ -290,12 +324,12 @@
       <p class="weft-workflow-type__alert-body">{copy.loadFailed.description}</p>
       <Button variant="secondary" onclick={() => void resolution.refetch()}>{RETRY_LABEL}</Button>
     </Alert>
-  {:else if resolved === undefined}
+  {:else if resolution.isPending}
     <div role="status" aria-busy="true" aria-label={type}>
       <Skeleton height="1.5rem" width="40%" />
       <Skeleton height="12rem" />
     </div>
-  {:else}
+  {:else if resolved !== undefined}
     {#if file !== undefined}
       <section class="weft-workflow-type__section" aria-label={copy.fileLabel}>
         <dl class="weft-workflow-facts">

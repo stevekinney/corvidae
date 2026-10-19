@@ -212,6 +212,17 @@ describe('which service a type belongs to', () => {
     expect(await resolveWorkflow(stub.client, 'deleted-yesterday')).toBeUndefined();
   });
 
+  test('is not found for a name the engine refuses as malformed, as the Bureau does', async () => {
+    stub = installWorkflowWorld(world());
+    stub.on('weft.workflows.definitions.get', () => {
+      throw workflowFaults.invalidParams();
+    });
+    stub.on('bureau.workflows.get', () => {
+      throw workflowFaults.notFound('workflow foo.bar');
+    });
+    expect(await resolveWorkflow(stub.client, 'foo.bar')).toBeUndefined();
+  });
+
   test('is a failure, not a missing type, when the engine breaks', async () => {
     stub = installWorkflowWorld(world());
     stub.on('weft.workflows.definitions.get', () => {

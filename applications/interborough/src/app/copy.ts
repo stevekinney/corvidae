@@ -218,6 +218,15 @@ export const WORKFLOW_COPY = {
       'Its file was edited or replaced after this page loaded, so nothing was changed. Reloading shows what is on disk and discards your unsaved edits.',
     action: 'Reload from disk',
   },
+  /**
+   * The Bureau replaced the file and then the engine or the schedule could not follow
+   * (`workflow-apply-failed`). The change is on disk, so it is not a failed write.
+   */
+  applyFailed: {
+    title: 'Saved, but the engine could not apply it yet',
+    description:
+      'The file on disk has the change. The engine did not follow it, and applies the file again by itself. This page shows what is on disk.',
+  },
   pauseFailed: 'The workflow was not paused',
   resumeFailed: 'The workflow was not resumed',
   deleteFailed: 'The workflow was not deleted',

@@ -70,13 +70,26 @@ export async function orNotFound<T>(read: Promise<T>): Promise<T | undefined> {
   }
 }
 
-/** One workflow type with its contract, or `undefined` when the engine has no such type. */
-export function getDefinition(
+/**
+ * One workflow type with its contract, or `undefined` when the engine has no such type. A name the
+ * engine refuses before it looks (one with a dot in it) names no type either, as the Bureau
+ * answers for it: it is missing, not a failure.
+ */
+export async function getDefinition(
   client: HttpClient,
   name: string,
 ): Promise<DefinitionDetail | undefined> {
-  return orNotFound(client.operations['weft.workflows.definitions.get']({ name }));
+  try {
+    return await client.operations['weft.workflows.definitions.get']({ name });
+  } catch (error) {
+    const kind = classifyFault(error)?.kind;
+    if (kind === 'not-found' || kind === 'invalid') return undefined;
+    throw error;
+  }
 }
+
+/** How long a load of the list stays fresh, so the view frame's probe and the page share one. */
+export const CATALOG_STALE_TIME_MS = 5_000;
 
 /** One row of the list: a workflow type, with the parts of each service that know it. */
 export type CatalogRow = {

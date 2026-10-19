@@ -20,7 +20,7 @@
 
   import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { Inbox, Lock, SearchX } from '@lucide/svelte';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
   import { classifyFault } from '../lib/faults.ts';
@@ -43,6 +43,7 @@
   let { view, parameters = {}, pattern, children }: ViewFrameProps = $props();
 
   const client = getClient();
+  const queryClient = useQueryClient();
   const principalStore = getPrincipalStore();
 
   // A frame belongs to one route: the outlet mounts a new one when the path changes, so the
@@ -76,7 +77,7 @@
             : workflowViewInstance(initial.pattern ?? '', initial.parameters['type'])) ??
           (initial.pattern === '/chat/new' ? `new:${initial.search.get('agent') ?? ''}` : null),
       ),
-      queryFn: () => (probe ? probe(client) : Promise.resolve({ empty: false })),
+      queryFn: () => (probe ? probe(client, queryClient) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
       staleTime: 5_000,

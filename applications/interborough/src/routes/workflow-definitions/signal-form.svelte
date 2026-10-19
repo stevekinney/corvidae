@@ -7,7 +7,7 @@
    * The name starts as the workflow's trigger's signal name, or else the first signal a step waits
    * for. The payload is JSON, and empty sends none.
    */
-  import { Button, Input, Textarea } from '@lostgradient/cinder';
+  import { Alert, Button, Input, Textarea } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -33,11 +33,17 @@
   let payload = $state('');
   let payloadError = $state('');
   let result = $state<SignalResult | undefined>();
+  /** Why the last send failed, in the Bureau's words, beside the form. */
+  let failure = $state('');
 
   const send = createMutation(() => ({
     mutationFn: (input: { name: string; payload?: unknown }) => signalWorkflows(input),
     onMutate: () => {
       result = undefined;
+      failure = '';
+    },
+    onError: (error) => {
+      failure = error instanceof Error ? error.message : copy.failed;
     },
     onSuccess: (answer) => {
       result = answer;
@@ -92,6 +98,12 @@
       <Button type="submit" variant="primary" disabled={!canSend}>{copy.sendAction}</Button>
     </div>
   </form>
+  {#if failure !== ''}
+    <Alert variant="danger">
+      <p class="weft-workflow-signal__failure-title">{copy.failed}</p>
+      <p class="weft-workflow-signal__failure-message">{failure}</p>
+    </Alert>
+  {/if}
   {#if result !== undefined}
     <p class="weft-workflow-signal__result" role="status" aria-label={copy.resultLabel}>
       {copy.result(result.started.length, result.delivered.length)}
@@ -117,6 +129,15 @@
     flex-direction: column;
     gap: 12px;
     max-width: 40rem;
+  }
+
+  .weft-workflow-signal__failure-title,
+  .weft-workflow-signal__failure-message {
+    margin: 0;
+  }
+
+  .weft-workflow-signal__failure-title {
+    font-weight: 600;
   }
 
   .weft-workflow-signal__result {

@@ -339,3 +339,60 @@ describe('a read or a write that fails', () => {
     expect(root.querySelector('textarea')).toBeNull();
   });
 });
+
+describe('a save the Bureau made and the engine could not apply', () => {
+  test('is shown as saved but not yet applied, takes the new text and hash, and the next save names them', async () => {
+    const { container, findByText, getByRole } = open('/workflows/digest/edit');
+    const root = await ready(container);
+    let calls = 0;
+    stub?.on('bureau.workflows.update', (params) => {
+      calls += 1;
+      const file = stub?.file('digest');
+      if (file === undefined) throw new Error('The file is missing.');
+      if (calls === 1) {
+        // The Bureau replaced the file, and then the engine could not follow.
+        file.text = JSON.stringify({
+          name: 'digest',
+          trigger: { kind: 'schedule', spec: '3h' },
+          steps: [{ kind: 'sleep', duration: '1m' }],
+        });
+        file.hash = 'hash-written';
+        throw workflowFaults.applyFailed();
+      }
+      return { id: 'digest', hash: `after-${String(params['expectedHash'])}` };
+    });
+    await typeInto(
+      container,
+      '{"trigger":{"kind":"schedule","spec":"3h"},"steps":[{"kind":"sleep","duration":"1m"}]}',
+    );
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+
+    expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+    expect(root.dataset['condition']).toBe('unapplied');
+    expect(container.textContent).not.toContain(WORKFLOW_COPY.editor.saveFailed);
+    expect(router.pathname).toBe('/workflows/digest/edit');
+    // What is on disk is in the editor, and a retry names its hash instead of the old one.
+    await waitFor(() => expect(textarea(container).value).toContain('3h'));
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
+    expect(stub?.callsTo('bureau.workflows.update').at(-1)?.params['expectedHash']).toBe(
+      'hash-written',
+    );
+  });
+});
+
+describe('a save the engine could not apply, and a file that cannot then be read', () => {
+  test('says why the page cannot show what is on disk', async () => {
+    const { container, findByText, getByRole } = open('/workflows/digest/edit');
+    await ready(container);
+    stub?.on('bureau.workflows.update', () => {
+      stub?.on('bureau.workflows.get', () => {
+        throw workflowFaults.unprocessable('Cannot read it.');
+      });
+      throw workflowFaults.applyFailed();
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    expect(await findByText('Cannot read it.')).not.toBeNull();
+    expect(container.textContent).not.toContain(WORKFLOW_COPY.editor.saveFailed);
+  });
+});

@@ -8,6 +8,7 @@
  * file that changed since is refused instead of overwritten; the fault is the one agent files use
  * (`agentFaultOf`), because the wire codes are the same.
  */
+import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { callBureau, type Fetcher } from './bureau-client.ts';
@@ -181,6 +182,15 @@ export async function signalWorkflows(
 ): Promise<SignalResult> {
   const params = input.payload === undefined ? { name: input.name } : input;
   return signalResultSchema.parse(await callBureau('bureau.workflows.signal', params, options));
+}
+
+/**
+ * Whether a write answered that the Bureau changed the file and the engine or the schedule could
+ * not follow (`Unavailable`, `data.reason` `workflow-apply-failed`). The change is on disk, so the
+ * hash the caller holds is old, and the write must not be shown as one that did not happen.
+ */
+export function isApplyFailure(error: unknown): boolean {
+  return error instanceof HttpClientError && error.data?.['reason'] === 'workflow-apply-failed';
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -9,7 +9,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
@@ -634,5 +634,160 @@ describe('a write the Bureau refuses', () => {
     await fireEvent.click(reload);
     expect(await findByRole('alert')).not.toBeNull();
     await waitFor(() => expect(container.textContent).toContain('Cannot read it.'));
+  });
+});
+
+describe('a workflow deleted between the frame’s read and the page’s', () => {
+  test('is the not-found state, and not a loading skeleton that never ends', async () => {
+    const { container, findByRole } = open('/workflows/digest', {
+      // The engine no longer holds it either, as after a restart.
+      definitions: [],
+    });
+    let reads = 0;
+    const original = stub?.world.files[0];
+    stub?.on('bureau.workflows.get', () => {
+      reads += 1;
+      // The frame's probe finds the file; every read after it finds it gone.
+      if (reads === 1) return original;
+      throw workflowFaults.notFound('workflow digest');
+    });
+    const words =
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type'] ?? VIEW_COPY.workflows.notFound;
+    await findByRole('heading', { level: 1, name: words?.title ?? '' });
+    expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
+      'not-found',
+    );
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+  });
+});
+
+describe('a write the Bureau made and the engine could not apply', () => {
+  test('is shown as changed but not yet applied, and the next action names the new hash', async () => {
+    const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+    const root = await ready(container);
+    let calls = 0;
+    stub?.on('bureau.workflows.pause', (params) => {
+      calls += 1;
+      const file = stub?.file('digest');
+      if (file === undefined) throw new Error('The file is missing.');
+      if (calls === 1) {
+        // The file was replaced, then the engine could not follow.
+        file.paused = true;
+        file.hash = 'hash-applied-later';
+        throw workflowFaults.applyFailed();
+      }
+      return { id: 'digest', hash: params['expectedHash'] };
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+
+    expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+    expect(root.textContent).not.toContain(WORKFLOW_COPY.pauseFailed);
+    // The page took what is on disk: the file is paused, and a resume names its new hash.
+    await findByRole('button', { name: WORKFLOW_COPY.resumeAction });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume').length).toBe(1));
+    expect(stub?.callsTo('bureau.workflows.resume')[0]?.params['expectedHash']).toBe(
+      'hash-applied-later',
+    );
+  });
+});
+
+describe('a signal that fails', () => {
+  test('shows the failure beside the form, in the words copy.ts holds', async () => {
+    const { container } = open('/workflows/digest');
+    await ready(container);
+    stub?.on('bureau.workflows.signal', () => {
+      throw new StubFault('Unavailable', 503, 'Delivered to: run-1', {
+        reason: 'signal-delivery-failed',
+      });
+    });
+    const form = testId(container, 'workflow-signal') as HTMLElement;
+    await fireEvent.click(
+      within(form).getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }),
+    );
+
+    const alert = await within(form).findByRole('alert');
+    expect(alert.textContent).toContain(WORKFLOW_COPY.signal.failed);
+    expect(alert.textContent).toContain('Delivered to: run-1');
+    expect(form.querySelector('[role="status"]')).toBeNull();
+  });
+
+  test('clears the failure when the next send succeeds', async () => {
+    const { container } = open('/workflows/digest');
+    await ready(container);
+    let sends = 0;
+    stub?.on('bureau.workflows.signal', () => {
+      sends += 1;
+      if (sends === 1) throw workflowFaults.unavailable();
+      return { started: [], delivered: [] };
+    });
+    const form = testId(container, 'workflow-signal') as HTMLElement;
+    await fireEvent.click(
+      within(form).getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }),
+    );
+    await within(form).findByRole('alert');
+    await fireEvent.click(
+      within(form).getByRole('button', { name: WORKFLOW_COPY.signal.sendAction }),
+    );
+    await within(form).findByRole('status', { name: WORKFLOW_COPY.signal.resultLabel });
+    expect(form.querySelector('[role="alert"]')).toBeNull();
+  });
+});
+
+describe('a resume or a delete the engine could not apply', () => {
+  test('a resume is shown as changed, and a delete whose file is gone is the not-found state', async () => {
+    const { container, findByRole, findByText, getByRole } = open('/workflows/digest', {
+      files: [readyFile('digest', { paused: true })],
+    });
+    await ready(container);
+    stub?.on('bureau.workflows.resume', () => {
+      const file = stub?.file('digest');
+      if (file === undefined) throw new Error('The file is missing.');
+      file.paused = false;
+      file.hash = 'hash-resumed';
+      throw workflowFaults.applyFailed();
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
+    expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+    await findByRole('button', { name: WORKFLOW_COPY.pauseAction });
+
+    stub?.on('bureau.workflows.delete', () => {
+      if (stub !== undefined) stub.world.files = [];
+      throw workflowFaults.applyFailed();
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
+    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
+        'not-found',
+      ),
+    );
+  });
+});
+
+describe('the links on a type’s page', () => {
+  test('open the runs, the editor, and a schedule, and leave a modified click to the browser', async () => {
+    const { container } = open('/workflows/digest', {
+      schedules: [scheduleFixture('every-6', 'digest')],
+    });
+    const root = await ready(container);
+    await waitFor(() => expect(root.querySelectorAll('[data-schedule]').length).toBe(1));
+    const links = [
+      ['/workflows/digest/runs', root.querySelector<HTMLAnchorElement>('a[href$="/runs"]')],
+      ['/workflows/digest/edit', root.querySelector<HTMLAnchorElement>('a[href$="/edit"]')],
+      ['/schedules', root.querySelector<HTMLAnchorElement>('[data-schedule] a')],
+    ] as const;
+    for (const [path, link] of links) {
+      link?.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+      );
+      expect(router.pathname).toBe('/workflows/digest');
+      link?.click();
+      expect(router.pathname).toBe(path);
+      router.navigate('/workflows/digest', { replace: true });
+    }
   });
 });

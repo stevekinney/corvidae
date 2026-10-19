@@ -510,6 +510,23 @@ describe('the Workflows area', () => {
     });
   }
 
+  for (const { pattern } of ROUTES.filter((route) => route.pattern !== '/workflows')) {
+    test(`${pattern} is not found for a name the engine refuses as malformed`, async () => {
+      const stub = world({ definitions: [], files: [] });
+      stub.on('weft.workflows.definitions.get', () => {
+        throw workflowFaults.invalidParams();
+      });
+      const { container, findByRole } = mount('workflows', {
+        parameters: { type: 'foo.bar' },
+        pattern,
+      });
+      const words =
+        VIEW_COPY.workflows.notFoundByPattern?.[pattern] ?? VIEW_COPY.workflows.notFound;
+      await findByRole('heading', { level: 1, name: words?.title ?? '' });
+      expect(frame(container).dataset['state']).toBe('not-found');
+    });
+  }
+
   test('the list is ready with only a file, and empty with nothing in either service', async () => {
     world({ definitions: [], files: [readyFile('digest')] });
     const ready = mount('workflows', { pattern: '/workflows' });

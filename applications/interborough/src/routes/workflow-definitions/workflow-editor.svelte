@@ -24,6 +24,7 @@
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import {
     getWorkflowFile,
+    isApplyFailure,
     updateDefinitionFromText,
     updateWorkflowFile,
     type WorkflowFileDetail,
@@ -65,6 +66,8 @@
   /** Why the text cannot be saved, or the Bureau's words for a document it refused. */
   let validation = $state('');
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
+  /** The Bureau saved the file and the engine could not follow, so what is on disk is the save. */
+  let unapplied = $state(false);
 
   function fill(file: WorkflowFileDetail): void {
     loaded = file;
@@ -125,12 +128,19 @@
     }) => updateWorkflowFile(type, expectedHash, definition),
     onMutate: () => {
       failure = null;
+      unapplied = false;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(workflowTypePath(type));
     },
-    onError: (error) => failWith(agentFaultOf(error), copy.editor.saveFailed),
+    onError: (error) => {
+      if (isApplyFailure(error)) {
+        void adoptWhatIsOnDisk();
+        return;
+      }
+      failWith(agentFaultOf(error), copy.editor.saveFailed);
+    },
   }));
 
   function submit(event: SubmitEvent): void {
@@ -145,6 +155,21 @@
     save.mutate({ expectedHash: hash, definition: parsed.definition });
   }
 
+  /**
+   * The save reached the file and the engine could not apply it: the file has new text and a new
+   * hash, so the editor takes both, and a retry names the hash that is there now.
+   */
+  async function adoptWhatIsOnDisk(): Promise<void> {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
+    const result = await read.refetch();
+    if (result.isError) {
+      failWith(agentFaultOf(result.error), copy.loadFailed.title);
+      return;
+    }
+    if (result.data !== undefined) fill(result.data);
+    unapplied = true;
+  }
+
   /** Reads the file again and fills the editor from it, which discards whatever was typed. */
   async function reload(): Promise<void> {
     const result = await read.refetch();
@@ -153,6 +178,7 @@
       return;
     }
     stale = false;
+    unapplied = false;
     failure = null;
     if (result.data !== undefined) fill(result.data);
   }
@@ -163,6 +189,7 @@
 
   const condition = $derived.by(() => {
     if (stale) return 'stale';
+    if (unapplied) return 'unapplied';
     if (loaded?.state === 'invalid') return 'invalid';
     return 'ready';
   });
@@ -180,6 +207,13 @@
       <p class="weft-workflow-editor__alert-title">{copy.stale.title}</p>
       <p class="weft-workflow-editor__alert-body">{copy.stale.description}</p>
       <Button variant="secondary" onclick={() => void reload()}>{copy.stale.action}</Button>
+    </Alert>
+  {/if}
+
+  {#if unapplied}
+    <Alert variant="warning">
+      <p class="weft-workflow-editor__alert-title">{copy.applyFailed.title}</p>
+      <p class="weft-workflow-editor__alert-body">{copy.applyFailed.description}</p>
     </Alert>
   {/if}
 

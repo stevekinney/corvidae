@@ -123,8 +123,11 @@ describe('the list of workflows', () => {
     expect(broken.querySelector('[data-testid="workflow-issues"]')?.textContent).toContain(
       'Not a schedule specification.',
     );
-    expect(broken.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
-      `${STUB_WORKFLOW_DIRECTORY}/broken.json`,
+    // The path waits for the host to say where the files are, so it is never shown wrong first.
+    await waitFor(() =>
+      expect(broken.querySelector('[data-testid="workflow-file-path"]')?.textContent).toBe(
+        `${STUB_WORKFLOW_DIRECTORY}/broken.json`,
+      ),
     );
     // A file that loaded has none of these.
     expect(row(container, 'digest').querySelector('[data-testid="workflow-problem"]')).toBeNull();
@@ -145,9 +148,18 @@ describe('the list of workflows', () => {
   test('shows the path relative to the state directory when the host does not say where', async () => {
     const { container } = open({ workflowDirectory: null });
     await waitFor(() => expect(container.querySelectorAll('[data-workflow]').length).toBe(4));
-    expect(
-      row(container, 'broken').querySelector('[data-testid="workflow-file-path"]')?.textContent,
-    ).toBe(`${WORKFLOW_COPY.fallbackDirectory}/broken.json`);
+    await waitFor(() =>
+      expect(
+        row(container, 'broken').querySelector('[data-testid="workflow-file-path"]')?.textContent,
+      ).toBe(`${WORKFLOW_COPY.fallbackDirectory}/broken.json`),
+    );
+  });
+
+  test('is read once for one visit: the frame’s probe and the page share one load of each service', async () => {
+    const { container } = open();
+    await waitFor(() => expect(container.querySelectorAll('[data-workflow]').length).toBe(4));
+    expect(stub?.callsTo('weft.workflows.definitions.list')).toHaveLength(1);
+    expect(stub?.callsTo('bureau.workflows.list')).toHaveLength(1);
   });
 
   test('links each name to its page, and leaves a modified click to the browser', async () => {

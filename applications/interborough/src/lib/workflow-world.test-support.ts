@@ -220,6 +220,14 @@ export const workflowFaults = {
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
   unavailable: () => new StubFault('Unavailable', 503, 'The engine did not answer.'),
+  /** The Bureau replaced the file, and then the engine or the schedule could not follow. */
+  applyFailed: () =>
+    new StubFault('Unavailable', 503, 'The change was written but the engine did not apply it.', {
+      reason: 'workflow-apply-failed',
+    }),
+  /** A name the engine refuses before it looks, as a name with a dot in it. */
+  invalidParams: () =>
+    new StubFault('InvalidParams', 400, 'workflow name "foo.bar" contains a dot.', {}),
 };
 
 export type World = {

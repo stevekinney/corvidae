@@ -13,7 +13,7 @@
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { loadCatalog } from '../../lib/workflow-catalog.ts';
+  import { CATALOG_STALE_TIME_MS, loadCatalog } from '../../lib/workflow-catalog.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import FileProblem from './file-problem.svelte';
   import { rowBadges, rowState } from './workflow-presentation.ts';
@@ -24,13 +24,20 @@
     () => ({
       queryKey: queryKeys.workflowCatalog.list(),
       queryFn: ({ signal }) => loadCatalog(client, { signal }),
+      // The frame's probe loaded it a moment ago, under this key.
+      staleTime: CATALOG_STALE_TIME_MS,
     }),
     undefined,
   );
 
   // Where the files are. A host that does not say shows the path relative to the state directory.
   const hostPaths = createQuery(
-    () => ({ queryKey: queryKeys.hostPaths(), queryFn: ({ signal }) => getHostPaths({ signal }) }),
+    () => ({
+      queryKey: queryKeys.hostPaths(),
+      queryFn: ({ signal }) => getHostPaths({ signal }),
+      // A host that does not say is not asked again: the fallback path is shown instead.
+      retry: false,
+    }),
     undefined,
   );
   const directory = $derived(hostPaths.data?.workflowDirectory ?? WORKFLOW_COPY.fallbackDirectory);
@@ -69,7 +76,7 @@
           {#if row.problem !== null}
             <FileProblem problem={row.problem} />
           {/if}
-          {#if row.file !== null && row.file.state === 'invalid'}
+          {#if row.file !== null && row.file.state === 'invalid' && !hostPaths.isPending}
             <CodeLocation
               file={workflowFilePath(directory, row.name)}
               data-testid="workflow-file-path"
