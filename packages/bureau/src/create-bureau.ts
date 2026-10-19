@@ -217,7 +217,6 @@ import { createGoalAttemptFenceHost } from './goal-attempt-fence';
 import { createGoalWorkflowHost } from './goal-ports';
 import { recoveryEntryFailure } from './goal-recovery';
 import type { BureauGoals } from './goal-types';
-import { humanWaitDenialPayload } from './human-wait-signal';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
@@ -323,7 +322,17 @@ import {
   SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';
-import { createRunHumanWaits } from './run-human-waits';
+import {
+  createReviewDecisionRecords,
+  digestReviewDelivery,
+  type ReviewDecisionRequest,
+} from './review-decision-record';
+import {
+  createRunHumanWaits,
+  humanWaitDecisionPayload,
+  humanWaitDecisionRequest,
+  humanWaitDeliveryId,
+} from './run-human-waits';
 import {
   countCheckpointParks,
   humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
@@ -399,6 +408,7 @@ import type {
   EventHistoryDeletedAggregateOutcome,
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
+  PendingHumanWaitReview,
   PendingReview,
   SessionPendingReview,
   ResolveReviewInput,
@@ -7844,9 +7854,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     ) {
       return workflowRuntime.workflows.owner;
     }
-    return fire !== null && isScheduledAgentRunInput(fire.input)
-      ? ownerOrLocal(fire.input.principal)
-      : undefined;
+    if (fire !== null && isScheduledAgentRunInput(fire.input)) {
+      return ownerOrLocal(fire.input.principal);
+    }
+    // COR-1579: a `bureau.run()` run another process holds is in none of the maps above, but its
+    // durable recovery record names who started it.
+    const catalog = await runtime.classifyCatalogRecoveredRun(runId);
+    return catalog.attribution === undefined
+      ? undefined
+      : ownerOrLocal(catalog.attribution.principal);
   }
 
   /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */
@@ -10896,7 +10912,36 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return runId;
   }
 
+  /**
+   * COR-1579 — the delivery id the next `signalSession` call delivers under, set only by
+   * {@link deliverHumanWaitDecision} for the synchronous start of that call. `resolveReview`
+   * delivers a human-wait decision through the public `bureau.signalSession` (one seam, which a
+   * host or test can observe), whose signature has no delivery id; the call reads and clears this
+   * before its first `await`, so no other call can see it. A wrapper around `bureau.signalSession`
+   * must therefore call through before it awaits anything, or the delivery goes out unkeyed.
+   */
+  let keyedSessionDelivery: string | undefined;
+
+  /**
+   * Deliver a human-wait decision on a session run keyed by its review id, so a retry or a
+   * same-decision resolver in another process delivers it once (Weft deduplicates a keyed signal
+   * by its accepted-response marker), and nothing is left buffered for the run's next park.
+   */
+  function deliverHumanWaitDecision(
+    review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+    payload: unknown,
+  ): Promise<void> {
+    keyedSessionDelivery = humanWaitDeliveryId(review.id);
+    try {
+      return bureau.signalSession(review.sessionId, review.signalName, payload);
+    } finally {
+      keyedSessionDelivery = undefined;
+    }
+  }
+
   async function signalSession(sessionId: string, name: string, payload?: unknown): Promise<void> {
+    const signalId = keyedSessionDelivery;
+    keyedSessionDelivery = undefined;
     if (!runtime.durable)
       throw new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable');
     const runId = await requireSessionRunId(sessionId);
@@ -10911,7 +10956,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         'CONFLICT',
       );
     }
-    await runtime.durable.engine.signal(runId, name, payload);
+    await (signalId === undefined
+      ? runtime.durable.engine.signal(runId, name, payload)
+      : runtime.durable.engine.signal(runId, name, payload, { signalId }));
     // AB-13 — a signal is how a human-wait park is released (directly, or via
     // `resolveReview`'s human-wait approve path). Reacquire the concurrency
     // slot `HumanWaitParkedEvent` freed. A no-op when this runId was never
@@ -12514,7 +12561,144 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return new ApprovalOutcomeNotWrittenError(APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE);
   }
 
-  async function resolveReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
+  /** What a session-path resolution claims in the durable decision record (COR-1579). */
+  function sessionDecisionRequest(
+    review: SessionPendingReview,
+    input: ResolveReviewInput,
+  ): ReviewDecisionRequest {
+    if (review.kind === 'human-wait') {
+      return humanWaitDecisionRequest(review.id, input, humanWaitDecisionPayload(input));
+    }
+    return {
+      reviewId: review.id,
+      round: review.round,
+      decision: input.decision,
+      principal: input.principal,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+      digest: digestReviewDelivery(
+        Object.prototype.hasOwnProperty.call(input, 'arguments') ? input.arguments : null,
+      ),
+    };
+  }
+
+  /**
+   * Refuses to approve a session human wait whose run's authority is not current, before the
+   * decision is claimed: a human wait's claim is never released, so a refusal must come first.
+   * A process that holds the run checks the request context it recorded. A peer (COR-1579) has
+   * none, so it rebuilds the context from the session's persisted authority, as recovery does,
+   * and refuses when it cannot.
+   */
+  async function assertHumanWaitApprovalAuthority(
+    review: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+    peer: boolean,
+  ): Promise<void> {
+    let requestContext = runRequestContexts.get(review.runId);
+    if (peer) {
+      const session = await runtime.sessionStore?.load(review.sessionId);
+      requestContext =
+        session === undefined
+          ? undefined
+          : recoveredRequestContextFromMetadata(
+              session.metadata,
+              review.runId,
+              review.sessionId,
+              session.agentName,
+              runtimeServices.clock.now,
+            );
+      if (requestContext === undefined) {
+        throw new BureauError(
+          'Cannot approve: the request authority of a run another process holds cannot be rebuilt.',
+          'CONFLICT',
+        );
+      }
+    }
+    if (
+      requestContext &&
+      isTransportIssuedAuthority(requestContext) &&
+      (!requestAuthorityValidator || !(await requestAuthorityValidator(requestContext)))
+    ) {
+      throw new BureauError(
+        'Cannot approve: the request authority is no longer current.',
+        'CONFLICT',
+      );
+    }
+  }
+
+  /** Gives up an approval's claim, when this call holds one, without masking the call's outcome. */
+  async function releaseApprovalClaim(
+    request: ReviewDecisionRequest,
+    value: string | undefined,
+  ): Promise<void> {
+    if (value === undefined) return;
+    try {
+      await reviewDecisions.release(request, value);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'approval',
+        message: `[bureau] Could not release the decision record of review "${request.reviewId}"; a different decision stays refused until it is cleared: ${serializeUnknownError(error)}`,
+      });
+    }
+  }
+
+  /** Marks a decided review resolved in this process's own lists. */
+  function markReviewResolvedLocally(review: SessionPendingReview): void {
+    resolvedReviewIds.add(review.id);
+    if (review.kind !== 'tool-approval') return;
+    dropPendingApprovalOverride(review.id);
+    if (
+      !Array.from(pendingApprovalOverrides.keys()).some((reviewId) =>
+        reviewId.startsWith(`approval:${review.runId}:`),
+      )
+    ) {
+      terminalReviewSessions.delete(review.runId);
+    }
+  }
+
+  /**
+   * COR-1579 — a tool approval whose decision record another resolver already claimed with this
+   * same decision. Armorer's single-use binding is single-use only inside one process, so this
+   * caller never resumes the approval itself: until the claimant has persisted its resolution it
+   * is still being resolved, and once it has, this caller answers as the claimant did, through the
+   * persisted resolution (whose `alreadyLanded` handling appends no second audit entry).
+   */
+  async function answerSameApprovalDecision(
+    review: Extract<SessionPendingReview, { kind: 'tool-approval' }>,
+    input: ResolveReviewInput,
+  ): Promise<ResolveReviewResult> {
+    const session = await runtime.sessionStore?.load(review.sessionId);
+    const decisions = session?.metadata['resolvedReviewDecisions'];
+    if (!isJsonObject(decisions) || decisions[review.id] === undefined) {
+      throw new BureauError(`Review with id "${review.id}" is already being resolved`, 'CONFLICT');
+    }
+    await persistReviewResolutionWithRetry(
+      review.sessionId,
+      review.id,
+      true,
+      review.runId,
+      input.decision,
+      input.principal,
+      input.reason,
+    );
+    markReviewResolvedLocally(review);
+    releaseTerminalRunReviewState(review.runId);
+    await recordReviewDecision(review, input.decision, input.principal, input.reason, {
+      auditAlreadyAppended: true,
+    });
+    return {
+      id: review.id,
+      kind: review.kind,
+      decision: input.decision,
+      ...(input.decision === 'reject' ? { feedback: input.reason } : {}),
+    };
+  }
+
+  async function resolveReview(
+    input: ResolveReviewInput,
+    // COR-1579: the human wait of a session run another process holds, derived from durable
+    // state by `resolveAnyReview` when this process lists no review under the id.
+    derived?: Extract<SessionPendingReview, { kind: 'human-wait' }>,
+  ): Promise<ResolveReviewResult> {
     // AB-46: `reject` requires a non-empty `reason` for BOTH review kinds —
     // `resolveReview` is the validation boundary, so this throws before any
     // state change (before even finding the review), matching the gateway's
@@ -12522,7 +12706,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (input.decision === 'reject' && (input.reason === undefined || input.reason.trim() === '')) {
       throw new BureauError('reject requires a reason', 'BAD_REQUEST');
     }
-    const review = listPendingReviews().find((candidate) => candidate.id === input.id);
+    const listed = listPendingReviews().find((candidate) => candidate.id === input.id);
+    const review = listed ?? (derived?.id === input.id ? derived : undefined);
     if (!review) {
       const cleanup = reviewResolutionCleanupPending.get(input.id);
       if (cleanup) {
@@ -12640,14 +12825,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // approve could execute a tool even though the durable winner is a
       // deny. Checked here, before any action, so a losing call fails
       // before doing anything irreversible. This is a plain read
-      // (`SessionStore.load`), not an atomic claim — a genuinely
-      // simultaneous pair, neither yet committed, can still both pass this
-      // check and both act; closing that residual window needs a durable,
-      // pre-action claim, tracked as a follow-up (see this issue's PR
-      // body). This check only ever fences a DIFFERENT decision — the
-      // same-decision retry case is untouched, exactly as
-      // `persistReviewResolution`'s own `alreadyLanded` handling already
-      // covers it.
+      // (`SessionStore.load`); a genuinely simultaneous pair, neither yet
+      // committed, both pass it, and the durable decision record claimed
+      // below (COR-1579) is what decides between them. This check only ever
+      // fences a DIFFERENT decision — the same-decision retry case is
+      // untouched, exactly as `persistReviewResolution`'s own `alreadyLanded`
+      // handling already covers it.
       const existingSession = await runtime.sessionStore?.load(review.sessionId);
       const existingDecisionsRaw = existingSession?.metadata['resolvedReviewDecisions'];
       const existingDecisions: Record<string, JSONValue> =
@@ -12681,6 +12864,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       resolvingReviewIds.delete(review.id);
       throw error;
     }
+
+    // COR-1579: claim the decision durably before anything irreversible. See
+    // `review-decision-record.ts` for which claims are kept and which released.
+    const claimRequest = sessionDecisionRequest(review, input);
+    let claim: Awaited<ReturnType<typeof reviewDecisions.claim>>;
+    try {
+      if (review.kind === 'human-wait' && input.decision === 'approve') {
+        await assertHumanWaitApprovalAuthority(review, listed === undefined);
+      }
+      claim = await reviewDecisions.claim(claimRequest);
+      if (claim.outcome === 'conflict') {
+        throw new BureauError(
+          `Review "${review.id}" was already resolved as "${claim.decision ?? 'unknown'}" by a different resolver`,
+          'CONFLICT',
+        );
+      }
+    } catch (error) {
+      resolvingReviewIds.delete(review.id);
+      throw error;
+    }
+    if (claim.outcome === 'same' && review.kind === 'tool-approval') {
+      try {
+        return await answerSameApprovalDecision(review, input);
+      } finally {
+        resolvingReviewIds.delete(review.id);
+      }
+    }
+    const heldApprovalClaim =
+      claim.outcome === 'claimed' && review.kind === 'tool-approval' ? claim.value : undefined;
+    // Set once a step that cannot be shown not to have acted has begun: a throw before it is a
+    // proven pre-execution failure, which releases an approval's claim.
+    let actionStarted = false;
 
     let result: unknown;
     let keepPending = false;
@@ -12720,6 +12935,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             );
           }
           await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
+          actionStarted = true;
           result = await approvalToolbox.resumeApproval(
             { ...approval, approvalToken: approval.approvalToken },
             {
@@ -12782,6 +12998,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               await recordReviewStatusTransition(review, 'superseded', 'system:supersession');
             }
             keepPending = true;
+            // COR-1579: the tool did not run, and the review is pending again under the next
+            // round, so this round's claim is given up.
+            await releaseApprovalClaim(claimRequest, heldApprovalClaim);
           } else if (
             result !== null &&
             typeof result === 'object' &&
@@ -12799,6 +13018,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               review.id,
               review.approval,
             );
+            // COR-1579: a proven pre-execution failure: the binding was not consumed.
+            await releaseApprovalClaim(claimRequest, heldApprovalClaim);
             throw new BureauError(
               `Cannot approve: ${failedResult.error?.message ?? failedResult.errorMessage ?? 'tool approval resume failed before execution admission.'}`,
               'CONFLICT',
@@ -12806,6 +13027,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
         } else if (review.approval.approvalBinding && review.approval.approvalToken !== undefined) {
           await persistApprovalResolutionStartedWithRetry(review.sessionId, review.id);
+          actionStarted = true;
           try {
             await approvalToolbox.revokeApproval(review.approval as SignedPendingToolApproval);
           } catch (error) {
@@ -12821,35 +13043,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             });
           }
         }
-      } else if (input.decision === 'approve') {
-        const requestContext = runRequestContexts.get(review.runId);
-        if (
-          requestContext &&
-          isTransportIssuedAuthority(requestContext) &&
-          (!requestAuthorityValidator || !(await requestAuthorityValidator(requestContext)))
-        ) {
-          throw new BureauError(
-            'Cannot approve: the request authority is no longer current.',
-            'CONFLICT',
-          );
-        }
-        // Route through the public `bureau.signalSession` (rather than the
-        // local closure function) so this is the exact same call surface a
-        // caller could make directly — one seam, not two ways to do the same
-        // thing.
-        await bureau.signalSession(review.sessionId, review.signalName, input.payload);
       } else {
-        // AB-46: `input.decision` is `'deny'` or `'reject'`. A `human-wait`
-        // park is a genuine durable park (`ctx.waitForSignal`) — unlike
-        // tool-approval, where "deny" has no run to continue, denying or
-        // rejecting a human-wait review must still deliver SOMETHING on
-        // `review.signalName` or the parked run stays `running` forever
-        // (the exact defect this record fixes). Both sentinels are
-        // delivered on the identical channel `approve` already uses.
-        const denialPayload = humanWaitDenialPayload(input.decision, input.reason);
-        await bureau.signalSession(review.sessionId, review.signalName, denialPayload);
+        // AB-46: a `human-wait` park is a genuine durable park
+        // (`ctx.waitForSignal`) — unlike tool-approval, where "deny" has no
+        // run to continue, denying or rejecting a human-wait review must
+        // still deliver SOMETHING on `review.signalName` or the parked run
+        // stays `running` forever. Approve delivers the caller's payload,
+        // deny and reject their sentinels, all on the same channel. The
+        // authority was checked before the claim; the delivery goes through
+        // the public `bureau.signalSession` (one seam, not two ways to do the
+        // same thing), keyed by the review id (COR-1579), so a same-decision
+        // re-drive delivers once and nothing is left buffered for the next park.
+        actionStarted = true;
+        await deliverHumanWaitDecision(review, humanWaitDecisionPayload(input));
       }
     } catch (error) {
+      if (!actionStarted) await releaseApprovalClaim(claimRequest, heldApprovalClaim);
       resolvingReviewIds.delete(review.id);
       throw error;
     }
@@ -12860,17 +13069,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // audit record directly, exactly as it always has.
     let auditAlreadyAppended = false;
     if (!keepPending) {
-      resolvedReviewIds.add(review.id);
-      if (review.kind === 'tool-approval') {
-        dropPendingApprovalOverride(review.id);
-        if (
-          !Array.from(pendingApprovalOverrides.keys()).some((reviewId) =>
-            reviewId.startsWith(`approval:${review.runId}:`),
-          )
-        ) {
-          terminalReviewSessions.delete(review.runId);
-        }
-      }
+      markReviewResolvedLocally(review);
       const auditAttachment = buildReviewDecisionAuditRecord(
         review,
         input.decision,
@@ -13156,6 +13355,65 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * The run a review id addresses. Ids are `approval:${runId}:${callId}` /
+   * `human-wait:${runId}:${signalName}:${parkOrdinal}` — the run id is always the second
+   * colon-delimited segment.
+   */
+  function reviewRunId(id: string): string | undefined {
+    const [, runId] = id.split(':');
+    return runId === undefined || runId === '' ? undefined : runId;
+  }
+
+  /**
+   * COR-1579 — a run's pending human waits, derived from durable state. See the
+   * {@link Bureau.pendingHumanWaitsOfRun} doc comment.
+   */
+  async function pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]> {
+    if (store.getRun(runId) !== undefined || runHumanWaits.holds(runId)) {
+      const local: PendingReview[] = [...listPendingReviews(), ...runHumanWaits.list()];
+      return local.filter(
+        (review): review is PendingHumanWaitReview =>
+          review.kind === 'human-wait' && review.runId === runId,
+      );
+    }
+    const derived = await runHumanWaits.derive(runId);
+    return derived === undefined ? [] : [derived];
+  }
+
+  /**
+   * COR-1579 — the human wait `id` names when this process lists no review under it: the park of
+   * a run another process holds, derived by its run id. `undefined` for anything this process
+   * already answers for (a listed review, or one whose resolution is still being cleaned up).
+   */
+  async function derivedHumanWait(id: string): Promise<PendingHumanWaitReview | undefined> {
+    if (!id.startsWith('human-wait:') || reviewResolutionCleanupPending.has(id)) return undefined;
+    if (listPendingReviews().some((review) => review.id === id) || runHumanWaits.has(id)) {
+      return undefined;
+    }
+    const runId = reviewRunId(id);
+    if (runId === undefined) return undefined;
+    const pending = await pendingHumanWaitsOfRun(runId);
+    return pending.find((review) => review.id === id);
+  }
+
+  /**
+   * `bureau.resolveReview`: a catalog park this process lists resolves through the engine by run
+   * id (COR-1577), a park another process holds is derived first (COR-1579), and every other
+   * review resolves through the session path.
+   */
+  async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
+    if (runHumanWaits.has(input.id)) return runHumanWaits.resolve(input);
+    const derived = await derivedHumanWait(input.id);
+    if (derived !== undefined && derived.sessionId === undefined) {
+      return runHumanWaits.resolve(input, derived);
+    }
+    return resolveReview(
+      input,
+      derived?.sessionId === undefined ? undefined : { ...derived, sessionId: derived.sessionId },
+    );
+  }
+
+  /**
    * Look up one review by id, live or resolved (AB-46). See the
    * {@link Bureau.getReview} doc comment.
    */
@@ -13167,11 +13425,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
     const runWait = runHumanWaits.find(id);
     if (runWait) return runWait;
+    // COR-1579: the park of a run another process holds.
+    const derived = await derivedHumanWait(id);
+    if (derived) return derived;
     if (!auditTrailInstance) return undefined;
 
-    // Ids are `approval:${runId}:${callId}` / `human-wait:${runId}:${signalName}:${parkOrdinal}`
-    // — the run id is always the second colon-delimited segment.
-    const [, runId] = id.split(':');
+    const runId = reviewRunId(id);
     if (!runId) return undefined;
 
     const records = await auditTrailInstance.query({ runId });
@@ -14619,6 +14878,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
   }
 
+  // COR-1579 — the durable decision record every review resolution claims before it acts.
+  const reviewDecisions = createReviewDecisionRecords(runtime.kv);
+
   // COR-1577 — the human-wait reviews of `bureau.run()` runs, which have no session. Held apart
   // from `listPendingReviews()` above so the session path (and what COR-1302 excluded) is as it
   // was; the wrappers on the Bureau object below add them to the public list and to resolution.
@@ -14630,10 +14892,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     checkpointSteps: async (runId) =>
       (await runtime.durable?.checkpointStore.loadSteps(runId)) ?? [],
     now: runtimeServices.clock.now,
-    recordDecision: async (review, decision, principal, reason) => {
-      await auditTrailInstance?.record(
-        buildReviewDecisionAuditRecord(review, decision, principal, reason),
-      );
+    recordDecision: async (review, decision, principal, reason, writeAudit) => {
+      // COR-1579: only the caller whose decision record turned `recorded` writes the entry, so
+      // two processes deciding one park alike leave one.
+      if (writeAudit) {
+        await auditTrailInstance?.record(
+          buildReviewDecisionAuditRecord(review, decision, principal, reason),
+        );
+      }
       if (decision === 'approve') {
         emitter.dispatch(new ReviewApprovedEvent(review.id, review.runId, principal, review.kind));
       } else if (decision === 'reject') {
@@ -14642,6 +14908,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
       }
     },
+    decisions: reviewDecisions,
+    classifyRun: (runId) => runtime.classifyCatalogRecoveredRun(runId),
     createError: (message, code) => new BureauError(message, code),
     durableNotConfigured: () =>
       new BureauError('Durable engine not configured', 'NOT_CONFIGURED', 'durable'),
@@ -15036,8 +15304,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // resolves through the engine by run id. Every other review resolves exactly as before.
     listPendingReviews: (): PendingReview[] => [...listPendingReviews(), ...runHumanWaits.list()],
     getReview,
-    resolveReview: (input: ResolveReviewInput) =>
-      runHumanWaits.has(input.id) ? runHumanWaits.resolve(input) : resolveReview(input),
+    // COR-1579: a park this process does not hold is derived from durable state and resolved
+    // here all the same, fenced by the durable decision record.
+    resolveReview: resolveAnyReview,
+    pendingHumanWaitsOfRun,
     sweepExpiredReviews,
     issueGrant,
     revokeGrant,
