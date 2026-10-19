@@ -531,3 +531,35 @@ describe('DeploymentsPanel — removal refused by the server', () => {
     expect(await view.findByText(/now a routing target/)).not.toBeNull();
   });
 });
+
+describe('DeploymentsPanel — draining a routed build', () => {
+  async function openDrain(buildId: string) {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted);
+    const view = renderPanel();
+    await waitFor(() =>
+      expect(view.container.querySelectorAll('tbody tr').length).toBeGreaterThan(0),
+    );
+    const row = Array.from(view.container.querySelectorAll<HTMLElement>('tbody tr')).find(
+      (candidate) => candidate.textContent?.includes(buildId),
+    )!;
+    await fireEvent.click(
+      Array.from(row.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Drain',
+      )!,
+    );
+    return view;
+  }
+
+  test('warns for the build routing names as current', async () => {
+    const view = await openDrain('build-b');
+    const note = await view.findByRole('note');
+    expect(note.textContent).toContain('This is the current build');
+  });
+
+  test('shows no routing warning for a build routing does not name', async () => {
+    const view = await openDrain('build-a');
+    await view.findByRole('dialog');
+    expect(view.queryByRole('note')?.textContent ?? null).toBeNull();
+  });
+});

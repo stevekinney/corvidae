@@ -510,3 +510,90 @@ describe('WebSocket: a worker id taken while a registration is writing the catal
     });
   });
 });
+
+/** Runs a hook once, at the first read of a version record, so a test can act mid-write. */
+class VersionReadHookStorage extends MemoryStorage {
+  hook: (() => Promise<void>) | undefined;
+  override async get(key: string) {
+    if (key.startsWith('worker-deployment-version:') && this.hook !== undefined) {
+      const hook = this.hook;
+      this.hook = undefined;
+      await hook();
+    }
+    return super.get(key);
+  }
+}
+
+describe('WebSocket: a proven reconnect whose grace window closes during the catalog write', () => {
+  async function reconnect(timerFiresDuringWrite: boolean) {
+    const storage = new VersionReadHookStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    const context = { ...minimalServerContext(), workerDeploymentCatalog: catalog };
+    const options = minimalServeOptions();
+
+    const first = await registerSocket(context, options, 'W1', manifest());
+    expect(answer(first).type).toBe('registerAck');
+    context.workerSockets.set('W1', first as never);
+    context.registry.assignTask('W1', 'op-1', 30_000, undefined, 'attempt-1');
+    const generation = context.registry.sessionIdentity('W1')?.sessionGeneration;
+
+    // The first socket drops: the grace window is armed and the session and its task stay.
+    const timer = setTimeout(() => {}, 60_000);
+    context.pendingWorkerRequeues.set('W1', { timer, endsAt: Date.now() + 60_000 });
+    if (timerFiresDuringWrite) {
+      storage.hook = async () => {
+        // The first thing the grace timer does when it fires: forget the window. The proof is a
+        // claim about a window that no longer exists once this has run.
+        context.pendingWorkerRequeues.delete('W1');
+        context.workerSockets.delete('W1');
+      };
+    }
+
+    const second = socket();
+    handleWorkerWebSocketMessage(
+      context,
+      options,
+      second as never,
+      JSON.stringify({
+        type: 'register',
+        protocolVersion: REMOTE_WORKER_PROTOCOL_VERSION,
+        workerId: 'W1',
+        manifest: manifest(),
+        concurrency: 2,
+        resumeSessionGeneration: generation,
+      }),
+      () => {},
+    );
+    await waitForCondition(() => second.sentMessages.length > 0, {
+      timeoutMs: 2_000,
+      label: 'the reconnect answer',
+    });
+    clearTimeout(timer);
+    const leftover = context.pendingWorkerRequeues.get('W1');
+    if (leftover !== undefined) clearTimeout(leftover.timer);
+    const reply = JSON.parse(second.sentMessages[0] ?? '{}') as {
+      type: string;
+      sessionGeneration?: number;
+    };
+    return {
+      reply,
+      generation,
+      inFlight: context.registry.getWorkerTasks('W1').length,
+    };
+  }
+
+  it('control: with no race the resume is honored and the in-flight attempt is kept', async () => {
+    const result = await reconnect(false);
+    expect(result.reply.type).toBe('registerAck');
+    expect(result.reply.sessionGeneration).toBe(result.generation);
+    expect(result.inFlight).toBe(1);
+  });
+
+  it('does not acknowledge a resume once the grace window is gone, because the proof is taken last', async () => {
+    const result = await reconnect(true);
+    expect(result.reply.type).toBe('registerAck');
+    // The window closed during the catalog write. Had the proof been taken before the write, the
+    // commit would still honor it and keep the old generation; taken after, it is a new session.
+    expect(result.reply.sessionGeneration).toBe((result.generation ?? 0) + 1);
+  });
+});

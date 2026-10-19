@@ -81,9 +81,16 @@
         {#snippet icon()}
           <TriangleAlert aria-hidden="true" size={17} />
         {/snippet}
-        Routing sends new traffic to the {routingRole} build. While it drains, its catalog state is draining,
-        so the server will refuse new starts of workflows that carry a worker versioning policy until
-        you resume the build or route traffic to another one.
+        {#if routingRole === 'current'}
+          Routing sends new traffic to this build, except the share it ramps to another build. While
+          it drains, the server refuses new starts of workflows that carry a worker versioning
+          policy that land on it, until you resume it or route traffic to another build.
+        {:else}
+          Routing sends only the ramp share of new traffic to this build. While it drains, the
+          server refuses new starts of workflows that carry a worker versioning policy and land in
+          that share; starts outside the share are not affected. Resume it or end the ramp to stop
+          the refusals.
+        {/if}
       </Callout>
     {/if}
     <Textarea

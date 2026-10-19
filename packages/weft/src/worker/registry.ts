@@ -6,7 +6,7 @@ import {
   type DeploymentConsistencyResult,
 } from './registry/deployment-consistency.ts';
 import {
-  buildDrainKey,
+  BuildDrainMarkers,
   createDrainRecord,
   isWorkerDraining,
   workerHealth,
@@ -101,7 +101,7 @@ export class WorkerRegistry {
   #workers: Map<string, WorkerInfo>;
   #inFlightTasks: Map<string, InFlightTask>;
   #deploymentDrainStates: Map<string, DrainRecord>;
-  #buildDrainStates: Map<string, DrainRecord>;
+  #buildDrainStates: BuildDrainMarkers;
   #policy: RoutingPolicy;
   /** Keyed by `${queue}::${activity}` — independent cursors per (queue, activity) pair. */
   #roundRobinCursor: Map<string, number>;
@@ -116,7 +116,7 @@ export class WorkerRegistry {
     this.#workers = new Map();
     this.#inFlightTasks = new Map();
     this.#deploymentDrainStates = new Map();
-    this.#buildDrainStates = new Map();
+    this.#buildDrainStates = new BuildDrainMarkers();
     this.#policy = options?.policy ?? 'least-loaded';
     this.#roundRobinCursor = new Map();
     this.#fairShareCounts = new FairShareCounters();
@@ -578,7 +578,7 @@ export class WorkerRegistry {
     buildId: string,
     options?: WorkerDrainOptions,
   ): WorkerDrainMutationResult {
-    this.#buildDrainStates.set(buildDrainKey(deploymentName, buildId), createDrainRecord(options));
+    this.#buildDrainStates.set(deploymentName, buildId, createDrainRecord(options));
     return this.#buildDrainResult(deploymentName, buildId);
   }
 
@@ -588,9 +588,9 @@ export class WorkerRegistry {
    * build as draining or removed.
    */
   ensureBuildDraining(deploymentName: string, buildId: string, options?: WorkerDrainOptions): void {
-    const key = buildDrainKey(deploymentName, buildId);
-    if (!this.#buildDrainStates.has(key))
-      this.#buildDrainStates.set(key, createDrainRecord(options));
+    if (!this.#buildDrainStates.has(deploymentName, buildId)) {
+      this.#buildDrainStates.set(deploymentName, buildId, createDrainRecord(options));
+    }
   }
 
   /**
@@ -598,7 +598,7 @@ export class WorkerRegistry {
    * that still applies keeps the affected workers drained.
    */
   clearBuildDrain(deploymentName: string, buildId: string): WorkerDrainMutationResult {
-    this.#buildDrainStates.delete(buildDrainKey(deploymentName, buildId));
+    this.#buildDrainStates.delete(deploymentName, buildId);
     return this.#buildDrainResult(deploymentName, buildId);
   }
 
@@ -648,7 +648,7 @@ export class WorkerRegistry {
       snapshots,
       (name, buildId) =>
         this.#deploymentDrainStates.has(name) ||
-        (buildId !== undefined && this.#buildDrainStates.has(buildDrainKey(name, buildId))),
+        (buildId !== undefined && this.#buildDrainStates.has(name, buildId)),
     );
   }
 
@@ -664,7 +664,7 @@ export class WorkerRegistry {
     const healthValues = workers.map((worker) => workerHealth(worker, this.#drainStates));
     const drainActive =
       this.#deploymentDrainStates.has(deploymentName) ||
-      this.#buildDrainStates.has(buildDrainKey(deploymentName, buildId));
+      this.#buildDrainStates.has(deploymentName, buildId);
     return {
       target: 'deployment',
       deploymentName,

@@ -277,5 +277,6 @@ describe('WorkerStartOverrideRejectedError', () => {
     expect(rejected).toBeInstanceOf(StartWorkflowValidationError);
     expect(rejected.message).toBe('the preview is expired');
     expect(rejected.code).toBe(new StartWorkflowValidationError('x').code);
+    expect(rejected.rejection).toBe('worker-start-override');
   });
 });

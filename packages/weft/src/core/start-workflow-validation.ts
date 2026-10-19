@@ -32,12 +32,14 @@ export class StartWorkflowValidationError extends WeftError<'StartWorkflowValida
  * error-code table are unchanged.
  */
 export class WorkerStartOverrideRejectedError extends StartWorkflowValidationError {
-  // Explicit, with a default message: an implicit derived constructor is a function the coverage
-  // report never sees called.
-  constructor(
-    message = 'The worker start override preview cannot authorize this start (it is expired, used, for another workflow, stale, or unverifiable).',
-  ) {
+  /** Marks the rejection for a caller that cannot rely on `instanceof` across a module boundary. */
+  readonly rejection: 'worker-start-override';
+
+  // Explicit rather than implicit: the coverage report never sees an implicit derived constructor
+  // called, so the marker is set here.
+  constructor(message: string) {
     super(message);
+    this.rejection = 'worker-start-override';
   }
 }
 

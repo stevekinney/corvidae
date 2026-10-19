@@ -102,8 +102,11 @@ describe('DrainDialog', () => {
         },
       });
       const warning = getByRole('note');
-      expect(warning.textContent).toContain(routingRole);
-      expect(warning.textContent).toContain('refuse');
+      expect(warning.textContent).toContain(`This is the ${routingRole} build`);
+      expect(warning.textContent).toContain('refuses new starts');
+      // The ramping build refuses only what lands in its share; the copy must not say "all".
+      if (routingRole === 'ramping') expect(warning.textContent).toContain('ramp share');
+      else expect(warning.textContent).toContain('except the share it ramps');
     },
   );
 

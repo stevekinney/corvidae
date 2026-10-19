@@ -243,10 +243,15 @@ function commitWorkerRegistration(
 
 /**
  * The tail of {@link registerWorker}, once the manifest is parsed and admitted:
- * clamp the concurrency, digest the manifest, prove or forfeit a pending reconnect,
- * record its deployment version in the durable catalog (only once the read-only
- * admission gates pass, and after the reconnect settles so a fast reconnect is not
- * mistaken for a takeover), and commit.
+ * clamp the concurrency, digest the manifest, record its deployment version in the
+ * durable catalog (only once the read-only admission gates pass), prove or forfeit a
+ * pending reconnect, and commit.
+ *
+ * The proof comes last, with nothing yielding between it and the synchronous commit, as it
+ * does without a catalog. A proof is a claim about the session as it stands; the catalog
+ * write is slow, and a grace timer that fires during it would forfeit the session, after
+ * which a commit that still carried the proof would acknowledge a resume of work already
+ * requeued.
  */
 async function completeRegistration(
   context: ServerContext,
@@ -266,13 +271,6 @@ async function completeRegistration(
 
   const acceptedManifestDigest = await digestCanonicalWorkerManifest(canonicalJson);
 
-  const resumingSessionGeneration = await resolveReconnectProof(
-    context,
-    options,
-    message,
-    cleanupWorkflowIndex,
-  );
-
   const recorded = await recordVersionOrReject(
     context,
     ws,
@@ -281,6 +279,13 @@ async function completeRegistration(
     acceptedManifestDigest,
   );
   if (recorded === null) return;
+
+  const resumingSessionGeneration = await resolveReconnectProof(
+    context,
+    options,
+    message,
+    cleanupWorkflowIndex,
+  );
 
   commitWorkerRegistration(
     context,

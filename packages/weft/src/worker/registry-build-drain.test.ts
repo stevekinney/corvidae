@@ -134,4 +134,19 @@ describe('WorkerRegistry — build drain', () => {
       health: 'active',
     });
   });
+
+  it('keeps two builds apart when their names would run together under a separator', () => {
+    const registry = new WorkerRegistry();
+    // ('a\0b', 'c') and ('a', 'b\0c') read the same once joined with a NUL; they are different builds.
+    registerWorker(registry, 'first', 'c', 'a\u0000b');
+    registerWorker(registry, 'second', 'b\u0000c', 'a');
+
+    registry.markBuildDraining('a\u0000b', 'c');
+
+    expect(healthById(registry)).toEqual({ first: 'drained', second: 'active' });
+    registry.clearBuildDrain('never', 'drained');
+    registry.markBuildDraining('a', 'b\u0000c');
+    registry.clearBuildDrain('a\u0000b', 'c');
+    expect(healthById(registry)).toEqual({ first: 'active', second: 'drained' });
+  });
 });

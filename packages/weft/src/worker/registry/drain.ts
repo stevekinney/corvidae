@@ -25,12 +25,37 @@ export function createDrainRecord(options?: WorkerDrainOptions): DrainRecord {
  */
 export type DrainStates = Readonly<{
   deployments: ReadonlyMap<string, DrainRecord>;
-  builds: ReadonlyMap<string, DrainRecord>;
+  builds: BuildDrainMarkers;
 }>;
 
-/** Key of a build drain marker. A NUL cannot appear in a deployment name or build id. */
-export function buildDrainKey(deploymentName: string, buildId: string): string {
-  return `${deploymentName}\u0000${buildId}`;
+/**
+ * Build drain markers, keyed by deployment name and then build id in nested maps. A deployment
+ * name and a build id are free text, so no separator joins them safely: two different pairs can
+ * read the same once joined. The same shape `DeploymentConsistencyGuard` uses.
+ */
+export class BuildDrainMarkers {
+  readonly #markers = new Map<string, Map<string, DrainRecord>>();
+
+  get(deploymentName: string, buildId: string): DrainRecord | undefined {
+    return this.#markers.get(deploymentName)?.get(buildId);
+  }
+
+  has(deploymentName: string, buildId: string): boolean {
+    return this.get(deploymentName, buildId) !== undefined;
+  }
+
+  set(deploymentName: string, buildId: string, record: DrainRecord): void {
+    const builds = this.#markers.get(deploymentName) ?? new Map<string, DrainRecord>();
+    builds.set(buildId, record);
+    this.#markers.set(deploymentName, builds);
+  }
+
+  delete(deploymentName: string, buildId: string): void {
+    const builds = this.#markers.get(deploymentName);
+    if (builds === undefined) return;
+    builds.delete(buildId);
+    if (builds.size === 0) this.#markers.delete(deploymentName);
+  }
 }
 
 /**
@@ -50,7 +75,7 @@ export function drainRecordForWorker(
   if (worker.deploymentName === undefined) return undefined;
   const deployment = states.deployments.get(worker.deploymentName);
   if (deployment !== undefined || worker.buildId === undefined) return deployment;
-  return states.builds.get(buildDrainKey(worker.deploymentName, worker.buildId));
+  return states.builds.get(worker.deploymentName, worker.buildId);
 }
 
 export function isWorkerDraining(worker: WorkerInfo, states: DrainStates): boolean {
