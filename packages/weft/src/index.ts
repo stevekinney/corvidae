@@ -245,6 +245,7 @@ export * from './worker/index.ts';
 // calls `Bun.spawn` and belongs under `@lostgradient/weft/testing` alone. Re-exporting the whole
 // barrel put `Bun.spawn` into the root's browser bundle, which the published package's
 // portability gate refused at the 0.26.0 release (COR-1192).
+export { deriveAsyncActivityToken } from './core/engine/async-activity-records.ts';
 export {
   UPGRADE_REFUSAL_REASON_PREFIX,
   WORKER_CONFLICT_REASONS,

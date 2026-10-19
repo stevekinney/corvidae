@@ -178,7 +178,7 @@
     {/if}
 
     {#if readTask}
-      <ActivityWorkerProvenance operationId={activity.operationId} {readTask} />
+      <ActivityWorkerProvenance operationId={activity.token} {readTask} />
     {/if}
   </div>
 </Drawer>

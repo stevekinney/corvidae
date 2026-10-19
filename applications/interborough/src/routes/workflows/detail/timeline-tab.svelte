@@ -39,6 +39,7 @@
     HttpClient,
     WorkflowFinalizerStatus,
     WorkflowState,
+    WorkflowTimelineEntry,
   } from '@lostgradient/weft';
   import { Clock, Link, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
@@ -50,6 +51,7 @@
     PENDING_ASYNC_ACTIVITY_OPERATION,
   } from './async-activity/async-activity-query.ts';
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
+  import SettledActivityProvenance from './async-activity/settled-activity-provenance.svelte';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -61,7 +63,11 @@
     timelineQuickFilterLabel,
     type TimelineQuickFilter,
   } from './timeline/timeline-filters.ts';
-  import { mapTimelineToSteps } from './timeline/timeline-mapping.ts';
+  import {
+    mapTimelineToSteps,
+    stepNumberFromRunStepId,
+    timelineStepId,
+  } from './timeline/timeline-mapping.ts';
   import {
     clearTimelineSelection,
     selectTimelineStep,
@@ -146,6 +152,22 @@
   const unattachedPendingActivities = $derived(
     attachedPendingActivities.filter((activity) => activity.stepId === null),
   );
+
+  /** The timeline step whose settled-activity provenance is open. */
+  let provenanceStep = $state<number | null>(null);
+  const readTask = $derived(client.operations['weft.tasks.get']);
+
+  /** The settled `ctx.run()` activity entry behind a mapped step, when it has one. */
+  function settledActivityEntry(stepId: string): WorkflowTimelineEntry | undefined {
+    const stepNumber = stepNumberFromRunStepId(stepId);
+    if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
+    return entries.find(
+      (candidate) =>
+        candidate.step === stepNumber &&
+        candidate.operationType === 'activity' &&
+        candidate.status !== 'running',
+    );
+  }
 
   let openDrawerToken = $state<string | null>(null);
   const openActivity = $derived(
@@ -275,6 +297,26 @@
               </div>
             {/if}
           {/if}
+          {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
+          {#if settled !== undefined && readTask !== undefined}
+            <div class="weft-timeline-tab__step-provenance">
+              <Button
+                variant="ghost"
+                size="sm"
+                label={`Worker provenance for ${settled.operationLabel}`}
+                aria-expanded={provenanceStep === settled.step}
+                onclick={() =>
+                  (provenanceStep = provenanceStep === settled.step ? null : settled.step)}
+              />
+              {#if provenanceStep === settled.step}
+                <SettledActivityProvenance
+                  workflowId={workflow.id}
+                  step={settled.step}
+                  {readTask}
+                />
+              {/if}
+            </div>
+          {/if}
         {/snippet}
       </RunStepTimeline>
     {/if}
@@ -358,6 +400,13 @@
     font-size: var(--cinder-text-2xs);
     color: var(--cinder-text-subtle);
     white-space: nowrap;
+  }
+
+  .weft-timeline-tab__step-provenance {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 6px;
   }
 
   .weft-timeline-tab__step-async {

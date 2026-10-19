@@ -56,7 +56,7 @@ function renderDrawer(client: ReturnType<typeof drawerClient>) {
 }
 
 describe('activity worker provenance', () => {
-  test('reads the ledger by the activity operation id and shows a cross-build retry', async () => {
+  test('reads the ledger by the activity token, which is the task’s operation id, and shows a cross-build retry', async () => {
     const reads: string[] = [];
     const { findByText, getByText } = renderDrawer(
       drawerClient(async ({ operationId }) => {
@@ -88,10 +88,14 @@ describe('activity worker provenance', () => {
     );
 
     expect(await findByText('Crossed build')).not.toBeNull();
-    expect(reads).toEqual(['op-remote-1']);
+    // A remote `ctx.run()` enqueues its task under the pending token; the pending record's own
+    // `operationId` is the workflow operation's, which names no ledger record.
+    expect(reads).toEqual([activity.token]);
     expect(getByText('Worker provenance')).not.toBeNull();
     const link = getByText('Open the full task ledger');
-    expect(link.getAttribute('href')).toBe('/workers?tab=diagnostics&task=op-remote-1');
+    expect(link.getAttribute('href')).toBe(
+      `/workers?tab=diagnostics&task=${encodeURIComponent(activity.token)}`,
+    );
   });
 
   test('says no worker task is recorded when the ledger has no such operation', async () => {

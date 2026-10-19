@@ -1,3 +1,8 @@
+<script lang="ts" module>
+  /** How long a read task record stays fresh, so a panel opened right after a probe reuses it. */
+  export const PROVENANCE_STALE_TIME_MS = 10_000;
+</script>
+
 <script lang="ts">
   /**
    * Worker provenance for one remote-mode activity (COR-281): the task
@@ -7,6 +12,10 @@
    * attempt history, so the run page and the Task Ledger show the same
    * requirement, worker identity, and cross-build markers, and links to the
    * full ledger rather than copying it.
+   *
+   * `operationId` is the ledger's operation id, which for a remote `ctx.run()` is the activity's
+   * async token, not the pending record's own `operationId` (the workflow operation's, regenerated
+   * on every yield).
    */
   import { EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -27,13 +36,22 @@
     readonly operationId: string;
     /** Reads one task ledger record (`weft.tasks.get`). */
     readonly readTask: (input: { operationId: string }) => Promise<unknown>;
+    /** The panel's heading; one run may show several attempts' panels, each named for its attempt. */
+    readonly heading?: string | undefined;
   }
 
-  let { operationId, readTask }: ActivityWorkerProvenanceProps = $props();
+  let {
+    operationId,
+    readTask,
+    heading = 'Worker provenance',
+  }: ActivityWorkerProvenanceProps = $props();
+  const instanceId = $props.id();
+  const headingId = `activity-provenance-heading-${instanceId}`;
 
   const taskQuery = createQuery(() => ({
     queryKey: queryKeys.tasks.detail(operationId),
     queryFn: async () => parseTaskLedgerDetail(await readTask({ operationId })),
+    staleTime: PROVENANCE_STALE_TIME_MS,
     retry: false,
   }));
 
@@ -42,10 +60,8 @@
   const ledgerPath = $derived(taskLedgerDeepLink(operationId));
 </script>
 
-<section class="weft-activity-provenance" aria-labelledby="activity-provenance-heading">
-  <h3 id="activity-provenance-heading" class="weft-activity-provenance__heading">
-    Worker provenance
-  </h3>
+<section class="weft-activity-provenance" aria-labelledby={headingId}>
+  <h3 id={headingId} class="weft-activity-provenance__heading">{heading}</h3>
   {#if taskQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading worker provenance">
       <Skeleton height="6rem" />
