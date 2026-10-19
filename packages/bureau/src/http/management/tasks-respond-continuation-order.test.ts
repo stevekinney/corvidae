@@ -210,7 +210,7 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
         'alice-key',
       );
       await waitForCondition(
-        async () => (await countOf(opened, run.id, 'review.requested')) === 2,
+        async () => hold.held() > 0 && (await countOf(opened, run.id, 'review.requested')) === 2,
         'the run never parked on its second wait',
       );
       expect(hold.held()).toBeGreaterThan(0);
@@ -278,7 +278,7 @@ describe('bureau.tasks.respond when the run parks again before the answer is rec
         answered = true;
       });
       await waitForCondition(
-        () => openSignals(opened, run.id).includes('second'),
+        () => hold.held() > 0 && openSignals(opened, run.id).includes('second'),
         'the run never parked on its second wait',
       );
       expect(hold.held()).toBeGreaterThan(0);
