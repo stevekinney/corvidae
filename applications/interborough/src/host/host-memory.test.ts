@@ -77,6 +77,8 @@ async function chat(host: Host, agent: string, threadId: string): Promise<string
   return response.text();
 }
 
+const byText = (left: string, right: string) => left.localeCompare(right);
+
 type Row = { id: string; content: string; sessionId: string | null };
 
 async function call(host: Host, method: string, params: unknown) {
@@ -113,10 +115,12 @@ describe('the host’s governed memory', () => {
     expect(await chat(host, 'beta', 'thread-3')).not.toContain('I recall');
 
     const alpha = await memoriesOf(host, 'alpha');
-    expect(alpha.map((memory) => memory.sessionId).toSorted()).toEqual(['thread-1', 'thread-2']);
-    expect((await memoriesOf(host, 'beta')).map((memory) => memory.sessionId)).toEqual([
-      'thread-3',
+    expect(alpha.map((memory) => String(memory.sessionId)).toSorted(byText)).toEqual([
+      'thread-1',
+      'thread-2',
     ]);
+    const beta = await memoriesOf(host, 'beta');
+    expect(beta.map((memory) => memory.sessionId)).toEqual(['thread-3']);
   });
 
   test('keeps the seeded agents’ memory too, owned by the one local caller', async () => {
@@ -138,7 +142,7 @@ describe('the host’s governed memory', () => {
     const restarted = await start(home);
 
     const [after] = await memoriesOf(restarted.host, 'alpha');
-    expect(after).toEqual(before!);
+    expect(after).toEqual(before);
     // The ledger survived too: the memory's lineage still names the run that wrote it.
     const read = await call(restarted.host, 'bureau.memory.get', {
       agentId: 'alpha',
@@ -159,10 +163,8 @@ describe('the host’s governed memory', () => {
 
     expect(forgotten.result?.['deletion']).toBe('completed');
     expect(await memoriesOf(host, 'alpha')).toEqual([]);
-    const status = (target: string) =>
-      (forgotten.result?.['receipt'].targets as Array<{ target: string }>).find(
-        (row) => row.target === target,
-      );
+    const receipt = forgotten.result?.['receipt'] as { targets: Array<{ target: string }> };
+    const status = (target: string) => receipt.targets.find((row) => row.target === target);
     // This host keeps no cache, asset bytes or external processor, so those completed at once; the
     // conversation it persists recalled text in is out of scope, so that target is still pending.
     expect(status('source-evidence')).toMatchObject({ status: 'completed' });

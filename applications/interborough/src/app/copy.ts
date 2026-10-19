@@ -380,12 +380,12 @@ export const MEMORY_COPY = {
     derived: 'Derived from other memories',
     operator: 'Written by a person',
     system: 'Written by the system',
-  } as Readonly<Record<string, string>>,
+  },
   trust: {
     untrusted: 'Untrusted',
     verified: 'Verified',
     system: 'System',
-  } as Readonly<Record<string, string>>,
+  },
   memoryClass: {
     working: 'Working',
     episodic: 'Episodic',
@@ -393,7 +393,7 @@ export const MEMORY_COPY = {
     procedural: 'Procedural',
     identity: 'Identity',
     resource: 'Resource',
-  } as Readonly<Record<string, string>>,
+  },
   forget: {
     action: 'Forget',
     dialog: {
@@ -428,7 +428,7 @@ export const MEMORY_COPY = {
         description:
           'The Bureau could not say whether this memory was removed. Check the list, and forget it again if it is still there.',
       },
-    } as Readonly<Record<MemoryDeletionState, { title: string; description: string }>>,
+    } satisfies Record<MemoryDeletionState, { title: string; description: string }>,
     receiptLabel: 'What the deletion reached',
     targets: {
       'source-evidence': 'The memory itself',
@@ -442,14 +442,14 @@ export const MEMORY_COPY = {
       'durable-snapshots': 'Chats that saved a copy',
       exports: 'Exports',
       'external-processors': 'Outside processors',
-    } as Readonly<Record<string, string>>,
+    },
     targetStatus: {
       completed: 'Done',
       pending: 'Waiting',
       exempt: 'Held',
       failed: 'Failed',
       unknown: 'Unknown',
-    } as Readonly<Record<MemoryDeletionState, string>>,
+    } satisfies Record<MemoryDeletionState, string>,
     failed: 'The memory was not forgotten',
   },
   correct: {

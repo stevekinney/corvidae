@@ -36,7 +36,7 @@
     type ForgetResult,
     type MemoryFault,
   } from '../../lib/memory-client.ts';
-  import { queryKeys } from '../../lib/query.ts';
+  import { memoryListingsFilter, queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { formatMemoryTime, labelFor } from './memory-presentation.ts';
 
@@ -79,7 +79,12 @@
     },
     onSuccess: (result) => {
       outcome = result;
-      void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all(agentId) });
+      // A memory that is gone has no details to read again: the outcome stays on screen.
+      void queryClient.invalidateQueries(
+        result.deletion === 'completed'
+          ? memoryListingsFilter(agentId)
+          : { queryKey: queryKeys.memory.all(agentId) },
+      );
       if (result.deletion === 'completed') onChanged({ kind: 'forgotten', id });
     },
     onError: (error) => {

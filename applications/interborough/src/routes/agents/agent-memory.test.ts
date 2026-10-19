@@ -87,7 +87,8 @@ function open(path = '/agents/assistant/memory') {
 
 /** Opens the Details of the memory whose text is `content`. */
 async function openDetails(view: ReturnType<typeof open>, content: string) {
-  const row = (await view.findByText(content)).closest('li');
+  const text = await view.findByText(content);
+  const row = text.closest('li');
   if (row === null) throw new Error(`No row holds "${content}".`);
   await fireEvent.click(
     within(row).getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) }),
@@ -317,16 +318,25 @@ describe('one memory’s lineage', () => {
 
 describe('forgetting a memory', () => {
   async function forgetWith(deletion: string, extra: Answers = {}) {
+    // As the Bureau does: a memory that was forgotten is not found when it is read again.
+    let gone = false;
     const served = bureau({
-      'bureau.memory.forget': () => ({
-        id: AISLE.id,
-        deletion,
-        receipt: {
-          ...RECEIPT,
-          awaitingHoldRelease: deletion === 'exempt',
-          targets: [{ target: 'source-evidence', lane: 'synchronous', status: deletion }],
-        },
-      }),
+      'bureau.memory.get': () => {
+        if (gone) throw new StubFault('NotFound', 404, 'No memory.', { resource: 'memory' });
+        return { memory: AISLE, lineage: NO_LINEAGE };
+      },
+      'bureau.memory.forget': () => {
+        gone = deletion === 'completed';
+        return {
+          id: AISLE.id,
+          deletion,
+          receipt: {
+            ...RECEIPT,
+            awaitingHoldRelease: deletion === 'exempt',
+            targets: [{ target: 'source-evidence', lane: 'synchronous', status: deletion }],
+          },
+        };
+      },
       ...extra,
     });
     const view = open();
@@ -397,6 +407,11 @@ describe('forgetting a memory', () => {
     expect(within(detail).queryByRole('button', { name: MEMORY_COPY.forget.action })).toBeNull();
     expect(within(detail).queryByRole('button', { name: MEMORY_COPY.correct.action })).toBeNull();
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
+    // The memory is gone, so its details are not asked for again: the outcome stays, and the
+    // page does not answer it with "not found".
+    expect(served.callsTo('bureau.memory.get')).toHaveLength(1);
+    expect(within(detail).queryByText(MEMORY_COPY.detail.notFound.title)).toBeNull();
+    expect(within(detail).getByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
   });
 
   test('says so when the Bureau refuses the forget', async () => {

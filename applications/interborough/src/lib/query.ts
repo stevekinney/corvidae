@@ -158,6 +158,21 @@ export const queryKeys = {
   },
 } as const;
 
+/**
+ * The filter for every list and search of one agent's memory, which any change makes stale, and
+ * not the details of one memory: a memory that was forgotten has none to read again, and asking
+ * would answer the page's own outcome with "not found".
+ */
+export function memoryListingsFilter(agentId: string): {
+  readonly queryKey: readonly unknown[];
+  readonly predicate: (query: { readonly queryKey: readonly unknown[] }) => boolean;
+} {
+  return {
+    queryKey: ['memory', agentId],
+    predicate: (query) => query.queryKey[2] !== 'detail',
+  };
+}
+
 /** The route of an agent's memory page, which the Agents view's frame probes differently from the agent's own. */
 export const AGENT_MEMORY_PATTERN = '/agents/:id/memory';
 

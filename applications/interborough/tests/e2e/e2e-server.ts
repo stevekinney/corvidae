@@ -46,6 +46,7 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
+import { createEchoAgents, ECHO_AGENT_NAME } from './echo-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
@@ -85,12 +86,14 @@ function createFixtureEngine() {
 // The host takes any engine; the fixtures want the typed one, so it is kept as it is created.
 let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), published
-// beside the seeded ones. Every chat case that needs a run still in progress uses them.
+// beside the seeded ones. Every chat case that needs a run still in progress uses them. The echo
+// agent (`echo-agent.ts`) answers with what it was sent, so a memory spec can store a memory that
+// is its own.
 const barrier = createBarrier();
 const host = await startHost({
   extraAgents: {
-    agents: createBarrierAgents(barrier),
-    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME],
+    agents: { ...createBarrierAgents(barrier), ...createEchoAgents() },
+    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME, ECHO_AGENT_NAME],
   },
   environment: { INTERBOROUGH_HOME: home },
   resolveProviderGenerate: provider.resolver,
