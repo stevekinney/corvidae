@@ -735,7 +735,7 @@ describe('a signal that fails', () => {
 });
 
 describe('a resume or a delete the engine could not apply', () => {
-  test('a resume is shown as changed, and a delete whose file is gone is the not-found state', async () => {
+  test('a resume is shown as changed, and a delete whose file is gone returns to the list', async () => {
     const { container, findByRole, findByText, getByRole } = open('/workflows/digest', {
       files: [readyFile('digest', { paused: true })],
     });
@@ -760,12 +760,44 @@ describe('a resume or a delete the engine could not apply', () => {
     await fireEvent.click(
       within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
     );
-    await waitFor(() =>
-      expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
-        'not-found',
-      ),
-    );
+    await waitFor(() => expect(router.pathname).toBe('/workflows'));
   });
+});
+
+describe('the "not applied yet" banner', () => {
+  for (const later of ['a resume that succeeds', 'a delete refused as stale'] as const) {
+    test(`clears once a later write runs: ${later}`, async () => {
+      const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+      const root = await ready(container);
+      stub?.on('bureau.workflows.pause', () => {
+        const file = stub?.file('digest');
+        if (file === undefined) throw new Error('The file is missing.');
+        file.paused = true;
+        file.hash = 'hash-applied-later';
+        throw workflowFaults.applyFailed();
+      });
+      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+      expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+      await findByRole('button', { name: WORKFLOW_COPY.resumeAction });
+
+      if (later === 'a resume that succeeds') {
+        await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
+        await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume').length).toBe(1));
+        await findByRole('button', { name: WORKFLOW_COPY.pauseAction });
+      } else {
+        stub?.on('bureau.workflows.delete', () => {
+          throw workflowFaults.stale('someone-else');
+        });
+        await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
+        const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+        await fireEvent.click(
+          within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
+        );
+        await waitFor(() => expect(root.dataset['condition']).toBe('stale'));
+      }
+      expect(root.textContent).not.toContain(WORKFLOW_COPY.applyFailed.title);
+    });
+  }
 });
 
 describe('the links on a type’s page', () => {

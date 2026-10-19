@@ -162,6 +162,12 @@
     failWith(agentFaultOf(error), title);
   }
 
+  /** After a delete: the list of workflows, which no longer shows this one. */
+  function leaveForTheList(): void {
+    router.navigate('/workflows');
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
+  }
+
   const pause = createMutation(() => ({
     mutationFn: (hash: string) => pauseWorkflowFile(type, hash),
     onMutate: () => {
@@ -176,6 +182,7 @@
     mutationFn: (hash: string) => resumeWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
+      unapplied = false;
     },
     onSuccess: (result) => adopt(result, false),
     onError: (error) => writeFailed(error, copy.resumeFailed),
@@ -185,12 +192,13 @@
     mutationFn: (hash: string) => deleteWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
+      unapplied = false;
     },
-    onSuccess: () => {
-      router.navigate('/workflows');
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
-    },
-    onError: (error) => writeFailed(error, copy.deleteFailed),
+    onSuccess: leaveForTheList,
+    // A delete the Bureau made and the engine could not apply has still removed the file, so it
+    // ends where a delete does.
+    onError: (error) =>
+      isApplyFailure(error) ? leaveForTheList() : writeFailed(error, copy.deleteFailed),
   }));
 
   const busy = $derived(pause.isPending || resume.isPending || removal.isPending);
