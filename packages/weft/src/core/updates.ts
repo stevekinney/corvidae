@@ -12,6 +12,13 @@ import type { BatchOperation, Storage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { decode, encode } from './codec.ts';
 import type { WorkflowStatus } from './types.ts';
+import {
+  answeredHistoryOperation,
+  listUpdateHistory,
+  pendingHistoryOperation,
+  type UpdateHistoryContext,
+  type UpdateHistoryPage,
+} from './update-history.ts';
 import { WeftError } from './weft-error.ts';
 
 // ---------------------------------------------------------------------------
@@ -210,6 +217,22 @@ export class UpdateCoordinator {
     payload: unknown,
     options?: UpdateRequestOptions,
   ): Promise<string> {
+    const request = await this.submitRequest(workflowId, name, payload, options);
+    return request.updateId;
+  }
+
+  /**
+   * Create and persist an update request, with its `pending` history entry in
+   * the same batch, and return the request as persisted. Its `createdAt` is the
+   * entry's `receivedAt`, so a caller that goes on to answer the request must
+   * use this object rather than minting a timestamp of its own.
+   */
+  async submitRequest(
+    workflowId: string,
+    name: string,
+    payload: unknown,
+    options?: UpdateRequestOptions,
+  ): Promise<UpdateRequest> {
     const updateId = crypto.randomUUID();
 
     const request: UpdateRequest = {
@@ -224,10 +247,12 @@ export class UpdateCoordinator {
       request.idempotencyKey = options.idempotencyKey;
     }
 
-    const key = KEYS.update(workflowId, updateId);
-    await this.#storage.put(key, encode(request));
+    await this.#storage.batch([
+      { type: 'put', key: KEYS.update(workflowId, updateId), value: encode(request) },
+      pendingHistoryOperation(request),
+    ]);
 
-    return updateId;
+    return request;
   }
 
   /** Check idempotency: if this key was already processed, return the existing response. */
@@ -259,18 +284,25 @@ export class UpdateCoordinator {
     );
   }
 
-  /** Build batch operations for persisting an update response (to be included in checkpoint batch). */
+  /**
+   * Build batch operations for persisting an update response (to be included in
+   * checkpoint batch). The batch also replaces the request's `pending` history
+   * entry with the outcome, so `history` must name the request's own `name` and
+   * `createdAt`.
+   */
   buildResponseOperations(
     updateId: string,
     workflowId: string,
     result: unknown,
-    error?: string,
-    idempotencyKey?: string,
+    error: string | undefined,
+    idempotencyKey: string | undefined,
+    history: UpdateHistoryContext,
   ): BatchOperation[] {
+    const completedAt = Date.now();
     const response: UpdateResponse = {
       updateId,
       result,
-      createdAt: Date.now(),
+      createdAt: completedAt,
     };
 
     if (error !== undefined) {
@@ -280,6 +312,7 @@ export class UpdateCoordinator {
     const operations: BatchOperation[] = [
       { type: 'delete', key: KEYS.update(workflowId, updateId) },
       { type: 'put', key: KEYS.updateResponse(updateId), value: encode(response) },
+      answeredHistoryOperation(workflowId, updateId, history, completedAt, error),
     ];
 
     if (idempotencyKey !== undefined) {
@@ -291,6 +324,18 @@ export class UpdateCoordinator {
     }
 
     return operations;
+  }
+
+  /**
+   * List a workflow's update history, newest first. `cursor` is the previous
+   * page's `nextCursor`; a malformed one is the caller's to reject first
+   * (`isUpdateHistoryCursor`).
+   */
+  async listHistory(
+    workflowId: string,
+    options: { limit?: number; cursor?: string } = {},
+  ): Promise<UpdateHistoryPage> {
+    return listUpdateHistory(this.#storage, workflowId, options);
   }
 
   /** Delete a pending update request that will never be observed. */

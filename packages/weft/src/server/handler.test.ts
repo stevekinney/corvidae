@@ -2108,6 +2108,9 @@ describe('handleRequest', () => {
               updateRequest.updateId,
               'upd-wf-1',
               { accepted: true },
+              undefined,
+              undefined,
+              { name: updateRequest.name, receivedAt: updateRequest.createdAt },
             );
             await storage.batch(operations);
           }
@@ -2203,10 +2206,16 @@ describe('handleRequest', () => {
       engine.register(echoWorkflow);
 
       const coordinator = new UpdateCoordinator(storage);
-      const updateId = await coordinator.createRequest('wf-poll-2', 'setName', { name: 'Bob' });
-      const operations = coordinator.buildResponseOperations(updateId, 'wf-poll-2', {
-        accepted: true,
-      });
+      const submitted = await coordinator.submitRequest('wf-poll-2', 'setName', { name: 'Bob' });
+      const { updateId } = submitted;
+      const operations = coordinator.buildResponseOperations(
+        updateId,
+        'wf-poll-2',
+        { accepted: true },
+        undefined,
+        undefined,
+        { name: submitted.name, receivedAt: submitted.createdAt },
+      );
       await storage.batch(operations);
 
       const response = await handleRequest(request('GET', `/v1/updates/${updateId}`), engine);
@@ -2431,7 +2440,7 @@ describe('handleRequest', () => {
       const coordinator = new UpdateCoordinator(storage);
 
       // Set up a completed update with an idempotency key
-      const updateId = await coordinator.createRequest(
+      const submitted = await coordinator.submitRequest(
         'idem-wf',
         'setName',
         { name: 'Alice' },
@@ -2439,12 +2448,14 @@ describe('handleRequest', () => {
           idempotencyKey: 'unique-key-1',
         },
       );
+      const { updateId } = submitted;
       const operations = coordinator.buildResponseOperations(
         updateId,
         'idem-wf',
         { accepted: true },
         undefined,
         'unique-key-1',
+        { name: submitted.name, receivedAt: submitted.createdAt },
       );
       await storage.batch(operations);
 
@@ -2481,6 +2492,7 @@ describe('handleRequest', () => {
               { done: true },
               undefined,
               updateRequest.idempotencyKey,
+              { name: updateRequest.name, receivedAt: updateRequest.createdAt },
             );
             await storage.batch(ops);
           }
@@ -2522,6 +2534,8 @@ describe('handleRequest', () => {
               'error-wf',
               undefined,
               'Validation failed',
+              undefined,
+              { name: updateRequest.name, receivedAt: updateRequest.createdAt },
             );
             await storage.batch(ops);
           }

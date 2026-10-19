@@ -10,7 +10,9 @@ import {
 } from '../../core/updates.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
+import { dispatchJsonRpc } from '../json-rpc-dispatch.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
+import { principalFromApiKey } from '../principal.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
 import { updateWorkflowOperation, updateWorkflowRestBinding } from './update-workflow.ts';
 
@@ -226,6 +228,67 @@ describe('weft.workflows.update', () => {
         expect.objectContaining({
           error: expect.stringContaining('timed out'),
         }),
+      );
+    } finally {
+      engine.submitCoordinatedUpdate = originalSubmit;
+    }
+  });
+
+  it('carries the update id in the REST 408 body so the caller can read the answer later', async () => {
+    engine = createEngine();
+    const originalSubmit = engine.submitCoordinatedUpdate.bind(engine);
+
+    try {
+      engine.submitCoordinatedUpdate = async () => {
+        throw new UpdateTimeoutError('update-123', 2_000);
+      };
+
+      const response = await handleRequest(
+        jsonRequest('POST', '/v1/workflows/workflow-123/update/rename', { payload: {} }),
+        engine,
+        { operationRegistry: registry, restBindings: bindings },
+      );
+
+      expect(response.status).toBe(408);
+      expect(await response.json()).toEqual({
+        error: 'Update update-123 timed out after 2000ms',
+        data: { updateId: 'update-123' },
+      });
+    } finally {
+      engine.submitCoordinatedUpdate = originalSubmit;
+    }
+  });
+
+  it('carries the update id in the JSON-RPC timeout error data', async () => {
+    engine = createEngine();
+    const originalSubmit = engine.submitCoordinatedUpdate.bind(engine);
+
+    try {
+      engine.submitCoordinatedUpdate = async () => {
+        throw new UpdateTimeoutError('update-123', 2_000);
+      };
+
+      const outcome = await dispatchJsonRpc(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'weft.workflows.update',
+          params: { workflowId: 'workflow-123', updateName: 'rename', timeout: 2_000 },
+          id: 1,
+        }),
+        {
+          principal: principalFromApiKey({ subject: 'svc', scopes: ['updates:write'] }),
+          host: engine,
+          transport: 'jsonRpcHttp',
+          registry,
+        },
+      );
+
+      if (outcome.kind !== 'single' || !('error' in outcome.response)) {
+        throw new Error('expected a JSON-RPC error response');
+      }
+      expect(outcome.response.error.code).toBe(-32023);
+      expect(outcome.response.error.data).toEqual(
+        expect.objectContaining({ updateId: 'update-123', weftCode: 'Timeout' }),
       );
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;

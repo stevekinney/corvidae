@@ -34,6 +34,7 @@ import {
 import { getTaskDetailRestBinding } from './get-task-detail.ts';
 import { getTaskDiagnosticsRestBinding } from './get-task-diagnostics.ts';
 import { getUpdateResultRestBinding } from './get-update-result.ts';
+import { listWorkflowUpdatesRestBinding } from './list-workflow-updates.ts';
 import { getWorkflowAttributesRestBinding } from './get-workflow-attributes.ts';
 import { getWorkflowDefinitionRestBinding } from './get-workflow-definition.ts';
 import { getWorkflowEventsRestBinding } from './get-workflow-events.ts';
@@ -125,6 +126,7 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   forkWorkflowRestBinding,
   timeoutWorkflowRestBinding,
   updateWorkflowRestBinding,
+  listWorkflowUpdatesRestBinding,
   createScheduleRestBinding,
   updateScheduleRestBinding,
   getRegistryRestBinding,

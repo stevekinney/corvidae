@@ -7,6 +7,7 @@ import type { UpdateRequest } from '../updates.ts';
 import { extractStandardSchemaIssues } from './update-validation.ts';
 import {
   deliverCoordinatedUpdateToWaiterIfAvailable,
+  submitCoordinatedUpdate,
   tryInlineUpdateHandler,
   update,
 } from './updates.ts';
@@ -29,6 +30,50 @@ function createUpdateRequest(overrides: Partial<UpdateRequest> = {}): UpdateRequ
 }
 
 describe('engine update helpers', () => {
+  it('delivers the persisted request, not a copy with a fresh timestamp, on both coordinated paths', async () => {
+    // The request's `createdAt` is part of its update-history key: a delivered copy with its own
+    // timestamp would be answered under a different key and leave the pending entry behind.
+    const persisted = createUpdateRequest({ updateId: 'update-persisted', createdAt: 1_000 });
+    const deliver = mock(async () => false);
+    const internals = {
+      inlineStrategy: null,
+      workflowClaimRegistry: null,
+      updateWaiters: new Map(),
+      updateWaitersByWorkflow: new Map(),
+      updateCoordinator: {
+        submitRequest: mock(async () => persisted),
+        waitForResponse: mock(async () => ({ updateId: 'update-persisted', result: 'done' })),
+      },
+    } as any;
+    const callbacks = {
+      guardTerminalWorkflow: mock(async () => {}),
+      guardTerminalWorkflowAfterCoordinatedRequest: mock(async () => {}),
+      schedulePendingInlineUpdateDrain: mock(() => {}),
+      dispatchEvent: mock(() => true),
+      broadcast: mock(() => {}),
+      completeOperation: mock(() => {}),
+      persistCoordinatedUpdateResponse: mock(async () => {}),
+      deliverCoordinatedUpdateToWaiterIfAvailable: deliver,
+      dispatchPendingUpdateReceived: mock(() => {}),
+      createCoordinatedUpdateResponder: mock(() => () => {}),
+      findPendingUpdateByName: mock(async () => undefined),
+    } as any;
+
+    await update(internals, 'workflow-1', 'rename', 'payload', undefined, callbacks);
+    await submitCoordinatedUpdate(
+      internals,
+      'workflow-1',
+      'rename',
+      'payload',
+      undefined,
+      callbacks,
+    );
+
+    expect(deliver).toHaveBeenCalledTimes(2);
+    expect(deliver.mock.calls[0]![1]).toBe(persisted);
+    expect(deliver.mock.calls[1]![1]).toBe(persisted);
+  });
+
   it('throws the coordinated response error returned by update()', async () => {
     const internals = {
       inlineStrategy: null,
@@ -36,7 +81,13 @@ describe('engine update helpers', () => {
       updateWaiters: new Map(),
       updateWaitersByWorkflow: new Map(),
       updateCoordinator: {
-        createRequest: mock(async () => 'update-1'),
+        submitRequest: mock(async () => ({
+          updateId: 'update-1',
+          workflowId: 'workflow-1',
+          name: 'rename',
+          payload: undefined,
+          createdAt: 1_000,
+        })),
         waitForResponse: mock(async () => ({ updateId: 'update-1', error: 'coordinated boom' })),
       },
     } as any;
@@ -673,7 +724,13 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
       updateWaiters: new Map(),
       updateWaitersByWorkflow: new Map(),
       updateCoordinator: {
-        createRequest: mock(async () => 'update-1'),
+        submitRequest: mock(async () => ({
+          updateId: 'update-1',
+          workflowId: 'workflow-1',
+          name: 'rename',
+          payload: undefined,
+          createdAt: 1_000,
+        })),
         waitForResponse: mock(async () => ({ updateId: 'update-1', result: 'coordinated-result' })),
       },
     } as any;
@@ -725,7 +782,13 @@ describe('tryWaitingUpdateHandler ownership recheck (WFT-79)', () => {
       // holder read.
       workflowClaimRegistry: { currentEpoch: () => null, engineId: 'engine-a' },
       updateCoordinator: {
-        createRequest: mock(async () => 'coordinated-update-1'),
+        submitRequest: mock(async () => ({
+          updateId: 'coordinated-update-1',
+          workflowId: 'workflow-1',
+          name: 'rename',
+          payload: undefined,
+          createdAt: 1_000,
+        })),
         waitForResponse: mock(async () => ({
           updateId: 'coordinated-update-1',
           result: 'coordinated-result',

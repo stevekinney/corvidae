@@ -34,6 +34,7 @@ import {
 } from './get-task-deliveries.ts';
 import { getTaskDetailOperation } from './get-task-detail.ts';
 import { getUpdateResultOperation } from './get-update-result.ts';
+import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { getWorkflowAttributesOperation } from './get-workflow-attributes.ts';
 import { getWorkflowDefinitionOperation } from './get-workflow-definition.ts';
 import { getWorkflowEventsOperation } from './get-workflow-events.ts';
@@ -125,6 +126,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   forkWorkflowOperation,
   timeoutWorkflowOperation,
   updateWorkflowOperation,
+  listWorkflowUpdatesOperation,
   createScheduleOperation,
   updateScheduleOperation,
   getRegistryOperation,
