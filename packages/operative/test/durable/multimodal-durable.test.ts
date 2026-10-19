@@ -90,6 +90,27 @@ describe('workflow result v3', () => {
     );
   });
 
+  it.each([
+    ['a null element', [null]],
+    ['a non-object element', ['text']],
+    ['an element with an unknown type', [{ type: 'hologram' }]],
+    ['a text part without text', [{ type: 'text' }]],
+    [
+      'an image part carrying inline bytes',
+      [
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'inline', data: 'AAAA', encoding: 'base64' },
+        },
+      ],
+    ],
+  ])('rejects a current-version summary whose parts hold %s', (_name, parts) => {
+    expect(() => normalizeAgentRunWorkflowResult({ ...valid, parts })).toThrow(
+      InvalidRunResultError,
+    );
+  });
+
   it('rejects a current-version summary without parts', () => {
     const { parts: _parts, ...withoutParts } = valid;
     expect(() => normalizeAgentRunWorkflowResult(withoutParts)).toThrow(InvalidRunResultError);

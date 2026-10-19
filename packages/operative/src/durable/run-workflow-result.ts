@@ -1,4 +1,4 @@
-import type { MultiModalContent } from 'conversationalist';
+import { type MultiModalContent, multiModalContentSchema } from 'conversationalist';
 
 import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
 import { BudgetExceededError, ElicitationDeniedError, GuardrailTripwireError } from '../errors';
@@ -135,6 +135,18 @@ function assertSummaryShape(summary: Record<string, unknown>): void {
   }
   if (!Array.isArray(summary['parts'])) {
     throw new InvalidRunResultError('parts must be an array');
+  }
+  // A recovered result is read back as a `RunResult`: each part must be a well-formed content part,
+  // and none may carry inline bytes, which are admitted as managed assets before they are persisted.
+  for (const [index, part] of summary['parts'].entries()) {
+    const parsed = multiModalContentSchema.safeParse(part);
+    if (!parsed.success) {
+      throw new InvalidRunResultError(`parts[${index}] is not a valid content part`);
+    }
+    const source = (parsed.data as { source?: { kind?: string } }).source;
+    if (source?.kind === 'inline') {
+      throw new InvalidRunResultError(`parts[${index}] carries inline bytes`);
+    }
   }
   if (typeof summary['finishReason'] !== 'string' || !FINISH_REASONS.has(summary['finishReason'])) {
     throw new InvalidRunResultError('finishReason must be a valid finish reason');
