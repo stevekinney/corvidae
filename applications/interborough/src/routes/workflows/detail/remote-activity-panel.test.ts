@@ -1,5 +1,5 @@
 /** Component tests for `<RemoteActivityPanel>` (COR-274): the ledger's own facts, and every non-success state. */
-import { render, waitFor } from '@testing-library/svelte';
+import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import { HttpClientError } from '@lostgradient/weft';
@@ -170,9 +170,7 @@ describe('RemoteActivityPanel', () => {
       throw new HttpClientError(400, 'bad request');
     });
 
-    await waitFor(() =>
-      expect(view.queryByRole('status', { name: 'Loading remote task' })).toBeNull(),
-    );
+    expect(await view.findByText('bad request')).not.toBeNull();
     expect(view.queryByText('Queue')).toBeNull();
   });
 });
