@@ -1824,6 +1824,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const assetServiceHolder: { current: AssetService | undefined } = {
     current: assetServiceInstance,
   };
+  // COR-1585 — these two are read by the composition's `claimHolderFor` callback below, so they
+  // are declared before the composition is awaited, not with the rest of the run bookkeeping.
+  const runSessionIdentifiers = new WeakMap<ActiveRun, string>();
+  /**
+   * COR-1380 — the session incarnation each run was saved into at dispatch,
+   * or recovered against. A run-ownership restore writes only into that
+   * incarnation, never into a session deleted and recreated under the same
+   * id, where the run's owner would otherwise become a co-owner of a session
+   * they never touched. Cleared with `runAttribution` in `deleteRun`.
+   */
+  const runSessionIncarnations = new Map<string, string>();
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
@@ -1897,27 +1908,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
     );
   }
-  // AB-223: scheduled fires are headless (no per-run emitter — see
-  // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
-  // terminal `schedule.completed`/`schedule.failed` has nowhere else to
-  // dispatch. Forward each onto this bureau's own emitter, the same sink
-  // `pauseSchedule`/`resumeSchedule`/`cancelSchedule` dispatch their
-  // definition-level siblings onto.
-  // A fresh Event instance for the forwarded dispatch, not a re-dispatch of
-  // `event` itself: the WHATWG dispatch algorithm tracks a "being dispatched"
-  // flag per Event OBJECT, so re-dispatching the SAME instance onto a second
-  // EventTarget while still inside the first target's listener throws
-  // "already being dispatched" (this failed loudly in schedule-fire.test.ts
-  // before this fix — every scheduled fire's terminal event forwards
-  // synchronously, from inside `scheduleFireEvents`' own dispatch).
-  runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
-    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
-    emitter.dispatch(new ScheduleCompletedEvent(event.scheduleId, event.runId));
-  });
-  runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
-    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
-    emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
-  });
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -1957,37 +1947,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ),
     );
   });
-  // AB-389 — `SessionStore.events` (`@lostgradient/operative`) now carries
-  // only the best-effort `SessionOutboxAppendedEvent` drain trigger, never
-  // `SessionCreatedEvent`/`SessionSavedEvent`/`SessionDeletedEvent`
-  // directly (that fire-and-forget dispatch is exactly the KNOWN
-  // LIMITATION this issue closes — see `create-session-store.ts`'s own
-  // doc comment). A missed or duplicate trigger costs nothing: `drainOutbox`
-  // (defined below) is single-flighted and idempotent, and the durable
-  // maintenance pass drains unconditionally on its own cadence regardless
-  // of whether this trigger ever fires.
-  //
-  // Tracked via `runtimeServices.deferred.track()` — the same seam
-  // `durable-event-history.ts`'s own per-write `trackWrite` already uses
-  // for exactly this kind of per-event (not per-interval-tick) background
-  // work — so a test using `createManualRuntimeServices()` can await
-  // `runtime.deferred.drain()` for deterministic "has this commit's drain
-  // settled yet" assertions, the same way it already can for an individual
-  // durable-event-history write.
-  if (runtime.sessionStore) {
-    runtime.sessionStore.events.addEventListener(SessionOutboxAppendedEvent.type, () => {
-      const drain = drainOutbox().catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'durable-maintenance',
-          message: `[bureau] Session outbox drain (post-commit trigger) failed: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
-      runtimeServices.deferred.track(drain, 'session-outbox-drain');
-      detachBestEffortPromise(drain);
-    });
-  }
   // AB-246 — the model-catalog refresh service. Independent of `runtime`.
   // When the caller doesn't supply one, the default `descriptorSource`
   // re-derives `@lostgradient/operative`'s static seed — this is
@@ -2183,7 +2142,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const flowController: FlowController | undefined = options.flowControl
     ? createFlowController(options.flowControl)
     : undefined;
-  const runSessionIdentifiers = new WeakMap<ActiveRun, string>();
   const activeRuns = new Set<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
@@ -2312,14 +2270,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the schedule (see `runOwner`).
    */
   const firedRunIds = new Set<string>();
-  /**
-   * COR-1380 — the session incarnation each run was saved into at dispatch,
-   * or recovered against. A run-ownership restore writes only into that
-   * incarnation, never into a session deleted and recreated under the same
-   * id, where the run's owner would otherwise become a co-owner of a session
-   * they never touched. Cleared with `runAttribution` in `deleteRun`.
-   */
-  const runSessionIncarnations = new Map<string, string>();
+  // COR-1585 — registered here, after `runAttribution` and `firedRunIds` exist, not beside the
+  // other composition listeners above: the `await fileAgents?.files.refresh()` between them lets a
+  // fire settle while these two are still uninitialised, and reading one would throw.
+  // AB-223: scheduled fires are headless (no per-run emitter — see
+  // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
+  // terminal `schedule.completed`/`schedule.failed` has nowhere else to
+  // dispatch. Forward each onto this bureau's own emitter, the same sink
+  // `pauseSchedule`/`resumeSchedule`/`cancelSchedule` dispatch their
+  // definition-level siblings onto.
+  // A fresh Event instance for the forwarded dispatch, not a re-dispatch of
+  // `event` itself: the WHATWG dispatch algorithm tracks a "being dispatched"
+  // flag per Event OBJECT, so re-dispatching the SAME instance onto a second
+  // EventTarget while still inside the first target's listener throws
+  // "already being dispatched" (this failed loudly in schedule-fire.test.ts
+  // before this fix — every scheduled fire's terminal event forwards
+  // synchronously, from inside `scheduleFireEvents`' own dispatch).
+  runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
+    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
+    emitter.dispatch(new ScheduleCompletedEvent(event.scheduleId, event.runId));
+  });
+  runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
+    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
+    emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
+  });
   // COR-424 — the run-creation command ledger, in the same store as this
   // bureau's sessions. Receipts promise that a retry after a restart finds
   // the original run, so the ledger exists only where a restart can recover
@@ -3507,6 +3481,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
     outcome: 'clean',
     perRunFailures: [],
+    skippedRuns: [],
   });
   let resolveDurableRecoveryBarrier: ((report: BureauRecoveryReport) => void) | undefined;
   // Boot-single-shot collector (see `recoverDurableRuns`'s own doc comment):
@@ -3525,6 +3500,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // sites' `.catch()` handlers so a sweep failure is never dropped from the
   // resolved report, and never leaks into a later pass.
   let currentRecoverySweepFailure: { message: string } | undefined;
+  // COR-1583 — companion to the two above: the runs THIS pass's `recoverAll()` left untouched in
+  // storage because their workflow type is not registered, in the order the engine reported them.
+  // Read back by the pass's own return and by both boot call sites' `.catch()`, like the others.
+  let currentRecoverySkippedRuns: Array<{ runId: string; type: string }> | undefined;
   const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
@@ -7075,6 +7054,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return {
         outcome: goalFailures.length > 0 ? 'partial' : 'clean',
         perRunFailures: goalFailures,
+        skippedRuns: [],
       };
     }
 
@@ -7130,6 +7110,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // reading them, so a stale entry from this pass never leaks into a
     // later one.
     currentRecoveryPerRunFailures = [];
+    currentRecoverySkippedRuns = [];
 
     // recoverAll resumes the in-flight workflows (firing the services resolver per
     // run before each generator advances); if it throws, NO handle was classified
@@ -7154,9 +7135,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // is still deliberately allowed to propagate uncaught afterward — the
     // batch-failure handling this doc comment describes further up is
     // unchanged.
+    // COR-1583 — a stored run whose workflow type this Bureau has not registered must not stop the
+    // rest of the store recovering: the engine's default refuses the whole batch, on every boot,
+    // for as long as that one run exists. `acknowledgeUnknownWorkflowTypes` has it leave each such
+    // run untouched in storage, with no claim taken, and report it, so a later boot that has
+    // registered the type recovers it. Every skipped run is diagnosed and listed in the report.
+    const onRecoverySkipped = (event: { workflowId: string; workflowType: string }): void => {
+      currentRecoverySkippedRuns?.push({ runId: event.workflowId, type: event.workflowType });
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message: `[bureau] Left run "${event.workflowId}" of workflow type "${event.workflowType}" as it is: the type is not registered, so it will be recovered by a boot that registers it.`,
+      });
+    };
+    durable.engine.addEventListener('workflow:recovery-skipped', onRecoverySkipped);
     try {
       recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
-      const handles = await durable.engine.recoverAll({ onRecoveredWorkflow });
+      const handles = await durable.engine.recoverAll({
+        onRecoveredWorkflow,
+        acknowledgeUnknownWorkflowTypes: true,
+      });
 
       // Read each handle's launch metadata CONCURRENTLY, so one slow/stuck read does
       // not block registration of the rest (no head-of-line blocking). The read is
@@ -7487,6 +7485,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
     } finally {
+      durable.engine.removeEventListener('workflow:recovery-skipped', onRecoverySkipped);
       // AB-241 review finding: the post-recovery loop above is the LAST
       // consumer of `catalogRunRecoveryCache` for this boot pass (the
       // awaited `onRecoveredWorkflow` hook, invoked earlier during
@@ -7524,14 +7523,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+    const skippedRuns = currentRecoverySkippedRuns ?? [];
     currentRecoveryPerRunFailures = undefined;
     currentRecoverySweepFailure = undefined;
+    currentRecoverySkippedRuns = undefined;
     const outcome: BureauRecoveryReport['outcome'] =
-      sweepFailure || perRunFailures.length > 0 ? 'partial' : 'clean';
+      sweepFailure || perRunFailures.length > 0 || skippedRuns.length > 0 ? 'partial' : 'clean';
     return {
       outcome,
       ...(sweepFailure ? { sweepFailure } : {}),
       perRunFailures,
+      skippedRuns,
     };
   }
 
@@ -14885,13 +14887,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // neither leaks into a later recovery pass.
           const sweepFailure = currentRecoverySweepFailure;
           const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+          const skippedRuns = currentRecoverySkippedRuns ?? [];
           currentRecoverySweepFailure = undefined;
           currentRecoveryPerRunFailures = undefined;
+          currentRecoverySkippedRuns = undefined;
           return {
             outcome: 'failed',
             ...(sweepFailure ? { sweepFailure } : {}),
             batchFailure: { message: serializeUnknownError(error) },
             perRunFailures,
+            skippedRuns,
           } satisfies BureauRecoveryReport;
         });
         void recovery.then((report) => resolveDurableRecoveryBarrier?.(report));
@@ -15235,6 +15240,42 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       hasDeferredGatewayAuthority = !requestAuthorityValidator;
     }
   }
+  // COR-1585 — the post-commit trigger is registered here, not where the composition is wired
+  // above. `drainOutbox` reads state declared much further down, so a commit that landed while
+  // construction was still awaiting (the agent file scan, the audit sequence seed) would reach
+  // it uninitialised. Registered before the boot drain below, so a commit made during or after it
+  // still triggers a drain, and the boot drain applies any entry appended before this point.
+  // AB-389 — `SessionStore.events` (`@lostgradient/operative`) now carries
+  // only the best-effort `SessionOutboxAppendedEvent` drain trigger, never
+  // `SessionCreatedEvent`/`SessionSavedEvent`/`SessionDeletedEvent`
+  // directly (that fire-and-forget dispatch is exactly the KNOWN
+  // LIMITATION this issue closes — see `create-session-store.ts`'s own
+  // doc comment). A missed or duplicate trigger costs nothing: `drainOutbox`
+  // (declared above) is single-flighted and idempotent, and the durable
+  // maintenance pass drains unconditionally on its own cadence regardless
+  // of whether this trigger ever fires.
+  //
+  // Tracked via `runtimeServices.deferred.track()` — the same seam
+  // `durable-event-history.ts`'s own per-write `trackWrite` already uses
+  // for exactly this kind of per-event (not per-interval-tick) background
+  // work — so a test using `createManualRuntimeServices()` can await
+  // `runtime.deferred.drain()` for deterministic "has this commit's drain
+  // settled yet" assertions, the same way it already can for an individual
+  // durable-event-history write.
+  if (runtime.sessionStore) {
+    runtime.sessionStore.events.addEventListener(SessionOutboxAppendedEvent.type, () => {
+      const drain = drainOutbox().catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Session outbox drain (post-commit trigger) failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+      runtimeServices.deferred.track(drain, 'session-outbox-drain');
+      detachBestEffortPromise(drain);
+    });
+  }
   // AB-389 (Codex P1 review finding, PR #598, "Drain the outbox before
   // deferring authority recovery"): the crash-recovery outbox drain used
   // to live ONLY at the start of `recoverDurableRuns()` — when boot
@@ -15304,13 +15345,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // recovery pass.
       const sweepFailure = currentRecoverySweepFailure;
       const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+      const skippedRuns = currentRecoverySkippedRuns ?? [];
       currentRecoverySweepFailure = undefined;
       currentRecoveryPerRunFailures = undefined;
+      currentRecoverySkippedRuns = undefined;
       return {
         outcome: 'failed',
         ...(sweepFailure ? { sweepFailure } : {}),
         batchFailure: { message: serializeUnknownError(error) },
         perRunFailures,
+        skippedRuns,
       } satisfies BureauRecoveryReport;
     });
     await durableRecoveryBarrier;

@@ -133,6 +133,7 @@ describe('the workflow snapshot store', () => {
     const removed = await snapshots.pruneUnheld({
       cutoff,
       isHeld: (snapshot) => snapshot.workflowVersion === workflowVersionOf(b),
+      hasInFlight: () => false,
       lastActivityAt: async (snapshot) =>
         snapshot.workflowVersion === workflowVersionOf(c)
           ? Date.parse('2027-02-01T00:00:00.000Z')
@@ -152,10 +153,57 @@ describe('the workflow snapshot store', () => {
     const removed = await snapshots.pruneUnheld({
       cutoff: Date.parse('2020-01-01T00:00:00.000Z'),
       isHeld: () => false,
+      hasInFlight: () => false,
       lastActivityAt: async () => undefined,
     });
     expect(removed).toBe(1);
     expect(await snapshots.snapshotsOf('digest')).toHaveLength(1);
+  });
+});
+
+describe('pruning while an instance is in flight (COR-1583)', () => {
+  it('keeps an unreadable snapshot record only for a workflow that has an instance in flight', async () => {
+    const { store, snapshots } = setup();
+    await store.set(`${WORKFLOW_SNAPSHOT_KEY_PREFIX}busy:sha256:broken`, '{');
+    await store.set(`${WORKFLOW_SNAPSHOT_KEY_PREFIX}idle:sha256:broken`, '{');
+    const asked: string[] = [];
+    const removed = await snapshots.pruneUnheld({
+      cutoff: Date.parse('2020-01-01T00:00:00.000Z'),
+      isHeld: () => false,
+      hasInFlight: (id) => {
+        asked.push(id);
+        return id === 'busy';
+      },
+      lastActivityAt: async () => undefined,
+    });
+    expect(removed).toBe(1);
+    expect(asked.toSorted()).toEqual(['busy', 'idle']);
+    expect(await store.list(WORKFLOW_SNAPSHOT_KEY_PREFIX)).toEqual([
+      `${WORKFLOW_SNAPSHOT_KEY_PREFIX}busy:sha256:broken`,
+    ]);
+  });
+
+  it('keeps an old cancellation record only for a workflow that has an instance in flight', async () => {
+    const { store, snapshots } = setup();
+    const old = {
+      schemaVersion: 1,
+      workflowVersion: 'sha256:abc',
+      reason: 'Cancelled at startup because it cannot resume: nothing is stored.',
+      cancelledAt: '2026-10-18T00:00:00.000Z',
+    } as const;
+    await snapshots.recordCancellation({ ...old, runId: 'busy-run', id: 'busy' });
+    await snapshots.recordCancellation({ ...old, runId: 'idle-run', id: 'idle' });
+    // A record that cannot be read names no workflow, so nothing can hold it.
+    await store.set('bureau-workflow-cancelled-run:v1:unreadable', '{');
+    await snapshots.pruneUnheld({
+      cutoff: Date.parse('2027-01-01T00:00:00.000Z'),
+      isHeld: () => false,
+      hasInFlight: (id) => id === 'busy',
+      lastActivityAt: async () => undefined,
+    });
+    expect(await snapshots.cancellationOf('busy-run')).toBeDefined();
+    expect(await snapshots.cancellationOf('idle-run')).toBeUndefined();
+    expect(await store.get('bureau-workflow-cancelled-run:v1:unreadable')).toBeNull();
   });
 });
 
@@ -193,6 +241,7 @@ describe('the cancellation records', () => {
       snapshots.pruneUnheld({
         cutoff: Date.parse(cutoff),
         isHeld: () => false,
+        hasInFlight: () => false,
         lastActivityAt: async () => undefined,
       });
     await prune('2026-10-17T00:00:00.000Z');
