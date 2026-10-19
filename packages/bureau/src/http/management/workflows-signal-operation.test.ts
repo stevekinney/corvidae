@@ -118,4 +118,70 @@ describe('bureau.workflows.signal', () => {
     }
     expect(await instancesOf(harness, 'starter')).toEqual([]);
   });
+
+  it('answers a signalId over 128 bytes, counted in bytes, with InvalidParams and no effect', async () => {
+    const harness = await served();
+    for (const signalId of ['a'.repeat(129), '😀'.repeat(50), 'a'.repeat(200)]) {
+      const response = await ownerRpc(harness.owner, 'bureau.workflows.signal', {
+        name: 'go',
+        signalId,
+      });
+      expect(response.error?.data?.httpStatus, signalId).toBe(400);
+    }
+    expect(await instancesOf(harness, 'starter')).toEqual([]);
+    const waiting = await harness.bureau.durableEngine()!.get('waiting-run');
+    expect(waiting?.waitingForSignals).toEqual(['go']);
+    const ok = await ownerRpc(harness.owner, 'bureau.workflows.signal', {
+      name: 'go',
+      signalId: 'a'.repeat(128),
+    });
+    expect(ok.error).toBeUndefined();
+  });
+
+  it('answers an engine error during delivery as Unavailable carrying what was delivered, and starts nothing', async () => {
+    const harness = await served();
+    const engine = harness.bureau.durableEngine()!;
+    await engine.start('waiter', null, { id: 'second-run' });
+    for (let attempt = 0; attempt < 1000; attempt += 1) {
+      const state = await engine.get('second-run');
+      if (state?.waitingForSignals?.includes('go') === true) break;
+      await Bun.sleep(5);
+    }
+    const original = engine.signal.bind(engine) as (...args: unknown[]) => Promise<void>;
+    let calls = 0;
+    (engine as unknown as { signal: unknown }).signal = async (...args: unknown[]) => {
+      calls += 1;
+      if (calls === 2) throw new Error('storage unavailable');
+      return original(...args);
+    };
+
+    const response = await ownerRpc(harness.owner, 'bureau.workflows.signal', { name: 'go' });
+
+    expect(response.error?.data?.httpStatus).toBe(503);
+    expect(response.error?.data?.['reason']).toBe('signal-delivery-failed');
+    expect(response.error?.message).toMatch(/Delivered to: (waiting-run|second-run)\./);
+    expect(await instancesOf(harness, 'starter')).toEqual([]);
+  });
+
+  it('answers a pending apply failure as Unavailable carrying what was delivered, and starts nothing', async () => {
+    const harness = await served();
+    const engine = harness.bureau.durableEngine()!;
+    await writeFile(
+      join(harness.directory, 'digest.json'),
+      workflowFileText('digest', { trigger: { kind: 'schedule', spec: '1h' } }),
+    );
+    await harness.bureau.workflows!.refresh();
+    (engine as unknown as { pauseSchedule: unknown }).pauseSchedule = async () => {
+      throw new Error('storage unavailable');
+    };
+    const hash = harness.bureau.workflows!.list().find((entry) => entry.id === 'digest')!.hash!;
+    await harness.bureau.workflows!.pause('digest', { expectedHash: hash }).catch(() => undefined);
+
+    const response = await ownerRpc(harness.owner, 'bureau.workflows.signal', { name: 'go' });
+
+    expect(response.error?.data?.httpStatus).toBe(503);
+    expect(response.error?.data?.['reason']).toBe('workflow-apply-failed');
+    expect(response.error?.message).toContain('Delivered to: waiting-run.');
+    expect(await instancesOf(harness, 'starter')).toEqual([]);
+  });
 });

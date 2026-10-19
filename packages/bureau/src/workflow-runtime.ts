@@ -26,6 +26,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
   type DocumentWorkflowHost,
+  encode,
   type Engine,
   type RegisteredWorkflowDocument,
   validateWorkflowDocument,
@@ -216,6 +217,40 @@ export class WorkflowApplyError extends Error {
   }
 }
 
+/**
+ * A signal that stopped partway: delivering it failed, or the engine had not followed an earlier
+ * change to the files. Nothing was started. `delivered` lists the instances the signal had already
+ * reached, which a retry with the same `signalId` reaches again without applying it twice.
+ */
+export class WorkflowSignalFailure extends Error {
+  readonly code: 'signal-delivery-failed' | 'workflow-apply-failed';
+  readonly delivered: readonly string[];
+  constructor(
+    code: 'signal-delivery-failed' | 'workflow-apply-failed',
+    message: string,
+    delivered: readonly string[],
+    cause: unknown,
+  ) {
+    super(`${message} Delivered to: ${delivered.length === 0 ? 'none' : delivered.join(', ')}.`, {
+      cause,
+    });
+    this.name = 'WorkflowSignalFailure';
+    this.code = code;
+    this.delivered = delivered;
+  }
+}
+
+/** The engine's payload cap from `durableGuardrails.payloadSize`: a positive size, or `null` for none. */
+export function payloadMaximumBytesOf(
+  payloadSize: { readonly maxBytes?: number | null | undefined } | undefined,
+): number | null {
+  const maximum = payloadSize?.maxBytes;
+  return typeof maximum === 'number' && maximum > 0 ? maximum : null;
+}
+
+/** The longest `signalId` Weft admits, in UTF-8 bytes. */
+export const SIGNAL_ID_MAXIMUM_BYTES = 128;
+
 /** What {@link WorkflowRuntime.start} registered as `retained`. */
 export interface WorkflowStartReport {
   readonly retained: readonly { readonly id: string; readonly workflowVersion: string }[];
@@ -258,7 +293,12 @@ export interface WorkflowRuntimeOptions {
   readonly snapshotStore: WorkflowSnapshotStore;
   readonly runtime: RuntimeServices;
   readonly diagnose: (message: string, cause: unknown) => void;
-  readonly createError: (message: string, code: 'NOT_FOUND') => Error;
+  readonly createError: (message: string, code: 'NOT_FOUND' | 'BAD_REQUEST') => Error;
+  /**
+   * The engine's cap on one payload's encoded size, or `null` for none. A signal's payload and the
+   * trigger it starts an instance with are checked against it before anything is delivered.
+   */
+  readonly payloadMaximumBytes?: number | null | undefined;
   /** Registers background work with the Bureau, so a test can wait for it to settle. */
   readonly track?: ((promise: Promise<unknown>, label: string) => void) | undefined;
   /**
@@ -703,25 +743,76 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
-  /** Deliver `payload` to every running instance of a workflow file that waits at `name`. */
+  /**
+   * Refuse, before any effect, what the engine would refuse: an empty name, a `signalId` that is
+   * empty or over Weft's 128 bytes (counted in UTF-8 bytes, not characters), and a payload that
+   * cannot be encoded or is over the engine's payload limit, which also bounds the trigger an
+   * instance it starts is given.
+   */
+  function validateSignal(name: string, payload: unknown, signalId: string | undefined): void {
+    const refuse = (message: string): never => {
+      throw options.createError(message, 'BAD_REQUEST');
+    };
+    if (name === '') refuse('A signal needs a non-empty name.');
+    if (signalId !== undefined) {
+      if (signalId === '') refuse('"signalId" must be non-empty.');
+      if (new TextEncoder().encode(signalId).byteLength > SIGNAL_ID_MAXIMUM_BYTES) {
+        refuse(`"signalId" must be at most ${String(SIGNAL_ID_MAXIMUM_BYTES)} bytes.`);
+      }
+    }
+    const limit = options.payloadMaximumBytes ?? null;
+    for (const value of [payload, { kind: 'signal', name, payload }]) {
+      let size: number;
+      try {
+        size = encode(value).byteLength;
+      } catch (error) {
+        return refuse(
+          `The signal's payload cannot be sent: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      if (limit !== null && size > limit) {
+        refuse(
+          `The signal's payload is ${String(size)} bytes encoded, over the engine's ${String(limit)} byte limit.`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Deliver `payload` to every running instance of a workflow file that waits at `name`, and return
+   * the instances it reached. The state is read again right before each delivery, so an instance
+   * that was cancelled or finished since the listing is skipped. That narrows the window and does
+   * not close it: Weft drops a signal sent to a finished instance without saying so, and a signal
+   * and a finish can still cross. Any error from the engine stops the delivery, and is reported
+   * with what was already reached.
+   */
   async function deliverSignal(
     name: string,
     payload: unknown,
     signalId: string | undefined,
   ): Promise<string[]> {
     const delivered: string[] = [];
-    for (const type of [...registeredTypes].toSorted()) {
-      for (const id of await runningInstances(type)) {
-        try {
-          const state = await engine.get(id);
-          if (state?.waitingForSignals?.includes(name) !== true) continue;
+    const waitsAt = async (id: string): Promise<boolean> => {
+      const state = await engine.get(id);
+      return state?.status === 'running' && state.waitingForSignals?.includes(name) === true;
+    };
+    try {
+      for (const type of [...registeredTypes].toSorted()) {
+        for (const id of await runningInstances(type)) {
+          if (!(await waitsAt(id))) continue;
+          // Read again, right before the delivery: the listing and the first read can be stale.
+          if (!(await waitsAt(id))) continue;
           await engine.signal(id, name, payload, signalId === undefined ? undefined : { signalId });
           delivered.push(id);
-        } catch (error) {
-          // An instance that finished between the read and the delivery has nothing left to wait for.
-          options.diagnose(`Could not deliver the signal "${name}" to instance "${id}".`, error);
         }
       }
+    } catch (error) {
+      throw new WorkflowSignalFailure(
+        'signal-delivery-failed',
+        `The signal "${name}" could not be delivered to every waiting instance (${error instanceof Error ? error.message : String(error)}), so it was not delivered further and nothing was started.`,
+        delivered,
+        error,
+      );
     }
     return delivered;
   }
@@ -835,9 +926,18 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async signal(name, payload, signalOptions) {
       // Delivery first, and it finishes before any instance starts, so an instance this call
       // starts whose first step awaits `name` is not satisfied by the payload it was started with.
+      validateSignal(name, payload, signalOptions?.signalId);
       const delivered = await deliverSignal(name, payload, signalOptions?.signalId);
+      if (applyPending) queueApply();
       await settled();
-      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
+      if (applyFailure !== undefined) {
+        throw new WorkflowSignalFailure(
+          'workflow-apply-failed',
+          new WorkflowApplyError(applyFailure).message,
+          delivered,
+          applyFailure,
+        );
+      }
       const trigger = { kind: 'signal', name, payload: payload ?? null };
       const startedIds: string[] = [];
       for (const listing of catalog.list()) {

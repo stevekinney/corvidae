@@ -6,6 +6,8 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { BureauError } from './create-bureau';
+
 import {
   startWorkflowBureau,
   type WorkflowBureauHarness,
@@ -293,5 +295,152 @@ describe('delivering a signal to a waiting instance', () => {
     await workflows.signal('again', 'one');
     await settle(harness, 'twice-run');
     expect(await runField(workflows, 'twice-run', 'status')).toBe('completed');
+  });
+});
+
+type StartableEngine = { start: (...args: unknown[]) => Promise<{ id: string }> };
+
+describe('delivery before start, with a start that returns only once its instance is waiting', () => {
+  it('does not deliver to an instance this call starts, even when it is already waiting before the delivery could run', async () => {
+    const harness = await start();
+    await harness.putWorkflow('echo', { trigger: onSignal('go'), steps: [awaiting('go')] });
+    const engine = harness.bureau.durableEngine()!;
+    const original = (engine as unknown as StartableEngine).start.bind(engine);
+    // `start` returns only once the instance is parked, so a delivery that ran after it would find
+    // the new instance waiting and satisfy it with the payload it was started with.
+    (engine as unknown as StartableEngine).start = async (...args) => {
+      const handle = await original(...args);
+      await parked(harness, handle.id, 'go');
+      return handle;
+    };
+
+    const result = await harness.bureau.workflows!.signal('go', 'first');
+
+    expect(result.started).toHaveLength(1);
+    expect(result.delivered).toEqual([]);
+    const state = await engine.get(result.started[0]!);
+    expect(state?.waitingForSignals).toEqual(['go']);
+  });
+});
+
+describe('a signal whose delivery cannot be made', () => {
+  async function waiting(harness: WorkflowBureauHarness, ids: readonly string[]) {
+    await harness.putWorkflow('waiter', { trigger: onSignal('begin'), steps: [awaiting('go')] });
+    await harness.putWorkflow('starter', { trigger: onSignal('go') });
+    const engine = harness.bureau.durableEngine()!;
+    for (const id of ids) await engine.start('waiter', null, { id });
+    for (const id of ids) await parked(harness, id, 'go');
+    return engine;
+  }
+
+  async function startedStarters(harness: WorkflowBureauHarness): Promise<number> {
+    const runs = await harness.bureau.workflows!.listRuns({
+      workflow: 'starter',
+      limit: 50,
+      offset: 0,
+    });
+    return runs.runs.length;
+  }
+
+  it('refuses a signalId over 128 bytes, in bytes, before it delivers or starts anything', async () => {
+    const harness = await start();
+    await waiting(harness, ['waiting-run']);
+    for (const signalId of ['a'.repeat(129), '😀'.repeat(50)]) {
+      const error = await harness.bureau.workflows!.signal('go', null, { signalId }).then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
+      expect(error, signalId).toBeInstanceOf(BureauError);
+      expect((error as BureauError).code).toBe('BAD_REQUEST');
+    }
+    expect(await startedStarters(harness)).toBe(0);
+    expect(await statusOf(harness, 'waiting-run')).toBe('running');
+    // 128 bytes is allowed.
+    const ok = await harness.bureau.workflows!.signal('go', null, { signalId: 'a'.repeat(128) });
+    expect(ok.delivered).toEqual(['waiting-run']);
+  });
+
+  it('does not list an instance that was cancelled between the read and the delivery as delivered', async () => {
+    const harness = await start();
+    const engine = await waiting(harness, ['waiting-run']);
+    const originalGet = engine.get.bind(engine);
+    let armed = true;
+    (engine as unknown as { get: unknown }).get = async (id: string) => {
+      const state = await originalGet(id);
+      if (armed && id === 'waiting-run') {
+        armed = false;
+        await engine.cancel('waiting-run');
+      }
+      return state;
+    };
+
+    const result = await harness.bureau.workflows!.signal('go', 'payload');
+
+    expect(result.delivered).toEqual([]);
+    expect(result.started).toHaveLength(1);
+    expect(await statusOf(harness, 'waiting-run')).toBe('cancelled');
+  });
+
+  it('stops with a fault that carries what was already delivered, and starts nothing, on any other engine error', async () => {
+    const harness = await start();
+    const engine = await waiting(harness, ['run-a', 'run-b']);
+    const original = engine.signal.bind(engine) as (...args: unknown[]) => Promise<void>;
+    let calls = 0;
+    (engine as unknown as { signal: unknown }).signal = async (...args: unknown[]) => {
+      calls += 1;
+      if (calls === 2) throw new Error('storage unavailable');
+      return original(...args);
+    };
+
+    const error = await harness.bureau.workflows!.signal('go', null).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect((error as Error).message).toContain('storage unavailable');
+    const delivered = (error as { delivered?: readonly string[] }).delivered;
+    expect(delivered).toHaveLength(1);
+    expect(['run-a', 'run-b']).toContain(delivered![0]!);
+    expect(await startedStarters(harness)).toBe(0);
+  });
+
+  it('answers with delivered when the engine has not followed an earlier file change, and starts nothing', async () => {
+    const harness = await start();
+    const engine = await waiting(harness, ['waiting-run']);
+    await harness.putWorkflow('digest', { trigger: { kind: 'schedule', spec: '1h' } });
+    (engine as unknown as { pauseSchedule: unknown }).pauseSchedule = async () => {
+      throw new Error('storage unavailable');
+    };
+    const hash = harness.bureau.workflows!.list().find((entry) => entry.id === 'digest')!.hash!;
+    await harness.bureau.workflows!.pause('digest', { expectedHash: hash }).catch(() => undefined);
+
+    const error = await harness.bureau.workflows!.signal('go', null).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect((error as { code?: string }).code).toBe('workflow-apply-failed');
+    expect((error as { delivered?: readonly string[] }).delivered).toEqual(['waiting-run']);
+    expect(await startedStarters(harness)).toBe(0);
+  });
+
+  it('refuses a payload over the engine’s payload limit before it delivers or starts anything', async () => {
+    const harness = await startWorkflowBureau({
+      overrides: { durableGuardrails: { payloadSize: { maxBytes: 256 } } },
+    });
+    harnesses.push(harness);
+    await waiting(harness, ['waiting-run']);
+
+    const error = await harness.bureau.workflows!.signal('go', 'x'.repeat(1024)).then(
+      () => undefined,
+      (failure: unknown) => failure,
+    );
+
+    expect(error).toBeInstanceOf(BureauError);
+    expect((error as BureauError).code).toBe('BAD_REQUEST');
+    expect(await startedStarters(harness)).toBe(0);
+    expect(await statusOf(harness, 'waiting-run')).toBe('running');
+    const ok = await harness.bureau.workflows!.signal('go', 'small');
+    expect(ok.delivered).toEqual(['waiting-run']);
   });
 });

@@ -238,6 +238,43 @@ describe('workflows-create', () => {
   });
 });
 
+describe('input that does not match a tool’s schema', () => {
+  it('is an invalid result with code invalid-input, not a failed tool call, and writes nothing', async () => {
+    const harness = await start();
+    await harness.callTool('workflows-create', { name: 'Digest', trigger: TRIGGER, steps: STEPS });
+    const hash = hashOf(harness, 'digest');
+    for (const [tool, args] of [
+      ['workflows-create', { name: 'Oops', trigger: TRIGGER, steps: 'oops' }],
+      ['workflows-create', { name: 'Oops', steps: STEPS }],
+      ['workflows-create', { trigger: TRIGGER, steps: STEPS }],
+      ['workflows-update', { id: 'digest', expectedHash: hash, trigger: 'x', steps: STEPS }],
+      ['workflows-pause', { id: 'digest' }],
+      ['workflows-resume', { expectedHash: hash }],
+      ['workflows-list', { unexpected: true }],
+    ] as const) {
+      const { result, outcome } = await harness.callTool(tool, args);
+      expect(outcome, tool).toBe('success');
+      expect(result, tool).toMatchObject({ status: 'invalid', code: 'invalid-input' });
+      expect((result as { issues: unknown[] }).issues.length, tool).toBeGreaterThan(0);
+    }
+    expect(harness.bureau.workflows!.list().map((entry) => entry.id)).toEqual(['digest']);
+  });
+});
+
+describe('what the model is shown of a tool’s input', () => {
+  it('is the real schema, with its required fields, though a mismatch is answered rather than refused', () => {
+    const tools = createWorkflowTools({
+      workflows: () => undefined,
+      runIdentity: async () => ({ agent: undefined, owner: undefined }),
+    });
+    const schemaOf = (name: string) =>
+      JSON.stringify((tools[name] as unknown as { toJSON: () => unknown }).toJSON());
+    expect(schemaOf('workflows-create')).toContain('"required":["name","trigger","steps"]');
+    expect(schemaOf('workflows-update')).toContain('"expectedHash"');
+    expect(schemaOf('workflows-pause')).toContain('"required":["id","expectedHash"]');
+  });
+});
+
 describe('workflows-update, workflows-pause, workflows-resume', () => {
   async function seeded() {
     const harness = await start({ agents: ['scribe', 'editor'] });

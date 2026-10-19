@@ -55,10 +55,13 @@ export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
   return undefined;
 };
 
+/** The longest signal name: what `bureau.workflows.signal` admits, so a trigger can always be signalled. */
+export const SIGNAL_NAME_MAXIMUM_LENGTH = 256;
+
 /**
  * Why `trigger` is not a valid `signal` trigger, or `undefined` when it is. A signal trigger is
- * exactly `{ kind: 'signal', name }`, where `name` follows the grammar of an `await-signal` step's
- * signal name: a non-empty string.
+ * exactly `{ kind: 'signal', name }`, where `name` is a non-empty string of at most
+ * {@link SIGNAL_NAME_MAXIMUM_LENGTH} characters.
  */
 export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
   const extra = Object.keys(trigger).filter((key) => key !== 'kind' && key !== 'name');
@@ -68,6 +71,9 @@ export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
   const name = trigger['name'];
   if (typeof name !== 'string' || name === '') {
     return 'a signal trigger needs a "name": the non-empty name of the signal that starts it';
+  }
+  if (name.length > SIGNAL_NAME_MAXIMUM_LENGTH) {
+    return `a signal trigger's "name" may be at most ${String(SIGNAL_NAME_MAXIMUM_LENGTH)} characters`;
   }
   return undefined;
 };

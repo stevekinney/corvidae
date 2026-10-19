@@ -119,6 +119,22 @@ describe('parsing a workflow file', () => {
     }
   });
 
+  it('caps a signal name at 256 characters, which is as many as the wire admits', () => {
+    expect(
+      parseWorkflowFile(
+        'digest',
+        file({ trigger: { kind: 'signal', name: 'n'.repeat(256) } }),
+        host,
+      ).ok,
+    ).toBe(true);
+    const problem = problemOf(
+      'digest',
+      file({ trigger: { kind: 'signal', name: 'n'.repeat(257) } }),
+    );
+    expect(problem.code).toBe('invalid-document');
+    expect(problem.issues?.[0]?.path).toBe('trigger');
+  });
+
   it('is invalid-document for a signal trigger with another field, no name, or a name that is not a non-empty string', () => {
     for (const trigger of [
       { kind: 'signal' },

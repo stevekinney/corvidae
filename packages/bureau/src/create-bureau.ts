@@ -291,8 +291,12 @@ import {
   workflowStepRunId,
 } from './workflow-agent-step';
 import { parseWorkflowScheduleId } from './workflow-schedule';
-import { createWorkflowRuntime, type WorkflowRuntime } from './workflow-runtime';
-import { createWorkflowTools, WORKFLOW_TOOL_NAMES } from './workflow-tools';
+import {
+  createWorkflowRuntime,
+  payloadMaximumBytesOf,
+  type WorkflowRuntime,
+} from './workflow-runtime';
+import { collidingWorkflowToolName, createWorkflowTools } from './workflow-tools';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import {
   type AgentStepRequest,
@@ -1658,12 +1662,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     // COR-1529: Bureau adds the workflow tools to the tool catalog itself, so a host tool that
     // already has one of their names would be silently shadowed or shadow them.
-    for (const name of WORKFLOW_TOOL_NAMES) {
-      if (options.agentTools !== undefined && Object.hasOwn(options.agentTools, name)) {
-        toBadRequest(
-          `"options.agentTools" names a tool "${name}", which Bureau provides itself when "options.workflowDirectory" is set`,
-        );
-      }
+    const colliding = collidingWorkflowToolName(options.agentTools);
+    if (colliding !== undefined) {
+      toBadRequest(
+        `"options.agentTools" names a tool "${colliding}", which Bureau provides itself when "options.workflowDirectory" is set`,
+      );
     }
   }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
@@ -2073,6 +2076,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               cause,
             }),
           createError: (message, code) => new BureauError(message, code),
+          payloadMaximumBytes: payloadMaximumBytesOf(options.durableGuardrails?.payloadSize),
           track: (promise, label) => runtimeServices.deferred.track(promise, label),
           // The trail is built later in construction; a write only happens after it exists.
           audit: async (entry) => auditTrailInstance?.record(entry),
@@ -6278,7 +6282,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ? resolvePersistedRunOwningPrincipal(sessionMetadata as Record<string, JSONValue>, runId)
         : undefined;
     const recoveredOwner = ownerOrLocal(persistedPrincipal);
-    runAttribution.set(runId, { ...runAttribution.get(runId), principal: recoveredOwner });
+    // The agent the run was recovered as, so a tool that asks who is calling still hears it.
+    const recoveredAgentName = recoveredServices?.options.agentName;
+    runAttribution.set(runId, {
+      ...runAttribution.get(runId),
+      principal: recoveredOwner,
+      ...(recoveredAgentName === undefined ? {} : { agentName: recoveredAgentName }),
+    });
     // COR-718 — the run keeps its owner; recovery is only the actor. One entry
     // per reattached run on each start.
     detachBestEffortPromise(

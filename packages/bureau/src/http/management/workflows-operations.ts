@@ -29,8 +29,15 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
+import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
+import { BureauError } from '../../create-bureau.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
-import { type BureauWorkflows, WorkflowApplyError } from '../../workflow-runtime.ts';
+import {
+  type BureauWorkflows,
+  SIGNAL_ID_MAXIMUM_BYTES,
+  WorkflowApplyError,
+  WorkflowSignalFailure,
+} from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -602,11 +609,18 @@ export const workflowsRunsGetOperation = defineOperation<
 
 const signalInput = z.object({
   /** The signal's name: the `name` of a signal trigger and of an `await-signal` step. */
-  name: z.string().min(1).max(256),
+  name: z.string().min(1).max(SIGNAL_NAME_MAXIMUM_LENGTH),
   /** What the signal carries; `null` when omitted. */
   payload: z.json().optional(),
   /** Makes a retried delivery apply once; starts are never deduplicated. */
-  signalId: z.string().min(1).max(256).optional(),
+  signalId: z
+    .string()
+    .min(1)
+    .refine(
+      (signalId) => new TextEncoder().encode(signalId).byteLength <= SIGNAL_ID_MAXIMUM_BYTES,
+      `signalId must be at most ${String(SIGNAL_ID_MAXIMUM_BYTES)} bytes`,
+    )
+    .optional(),
 });
 
 const signalOutput = z.object({
@@ -623,7 +637,7 @@ export const workflowsSignalOperation = defineOperation<
   mcpExposable: false,
   summary: 'Signal workflows',
   description:
-    'Delivers `payload` to every running workflow instance that waits at an `await-signal` step named `name`, then starts one instance of every ready, unpaused workflow whose trigger is `{ kind: "signal", name }`, with `{ kind: "signal", name, payload }` as its `trigger`. Returns the `delivered` instance identifiers and the `started` ones. Delivery happens first, so an instance this call starts is never satisfied by this call. A paused or deleted workflow starts nothing, and its running instances still receive the signal. `signalId` makes a retried delivery apply once; starts are not deduplicated. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else gets `{ started: [], delivered: [] }`.',
+    'Delivers `payload` to every running workflow instance that waits at an `await-signal` step named `name`, then starts one instance of every ready, unpaused workflow whose trigger is `{ kind: "signal", name }`, with `{ kind: "signal", name, payload }` as its `trigger`. Returns the `delivered` instance identifiers and the `started` ones. Delivery happens first, so an instance this call starts is never satisfied by this call. A paused or deleted workflow starts nothing, and its running instances still receive the signal. `signalId` (at most 128 bytes) makes a retried delivery apply once; starts are not deduplicated. A payload the engine would refuse is `InvalidParams`, and nothing is delivered. An engine error during delivery, or an earlier file change the engine has not followed, is `Unavailable` (`data.reason` is `signal-delivery-failed` or `workflow-apply-failed`) and starts nothing; its message names the instances already reached. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else gets `{ started: [], delivered: [] }`.',
   destructive: true,
   tags: ['Workflows'],
   inputSchema: signalInput,
@@ -643,11 +657,21 @@ export const workflowsSignalOperation = defineOperation<
         signalId: input.signalId,
       });
     } catch (error) {
-      if (error instanceof WorkflowApplyError) {
+      if (error instanceof WorkflowSignalFailure) {
+        // Weft's `Unavailable` carries only `reason` and `retryAfterSeconds` on the wire, so the
+        // instances already reached are named in the message; `error.delivered` holds them for an
+        // in-process caller.
         throw {
           code: 'Unavailable',
           message: error.message,
           data: { reason: error.code },
+        } satisfies OperationFault;
+      }
+      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
+        throw {
+          code: 'InvalidParams',
+          message: error.message,
+          data: { issues: [{ path: ['payload'], message: error.message, code: 'custom' }] },
         } satisfies OperationFault;
       }
       throw error;
