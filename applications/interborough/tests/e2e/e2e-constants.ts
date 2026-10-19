@@ -13,6 +13,13 @@ export const E2E_PORT = 7399;
 
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
+/**
+ * Where the test-only barrier control listens. The chat specs hold a run on a barrier so no case
+ * depends on timing (`barrier-agent.ts`); the host itself serves no such route.
+ */
+export const E2E_BARRIER_PORT = 7398;
+export const E2E_BARRIER_URL = `http://127.0.0.1:${E2E_BARRIER_PORT}`;
+
 /** `deploymentName` the E2E `RemoteWorker` registers under (flow (e), drain-a-deployment). */
 export const E2E_DEPLOYMENT_NAME = 'checkout-worker-fleet';
 
