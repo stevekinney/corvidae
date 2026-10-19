@@ -81,31 +81,47 @@ describe('version state and role', () => {
 });
 
 describe('removalBlockedReason', () => {
+  /** Only a draining build can be removed, so the rules after that one are read on a drained build. */
+  const drained = (buildId: string, overrides: Parameters<typeof version>[1] = {}) =>
+    version(buildId, { state: 'draining', ...overrides });
   const pointer = routing({ currentBuildId: 'build-a', rampingBuildId: 'build-b' });
 
-  test('allows an unreferenced, unrouted build with no workers', () => {
-    expect(removalBlockedReason(version('build-c'), pointer, NO_FLEET)).toBeUndefined();
+  test('allows an unreferenced, unrouted, draining build with no workers', () => {
+    expect(removalBlockedReason(drained('build-c'), pointer, NO_FLEET)).toBeUndefined();
+  });
+
+  test('tells a build that is not draining to drain it first, before anything else', () => {
+    expect(removalBlockedReason(version('build-c'), pointer, NO_FLEET)).toBe(
+      'Build billing/build-c is ready, so it is not draining. Drain it first; only a draining build can be removed.',
+    );
+    // Even a referenced, routed build with workers: the drain is the first step.
+    expect(
+      removalBlockedReason(version('build-a', { executionReferences: 4 }), pointer, {
+        ...NO_FLEET,
+        workers: 1,
+      }),
+    ).toContain('Drain it first');
   });
 
   test('names the build and the number of executions that still reference it', () => {
     expect(
-      removalBlockedReason(version('build-c', { executionReferences: 1 }), pointer, NO_FLEET),
+      removalBlockedReason(drained('build-c', { executionReferences: 1 }), pointer, NO_FLEET),
     ).toBe(
-      'Build billing/build-c is still referenced by 1 execution (pinned runs, schedules, pending requirements, attempts, or realms), so it stays reachable.',
+      'Build billing/build-c is still referenced by 1 piece of work (runs that are not finished and task-ledger entries that require it), so it stays reachable.',
     );
     expect(
-      removalBlockedReason(version('build-c', { executionReferences: 3 }), pointer, NO_FLEET),
-    ).toContain('3 executions');
+      removalBlockedReason(drained('build-c', { executionReferences: 3 }), pointer, NO_FLEET),
+    ).toContain('3 pieces of work');
   });
 
   test('refuses the current and ramping builds of the pointer, naming the role', () => {
-    expect(removalBlockedReason(version('build-a'), pointer, NO_FLEET)).toContain('current build');
-    expect(removalBlockedReason(version('build-b'), pointer, NO_FLEET)).toContain('ramping build');
+    expect(removalBlockedReason(drained('build-a'), pointer, NO_FLEET)).toContain('current build');
+    expect(removalBlockedReason(drained('build-b'), pointer, NO_FLEET)).toContain('ramping build');
   });
 
   test('refuses a build whose workers are still connected', () => {
     expect(
-      removalBlockedReason(version('build-c'), pointer, { ...NO_FLEET, workers: 2 }),
+      removalBlockedReason(drained('build-c'), pointer, { ...NO_FLEET, workers: 2 }),
     ).toContain('2 connected workers still report build billing/build-c');
   });
 
@@ -114,9 +130,10 @@ describe('removalBlockedReason', () => {
       removalBlockedReason(version('build-c', { state: 'removed' }), pointer, NO_FLEET),
     ).toContain('already removed');
     for (const reason of [
-      removalBlockedReason(version('build-c', { executionReferences: 2 }), pointer, NO_FLEET),
-      removalBlockedReason(version('build-a'), pointer, NO_FLEET),
-      removalBlockedReason(version('build-c'), pointer, { ...NO_FLEET, workers: 1 }),
+      removalBlockedReason(drained('build-c', { executionReferences: 2 }), pointer, NO_FLEET),
+      removalBlockedReason(drained('build-a'), pointer, NO_FLEET),
+      removalBlockedReason(drained('build-c'), pointer, { ...NO_FLEET, workers: 1 }),
+      removalBlockedReason(version('build-c'), pointer, NO_FLEET),
     ]) {
       expect(reason?.toLowerCase()).not.toContain('capacity');
     }

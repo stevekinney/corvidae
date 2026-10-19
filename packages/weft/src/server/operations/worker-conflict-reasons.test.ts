@@ -11,7 +11,10 @@ describe('worker Conflict reasons', () => {
     expect(WORKER_CONFLICT_REASONS).toEqual({
       staleGeneration: 'stale-generation',
       versionNotReady: 'version-not-ready',
+      versionNotDraining: 'version-not-draining',
       versionReferenced: 'version-referenced',
+      versionRemoved: 'version-removed',
+      versionBusy: 'version-busy',
       versionRouted: 'version-routed',
       overrideTokenRejected: 'override-token-rejected',
       workflowNotTerminal: 'workflow-not-terminal',

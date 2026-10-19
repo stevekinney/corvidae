@@ -125,14 +125,14 @@ test('an operator sets routing, rolls back, promotes, then drains and resumes on
   await expect(await value(page, 'Current build')).toHaveText(E2E_CURRENT_BUILD_ID);
   await expect(await value(page, 'Rollout generation')).toHaveText('4');
 
-  // The current build is not removable, and says why.
+  // Only a draining build can be removed, so a ready build is told to drain first.
   await expect(
     buildRow(page, E2E_CURRENT_BUILD_ID).getByRole('button', { name: 'Remove' }),
   ).toBeDisabled();
   await expect(
     buildRow(page, E2E_CURRENT_BUILD_ID).getByText(
       new RegExp(
-        `Cannot remove: Build ${E2E_LEDGER_DEPLOYMENT_NAME}/${E2E_CURRENT_BUILD_ID} is the current build`,
+        `Cannot remove: Build ${E2E_LEDGER_DEPLOYMENT_NAME}/${E2E_CURRENT_BUILD_ID} is ready, so it is not draining. Drain it first`,
       ),
     ),
   ).toBeVisible();
@@ -149,6 +149,17 @@ test('an operator sets routing, rolls back, promotes, then drains and resumes on
   // The drain is the catalog's state for the build, so the version itself reads Draining.
   await expect(
     buildRow(page, E2E_CURRENT_BUILD_ID).getByText('Draining', { exact: true }),
+  ).toBeVisible();
+  // Drained, the current build is still not removable: it is the routing pointer's current build.
+  await expect(
+    buildRow(page, E2E_CURRENT_BUILD_ID).getByRole('button', { name: 'Remove' }),
+  ).toBeDisabled();
+  await expect(
+    buildRow(page, E2E_CURRENT_BUILD_ID).getByText(
+      new RegExp(
+        `Cannot remove: Build ${E2E_LEDGER_DEPLOYMENT_NAME}/${E2E_CURRENT_BUILD_ID} is the current build`,
+      ),
+    ),
   ).toBeVisible();
 
   await buildRow(page, E2E_CURRENT_BUILD_ID).getByRole('button', { name: 'Resume' }).click();

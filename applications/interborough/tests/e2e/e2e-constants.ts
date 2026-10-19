@@ -98,3 +98,11 @@ export const E2E_PINNED_WORKFLOW_TYPE = 'e2e-pinned-order';
 export const E2E_AUTO_UPGRADE_WORKFLOW_TYPE = 'e2e-auto-upgrade-order';
 export const E2E_PINNED_RUN_ID = 'e2e-versioned-pinned-run';
 export const E2E_AUTO_UPGRADE_RUN_ID = 'e2e-versioned-auto-upgrade-run';
+
+/**
+ * COR-1582: a pinned run that is still running on the first build, so that build has durable work
+ * bound to it. It waits for a signal nothing sends, which keeps the build's reference count at one
+ * for the life of the server.
+ */
+export const E2E_HELD_WORKFLOW_TYPE = 'e2e-held-order';
+export const E2E_HELD_RUN_ID = 'e2e-versioned-held-run';

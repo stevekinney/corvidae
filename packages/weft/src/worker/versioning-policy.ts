@@ -2,7 +2,7 @@
 
 import { decode, encode } from '../core/codec/index.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../core/versioning.ts';
-import { KEYS, storageConditionalBatch, type Storage } from '../storage/interface.ts';
+import { KEYS, type Storage } from '../storage/interface.ts';
 import {
   WorkerDeploymentCatalog,
   selectWorkerDeployment,
@@ -12,6 +12,7 @@ import {
 } from './deployment-routing.ts';
 import type { WorkerExecutionRequirement } from './manifest/types.ts';
 import { NoRoutedWorkerDeploymentError } from './no-routed-deployment-error.ts';
+import { commitWorkerBinding } from './worker-binding-commit.ts';
 
 export const DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY = {
   mode: 'pinned',
@@ -298,11 +299,7 @@ export async function bindWorkflowWorkerAtStart(
   }
   const record: WorkflowWorkerBindingRecord = { current: binding, history: [] };
   state['workerBinding'] = record;
-  const applied = await storageConditionalBatch(
-    storage,
-    [{ key, expectedValue: existing }],
-    [{ type: 'put', key, value: encode(state) }],
-  );
+  const applied = await commitWorkerBinding(storage, key, existing, state, binding);
   if (!applied) {
     const raced = await readWorkflowWorkerBinding(storage, binding.workflowId);
     if (raced !== null && bindingEquals(raced.current, binding)) return raced;
@@ -333,12 +330,9 @@ export async function recordWorkflowWorkerUpgrade(
     history: [current, ...previous.history].slice(0, limit),
   };
   state['workerBinding'] = record;
-  const applied = await storageConditionalBatch(
-    storage,
-    [{ key, expectedValue: previousBytes }],
-    [{ type: 'put', key, value: encode(state) }],
-  );
-  if (!applied) throw new Error('Concurrent workflow worker upgrade lost the binding CAS.');
+  if (!(await commitWorkerBinding(storage, key, previousBytes, state, next))) {
+    throw new Error('Concurrent workflow worker upgrade lost the binding CAS.');
+  }
   return record;
 }
 
