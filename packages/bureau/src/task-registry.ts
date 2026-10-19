@@ -211,8 +211,17 @@ export interface TaskRegistry {
   recordAdmission(admission: TaskAdmission): Promise<void>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
-  /** Records how a task ended. The latest settlement wins. */
-  recordSettled(taskId: string, settlement: TaskSettlement): Promise<void>;
+  /**
+   * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
+   * `false`, writing nothing, when the task has no record.
+   */
+  recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
+  /**
+   * Resolves once every cleanup acknowledgement the registry is following has arrived and
+   * every write it started has landed. A shutdown awaits it after the runs have been ended, so
+   * the cleanup of a run that ended as the engine was disposed is recorded before storage closes.
+   */
+  idle(): Promise<void>;
   /**
    * Resolves once every settlement and cleanup write now in flight has landed (or failed),
    * including any that begin while it waits. A shutdown awaits it before storage closes.
@@ -632,7 +641,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
-      await track(
+      return track(
         update(taskId, (record) => {
           // A task has more than one writer of its settlement (the action that ended the run,
           // and the catalog hook that carries the answer), so the answer is never lost to
@@ -644,6 +653,17 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
         }),
       );
+    },
+
+    async idle() {
+      // Following a cleanup can start another write, and a write can follow another cleanup, so
+      // wait until a pass finds nothing new.
+      for (;;) {
+        const following = [...watchers.values()];
+        await Promise.allSettled(following);
+        await this.flush();
+        if (watchers.size === following.length && inFlight.size === 0) return;
+      }
     },
 
     async flush() {

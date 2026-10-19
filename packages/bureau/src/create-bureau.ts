@@ -240,9 +240,11 @@ import {
   serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
+import { createCatalogTaskSettler } from './catalog-task-settlement';
 import {
   createCatalogRunSettlementHook,
   type CatalogRunSettlement,
+  publishFreshCatalogRun,
 } from './catalog-run-settlement';
 import {
   createTaskRegistry,
@@ -3564,23 +3566,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * any other.
    */
   const catalogRunSettlements = createCatalogRunSettlementHook(diagnose);
-  catalogRunSettlements.subscribe(async (settlement) => {
-    const content = settlement.status === 'completed' ? (settlement.content ?? '') : '';
-    await tasks.recordSettled(settlement.runId, {
-      at: runtimeServices.clock.nowISO(),
-      status: settlement.status,
-      finishReason: settlement.finishReason,
-      message: settlement.message,
-      ...(content === ''
-        ? {}
-        : {
-            answer: {
-              text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
-              truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
-            },
-          }),
-    });
-  });
+  catalogRunSettlements.subscribe(
+    createCatalogTaskSettler({
+      tasks,
+      loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+      durableCreatedAt: async (runId) => {
+        const state = await runtime.durable?.engine.get(runId);
+        return state === null || state === undefined
+          ? undefined
+          : new Date(state.createdAt).toISOString();
+      },
+      now: runtimeServices.clock.nowISO,
+      ownerOf: ownerOrLocal,
+      originatingMessage: originatingMessageText,
+    }),
+  );
 
   /** COR-1481 — records how a task ended, from the action that ended its run. */
   function recordTaskSettlement(action: {
@@ -13153,11 +13153,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());
           }
-          // COR-1481 — disposing the engine is what ends a durable run that was still in
-          // flight, and each run's `closed()` acknowledgement lands as it does. The cleanup
-          // writes those start are awaited before the backend closes under them.
-          for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
-          await tasks.flush();
+          // COR-1481 — disposing the engine is what ends a durable run that was still in flight,
+          // and each run's `closed()` acknowledgement lands as it does. The cleanup the registry
+          // follows is awaited, with the writes it starts, before the backend closes under them.
+          await tasks.idle();
         } finally {
           try {
             // Pending steering log appends (run-boundary events are logged
@@ -13848,42 +13847,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
         const taskId = handle.id;
         detachBestEffortPromise(
-          (async () => {
-            try {
-              await tasks.recordAdmission({
+          publishFreshCatalogRun({
+            handle,
+            agentName,
+            admit: () =>
+              tasks.recordAdmission({
                 taskId,
                 contextId,
                 incarnation: '',
                 agentName,
                 owner,
                 message: originatingMessageText(input),
-              });
-              const result = await handle.result();
-              const status = settledTaskState('completed', result.finishReason);
-              // A run stopped through its own handle (not through `abortRun`) still has a
-              // cleanup to report: follow it before the task shows as canceled.
-              if (status === 'canceled') void tasks.watchCleanup(taskId, handle.closed());
-              await catalogRunSettlements.publish({
-                runId: taskId,
-                agentName,
-                status,
-                finishReason: result.finishReason ?? null,
-                message:
-                  result.error === undefined || result.error === null
-                    ? null
-                    : serializeUnknownError(result.error).slice(0, 1000),
-                content: result.content,
-                recovered: false,
-              });
-            } catch (error) {
-              diagnose({
-                level: 'error',
-                scope: 'task-registry',
-                message: `[bureau] Could not record catalog task "${taskId}": ${serializeUnknownError(error)}`,
-                cause: error,
-              });
-            }
-          })(),
+              }),
+            hook: catalogRunSettlements,
+            followCleanup: (closed) =>
+              void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
+            diagnose,
+          }),
         );
       },
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.

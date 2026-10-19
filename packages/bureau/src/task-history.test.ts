@@ -14,6 +14,7 @@ import { describe, expect, it } from 'bun:test';
 import { encodeStorageKeyComponent, resolveStorage, type Storage } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
+import { createAskingAgent } from './test/task-record-crash-agent';
 import { TASK_RECORD_KEY_PREFIX } from './task-registry';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
@@ -236,6 +237,47 @@ describe('a task’s own message history', () => {
       try {
         const task = await second.tasks.get(run.id);
         expect(task?.status).toBe('completed');
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('records the cleanup of a durable run that ends as the engine is disposed, before storage closes', async () => {
+    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
+    const diagnostics: string[] = [];
+    const open = (collect: boolean) =>
+      createBureau({
+        id: 'history-engine-dispose',
+        agents: { asker: createAskingAgent() },
+        generate: finishes,
+        toolbox,
+        storage: fixture.configuration,
+        durableExecution: true,
+        humanInput: true,
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+        durableOwnership: { ownership: 'none' },
+        ...(collect
+          ? { onDiagnostic: (diagnostic) => void diagnostics.push(diagnostic.message) }
+          : {}),
+      });
+    try {
+      const first = await open(true);
+      const run = first.run('asker', 'which environment?', { principal: 'api-key:alice' });
+      await waitForCondition(
+        () => first.listPendingReviews().some((review) => review.runId === run.id),
+        'the run never parked',
+      );
+      await first.dispose();
+
+      const taskWriteFailures = diagnostics.filter((message) => message.includes('task'));
+      expect(taskWriteFailures).toEqual([]);
+      const second = await open(false);
+      try {
+        const record = await second.tasks.record(run.id);
+        expect(record?.cleanup).toBeDefined();
       } finally {
         await second.dispose();
       }

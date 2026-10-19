@@ -3,6 +3,8 @@ import { describe, expect, it } from 'bun:test';
 import {
   type CatalogRunSettlement,
   createCatalogRunSettlementHook,
+  type FreshCatalogRunHandle,
+  publishFreshCatalogRun,
 } from './catalog-run-settlement';
 
 const settlement: CatalogRunSettlement = {
@@ -49,5 +51,71 @@ describe('the catalog-run settlement hook', () => {
     expect(seen).toEqual(['agent-run-1']);
     expect(diagnostics).toHaveLength(2);
     expect(diagnostics.join()).toContain('agent-run-1');
+  });
+});
+
+describe('publishing a fresh catalog dispatch', () => {
+  function observed(handle: Partial<FreshCatalogRunHandle>, admit: () => Promise<void>) {
+    const hook = createCatalogRunSettlementHook(() => undefined);
+    const published: CatalogRunSettlement[] = [];
+    const second: CatalogRunSettlement[] = [];
+    hook.subscribe((event) => void published.push(event));
+    hook.subscribe((event) => void second.push(event));
+    const followed: unknown[] = [];
+    const diagnostics: string[] = [];
+    const run = publishFreshCatalogRun({
+      handle: {
+        id: 'agent-run-1',
+        result: async () => ({ finishReason: 'stop-condition', content: 'answer' }),
+        closed: async () => ({ status: 'completed' }),
+        ...handle,
+      },
+      agentName: 'worker',
+      admit,
+      hook,
+      followCleanup: (closed) => void followed.push(closed),
+      diagnose: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    return { run, published, second, followed, diagnostics };
+  }
+
+  it('publishes the end of a run whose task record could not be written, and says so', async () => {
+    const { run, published, second, diagnostics } = observed({}, () =>
+      Promise.reject(new Error('storage is down')),
+    );
+
+    await run;
+
+    expect(published).toMatchObject([
+      { runId: 'agent-run-1', status: 'completed', content: 'answer' },
+    ]);
+    expect(second).toHaveLength(1);
+    expect(diagnostics.join()).toContain('storage is down');
+  });
+
+  it('publishes failed when the handle’s result rejects', async () => {
+    const { run, published } = observed(
+      { result: () => Promise.reject(new Error('the engine fell over')) },
+      async () => undefined,
+    );
+
+    await run;
+
+    expect(published).toMatchObject([
+      { status: 'failed', finishReason: 'error', recovered: false, content: null },
+    ]);
+    expect(published[0]?.message).toContain('the engine fell over');
+  });
+
+  it('follows the cleanup of a canceled run before publishing it', async () => {
+    const { run, published, followed } = observed(
+      { result: async () => ({ finishReason: 'aborted', content: '' }) },
+      async () => undefined,
+    );
+
+    await run;
+
+    expect(followed).toHaveLength(1);
+    expect(published[0]?.status).toBe('canceled');
   });
 });

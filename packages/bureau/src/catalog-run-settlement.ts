@@ -28,9 +28,18 @@
  * - `publish` resolves once every listener has settled, so a caller can wait for the writes a
  *   listener started. It never rejects.
  * - Not a public API: subscribers are inside this package, handed the hook by `createBureau`.
+ * - A subscriber must be idempotent per `(runId, status)`. Under `ownership: 'none'` two
+ *   processes can each own a copy of one run, so each publishes once for it; a subscriber that
+ *   acts twice on the same settlement must reach the same state. (The task registry's settler
+ *   does: it writes the same settlement, and a record is written once.)
+ * - It publishes for every end, however the record or the handle fared: a fresh dispatch whose
+ *   task record could not be written still publishes, and a handle whose `result()` rejects
+ *   publishes `failed`.
  *
  * @module catalog-run-settlement
  */
+import { serializeUnknownError } from './serialization';
+import { settledTaskState } from './task-registry';
 import type { DiagnosticSink } from './types';
 
 /** How a catalog run ended. */
@@ -81,4 +90,73 @@ export function createCatalogRunSettlementHook(diagnose: DiagnosticSink): Catalo
       }
     },
   };
+}
+
+/** What {@link publishFreshCatalogRun} needs of a dispatch's handle. */
+export interface FreshCatalogRunHandle {
+  readonly id: string;
+  result(): Promise<{
+    readonly finishReason?: string | undefined;
+    readonly error?: unknown;
+    readonly content: string;
+  }>;
+  closed(): Promise<unknown>;
+}
+
+/**
+ * Follows a catalog run this process dispatched to its end and publishes how it ended.
+ *
+ * `admit` writes the run's task record; a failure is diagnosed and does not stop the publish,
+ * because the record is the task's and the settlement is the run's. A handle whose `result()`
+ * rejects is a run that failed, and publishes `failed`. A run that was canceled has its cleanup
+ * followed (`followCleanup`) before it is published, so the task never shows `canceled` without
+ * a cleanup to report. Never rejects.
+ */
+export async function publishFreshCatalogRun(options: {
+  readonly handle: FreshCatalogRunHandle;
+  readonly agentName: string;
+  readonly admit: () => Promise<void>;
+  readonly hook: Pick<CatalogRunSettlementHook, 'publish'>;
+  readonly followCleanup: (closed: Promise<unknown>) => void;
+  readonly diagnose: DiagnosticSink;
+}): Promise<void> {
+  const { handle, agentName, hook, diagnose } = options;
+  try {
+    await options.admit();
+  } catch (error) {
+    diagnose({
+      level: 'error',
+      scope: 'task-registry',
+      message: `[bureau] Could not record catalog task "${handle.id}": ${serializeUnknownError(error)}`,
+      cause: error,
+    });
+  }
+  let settlement: CatalogRunSettlement;
+  try {
+    const result = await handle.result();
+    settlement = {
+      runId: handle.id,
+      agentName,
+      status: settledTaskState('completed', result.finishReason),
+      finishReason: result.finishReason ?? null,
+      message:
+        result.error === undefined || result.error === null
+          ? null
+          : serializeUnknownError(result.error).slice(0, 1000),
+      content: result.content,
+      recovered: false,
+    };
+  } catch (error) {
+    settlement = {
+      runId: handle.id,
+      agentName,
+      status: 'failed',
+      finishReason: 'error',
+      message: serializeUnknownError(error).slice(0, 1000),
+      content: null,
+      recovered: false,
+    };
+  }
+  if (settlement.status === 'canceled') options.followCleanup(handle.closed());
+  await hook.publish(settlement);
 }
