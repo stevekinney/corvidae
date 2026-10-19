@@ -31,7 +31,11 @@ import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/serve
 import type { Engine } from '../core/engine.ts';
 import type { Storage } from '../storage/interface.ts';
 import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
-import { planPushConfigurationCreate } from './push-notification-store.ts';
+import {
+  planPushConfigurationCreate,
+  type PushConfigurationCreatePlanner,
+  pushConfigurationCreatePlannerOf,
+} from './push-notification-store.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';
 import { type StoredWorkflowTask, taskEventCursor, type TaskEventLog } from './task-event-log.ts';
 import type { WorkflowAgentInputMode } from './workflow-agent-card.ts';
@@ -192,7 +196,11 @@ export function createWorkflowAgentMessaging(options: {
   readonly log: TaskEventLog;
   readonly runtime: WorkflowTaskRuntime;
   readonly pushStore: PushNotificationStore;
-  /** The storage and namespace of the agent's records, which its push store shares. */
+  /**
+   * The storage and namespace of the agent's records, which its push store shares. A
+   * first message's inline configuration is planned with them, and with `now`, only
+   * when `pushStore` did not come from `createWeftPushNotificationStore`.
+   */
   readonly storage: Storage;
   readonly namespace: string;
   readonly now: () => number;
@@ -202,6 +210,12 @@ export function createWorkflowAgentMessaging(options: {
   const { engine, workflowType, inputMode, inputModes, log, runtime, pushStore, now } = options;
   const { storage, namespace } = options;
   const { toInput, respond } = options;
+  // The push store's own planner stamps a configuration with the store's clock, so the
+  // first message's configuration sorts among later ones by the same clock.
+  const planPushCreate: PushConfigurationCreatePlanner =
+    pushConfigurationCreatePlannerOf(pushStore) ??
+    ((taskId, context, input) =>
+      planPushConfigurationCreate({ storage, namespace, now }, taskId, context, input));
 
   /**
    * Save the message's inline push configuration for its task, under the store's
@@ -257,11 +271,7 @@ export function createWorkflowAgentMessaging(options: {
       { task, events: [statusUpdateEvent(task, status)] },
       config === undefined
         ? undefined
-        : () =>
-            planPushConfigurationCreate({ storage, namespace, now }, taskId, context, {
-              ...config,
-              taskId,
-            }),
+        : () => planPushCreate(taskId, context, { ...config, taskId }),
     );
     if (created === 'foreign') throw foreignMessage(message);
     // Another request for the same message created the task first, so this one reached

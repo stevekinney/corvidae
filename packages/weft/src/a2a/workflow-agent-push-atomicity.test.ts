@@ -65,6 +65,9 @@ type Harness = {
   readonly sent: Sent[];
 };
 
+/** The clocks of the agent and of its push store, each `Date.now` when absent. */
+type Clocks = { readonly agent?: () => number; readonly push?: () => number };
+
 /**
  * Serve the echo workflow with its task and push records written through `interpose`,
  * and a sender that records, for every event, how many configurations its task had
@@ -74,11 +77,16 @@ async function withAgent(
   open: () => Storage,
   interpose: ConditionalBatchInterposer,
   run: (harness: Harness) => Promise<void>,
+  clocks: Clocks = {},
 ): Promise<void> {
   const raw = open();
   const { storage } = interposedStorage(raw, interpose);
   const engine = createFixtureEngine(raw);
-  const pushStore = createWeftPushNotificationStore({ storage, namespace: NAMESPACE });
+  const pushStore = createWeftPushNotificationStore({
+    storage,
+    namespace: NAMESPACE,
+    ...(clocks.push === undefined ? {} : { now: clocks.push }),
+  });
   const sent: Sent[] = [];
   const sender: OutboxPushNotificationSender = {
     pushStore,
@@ -102,6 +110,7 @@ async function withAgent(
     storage,
     pushNotificationSender: sender,
     onError: (error) => errors.push(error),
+    ...(clocks.agent === undefined ? {} : { now: clocks.agent }),
   });
   try {
     await run({ storage: raw, agent, pushStore, sent });
@@ -155,6 +164,30 @@ for (const backend of a2aStoreBackends) {
           // One configuration and its head.
           expect(await pushKeysOf(storage, east())).toHaveLength(2);
         },
+      );
+    });
+
+    test("is stamped by the push store's clock, so it lists before a configuration added later", async () => {
+      let pushTime = 2_000;
+      // The agent's clock runs ahead of the push store's.
+      const clocks: Clocks = { agent: () => 10_000, push: () => ++pushTime };
+      await withAgent(
+        open,
+        () => undefined,
+        async ({ agent, pushStore }) => {
+          const result = await agent.requestHandler.sendMessage(
+            sendRequest(userMessage({ messageId: 'first', text: 'x' }), {
+              taskPushNotificationConfig: webhook('first'),
+            }),
+            east(),
+          );
+          const taskId = taskIdOf(result);
+          await pushStore.create(taskId, east(), { ...webhook('later'), taskId });
+
+          const listed = await pushStore.list({ taskId }, east());
+          expect(listed.configs.map((config) => config.token)).toEqual(['first', 'later']);
+        },
+        clocks,
       );
     });
 

@@ -212,6 +212,40 @@ async function readTaskConfigurations(
 }
 
 /**
+ * Plans one create of a push configuration with the storage, namespace, and clock of
+ * the store it belongs to. See {@link planPushConfigurationCreate}.
+ */
+export type PushConfigurationCreatePlanner = (
+  taskId: string,
+  context: ServerCallContext,
+  input: TaskPushNotificationConfig,
+) => Promise<A2ACompareAndSwapAttempt<TaskPushNotificationConfig>>;
+
+/** The planner of each store {@link createWeftPushNotificationStore} made, and of each store that delegates to one. */
+const createPlanners = new WeakMap<PushNotificationStore, PushConfigurationCreatePlanner>();
+
+/**
+ * The create planner of a store {@link createWeftPushNotificationStore} made, or of a
+ * store {@link delegatePushConfigurationCreates} registered as delegating to one, so a
+ * caller that folds a create into its own batch stamps the configuration with the
+ * store's clock, as the store's own `create` does. `undefined` for any other store.
+ */
+export function pushConfigurationCreatePlannerOf(
+  store: PushNotificationStore,
+): PushConfigurationCreatePlanner | undefined {
+  return createPlanners.get(store);
+}
+
+/** Give `wrapper`, which forwards its creates to `store`, the create planner of `store`. */
+export function delegatePushConfigurationCreates(
+  wrapper: PushNotificationStore,
+  store: PushNotificationStore,
+): void {
+  const planner = createPlanners.get(store);
+  if (planner !== undefined) createPlanners.set(wrapper, planner);
+}
+
+/**
  * Plan one create of a push configuration: the existing configuration it repeats, or
  * the conditional batch that stores it, conditioned on the task's push head and
  * bumping it. {@link createWeftPushNotificationStore}'s `create` commits the batch on
@@ -298,7 +332,7 @@ export function createWeftPushNotificationStore(
     );
   }
 
-  return {
+  const store: WeftPushNotificationStore = {
     create,
 
     async save(taskId, context, pushNotificationConfig): Promise<void> {
@@ -370,4 +404,8 @@ export function createWeftPushNotificationStore(
       });
     },
   };
+  createPlanners.set(store, (taskId, context, input) =>
+    planPushConfigurationCreate({ storage, namespace, now }, taskId, context, input),
+  );
+  return store;
 }
