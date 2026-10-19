@@ -1792,3 +1792,76 @@ describe('a validateResponse hook that mutates the response in place (correction
     expect(result.error).toBeInstanceOf(ResponsePartsMismatchError);
   });
 });
+
+describe('a truncated Anthropic stream fails typed (correction 3)', () => {
+  const midBlockStream = [
+    { type: 'message_start', message: { usage: { input_tokens: 5, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Half an ans' } },
+  ] as const;
+
+  it.each(['withStreaming', 'withEnhancedStreaming'] as const)(
+    'ends the run with a ProviderContractError, never an empty answer (%s)',
+    async (mode) => {
+      const client = createMockAnthropicStreamingClient([midBlockStream as never]);
+      const streaming = createAnthropicProviderStream({ model: 'claude-sonnet-4-6', client });
+      const generate =
+        mode === 'withStreaming' ? withStreaming(streaming) : withEnhancedStreaming(streaming);
+
+      const result = await run(baseOptions(generate));
+
+      expect(result.finishReason).toBe('error');
+      const cause = (result.error as { cause?: unknown }).cause;
+      expect(cause).toBeInstanceOf(ProviderContractError);
+      expect((cause as ProviderContractError).reason).toBe('truncated-stream');
+      expect(client._calls).toHaveLength(1);
+    },
+  );
+
+  it('also fails when a tool_use block is cut off', async () => {
+    const client = createMockAnthropicStreamingClient([
+      [
+        { type: 'message_start', message: { usage: { input_tokens: 5, output_tokens: 0 } } },
+        {
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: {} },
+        },
+        {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'input_json_delta', partial_json: '{"location":' },
+        },
+      ] as never,
+    ]);
+    const generate = withStreaming(
+      createAnthropicProviderStream({ model: 'claude-sonnet-4-6', client }),
+    );
+
+    const result = await run(baseOptions(generate));
+
+    expect(result.finishReason).toBe('error');
+    const cause = (result.error as { cause?: unknown }).cause;
+    expect((cause as ProviderContractError).reason).toBe('truncated-stream');
+  });
+
+  it('makes the public normalizer end in a stream:error with no stream:complete', async () => {
+    const events = await collect(normalizeAnthropicStream(iterate(midBlockStream as never)));
+
+    expect(events.at(-1)?.type).toBe('stream:error');
+    expect(events.filter((event) => event.type === 'stream:complete')).toEqual([]);
+    const error = (events.at(-1) as { error: unknown }).error;
+    expect(error).toBeInstanceOf(ProviderContractError);
+    expect((error as ProviderContractError).reason).toBe('truncated-stream');
+  });
+
+  it('still completes a stream whose blocks all stopped', async () => {
+    const events = await collect(
+      normalizeAnthropicStream(
+        iterate(anthropicStreamEventsFor([{ type: 'text', text: 'Whole.' }]) as never),
+      ),
+    );
+
+    expect(events.at(-1)?.type).toBe('stream:complete');
+  });
+});

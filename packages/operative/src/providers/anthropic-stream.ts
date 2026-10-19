@@ -165,6 +165,7 @@ async function consumeAnthropicStream(
     nextPartIndex: 0,
     sequences: new Map(),
     violation: undefined,
+    openBlocks: new Map(),
   };
   for await (const event of stream) {
     if (signal?.aborted) break;
@@ -179,6 +180,19 @@ async function consumeAnthropicStream(
       reason: 'unlisted-block',
       blockType: state.violation.blockType,
       partIndex: state.violation.position,
+      usage,
+    });
+  }
+  // A stream that ends before a block it opened has stopped was cut off. The half block is never
+  // finalized into a part and the response never completes empty: it fails typed, and is never
+  // retried (a contract error). An abort ends the loop early on purpose and is not truncation.
+  const truncated = signal?.aborted ? undefined : [...state.openBlocks.entries()][0];
+  if (truncated !== undefined) {
+    throw new ProviderContractError({
+      provider: 'anthropic',
+      reason: 'truncated-stream',
+      blockType: truncated[1],
+      partIndex: truncated[0],
       usage,
     });
   }
@@ -220,6 +234,8 @@ type StreamState = {
   sequences: Map<number, number>;
   /** The first block or delta outside the mapping table, in the provider's own sequence. */
   violation: { blockType: string; position: number } | undefined;
+  /** Provider block index to type, for every block that has started and not yet stopped. */
+  openBlocks: Map<number, string>;
 };
 
 function handleAnthropicStreamEvent(
@@ -263,6 +279,7 @@ function handleAnthropicBlockStart(
 ): void {
   const block = event.content_block;
   if (block === undefined || event.index === undefined) return;
+  state.openBlocks.set(event.index, block.type);
   if (block.type === 'tool_use') {
     const blockId = block.id;
     const pending = { id: blockId, name: block.name!, partialJson: '', blockId };
@@ -390,6 +407,7 @@ function handleAnthropicBlockStop(
   streaming: StreamingHandle,
 ): void {
   if (event.index === undefined) return;
+  state.openBlocks.delete(event.index);
   const entry = state.parts.get(event.index);
   const block = entry === undefined ? undefined : state.accumulator.getBlock(event.index);
   if (entry === undefined || block === undefined) return;

@@ -317,6 +317,23 @@ export async function* normalizeAnthropicStream(
     }
   }
 
+  // A stream that ended before a block it opened had stopped was cut off: it fails typed and
+  // nothing follows the error, instead of completing with a half block dropped.
+  const unfinished = refused ? undefined : blocks.find((block) => !block.complete);
+  if (unfinished !== undefined) {
+    yield {
+      type: 'stream:error',
+      error: new ProviderContractError({
+        provider: 'anthropic',
+        reason: 'truncated-stream',
+        blockType: unfinished.type,
+        partIndex: unfinished.index,
+        usage: undefined,
+      }),
+    };
+    return;
+  }
+
   // Guarantee stream:complete is always emitted, even if the stream was
   // truncated without a message_stop event (e.g., clean network close).
   if (!completionEmitted) {

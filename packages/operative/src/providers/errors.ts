@@ -96,10 +96,12 @@ export function isToolCallParseError(error: unknown): error is ToolCallParseErro
 
 /**
  * Why a provider response broke the adapter's mapping contract: a block, part or stream
- * delta type the mapping table does not list, or a media part whose modality the selected
- * backend does not advertise as output.
+ * delta type the mapping table does not list, a media part whose modality the selected
+ * backend does not advertise as output, or a stream that ended before a block it opened had
+ * stopped (`truncated-stream`: the half block is never finalized into a part).
  */
-export type ProviderContractReason = 'unlisted-block' | 'unadvertised-modality';
+export type ProviderContractReason =
+  'unlisted-block' | 'unadvertised-modality' | 'truncated-stream';
 
 /**
  * Thrown when a provider returns output the adapter has no mapping for. Each built-in
@@ -128,7 +130,9 @@ export class ProviderContractError extends ProviderError {
     const what =
       options.reason === 'unadvertised-modality'
         ? `a ${options.blockType} part the selected backend does not advertise as output`
-        : `an unmapped block "${options.blockType}"`;
+        : options.reason === 'truncated-stream'
+          ? `a "${options.blockType}" block the stream ended before finishing`
+          : `an unmapped block "${options.blockType}"`;
     super({
       provider: options.provider,
       cause: undefined,
