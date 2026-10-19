@@ -526,15 +526,17 @@ describe('a context id that is reused while a request for it is in flight', () =
       opened: OpenedBureau;
       contextId: string;
       recreate: () => void;
+      bobsRun: () => { id: string };
     }) => Promise<T>,
   ): Promise<T> {
     const contextId = 'reused-context';
     let bureau: OpenedBureau['bureau'] | undefined;
+    let bobsRun: { id: string } | undefined;
     const interleaver = createStorageInterleaver(
       (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
       async () => {
         await bureau!.deleteSession(contextId);
-        await bureau!.createRun({
+        bobsRun = await bureau!.createRun({
           message: 'BOB-PRIVATE-OPENING',
           principal: OWNER.bob,
           sessionId: contextId,
@@ -550,7 +552,12 @@ describe('a context id that is reused while a request for it is in flight', () =
         principal: OWNER.alice,
         sessionId: contextId,
       });
-      return await body({ opened, contextId, recreate: () => interleaver.arm() });
+      return await body({
+        opened,
+        contextId,
+        recreate: () => interleaver.arm(),
+        bobsRun: () => bobsRun!,
+      });
     } finally {
       await opened.dispose();
       await fixture.dispose();
@@ -568,8 +575,8 @@ describe('a context id that is reused while a request for it is in flight', () =
     });
   });
 
-  it('does not delete bob’s new context on a request alice was authorized for', async () => {
-    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate }) => {
+  it('does not delete bob’s new context, abort his run or erase his task history on a request alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
       recreate();
 
       const body = await deleteContext(opened, contextId, 'alice-key');
@@ -578,6 +585,11 @@ describe('a context id that is reused while a request for it is in flight', () =
       const survivor = await opened.bureau.getSession(contextId);
       expect(survivor).toBeDefined();
       expect(survivor?.metadata['sessionOwner']).toBe(OWNER.bob);
+      // The incarnation check in the Bureau comes before anything is cancelled or erased.
+      const bob = bobsRun();
+      expect(opened.bureau.getRun(bob.id)?.status).toBe('running');
+      const history = await opened.bureau.tasks.history(bob.id);
+      expect(history?.map((message) => message.text)).toEqual(['BOB-PRIVATE-OPENING']);
     });
   });
 });

@@ -11,7 +11,7 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import { encodeStorageKeyComponent } from '@lostgradient/weft';
+import { encodeStorageKeyComponent, resolveStorage, type Storage } from '@lostgradient/weft';
 
 import { createBureau } from './create-bureau';
 import { TASK_RECORD_KEY_PREFIX } from './task-registry';
@@ -182,6 +182,60 @@ describe('a task’s own message history', () => {
 
         expect(task).toMatchObject({ status: 'canceled', cleanup: 'cleaned-up' });
         expect(repeated).toEqual({ receipt: 'cleaned-up' });
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
+  it('writes a settlement still in flight before dispose closes the storage', async () => {
+    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
+    const raw = await resolveStorage(fixture.configuration);
+    const landed = { value: false };
+    // Every write that records a settlement is slow, so it is still in flight when the run ends.
+    const slowSettlements = new Proxy(raw, {
+      get(target, property) {
+        const member = Reflect.get(target, property, target) as unknown;
+        if (typeof member !== 'function') return member;
+        return (...args: unknown[]) => {
+          const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+          const settlement = JSON.stringify(args, (_key, value: unknown) =>
+            value instanceof Uint8Array ? new TextDecoder().decode(value) : value,
+          ).includes('\\"settled\\"');
+          if (!settlement) return call();
+          return new Promise((resolve) => setTimeout(resolve, 50)).then(() => {
+            const landing = call();
+            landed.value = true;
+            return landing;
+          });
+        };
+      },
+    }) as Storage;
+    const open = (storage: Storage | typeof fixture.configuration) =>
+      createBureau({
+        id: 'history-flush',
+        agents: {},
+        generate: finishes,
+        toolbox,
+        storage,
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+    try {
+      const first = await open(slowSettlements);
+      const run = await first.createRun({ message: 'finish at once', principal: 'api-key:alice' });
+      await waitForCondition(() => first.getRun(run.id)?.status === 'completed', 'finish');
+      await first.dispose();
+
+      // A caller-supplied storage is not closed by dispose, so what shows the write was awaited
+      // is that it had landed by the time dispose resolved.
+      expect(landed.value).toBe(true);
+      const second = await open(fixture.configuration);
+      try {
+        const task = await second.tasks.get(run.id);
+        expect(task?.status).toBe('completed');
       } finally {
         await second.dispose();
       }

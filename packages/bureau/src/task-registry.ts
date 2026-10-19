@@ -118,6 +118,8 @@ export interface TaskAdmission {
   readonly owner: string;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
+  /** When the work began, if that was before this record was written (ISO 8601). */
+  readonly createdAt?: string | undefined;
 }
 
 /** What the live run of a task reports. */
@@ -588,7 +590,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
 
   return {
     async recordAdmission(admission) {
-      const createdAt = clock.nowISO();
+      const createdAt = admission.createdAt ?? clock.nowISO();
       const history: TaskMessage[] =
         admission.message === undefined
           ? []
@@ -630,7 +632,18 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
-      await track(update(taskId, (record) => ({ ...record, settled: settlement })));
+      await track(
+        update(taskId, (record) => {
+          // A task has more than one writer of its settlement (the action that ended the run,
+          // and the catalog hook that carries the answer), so the answer is never lost to
+          // whichever lands last. Only a catalog task records one: a session run's answer lives
+          // in its durable history.
+          const answer =
+            record.incarnation === '' ? (settlement.answer ?? record.settled?.answer) : undefined;
+          const { answer: _ignored, ...rest } = settlement;
+          return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
+        }),
+      );
     },
 
     async flush() {

@@ -33,7 +33,10 @@ const CHILD = join(import.meta.dir, 'test', 'task-record-crash-child.ts');
 async function crashScenario(
   mode: 'settlement' | 'admission',
   scope: ScenarioScope,
-  verify: (bureau: Pick<Bureau, 'tasks'>, runId: string) => Promise<void>,
+  verify: (
+    bureau: Pick<Bureau, 'tasks' | 'listPendingReviews' | 'resolveReview' | 'waitForDurableRun'>,
+    runId: string,
+  ) => Promise<void>,
 ): Promise<void> {
   const directory = mkdtempSync(join(tmpdir(), `corvidae-task-record-crash-${mode}-`));
   const storagePath = join(directory, 'bureau.sqlite');
@@ -92,6 +95,26 @@ const outcomes = {
         expect(task).toMatchObject({ id: runId, owner: 'api-key:alice', agentName: 'asker' });
         const history = await bureau.tasks.history(runId);
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
+        // The run was in flight across the crash, and it ends in this process: its task settles.
+        let review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+        for (let attempt = 0; review === undefined && attempt < 400; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          review = bureau.listPendingReviews().find((candidate) => candidate.runId === runId);
+        }
+        expect(review).toBeDefined();
+        await bureau.resolveReview({
+          id: review!.id,
+          decision: 'approve',
+          principal: 'api-key:alice',
+          payload: 'staging',
+        });
+        await bureau.waitForDurableRun(runId);
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+          if ((await bureau.tasks.get(runId))?.status === 'completed') break;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        const settled = await bureau.tasks.get(runId);
+        expect(settled?.status).toBe('completed');
       }),
     HANG_GUARD_MILLISECONDS,
   ),
@@ -102,7 +125,7 @@ describe('a task record survives SIGKILL', () => {
     expectScenarioPassed(outcomes.settlement);
   });
 
-  it('gives a durable bureau.run() run whose admission write was lost a task record', () => {
+  it('gives a durable bureau.run() run whose admission write was lost a task record, which settles when the run ends', () => {
     expectScenarioPassed(outcomes.admission);
   });
 });

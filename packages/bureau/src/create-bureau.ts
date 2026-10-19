@@ -241,6 +241,10 @@ import {
   serializeUnknownError,
 } from './serialization';
 import {
+  createCatalogRunSettlementHook,
+  type CatalogRunSettlement,
+} from './catalog-run-settlement';
+import {
   createTaskRegistry,
   originatingMessageText,
   settledTaskState,
@@ -1350,6 +1354,7 @@ export async function monitorRecoveredCatalogRun(
   handle: RecoveredRunHandle,
   agentName: string,
   diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
+  settled?: (settlement: CatalogRunSettlement) => Promise<void>,
 ): Promise<void> {
   try {
     const result = await handle.result();
@@ -1369,11 +1374,35 @@ export async function monitorRecoveredCatalogRun(
         message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
       });
     }
+    const fields =
+      typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
+    const finishReason =
+      typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
+    await settled?.({
+      runId: handle.id,
+      agentName,
+      status: settledTaskState('completed', finishReason),
+      finishReason: finishReason ?? null,
+      message:
+        typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
+      content: typeof fields['content'] === 'string' ? fields['content'] : null,
+      recovered: true,
+    });
   } catch (error) {
     diagnose({
       level: 'error',
       scope: 'recovery',
       message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
+    });
+    // A recovered run that rejects has failed: it is still a terminal state to publish.
+    await settled?.({
+      runId: handle.id,
+      agentName,
+      status: 'failed',
+      finishReason: 'error',
+      message: serializeUnknownError(error).slice(0, 1000),
+      content: null,
+      recovered: true,
     });
   }
 }
@@ -3526,6 +3555,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runtimeServices.timers.setTimeout(resolve, milliseconds);
         }),
     },
+  });
+
+  /**
+   * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
+   * run publishes here when it ends, dispatched by this process or recovered after a restart. The
+   * task registry settles a catalog task from it, so a run that crossed a restart is settled like
+   * any other.
+   */
+  const catalogRunSettlements = createCatalogRunSettlementHook(diagnose);
+  catalogRunSettlements.subscribe(async (settlement) => {
+    const content = settlement.status === 'completed' ? (settlement.content ?? '') : '';
+    await tasks.recordSettled(settlement.runId, {
+      at: runtimeServices.clock.nowISO(),
+      status: settlement.status,
+      finishReason: settlement.finishReason,
+      message: settlement.message,
+      ...(content === ''
+        ? {}
+        : {
+            answer: {
+              text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+              truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+            },
+          }),
+    });
   });
 
   /** COR-1481 — records how a task ended, from the action that ended its run. */
@@ -6397,7 +6451,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         () => runHumanWaits.forget(info.workflowId),
         () => runHumanWaits.forget(info.workflowId),
       );
-      void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
+      void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose, (settlement) =>
+        catalogRunSettlements.publish(settlement),
+      );
       return;
     }
 
@@ -6586,11 +6642,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
       await settle(record.taskId, await durable.engine.get(record.taskId));
     }
-    // A durable catalog run whose task record was never written.
+    // A durable catalog run still in flight whose task record was never written: the lost
+    // admission window. A run that is over is not given a record here: its task either was
+    // settled and has since been removed by retention, or never existed, and recreating it at
+    // every boot would resurrect expired tasks, message text included. The record is dated
+    // from the durable run, and the run settles it through the catalog settlement hook.
     for (let offset = 0; ;) {
       const page = await durable.engine.list({
         type: 'agentRun',
         idPrefix: 'agent-run-',
+        status: ['pending', 'running', 'suspended'],
         limit: 100,
         offset,
       });
@@ -6605,8 +6666,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           agentName: loaded.record.agentName,
           owner: ownerOrLocal(loaded.record.principal),
           message: originatingMessageText(loaded.record.input),
+          createdAt: new Date(summary.createdAt).toISOString(),
         });
-        await settle(summary.id, await durable.engine.get(summary.id));
       }
       offset += page.items.length;
       if (page.items.length === 0 || offset >= page.total) break;
@@ -13092,6 +13153,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());
           }
+          // COR-1481 — disposing the engine is what ends a durable run that was still in
+          // flight, and each run's `closed()` acknowledgement lands as it does. The cleanup
+          // writes those start are awaited before the backend closes under them.
+          for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
+          await tasks.flush();
         } finally {
           try {
             // Pending steering log appends (run-boundary events are logged
@@ -13797,22 +13863,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               // A run stopped through its own handle (not through `abortRun`) still has a
               // cleanup to report: follow it before the task shows as canceled.
               if (status === 'canceled') void tasks.watchCleanup(taskId, handle.closed());
-              await tasks.recordSettled(taskId, {
-                at: runtimeServices.clock.nowISO(),
+              await catalogRunSettlements.publish({
+                runId: taskId,
+                agentName,
                 status,
                 finishReason: result.finishReason ?? null,
-                ...(status === 'completed' && result.content !== ''
-                  ? {
-                      answer: {
-                        text: result.content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
-                        truncated: result.content.length > TASK_ARTIFACT_TEXT_LIMIT,
-                      },
-                    }
-                  : {}),
                 message:
                   result.error === undefined || result.error === null
                     ? null
                     : serializeUnknownError(result.error).slice(0, 1000),
+                content: result.content,
+                recovered: false,
               });
             } catch (error) {
               diagnose({

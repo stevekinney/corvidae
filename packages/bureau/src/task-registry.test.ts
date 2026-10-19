@@ -561,6 +561,48 @@ describe('cancel', () => {
     expect(waited).toEqual({ receipt: 'cleanup-pending' });
   });
 
+  it('keeps the answer whichever of two settlements of one task lands last', async () => {
+    const withAnswer = {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed' as const,
+      finishReason: 'stop-condition',
+      message: null,
+      answer: { text: 'the answer', truncated: false },
+    };
+    const withoutAnswer = { ...withAnswer, answer: undefined };
+    for (const order of [
+      [withoutAnswer, withAnswer],
+      [withAnswer, withoutAnswer],
+    ]) {
+      const { registry } = build();
+      await admit(registry, 'run-1', { incarnation: '' });
+      for (const settlement of order) await registry.recordSettled('run-1', settlement);
+
+      const record = await registry.record('run-1');
+
+      expect(record?.settled?.answer).toEqual({ text: 'the answer', truncated: false });
+    }
+  });
+
+  it('stores an answer on a catalog task’s record only, never on a session task’s', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-catalog', { incarnation: '' });
+    await admit(registry, 'run-session', { incarnation: 'incarnation-1' });
+    const settlement = {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed' as const,
+      finishReason: 'stop-condition',
+      message: null,
+      answer: { text: 'SESSION-ANSWER', truncated: false },
+    };
+
+    await registry.recordSettled('run-catalog', settlement);
+    await registry.recordSettled('run-session', settlement);
+
+    expect((await registry.record('run-catalog'))?.settled?.answer).toBeDefined();
+    expect((await registry.record('run-session'))?.settled?.answer).toBeUndefined();
+  });
+
   it('lets a shutdown wait for the settlement and cleanup writes in flight', async () => {
     const { registry } = build();
     await admit(registry, 'run-1');
