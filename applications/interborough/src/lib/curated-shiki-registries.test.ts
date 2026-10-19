@@ -58,7 +58,7 @@ describe('the curated theme registry', () => {
     expect(Object.keys(bundledThemes).toSorted()).toEqual(['github-dark', 'github-light']);
     const themes = await Promise.all(Object.values(bundledThemes).map((load) => load()));
 
-    expect(themes.map((theme) => theme.default.name).toSorted()).toEqual([
+    expect(themes.map((theme) => theme.default.name ?? '').toSorted()).toEqual([
       'github-dark',
       'github-light',
     ]);
