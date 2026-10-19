@@ -290,16 +290,6 @@ export async function classifyTimeoutMessage(
   }
 }
 
-/** The finish reasons a run ends in failure with, which `finalizeRunResult` settles as errors. */
-export function isFailureFinishReason(finishReason: FinishReason): boolean {
-  return (
-    finishReason === 'error' ||
-    finishReason === 'elicitation-denied' ||
-    finishReason === 'budget-exceeded' ||
-    finishReason === 'tripwire'
-  );
-}
-
 /**
  * Announce a run's failure with `run.error`, the way every other failed run does, at the step it
  * failed at. Returns the error so a caller can hand the same object to the terminal result.

@@ -231,13 +231,11 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
   it('keeps the committed step, its usage, and its rows when a later write is refused', async () => {
     const { generate, release, reachedStepOne } = stepZeroThenHold();
     const refusing = refusingStorage();
-    const bureau = (
-      await openBureau({
-        generate,
-        storage: refusing.storage,
-        toolbox: createToolbox<readonly Tool[]>([noopTool]),
-      })
-    ).bureau;
+    const { bureau } = await openBureau({
+      generate,
+      storage: refusing.storage,
+      toolbox: createToolbox<readonly Tool[]>([noopTool]),
+    });
     try {
       const summary = await bureau.createRun({ message: 'Go.', sessionId: 'thread-1' });
       await reachedStepOne;
