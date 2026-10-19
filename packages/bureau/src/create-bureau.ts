@@ -3643,10 +3643,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
       abort: (taskId) => {
         try {
-          abortRun(taskId);
-          return true;
+          return abortRun(taskId).status === 'aborting' ? 'requested' : 'already-terminal';
         } catch (error) {
-          if (error instanceof BureauError && error.code === 'NOT_FOUND') return false;
+          if (error instanceof BureauError && error.code === 'NOT_FOUND') return 'not-found';
           throw error;
         }
       },
@@ -5438,7 +5437,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
           agentName,
           owner,
-          message: request.message,
+          // The text the run began with, whether it came as `message` or as an appended user row.
+          message: request.message ?? (requestText === '' ? undefined : requestText),
         });
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
@@ -6846,7 +6846,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) continue;
         await tasks.recordAdmission({
           taskId: summary.id,
-          contextId: summary.id,
+          contextId: loaded.record.contextId ?? summary.id,
           incarnation: '',
           agentName: loaded.record.agentName,
           owner: ownerOrLocal(loaded.record.principal),
@@ -10093,6 +10093,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * The steps before any session is removed, whether `deleteSession` removes it or an expiry
+   * (`sessionStore.cleanup`) does, so the two cannot differ:
+   *
+   * - each session's owner is recorded for its deletion's audit entry; a record that cannot be
+   *   written keeps every session;
+   * - COR-1481: the user's message text does not outlive the context it belonged to, so each
+   *   task of the incarnation keeps its status and cleanup and loses its history. This runs
+   *   before the removal commits, so a failure leaves the context in place and a retry finds it.
+   */
+  async function prepareSessionsForRemoval(sessions: readonly AgentSession[]): Promise<void> {
+    for (const session of sessions) await recordSessionDeletionOwner(session);
+    for (const session of sessions) await tasks.clearHistory(session.id, session.incarnation);
+  }
+
+  /**
    * Reads the owner record back into memory before the deletion event is dispatched.
    * Resolves `true` when the read succeeded, whether it found a record or a definite
    * miss (a deletion that bypassed Bureau), and `false` when the read itself threw: the
@@ -10215,7 +10230,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { deleted: false, tasks: [] };
     }
     if (session) {
-      await recordSessionDeletionOwner(session);
+      await prepareSessionsForRemoval([session]);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -10282,11 +10297,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
-      // COR-1481 — the user's message text does not outlive the context it belonged to:
-      // each task of the incarnation keeps its status and cleanup and loses its history.
-      // Cleared before the deletion commits, so a failure fails the deletion with the
-      // context still there, and a retry finds it.
-      await tasks.clearHistory(id, session.incarnation);
       const removedLiveRecord =
         expectedIncarnation === undefined
           ? await sessionStore.delete(id)
@@ -14559,9 +14569,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // its deletion's audit entry the way `deleteSession` records it, before the store
   // removes anything; a session whose owner cannot be recorded is kept.
   sessionCleanupHandler.resolve(async (sessions) => {
-    // Every owner first: a record that cannot be written keeps every session, with
-    // its runs untouched.
-    for (const session of sessions) await recordSessionDeletionOwner(session);
+    // Every owner first, and every task history erased: a record that cannot be written
+    // keeps every session, with its runs untouched.
+    await prepareSessionsForRemoval(sessions);
     // Then the expiry is a deletion for the sessions' runs too: each still-running
     // run is orphan-marked and aborted (or released, if paused) exactly as
     // `performDeleteSession` does, so none of them writes into whatever session

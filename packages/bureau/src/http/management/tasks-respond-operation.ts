@@ -22,7 +22,13 @@
  * `messageId` with a different intent is a `Conflict`. A claim whose resolution was
  * cut short is finished by the retry: if the review is already resolved the way the
  * claim intended it completes as applied, and if it is still pending the retry
- * resolves it.
+ * resolves it. A retry never resolves a later approval round than the one its claim read: when
+ * the approval was gated again in the meantime, it gets the `superseded` receipt and resolves
+ * nothing.
+ *
+ * The receipt is the caller's own, so an exact retry inside the ledger's retention window
+ * returns it before anything else is checked, even after the task itself has been removed by
+ * task retention. Only a fresh command needs a live task.
  *
  * @module tasks-respond-operation
  */
@@ -99,8 +105,13 @@ const tasksRespondOutput = z.object({
 
 export type TasksRespondResult = z.infer<typeof tasksRespondOutput>;
 
-/** What a ledger entry of this command claims: the review it targets. */
-export type TasksRespondClaim = { readonly reviewId: string };
+/**
+ * What a ledger entry of this command claims: the review it targets and, for a tool approval,
+ * the supersession round the command read it at. A re-gated approval keeps its `reviewId` and
+ * advances its round, so the round is what tells a retry that its decision was about an earlier
+ * one. Absent for a human wait, and in an entry written before the round was recorded.
+ */
+export type TasksRespondClaim = { readonly reviewId: string; readonly round?: number };
 
 /** The ledger this command records its receipts in. */
 export type TasksRespondLedger = CommandLedger<TasksRespondClaim, TasksRespondResult>;
@@ -204,12 +215,45 @@ export const tasksRespondOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
+    const answerText =
+      input.answer === undefined
+        ? undefined
+        : Array.isArray(input.answer)
+          ? input.answer.join('\n')
+          : input.answer;
+    const decision = input.decision ?? 'approve';
+    const digest = digestCommandPayload({
+      answer: answerText,
+      decision: input.decision,
+      reason: input.reason,
+      signalName: input.signalName,
+      callId: input.callId,
+    });
+    const caller = ownerOfPrincipal(principal);
+    const identityOf = (actor: string): CommandLedgerIdentity => ({
+      callerId: actor,
+      target: input.taskId,
+      requestId: input.messageId,
+      operationVersion: TASKS_RESPOND_OPERATION_VERSION,
+    });
+    // The caller's own receipt first: a retry of a command that was applied is owed its receipt
+    // while the ledger retains it, whether or not the task still has a record.
+    if (caller !== undefined) {
+      const located = await host.respondLedger.locate(identityOf(caller));
+      if (
+        located.state === 'retained' &&
+        located.entry.state === 'completed' &&
+        located.entry.payloadDigest === digest
+      ) {
+        return located.entry.result;
+      }
+    }
     if (!(await mayAccessTask(host, principal, input.taskId, 'bureau.tasks:write'))) {
       throw resourceNotFound('task', input.taskId);
     }
     const task = await host.tasks.get(input.taskId);
     if (task === undefined) throw resourceNotFound('task', input.taskId);
-    const actor = ownerOfPrincipal(principal);
+    const actor = caller;
     if (actor === undefined) {
       throw {
         code: 'Forbidden',
@@ -218,26 +262,7 @@ export const tasksRespondOperation = defineOperation<
       } satisfies OperationFault;
     }
     const isOwner = task.owner === actor;
-    const answerText =
-      input.answer === undefined
-        ? undefined
-        : Array.isArray(input.answer)
-          ? input.answer.join('\n')
-          : input.answer;
-    const decision = input.decision ?? 'approve';
-    const identity: CommandLedgerIdentity = {
-      callerId: actor,
-      target: input.taskId,
-      requestId: input.messageId,
-      operationVersion: TASKS_RESPOND_OPERATION_VERSION,
-    };
-    const digest = digestCommandPayload({
-      answer: answerText,
-      decision: input.decision,
-      reason: input.reason,
-      signalName: input.signalName,
-      callId: input.callId,
-    });
+    const identity = identityOf(actor);
 
     const flightKey = `${actor}\u0000${input.taskId}\u0000${input.messageId}\u0000${digest}`;
     const running = host.respondInFlight.get(flightKey);
@@ -254,10 +279,17 @@ export const tasksRespondOperation = defineOperation<
       } catch (error) {
         notAwaiting = error;
       }
+      // The round the command reads the approval at, recorded with its claim.
+      let readRound: number | undefined;
+      if (wait?.kind === 'tool-approval') {
+        const read = await host.reviews.getReview(wait.reviewId).catch(() => undefined);
+        readRound = read?.kind === 'tool-approval' ? read.round : undefined;
+      }
       let claimed;
       try {
         claimed = await host.respondLedger.claim(identity, digest, {
           reviewId: wait?.reviewId ?? '',
+          ...(readRound === undefined ? {} : { round: readRound }),
         });
       } catch (error) {
         if (error instanceof BureauLedgerConflictError) {
@@ -291,7 +323,30 @@ export const tasksRespondOperation = defineOperation<
       try {
         const review = await host.reviews.getReview(reviewId);
         if (review === undefined) return await refuse(resourceNotFound('task', input.taskId));
+        const claimedRound = entry.claim.round;
+        const currentRound = review.kind === 'tool-approval' ? review.round : undefined;
         if (
+          claimedRound !== undefined &&
+          currentRound !== undefined &&
+          currentRound > claimedRound
+        ) {
+          if (ownClaim) {
+            // Gated again between this command's read and its claim: its decision was about
+            // the round before, and nothing has been applied.
+            return await refuse(conflict('The approval was gated again; read it and decide again'));
+          }
+          // An earlier attempt of this command was cut short after the approval was gated
+          // again, so what it decided was the earlier round, whose outcome was `superseded`.
+          // The replacement round is another decision; resolving it here would approve it.
+          result = {
+            taskId: input.taskId,
+            messageId: input.messageId,
+            reviewId,
+            kind: review.kind,
+            decision,
+            receipt: 'superseded',
+          };
+        } else if (
           !ownClaim &&
           review.status === EXPECTED_STATUS[decision] &&
           review.resolvedBy === actor

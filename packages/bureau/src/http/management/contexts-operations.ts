@@ -302,7 +302,11 @@ export const contextsGetOperation = defineOperation<
     ) {
       throw resourceNotFound('context', contextId);
     }
-    const activity = await host.tasks.activityOf([contextId]);
+    // Bound to the incarnation just authorized, not to whatever now holds the id.
+    const activity = await host.tasks.activityOf(
+      [contextId],
+      new Map([[contextId, session.incarnation]]),
+    );
     return projectContext(summarizeSession(session), activity.get(contextId));
   },
 });

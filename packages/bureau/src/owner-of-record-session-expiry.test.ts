@@ -72,6 +72,26 @@ async function expireEverything(bureau: OpenBureau): Promise<number> {
   return bureau.sessionStore!.cleanup({ olderThan: -60_000 });
 }
 
+describe('the task history of an expired session (COR-1481)', () => {
+  it('erases the originating message of each task of the session, as deleting the context does, and keeps the task', async () => {
+    const { bureau, directory } = await openBureau();
+    try {
+      const run = await settled(bureau, ALICE, 'expiring-context');
+      const before = await bureau.tasks.history(run.id);
+      expect(before?.map((message) => message.text)).toEqual(['hello']);
+
+      expect(await expireEverything(bureau)).toBe(1);
+
+      expect(await bureau.sessionStore!.load('expiring-context')).toBeUndefined();
+      expect(await bureau.tasks.history(run.id)).toEqual([]);
+      expect(await bureau.tasks.get(run.id)).toMatchObject({ id: run.id, owner: ALICE });
+    } finally {
+      await bureau.dispose();
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('the history of an expired session (COR-718)', () => {
   it('shows the next owner of an expired id none of the former owner’s events on a page', async () => {
     const { bureau, directory } = await openBureau();

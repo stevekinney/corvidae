@@ -28,7 +28,7 @@ function build(loaded: CatalogRunRecoveryLoad, childRunIds: readonly string[] = 
       liveTasksOfContexts: () => new Map(),
       pendingReviews: () => [],
       currentIncarnation: async () => undefined,
-      abort: () => false,
+      abort: () => 'not-found',
       cancelDurable: async () => ({ status: 'already-terminal' }),
       sleep: async () => undefined,
     },
@@ -66,6 +66,22 @@ describe('settling a catalog task from the hook', () => {
     expect(await registry.record('agent-run-1')).toBeUndefined();
     const listed = await registry.list({ limit: 10, offset: 0 });
     expect(listed.tasks).toEqual([]);
+  });
+
+  it('puts a recovered run in the context its dispatch named, and in its own when it named none', async () => {
+    const named = build({
+      status: 'found',
+      record: { ...found.record, contextId: 'named-context' },
+    });
+    const unnamed = build(found);
+
+    await named.settler(settlement);
+    await unnamed.settler(settlement);
+
+    const namedRecord = await named.registry.record('agent-run-1');
+    const unnamedRecord = await unnamed.registry.record('agent-run-1');
+    expect(namedRecord?.contextId).toBe('named-context');
+    expect(unnamedRecord?.contextId).toBe('agent-run-1');
   });
 
   it('writes the record of a recovered run that settles with none, dated from the durable run, and settles it', async () => {

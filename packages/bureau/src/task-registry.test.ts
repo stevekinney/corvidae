@@ -46,6 +46,8 @@ type HostState = {
   aborted: string[];
   durable: CancelDurableRunOutcome;
   liveTasksOfContextsCalls: number;
+  /** What the host's abort answers; by default, whether it holds the run. */
+  abortOutcome?: 'requested' | 'already-terminal' | 'not-found';
 };
 
 function build(state?: Partial<HostState>) {
@@ -78,7 +80,8 @@ function build(state?: Partial<HostState>) {
       held.aborted.push(taskId);
       const live = held.live.get(taskId);
       if (live) held.live.set(taskId, { ...live, phase: 'aborting' });
-      return live !== undefined;
+      if (held.abortOutcome !== undefined) return held.abortOutcome;
+      return live === undefined ? 'not-found' : 'requested';
     },
     cancelDurable: async () => held.durable,
     sleep: (milliseconds) =>
@@ -402,6 +405,9 @@ describe('activityOf', () => {
     held.live.set('run-2', running);
     held.live.set('run-3', { ...running, phase: 'completed' });
     held.reviews = [humanWait('run-2')];
+    await admit(registry, 'run-1', { contextId: 'context-1' });
+    await admit(registry, 'run-2', { contextId: 'context-2' });
+    await admit(registry, 'run-3', { contextId: 'context-3' });
 
     const activity = await registry.activityOf([
       'context-1',
@@ -417,6 +423,93 @@ describe('activityOf', () => {
       ['context-3', 'idle'],
       ['context-4', 'idle'],
     ]);
+  });
+
+  async function activityWith(
+    tasks: ReadonlyArray<readonly [string, LiveTask['phase']]>,
+    parked: readonly string[],
+  ) {
+    const { registry, held } = build();
+    for (const [taskId, phase] of tasks) {
+      held.contexts.set(taskId, 'context-1');
+      held.live.set(taskId, { ...running, phase });
+      await admit(registry, taskId, { contextId: 'context-1' });
+    }
+    held.reviews = parked.map((taskId) => humanWait(taskId));
+    const activity = await registry.activityOf(['context-1']);
+    return activity.get('context-1');
+  }
+
+  it('is decided by the context’s latest task alone: an older parked task does not hold a newer working one', async () => {
+    expect(
+      await activityWith(
+        [
+          ['run-old', 'running'],
+          ['run-new', 'running'],
+        ],
+        ['run-old'],
+      ),
+    ).toBe('running');
+    expect(
+      await activityWith(
+        [
+          ['run-old', 'running'],
+          ['run-new', 'running'],
+        ],
+        ['run-new'],
+      ),
+    ).toBe('awaiting-input');
+  });
+
+  it('reads idle when the latest task has ended, whatever an older task is still doing', async () => {
+    expect(
+      await activityWith(
+        [
+          ['run-old', 'running'],
+          ['run-new', 'completed'],
+        ],
+        [],
+      ),
+    ).toBe('idle');
+  });
+
+  it('counts only the tasks of the incarnation it is asked about, and the one the context has now by default', async () => {
+    const { registry, held } = build();
+    // The context was deleted and created again: the old incarnation's task still lingers.
+    held.contexts.set('run-old', 'context-1');
+    held.contexts.set('run-new', 'context-1');
+    held.live.set('run-old', running);
+    held.live.set('run-new', { ...running, phase: 'completed' });
+    await admit(registry, 'run-old', { contextId: 'context-1', incarnation: 'incarnation-0' });
+    await admit(registry, 'run-new', { contextId: 'context-1', incarnation: 'incarnation-1' });
+
+    const authorized = await registry.activityOf(
+      ['context-1'],
+      new Map([['context-1', 'incarnation-1']]),
+    );
+    const previous = await registry.activityOf(
+      ['context-1'],
+      new Map([['context-1', 'incarnation-0']]),
+    );
+    const current = await registry.activityOf(['context-1']);
+
+    expect(authorized.get('context-1')).toBe('idle');
+    expect(previous.get('context-1')).toBe('running');
+    expect(current.get('context-1')).toBe('idle');
+  });
+
+  it('agrees with list about which tasks belong to a context, catalog records included', async () => {
+    const { registry, held } = build();
+    held.contexts.set('run-catalog', 'context-1');
+    held.live.set('run-catalog', running);
+    // A catalog record has no incarnation; the context has a session, so neither read counts it.
+    await admit(registry, 'run-catalog', { contextId: 'context-1', incarnation: '' });
+
+    const activity = await registry.activityOf(['context-1']);
+    const listed = await registry.list({ contextId: 'context-1', limit: 10, offset: 0 });
+
+    expect(listed.tasks).toEqual([]);
+    expect(activity.get('context-1')).toBe('idle');
   });
 });
 
@@ -541,6 +634,18 @@ describe('cancel', () => {
     });
     expect(await registry.cancel('run-canceled', 0)).toEqual({ receipt: 'cleaned-up' });
     expect(await registry.cancel('run-canceled', 0)).toEqual({ receipt: 'cleaned-up' });
+  });
+
+  it('rejects a cancel that loses to the run completing between the live check and the abort', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    held.live.set('run-1', running);
+    // The run ends after the registry saw it running, so the abort finds it over.
+    held.abortOutcome = 'already-terminal';
+
+    const outcome = await registry.cancel('run-1', 0);
+
+    expect(outcome).toEqual({ receipt: 'rejected', reason: 'already-terminal' });
   });
 
   it('answers a repeated cancel at once while the cleanup is still pending, whatever the wait', async () => {
@@ -710,6 +815,102 @@ describe('remove and expire', () => {
     for (const id of ['recent', 'kept', 'live', 'unsettled']) {
       expect(await registry.record(id), id).toBeDefined();
     }
+  });
+});
+
+/** A stored task record, valid in every field, for a test to break one field of. */
+function storedRecord(overrides: Record<string, unknown> = {}) {
+  return {
+    schemaVersion: 1,
+    taskId: 'run-bad',
+    contextId: 'context-1',
+    incarnation: 'incarnation-1',
+    agentName: 'assistant',
+    owner: OWNER,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    history: [],
+    ...overrides,
+  };
+}
+
+describe('a task record with a malformed field', () => {
+  const settled = {
+    at: '2026-09-01T00:00:00.000Z',
+    status: 'completed',
+    finishReason: 'stop-condition',
+    message: null,
+  };
+  const MALFORMED: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+    ['no agentName', { agentName: undefined }],
+    ['a numeric agentName', { agentName: 7 }],
+    ['an invalid createdAt', { createdAt: 'yesterday' }],
+    [
+      'a history entry without text',
+      { history: [{ messageId: 'm', role: 'user', createdAt: '2026-09-01T00:00:00.000Z' }] },
+    ],
+    ['a settlement with an invalid timestamp', { settled: { ...settled, at: 'not a date' } }],
+    ['a settlement with an unknown status', { settled: { ...settled, status: 'working' } }],
+    ['a settlement with a numeric message', { settled: { ...settled, message: 4 } }],
+    ['a settlement with a malformed answer', { settled: { ...settled, answer: { text: 1 } } }],
+    ['an unknown cleanup state', { cleanup: 'tidy' }],
+  ];
+
+  it.each(MALFORMED)(
+    'is isolated, never thrown and never pruned, and leaves the good rows listed: %s',
+    async (_label, overrides) => {
+      const { registry, kv, diagnostics } = build();
+      await admit(registry, 'run-good');
+      const key = `${TASK_RECORD_KEY_PREFIX}run-bad`;
+      const raw = JSON.stringify(storedRecord(overrides));
+      await kv.set(key, raw);
+
+      const listed = await registry.list({ limit: 50, offset: 0 });
+      const got = await registry.get('run-bad');
+      // Far in the future: a settlement timestamp read as 0 or NaN would qualify at once.
+      const removed = await registry.expire(Date.parse('2030-01-01T00:00:00.000Z'), new Set());
+
+      expect(listed.tasks.map((task) => task.id)).toEqual(['run-good']);
+      expect(got).toBeUndefined();
+      expect(removed).toBe(0);
+      expect(await kv.get(key)).toBe(raw);
+      expect(diagnostics.length).toBeGreaterThan(0);
+    },
+  );
+
+  it('reads a record whose every field is well formed', async () => {
+    const { registry, kv } = build();
+    await kv.set(
+      `${TASK_RECORD_KEY_PREFIX}run-bad`,
+      JSON.stringify(storedRecord({ settled, cleanup: 'cleaned-up', agentName: null })),
+    );
+
+    const view = await registry.get('run-bad');
+    expect(view?.status).toBe('completed');
+  });
+});
+
+describe('expiry and a review still pending', () => {
+  it('keeps a settled task whose review is still open until the review is gone', async () => {
+    const { registry, held } = build();
+    await admit(registry, 'run-1');
+    await registry.recordSettled('run-1', {
+      at: '2026-09-01T00:00:00.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+    held.reviews = [humanWait('run-1')];
+    const cutoff = Date.parse('2026-10-01T00:00:00.000Z');
+
+    const whileOpen = await registry.expire(cutoff, new Set());
+    const view = await registry.get('run-1');
+    held.reviews = [];
+    const afterwards = await registry.expire(cutoff, new Set());
+
+    expect(whileOpen).toBe(0);
+    expect(view?.status).toBe('input-required');
+    expect(afterwards).toBe(1);
+    expect(await registry.record('run-1')).toBeUndefined();
   });
 });
 

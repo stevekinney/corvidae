@@ -36,6 +36,7 @@ if (
 }
 
 let held = false;
+const CONTEXT_ID = 'crash-context';
 /** The arguments of a storage call as text, values (stored as bytes) decoded. */
 const textOf = (args: readonly unknown[]): string =>
   JSON.stringify(args, (_key, value: unknown) =>
@@ -90,7 +91,10 @@ if (mode === 'settlement') {
     await sleep(10);
   }
 } else {
-  const run = bureau.run('asker', 'which environment?', { principal: 'api-key:alice' });
+  const run = bureau.run('asker', 'which environment?', {
+    principal: 'api-key:alice',
+    sessionId: CONTEXT_ID,
+  });
   for (;;) {
     if (held && bureau.listPendingReviews().some((review) => review.runId === run.id)) {
       kill(run.id);

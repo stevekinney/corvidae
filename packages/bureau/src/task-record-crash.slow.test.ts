@@ -152,7 +152,19 @@ const outcomes = {
     (scope) =>
       crashScenario('admission', scope, async (bureau, runId) => {
         const task = await bureau.tasks.get(runId);
-        expect(task).toMatchObject({ id: runId, owner: 'api-key:alice', agentName: 'asker' });
+        // The context the dispatch named, not the run's own id.
+        expect(task).toMatchObject({
+          id: runId,
+          owner: 'api-key:alice',
+          agentName: 'asker',
+          contextId: 'crash-context',
+        });
+        const inContext = await bureau.tasks.list({
+          contextId: 'crash-context',
+          limit: 10,
+          offset: 0,
+        });
+        expect(inContext.tasks.map((listed) => listed.id)).toEqual([runId]);
         const history = await bureau.tasks.history(runId);
         expect(history?.map((message) => message.text)).toEqual(['which environment?']);
         // The run was in flight across the crash, and it ends in this process: its task settles.

@@ -70,7 +70,7 @@ export function createCatalogTaskSettler({
     const createdAt = await durableCreatedAt(settlement.runId);
     await tasks.recordAdmission({
       taskId: settlement.runId,
-      contextId: settlement.runId,
+      contextId: loaded.record.contextId ?? settlement.runId,
       incarnation: '',
       agentName: loaded.record.agentName,
       owner: ownerOf(loaded.record.principal),

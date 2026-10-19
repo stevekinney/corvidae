@@ -624,6 +624,8 @@ export function createCatalogDispatcher({
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
         ...(fileBinding === undefined ? {} : { agentDefinitionHash: fileBinding.hash }),
+        // COR-1481: the context the caller named, so a task rebuilt from this record keeps it.
+        ...(runOptions?.sessionId === undefined ? {} : { contextId: runOptions.sessionId }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.

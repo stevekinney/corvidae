@@ -20,6 +20,7 @@ import type { PendingReview, ReviewStatus } from '../../types.ts';
 import { mayAccessOwnedResource } from '../owner-predicate.ts';
 import {
   type BureauTasksRespondOperationHost,
+  type TasksRespondClaim,
   TASKS_RESPOND_LEDGER_KEY_PREFIX,
   TASKS_RESPOND_OPERATION_VERSION,
   type TasksRespondResult,
@@ -54,7 +55,7 @@ const original: TasksRespondResult = {
 
 function newLedger() {
   const runtime = createDefaultRuntimeServices();
-  return createCommandLedger<{ reviewId: string }, TasksRespondResult>({
+  return createCommandLedger<TasksRespondClaim, TasksRespondResult>({
     kv: textValueStore(new MemoryStorage()),
     keyPrefix: TASKS_RESPOND_LEDGER_KEY_PREFIX,
     clock: runtime.clock,
@@ -63,13 +64,21 @@ function newLedger() {
 }
 
 const openWait = { kind: 'human-wait' as const, reviewId, signalName: 'human-response' };
+const approvalReviewId = 'approval:run-1:call-1';
+const approvalWait = {
+  kind: 'tool-approval' as const,
+  reviewId: approvalReviewId,
+  callId: 'call-1',
+};
 
 function hostOver(
   ledger: ReturnType<typeof newLedger>,
   options: {
-    openWaits: readonly (typeof openWait)[];
+    openWaits: readonly (typeof openWait | typeof approvalWait)[];
     getReview: BureauTasksRespondOperationHost['reviews']['getReview'];
     resolveReview?: BureauTasksRespondOperationHost['reviews']['resolveReview'];
+    /** The task has no record any more, as after task retention. */
+    taskGone?: boolean;
   },
 ): BureauTasksRespondOperationHost {
   const task = {
@@ -87,7 +96,9 @@ function hostOver(
   };
   return {
     ownership: { runOwner: async () => owner, mayAccess: mayAccessOwnedResource },
-    tasks: { get: async () => task, ownerOf: async () => owner },
+    tasks: options.taskGone
+      ? { get: async () => undefined, ownerOf: async () => undefined }
+      : { get: async () => task, ownerOf: async () => owner },
     reviews: {
       getReview: options.getReview,
       resolveReview:
@@ -251,5 +262,155 @@ describe('bureau.tasks.respond and a fresh claim', () => {
 
     expect(refused).toMatchObject({ code: 'Conflict' });
     expect(await ledger.read(identity)).toBeUndefined();
+  });
+});
+
+describe('bureau.tasks.respond after task retention removed the task', () => {
+  it('returns the original receipt to an exact retry while the ledger still retains it', async () => {
+    const ledger = newLedger();
+    const claimed = await ledger.claim(identity, digest, { reviewId });
+    await ledger.complete(claimed.entry as never, original);
+
+    const retried = await tasksRespondOperation.invoke({
+      input,
+      host: hostOver(ledger, {
+        openWaits: [],
+        getReview: async () => undefined,
+        taskGone: true,
+      }),
+      principal,
+    } as never);
+
+    expect(retried).toEqual(original);
+  });
+
+  it('still refuses a fresh command as a missing task', async () => {
+    const refused = await faultOf(
+      hostOver(newLedger(), { openWaits: [], getReview: async () => undefined, taskGone: true }),
+    );
+
+    expect(refused).toMatchObject({ code: 'NotFound' });
+  });
+
+  it('does not hand the receipt to a command with another payload, or to another caller', async () => {
+    const ledger = newLedger();
+    const claimed = await ledger.claim(identity, digest, { reviewId });
+    await ledger.complete(claimed.entry as never, original);
+    const gone = hostOver(ledger, {
+      openWaits: [],
+      getReview: async () => undefined,
+      taskGone: true,
+    });
+
+    const otherPayload = await tasksRespondOperation
+      .invoke({ input: { ...input, answer: 'something else' }, host: gone, principal } as never)
+      .catch((error: unknown) => error);
+    const otherCaller = await tasksRespondOperation
+      .invoke({
+        input,
+        host: gone,
+        principal: { ...principal, subject: 'mallory' } as unknown as Principal,
+      } as never)
+      .catch((error: unknown) => error);
+
+    expect(otherPayload).toMatchObject({ code: 'NotFound' });
+    expect(otherCaller).toMatchObject({ code: 'NotFound' });
+  });
+});
+
+describe('bureau.tasks.respond and a retry after the approval was gated again', () => {
+  const decisionInput = { taskId: 'run-1', messageId: 'm1', decision: 'approve' as const };
+  const decisionIdentity = { ...identity };
+  const decisionDigest = digestCommandPayload({ decision: 'approve' });
+
+  const approval = (round: number) =>
+    ({
+      kind: 'tool-approval',
+      id: approvalReviewId,
+      runId: 'run-1',
+      sessionId: 'context-1',
+      agentName: 'bureau',
+      approval: { callId: 'call-1' },
+      requestedAt: 1,
+      ageMilliseconds: 0,
+      status: 'pending',
+      round,
+    }) as unknown as PendingReview & { status: ReviewStatus };
+
+  it('returns the superseded receipt, and resolves nothing, when the original command was cut short after round 1 was raised', async () => {
+    const ledger = newLedger();
+    // The original command read round 0 and claimed it. It resolved round 0, which the policy
+    // gated again, and the process died before the ledger entry completed.
+    await ledger.claim(decisionIdentity, decisionDigest, { reviewId: approvalReviewId, round: 0 });
+    let resolutions = 0;
+    const host = hostOver(ledger, {
+      openWaits: [approvalWait],
+      getReview: async () => approval(1),
+      resolveReview: async () => {
+        resolutions += 1;
+        throw new Error('the replacement round must not be resolved by a retry');
+      },
+    });
+
+    const retry = await tasksRespondOperation.invoke({
+      input: decisionInput,
+      host,
+      principal,
+    } as never);
+
+    expect(retry).toMatchObject({
+      reviewId: approvalReviewId,
+      kind: 'tool-approval',
+      decision: 'approve',
+      receipt: 'superseded',
+    });
+    expect(resolutions).toBe(0);
+    expect(await ledger.read(decisionIdentity)).toMatchObject({ state: 'completed' });
+  });
+
+  it('still resolves the round it claimed when the retry finds it unchanged', async () => {
+    const ledger = newLedger();
+    await ledger.claim(decisionIdentity, decisionDigest, { reviewId: approvalReviewId, round: 0 });
+    let resolutions = 0;
+    const host = hostOver(ledger, {
+      openWaits: [approvalWait],
+      getReview: async () => approval(0),
+      resolveReview: async () => {
+        resolutions += 1;
+        return {
+          id: approvalReviewId,
+          kind: 'tool-approval' as const,
+          decision: 'approve' as const,
+          result: { outcome: 'completed' },
+        };
+      },
+    });
+
+    const retry = await tasksRespondOperation.invoke({
+      input: decisionInput,
+      host,
+      principal,
+    } as never);
+
+    expect(retry).toMatchObject({ receipt: 'applied' });
+    expect(resolutions).toBe(1);
+  });
+
+  it('records the round it read with its claim', async () => {
+    const ledger = newLedger();
+    const host = hostOver(ledger, {
+      openWaits: [approvalWait],
+      getReview: async () => approval(2),
+      resolveReview: async () => ({
+        id: approvalReviewId,
+        kind: 'tool-approval' as const,
+        decision: 'approve' as const,
+        result: { outcome: 'completed' },
+      }),
+    });
+
+    await tasksRespondOperation.invoke({ input: decisionInput, host, principal } as never);
+
+    expect(await ledger.read(decisionIdentity)).toMatchObject({ claim: { round: 2 } });
   });
 });

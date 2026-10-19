@@ -1,4 +1,8 @@
-import { type CleanupAcknowledgement, createAgent } from '@lostgradient/operative';
+import {
+  type CleanupAcknowledgement,
+  createAgent,
+  type GenerateFunction,
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError } from '../../create-bureau.ts';
@@ -529,6 +533,11 @@ describe('a context id that is reused while a request for it is in flight', () =
       bobsRun: () => { id: string };
     }) => Promise<T>,
   ): Promise<T> {
+    // Alice's opening is answered at once; bob's run, which takes the id over, stays running.
+    const generate: GenerateFunction = (context) =>
+      JSON.stringify(context.conversation).includes('BOB-PRIVATE-OPENING')
+        ? parkingUntilAborted(context)
+        : answering()(context);
     const contextId = 'reused-context';
     let bureau: OpenedBureau['bureau'] | undefined;
     let bobsRun: { id: string } | undefined;
@@ -544,7 +553,7 @@ describe('a context id that is reused while a request for it is in flight', () =
       },
     );
     const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => interleaver.wrap(raw) });
-    const opened = await openBureau({ storage: fixture.configuration });
+    const opened = await openBureau({ storage: fixture.configuration, generate });
     bureau = opened.bureau;
     try {
       await opened.bureau.createRun({
@@ -572,6 +581,22 @@ describe('a context id that is reused while a request for it is in flight', () =
 
       expect(JSON.stringify(body)).not.toContain('BOB-PRIVATE-OPENING');
       expect(JSON.stringify(body)).not.toContain(OWNER.bob);
+    });
+  });
+
+  it('does not report bob’s running task as the activity of the context alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
+      await waitForCondition(async () => {
+        const opening = await opened.bureau.tasks.get(opened.bureau.listRuns()[0]!.id);
+        return opening?.status !== 'working';
+      }, 'alice’s opening has finished');
+      recreate();
+
+      const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+
+      // Bob's run is live under the same id, in another incarnation.
+      expect(opened.bureau.getRun(bobsRun().id)?.status).toBe('running');
+      expect((body.result as { activity?: string }).activity).toBe('idle');
     });
   });
 

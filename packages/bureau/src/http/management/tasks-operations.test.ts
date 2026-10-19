@@ -485,7 +485,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
         currentIncarnation: async () => '',
         abort: (taskId) => {
           const acknowledgement = closing.get(taskId);
-          if (acknowledgement === undefined) return false;
+          if (acknowledgement === undefined) return 'not-found';
           void registry.watchCleanup(taskId, acknowledgement);
           live.set(taskId, {
             phase: 'aborted',
@@ -493,7 +493,7 @@ describe('bureau.tasks.cancel receipts that depend on the cleanup acknowledgemen
             error: undefined,
             updatedAt: undefined,
           });
-          return true;
+          return 'requested';
         },
         cancelDurable: async () => ({ status: scripted.durable ?? 'requested' }),
         sleep: (milliseconds) =>

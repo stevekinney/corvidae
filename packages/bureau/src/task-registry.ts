@@ -175,8 +175,12 @@ export interface TaskRegistryHost {
   readonly pendingReviews: () => readonly PendingReview[];
   /** The incarnation of the context's live session, or `undefined` when it has none. */
   readonly currentIncarnation: (contextId: string) => Promise<string | undefined>;
-  /** Requests cancellation of a live task. Idempotent. Resolves whether a live run was found. */
-  readonly abort: (taskId: string) => boolean;
+  /**
+   * Requests cancellation of a live task. Idempotent. `requested` when the run is being stopped,
+   * `already-terminal` when it had ended before the request could take effect, `not-found` when
+   * this process holds no such run.
+   */
+  readonly abort: (taskId: string) => 'requested' | 'already-terminal' | 'not-found';
   /** Cancels a durable run this process holds no live run for. */
   readonly cancelDurable: (taskId: string) => Promise<CancelDurableRunOutcome>;
   /** Resolves after `milliseconds` on the Bureau's runtime timers. */
@@ -248,7 +252,8 @@ export interface TaskRegistry {
   remove(taskId: string): Promise<void>;
   /**
    * Deletes the record of every task that settled before `cutoffMs` and whose run
-   * this process no longer holds, except the ids in `keep`. A run the Bureau still
+   * this process no longer holds, except the ids in `keep` and the tasks with a review
+   * still pending. A run the Bureau still
    * holds is deleted through `deleteRun`, which removes its record. Resolves how
    * many records it removed.
    */
@@ -275,8 +280,16 @@ export interface TaskRegistry {
   /** A task's record, as stored. */
   record(taskId: string): Promise<TaskRecord | undefined>;
   list(query: TaskQuery): Promise<TaskPage>;
-  /** What each context is doing, answered for the whole set in one query. */
-  activityOf(contextIds: readonly string[]): Promise<ReadonlyMap<string, ContextActivity>>;
+  /**
+   * What each context is doing, answered for the whole set in one query, from the context's
+   * latest task alone. Only the tasks of the context's incarnation count (see
+   * {@link belongsToIncarnation}): `incarnations` names the one a caller has authorized for a
+   * context, and a context it does not name is read at the incarnation it has now.
+   */
+  activityOf(
+    contextIds: readonly string[],
+    incarnations?: ReadonlyMap<string, string>,
+  ): Promise<ReadonlyMap<string, ContextActivity>>;
   /**
    * Cancels a task and reports where its cleanup stands. With `waitMilliseconds`
    * above zero it waits that long for the acknowledgement; at zero it does not
@@ -373,6 +386,21 @@ export function originatingMessageText(input: AgentInput): string | undefined {
   return undefined;
 }
 
+/**
+ * Whether a task belongs to one incarnation of its context: the one predicate every per-context
+ * task read answers by (`list` with a `contextId`, `activityOf`, `clearHistory`), so they cannot
+ * disagree. A context deleted and created again under the same id is a new one, and its
+ * predecessor's tasks are not its own. A catalog record has `incarnation: ''`, so it belongs to
+ * a context with no session and to none that has one; `incarnation` is `undefined` for a context
+ * with no live session.
+ */
+export function belongsToIncarnation(
+  record: Pick<TaskRecord, 'incarnation'>,
+  incarnation: string | undefined,
+): boolean {
+  return record.incarnation === (incarnation ?? '');
+}
+
 function recordKey(taskId: string): string {
   return `${TASK_RECORD_KEY_PREFIX}${encodeStorageKeyComponent(taskId)}`;
 }
@@ -389,6 +417,68 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const SETTLED_STATES: ReadonlySet<unknown> = new Set(['completed', 'failed', 'canceled']);
+const CLEANUP_STATES: ReadonlySet<unknown> = new Set<TaskCleanupState>([
+  'cancel-requested',
+  'canceled',
+  'cleanup-pending',
+  'cleaned-up',
+  'cleanup-failed',
+  'cleanup-unresolved',
+  'unknown-outcome',
+]);
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isStringOrNull(value: unknown): boolean {
+  return value === null || typeof value === 'string';
+}
+
+function isTaskMessage(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value['messageId'] === 'string' &&
+    value['role'] === 'user' &&
+    typeof value['text'] === 'string' &&
+    isTimestamp(value['createdAt'])
+  );
+}
+
+function isTaskSettlement(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const answer = value['answer'];
+  return (
+    isTimestamp(value['at']) &&
+    SETTLED_STATES.has(value['status']) &&
+    isStringOrNull(value['finishReason']) &&
+    isStringOrNull(value['message']) &&
+    (answer === undefined ||
+      (isRecord(answer) &&
+        typeof answer['text'] === 'string' &&
+        typeof answer['truncated'] === 'boolean'))
+  );
+}
+
+/** Whether a stored value is a task record in every field a reader depends on. */
+function isTaskRecord(value: unknown): value is TaskRecord {
+  return (
+    isRecord(value) &&
+    value['schemaVersion'] === 1 &&
+    typeof value['taskId'] === 'string' &&
+    typeof value['contextId'] === 'string' &&
+    typeof value['incarnation'] === 'string' &&
+    isStringOrNull(value['agentName']) &&
+    typeof value['owner'] === 'string' &&
+    isTimestamp(value['createdAt']) &&
+    Array.isArray(value['history']) &&
+    value['history'].every(isTaskMessage) &&
+    (value['settled'] === undefined || isTaskSettlement(value['settled'])) &&
+    (value['cleanup'] === undefined || CLEANUP_STATES.has(value['cleanup']))
+  );
+}
+
 function parseRecord(key: string, raw: string): TaskRecord {
   let parsed: unknown;
   try {
@@ -396,19 +486,8 @@ function parseRecord(key: string, raw: string): TaskRecord {
   } catch (error) {
     throw new Error(`The task record at "${key}" is not valid JSON.`, { cause: error });
   }
-  if (
-    !isRecord(parsed) ||
-    parsed['schemaVersion'] !== 1 ||
-    typeof parsed['taskId'] !== 'string' ||
-    typeof parsed['contextId'] !== 'string' ||
-    typeof parsed['incarnation'] !== 'string' ||
-    typeof parsed['owner'] !== 'string' ||
-    typeof parsed['createdAt'] !== 'string' ||
-    !Array.isArray(parsed['history'])
-  ) {
-    throw new Error(`The value at "${key}" is not a task record.`);
-  }
-  return parsed as unknown as TaskRecord;
+  if (!isTaskRecord(parsed)) throw new Error(`The value at "${key}" is not a task record.`);
+  return parsed;
 }
 
 function truncate(text: string, limit: number): string {
@@ -703,8 +782,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
 
     async expire(cutoffMs, keep) {
       let removed = 0;
+      // A review still open holds its task: it is waiting on its requester, and removing the
+      // record would make `get` and `respond` not-found while the review holds the context open.
+      const held = reviewsByRun(host.pendingReviews());
       for (const record of await allRecords()) {
         if (record.settled === undefined || keep.has(record.taskId)) continue;
+        if (held.has(record.taskId)) continue;
         if (Date.parse(record.settled.at) >= cutoffMs) continue;
         if (host.liveTask(record.taskId) !== undefined) continue;
         await this.remove(record.taskId);
@@ -716,7 +799,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     async clearHistory(contextId, incarnation) {
       let cleared = 0;
       for (const record of await recordsOfContext(contextId)) {
-        if (record.incarnation !== incarnation || record.history.length === 0) continue;
+        if (!belongsToIncarnation(record, incarnation) || record.history.length === 0) continue;
         await update(record.taskId, (current) => ({ ...current, history: [] }));
         cleared += 1;
       }
@@ -752,8 +835,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       if (query.contextId !== undefined) {
         // Only the context's current incarnation: a context deleted and recreated
         // under the same id is a new one, and its predecessor's tasks are not its own.
-        const current = (await host.currentIncarnation(query.contextId)) ?? '';
-        records = records.filter((record) => record.incarnation === current);
+        const current = await host.currentIncarnation(query.contextId);
+        records = records.filter((record) => belongsToIncarnation(record, current));
       }
       if (query.owner !== undefined)
         records = records.filter((record) => record.owner === query.owner);
@@ -778,20 +861,36 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       return { tasks: page, nextOffset };
     },
 
-    async activityOf(contextIds) {
+    async activityOf(contextIds, incarnations) {
       const live = host.liveTasksOfContexts(contextIds);
       const waiting = new Set(host.pendingReviews().map((review) => review.runId));
       const activity = new Map<string, ContextActivity>();
       for (const contextId of contextIds) {
-        const running = (live.get(contextId) ?? []).filter(
-          (task) =>
-            task.phase === 'running' || task.phase === 'aborting' || task.phase === 'submitted',
-        );
-        const latest = running.at(-1);
-        const parked = (live.get(contextId) ?? []).some((task) => waiting.has(task.taskId));
+        const held = live.get(contextId) ?? [];
+        if (held.length === 0) {
+          activity.set(contextId, 'idle');
+          continue;
+        }
+        const incarnation =
+          incarnations?.get(contextId) ?? (await host.currentIncarnation(contextId));
+        const owned: (typeof held)[number][] = [];
+        for (const task of held) {
+          const record = await read(task.taskId);
+          if (record !== undefined && belongsToIncarnation(record, incarnation)) owned.push(task);
+        }
+        // The context's latest task alone decides: an older parked or working task does not.
+        const latest = owned.at(-1);
         activity.set(
           contextId,
-          parked ? 'awaiting-input' : latest === undefined ? 'idle' : 'running',
+          latest === undefined
+            ? 'idle'
+            : waiting.has(latest.taskId)
+              ? 'awaiting-input'
+              : latest.phase === 'running' ||
+                  latest.phase === 'aborting' ||
+                  latest.phase === 'submitted'
+                ? 'running'
+                : 'idle',
         );
       }
       return activity;
@@ -859,7 +958,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         }
         return { receipt: 'rejected', reason: 'already-terminal' };
       }
-      host.abort(taskId);
+      // The run can end between the check above and the abort; then nothing was canceled.
+      if (host.abort(taskId) === 'already-terminal') {
+        return { receipt: 'rejected', reason: 'already-terminal' };
+      }
       const watched = watchers.get(taskId);
       if (watched === undefined || waitMilliseconds <= 0) {
         const view = (await this.get(taskId)) ?? before;
