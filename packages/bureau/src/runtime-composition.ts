@@ -142,6 +142,7 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
@@ -1209,7 +1210,7 @@ export function createMemoryRecallHook(
     }
 
     context.conversation.appendSystemMessage(bundle.rendered, {
-      memoryEvidence: {
+      [MEMORY_EVIDENCE_METADATA_KEY]: {
         sessionId: target.sessionId,
         recordIds: bundle.evidence.map((item) => item.id),
         withheld: bundle.withheld,
