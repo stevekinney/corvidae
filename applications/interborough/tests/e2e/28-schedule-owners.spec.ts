@@ -8,6 +8,8 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
+import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
+
 import { SCHEDULE_COPY } from '../../src/app/copy.ts';
 import { E2E_BASE_URL, E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -276,20 +278,31 @@ test.describe('creating a schedule', () => {
       .evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
   }
 
-  test('leaves agentRun and an agent-authored workflow out of the types it offers', async ({
+  test('offers none of the types the Bureau owns, so there is no workflow type to pick on its own engine', async ({
     page,
+    request,
   }) => {
-    // The Bureau's engine holds both in its registry: `agentRun` is the built-in the agent choice
-    // schedules, and `e2e-digest` is a file whose schedule is its own trigger.
-    await expect
-      .poll(async () => {
-        const offered = await offeredTypes(page);
-        return offered.length;
-      })
-      .toBeGreaterThan(1);
-    const options = await offeredTypes(page);
-    expect(options).not.toContain('agentRun');
-    expect(options).not.toContain('e2e-digest');
+    // The engine's registry holds every type the Bureau's run engine registers, and the file's type.
+    const registry = await request.post('/jsonrpc', {
+      data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
+    });
+    const held = Object.keys(
+      ((await registry.json()) as { result: { activeRevisions: Record<string, unknown> } }).result
+        .activeRevisions,
+    );
+    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES) expect(held, reserved).toContain(reserved);
+    expect(held).toContain('e2e-digest');
+
+    await page.goto('/schedules?create=1');
+    const drawer = page.getByRole('dialog', { name: 'Create schedule' });
+    // Nothing is left to pick, so the type is typed, and every type the Bureau owns is refused.
+    const type = drawer.getByRole('textbox', { name: 'Workflow type' });
+    await expect(type).toBeVisible();
+    await expect(drawer.getByRole('combobox', { name: 'Workflow type' })).toHaveCount(0);
+    for (const reserved of [...RUN_ENGINE_WORKFLOW_TYPES, 'e2e-digest']) {
+      await type.fill(reserved);
+      await expect(drawer.getByRole('button', { name: 'Create schedule' }), reserved).toBeDisabled();
+    }
   });
 
   test.describe('on the host whose console is the fixtures’ engine', () => {

@@ -41,12 +41,13 @@
     scheduleDetailPath,
     scheduleEditPath,
   } from '../../lib/router.svelte.ts';
-  import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
+  import { kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
+  import { scheduleOverlayOptions } from './overlay-query.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleNotice from './schedule-notice.svelte';
   import { fetchScheduleList } from './schedule-queries.ts';
@@ -122,11 +123,7 @@
 
   // What the Bureau knows of these schedules: which start an agent, and which are a workflow's
   // trigger. Until it answers a schedule is of no known kind, and nothing is written to it.
-  const overlay = createQuery(() => ({
-    queryKey: queryKeys.schedules.overlay(),
-    queryFn: ({ signal }) => loadScheduleOverlay({ signal }),
-    retry: false,
-  }));
+  const overlay = createQuery(() => scheduleOverlayOptions(client));
 
   const actions = createScheduleActions();
 
@@ -274,7 +271,7 @@
     <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
   {/if}
 
-  {#if overlay.isError}
+  {#if overlay.data?.failed}
     <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
   {/if}
 

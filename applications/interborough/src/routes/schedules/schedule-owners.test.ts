@@ -121,14 +121,38 @@ describe('what a schedule starts', () => {
     );
   });
 
-  test('is not linked, and nothing is written, until the Bureau has said what it is', async () => {
+  test('is not linked, and nothing is written, for a schedule only the Bureau can place, when it has not said', async () => {
+    const { container, findByText } = open('/schedules', {
+      failBureauSchedules: true,
+      failBureauFiles: true,
+    });
+    await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
+
+    // The workflow file's schedule: whether it is the file's or the engine's is the Bureau's to say.
+    expect(row(container, FILE_SCHEDULE)?.dataset['kind']).toBe('unknown');
+    const target = within(row(container, FILE_SCHEDULE) as HTMLElement).getByTestId(
+      'schedule-target',
+    );
+    expect(target.querySelector('a') === null).toBe(true);
+    expect(target.textContent).not.toContain(SCHEDULE_COPY.kind['workflow-file']);
+    const view = await openMenu(container, FILE_SCHEDULE);
+    expect(view.queryByRole('menuitem', { name: /Pause/ }) === null).toBe(true);
+    expect(view.queryByRole('menuitem', { name: /Cancel/ }) === null).toBe(true);
+    expect(
+      view.queryByRole('menuitem', { name: new RegExp(SCHEDULE_COPY.editWorkflowAction) }) === null,
+    ).toBe(true);
+  });
+
+  test('is an agent run with no agent named, and so no link, when the Bureau’s schedules did not answer', async () => {
     const { container, findByText } = open('/schedules', { failBureauSchedules: true });
     await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
 
-    expect(row(container, AGENT_SCHEDULE)?.dataset['kind']).toBe('unknown');
-    const view = await openMenu(container, AGENT_SCHEDULE);
-    expect(view.queryByRole('menuitem', { name: /Pause/ })).toBeNull();
-    expect(view.queryByRole('menuitem', { name: /Cancel/ })).toBeNull();
+    expect(row(container, AGENT_SCHEDULE)?.dataset['kind']).toBe('agent-run');
+    const target = within(row(container, AGENT_SCHEDULE) as HTMLElement).getByTestId(
+      'schedule-target',
+    );
+    expect(target.textContent).toContain(SCHEDULE_COPY.unnamedAgent);
+    expect(target.querySelector('a') === null).toBe(true);
   });
 });
 
@@ -243,6 +267,7 @@ describe('a stale write', () => {
     if (file === undefined) throw new Error('expected the seeded file');
     // The file was edited on disk after the page read it.
     file.hash = 'hash-edited-elsewhere';
+    const reads = stub?.callsTo('bureau.workflows.list').length ?? 0;
 
     const view = await openMenu(container, FILE_SCHEDULE);
     await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
@@ -250,15 +275,20 @@ describe('a stale write', () => {
     await waitFor(() => expect(stale()).not.toBeNull());
     expect(stale()?.textContent).toContain(SCHEDULE_COPY.stale.title(FILE_SCHEDULE));
     expect(row(container, FILE_SCHEDULE)?.dataset['status']).toBe('active');
-    // The page read the files again, so the next pause names the hash that is on disk now.
-    await waitFor(async () => {
-      const reopened = await openMenu(container, FILE_SCHEDULE);
-      await fireEvent.click(reopened.getByRole('menuitem', { name: /Pause/ }));
+    // The page read the files again: waiting on that, which is cheap to say, and not on a retry of
+    // the click, so a reload that stops happening fails here as an assertion, and does not hang.
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.workflows.list').length ?? 0).toBeGreaterThan(reads),
+    );
+    // So the next pause, made once, names the hash that is on disk now.
+    const reopened = await openMenu(container, FILE_SCHEDULE);
+    await fireEvent.click(reopened.getByRole('menuitem', { name: /Pause/ }));
+    await waitFor(() =>
       expect(stub?.callsTo('bureau.workflows.pause').at(-1)?.params).toEqual({
         id: 'digest',
         expectedHash: 'hash-edited-elsewhere',
-      });
-    });
+      }),
+    );
     await waitFor(() => expect(row(container, FILE_SCHEDULE)?.dataset['status']).toBe('paused'));
   });
 
@@ -518,14 +548,97 @@ describe('one schedule’s page, by kind', () => {
     expect(stub?.callsTo('POST pause /schedules/:id')).toHaveLength(1);
   });
 
-  test('offers nothing to change until the Bureau has said what it is, and says that it has not', async () => {
-    const { findByText, queryByRole } = open(`/schedules/${AGENT_SCHEDULE}`, {
+  test('offers nothing to change to a schedule only the Bureau can place, and says that it has not', async () => {
+    const { findByText, queryByRole } = open(`/schedules/${FILE_SCHEDULE}`, {
       failBureauSchedules: true,
+      failBureauFiles: true,
     });
 
     await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
     expect(queryByRole('button', { name: /Pause/ })).toBeNull();
     expect(queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(queryByRole('button', { name: 'Cancel' })).toBeNull();
+  });
+});
+
+describe('a code-defined schedule while the Bureau is not answering', () => {
+  test('is paused through the engine all the same, from the list and from its page', async () => {
+    const { container } = open('/schedules', { failBureauSchedules: true, failBureauFiles: true });
+    await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['kind']).toBe('code'));
+
+    const view = await openMenu(container, CODE_SCHEDULE);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
+
+    await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('paused'));
+    expect(stub?.callsTo('POST pause /schedules/:id').map((call) => call.params)).toEqual([
+      { id: CODE_SCHEDULE },
+    ]);
+  });
+
+  test('is resumed from its own page, which says the Bureau did not answer', async () => {
+    const { findByRole, findByText } = open(`/schedules/${CODE_SCHEDULE}`, {
+      failBureauSchedules: true,
+      failBureauFiles: true,
+    });
+
+    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
+    await findByRole('button', { name: /Resume/ });
+    await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
+    expect(stub?.callsTo('POST pause /schedules/:id')).toHaveLength(1);
+  });
+});
+
+describe('a schedule of an agent-authored workflow’s type that is not the file’s own', () => {
+  // The engine can make a schedule for any registered type. It belongs to the engine, because the
+  // Bureau decides a schedule is a file's by its id, and never by its type.
+  const EXTRA = 'digest-every-hour';
+
+  function withExtra() {
+    const base = world();
+    return open('/schedules', {
+      schedules: [
+        ...base.schedules,
+        scheduleFixture(EXTRA, 'digest', { description: 'made by the engine' }),
+      ],
+    });
+  }
+
+  test('is the engine’s: it offers Cancel, and Pause goes through the engine and leaves the file alone', async () => {
+    const { container } = withExtra();
+    await waitFor(() => expect(row(container, EXTRA)?.dataset['kind']).toBe('code'));
+
+    const view = await openMenu(container, EXTRA);
+    expect(view.queryByRole('menuitem', { name: /Cancel/ }) === null).toBe(false);
+    expect(
+      view.queryByRole('menuitem', { name: new RegExp(SCHEDULE_COPY.editWorkflowAction) }) === null,
+    ).toBe(true);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
+
+    await waitFor(() => expect(row(container, EXTRA)?.dataset['status']).toBe('paused'));
+    expect(stub?.callsTo('POST pause /schedules/:id').map((call) => call.params)).toEqual([
+      { id: EXTRA },
+    ]);
+    expect(stub?.callsTo('bureau.workflows.pause')).toEqual([]);
+    expect(stub?.file('digest')?.paused).toBe(false);
+  });
+
+  test('is still the file’s own schedule, by its id, beside it', async () => {
+    const { container } = withExtra();
+    await waitFor(() => expect(row(container, EXTRA)?.dataset['kind']).toBe('code'));
+
+    expect(row(container, FILE_SCHEDULE)?.dataset['kind']).toBe('workflow-file');
+  });
+
+  test('is of no known kind, and nothing is written, when the Bureau did not list the file’s own schedule', async () => {
+    // A caller who cannot see the deployment’s schedules cannot tell whose this is.
+    const { container } = open('/schedules', {
+      files: [readyFile('digest')],
+      schedules: [scheduleFixture(EXTRA, 'digest')],
+    });
+    await waitFor(() => expect(row(container, EXTRA)?.dataset['kind']).toBe('unknown'));
+
+    const view = await openMenu(container, EXTRA);
+    expect(view.queryByRole('menuitem', { name: /Pause/ }) === null).toBe(true);
+    expect(view.queryByRole('menuitem', { name: /Cancel/ }) === null).toBe(true);
   });
 });

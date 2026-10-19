@@ -334,10 +334,14 @@ export const SCHEDULE_COPY = {
     descriptionDescription: 'Optional. Shown to operators alongside the schedule.',
     cadenceLabel: 'Cadence',
     agentRequired: 'Choose an agent.',
+    descriptionTooLong: (most: number): string =>
+      `The description is too long: it can be at most ${String(most)} characters.`,
     inputRequired: 'Enter the text to send.',
     inputTooLong: 'The input is too long.',
     reservedAgentRun:
       'Agent runs are scheduled with “An agent run”, which checks the agent and its owner.',
+    reservedBureauWorkflow:
+      'The Bureau starts this workflow itself, with checks a schedule made here would skip.',
     reservedAgentAuthored:
       'This workflow is agent-authored. Its schedule is the trigger in its file, so change it in the workflow.',
     registryNote:

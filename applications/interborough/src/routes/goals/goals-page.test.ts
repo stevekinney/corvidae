@@ -67,7 +67,9 @@ const AGENTS = ['assistant', 'tool-runner'].map((name) => ({
 }));
 
 /** The only validator this Bureau was configured with. */
-const KNOWN_VALIDATOR = { name: 'accepts-any-answer', version: '1' };
+// Neither version is `1`, so a form that sent a fixed one would be seen.
+const KNOWN_VALIDATOR = { name: 'accepts-any-answer', version: '2' };
+const IDENTITY_VERSION = '3';
 
 type Served = { goals: GoalRow[]; pageSize: number };
 
@@ -174,7 +176,7 @@ async function fillGoal(
     target: { value: 'say-hello' },
   });
   await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.identityVersionLabel), {
-    target: { value: '1' },
+    target: { value: IDENTITY_VERSION },
   });
   await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.validatorNameLabel), {
     target: { value: values.validatorName ?? KNOWN_VALIDATOR.name },
@@ -242,10 +244,11 @@ describe('creating a goal', () => {
 
     await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(1));
     expect(stub?.callsTo('bureau.goals.create')[0]?.params).toEqual({
+      idempotencyKey: expect.stringMatching(/^[A-Za-z0-9._-]{1,64}$/),
       agentName: 'assistant',
       prompt: 'Say hello.',
-      identity: { name: 'say-hello', version: '1' },
-      validator: { name: 'accepts-any-answer', version: '1' },
+      identity: { name: 'say-hello', version: IDENTITY_VERSION },
+      validator: { name: 'accepts-any-answer', version: '2' },
       // The Bureau needs a bound on all the attempts together besides how many it makes.
       bounds: { maximumAttempts: 4, maximumTotalSteps: 20 },
     });
@@ -266,7 +269,7 @@ describe('creating a goal', () => {
 
     const fault = await dialog.findByTestId('goal-fault');
     expect(fault.getAttribute('data-fault-code')).toBe('Unprocessable');
-    expect(fault.textContent).toContain('no-such-validator@1');
+    expect(fault.textContent).toContain('no-such-validator@2');
     expect(served.goals).toEqual([]);
     // What was typed is still there, so the validator can be corrected.
     expect(
@@ -550,5 +553,37 @@ describe('the drawer that creates a goal', () => {
 
     await waitFor(() => expect(router.search.get('create')).toBeNull());
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
+  });
+});
+
+describe('a submit that is sent again', () => {
+  test('is the same goal: a retry after a lost answer carries the same key, and a changed request a new one', async () => {
+    let attempts = 0;
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
+    stub?.on('bureau.goals.create', () => {
+      attempts += 1;
+      if (attempts === 1) throw new StubFault('Unavailable', 503, 'The answer was lost.');
+      throw new StubFault('Unprocessable', 422, 'Stop here.', { reason: 'validator-not-found' });
+    });
+    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
+    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const dialog = within(element);
+    await fillGoal(element);
+    const create = dialog.getByRole('button', { name: GOALS_COPY.form.createAction });
+
+    await fireEvent.click(create);
+    await dialog.findByTestId('goal-fault');
+    await fireEvent.click(create);
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(2));
+    await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.promptLabel), {
+      target: { value: 'A different prompt.' },
+    });
+    await fireEvent.click(create);
+    await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(3));
+
+    const keys = stub?.callsTo('bureau.goals.create').map((call) => call.params['idempotencyKey']);
+    expect(keys?.[0]).toBe(keys?.[1]);
+    expect(keys?.[2]).not.toBe(keys?.[0]);
   });
 });

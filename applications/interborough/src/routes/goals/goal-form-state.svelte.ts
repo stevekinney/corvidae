@@ -51,8 +51,31 @@ export class GoalFormState {
     );
   }
 
+  /** What the last request was, and the key it was sent under. Plain bookkeeping, not state. */
+  #lastRequest = '';
+  #lastKey = '';
+
+  /**
+   * The key for what the form holds now. It is the same for as long as the request is the same, so
+   * sending one submission again after a lost answer is the same goal, and it is a new one as soon
+   * as anything is changed, because the Bureau refuses a different request under a key it has seen.
+   */
+  #keyFor(request: Omit<GoalInput, 'idempotencyKey'>): string {
+    const signature = JSON.stringify(request);
+    if (signature !== this.#lastRequest) {
+      this.#lastRequest = signature;
+      this.#lastKey = crypto.randomUUID();
+    }
+    return this.#lastKey;
+  }
+
   /** What `bureau.goals.create` is sent. Only valid when `isValid` is. */
   toInput(): GoalInput {
+    const request = this.#request();
+    return { ...request, idempotencyKey: this.#keyFor(request) };
+  }
+
+  #request(): Omit<GoalInput, 'idempotencyKey'> {
     return {
       agentName: this.agentName.trim(),
       prompt: this.prompt,

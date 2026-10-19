@@ -12,6 +12,7 @@
  *
  * Driven against `installWorkflowWorld`, as `schedule-owners.test.ts` is.
  */
+import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
@@ -59,7 +60,8 @@ function world(overrides: Partial<World> = {}): World {
     definitions: [
       codeDefinition('order-processing'),
       codeDefinition('inventory-sync'),
-      codeDefinition('agentRun'),
+      // Every type the Bureau's run engine registers is in the registry of a host whose console is the Bureau's engine.
+      ...RUN_ENGINE_WORKFLOW_TYPES.map((type) => codeDefinition(type)),
       sourceDefinition('digest'),
     ],
     files: [readyFile('digest')],
@@ -367,6 +369,9 @@ describe('creating a schedule', () => {
     // Both types the Bureau owns are in the registry, and neither is offered.
     await waitFor(() => expect(values()).toContain('order-processing'));
     expect(values()).toEqual(['', 'inventory-sync', 'order-processing']);
+    // None of the types the Bureau's run engine registers is offered, whichever they are.
+    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES)
+      expect(values(), reserved).not.toContain(reserved);
     expect(values()).not.toContain('agentRun');
     expect(values()).not.toContain('digest');
   });
@@ -388,6 +393,12 @@ describe('creating a schedule', () => {
     await fireEvent.input(type, { target: { value: 'agentRun' } });
     await dialog.findByText(SCHEDULE_COPY.form.reservedAgentRun, { exact: false });
     expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
+
+    for (const reserved of RUN_ENGINE_WORKFLOW_TYPES.filter((type) => type !== 'agentRun')) {
+      await fireEvent.input(type, { target: { value: reserved } });
+      await dialog.findByText(SCHEDULE_COPY.form.reservedBureauWorkflow, { exact: false });
+      expect(dialog.getByRole('button', { name: 'Create schedule' }), reserved).toBeDisabled();
+    }
 
     await fireEvent.input(type, { target: { value: 'order-processing' } });
     await waitFor(() =>
@@ -412,7 +423,7 @@ describe('creating a schedule', () => {
   });
 
   test('does not offer a workflow type until the Bureau has said which are agent-authored', async () => {
-    open('/schedules?create=1', { failBureauSchedules: true });
+    open('/schedules?create=1', { failBureauFiles: true });
     const dialog = within(await drawer('Create schedule'));
 
     await dialog.findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
@@ -468,7 +479,11 @@ describe('the drawers when something is not as it was', () => {
   });
 
   test('an edit says so when the Bureau has not said what the schedule is, and offers nothing', async () => {
-    open(`/schedules/${AGENT_SCHEDULE}?edit=1`, { failBureauSchedules: true });
+    // A workflow file's schedule: only the Bureau says whose it is, and it did not answer.
+    open(`/schedules/${FILE_SCHEDULE}?edit=1`, {
+      failBureauSchedules: true,
+      failBureauFiles: true,
+    });
     const dialog = within(await drawer('Edit schedule'));
 
     await dialog.findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
@@ -542,5 +557,45 @@ describe('the drawers when something is not as it was', () => {
 
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
     expect(stub?.callsTo('bureau.schedules.create')[0]?.params['spec']).toMatch(/^30 /);
+  });
+});
+
+describe('a description that is too long', () => {
+  const TOO_LONG = 'x'.repeat(2_001);
+
+  test('says why Save is disabled when an agent run is edited, and is saved once it is short enough', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    const dialog = within(await drawer('Edit schedule'));
+    const description = await dialog.findByLabelText('Description');
+
+    await fireEvent.input(description, { target: { value: TOO_LONG } });
+
+    await dialog.findByText(SCHEDULE_COPY.form.descriptionTooLong(2_000), { exact: false });
+    expect(dialog.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    await fireEvent.input(description, { target: { value: 'x'.repeat(2_000) } });
+    await waitFor(() =>
+      expect(dialog.getByRole('button', { name: 'Save changes' })).not.toBeDisabled(),
+    );
+  });
+
+  test('says so when a new agent run is created, too', async () => {
+    open('/schedules?create=1');
+    const dialog = within(await drawer('Create schedule'));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
+    await fireEvent.change(await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel), {
+      target: { value: 'tool-runner' },
+    });
+    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
+      target: { value: 'Hello' },
+    });
+
+    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.descriptionLabel), {
+      target: { value: TOO_LONG },
+    });
+
+    await dialog.findByText(SCHEDULE_COPY.form.descriptionTooLong(2_000), { exact: false });
+    expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
   });
 });

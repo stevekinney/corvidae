@@ -6,6 +6,7 @@ import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
+import { agentEditPath, agentPath } from '../lib/agent-paths.ts';
 import {
   matchRoute,
   scheduleCreatePath,
@@ -268,6 +269,24 @@ describe('a link to a schedule', () => {
     for await (const path of new Glob('**/*.{svelte,ts,md}').scan(sourceRoot)) {
       const text = await Bun.file(join(sourceRoot, path)).text();
       if (text.includes(old)) offenders.push(path);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('a link to an agent', () => {
+  test('is built in one module, so a list, a schedule, and a goal agree on how a name is encoded', async () => {
+    expect(agentPath('assistant')).toBe('/agents/assistant');
+    expect(agentPath('a b/c')).toBe('/agents/a%20b%2Fc');
+    expect(agentEditPath('assistant')).toBe('/agents/assistant/edit');
+    expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ id: 'a b/c' });
+
+    const offenders: string[] = [];
+    for await (const path of new Glob('**/*.{svelte,ts}').scan(sourceRoot)) {
+      if (/\.test(?:-support|-harness)?\./.test(path) || path === 'lib/agent-paths.ts') continue;
+      const text = await Bun.file(join(sourceRoot, path)).text();
+      // A template literal that builds `/agents/<name>`, which only the module above does.
+      if (/`\/agents\/\$\{/.test(text)) offenders.push(path);
     }
     expect(offenders).toEqual([]);
   });

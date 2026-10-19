@@ -36,10 +36,12 @@ describe('the Bureau’s goals', () => {
         validator: { name: 'never-passes', version: '1' },
         maximumAttempts: 3,
         maximumTotalSteps: 20,
+        idempotencyKey: 'key-1',
       }),
     );
     expect(refused).toThrow();
     expect(stub.callsTo('bureau.goals.create')[0]?.params).toEqual({
+      idempotencyKey: 'key-1',
       agentName: 'assistant',
       prompt: 'Say hello.',
       identity: { name: 'say-hello', version: '1' },

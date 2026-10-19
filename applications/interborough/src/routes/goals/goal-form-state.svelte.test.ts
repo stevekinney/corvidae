@@ -7,9 +7,9 @@ function filled(): GoalFormState {
   form.agentName = ' assistant ';
   form.prompt = 'Say hello.';
   form.identityName = 'say-hello';
-  form.identityVersion = '1';
+  form.identityVersion = '3';
   form.validatorName = 'never-passes';
-  form.validatorVersion = '1';
+  form.validatorVersion = '2';
   return form;
 }
 
@@ -50,12 +50,28 @@ describe('the goal draft', () => {
     form.maximumAttempts = ' 4 ';
     form.maximumTotalSteps = '20';
     expect(form.toInput()).toEqual({
+      idempotencyKey: expect.stringMatching(/^[A-Za-z0-9._-]{1,64}$/),
       agentName: 'assistant',
       prompt: 'Say hello.',
-      identity: { name: 'say-hello', version: '1' },
-      validator: { name: 'never-passes', version: '1' },
+      identity: { name: 'say-hello', version: '3' },
+      validator: { name: 'never-passes', version: '2' },
       maximumAttempts: 4,
       maximumTotalSteps: 20,
     });
+  });
+
+  test('keeps one key while the request is the same, and takes a new one as soon as it changes', () => {
+    const form = filled();
+    const first = form.toInput().idempotencyKey;
+
+    // A retry of one submission is the same request, so it is the same goal.
+    expect(form.toInput().idempotencyKey).toBe(first);
+    expect(form.toInput().idempotencyKey).toBe(first);
+
+    // The Bureau refuses a different request under a key it has seen, so a change is a new key.
+    form.prompt = 'Say hello twice.';
+    const second = form.toInput().idempotencyKey;
+    expect(second).not.toBe(first);
+    expect(form.toInput().idempotencyKey).toBe(second);
   });
 });

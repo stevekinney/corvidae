@@ -104,6 +104,12 @@ export type GoalInput = {
    * browser always names the steps.
    */
   readonly maximumTotalSteps: number;
+  /**
+   * Makes the call idempotent for the caller: a request repeated under the same key is the same
+   * goal, so a submit whose answer was lost and is sent again cannot make a second one. A different
+   * request under a key it has used is refused, so the key follows the request.
+   */
+  readonly idempotencyKey: string;
 };
 
 const createdSchema = z.object({
@@ -126,6 +132,7 @@ export type GoalCreated = z.infer<typeof createdSchema>;
  */
 export async function createGoal(goal: GoalInput, options?: Options): Promise<GoalCreated> {
   const params = {
+    idempotencyKey: goal.idempotencyKey,
     agentName: goal.agentName,
     prompt: goal.prompt,
     identity: goal.identity,

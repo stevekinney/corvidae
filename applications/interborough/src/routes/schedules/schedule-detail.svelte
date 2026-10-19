@@ -41,9 +41,8 @@
   import { faultTreatment } from '../../lib/faults.ts';
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleEditPath, workflowDetailPath } from '../../lib/router.svelte.ts';
-  import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
+  import { kindOf } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import WorkerInheritanceNote from '../../lib/worker-inheritance-note.svelte';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
@@ -51,6 +50,7 @@
   import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
+  import { scheduleOverlayOptions } from './overlay-query.ts';
   import { overlapConsequence, overlapLabel } from './overlap-policy.ts';
   import { revisionPolicyLabel } from './revision-policy.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
@@ -117,11 +117,7 @@
 
   // What the Bureau knows of this schedule: whether it starts an agent, or is a workflow's trigger.
   // Until it answers, the schedule is of no known kind, and nothing is written to it.
-  const overlay = createQuery(() => ({
-    queryKey: queryKeys.schedules.overlay(),
-    queryFn: ({ signal }) => loadScheduleOverlay({ signal }),
-    retry: false,
-  }));
+  const overlay = createQuery(() => scheduleOverlayOptions(client));
 
   const actions = createScheduleActions();
 
@@ -181,7 +177,7 @@
     {#if actions.notice !== null}
       <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
     {/if}
-    {#if overlay.isError}
+    {#if overlay.data?.failed}
       <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
     {/if}
 

@@ -22,6 +22,7 @@
   import { GOALS_COPY, STALE_COPY, VIEW_COPY } from '../../app/copy.ts';
   import { showFault } from '../../app/toast-host.svelte';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import {
     cancelGoal,
     goalHasEnded,
@@ -104,10 +105,6 @@
       showFault({ ...treatment, message: `${GOALS_COPY.cancelFailed}. ${treatment.message}` });
     },
   }));
-
-  function agentPath(name: string): string {
-    return `/agents/${encodeURIComponent(name)}`;
-  }
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {

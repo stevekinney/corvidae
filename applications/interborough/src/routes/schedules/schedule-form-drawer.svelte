@@ -7,6 +7,7 @@
    * `schedule-form-fields.svelte`.
    */
   import { Alert, Button, Drawer, RadioGroup, Skeleton } from '@lostgradient/cinder';
+  import { RUN_ENGINE_WORKFLOW_TYPES } from '@lostgradient/operative/run-engine-workflow-types';
   import { CalendarPlus, Lock } from '@lucide/svelte';
 
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -20,12 +21,7 @@
   import { faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
-  import {
-    AGENT_RUN_TYPE,
-    kindOf,
-    loadScheduleOverlay,
-    type ScheduleOverlay,
-  } from '../../lib/schedule-kinds.ts';
+  import { AGENT_RUN_TYPE, kindOf, type ScheduleOverlay } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import AgentScheduleFields from './agent-schedule-fields.svelte';
@@ -33,6 +29,7 @@
   import { cadenceToScheduleValue, scheduleValueToWireSpec } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
+  import { scheduleOverlayOptions } from './overlay-query.ts';
   import ScheduleFormFields from './schedule-form-fields.svelte';
   import { ScheduleFormState } from './schedule-form-state.svelte.ts';
   import {
@@ -66,11 +63,7 @@
 
   // What the Bureau knows of the schedules: which workflows are agent-authored, whose schedule is
   // the trigger in their file, and so cannot be scheduled from here.
-  const overlayQuery = createQuery(() => ({
-    queryKey: queryKeys.schedules.overlay(),
-    queryFn: ({ signal }) => loadScheduleOverlay({ signal }),
-    retry: false,
-  }));
+  const overlayQuery = createQuery(() => scheduleOverlayOptions(client));
 
   /** The agents a schedule may run. Degrades to a typed name when the Bureau cannot list them. */
   const agentsQuery = createQuery(() => ({
@@ -83,12 +76,21 @@
     agentsQuery.isSuccess ? agentsQuery.data.map((agent) => agent.name) : undefined,
   );
 
-  /** What is reserved to another owner: `agentRun` to the agent choice, a workflow file's type to its file. */
+  /**
+   * What is reserved to another owner: `agentRun` to the agent choice, a workflow file's type to its
+   * file, and every other type the Bureau's run engine registers to the Bureau, which starts them
+   * with the checks a schedule made here would skip. The Operative package says which types those are.
+   */
   function reservedTypes(overlay: ScheduleOverlay | undefined): ReadonlyMap<string, string> {
-    const reserved = new Map<string, string>([
-      [AGENT_RUN_TYPE, SCHEDULE_COPY.form.reservedAgentRun],
-    ]);
-    for (const id of overlay?.files.keys() ?? []) {
+    const reserved = new Map<string, string>(
+      RUN_ENGINE_WORKFLOW_TYPES.map((type) => [
+        type,
+        type === AGENT_RUN_TYPE
+          ? SCHEDULE_COPY.form.reservedAgentRun
+          : SCHEDULE_COPY.form.reservedBureauWorkflow,
+      ]),
+    );
+    for (const id of overlay?.files?.keys() ?? []) {
       reserved.set(id, SCHEDULE_COPY.form.reservedAgentAuthored);
     }
     return reserved;
@@ -290,7 +292,9 @@
     (mode === 'create' ? starts === 'agent' : editKind?.kind === 'agent-run') ? agentForm : form,
   );
   /** A workflow type is only chosen once the Bureau has said which are agent-authored. */
-  const checking = $derived(mode === 'create' && starts === 'workflow' && !overlayQuery.isSuccess);
+  const checking = $derived(
+    mode === 'create' && starts === 'workflow' && overlayQuery.data?.files === undefined,
+  );
   const canSubmit = $derived(
     draft !== undefined &&
       draft.isValid &&
@@ -338,7 +342,7 @@
         message: `No schedule with id "${scheduleId}" exists — it may have been cancelled and purged.`,
       }}
     />
-  {:else if mode === 'edit' && overlayQuery.isError}
+  {:else if mode === 'edit' && editKind?.kind === 'unknown' && overlayQuery.data?.failed}
     <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
   {:else if mode === 'edit' && editKind?.kind === 'workflow-file'}
     <!-- A workflow file's schedule is its trigger: everything about it is edited in the workflow. -->
@@ -396,7 +400,7 @@
         <ScheduleFormFields {form} {mode} {workflowTypeOptions} />
       {/key}
       {#if mode === 'create' && starts === 'workflow'}
-        {#if overlayQuery.isError}
+        {#if overlayQuery.data?.failed && overlayQuery.data.files === undefined}
           <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
         {:else if overlayQuery.isPending}
           <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.overlayLoading}</p>

@@ -265,6 +265,8 @@ export type World = {
   agents: Array<Record<string, unknown>>;
   /** Makes `bureau.schedules.list` answer with a fault, as a Bureau that is down would. */
   failBureauSchedules: boolean;
+  /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
+  failBureauFiles: boolean;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -281,6 +283,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     scheduleAgents: {},
     agents: [],
     failBureauSchedules: false,
+    failBureauFiles: false,
     ...overrides,
   };
 }
@@ -344,10 +347,16 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
   const findSchedule = (id: unknown) => world.schedules.find((schedule) => schedule.id === id);
   const iso = (milliseconds: number | null) =>
     milliseconds === null ? null : new Date(milliseconds).toISOString();
+  /**
+   * Whether a schedule is a workflow file's own, which the Bureau decides by the schedule's id and
+   * never by its type: `bureau-workflow-schedule:<file>:<generation>`. A schedule the engine made
+   * for a file's type has some other id, and is the engine's.
+   */
+  const isFileSchedule = (schedule: ScheduleFixture) =>
+    world.files.some((file) => schedule.id.startsWith(`bureau-workflow-schedule:${file.id}:`));
   /** Whether the Bureau shows this schedule: it runs an agent, or it is a workflow file's. */
   const bureauKnows = (schedule: ScheduleFixture) =>
-    schedule.id in world.scheduleAgents ||
-    world.files.some((file) => file.id === schedule.workflowType);
+    schedule.id in world.scheduleAgents || isFileSchedule(schedule);
   const bureauView = (schedule: ScheduleFixture) => ({
     id: schedule.id,
     owner: 'anonymous:local',
@@ -448,7 +457,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       touch(schedule);
       return receipt(schedule);
     },
-    'bureau.workflows.list': () => ({ workflows: world.files.map(listing), nextOffset: null }),
+    'bureau.workflows.list': () => {
+      if (world.failBureauFiles) throw workflowFaults.unavailable();
+      return { workflows: world.files.map(listing), nextOffset: null };
+    },
     'bureau.workflows.get': (params) => {
       const file = find(params['id']);
       if (file === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);

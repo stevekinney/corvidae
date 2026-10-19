@@ -110,6 +110,7 @@
       label={copy.descriptionLabel}
       description={copy.descriptionDescription}
       bind:value={form.description}
+      error={form.errors.description ?? ''}
     />
     <RadioGroup
       name="weft-agent-schedule-overlap"

@@ -37,6 +37,7 @@ export type AgentScheduleFormInit = {
 
 export type AgentScheduleFormErrors = {
   readonly agentName?: string;
+  readonly description?: string;
   readonly input?: string;
   readonly session?: string;
 };
@@ -76,8 +77,13 @@ export class AgentScheduleFormState {
   }
 
   get errors(): AgentScheduleFormErrors {
-    if (this.mode === 'edit') return {};
-    const errors: { agentName?: string; input?: string; session?: string } = {};
+    const errors: { agentName?: string; description?: string; input?: string; session?: string } =
+      {};
+    // The description is the one field an edit has to check: the Bureau refuses one that is too long.
+    if (this.description.length > MAX_DESCRIPTION_LENGTH) {
+      errors.description = SCHEDULE_COPY.form.descriptionTooLong(MAX_DESCRIPTION_LENGTH);
+    }
+    if (this.mode === 'edit') return errors;
     if (this.agentName.trim().length === 0) errors.agentName = SCHEDULE_COPY.form.agentRequired;
     if (this.input.trim().length === 0) errors.input = SCHEDULE_COPY.form.inputRequired;
     else if (this.input.length > MAX_INPUT_LENGTH) errors.input = SCHEDULE_COPY.form.inputTooLong;
@@ -89,9 +95,7 @@ export class AgentScheduleFormState {
   }
 
   get isValid(): boolean {
-    return (
-      Object.keys(this.errors).length === 0 && this.description.length <= MAX_DESCRIPTION_LENGTH
-    );
+    return Object.keys(this.errors).length === 0;
   }
 
   /** Whether the draft differs from what it was made from. */

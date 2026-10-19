@@ -8,6 +8,7 @@
   import { Badge } from '@lostgradient/cinder';
 
   import { SCHEDULE_COPY } from '../../app/copy.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { ScheduleKind } from '../../lib/schedule-kinds.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
@@ -20,11 +21,6 @@
   }
 
   let { schedule, kind, stopPropagation = false }: Props = $props();
-
-  /** An agent's page, which an agent's name makes. */
-  function agentPath(name: string): string {
-    return `/agents/${encodeURIComponent(name)}`;
-  }
 
   const target = $derived.by<{ label: string; path: string | null }>(() => {
     switch (kind.kind) {

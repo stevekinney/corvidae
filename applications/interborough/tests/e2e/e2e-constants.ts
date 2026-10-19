@@ -9,7 +9,12 @@
  */
 import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
-/** Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the interactive host's default of 7234. */
+/**
+ * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
+ * interactive host's default of 7234. The suite holds three consecutive ports (this one, the
+ * barrier's, and the second host's), so two runs on one machine set `INTERBOROUGH_E2E_PORT` at least
+ * three apart.
+ */
 export const E2E_PORT = endToEndPort();
 
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
