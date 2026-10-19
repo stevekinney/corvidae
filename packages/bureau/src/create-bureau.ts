@@ -3454,6 +3454,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
     outcome: 'clean',
     perRunFailures: [],
+    skippedRuns: [],
   });
   let resolveDurableRecoveryBarrier: ((report: BureauRecoveryReport) => void) | undefined;
   // Boot-single-shot collector (see `recoverDurableRuns`'s own doc comment):
@@ -3472,6 +3473,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // sites' `.catch()` handlers so a sweep failure is never dropped from the
   // resolved report, and never leaks into a later pass.
   let currentRecoverySweepFailure: { message: string } | undefined;
+  // COR-1583 — companion to the two above: the runs THIS pass's `recoverAll()` left untouched in
+  // storage because their workflow type is not registered, in the order the engine reported them.
+  // Read back by the pass's own return and by both boot call sites' `.catch()`, like the others.
+  let currentRecoverySkippedRuns: Array<{ runId: string; type: string }> | undefined;
   const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
   // COR-1421 — `engine.recoverAll()` resumes recovered workflows without
   // awaiting them, so recovered runs emit live frames while the rest of boot
@@ -7016,6 +7021,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return {
         outcome: goalFailures.length > 0 ? 'partial' : 'clean',
         perRunFailures: goalFailures,
+        skippedRuns: [],
       };
     }
 
@@ -7071,6 +7077,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // reading them, so a stale entry from this pass never leaks into a
     // later one.
     currentRecoveryPerRunFailures = [];
+    currentRecoverySkippedRuns = [];
 
     // recoverAll resumes the in-flight workflows (firing the services resolver per
     // run before each generator advances); if it throws, NO handle was classified
@@ -7095,9 +7102,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // is still deliberately allowed to propagate uncaught afterward — the
     // batch-failure handling this doc comment describes further up is
     // unchanged.
+    // COR-1583 — a stored run whose workflow type this Bureau has not registered must not stop the
+    // rest of the store recovering: the engine's default refuses the whole batch, on every boot,
+    // for as long as that one run exists. `acknowledgeUnknownWorkflowTypes` has it leave each such
+    // run untouched in storage, with no claim taken, and report it, so a later boot that has
+    // registered the type recovers it. Every skipped run is diagnosed and listed in the report.
+    const onRecoverySkipped = (event: { workflowId: string; workflowType: string }): void => {
+      currentRecoverySkippedRuns?.push({ runId: event.workflowId, type: event.workflowType });
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message: `[bureau] Left run "${event.workflowId}" of workflow type "${event.workflowType}" as it is: the type is not registered, so it will be recovered by a boot that registers it.`,
+      });
+    };
+    durable.engine.addEventListener('workflow:recovery-skipped', onRecoverySkipped);
     try {
       recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
-      const handles = await durable.engine.recoverAll({ onRecoveredWorkflow });
+      const handles = await durable.engine.recoverAll({
+        onRecoveredWorkflow,
+        acknowledgeUnknownWorkflowTypes: true,
+      });
 
       // Read each handle's launch metadata CONCURRENTLY, so one slow/stuck read does
       // not block registration of the rest (no head-of-line blocking). The read is
@@ -7428,6 +7452,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
     } finally {
+      durable.engine.removeEventListener('workflow:recovery-skipped', onRecoverySkipped);
       // AB-241 review finding: the post-recovery loop above is the LAST
       // consumer of `catalogRunRecoveryCache` for this boot pass (the
       // awaited `onRecoveredWorkflow` hook, invoked earlier during
@@ -7465,14 +7490,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+    const skippedRuns = currentRecoverySkippedRuns ?? [];
     currentRecoveryPerRunFailures = undefined;
     currentRecoverySweepFailure = undefined;
+    currentRecoverySkippedRuns = undefined;
     const outcome: BureauRecoveryReport['outcome'] =
-      sweepFailure || perRunFailures.length > 0 ? 'partial' : 'clean';
+      sweepFailure || perRunFailures.length > 0 || skippedRuns.length > 0 ? 'partial' : 'clean';
     return {
       outcome,
       ...(sweepFailure ? { sweepFailure } : {}),
       perRunFailures,
+      skippedRuns,
     };
   }
 
@@ -14756,13 +14784,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // neither leaks into a later recovery pass.
           const sweepFailure = currentRecoverySweepFailure;
           const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+          const skippedRuns = currentRecoverySkippedRuns ?? [];
           currentRecoverySweepFailure = undefined;
           currentRecoveryPerRunFailures = undefined;
+          currentRecoverySkippedRuns = undefined;
           return {
             outcome: 'failed',
             ...(sweepFailure ? { sweepFailure } : {}),
             batchFailure: { message: serializeUnknownError(error) },
             perRunFailures,
+            skippedRuns,
           } satisfies BureauRecoveryReport;
         });
         void recovery.then((report) => resolveDurableRecoveryBarrier?.(report));
@@ -15120,13 +15151,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // recovery pass.
       const sweepFailure = currentRecoverySweepFailure;
       const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
+      const skippedRuns = currentRecoverySkippedRuns ?? [];
       currentRecoverySweepFailure = undefined;
       currentRecoveryPerRunFailures = undefined;
+      currentRecoverySkippedRuns = undefined;
       return {
         outcome: 'failed',
         ...(sweepFailure ? { sweepFailure } : {}),
         batchFailure: { message: serializeUnknownError(error) },
         perRunFailures,
+        skippedRuns,
       } satisfies BureauRecoveryReport;
     });
     await durableRecoveryBarrier;

@@ -1193,8 +1193,9 @@ export interface BureauRecoveryReport {
   /**
    * `'failed'` when {@link BureauRecoveryReport.batchFailure} is set (no
    * handle was classified at all); otherwise `'partial'` when
-   * {@link BureauRecoveryReport.sweepFailure} is set or
-   * {@link BureauRecoveryReport.perRunFailures} is non-empty; otherwise
+   * {@link BureauRecoveryReport.sweepFailure} is set,
+   * {@link BureauRecoveryReport.perRunFailures} is non-empty, or
+   * {@link BureauRecoveryReport.skippedRuns} is non-empty; otherwise
    * `'clean'`. The `'skip'`, `'reattach'`, `'monitor'`, and
    * `'reattach-version-mismatch'` per-run verdicts never change `outcome`.
    */
@@ -1210,6 +1211,15 @@ export interface BureauRecoveryReport {
    * monitor-only.
    */
   readonly perRunFailures: readonly { readonly runId: string; readonly reason: string }[];
+  /**
+   * COR-1583 — one entry per stored run that was left untouched because its workflow type is not
+   * registered with this Bureau (a Bureau started without `workflowDirectory`, or a workflow whose
+   * file and stored revisions are both gone). A skipped run keeps its state and has no claim taken
+   * on it, so a later boot that has registered its type recovers it; no other run is held back by
+   * it. Empty when every stored run's type was registered. Each entry is also diagnosed once, as a
+   * `scope: 'recovery'` `warn`.
+   */
+  readonly skippedRuns: readonly { readonly runId: string; readonly type: string }[];
 }
 
 /** {@link BureauOptions.children}. */
