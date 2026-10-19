@@ -634,11 +634,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async flush() {
-      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+      while (inFlight.size > 0) await Promise.allSettled(inFlight);
     },
 
     async unsettled() {
-      return (await allRecords()).filter((record) => record.settled === undefined);
+      const records = await allRecords();
+      return records.filter((record) => record.settled === undefined);
     },
 
     watchCleanup,

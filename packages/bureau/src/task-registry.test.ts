@@ -573,8 +573,9 @@ describe('cancel', () => {
 
     await registry.flush();
 
-    expect((await registry.record('run-1'))?.settled?.status).toBe('completed');
     await writing;
+    const record = await registry.record('run-1');
+    expect(record?.settled?.status).toBe('completed');
   });
 
   it('lists the records no settlement has been written for', async () => {
