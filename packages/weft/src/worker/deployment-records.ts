@@ -19,6 +19,8 @@
  *   conditions its write on every one, so any binding that commits after the scan began changes a
  *   shard in the removal's read set and makes it rescan. Shards are compared and never decoded.
  *   **64 is persisted format.** It cannot change without reading the old shards too.
+ *   The hash that picks a binding's shard is not format: `remove` conditions on every shard, so a
+ *   binding on any shard is caught, and the choice of shard can change without reading old data.
  * - **Removal tombstone**, at `worker-deployment-removed:<deployment>:<build>`: one opaque byte,
  *   written once, in the same batch as the version record's `removed` state, and never deleted.
  *   Every commit that binds durable work to the build requires it to be absent, so a binding that

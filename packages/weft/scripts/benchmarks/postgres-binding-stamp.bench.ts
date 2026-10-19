@@ -13,19 +13,23 @@
  * `SERIALIZABLE` compare-and-swap loses a few independent batches on a near-empty table whatever
  * is written, so the control is the yardstick: what the sharded stamp loses beyond it must be a
  * small fraction of what one shared row loses, so the test fails if the stamp is not sharded.
+ *
+ * The counts depend on how transactions interleave, which host load moves, so this measurement runs
+ * through `test:benchmarks` rather than the default gate. The default suite keeps the deterministic
+ * guard: `deployment-build-binding.test.ts` pins the shard function's values, which one shard fails.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
 
 import {
+  openPostgresTestDatabase,
+  requireOpenedPostgresTestDatabase,
+} from '../../src/storage/postgres-server.test-support.ts';
+import { PostgresStorage } from '../../src/storage/postgres.ts';
+import {
   bindingStampKey,
   bindingStampShard,
   newBindingStamp,
-} from '../worker/deployment-records.ts';
-import {
-  openPostgresTestDatabase,
-  requireOpenedPostgresTestDatabase,
-} from './postgres-server.test-support.ts';
-import { PostgresStorage } from './postgres.ts';
+} from '../../src/worker/deployment-records.ts';
 
 const database = await openPostgresTestDatabase();
 const ROUNDS = 8;
