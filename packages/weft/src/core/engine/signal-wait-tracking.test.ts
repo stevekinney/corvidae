@@ -25,7 +25,11 @@ import {
   settleWorkflowStateWrites,
   waitingForSignalsOf,
 } from './signal-wait-tracking.test-support.ts';
-import { clearSignalWait, recordSignalWaitBegan } from './signal-wait-tracking.ts';
+import {
+  captureSignalWaitRun,
+  clearSignalWait,
+  recordSignalWaitBegan,
+} from './signal-wait-tracking.ts';
 import { decodeWorkflowState } from './validation.ts';
 
 const approvalThenAfter = workflow({ name: 'approval-then-after' }).execute(async function* (
@@ -270,22 +274,23 @@ describe('the signal-wait bookkeeping', () => {
   it('leaves the record alone when it is gone, belongs to another run, or is not running', async () => {
     await using engine = createEngine();
     const internals = getInternals(engine);
-    await recordSignalWaitBegan(internals, 'missing', 'approval', () => true);
+    await recordSignalWaitBegan(internals, 'missing', undefined, 'approval', () => true);
     expect(await engine.storage.get(KEYS.workflow('missing'))).toBeNull();
 
     await engine.start('approval-then-after', null, { id: 'bookkeeping-run' });
     await nextSignalWaiting(engine, 'bookkeeping-run', 'approval');
+    const run = captureSignalWaitRun(internals, 'bookkeeping-run');
     const key = KEYS.workflow('bookkeeping-run');
     const runBytes = await engine.storage.get(key);
     if (runBytes === null) throw new Error('expected the running record');
     const replacement = { ...decodeWorkflowState(runBytes), workflowExecutionToken: 'other-run' };
     await engine.storage.put(key, encode(replacement));
-    await clearSignalWait(internals, 'bookkeeping-run', 'approval');
+    await clearSignalWait(internals, 'bookkeeping-run', run, 'approval');
     expect(await waitingForSignalsOf(engine, 'bookkeeping-run')).toEqual(['approval']);
     await engine.storage.put(key, runBytes);
 
     await engine.cancel('bookkeeping-run');
-    await recordSignalWaitBegan(internals, 'bookkeeping-run', 'late', () => true);
+    await recordSignalWaitBegan(internals, 'bookkeeping-run', run, 'late', () => true);
     expect(await waitingForSignalsOf(engine, 'bookkeeping-run')).toBeUndefined();
   });
 
@@ -305,7 +310,13 @@ describe('the signal-wait bookkeeping', () => {
       return await conditionalBatch(conditions, operations);
     };
 
-    await clearSignalWait(getInternals(engine), 'bookkeeping-race', 'approval');
+    const internals = getInternals(engine);
+    await clearSignalWait(
+      internals,
+      'bookkeeping-race',
+      captureSignalWaitRun(internals, 'bookkeeping-race'),
+      'approval',
+    );
     const state = await engine.get('bookkeeping-race');
     expect(state?.tags).toEqual(['interleaved']);
     expect(state?.waitingForSignals).toBeUndefined();
@@ -317,6 +328,7 @@ describe('the signal-wait bookkeeping', () => {
     await engine.start('approval-then-after', null, { id: 'bookkeeping-give-up' });
     await nextSignalWaiting(engine, 'bookkeeping-give-up', 'approval');
     const internals = getInternals(engine);
+    const run = captureSignalWaitRun(internals, 'bookkeeping-give-up');
 
     const conditionalBatch = storage.conditionalBatch.bind(storage);
     let touches = 0;
@@ -325,7 +337,7 @@ describe('the signal-wait bookkeeping', () => {
       await touchWorkflowRecord(storage, 'bookkeeping-give-up', [`touch-${String(touches)}`]);
       return await conditionalBatch(conditions, operations);
     };
-    await clearSignalWait(internals, 'bookkeeping-give-up', 'approval');
+    await clearSignalWait(internals, 'bookkeeping-give-up', run, 'approval');
     expect(await waitingForSignalsOf(engine, 'bookkeeping-give-up')).toEqual(['approval']);
     storage.conditionalBatch = conditionalBatch;
 
@@ -333,7 +345,7 @@ describe('the signal-wait bookkeeping', () => {
     storage.get = async () => {
       throw new Error('storage unavailable');
     };
-    await clearSignalWait(internals, 'bookkeeping-give-up', 'approval');
+    await clearSignalWait(internals, 'bookkeeping-give-up', run, 'approval');
     storage.get = get;
     expect(await waitingForSignalsOf(engine, 'bookkeeping-give-up')).toEqual(['approval']);
   });

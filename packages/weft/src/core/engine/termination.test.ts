@@ -274,6 +274,7 @@ describe('termination helpers', () => {
       promise: new Promise(() => {}),
       resolve: () => {},
       reject,
+      boundToRun: false,
     });
 
     expect(
@@ -373,6 +374,7 @@ describe('termination helpers', () => {
       promise: new Promise(() => {}),
       resolve: () => {},
       reject,
+      boundToRun: false,
     });
 
     expect(
@@ -461,6 +463,7 @@ describe('termination helpers', () => {
       promise: new Promise(() => {}),
       resolve: resolveSpy,
       reject: () => {},
+      boundToRun: false,
     });
 
     const callbacks = createTerminationCallbacks({

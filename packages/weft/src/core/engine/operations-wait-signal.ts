@@ -1,7 +1,12 @@
 import type { ContextOperationRequest } from '../context.ts';
 import type { EngineInternals } from './internals.ts';
 import type { CoordinationOperationCallbacks } from './operations-coordination.ts';
-import { clearSignalWait, recordSignalWaitBegan } from './signal-wait-tracking.ts';
+import {
+  captureSignalWaitRun,
+  clearSignalWait,
+  recordSignalWaitBegan,
+  type SignalWaitRun,
+} from './signal-wait-tracking.ts';
 import {
   consumeSignalWithAtomicWorkflowCommit,
   registerSignalWaiter,
@@ -45,6 +50,7 @@ export async function processWaitSignalOperation(
   const abortSignal = internals.abortController.signal;
   const workflowExecutionToken =
     internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
+  const run = captureSignalWaitRun(internals, workflowId);
   const waiterKey = `${workflowId}:${operation.signalName}`;
   // The waiter this loop registered and no signal has consumed yet. If a
   // buffered-signal scan then throws, the waiter must be released here, or it
@@ -71,6 +77,7 @@ export async function processWaitSignalOperation(
           internals,
           callbacks,
           workflowId,
+          run,
           operation,
           existingPayload.payload,
           workflowExecutionToken,
@@ -115,6 +122,7 @@ export async function processWaitSignalOperation(
         return await completeBufferedWaitSignal(
           internals,
           workflowId,
+          run,
           waiterKey,
           resolve,
           operation,
@@ -140,6 +148,7 @@ export async function processWaitSignalOperation(
       await recordSignalWaitBegan(
         internals,
         workflowId,
+        run,
         operation.signalName,
         () => internals.signalWaiters.get(waiterKey) === resolve,
       );
@@ -187,17 +196,19 @@ async function completeWaitSignalOperation(
   internals: EngineInternals,
   callbacks: Pick<CoordinationOperationCallbacks, 'completeOperation'>,
   workflowId: string,
+  run: SignalWaitRun,
   operation: WaitSignalOperation,
   value: unknown,
   workflowExecutionToken: string | undefined,
 ): Promise<void> {
-  await clearSignalWait(internals, workflowId, operation.signalName);
+  await clearSignalWait(internals, workflowId, run, operation.signalName);
   callbacks.completeOperation(workflowId, value, operation.operationId, workflowExecutionToken);
 }
 
 async function completeBufferedWaitSignal(
   internals: EngineInternals,
   workflowId: string,
+  run: SignalWaitRun,
   waiterKey: string,
   resolve: () => void,
   operation: WaitSignalOperation,
@@ -210,6 +221,7 @@ async function completeBufferedWaitSignal(
     internals,
     callbacks,
     workflowId,
+    run,
     operation,
     value,
     workflowExecutionToken,

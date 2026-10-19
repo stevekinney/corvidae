@@ -166,7 +166,7 @@ describe('workflow result resolution', () => {
     const internals = getInternals(engine);
     const currentWaiter = createWorkflowResultWaiter(internals, 'wf-replacement');
     const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-    const replacementWaiter = { promise, resolve, reject };
+    const replacementWaiter = { promise, resolve, reject, boundToRun: false };
 
     await bootstrapWorkflowResultResolver(internals, 'wf-replacement', replacementWaiter);
     currentWaiter.resolve('resolved through replacement');
@@ -179,7 +179,7 @@ describe('workflow result resolution', () => {
     const internals = getInternals(engine);
     const currentWaiter = createWorkflowResultWaiter(internals, 'wf-replacement-rejected');
     const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-    const replacementWaiter = { promise, resolve, reject };
+    const replacementWaiter = { promise, resolve, reject, boundToRun: false };
 
     await bootstrapWorkflowResultResolver(internals, 'wf-replacement-rejected', replacementWaiter);
     const replacementRejection = throwingRejectionOf(replacementWaiter.promise);

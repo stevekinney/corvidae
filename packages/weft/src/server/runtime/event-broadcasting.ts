@@ -10,6 +10,7 @@ import {
   WorkflowFailedEvent,
   WorkflowTimedOutEvent,
 } from '../../core/events.ts';
+import { getWorkflowIdFromEvent } from '../../core/events/workflow-event-id.ts';
 import { KEYS } from '../../storage/interface.ts';
 import type { FleetEventFeed } from '../fleet-event-feed.ts';
 import type { ServeOptions } from '../index.ts';
@@ -75,20 +76,6 @@ function serializeEvent(event: Event): string | null {
 export interface EventBroadcastingHandle {
   dispose: () => void;
   cleanupWorkflow: (workflowId: string) => void;
-}
-
-/**
- * Extract a `workflowId` from a DOM `Event` when the concrete event carries
- * one. All workflow, activity, token, signal, attribute, and update events
- * in `core/events.ts` expose a `workflowId: string` field, but the `Event`
- * base type does not know about it — so a runtime structural check narrows
- * the value before we use it to key bookkeeping maps. Returns `undefined`
- * for events without a string `workflowId` property.
- */
-export function getWorkflowIdFromEvent(event: Event): string | undefined {
-  if (!('workflowId' in event)) return undefined;
-  const candidate = (event as { workflowId: unknown }).workflowId;
-  return typeof candidate === 'string' ? candidate : undefined;
 }
 
 export function registerWorkflowEventLifecycle(

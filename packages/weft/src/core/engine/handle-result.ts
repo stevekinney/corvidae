@@ -7,8 +7,10 @@ import type { EngineInternals } from './internals.ts';
 import { copyResultCommitter, recordResultCommitter } from './result-committer.ts';
 import {
   bindResultWaiterToRun,
+  heldRunForResultWaiter,
   rejectReplacedResultWaiter,
   waiterBelongsToRun,
+  waitersBelongToSameRun,
 } from './result-waiter-run.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
@@ -27,18 +29,6 @@ export function createWorkflowHandleWithResultPromise(
   return handle;
 }
 
-/**
- * The token of the run this engine holds for `workflowId` right now. The live checkpoint is
- * replaced when a `start-new` replacement launches here, whereas the durable inline-operation
- * record can still name the run it replaced, so the checkpoint is read first.
- */
-function localRunToken(internals: EngineInternals, workflowId: string): string | undefined {
-  return (
-    internals.checkpoints?.get(workflowId)?.workflowExecutionToken ??
-    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken
-  );
-}
-
 export function createWorkflowResultWaiter(
   internals: EngineInternals,
   workflowId: string,
@@ -46,11 +36,13 @@ export function createWorkflowResultWaiter(
   const { promise, resolve, reject } = Promise.withResolvers<unknown>();
   // Bound to the run this engine holds for the id now. A run this engine holds nothing for is
   // bound from the first durable read instead (see `bootstrapWorkflowResultResolver`).
+  const run = heldRunForResultWaiter(internals, workflowId);
   const waiter: WorkflowResultWaiter = {
     promise,
     resolve,
     reject,
-    workflowExecutionToken: localRunToken(internals, workflowId),
+    boundToRun: run !== undefined,
+    workflowExecutionToken: run?.workflowExecutionToken,
   };
   internals.resultResolvers.set(workflowId, waiter);
   void promise.catch(() => {});
@@ -65,7 +57,12 @@ export function getWorkflowResultPromise(
   if (existingWaiter) {
     // A waiter left behind by an older run of this id must not answer for the run this engine
     // holds now: retire it as replaced and register a fresh one below.
-    if (waiterBelongsToRun(existingWaiter, localRunToken(internals, workflowId))) {
+    if (
+      waiterBelongsToRun(
+        existingWaiter,
+        heldRunForResultWaiter(internals, workflowId)?.workflowExecutionToken,
+      )
+    ) {
       return existingWaiter.promise;
     }
     rejectReplacedResultWaiter(internals, workflowId, existingWaiter);
@@ -443,7 +440,7 @@ function linkToReplacementWaiter(
     return false;
   }
   // A replacement waiter for a different run settles with that run's outcome, not this one's.
-  if (!waiterBelongsToRun(currentWaiter, waiter.workflowExecutionToken)) {
+  if (!waitersBelongToSameRun(currentWaiter, waiter)) {
     rejectReplacedResultWaiter(internals, workflowId, waiter);
     return true;
   }
