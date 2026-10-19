@@ -306,7 +306,7 @@ describe('who may see it', () => {
       },
     });
     landAt('/audit');
-    const { findByLabelText, getByRole, findByRole, findByText } = render(RouteOutletHarness, {
+    const { findByLabelText, getByRole, findByText } = render(RouteOutletHarness, {
       props: { client: client(), scopes: AUTHORIZATION_SCOPES },
     } as never);
     await findByText('run-1');

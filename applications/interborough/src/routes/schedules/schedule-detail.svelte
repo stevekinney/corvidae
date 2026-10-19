@@ -50,6 +50,7 @@
   import { workflowStatusPresentation } from '../workflows/detail/workflow-status.ts';
   import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
+  import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { overlapConsequence, overlapLabel } from './overlap-policy.ts';
   import { revisionPolicyLabel } from './revision-policy.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
@@ -181,15 +182,7 @@
       <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
     {/if}
     {#if overlay.isError}
-      <FaultBanner
-        treatment={{
-          kind: 'internal',
-          message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
-          maskedByRest: false,
-          tryViaJsonRpc: false,
-        }}
-        onRetry={() => void overlay.refetch()}
-      />
+      <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
     {/if}
 
     <div class="weft-schedule-detail__header">

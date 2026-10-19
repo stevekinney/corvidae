@@ -32,6 +32,7 @@
   import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
   import { cadenceToScheduleValue, scheduleValueToWireSpec } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
+  import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import ScheduleFormFields from './schedule-form-fields.svelte';
   import { ScheduleFormState } from './schedule-form-state.svelte.ts';
   import {
@@ -338,15 +339,7 @@
       }}
     />
   {:else if mode === 'edit' && overlayQuery.isError}
-    <FaultBanner
-      treatment={{
-        kind: 'internal',
-        message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
-        maskedByRest: false,
-        tryViaJsonRpc: false,
-      }}
-      onRetry={() => void overlayQuery.refetch()}
-    />
+    <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
   {:else if mode === 'edit' && editKind?.kind === 'workflow-file'}
     <!-- A workflow file's schedule is its trigger: everything about it is edited in the workflow. -->
     <Alert variant="info" data-testid="schedule-edit-in-workflow">
@@ -404,15 +397,7 @@
       {/key}
       {#if mode === 'create' && starts === 'workflow'}
         {#if overlayQuery.isError}
-          <FaultBanner
-            treatment={{
-              kind: 'internal',
-              message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
-              maskedByRest: false,
-              tryViaJsonRpc: false,
-            }}
-            onRetry={() => void overlayQuery.refetch()}
-          />
+          <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlayQuery.refetch()} />
         {:else if overlayQuery.isPending}
           <p class="weft-schedule-drawer__note">{SCHEDULE_COPY.form.overlayLoading}</p>
         {:else}

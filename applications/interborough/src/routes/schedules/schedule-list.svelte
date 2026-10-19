@@ -46,6 +46,7 @@
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
+  import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { createScheduleActions } from './schedule-actions.svelte.ts';
   import ScheduleNotice from './schedule-notice.svelte';
   import { fetchScheduleList } from './schedule-queries.ts';
@@ -274,15 +275,7 @@
   {/if}
 
   {#if overlay.isError}
-    <FaultBanner
-      treatment={{
-        kind: 'internal',
-        message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
-        maskedByRest: false,
-        tryViaJsonRpc: false,
-      }}
-      onRetry={() => void overlay.refetch()}
-    />
+    <FaultBanner treatment={OVERLAY_FAILURE} onRetry={() => void overlay.refetch()} />
   {/if}
 
   {#if readGate.disabled}
