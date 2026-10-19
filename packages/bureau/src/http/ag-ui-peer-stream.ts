@@ -385,7 +385,7 @@ async function tail(
     context.interruptNow(ending.waits.map(toInterrupt));
     return;
   }
-  await finishPeer(context, ending.terminal, sessionSaves);
+  await finishPeer(context, ending.terminal, sessionSaves, settled);
 }
 
 /** Whether the session has recorded the run's end. */
@@ -468,14 +468,25 @@ async function historyTerminal(
  * Ends the stream with the run's outcome: the session as it stands once it shows the run settled
  * (or the grace is over), then the terminal event. A terminal the run's history recorded is
  * preferred to one read from its status, because it carries the record's cursor and its tripwire.
+ *
+ * The wait is for a holder that is ending the run while the stream follows it. A run that had
+ * already settled when the stream opened has had its holder's terminal save, or never will: a
+ * session that still says `running` for it is the marker a process that stopped before its save
+ * leaves behind (the one `threadBusy` reads as not busy), and nothing will change it. Its session
+ * is read once, as it stands.
  */
 async function finishPeer(
   context: PeerStreamContext,
   learned: PeerTerminal,
   sessionSaves: Changes,
+  settledAtOpen: boolean,
 ): Promise<void> {
   const { stampContext } = context;
-  const session = await settledSession(context, sessionSaves);
+  const session = settledAtOpen
+    ? await readSessionOwnedBy(context.bureau, context.threadId, context.owner).catch(
+        () => undefined,
+      )
+    : await settledSession(context, sessionSaves);
   if (context.isEnded()) return;
   const recorded = await historyTerminal(context.bureau, context.nativeRunId).catch(
     () => undefined,

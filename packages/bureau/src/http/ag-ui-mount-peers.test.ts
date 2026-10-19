@@ -436,6 +436,48 @@ describe('attach and stream on a peer', () => {
   });
 });
 
+describe('a replay of a run that settled before the stream opened', () => {
+  it('ends without waiting out the settle grace when the session was left saying running', async () => {
+    const clock = createManualRuntimeServices();
+    await withPeers(
+      { script: [{ kind: 'fail', error: new Error('provider said no') }] },
+      async (harness) => {
+        const start = () => startRequest(runAgentInput({ threadId: THREAD }));
+        await readAgUiStream(await harness.handler(start()));
+        const restarted = await harness.restart([], { runtime: clock });
+        try {
+          // A process that stopped before its terminal save leaves the session saying `running`
+          // for a run whose durable record has settled; nothing will ever save it again.
+          await restarted.bureau.sessionStore!.update(THREAD, (session) =>
+            session === undefined
+              ? undefined
+              : { ...session, metadata: { ...session.metadata, lastRunStatus: 'running' } },
+          );
+
+          let replay: ReceivedFrame[] | undefined;
+          void readAgUiStream(await restarted.handler(start())).then((frames) => {
+            replay = frames;
+          });
+          const graceDue = clock.monotonic.now() + PEER_SESSION_SETTLE_GRACE_MS;
+          await pollUntil(
+            () =>
+              replay !== undefined ||
+              clock.pendingTimers().some((timer) => timer.dueAt === graceDue),
+          );
+
+          expect(replay).toBeDefined();
+          expect(replay!.at(-1)!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            message: expect.stringContaining('provider said no'),
+          });
+        } finally {
+          await restarted.dispose();
+        }
+      },
+    );
+  });
+});
+
 describe('the owner of record on a peer', () => {
   it('names the owner of a session run another Bureau created', async () => {
     await withPeers(
