@@ -74,8 +74,8 @@ A card that advertises `apiKey` or `bearer` schemes needs an `authenticate` that
 | `tenant` | unset | A deployment identifier, published as the card interface's `tenant` and set as `ServerCallContext.tenant`. |
 | `authenticate` | anonymous | `(request) => User \| Response` (or a promise of either). The returned SDK `User` becomes `context.user`; a returned `Response`, such as a `401`, is sent unchanged. Without it every JSON-RPC request is served as the SDK's `UnauthenticatedUser`. |
 | `signing` | unset | `{ privateKey: CryptoKey, kid: string, alg: 'ES256' \| 'EdDSA' }`. Signs the card and serves the public key. |
-| `maxRequestBodyBytes` | 1 MiB | The largest JSON-RPC body accepted, as in Weft's REST and JSON-RPC transports. A larger body gets `413`. |
-| `maxStreamDurationMs` | 900000 | How long an SSE response stays open (fifteen minutes). |
+| `maxRequestBodyBytes` | 1 MiB | The largest JSON-RPC body accepted, as in Weft's REST and JSON-RPC transports. A larger body gets `413`. Must be a positive safe integer. |
+| `maxStreamDurationMs` | 900000 | How long an SSE response stays open (fifteen minutes). Must be an integer from 1 to 2147483647 (the timer maximum). |
 
 ## Routes
 
