@@ -64,6 +64,29 @@ export default (imports) => WebAssembly.instantiateStreaming(fetch(url), imports
 };
 
 /**
+ * Cinder exports a highlighter over Shiki's complete language and theme registries
+ * (`fullShikiHighlighter`), whose lookup tables make a bundler emit every grammar and theme Shiki
+ * ships. The application never uses it: it registers the grammars it needs
+ * (`src/lib/code-highlighter.ts`), and Markdown, which Chat renders messages with, registers its
+ * own curated set. `@lostgradient/chat` imports Cinder's whole entry for its styles, which keeps
+ * that export in the module graph, so the registries are resolved to empty tables and the build
+ * emits only what the application registers.
+ */
+export const curatedShikiPlugin: Bun.BunPlugin = {
+  name: 'curated-shiki',
+  setup(builder) {
+    builder.onResolve({ filter: /^shiki\/(?:langs|themes)$/ }, ({ path }) => ({
+      path,
+      namespace: 'curated-shiki',
+    }));
+    builder.onLoad({ filter: /.*/, namespace: 'curated-shiki' }, () => ({
+      loader: 'js',
+      contents: 'export const bundledLanguages = {}; export const bundledThemes = {};',
+    }));
+  },
+};
+
+/**
  * The `Bun.build` options every browser build of the application shares: the development host
  * and the production build differ only in `development`, in minification, and in where the files
  * land.
@@ -85,6 +108,7 @@ export function browserBuildOptions(options: {
     target: 'browser',
     plugins: [
       wasmPlugin,
+      curatedShikiPlugin,
       sveltePlugin({ generate: 'client', injectCss: true, development: options.development }),
     ],
     optimizeImports: ['@lostgradient/cinder'],

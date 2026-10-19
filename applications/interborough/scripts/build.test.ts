@@ -17,6 +17,7 @@ import {
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
+  curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
   replaceDirectory,
@@ -214,7 +215,8 @@ describe('browserBuildOptions', () => {
       expect(options.splitting).toBe(true);
       expect(options.metafile).toBe(true);
       expect(options.plugins?.[0]).toBe(wasmPlugin);
-      expect(options.plugins).toHaveLength(2);
+      expect(options.plugins?.[1]).toBe(curatedShikiPlugin);
+      expect(options.plugins).toHaveLength(3);
       expect(options.naming).toEqual({
         entry: '[name].[ext]',
         chunk: `${BUILD_ASSET_DIRECTORY}/[name]-[hash].[ext]`,
@@ -268,6 +270,50 @@ describe('wasmPlugin', () => {
     };
     expect(loaded.loader).toBe('file');
     expect([...loaded.contents]).toEqual([0, 97, 115, 109]);
+  });
+});
+
+describe('curatedShikiPlugin', () => {
+  type Hook = (arguments_: { path: string }) => unknown;
+
+  function registered() {
+    const constraints: Array<{ filter: RegExp; namespace?: string }> = [];
+    const hooks: Hook[] = [];
+    curatedShikiPlugin.setup({
+      onResolve: (constraint: { filter: RegExp }, callback: Hook) => {
+        constraints.push(constraint);
+        hooks.push(callback);
+      },
+      onLoad: (constraint: { filter: RegExp; namespace?: string }, callback: Hook) => {
+        constraints.push(constraint);
+        hooks.push(callback);
+      },
+    } as unknown as Bun.PluginBuilder);
+    return { constraints, hooks };
+  }
+
+  it('claims only the complete language and theme registries', () => {
+    const { constraints } = registered();
+
+    expect(constraints[0]?.filter.test('shiki/langs')).toBe(true);
+    expect(constraints[0]?.filter.test('shiki/themes')).toBe(true);
+    expect(constraints[0]?.filter.test('shiki/core')).toBe(false);
+    expect(constraints[0]?.filter.test('@shikijs/langs/typescript')).toBe(false);
+  });
+
+  it('resolves each registry to a module whose tables are empty', async () => {
+    const { hooks } = registered();
+
+    const resolved = await hooks[0]?.({ path: 'shiki/langs' });
+    const loaded = (await hooks[1]?.({ path: 'shiki/langs' })) as {
+      contents: string;
+      loader: string;
+    };
+
+    expect(resolved).toEqual({ path: 'shiki/langs', namespace: 'curated-shiki' });
+    expect(loaded.loader).toBe('js');
+    expect(loaded.contents).toContain('bundledLanguages = {}');
+    expect(loaded.contents).toContain('bundledThemes = {}');
   });
 });
 
