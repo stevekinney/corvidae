@@ -139,6 +139,7 @@ describe('recover() — terminal classifiers', () => {
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId: id,
           steps: 1,
           content: 'done',

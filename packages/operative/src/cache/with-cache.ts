@@ -149,6 +149,14 @@ export function withCache(generate: GenerateFunction, options: CacheOptions): Ge
       return response;
     }
 
+    // Don't cache a response with a non-text part (COR-713): generated media would be cached as
+    // inline bytes and admitted as a new asset on every hit, and thinking or server-tool blocks are
+    // replay data bound to the request that produced them.
+    if (response.parts?.some((part) => part.type !== 'text')) {
+      onMiss?.({ key, duration });
+      return response;
+    }
+
     // Don't cache responses with tool calls when configured
     if (invalidateOnToolCalls && response.toolCalls.length > 0) {
       onMiss?.({ key, duration });

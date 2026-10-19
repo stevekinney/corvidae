@@ -107,6 +107,8 @@ describe('the agent run event feed', () => {
 
   it('projects tool calls to identity only, never their arguments', () => {
     const event = new StepGeneratedEvent({
+      parts: [],
+      messageId: undefined,
       step: 0,
       content: 'text',
       toolCalls: [{ id: 'call-1', name: 'roll_dice', arguments: { secret: CANARY } }],
@@ -121,7 +123,13 @@ describe('the agent run event feed', () => {
   });
 
   it('omits usage entirely when the event carries none', () => {
-    const event = new StepGeneratedEvent({ step: 0, content: '', toolCalls: [] });
+    const event = new StepGeneratedEvent({
+      parts: [],
+      messageId: undefined,
+      step: 0,
+      content: '',
+      toolCalls: [],
+    });
 
     const envelope = createAgentRunEventFeed({ runId: 'run-1' }).publish(event);
 
@@ -148,6 +156,8 @@ describe('the agent run event feed', () => {
     await Promise.resolve();
     runFeed.publish(
       new StepCompletedEvent({
+        parts: [],
+        messageId: undefined,
         step: 0,
         conversation: conversation(),
         content: '',

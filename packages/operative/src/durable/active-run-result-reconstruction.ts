@@ -17,6 +17,7 @@ import { makeAbortResult, makeCompletedResult, makeErrorResult } from '../run-li
 import type { RunState } from '../run-step';
 import { type FinishReason, type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
+import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';
 import { type AgentRunWorkflowResult } from './run-workflow-result';
 
 /**
@@ -49,11 +50,15 @@ export async function readRunStateFromCheckpoint(
     runState.totalUsage = { ...checkpoint.cursor.totalUsage };
     runState.cost = checkpoint.cursor.cost ? { ...checkpoint.cursor.cost } : undefined;
     runState.lastContent = checkpoint.cursor.lastContent;
+    runState.lastParts = checkpoint.cursor.lastParts;
+    runState.finalRowIsReplacement = checkpoint.cursor.finalRowIsReplacement;
     runState.schemaAttempts = checkpoint.cursor.schemaAttempts;
     runState.steps = checkpoint.steps.map((record, index) => ({
       step: record.step,
       conversation,
       content: record.content,
+      parts: record.parts,
+      messageId: record.messageId,
       toolCalls: record.toolCalls,
       results: record.results,
       ...(record.usage ? { usage: record.usage } : {}),
@@ -79,7 +84,9 @@ export async function loadRunStateFromCheckpoint(
 ): Promise<{ runState: RunState; conversation: Conversation }> {
   try {
     return await readRunStateFromCheckpoint(context, runId, runtime);
-  } catch {
+  } catch (error) {
+    // An older checkpoint is not an empty run: it must fail explicitly (COR-713).
+    if (error instanceof UnsupportedCheckpointRecordVersionError) throw error;
     return { runState: createRunState(), conversation: new Conversation(undefined, { runtime }) };
   }
 }
@@ -121,6 +128,7 @@ export async function reconstructRunResult(
     conversation,
     steps: runState.steps,
     content: summary.content,
+    parts: summary.parts,
     usage: runState.totalUsage,
     finishReason: summary.finishReason,
     ...(terminalError ? { error: terminalError } : {}),
@@ -295,6 +303,7 @@ export function makeInterruptedRunResult(conversation: Conversation): RunResult 
     conversation,
     steps: [],
     content: '',
+    parts: [],
     usage: { prompt: 0, completion: 0, total: 0 },
     finishReason: 'aborted',
   };

@@ -55,6 +55,7 @@ type TestContract = typeof contract;
 
 function makeResult(overrides: Partial<RunResult> = {}): RunResult {
   return {
+    parts: [],
     conversation: {} as never,
     content: 'ok',
     finishReason: 'stop-condition',

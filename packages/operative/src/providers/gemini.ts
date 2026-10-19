@@ -3,17 +3,20 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { GeminiPart } from 'armorer';
 import { parseGeminiToolCalls } from 'armorer';
-import type { ContentPartLineage, ConversationHistory } from 'conversationalist';
+import type { ContentPartLineage, ConversationHistory, JSONValue } from 'conversationalist';
 import { toGeminiMessages } from 'conversationalist';
 
+import { concatenateTextParts } from '../response-parts.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
-import { ProviderError } from './errors.ts';
+import { isProviderContractError, ProviderError } from './errors.ts';
+import { createGeminiPartMapper, geminiViolationError } from './gemini-parts.ts';
 import { createModelCatalog } from './model-catalog.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveGeminiEffort } from './shared/effort.ts';
 import { resolveGeminiApiKey } from './shared/gemini-api-key.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
 import { resolveGeminiModel } from './shared/model-registry.ts';
+import { droppedReplayDataMetadata } from './shared/replay-data.ts';
 import { resolveCommonParameters } from './shared/resolve-common-parameters.ts';
 import { toGeminiResponseFormat } from './structured-output/response-format-adapters.ts';
 import { toGeminiToolChoice } from './structured-output/tool-choice-adapters.ts';
@@ -111,6 +114,19 @@ function buildGeminiUsage(usageMetadata: GeminiUsageMetadata): GenerateResponse[
     completion: completionTokens,
     total: usageMetadata.totalTokenCount ?? promptTokens + completionTokens,
     ...(cachedTokens !== undefined ? { cacheReadTokens: cachedTokens } : {}),
+  };
+}
+
+/** The metadata a response's part mapping contributes: thought summaries and dropped replay data. */
+function geminiMappingMetadata(mapped: {
+  readonly thoughtSummaries: string[];
+  readonly dropped: Parameters<typeof droppedReplayDataMetadata>[0];
+}): Record<string, JSONValue> {
+  return {
+    ...(mapped.thoughtSummaries.length > 0
+      ? { geminiThoughtSummaries: mapped.thoughtSummaries }
+      : {}),
+    ...droppedReplayDataMetadata(mapped.dropped),
   };
 }
 
@@ -626,6 +642,8 @@ async function sendWithCacheRecovery<T>(
       resolver.invalidate(content.cacheKey);
       return await sendWithCacheRecovery(input, recoveriesLeft - 1);
     }
+    // A response the adapter has no mapping for is the model's output, not an API failure.
+    if (isProviderContractError(error)) throw error;
     throw new ProviderError({ provider: 'gemini', cause: error });
   }
 }
@@ -798,6 +816,7 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
     : undefined;
   const common = resolveCommonParameters(options);
   const cacheClient = resolveCacheClient(options);
+  const advertisedModalities = geminiDescriptorsFor(resolvedModel)[0]?.modalities;
   let clientPromise:
     Promise<GeminiGenerativeModel & GeminiStreamingModel & GeminiCacheCreatingClient> | undefined;
 
@@ -863,24 +882,25 @@ export function createGeminiProvider(options: GeminiProviderOptions): GenerateFu
         const candidates = result.candidates ?? [];
         const parts = candidates[0]?.content?.parts ?? [];
 
-        const textParts: string[] = [];
-        for (const part of parts) {
-          if (part.text) {
-            textParts.push(part.text);
-          }
-        }
+        // Every part is output, a tool call, control or a typed error: nothing vanishes.
+        const mapper = createGeminiPartMapper({ modalities: advertisedModalities });
+        for (const [position, part] of parts.entries()) mapper.push(part, position);
+        const mapped = mapper.finish();
 
         const toolCalls = parseGeminiToolCalls(toGeminiParts(parts));
 
         const usageMetadata = result.usageMetadata;
         const usage = usageMetadata ? buildGeminiUsage(usageMetadata) : undefined;
+        if (mapped.violation !== undefined) throw geminiViolationError(mapped.violation, usage);
 
         return withInputLineage(
           {
-            content: textParts.join(''),
+            content: concatenateTextParts(mapped.parts),
+            parts: mapped.parts,
             toolCalls,
             usage,
             metadata: {
+              ...geminiMappingMetadata(mapped),
               effectiveModel: resolvedModel,
               effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
             },
@@ -915,6 +935,7 @@ export function createGeminiProviderStream(
     : undefined;
   const common = resolveCommonParameters(options);
   const cacheClient = resolveCacheClient(options);
+  const advertisedModalities = geminiDescriptorsFor(resolvedModel)[0]?.modalities;
   let clientPromise:
     Promise<GeminiGenerativeModel & GeminiStreamingModel & GeminiCacheCreatingClient> | undefined;
 
@@ -978,9 +999,26 @@ export function createGeminiProviderStream(
 
         const stream = await client.models.generateContentStream(request);
 
-        let accumulatedText = '';
         const accumulatedFunctionCallParts: GeminiPart[] = [];
         let latestUsageMetadata: GeminiUsageMetadata | undefined;
+        // The mapper reports parts live when the wrapper can take them; a bare handle (or a
+        // hand-written wrapper) gets the cumulative text through `update`, as it always has.
+        let accumulatedText = '';
+        const mapper = createGeminiPartMapper({
+          modalities: advertisedModalities,
+          emit: (event) => {
+            // Past this point the caller has seen output, so a later missing-cache rejection can
+            // no longer be retried away.
+            markEmitted();
+            if (streaming.reportPart !== undefined) {
+              streaming.reportPart(event);
+            } else if (event.type === 'delta' && event.delta.kind === 'text') {
+              accumulatedText += event.delta.text;
+              streaming.update(accumulatedText);
+            }
+          },
+        });
+        let position = 0;
 
         for await (const chunk of stream) {
           if (context.signal?.aborted) break;
@@ -988,13 +1026,8 @@ export function createGeminiProviderStream(
           const parts = candidates[0]?.content?.parts ?? [];
 
           for (const part of parts) {
-            if (part.text) {
-              accumulatedText += part.text;
-              // Past this point the caller has seen output, so a later
-              // missing-cache rejection can no longer be retried away.
-              markEmitted();
-              streaming.update(accumulatedText);
-            }
+            mapper.push(part, position);
+            position += 1;
             if (part.functionCall) {
               const functionCallPart = toGeminiFunctionCallPart(part.functionCall);
               if (functionCallPart) accumulatedFunctionCallParts.push(functionCallPart);
@@ -1005,17 +1038,22 @@ export function createGeminiProviderStream(
             latestUsageMetadata = chunk.usageMetadata;
           }
         }
+        const mapped = mapper.finish();
 
         const toolCalls = parseGeminiToolCalls(accumulatedFunctionCallParts);
 
         const usage = latestUsageMetadata ? buildGeminiUsage(latestUsageMetadata) : undefined;
+        // Thrown only now, after the drain, so the error carries the usage the stream reported.
+        if (mapped.violation !== undefined) throw geminiViolationError(mapped.violation, usage);
 
         return withInputLineage(
           {
-            content: accumulatedText,
+            content: concatenateTextParts(mapped.parts),
+            parts: mapped.parts,
             toolCalls,
             usage,
             metadata: {
+              ...geminiMappingMetadata(mapped),
               effectiveModel: resolvedModel,
               effectiveEffort: resolvedEffort ? resolvedEffort.effort : 'none',
             },

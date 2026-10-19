@@ -1,5 +1,6 @@
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { Conversation, isConversation } from 'conversationalist';
+import { createAdmissionTracker } from '../admission-tracker';
 
 import { createClosedAcknowledgement, foldTerminalCleanup } from '../closed-acknowledgement';
 import type { ActiveRun } from '../create-run';
@@ -86,6 +87,8 @@ export function createDurableActiveRun(
   // helper call records its hook promise here; `resolveDurableOutcome`
   // awaits all of them before reporting `completed`.
   const pendingHookPromises: Promise<unknown>[] = [];
+  // COR-713: the same for every generated-media admission the run's steps start.
+  const admissionTracker = createAdmissionTracker();
   const hookTracker = (promise: Promise<unknown>): void => {
     pendingHookPromises.push(promise);
   };
@@ -227,6 +230,7 @@ export function createDurableActiveRun(
       (toolbox) => toolboxForwarder.onStepToolbox(toolbox),
       runtime,
       hookTracker,
+      admissionTracker.track,
       resolveDurablyStarted,
       rejectDurablyStarted,
       durableRun.tags,
@@ -326,21 +330,23 @@ export function createDurableActiveRun(
     ? (): Promise<CleanupAcknowledgement> => context.terminalCleanup!(runId)
     : undefined;
 
+  /** Everything the run itself owns, settled: hooks, children and generated-media admissions. */
+  async function settleRunOwnedWork(): Promise<CleanupAcknowledgement> {
+    const [, , admissions] = await Promise.all([
+      Promise.allSettled(pendingHookPromises),
+      childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
+      admissionTracker.settle(),
+    ]);
+    return admissions;
+  }
+
   async function resolveDurableOutcome(): Promise<CleanupAcknowledgement> {
     if (reachability.unreachable) return { status: 'unresolved', reason: 'unreachable' };
     if (!cancelRequested && !combinedSignal.aborted) {
-      await Promise.all([
-        Promise.allSettled(pendingHookPromises),
-        childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
-      ]);
-      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
+      return foldTerminalCleanup(await settleRunOwnedWork(), terminalCleanupStep);
     }
     if (neverLaunched.value) {
-      await Promise.all([
-        Promise.allSettled(pendingHookPromises),
-        childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
-      ]);
-      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
+      return foldTerminalCleanup(await settleRunOwnedWork(), terminalCleanupStep);
     }
     await cancelSettled;
     try {
@@ -348,11 +354,7 @@ export function createDurableActiveRun(
       if (!state || !isTerminalWorkflowStatus(state.status)) {
         return { status: 'unresolved', reason: 'persistence-failed' };
       }
-      await Promise.all([
-        Promise.allSettled(pendingHookPromises),
-        childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
-      ]);
-      return foldTerminalCleanup({ status: 'completed' }, terminalCleanupStep);
+      return foldTerminalCleanup(await settleRunOwnedWork(), terminalCleanupStep);
     } catch (error) {
       return { status: 'unresolved', reason: 'persistence-failed', error };
     }
@@ -373,7 +375,10 @@ export function createDurableActiveRun(
       // would report `not-required` for a run whose retention step had not
       // run, or had failed. A composer that registers no step is unaffected.
       terminalCleanupStep !== undefined,
-    hasInFlightWork: () => inFlightTools > 0 || (childRegistry?.children().length ?? 0) > 0,
+    hasInFlightWork: () =>
+      inFlightTools > 0 ||
+      (childRegistry?.children().length ?? 0) > 0 ||
+      admissionTracker.started() > 0,
     resolveOutcome: resolveDurableOutcome,
   });
 

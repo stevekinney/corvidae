@@ -14,6 +14,8 @@ import {
 import type { StepResult } from '../src/types';
 
 const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
+  parts: [],
+  messageId: undefined,
   step: 0,
   conversation: {} as any,
   content: '',

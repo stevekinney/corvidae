@@ -5,6 +5,7 @@ import type {
   StepResult,
   ToolCall,
 } from '@lostgradient/operative';
+import { deriveParts } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 
 /**
@@ -174,6 +175,8 @@ export function runResult(fixture: RunResultFixture = {}): RunResultBase {
       step: index,
       conversation,
       content: '',
+      parts: [],
+      messageId: undefined,
       toolCalls: [toolCall],
       results: [
         {
@@ -192,6 +195,8 @@ export function runResult(fixture: RunResultFixture = {}): RunResultBase {
     step: toolSteps.length,
     conversation,
     content,
+    parts: deriveParts(content),
+    messageId: undefined,
     toolCalls: [],
     results: [],
     final: true,
@@ -200,6 +205,7 @@ export function runResult(fixture: RunResultFixture = {}): RunResultBase {
     conversation,
     steps: [...toolSteps, finalStep],
     content,
+    parts: deriveParts(content),
     usage: { prompt: 12, completion: 8, total: 20 },
     finishReason: fixture.finishReason ?? 'stop-condition',
     ...(fixture.error === undefined ? {} : { error: fixture.error }),

@@ -25,6 +25,7 @@ afterEach(async () => {
 
 const COMPLETED_RESULT = {
   schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+  parts: [],
   steps: 1,
   content: 'checkpoint answer',
   finishReason: 'stop-condition',

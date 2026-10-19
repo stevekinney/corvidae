@@ -82,6 +82,8 @@ export function stubActiveRunWithSnapshot(
 
 export function makeStep(step: number): StepResult {
   return {
+    parts: [],
+    messageId: undefined,
     step,
     conversation: new Conversation(),
     content: '',

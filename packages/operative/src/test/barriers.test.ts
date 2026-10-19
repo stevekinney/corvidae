@@ -26,6 +26,9 @@ function textResponse(content: string): GenerateResponse {
 }
 
 const RUN_CURSOR: RunCursor = {
+  schemaVersion: 2,
+  lastParts: [],
+  finalRowIsReplacement: false,
   step: 0,
   totalUsage: { prompt: 0, completion: 0, total: 0 },
   lastContent: '',

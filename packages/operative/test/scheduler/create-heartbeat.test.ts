@@ -37,6 +37,8 @@ function createTestScheduler() {
           ...(runOptions.toolChoice === undefined ? {} : { toolChoice: runOptions.toolChoice }),
         });
         const stepResult: StepResult = {
+          parts: [],
+          messageId: undefined,
           step: 0,
           conversation,
           content: response.content,
@@ -50,6 +52,7 @@ function createTestScheduler() {
           conversation,
           steps: [stepResult],
           content: response.content,
+          parts: [],
           usage: response.usage ?? { prompt: 0, completion: 0, total: 0 },
           finishReason: 'stop-condition',
         } satisfies RunResult;
@@ -58,6 +61,7 @@ function createTestScheduler() {
           conversation,
           steps: [],
           content: '',
+          parts: [],
           usage: { prompt: 0, completion: 0, total: 0 },
           finishReason: 'error',
           error,
@@ -251,6 +255,7 @@ describe('createHeartbeat', () => {
           conversation: new Conversation(),
           steps: [],
           content: '',
+          parts: [],
           usage: { prompt: 0, completion: 0, total: 0 },
           finishReason: 'tripwire',
           error: new Error('guardrail tripwire'),
@@ -524,6 +529,7 @@ describe('createHeartbeat', () => {
       expect(stopSettled).toBe(false);
 
       releaseSubmit({
+        parts: [],
         conversation: new Conversation(),
         steps: [],
         content: 'ignored',
@@ -552,6 +558,7 @@ describe('createHeartbeat', () => {
             conversation: new Conversation(),
             steps: [],
             content: 'ignored',
+            parts: [],
             usage: { prompt: 0, completion: 0, total: 0 },
             finishReason: 'stop-condition',
           }) satisfies RunResult,

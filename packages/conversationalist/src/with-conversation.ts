@@ -19,8 +19,9 @@ import {
   cancelStreamingMessage,
   finalizeStreamingMessage,
   updateStreamingMessage,
+  type FinalizeStreamingOptions,
 } from './streaming';
-import type { ConversationHistory, JSONValue, Message, MessageInput, TokenUsage } from './types';
+import type { ConversationHistory, JSONValue, Message, MessageInput } from './types';
 
 /**
  * A mutable draft wrapper around a conversation.
@@ -135,11 +136,11 @@ export interface ConversationHistoryDraft {
   /**
    * Finalizes a streaming message, removing the streaming flag.
    * @param messageId - The ID of the streaming message to finalize.
-   * @param options - Optional token usage and additional metadata.
+   * @param options - Optional token usage, additional metadata, and the settled content.
    */
   finalizeStreamingMessage: (
     messageId: string,
-    options?: { tokenUsage?: TokenUsage; metadata?: Record<string, JSONValue> },
+    options?: FinalizeStreamingOptions,
   ) => ConversationHistoryDraft;
 
   /**

@@ -75,6 +75,7 @@ export function createMonitorResult(finishReason: RunResult['finishReason']): Ru
     conversation: new Conversation(),
     steps: [],
     content: '',
+    parts: [],
     usage: { prompt: 0, completion: 0, total: 0 },
     finishReason,
   };

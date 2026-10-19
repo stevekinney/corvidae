@@ -3,6 +3,7 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory } from 'conversationalist';
 
 import { createCheckpointStore } from './checkpoint-store';
+import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';
 import type { RunCursor, StepRecord } from './types';
 
 /** In-memory text-value store for tests, backed by Weft's MemoryStorage. */
@@ -10,9 +11,12 @@ const createStore = () => textValueStore(new MemoryStorage());
 
 /** A full {@link RunCursor} at `step` with zeroed run-level accumulators. */
 const cursor = (step: number): RunCursor => ({
+  schemaVersion: 2,
   step,
   totalUsage: { prompt: 0, completion: 0, total: 0 },
   lastContent: '',
+  lastParts: [],
+  finalRowIsReplacement: false,
   schemaAttempts: 0,
   lastAppliedConfigVersion: 0,
 });
@@ -37,22 +41,25 @@ describe('createCheckpointStore', () => {
       expect(await store.loadCursor('run-1')).toEqual(cursor(5));
     });
 
-    it('defaults lastAppliedConfigVersion to 0 on loadCursor for a pre-AB-221 persisted cursor (not only through loadCheckpoint)', async () => {
+    it('defaults lastAppliedConfigVersion to 0 on loadCursor for a persisted current-version cursor that lacks it (not only through loadCheckpoint)', async () => {
       // Regression: the normalization added for `loadCheckpoint` lived only
       // in that method, so a caller using the public `loadCursor()` directly
       // (bypassing `loadCheckpoint`) still got a cursor missing this field.
-      const preAb221Cursor = {
+      const withoutConfigVersion = {
+        schemaVersion: 2 as const,
         step: 2,
         totalUsage: { prompt: 10, completion: 5, total: 15 },
         lastContent: 'partial',
+        lastParts: [{ type: 'text' as const, text: 'partial' }],
+        finalRowIsReplacement: false,
         schemaAttempts: 1,
       };
       const underlying = createStore();
-      await underlying.set('durable-run:run-1:cursor', JSON.stringify(preAb221Cursor));
+      await underlying.set('durable-run:run-1:cursor', JSON.stringify(withoutConfigVersion));
 
       const store = createCheckpointStore(underlying);
       expect(await store.loadCursor('run-1')).toEqual({
-        ...preAb221Cursor,
+        ...withoutConfigVersion,
         lastAppliedConfigVersion: 0,
       });
     });
@@ -90,8 +97,10 @@ describe('createCheckpointStore', () => {
 
   describe('step records', () => {
     const makeStep = (step: number, final = false): StepRecord => ({
+      schemaVersion: 2,
       step,
       content: `step ${step}`,
+      parts: [{ type: 'text', text: `step ${step}` }],
       toolCalls: [],
       results: [],
       usage: { prompt: 10, completion: 5, total: 15 },
@@ -160,7 +169,10 @@ describe('createCheckpointStore', () => {
 
     it('rejects a malformed step record in strict mode and skips it otherwise', async () => {
       const underlying = createStore();
-      await underlying.set('durable-run:run-1:step:0000000000', JSON.stringify({ step: 0 }));
+      await underlying.set(
+        'durable-run:run-1:step:0000000000',
+        JSON.stringify({ schemaVersion: 2, step: 0, content: '', parts: [] }),
+      );
       await underlying.set(malformedStep, '{not json');
       const store = createCheckpointStore(underlying);
 
@@ -198,6 +210,8 @@ describe('createCheckpointStore', () => {
       await store.saveCursor('run-1', cursor(2));
       await store.saveConversation('run-1', conversation.snapshot());
       await store.saveStep('run-1', {
+        schemaVersion: 2,
+        parts: [],
         step: 0,
         content: 'first',
         toolCalls: [],
@@ -221,15 +235,16 @@ describe('createCheckpointStore', () => {
       expect(checkpoint.steps).toEqual([]);
     });
 
-    it('defaults lastAppliedConfigVersion to 0 for a cursor persisted before AB-221 added the field', async () => {
-      // Simulate a pre-AB-221 cursor written by an older process: every field
-      // `RunCursor` had at the time, minus `lastAppliedConfigVersion`. Written
-      // directly through the underlying text-value store so the test does not
-      // depend on `saveCursor`'s current (post-AB-221) `RunCursor` shape.
+    it('defaults lastAppliedConfigVersion to 0 for a current-version cursor persisted without the field', async () => {
+      // A cursor written without `lastAppliedConfigVersion`, directly through the underlying
+      // text-value store so the test does not depend on `saveCursor`'s current `RunCursor` shape.
       const preAb221Cursor = {
+        schemaVersion: 2 as const,
         step: 2,
         totalUsage: { prompt: 10, completion: 5, total: 15 },
         lastContent: 'partial',
+        lastParts: [],
+        finalRowIsReplacement: false,
         schemaAttempts: 1,
       };
       const underlying = createStore();
@@ -250,6 +265,8 @@ describe('createCheckpointStore', () => {
         new Conversation(createConversationHistory()).snapshot(),
       );
       await store.saveStep('run-1', {
+        schemaVersion: 2,
+        parts: [],
         step: 0,
         content: 'x',
         toolCalls: [],
@@ -283,6 +300,8 @@ describe('createCheckpointStore', () => {
     it('does not surface another run cursor or transcript as a step record', async () => {
       const store = createCheckpointStore(createStore());
       await store.saveStep(victim, {
+        schemaVersion: 2,
+        parts: [],
         step: 0,
         content: 'v',
         toolCalls: [],
@@ -334,8 +353,10 @@ describe('createCheckpointStore', () => {
     const legacyStepKey = (runId: string, step: number) =>
       `durable-run:${runId}:step:${String(step).padStart(10, '0')}`;
     const stepRecord = (step: number, content = `step-${step}`): StepRecord => ({
+      schemaVersion: 2,
       step,
       content,
+      parts: [],
       toolCalls: [],
       results: [],
       final: false,
@@ -526,8 +547,10 @@ describe('createCheckpointStore', () => {
 
   describe('steps numbered past ten digits', () => {
     const stepRecord = (step: number): StepRecord => ({
+      schemaVersion: 2,
       step,
       content: `step-${step}`,
+      parts: [],
       toolCalls: [],
       results: [],
       final: false,
@@ -546,6 +569,158 @@ describe('createCheckpointStore', () => {
         expect(await store.clear(runId)).toBe(3);
         expect(await underlying.list('durable-run:')).toEqual([]);
       }
+    });
+  });
+
+  describe('durable shape version (COR-713)', () => {
+    const thinking = { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' } as const;
+    const generatedImage = {
+      type: 'image',
+      mimeType: 'image/png',
+      source: { kind: 'managed-asset', assetId: 'asset-7', revision: 2 },
+    } as const;
+
+    async function failure(read: () => Promise<unknown>): Promise<unknown> {
+      try {
+        await read();
+      } catch (error) {
+        return error;
+      }
+      return undefined;
+    }
+
+    it('round-trips a step record with its parts, asset references and row id', async () => {
+      const store = createCheckpointStore(createStore());
+      const record: StepRecord = {
+        schemaVersion: 2,
+        step: 0,
+        content: 'Done',
+        parts: [thinking, generatedImage, { type: 'text', text: 'Done' }],
+        messageId: 'row-1',
+        toolCalls: [],
+        results: [],
+        final: true,
+      };
+      await store.saveStep('run-1', record);
+      expect(await store.loadSteps('run-1', { strict: true })).toEqual([record]);
+    });
+
+    it('round-trips a cursor with the final row parts and the replacement flag', async () => {
+      const store = createCheckpointStore(createStore());
+      const replaced: RunCursor = {
+        ...cursor(2),
+        lastContent: 'Summary',
+        lastParts: [{ type: 'text', text: 'Summary' }],
+        finalRowIsReplacement: true,
+      };
+      await store.saveCursor('run-1', replaced);
+      expect(await store.loadCursor('run-1', { strict: true })).toEqual(replaced);
+    });
+
+    it('fails a versionless cursor with the explicit error, in strict and tolerant reads', async () => {
+      const underlying = createStore();
+      await underlying.set(
+        'durable-run:run-1:cursor',
+        JSON.stringify({
+          step: 1,
+          totalUsage: { prompt: 1, completion: 1, total: 2 },
+          lastContent: 'old',
+          schemaAttempts: 0,
+          lastAppliedConfigVersion: 0,
+        }),
+      );
+      const store = createCheckpointStore(underlying);
+
+      for (const options of [undefined, { strict: true }]) {
+        const error = await failure(() => store.loadCursor('run-1', options));
+        expect(error).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+        expect((error as UnsupportedCheckpointRecordVersionError).record).toBe('cursor');
+        expect((error as UnsupportedCheckpointRecordVersionError).version).toBeUndefined();
+        expect(await failure(() => store.loadCheckpoint('run-1', options))).toBeInstanceOf(
+          UnsupportedCheckpointRecordVersionError,
+        );
+      }
+    });
+
+    it('fails a versionless step record with the explicit error, in strict and tolerant reads', async () => {
+      const underlying = createStore();
+      await underlying.set(
+        'durable-run:run-1:step:0000000000',
+        JSON.stringify({ step: 0, content: 'old', toolCalls: [], results: [], final: true }),
+      );
+      const store = createCheckpointStore(underlying);
+
+      for (const options of [undefined, { strict: true }]) {
+        const error = await failure(() => store.loadSteps('run-1', options));
+        expect(error).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+        expect((error as UnsupportedCheckpointRecordVersionError).record).toBe('step');
+      }
+    });
+
+    it('treats a current-version record that lacks its parts as malformed, never as a derivation from content', async () => {
+      const underlying = createStore();
+      await underlying.set(
+        'durable-run:run-1:step:0000000000',
+        JSON.stringify({ schemaVersion: 2, step: 0, content: 'no parts', final: true }),
+      );
+      await underlying.set(
+        'durable-run:run-1:cursor',
+        JSON.stringify({ ...cursor(1), lastParts: undefined }),
+      );
+      const store = createCheckpointStore(underlying);
+
+      expect(await failure(() => store.loadSteps('run-1', { strict: true }))).toBeInstanceOf(Error);
+      expect(await store.loadSteps('run-1')).toEqual([]);
+      expect(await failure(() => store.loadCursor('run-1', { strict: true }))).toBeInstanceOf(
+        Error,
+      );
+      expect(await store.loadCursor('run-1')).toBeNull();
+    });
+
+    it('refuses to write a cursor or step record at any other version, or without its parts', async () => {
+      const store = createCheckpointStore(createStore());
+
+      expect(
+        await failure(() => store.saveCursor('run-1', { ...cursor(1), schemaVersion: 1 } as never)),
+      ).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+      expect(
+        await failure(() =>
+          store.saveCursor('run-1', { ...cursor(1), lastParts: undefined } as never),
+        ),
+      ).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+      expect(
+        await failure(() =>
+          store.saveStep('run-1', {
+            step: 0,
+            content: 'x',
+            toolCalls: [],
+            results: [],
+            final: true,
+          } as never),
+        ),
+      ).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+      expect(
+        await failure(() =>
+          store.saveStep('run-1', {
+            schemaVersion: 2,
+            step: 0,
+            content: 'x',
+            toolCalls: [],
+            results: [],
+            final: true,
+          } as never),
+        ),
+      ).toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
+    });
+
+    it('gives a run with no cursor a current-version default', async () => {
+      const store = createCheckpointStore(createStore());
+      const { cursor: defaulted } = await store.loadCheckpoint('missing');
+      expect(defaulted).toMatchObject({
+        schemaVersion: 2,
+        lastParts: [],
+        finalRowIsReplacement: false,
+      });
     });
   });
 });

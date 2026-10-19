@@ -167,6 +167,7 @@ function createFakeAgentRun(): {
 
 function successResult(content: string): RunResult<string, false> {
   return {
+    parts: [],
     conversation: {} as RunResult['conversation'],
     steps: [],
     content,

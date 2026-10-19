@@ -11,6 +11,8 @@ const run = (options: Parameters<typeof createActiveRun>[0]) => createActiveRun(
 let currentTime = 0;
 
 const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
+  parts: [],
+  messageId: undefined,
   step: 0,
   conversation: {} as any,
   content: '',

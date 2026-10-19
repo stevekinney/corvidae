@@ -15,6 +15,9 @@ export type BlockAccumulatorState =
   // redacted_thinking carries its encrypted payload in `data` (seeded at
   // content_block_start), not a streamed signature.
   | { type: 'redacted_thinking'; data: string }
+  // container_upload references a file uploaded into a code-execution container
+  // by id; like the result blocks below it arrives whole in content_block_start.
+  | { type: 'container_upload'; file_id: string }
   | { type: 'tool_use'; id: string; name: string; inputBuffer: string }
   | { type: 'server_tool_use'; id: string; name: string; inputBuffer: string }
   // Server-tool result blocks (web search, code execution) arrive with their
@@ -230,6 +233,8 @@ function finalizeContentState(
       return { type: 'thinking', thinking: state.buffer, signature: state.signature };
     case 'redacted_thinking':
       return { type: 'redacted_thinking', data: state.data };
+    case 'container_upload':
+      return { type: 'container_upload', file_id: state.file_id };
     case 'web_search_tool_result':
       return {
         type: 'web_search_tool_result',
@@ -239,6 +244,24 @@ function finalizeContentState(
     default:
       return { type: state.type, tool_use_id: state.tool_use_id, content: state.content };
   }
+}
+
+/**
+ * Finalizes one block's state into its content part, so a caller can report the part complete when
+ * that block's stop event arrives instead of waiting for the whole stream. A client `tool_use`
+ * block is not content (it is a `tool-call` message), so it finalizes to `undefined`.
+ */
+export function finalizeBlockState(state: BlockAccumulatorState): MultiModalContent | undefined {
+  if (state.type === 'tool_use') return undefined;
+  if (state.type === 'server_tool_use') {
+    return {
+      type: 'server_tool_use',
+      id: state.id,
+      name: state.name,
+      input: parseStreamedToolInput(state.name, state.inputBuffer),
+    };
+  }
+  return finalizeContentState(state);
 }
 
 export function createStreamingAccumulator(): StreamingMessageAccumulator {

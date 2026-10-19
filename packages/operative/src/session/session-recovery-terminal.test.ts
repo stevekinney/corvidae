@@ -78,6 +78,7 @@ describe('recover() — terminal reconciliation', () => {
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',
@@ -129,6 +130,7 @@ describe('recover() — terminal reconciliation', () => {
           status: 'completed',
           result: {
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: id,
             steps: 1,
             content: 'hello',
@@ -203,6 +205,7 @@ describe('recover() — terminal reconciliation', () => {
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId: id,
           steps: 1,
           content: '',
@@ -293,6 +296,7 @@ describe('reconcileTerminalRunRef — a checkpoint that cannot be read', () => {
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',
@@ -367,6 +371,7 @@ describe('reconcileTerminalRunRef — a completed run whose checkpoint holds no 
         status: 'completed',
         result: {
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',
@@ -440,6 +445,7 @@ describe('reconcileTerminalRunRef — a completed run whose checkpoint holds no 
 describe('reconcileTerminalRunRef — a required transcript never resolves without a commit', () => {
   const completedResult = (runId: string) => ({
     schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+    parts: [],
     runId,
     steps: 1,
     content: 'done',

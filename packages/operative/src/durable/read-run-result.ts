@@ -11,6 +11,7 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 
 import type { AccumulatedCost } from '../cost-estimation';
+import { runWideParts } from '../response-parts';
 import { computeCostEstimate } from '../run-lifecycle';
 import type { FinishReason, RunOptions, RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
@@ -95,6 +96,7 @@ export async function readDurableRunResult(
     conversation,
     steps: runState.steps,
     content: runState.lastContent,
+    parts: runWideParts(runState),
     usage: runState.totalUsage,
     finishReason,
   };

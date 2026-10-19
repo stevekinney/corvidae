@@ -257,11 +257,14 @@ function convertMessageByRole(message: Message, context: MediaExportContext): Op
         content: toOpenAIContent(message.content, context, { allowMedia: true }),
       };
 
-    case 'assistant':
-      return {
-        role: 'assistant',
-        content: toOpenAITextContent(message.content, context),
-      };
+    case 'assistant': {
+      const content = toOpenAITextContent(message.content, context);
+      // An assistant row can hold only provider-private replay blocks (a thinking
+      // row that precedes a tool call). OpenAI cannot carry them, and an empty
+      // assistant message in front of the tool-call message is not a valid turn.
+      if (content === '') return null;
+      return { role: 'assistant', content };
+    }
 
     case 'tool-call':
       if (!message.toolCall) {

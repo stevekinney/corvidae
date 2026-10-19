@@ -186,6 +186,7 @@ describe('live tool-call streaming — Anthropic adapter', () => {
               delta: { type: 'input_json_delta', partial_json: '"Denver"}' },
             };
             await gate;
+            yield { type: 'content_block_stop', index: 0 };
             yield { type: 'message_stop' };
           })();
         },
@@ -229,6 +230,7 @@ describe('live tool-call streaming — Anthropic adapter', () => {
               index: 3,
               delta: { type: 'input_json_delta', partial_json: '{"location":"Denver"}' },
             };
+            yield { type: 'content_block_stop', index: 3 };
             yield { type: 'message_stop' };
           })();
         },

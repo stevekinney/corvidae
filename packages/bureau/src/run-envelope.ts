@@ -92,8 +92,21 @@ export function createRunFrameForwarder(
     emit(
       createStepFrame({ runId, step: event.step, phase: 'completed', usage: event.usage }, clock),
     );
-    if (event.content) {
-      emit(createAssistantFinalFrame({ runId, step: event.step, content: event.content }, clock));
+    // COR-713: a step whose response was a thinking block and a tool call has no text and still
+    // has parts to report, so the frame follows the parts, not the text.
+    if (event.parts.length > 0) {
+      emit(
+        createAssistantFinalFrame(
+          {
+            runId,
+            step: event.step,
+            content: event.content,
+            parts: event.parts,
+            messageId: event.messageId,
+          },
+          clock,
+        ),
+      );
     }
   });
 
@@ -311,6 +324,7 @@ export function buildTerminalReportFromCompletedEvent(
     costEstimate?: BuildRunReportInput['costEstimate'];
     output?: unknown;
     error?: unknown;
+    parts: BuildRunReportInput['parts'];
     steps: RunState['steps'];
     conversation: { current: BuildRunReportInput['transcript'] };
   },
@@ -318,6 +332,7 @@ export function buildTerminalReportFromCompletedEvent(
   const { effectiveModel, effectiveEffort } = extractEffectiveModelAndEffort(event.steps);
   return buildRunReport({
     runId,
+    parts: event.parts,
     status: mapFinishReasonToStatus(event.finishReason),
     finishReason: event.finishReason,
     usage: event.usage,
@@ -345,6 +360,8 @@ export function buildTerminalReportFromAbortedEvent(
   const { effectiveModel, effectiveEffort } = extractEffectiveModelAndEffort(event.steps);
   return buildRunReport({
     runId,
+    // An aborted run has no replacement row: its run-wide parts are its completed steps'.
+    parts: event.steps.flatMap((step) => step.parts),
     status: 'aborted',
     finishReason: 'aborted',
     usage: event.usage ?? { prompt: 0, completion: 0, total: 0 },
@@ -374,6 +391,7 @@ export function buildPartialRunReport(
   const { effectiveModel, effectiveEffort } = extractEffectiveModelAndEffort(runState.steps);
   return buildRunReport({
     runId,
+    parts: runState.steps.flatMap((step) => step.parts),
     status: 'aborted',
     finishReason: 'aborted',
     usage: runState.usage,

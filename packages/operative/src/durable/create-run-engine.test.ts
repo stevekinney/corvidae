@@ -172,9 +172,12 @@ describe('createRunEngine', () => {
     try {
       // The returned checkpoint store writes through to the shared backend.
       const fullCursor = {
+        schemaVersion: 2 as const,
         step: 4,
         totalUsage: { prompt: 0, completion: 0, total: 0 },
         lastContent: '',
+        lastParts: [],
+        finalRowIsReplacement: false,
         schemaAttempts: 0,
         lastAppliedConfigVersion: 0,
       };
@@ -354,6 +357,9 @@ describe('createRunEngine', () => {
       // for a real run (see run-workflow.test.ts's "workflow version stamping"
       // suite, which exercises the real stamping path end-to-end).
       await checkpointStore.saveCursor('versioned-recovery-run', {
+        schemaVersion: 2,
+        lastParts: [],
+        finalRowIsReplacement: false,
         step: 0,
         totalUsage: { prompt: 0, completion: 0, total: 0 },
         lastContent: '',
@@ -424,6 +430,9 @@ describe('createRunEngine', () => {
       }
 
       await checkpointStore.saveCursor('matched-version-run', {
+        schemaVersion: 2,
+        lastParts: [],
+        finalRowIsReplacement: false,
         step: 0,
         totalUsage: { prompt: 0, completion: 0, total: 0 },
         lastContent: '',

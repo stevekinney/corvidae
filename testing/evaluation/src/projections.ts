@@ -33,6 +33,7 @@ import type {
   StepResult,
   TokenUsage,
 } from '@lostgradient/operative';
+import { deriveParts } from '@lostgradient/operative';
 import { Conversation } from 'conversationalist';
 
 import type { EvaluatorConfiguration } from './configuration';
@@ -299,6 +300,9 @@ export function fromReviewerRunProjection(run: ReviewerProjection['run']): RunRe
     step: step.step,
     conversation,
     content: step.content,
+    // The projection keeps text only, so a step's parts are the one text part its content derives.
+    parts: deriveParts(step.content),
+    messageId: undefined,
     toolCalls: step.toolCalls.map(({ id, name, arguments: input }) => ({
       id,
       name,
@@ -319,6 +323,7 @@ export function fromReviewerRunProjection(run: ReviewerProjection['run']): RunRe
     conversation,
     steps,
     content: run.content,
+    parts: steps.flatMap((step) => step.parts),
     usage: { ...run.usage },
     finishReason: run.finishReason,
     ...(error === undefined ? {} : { error: rebuildError(error) }),
