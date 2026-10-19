@@ -396,3 +396,28 @@ describe('a save the engine could not apply, and a file that cannot then be read
     expect(container.textContent).not.toContain(WORKFLOW_COPY.editor.saveFailed);
   });
 });
+
+describe('the "not applied yet" banner in the editor', () => {
+  test('stays while a later save fails for another reason', async () => {
+    const { container, findByText, getByRole } = open('/workflows/digest/edit');
+    const root = await ready(container);
+    let calls = 0;
+    stub?.on('bureau.workflows.update', () => {
+      calls += 1;
+      if (calls === 1) {
+        const file = stub?.file('digest');
+        if (file === undefined) throw new Error('The file is missing.');
+        file.hash = 'hash-written';
+        throw workflowFaults.applyFailed();
+      }
+      throw workflowFaults.unavailable();
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.update').length).toBe(2));
+    expect(await findByText(WORKFLOW_COPY.editor.saveFailed)).not.toBeNull();
+    // The first save is still on disk and the engine has still not followed it.
+    expect(root.textContent).toContain(WORKFLOW_COPY.applyFailed.title);
+  });
+});

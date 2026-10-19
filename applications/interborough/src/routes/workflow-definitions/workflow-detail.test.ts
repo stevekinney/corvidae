@@ -798,6 +798,28 @@ describe('the "not applied yet" banner', () => {
       expect(root.textContent).not.toContain(WORKFLOW_COPY.applyFailed.title);
     });
   }
+
+  test('stays while a later write fails for another reason', async () => {
+    const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+    const root = await ready(container);
+    stub?.on('bureau.workflows.pause', () => {
+      const file = stub?.file('digest');
+      if (file === undefined) throw new Error('The file is missing.');
+      file.paused = true;
+      file.hash = 'hash-applied-later';
+      throw workflowFaults.applyFailed();
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
+    stub?.on('bureau.workflows.resume', () => {
+      throw workflowFaults.unavailable();
+    });
+    await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.resumeAction }));
+    await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume').length).toBe(1));
+    expect(await findByText(WORKFLOW_COPY.resumeFailed)).not.toBeNull();
+    // The pause is still on disk and the engine has still not followed it.
+    expect(root.textContent).toContain(WORKFLOW_COPY.applyFailed.title);
+  });
 });
 
 describe('the links on a type’s page', () => {

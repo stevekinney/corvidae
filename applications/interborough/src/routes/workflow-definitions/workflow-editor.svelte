@@ -99,6 +99,8 @@
   function failWith(fault: AgentFault, title: string): void {
     switch (fault.kind) {
       case 'stale':
+        // The editor's picture of the file is out of date, so what it said about it no longer holds.
+        unapplied = false;
         stale = true;
         return;
       case 'not-found':
@@ -128,9 +130,9 @@
     }) => updateWorkflowFile(type, expectedHash, definition),
     onMutate: () => {
       failure = null;
-      unapplied = false;
     },
     onSuccess: () => {
+      unapplied = false;
       void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
       router.navigate(workflowTypePath(type));
     },

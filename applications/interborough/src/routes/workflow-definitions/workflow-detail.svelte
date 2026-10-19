@@ -115,6 +115,8 @@
   function failWith(fault: AgentFault, title: string): void {
     switch (fault.kind) {
       case 'stale':
+        // The page's picture of the file is out of date, so what it said about it no longer holds.
+        unapplied = false;
         stale = true;
         return;
       case 'not-found':
@@ -136,6 +138,8 @@
 
   /** Takes the file's new hash and paused flag at once, then reads the file again to confirm. */
   function adopt(result: { readonly hash: string }, paused: boolean): void {
+    // The write went through and the engine followed it, so nothing is left unapplied.
+    unapplied = false;
     queryClient.setQueryData<WorkflowResolution | null>(detailKey, (previous) =>
       previous?.kind === 'agent-authored'
         ? { ...previous, file: { ...previous.file, hash: result.hash, paused } }
@@ -172,7 +176,6 @@
     mutationFn: (hash: string) => pauseWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
-      unapplied = false;
     },
     onSuccess: (result) => adopt(result, true),
     onError: (error) => writeFailed(error, copy.pauseFailed),
@@ -182,7 +185,6 @@
     mutationFn: (hash: string) => resumeWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
-      unapplied = false;
     },
     onSuccess: (result) => adopt(result, false),
     onError: (error) => writeFailed(error, copy.resumeFailed),
@@ -192,7 +194,6 @@
     mutationFn: (hash: string) => deleteWorkflowFile(type, hash),
     onMutate: () => {
       failure = null;
-      unapplied = false;
     },
     onSuccess: leaveForTheList,
     // A delete the Bureau made and the engine could not apply has still removed the file, so it
