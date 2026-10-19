@@ -1,14 +1,28 @@
 /**
- * COR-713 — a generated asset a persisted row references is kept for as long as the row exists. The
- * asset policy's retention floor would otherwise expire it while the session's rows still point at
- * it, and a later replay would fail to resolve it.
+ * COR-713 — an asset a persisted row references is kept for as long as the session that holds the
+ * row exists. The asset policy's retention floor would otherwise expire it while the session's
+ * rows still point at it, and a later replay would fail to resolve it. The claim is keyed by
+ * session and row, so a row copied into another session is claimed there too.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createAgent, createModelCatalog, withBackendDescriptors } from '@lostgradient/operative';
+import {
+  createAgent,
+  createAgentSession,
+  createModelCatalog,
+  waitForRunState,
+  withBackendDescriptors,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
+import {
+  appendMessages,
+  createConversationHistory,
+  type Message,
+  type MessageInput,
+} from 'conversationalist';
 
 import { createBureau } from './create-bureau';
+import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 
@@ -63,54 +77,219 @@ async function openBureau() {
   return { bureau, runtime };
 }
 
-async function collect(bureau: Awaited<ReturnType<typeof openBureau>>['bureau']) {
+type Opened = Awaited<ReturnType<typeof openBureau>>;
+
+async function collect({ bureau }: Opened) {
   const result = await bureau.assets!.collectGarbage().result();
   if (result.outcome !== 'completed') throw new Error(`collection failed: ${result.outcome}`);
   return result.value;
 }
 
+/** Runs the painter on a session and waits until the run and its session commit have settled. */
+async function paint(
+  { bureau }: Opened,
+  sessionId: string,
+  extra: { appendMessages?: ReadonlyArray<Message>; message?: string } = {},
+) {
+  const created = await bureau.createRun({
+    ...(extra.appendMessages === undefined ? { message: 'Draw' } : {}),
+    ...extra,
+    agentName: 'painter',
+    principal: alice.id,
+    sessionId,
+  });
+  await waitForRunState(bureau, created.id);
+  for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
+  return created;
+}
+
+/** Rows as a client would hand them over: their own ids and content, ready to append. */
+function builtRows(...inputs: Array<MessageInput & { id: string }>): Message[] {
+  const history = appendMessages(createConversationHistory({ id: 'scratch' }), ...inputs);
+  return history.ids.map((id) => history.messages[id]!);
+}
+
+async function rowsOf({ bureau }: Opened, sessionId: string): Promise<Message[]> {
+  const session = await bureau.getSession(sessionId);
+  const history = session!.conversationHistory;
+  return history.ids.map((id) => history.messages[id]!);
+}
+
+function assetsOf(row: Message): string[] {
+  if (typeof row.content === 'string') return [];
+  return row.content.flatMap((part) =>
+    'source' in part && part.source.kind === 'managed-asset' ? [part.source.assetId] : [],
+  );
+}
+
+async function resolves({ bureau }: Opened, assetId: string): Promise<boolean> {
+  try {
+    await bureau.assets!.resolve({ kind: 'managed-asset', assetId }, alice);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe('a generated image a session row references', () => {
   it('survives collection past the retention floor, and is released when the session is deleted', async () => {
-    const { bureau, runtime } = await openBureau();
-    const created = await bureau.createRun({
-      message: 'Draw',
-      agentName: 'painter',
-      principal: alice.id,
-    });
-    for (let turn = 0; turn < 200 && bureau.getRun(created.id)?.status === 'running'; turn += 1) {
-      await yieldToPortableEventLoop();
-    }
-    const session = await bureau.getSession(created.sessionId);
-    const row = Object.values(session!.conversationHistory.messages).find(
-      (message) => message.role === 'assistant',
-    );
-    const image = (
-      row!.content as unknown as Array<{ type: string; source: { assetId: string } }>
-    ).find((part) => part.type === 'image')!;
-    const { assetId } = image.source;
-    const source = { kind: 'managed-asset' as const, assetId };
+    const opened = await openBureau();
+    const { bureau, runtime } = opened;
+    const created = await paint(opened, 'trunk');
+    const [assetId] = (await rowsOf(opened, 'trunk')).flatMap(assetsOf);
 
     await runtime.advance(5_000);
-    const report = await collect(bureau);
+    const report = await collect(opened);
 
-    expect(report.expired).not.toContain(assetId);
-    const resolved = await bureau.assets!.resolve(source, alice);
-    expect(resolved.content).toEqual({ kind: 'bytes', bytes: png });
+    expect(report.expired).not.toContain(assetId!);
+    expect(await resolves(opened, assetId!)).toBe(true);
 
     await bureau.deleteSession(created.sessionId);
-    const afterDelete = await collect(bureau);
+    const afterDelete = await collect(opened);
 
-    expect(afterDelete.expired).toContain(assetId);
+    expect(afterDelete.expired).toContain(assetId!);
   });
 
   it('is still expired by the floor when no row ever referenced it', async () => {
-    const { bureau, runtime } = await openBureau();
-    const admission = await bureau.assets!.admit({ source: { kind: 'inline', bytes: png } }, alice);
+    const opened = await openBureau();
+    const admission = await opened.bureau.assets!.admit(
+      { source: { kind: 'inline', bytes: png } },
+      alice,
+    );
     await admission.work.result();
 
-    await runtime.advance(5_000);
-    const report = await collect(bureau);
+    await opened.runtime.advance(5_000);
+    const report = await collect(opened);
 
     expect(report.expired).toContain(admission.assetId);
+  });
+});
+
+describe('a row copied into another session (appendMessages)', () => {
+  /** The trunk paints; the copy session is created from the trunk's rows, with the same ids. */
+  async function trunkAndCopy() {
+    const opened = await openBureau();
+    await paint(opened, 'trunk');
+    const trunkRows = await rowsOf(opened, 'trunk');
+    const [assetId] = trunkRows.flatMap(assetsOf);
+    const copied = builtRows(
+      ...trunkRows.map((row) => ({
+        id: row.id,
+        role: row.role,
+        content: row.content as MessageInput['content'],
+      })),
+      { id: 'again', role: 'user', content: 'Again.' },
+    );
+    await paint(opened, 'copy', { appendMessages: copied });
+    expect((await rowsOf(opened, 'copy')).flatMap(assetsOf)).toContain(assetId!);
+    return { opened, assetId: assetId! };
+  }
+
+  it.each([
+    ['trunk', 'copy'],
+    ['copy', 'trunk'],
+  ] as const)(
+    'deleting the %s session leaves the %s session able to resolve the shared asset',
+    async (deleted, survivor) => {
+      const { opened, assetId } = await trunkAndCopy();
+
+      await opened.bureau.deleteSession(deleted);
+      await opened.runtime.advance(5_000);
+      await collect(opened);
+
+      expect(await opened.bureau.getSession(survivor)).toBeDefined();
+      expect(await resolves(opened, assetId)).toBe(true);
+    },
+  );
+
+  it('expires the shared asset once both sessions are gone', async () => {
+    const { opened, assetId } = await trunkAndCopy();
+
+    await opened.bureau.deleteSession('trunk');
+    await opened.bureau.deleteSession('copy');
+    await opened.runtime.advance(5_000);
+    const report = await collect(opened);
+
+    expect(report.expired).toContain(assetId);
+  });
+});
+
+describe('a supplied image a user row references', () => {
+  async function sessionWithSuppliedImage(opened: Opened) {
+    const admission = await opened.bureau.assets!.admit(
+      { source: { kind: 'inline', bytes: png } },
+      alice,
+    );
+    await admission.work.result();
+    const rows = builtRows({
+      id: 'supplied-row',
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'managed-asset', assetId: admission.assetId },
+        },
+      ],
+    });
+    const created = await paint(opened, 'supplied', { appendMessages: rows });
+    return { assetId: admission.assetId, created };
+  }
+
+  it('survives collection past the floor and replays, and expires after the session is deleted', async () => {
+    const opened = await openBureau();
+    const { assetId, created } = await sessionWithSuppliedImage(opened);
+
+    await opened.runtime.advance(5_000);
+    const report = await collect(opened);
+
+    expect(report.expired).not.toContain(assetId);
+    expect(await resolves(opened, assetId)).toBe(true);
+
+    await opened.bureau.deleteSession(created.sessionId);
+    const afterDelete = await collect(opened);
+
+    expect(afterDelete.expired).toContain(assetId);
+  });
+});
+
+describe('an expiring session', () => {
+  it('releases its claims once the store has removed it, so its assets fall back to the floor', async () => {
+    const opened = await openBureau();
+    await paint(opened, 'old');
+    const [assetId] = (await rowsOf(opened, 'old')).flatMap(assetsOf);
+
+    await opened.runtime.advance(5_000);
+    expect(await opened.bureau.sessionStore!.cleanup({ olderThan: -60_000 })).toBe(1);
+    for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
+    const report = await collect(opened);
+
+    expect(report.expired).toContain(assetId!);
+  });
+});
+
+describe('a session saved with a copied history (a goal retry, a session fork)', () => {
+  it('claims the copied rows itself, so deleting the trunk leaves the copy able to resolve them', async () => {
+    const opened = await openBureau();
+    await paint(opened, 'trunk');
+    const trunk = (await opened.bureau.getSession('trunk'))!;
+    const [assetId] = (await rowsOf(opened, 'trunk')).flatMap(assetsOf);
+
+    await opened.bureau.sessionStore!.save(
+      createAgentSession({
+        id: 'retry',
+        agentName: trunk.agentName,
+        conversationHistory: trunk.conversationHistory,
+        metadata: { [SESSION_OWNER_METADATA_KEY]: alice.id },
+        runs: [],
+      }),
+    );
+    for (let turn = 0; turn < 20; turn += 1) await yieldToPortableEventLoop();
+
+    await opened.bureau.deleteSession('trunk');
+    await opened.runtime.advance(5_000);
+    await collect(opened);
+
+    expect(await resolves(opened, assetId!)).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ import {
   normalizeMediaType,
   reconcileMediaType,
 } from './media-inspection';
+import { claimRowAssets } from './row-asset-claims';
 import type {
   AssetAdmission,
   AssetAdmissionRequest,
@@ -40,14 +41,16 @@ import type {
 export function createAssetGeneratedMediaAdmitter(
   assets: AssetService,
   principalId: string,
+  options: {
+    /**
+     * Who holds the rows a run commits: the holder id for a row id, or `undefined` when the run is
+     * not known (nothing is claimed; the session's own claim pass takes it).
+     */
+    readonly claimHolderFor?:
+      ((runId: string | undefined) => ((rowId: string) => string) | undefined) | undefined;
+  } = {},
 ): GeneratedMediaAdmitter {
   const principal = { id: principalId };
-  /** The assets this port admitted, so a retention claim is made only for what it owns. */
-  const admittedAssetIds = new Set<string>();
-  const track = (admission: AssetAdmission): AssetAdmission => {
-    admittedAssetIds.add(admission.source.assetId);
-    return admission;
-  };
   return {
     async admit(request): Promise<GeneratedMediaAdmission> {
       // The single-part call reaches here from a streaming wrapper, which admits each part as it
@@ -55,70 +58,34 @@ export function createAssetGeneratedMediaAdmitter(
       // a configured aggregate ceiling silently off, it refuses the part.
       const assetRequestForPart = assetRequest(request);
       refuseUnderAggregateLimit(assets, assetRequestForPart);
-      const admission = track(await assets.admit(assetRequestForPart, principal));
+      const admission = await assets.admit(assetRequestForPart, principal);
       return wrap(admission, request);
     },
     // One response's parts share the policy's aggregate ceilings, so they go through the
     // service's batch call: part N is decided after part N-1, and a refusal starts nothing.
     async admitAll(requests): Promise<readonly GeneratedMediaAdmission[]> {
       const admissions = await assets.admitAll(requests.map(assetRequest), principal);
-      return admissions.map((admission, index) => wrap(track(admission), requests[index]!));
+      return admissions.map((admission, index) => wrap(admission, requests[index]!));
     },
     // The row now references each generated asset, so it holds a claim on it for as long as the
-    // row exists: the policy's retention floor alone would expire the asset under the row. The
-    // claim is the asset service's own reference (`retain`), held under the row's id and released
-    // by `releaseGeneratedAssets` when the owning session is deleted or expires.
+    // session (or, for a run with no session, the run) holds the row: the policy's retention floor
+    // alone would expire the asset under the row. See `row-asset-claims.ts`.
     async retainCommitted(request) {
-      for (const part of request.parts) {
-        if (part.source.kind !== 'managed-asset') continue;
-        const { assetId } = part.source;
-        if (!admittedAssetIds.has(assetId)) continue;
-        await assets.retain(assetId, principal, {
-          holderId: generatedRowHolderId(request.messageId),
-          until: GENERATED_ROW_CLAIM_UNTIL,
-        });
-      }
+      const holderOf = options.claimHolderFor?.(request.runId);
+      if (holderOf === undefined) return;
+      let failure: unknown;
+      await claimRowAssets(
+        assets,
+        principalId,
+        holderOf,
+        [{ id: request.messageId, content: request.parts }],
+        (_assetId, error) => {
+          failure ??= error;
+        },
+      );
+      if (failure !== undefined) throw failure;
     },
   };
-}
-
-/**
- * A generated row's claim does not lapse by itself: it ends only when the row's lifecycle does,
- * through {@link releaseGeneratedAssets}, so its `until` is the end of the representable calendar.
- */
-const GENERATED_ROW_CLAIM_UNTIL = '9999-12-31T23:59:59.999Z';
-
-/** The holder id under which a committed row keeps the generated assets it references. */
-export function generatedRowHolderId(messageId: string): string {
-  return `generated-row:${messageId}`;
-}
-
-/**
- * Releases the claims the rows of a deleted or expired session held on the generated assets they
- * reference, so those assets fall back to the retention policy. Each asset is released on its own:
- * one the session's owner cannot release (a managed asset a hook supplied, or one already gone)
- * is reported to `onFailure` and never stops the rest.
- */
-export async function releaseGeneratedAssets(
-  assets: AssetService,
-  principalId: string,
-  rows: Iterable<{ readonly id: string; readonly content: unknown }>,
-  onFailure: (assetId: string, error: unknown) => void,
-): Promise<void> {
-  for (const row of rows) {
-    if (!Array.isArray(row.content)) continue;
-    for (const part of row.content as ReadonlyArray<{
-      source?: { kind?: string; assetId?: string };
-    }>) {
-      const assetId = part?.source?.kind === 'managed-asset' ? part.source.assetId : undefined;
-      if (assetId === undefined) continue;
-      try {
-        await assets.release(assetId, { id: principalId }, generatedRowHolderId(row.id));
-      } catch (error) {
-        onFailure(assetId, error);
-      }
-    }
-  }
 }
 
 /**
