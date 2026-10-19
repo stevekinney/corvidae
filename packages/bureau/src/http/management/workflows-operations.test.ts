@@ -436,12 +436,12 @@ describe('faults', () => {
     const created = await seed(served);
     const engine = served.bureau.durableEngine()!;
     const original = engine.pauseSchedule.bind(engine);
-    let failures = 1;
+    // The file watcher's own apply can reach the engine before the operation's does, so a single
+    // injected failure may be spent on it. Keep failing until the operation's response has
+    // arrived, then let the next rescan succeed.
+    let failing = true;
     engine.pauseSchedule = async (...args: Parameters<typeof original>) => {
-      if (failures > 0) {
-        failures -= 1;
-        throw new Error('storage unavailable');
-      }
+      if (failing) throw new Error('storage unavailable');
       return original(...args);
     };
 
@@ -453,7 +453,11 @@ describe('faults', () => {
     expect(response.error?.data?.httpStatus).toBe(503);
     expect(response.error?.data).toMatchObject({ reason: 'workflow-apply-failed' });
     expect(response.error?.message).toContain('storage unavailable');
-    expect(diagnostics.filter((message) => message.includes('Could not bring'))).toHaveLength(1);
+    // A persistent failure may be diagnosed by more than one apply (the operation's and the watcher's).
+    expect(
+      diagnostics.filter((message) => message.includes('Could not bring')).length,
+    ).toBeGreaterThanOrEqual(1);
+    failing = false;
     await served.bureau.workflows?.refresh();
     const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
     expect(got.result).toMatchObject({ paused: true, schedule: { status: 'paused' } });
