@@ -12,7 +12,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { outcomeOf, rethrow } from '../../module-scope-scenario.test-support.ts';
-import { playwrightBaseImage, readRepositoryPins } from './baseline-provenance.ts';
+import {
+  createBaselineProvenance,
+  playwrightBaseImage,
+  readRepositoryPins,
+} from './baseline-provenance.ts';
 import {
   DOCKERFILE_PATH,
   applyBaselines,
@@ -238,7 +242,7 @@ describe('kill on signal', () => {
 });
 
 describe('applyBaselines', () => {
-  it('copies the listed baselines and provenance and deletes the orphans', async () => {
+  it('copies the listed baselines, writes the given provenance, and deletes the orphans', async () => {
     const root = mkdtempSync(join(tmpdir(), 'apply-baselines-'));
     const source = join(root, 'source');
     const target = join(root, 'target');
@@ -249,10 +253,27 @@ describe('applyBaselines', () => {
     mkdirSync(join(target, 'button'), { recursive: true });
     writeFileSync(join(target, 'button/b.png'), 'committed b');
     writeFileSync(join(target, 'button/orphan-default.png'), 'orphan');
-    await applyBaselines(source, target, ['button/a.png'], ['button/orphan-default.png']);
+    const provenance = createBaselineProvenance({
+      componentScope: 'all',
+      renderedSourceSha: 'a'.repeat(40),
+      playwrightVersion: '1.63.0',
+      osCodename: 'jammy',
+      architecture: 'arm64',
+      dockerImageTag: 'corvidae-browser-fixtures:1.63.0-jammy-arm64',
+      suiteExitCode: 0,
+    });
+    await applyBaselines(
+      source,
+      target,
+      ['button/a.png'],
+      ['button/orphan-default.png'],
+      provenance,
+    );
     expect(existsSync(join(target, 'button/orphan-default.png'))).toBe(false);
     expect(readFileSync(join(target, 'button/a.png'), 'utf8')).toBe('new button/a.png');
     expect(readFileSync(join(target, 'button/b.png'), 'utf8')).toBe('committed b');
-    expect(readFileSync(join(target, 'provenance.json'), 'utf8')).toBe('new provenance.json');
+    expect(readFileSync(join(target, 'provenance.json'), 'utf8')).toBe(
+      `${JSON.stringify(provenance, null, 2)}\n`,
+    );
   });
 });

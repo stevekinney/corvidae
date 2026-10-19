@@ -38,6 +38,13 @@ export const PROVENANCE_FILE_NAME = 'provenance.json';
 
 export type BaselineComponentScope = 'all' | string[];
 
+/**
+ * One component's baselines as a scoped refresh last rendered them (COR-1574). The
+ * renderer pins are the full-run record's: a scoped render under any other renderer
+ * is refused, so only the commit and the suite's exit code can differ.
+ */
+export type ComponentRender = { renderedSourceSha: string; suiteExitCode: number };
+
 export type BaselineProvenance = {
   schemaVersion: typeof BASELINE_PROVENANCE_SCHEMA_VERSION;
   componentScope: BaselineComponentScope;
@@ -48,11 +55,16 @@ export type BaselineProvenance = {
   dockerImageTag: string;
   /** 0 when every case passed; 1 when the suite completed with failures. */
   suiteExitCode: number;
+  /**
+   * Components a scoped refresh re-rendered since the full run this record describes, by
+   * slug. Only the host wrapper writes it, and a full run's record has none (COR-1574).
+   */
+  componentRenders?: Record<string, ComponentRender>;
 };
 
 export type BaselineProvenanceInput = Omit<
   BaselineProvenance,
-  'schemaVersion' | 'componentScope'
+  'schemaVersion' | 'componentScope' | 'componentRenders'
 > & {
   componentScope: string | string[] | undefined;
 };
@@ -160,7 +172,114 @@ export function parseBaselineProvenance(text: string): BaselineProvenance {
   if (record['schemaVersion'] !== BASELINE_PROVENANCE_SCHEMA_VERSION) {
     throw new Error(`provenance.json schemaVersion must be ${BASELINE_PROVENANCE_SCHEMA_VERSION}`);
   }
+  const renders = record['componentRenders'];
+  if (renders !== undefined) {
+    if (typeof renders !== 'object' || renders === null || Array.isArray(renders)) {
+      throw new Error('provenance.json "componentRenders" must be an object keyed by component');
+    }
+    for (const [slug, render] of Object.entries(renders as Record<string, unknown>)) {
+      const entry = (typeof render === 'object' && render !== null ? render : {}) as Record<
+        string,
+        unknown
+      >;
+      if (
+        typeof entry['renderedSourceSha'] !== 'string' ||
+        typeof entry['suiteExitCode'] !== 'number'
+      ) {
+        throw new Error(
+          `provenance.json "componentRenders.${slug}" needs "renderedSourceSha" and "suiteExitCode"`,
+        );
+      }
+    }
+  }
   return parsed as BaselineProvenance;
+}
+
+const RENDERER_PINS = [
+  'playwrightVersion',
+  'osCodename',
+  'architecture',
+  'dockerImageTag',
+] as const;
+
+/**
+ * The record a scoped refresh writes (COR-1574): the working tree's full-run record,
+ * unchanged, plus a `componentRenders` entry for each component the scoped render
+ * covered. Refuses a committed record that is not a full run and a scoped render under
+ * another renderer, because neither can be described by one full-run record.
+ */
+export function mergeScopedProvenance(
+  committed: BaselineProvenance,
+  scoped: BaselineProvenance,
+): BaselineProvenance {
+  if (scoped.componentScope === 'all') {
+    throw new Error('A full run replaces provenance.json; it is not merged.');
+  }
+  if (committed.componentScope !== 'all') {
+    throw new Error(
+      `The working tree's provenance.json describes a scoped run (${JSON.stringify(committed.componentScope)}), not a full one; refresh the full set first.`,
+    );
+  }
+  for (const pin of RENDERER_PINS) {
+    if (committed[pin] !== scoped[pin]) {
+      throw new Error(
+        `The scoped render's ${pin} (${scoped[pin]}) differs from the full-run record's (${committed[pin]}); refresh the full set instead.`,
+      );
+    }
+  }
+  const renders: Record<string, ComponentRender> = { ...committed.componentRenders };
+  for (const slug of scoped.componentScope) {
+    renders[slug] = {
+      renderedSourceSha: scoped.renderedSourceSha,
+      suiteExitCode: scoped.suiteExitCode,
+    };
+  }
+  return {
+    ...committed,
+    componentRenders: Object.fromEntries(
+      Object.entries(renders).toSorted(([left], [right]) => left.localeCompare(right)),
+    ),
+  };
+}
+
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
+
+/**
+ * Why a committed `provenance.json` does not describe the authoritative renderer the
+ * lockfile pins; empty when it does. The record must be a full run (`componentScope`
+ * `'all'`), and every scoped component render it carries must name a commit and a
+ * completed suite (COR-1574).
+ */
+export function committedProvenanceProblems(
+  provenance: BaselineProvenance,
+  playwrightVersion: string,
+): string[] {
+  const problems: string[] = [];
+  const expect = (field: string, actual: unknown, expected: unknown) => {
+    if (actual !== expected) {
+      problems.push(`${field} is ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
+    }
+  };
+  expect('playwrightVersion', provenance.playwrightVersion, playwrightVersion);
+  expect('osCodename', provenance.osCodename, REQUIRED_OS_CODENAME);
+  expect('architecture', provenance.architecture, REQUIRED_BASELINE_ARCHITECTURE);
+  expect(
+    'dockerImageTag',
+    provenance.dockerImageTag,
+    dockerImageTagForPlaywrightVersion(playwrightVersion),
+  );
+  expect('componentScope', provenance.componentScope, 'all');
+  const completed = (label: string, sha: string, exitCode: number) => {
+    if (!COMMIT_SHA.test(sha)) problems.push(`${label} renderedSourceSha is not a commit: ${sha}`);
+    if (exitCode !== 0 && exitCode !== 1) {
+      problems.push(`${label} suiteExitCode is ${exitCode}, expected 0 or 1`);
+    }
+  };
+  completed('the full run', provenance.renderedSourceSha, provenance.suiteExitCode);
+  for (const [slug, render] of Object.entries(provenance.componentRenders ?? {})) {
+    completed(`component ${slug}`, render.renderedSourceSha, render.suiteExitCode);
+  }
+  return problems;
 }
 
 export async function writeBaselineProvenance(
