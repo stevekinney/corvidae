@@ -964,7 +964,8 @@ describe('bureau.agents.catalog', () => {
     const installed = rows();
     service.replaceCatalog(installed);
     const served = await serve({ overrides: { modelCatalog: service } });
-    // `replaceCatalog` merges by provider, so the set to compare against is what the catalog holds.
+    // Every row is restamped as an operator override, so the set to compare against is what the
+    // catalog holds now, not the rows passed in.
     const held = served.bureau.modelCatalog.catalog().descriptors;
     expect(held.some((row) => row.pricing !== undefined)).toBe(true);
     expect(held.some((row) => row.endpointAmbiguous === true)).toBe(true);
