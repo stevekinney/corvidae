@@ -76,3 +76,17 @@ export const E2E_CANCELLATION_REASON = 'operator stopped the e2e ledger run';
 
 /** Weft's maximum cancellation grace period (`serve-internals.ts`). */
 export const E2E_CANCELLATION_GRACE_PERIOD_MS = 300_000;
+
+/**
+ * COR-164: worker versioning. Two real builds of one deployment register through the worker
+ * protocol, routing is set on the first, and two workflow types start and finish against it: one
+ * pinned, one auto-upgrade. The auto-upgrade policy names the first build's exact digests, which
+ * `versioned-run-seed.ts` reads back from the server's catalog after the workers register.
+ */
+export const E2E_VERSIONED_DEPLOYMENT_NAME = 'versioned-order-fleet';
+export const E2E_VERSIONED_FIRST_BUILD_ID = 'e2e-versioned-build-1';
+export const E2E_VERSIONED_SECOND_BUILD_ID = 'e2e-versioned-build-2';
+export const E2E_PINNED_WORKFLOW_TYPE = 'e2e-pinned-order';
+export const E2E_AUTO_UPGRADE_WORKFLOW_TYPE = 'e2e-auto-upgrade-order';
+export const E2E_PINNED_RUN_ID = 'e2e-versioned-pinned-run';
+export const E2E_AUTO_UPGRADE_RUN_ID = 'e2e-versioned-auto-upgrade-run';

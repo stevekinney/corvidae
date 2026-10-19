@@ -38,6 +38,7 @@ import {
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
 const buildDirectory = join(scratch, 'build');
@@ -153,18 +154,24 @@ for (let attempt = 0; attempt < 5; attempt += 1) {
 // server's real task ledger. See `ledger-evidence-seed.ts`.
 const ledgerWorkers = await seedLedgerEvidence(server);
 
+// COR-164: two real builds of one deployment, a pinned and an auto-upgrade workflow, and one
+// finished run of each. See `versioned-run-seed.ts`.
+const versionedWorkers = await seedVersionedRuns(engine, host.url);
+
 process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Seeded COR-281 cross-build retry storm',
+    'Seeded COR-164 pinned and auto-upgrade runs',
     'Registered dynamic workflow sources for invoice-reconciliation',
   ].join('\n') + '\n',
 );
 
 async function shutDown(): Promise<void> {
   for (const ledgerWorker of ledgerWorkers) ledgerWorker[Symbol.dispose]();
+  for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();
   await fleetWorker.disconnect();
   await host.close();
