@@ -9432,6 +9432,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return acknowledge();
   }
 
+  /** Takes a committed session's asset claims, or releases an expired session's; never rejects. */
+  async function updateSessionAssetClaims(
+    entry: SessionOutboxEntry,
+    outboxSessionStore: SessionStore,
+  ): Promise<void> {
+    try {
+      if (entry.kind === 'session.deleted') {
+        const key = `${entry.sessionId}\u0000${entry.incarnation}`;
+        const expired = expiringSessions.get(key);
+        if (expired === undefined) return;
+        expiringSessions.delete(key);
+        await releaseSessionGeneratedAssets(expired);
+        return;
+      }
+      const committed = await outboxSessionStore.load(entry.sessionId);
+      if (committed !== undefined && committed.incarnation === entry.incarnation) {
+        await claimSessionAssets(committed);
+      }
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'assets',
+        message: `[bureau] Could not update the asset claims of session "${entry.sessionId}" while replaying its outbox entry ${entry.ordinal}: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
   async function drainOutboxEntry(
     entry: SessionOutboxEntry,
     owner: DurableEventOwner,
@@ -9451,28 +9479,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     // COR-713: every row that enters a session's history arrived in a commit this drain replays,
     // so this is where the rows' claims on the assets they reference are taken (and where an
-    // expired session's are released, once the store has removed it). Never stalls the drain.
-    try {
-      if (entry.kind === 'session.created' || entry.kind === 'session.saved') {
-        const committed = await outboxSessionStore.load(entry.sessionId);
-        if (committed !== undefined && committed.incarnation === entry.incarnation) {
-          await claimSessionAssets(committed);
-        }
-      } else if (entry.kind === 'session.deleted') {
-        const key = `${entry.sessionId}\u0000${entry.incarnation}`;
-        const expired = expiringSessions.get(key);
-        if (expired !== undefined) {
-          await releaseSessionGeneratedAssets(expired);
-          expiringSessions.delete(key);
-        }
-      }
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'assets',
-        message: `[bureau] Could not update the asset claims of session "${entry.sessionId}" while replaying its outbox entry ${entry.ordinal}: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
+    // expired session's are released, once the store has removed it). The work runs beside the
+    // drain, not in it, so it never delays an acknowledgement or stalls the drain; it is tracked,
+    // so shutdown lets it land before it tears the stores down.
+    if (
+      entry.kind === 'session.created' ||
+      entry.kind === 'session.saved' ||
+      entry.kind === 'session.deleted'
+    ) {
+      trackSessionInputSettlement(updateSessionAssetClaims(entry, outboxSessionStore));
     }
     // AB-389 (Codex P2 review finding, PR #598, "Isolate subscriber
     // exceptions while draining the outbox"): `emitter.dispatch()`
