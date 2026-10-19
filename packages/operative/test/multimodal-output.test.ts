@@ -1543,3 +1543,43 @@ describe('a cached streamed response never rewinds a historical row (correction)
     ]);
   });
 });
+
+describe('an onError retry never reissues a provider contract failure (correction)', () => {
+  it('fails the step instead of calling generate again', async () => {
+    const client = createMockAnthropicClient([
+      {
+        content: [{ type: 'tool_search_tool_result', tool_use_id: 'x', content: [] }],
+        usage: usageOf,
+      },
+      { content: [{ type: 'text', text: 'recovered' }], usage: usageOf },
+    ] as never);
+    const hooks = new HookRegistry<OperativeHookMap>();
+    let errorHookCalls = 0;
+    hooks.on('onError', async () => {
+      errorHookCalls += 1;
+      return 'retry';
+    });
+
+    const result = await run(
+      baseOptions(createAnthropicProvider({ model: 'claude-sonnet-4-6', client }), { hooks }),
+    );
+
+    expect(result.finishReason).toBe('error');
+    expect(client._calls).toHaveLength(1);
+    expect(errorHookCalls).toBe(1);
+  });
+
+  it('still honors retry for an ordinary failure', async () => {
+    const client = createMockAnthropicClient(
+      [{ content: [{ type: 'text', text: 'ok' }], usage: usageOf }] as never,
+      [Object.assign(new Error('overloaded'), { status: 529 })],
+    );
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onError', async () => 'retry');
+    const result = await run(
+      baseOptions(createAnthropicProvider({ model: 'claude-sonnet-4-6', client }), { hooks }),
+    );
+    expect(result.finishReason).toBe('stop-condition');
+    expect(client._calls).toHaveLength(2);
+  });
+});

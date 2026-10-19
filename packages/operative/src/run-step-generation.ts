@@ -29,6 +29,7 @@ import {
   applyWaterfallHandlerErrorPolicy,
   callGenerateWithRetry,
   explicitAbortReason,
+  isNonRetryableGenerateError,
   runHookSilently,
 } from './run-step-utilities';
 import type { ToolChoice } from './structured-output/types';
@@ -502,7 +503,13 @@ export async function executeGeneration(
             }
           }
 
-          if (errorAction === 'retry' && stepRetryCount < deps.maxErrorRetries) {
+          // A provider contract failure, a refused admission and a parts mismatch are the same on
+          // every attempt, so `retry` cannot recover them (see `isNonRetryableGenerateError`).
+          if (
+            errorAction === 'retry' &&
+            stepRetryCount < deps.maxErrorRetries &&
+            !isNonRetryableGenerateError(error)
+          ) {
             stepRetryCount++;
             shouldRetryStep = true;
             continue;
