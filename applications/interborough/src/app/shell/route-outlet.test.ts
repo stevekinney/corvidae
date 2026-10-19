@@ -39,7 +39,7 @@ function mount() {
 describe('the route outlet', () => {
   test('renders a placeholder view in its frame, empty once the Bureau answers', async () => {
     restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
-    landAt('/chat/session-1');
+    landAt('/chat');
     const { container, findByRole } = mount();
     expect(
       await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),

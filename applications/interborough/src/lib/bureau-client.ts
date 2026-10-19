@@ -6,48 +6,48 @@
  *
  * There is no sign-in. The host serves every request as the one local caller.
  */
-import { HttpClientError, type FaultCode } from '@lostgradient/weft';
+import { HttpClientError } from '@lostgradient/weft';
+import { z } from 'zod';
+
+/** The part of `fetch` the application's requests use, so a test can stand a stub in for it. */
+export type Fetcher = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 /** Where the host mounts the Bureau handler. */
 export const BUREAU_PATH = '/bureau';
 
 /** A session (a Bureau context), as `bureau.contexts.get` and `.list` show it. */
-export type ChatContext = {
-  readonly id: string;
-  readonly owner: string | null;
-  readonly agentName: string;
-  readonly title: string | null;
-  readonly lastMessagePreview: string | null;
-  readonly messageCount: number;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly activity: 'running' | 'awaiting-input' | 'idle';
-};
+export const chatContextSchema = z.object({
+  id: z.string(),
+  owner: z.string().nullable(),
+  agentName: z.string(),
+  title: z.string().nullable(),
+  lastMessagePreview: z.string().nullable(),
+  messageCount: z.number(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  activity: z.enum(['running', 'awaiting-input', 'idle']),
+});
+
+export type ChatContext = z.infer<typeof chatContextSchema>;
 
 /** What `bureau.contexts.input` answers for an input it admitted. */
-export type ContextInputReceipt = {
-  readonly outcome: 'admitted' | 'replayed';
-  readonly receipt: { readonly id: string; readonly state: string };
-};
+const contextInputReceiptSchema = z.object({
+  outcome: z.enum(['admitted', 'replayed']),
+  receipt: z.object({ id: z.string(), state: z.string() }),
+});
 
-type JsonRpcFault = {
-  readonly message?: unknown;
-  readonly data?: { readonly weftCode?: unknown; readonly httpStatus?: unknown } & Record<
-    string,
-    unknown
-  >;
-};
+export type ContextInputReceipt = z.infer<typeof contextInputReceiptSchema>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Calls one Bureau operation and returns its result, or throws the fault it answered. */
-export async function callBureau<Result>(
+export async function callBureau(
   method: string,
   params: unknown,
-  options: { readonly signal?: AbortSignal; readonly fetch?: typeof fetch } = {},
-): Promise<Result> {
+  options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
+): Promise<unknown> {
   const send = options.fetch ?? fetch;
   const response = await send(`${BUREAU_PATH}/jsonrpc`, {
     method: 'POST',
@@ -62,37 +62,37 @@ export async function callBureau<Result>(
     throw new HttpClientError(response.status, response.statusText || `HTTP ${response.status}`);
   }
   if (isRecord(body) && isRecord(body['error'])) {
-    const fault = body['error'] as JsonRpcFault;
-    const data = isRecord(fault.data) ? fault.data : undefined;
-    const status = typeof data?.httpStatus === 'number' ? data.httpStatus : response.status;
+    const fault = body['error'];
+    const data = isRecord(fault['data']) ? fault['data'] : undefined;
+    const status = typeof data?.['httpStatus'] === 'number' ? data['httpStatus'] : response.status;
+    // The status says what kind of fault it is, which is all the console's treatments read.
     throw new HttpClientError(
       status,
-      typeof fault.message === 'string' ? fault.message : `HTTP ${status}`,
-      {
-        faultCode: typeof data?.weftCode === 'string' ? (data.weftCode as FaultCode) : undefined,
-        data,
-      },
+      typeof fault['message'] === 'string' ? fault['message'] : `HTTP ${status}`,
+      { data },
     );
   }
   if (!isRecord(body) || !('result' in body)) {
     throw new HttpClientError(response.status, 'The Bureau answered with no result.');
   }
-  return body['result'] as Result;
+  return body['result'];
 }
 
 /** One session, with its agent and title. A session the caller cannot see is a not-found fault. */
-export function getContext(
+export async function getContext(
   contextId: string,
   options?: { readonly signal?: AbortSignal },
 ): Promise<ChatContext> {
-  return callBureau<ChatContext>('bureau.contexts.get', { contextId }, options);
+  return chatContextSchema.parse(await callBureau('bureau.contexts.get', { contextId }, options));
 }
 
 /** Sends an input to a session's run in flight (`bureau.contexts.input`, steer delivery). */
-export function sendContextInput(
+export async function sendContextInput(
   contextId: string,
   input: { readonly id: string; readonly payload: unknown },
   options?: { readonly signal?: AbortSignal },
 ): Promise<ContextInputReceipt> {
-  return callBureau<ContextInputReceipt>('bureau.contexts.input', { contextId, input }, options);
+  return contextInputReceiptSchema.parse(
+    await callBureau('bureau.contexts.input', { contextId, input }, options),
+  );
 }

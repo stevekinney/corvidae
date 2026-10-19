@@ -18,9 +18,7 @@ import {
   type MessageInput,
 } from '@lostgradient/chat';
 
-import { mergeAGUIMessages } from 'conversationalist';
-
-import { sendContextInput } from '../../lib/bureau-client.ts';
+import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
 import { createChatRunWiring, type ChatRunWiring } from './run-wiring.ts';
 
 export type ChatSessionOptions = {
@@ -29,7 +27,7 @@ export type ChatSessionOptions = {
   /** The agent the session's runs name. */
   readonly agentName: () => string;
   /** Replaces `fetch` for the AG-UI requests, for tests. */
-  readonly fetch?: typeof fetch;
+  readonly fetch?: Fetcher;
 };
 
 /** The text a follow-up sends: the Bureau takes text, or a list of parts, as session input. */
@@ -102,8 +100,8 @@ export class ChatSessionState {
   async attach(): Promise<void> {
     this.attaching = true;
     try {
-      const snapshot = await this.#wiring.attach(this.sessionId, this.#abort.signal);
-      if (snapshot === undefined) return;
+      const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
+      if (restored === undefined) return;
       // The stream's own events, not this row, are the transcript: the terminal history drops it.
       // Errors are the controller's to report.
       void this.controller.adapter
@@ -112,10 +110,6 @@ export class ChatSessionState {
       // The run is going, so the transcript is restored now and the person sees it while the run
       // carries on, not at its end. It goes ahead of the row the turn is streaming into, and the
       // terminal history replaces each of these rows with its own.
-      const restored = mergeAGUIMessages(
-        createConversationHistory({ id: this.sessionId }),
-        snapshot,
-      );
       this.conversation = {
         ...this.conversation,
         ids: [...restored.ids, ...this.conversation.ids],

@@ -6,6 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
+import { VIEW_COPY } from '../../src/app/copy.ts';
 import {
   approveThroughMount,
   expectWaiting,
@@ -78,6 +79,7 @@ test.describe('a tool approval', () => {
   test('raised by a run the page started is decided in the alert above the transcript', async ({
     page,
     request,
+    checkA11y,
   }) => {
     const threadId = await toolRunnerSession(request, { settled: true });
     await page.goto(`/chat/${threadId}`);
@@ -89,6 +91,7 @@ test.describe('a tool approval', () => {
     await expect(page.getByText('lookup-order').first()).toBeVisible();
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
     await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(0);
+    await checkA11y('a session waiting on an approval');
     await alert.getByRole('button', { name: 'Approve' }).click();
 
     await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
@@ -178,9 +181,8 @@ test.describe('a follow-up sent while the run is going', () => {
     await releaseBarrier(request);
     await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
     await expect(page.getByText('Also this')).toHaveCount(1);
-    expect(await indexIn(page, 'Also this')).toBeLessThan(
-      (await transcript(page).textContent())?.lastIndexOf(FIRST_REPLY) ?? -1,
-    );
+    const content = (await transcript(page).textContent()) ?? '';
+    expect(await indexIn(page, 'Also this')).toBeLessThan(content.lastIndexOf(FIRST_REPLY));
   });
 
   test('is marked failed with a retry when this client stopped the run, and retrying sends it as a turn', async ({
@@ -222,3 +224,72 @@ test('a reload while the run is going restores the transcript and continues live
   await releaseBarrier(request);
   await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
 });
+
+/** The one request the view frame's probe makes for a session, answered the way the server would. */
+async function answerSessionProbe(
+  page: Page,
+  outcome: 'loading' | 'error' | 'forbidden',
+): Promise<void> {
+  await page.route('**/bureau/jsonrpc', async (route) => {
+    if (!(route.request().postData() ?? '').includes('"bureau.contexts.get"')) {
+      await route.fallback();
+      return;
+    }
+    if (outcome === 'loading') return;
+    await route.fulfill(
+      outcome === 'error'
+        ? { status: 500, json: { error: 'The server broke.' } }
+        : { status: 403, json: { error: 'Forbidden' } },
+    );
+  });
+}
+
+for (const width of [375, 1280] as const) {
+  test.describe(`a session's view at ${width} pixels`, () => {
+    test.beforeEach(async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+    });
+
+    test('is ready for a session the caller can see, and passes axe', async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      const threadId = newThreadId('states');
+      await runToEnd(request, 'assistant', threadId, 'Hello');
+      await page.goto(`/chat/${threadId}`);
+      await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+      await expect(page.getByRole('textbox')).toBeVisible();
+      await checkA11y(`a session, ready, at ${width}px`);
+    });
+
+    test('is not found for a session that does not exist, with the words copy.ts holds', async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.goto('/chat/no-such-session');
+      const frame = page.locator('[data-view="chat"]');
+      await expect(frame).toHaveAttribute('data-state', 'not-found');
+      await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+        VIEW_COPY.chat.notFound?.title ?? '',
+      );
+      await checkA11y(`a session, not found, at ${width}px`);
+    });
+
+    for (const outcome of ['loading', 'error', 'forbidden'] as const) {
+      test(`is ${outcome} when the Bureau answers that way, and passes axe`, async ({
+        page,
+        checkA11y,
+      }) => {
+        await answerSessionProbe(page, outcome);
+        await page.goto('/chat/any-session');
+        const frame = page.locator('[data-view="chat"]');
+        await expect(frame).toHaveAttribute('data-state', outcome);
+        await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+          VIEW_COPY.chat[outcome].title,
+        );
+        await checkA11y(`a session, ${outcome}, at ${width}px`);
+      });
+    }
+  });
+}

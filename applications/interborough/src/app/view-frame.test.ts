@@ -192,3 +192,81 @@ describe('a refused probe', () => {
     await waitFor(() => expect(requests.length).toBe(2));
   });
 });
+
+describe('one chat session’s page', () => {
+  const parameters = { sessionId: 'session-1' };
+
+  /** Answers `bureau.contexts.get` the way the Bureau would, and records what was asked. */
+  function stubContext(answer: () => Response): { requests: string[] } {
+    const requests: string[] = [];
+    restore = installFetchImplementation(async (input, init) => {
+      const call = operationOf(init?.body);
+      requests.push(`${requestUrl(input).pathname} ${call?.method ?? ''}`.trim());
+      return answer();
+    });
+    return { requests };
+  }
+
+  const rpcFault = (status: number, code: string) => () =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 'bureau.contexts.get',
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+
+  test('asks the Bureau for that session, and shows its content when the Bureau has it', async () => {
+    const { requests } = stubContext(() =>
+      Response.json({ jsonrpc: '2.0', id: 'bureau.contexts.get', result: { id: 'session-1' } }),
+    );
+    const { container, findByTestId } = mount('chat', { parameters });
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toEqual(['/bureau/jsonrpc bureau.contexts.get']);
+  });
+
+  test('is not found when the Bureau says there is no such session, with the words copy.ts holds', async () => {
+    stubContext(rpcFault(404, 'NotFound'));
+    const { container, findByRole } = mount('chat', { parameters });
+    const notFound = VIEW_COPY.chat.notFound;
+
+    expect(await findByRole('heading', { level: 1, name: notFound?.title ?? '' })).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
+    expect(container.textContent).toContain(notFound?.description ?? '');
+  });
+
+  test('is forbidden when the Bureau refuses the caller', async () => {
+    stubContext(rpcFault(403, 'Forbidden'));
+    const { container, findByRole } = mount('chat', { parameters });
+
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('is failing, not not-found, when the Bureau breaks', async () => {
+    stubContext(() => Response.json({ error: 'The server broke.' }, { status: 500 }));
+    const { container, findByRole } = mount('chat', { parameters });
+
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.error.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('error');
+  });
+
+  test('two sessions do not share one answer', async () => {
+    stubContext(rpcFault(404, 'NotFound'));
+    const first = mount('chat', { parameters });
+    await first.findByRole('heading', { level: 1, name: VIEW_COPY.chat.notFound?.title ?? '' });
+    first.unmount();
+    restore?.();
+
+    stubContext(() =>
+      Response.json({ jsonrpc: '2.0', id: 'bureau.contexts.get', result: { id: 'session-2' } }),
+    );
+    const second = mount('chat', { parameters: { sessionId: 'session-2' } });
+
+    expect(await second.findByTestId('content')).not.toBeNull();
+  });
+});

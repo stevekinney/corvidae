@@ -419,7 +419,8 @@ export function openRunStream(
    * delivered it, and where in the thread the run put it.
    */
   const writeDeliveredInputs = async (): Promise<void> => {
-    const history = (await settledSession())?.conversationHistory;
+    const session = await settledSession();
+    const history = session?.conversationHistory;
     if (history === undefined) return;
     const delivered = history.ids.some(
       (id) => history.messages[id]?.metadata?.['sessionInputId'] !== undefined,

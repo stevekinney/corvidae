@@ -20,8 +20,16 @@
  * events. A run that stops on a tool approval is shown to the chat as a result row parked on
  * `action_required`, which is what puts the approval in the conversation.
  */
-import type { Message as AGUIMessage, Interrupt, ResumeEntry, RunAgentInput } from '@ag-ui/core';
 import {
+  EventType,
+  type Interrupt,
+  type MessagesSnapshotEvent,
+  type ResumeEntry,
+  type RunAgentInput,
+} from '@ag-ui/core';
+import { EventSchemas } from '@ag-ui/core/schemas';
+import {
+  createConversationHistory,
   findToolResultMessage,
   mapAGUIEventsToChatStream,
   removeMessage,
@@ -33,9 +41,9 @@ import {
   type ToolResult,
 } from '@lostgradient/chat';
 import type { ApprovalResolution } from '@lostgradient/cinder';
-import { agUiConversationAdapter } from 'conversationalist';
+import { agUiConversationAdapter, mergeAGUIMessages } from 'conversationalist';
 
-import { BUREAU_PATH } from '../../lib/bureau-client.ts';
+import { BUREAU_PATH, type Fetcher } from '../../lib/bureau-client.ts';
 import { readEvents } from './ag-ui-events.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
@@ -43,6 +51,12 @@ export const AG_UI_PATH = `${BUREAU_PATH}/ag-ui`;
 
 /** The marker `@lostgradient/chat` stamps on a row the user sent while a run was working. */
 const FOLLOW_UP_KEY = '_followUp';
+
+/** Whether `event` is a valid `MESSAGES_SNAPSHOT`. */
+function isMessagesSnapshot(event: unknown): event is MessagesSnapshotEvent {
+  const parsed = EventSchemas.safeParse(event);
+  return parsed.success && parsed.data.type === EventType.MESSAGES_SNAPSHOT;
+}
 
 export type ChatRunWiringOptions = {
   /**
@@ -54,7 +68,7 @@ export type ChatRunWiringOptions = {
   /** The agent a start request names. Read per request: it is the session's agent. */
   readonly agentName: () => string;
   /** Replaces `fetch`, for tests. */
-  readonly fetch?: typeof fetch;
+  readonly fetch?: Fetcher;
 };
 
 export type ChatRunWiring = {
@@ -66,10 +80,10 @@ export type ChatRunWiring = {
   resolveToolApproval(toolCallId: string, resolution: ApprovalResolution): Promise<ToolResult>;
   /**
    * Opens the run `threadId` has going, or waiting on an approval, for the next turn to read.
-   * Resolves the thread's messages as the stream's snapshot gave them, or `undefined` when the
-   * thread has nothing to attach to, and then opens nothing.
+   * Resolves the thread as the stream's snapshot gave it, or `undefined` when the thread has
+   * nothing to attach to, and then opens nothing.
    */
-  attach(threadId: string, signal?: AbortSignal): Promise<readonly AGUIMessage[] | undefined>;
+  attach(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
   /** Drops an attach that was opened and never read. */
   discardAttach(): Promise<void>;
 };
@@ -263,9 +277,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       send(`${AG_UI_PATH}/runs/${encoded}`, { headers: { accept: 'text/event-stream' } }),
     );
     try {
-      for await (const _event of ended) {
-        // Only the end matters.
-      }
+      // Only the end matters.
+      await Array.fromAsync(ended);
     } catch {
       // A run that is already over answers with an error event or none.
     }
@@ -373,14 +386,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       const snapshot = await events.next();
       const opened = [started.value, ...(snapshot.done === true ? [] : [snapshot.value])];
       const messages =
-        !snapshot.done && isRecord(snapshot.value) && snapshot.value['type'] === 'MESSAGES_SNAPSHOT'
-          ? (snapshot.value['messages'] as AGUIMessage[])
-          : [];
+        snapshot.done !== true && isMessagesSnapshot(snapshot.value) ? snapshot.value.messages : [];
+      const restored = mergeAGUIMessages(createConversationHistory({ id: threadId }), messages);
       attached = (async function* () {
         yield* opened;
         yield* events;
       })();
-      return messages;
+      return restored;
     },
     async discardAttach() {
       const dropped = attached;

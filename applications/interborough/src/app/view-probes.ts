@@ -1,6 +1,6 @@
 import type { HttpClient } from '@lostgradient/weft';
 
-import { getContext } from '../lib/bureau-client.ts';
+import { callBureau } from '../lib/bureau-client.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -49,7 +49,8 @@ export function probeFor(view: ViewName, parameters: ViewProbeParameters): ViewP
       if (parameters['sessionId'] !== undefined) {
         const sessionId = parameters['sessionId'];
         return async () => {
-          await getContext(sessionId);
+          // Only whether it exists and may be seen matters here; the page reads what it shows.
+          await callBureau('bureau.contexts.get', { contextId: sessionId });
           return { empty: false };
         };
       }

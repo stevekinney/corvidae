@@ -82,7 +82,8 @@ describe('extra agents', () => {
   test('an extra agent that is not published is refused, and the seeded ones are unchanged', async () => {
     const host = await start({ extraAgents: { agents: { extra: extraAgent }, published: [] } });
     expect(await runEventTypes(host, 'extra', 'thread-hidden')).toEqual(['RUN_ERROR']);
-    expect((await runEventTypes(host, 'assistant', 'thread-seeded')).at(-1)).toBe('RUN_FINISHED');
+    const seeded = await runEventTypes(host, 'assistant', 'thread-seeded');
+    expect(seeded.at(-1)).toBe('RUN_FINISHED');
   });
 
   test('an extra agent is listed with the published ones', async () => {
@@ -101,5 +102,75 @@ describe('extra agents', () => {
       'request-human-input',
       'tool-runner',
     ]);
+  });
+});
+
+/** A `RunAgentInput` body, with whatever `extra` adds, for the thread `threadId`. */
+function body(threadId: string, extra: Record<string, unknown> = {}) {
+  return JSON.stringify({
+    threadId,
+    runId: `run-${crypto.randomUUID()}`,
+    messages: [{ id: `user-${crypto.randomUUID()}`, role: 'user', content: 'Refund order-1001' }],
+    tools: [],
+    context: [],
+    state: {},
+    forwardedProps: {},
+    ...extra,
+  });
+}
+
+async function streamOf(host: Host, agent: string, text: string): Promise<string> {
+  const response = await fetch(new URL(`/bureau/ag-ui/agents/${agent}/run`, host.url), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+    body: text,
+  });
+  return response.text();
+}
+
+const interruptOf = (stream: string): string =>
+  /"interrupts":\[\{"id":"([^"]+)"/.exec(stream)?.[1] ?? '';
+
+describe('the tool-runner approval over the mount', () => {
+  test('approving the refund runs a run that reports it, and a later turn raises its own approval', async () => {
+    const host = await start();
+    const first = await streamOf(host, 'tool-runner', body('thread-refund'));
+    expect(first).toContain('"type":"interrupt"');
+
+    const approved = await streamOf(
+      host,
+      'tool-runner',
+      body('thread-refund', {
+        messages: [],
+        resume: [
+          { interruptId: interruptOf(first), status: 'resolved', payload: { decision: 'approve' } },
+        ],
+      }),
+    );
+    expect(approved).toContain('Order order-1001 was refunded.');
+    expect(approved).toContain('"type":"success"');
+
+    // The next turn's calls are its own: a call identifier names one call in a conversation.
+    const next = await streamOf(host, 'tool-runner', body('thread-refund'));
+    expect(next).toContain('"type":"interrupt"');
+    expect(next).toContain('seeded-issue-refund-2');
+  });
+
+  test('denying the refund reports that it was not issued', async () => {
+    const host = await start();
+    const first = await streamOf(host, 'tool-runner', body('thread-denied'));
+
+    const denied = await streamOf(
+      host,
+      'tool-runner',
+      body('thread-denied', {
+        messages: [],
+        resume: [
+          { interruptId: interruptOf(first), status: 'resolved', payload: { decision: 'deny' } },
+        ],
+      }),
+    );
+
+    expect(denied).toContain('The refund of order order-1001 was not issued.');
   });
 });
