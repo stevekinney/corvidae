@@ -55,6 +55,7 @@ export {
   securitySchemesFromAuthConfig,
   type A2AAuthConfigShape,
   type A2ASecurityDeclaration,
+  type A2ASecurityTransportEvidence,
 } from './security-schemes.ts';
 export {
   A2APushConfigurationConflictError,
@@ -70,3 +71,24 @@ export {
   type WeftA2ATaskStore,
   type WeftA2ATaskStoreOptions,
 } from './task-store.ts';
+export {
+  createWorkflowAgentCard,
+  type WorkflowAgentCardOptions,
+  type WorkflowAgentInputMode,
+} from './workflow-agent-card.ts';
+export {
+  createWorkflowAgentExecutor,
+  type WorkflowAgent,
+  type WorkflowAgentExecutorOptions,
+} from './workflow-agent-executor.ts';
+export {
+  SIGNAL_NAME_METADATA_KEY,
+  type WorkflowAgentInput,
+  type WorkflowAgentResponder,
+} from './workflow-agent-messages.ts';
+export {
+  RESULT_ARTIFACT_ID,
+  SIGNAL_NAMES_METADATA_KEY,
+  resultArtifact,
+  type WorkflowResultArtifacts,
+} from './workflow-task-projection.ts';

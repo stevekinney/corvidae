@@ -32,6 +32,7 @@ import {
   scanRecords,
   scopedKey,
   siblingKey,
+  taskEventPrefix,
   withCompareAndSwap,
 } from './store-support.ts';
 
@@ -139,10 +140,15 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
   const terminalRetentionMs = options.terminalRetentionMs ?? DEFAULT_A2A_TERMINAL_RETENTION_MS;
 
   /**
-   * Delete one expired task and its push configurations, conditioned on the task
-   * record it was judged by and on the task's push head, which every push create and
-   * delete bumps. Resolves `false`, deleting nothing, once the task has been saved
-   * again (or removed) since it was judged.
+   * Delete one expired task, its push configurations, and, for a workflow agent's
+   * task, its durable events, conditioned on the task record it was judged by and on
+   * the task's push head, which every push create and delete bumps. Resolves `false`,
+   * deleting nothing, once the task has been saved again (or removed) since it was
+   * judged.
+   *
+   * A workflow agent's owner record stays. The engine's start idempotency mapping is
+   * permanent, so another caller who sends the same user and `messageId` after the
+   * prune is handed the same workflow; the owner record is what refuses them.
    */
   async function pruneTask(key: string, judged: Uint8Array): Promise<boolean> {
     const headKey = siblingKey(key, 'task', 'push-head');
@@ -155,6 +161,9 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
       if (head !== null) operations.push({ type: 'delete', key: headKey });
       for await (const [pushKey] of storage.scan(pushPrefix)) {
         operations.push({ type: 'delete', key: pushKey });
+      }
+      for await (const [eventKey] of storage.scan(taskEventPrefix(key))) {
+        operations.push({ type: 'delete', key: eventKey });
       }
       return {
         conditions: [
@@ -173,8 +182,14 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
       await withCompareAndSwap(storage, key, async () => {
         const current = await storage.get(key);
         // A record this release cannot read is never overwritten by an older format.
-        if (current !== null) decodeRecord(key, current);
-        const value = encodeRecord({ task: Task.toJSON(task), savedAt: now() });
+        const previous = current === null ? undefined : decodeRecord(key, current);
+        // A workflow agent's task keeps the sequence of its last durable event.
+        const sequence = previous?.['sequence'];
+        const value = encodeRecord({
+          task: Task.toJSON(task),
+          savedAt: now(),
+          ...(typeof sequence === 'number' ? { sequence } : {}),
+        });
         return {
           conditions: [{ key, expectedValue: current }],
           operations: [{ type: 'put', key, value }],

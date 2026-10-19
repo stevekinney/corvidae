@@ -23,6 +23,9 @@ dist/
 # success and removed on failure; an interrupted build can leave one behind.
 applications/interborough/.build-staging-*/
 applications/interborough/.build-previous-*/
+# The A2A TCK checkout and its virtual environment and reports, which Weft's
+# `test:a2a-tck` keeps between runs (also covered by `.cache/` above).
+packages/weft/.cache/
 artifacts/
 # The playground's build scratch directories; they are deleted when a build ends,
 # but an interrupted build can leave them behind.
