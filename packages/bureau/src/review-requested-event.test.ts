@@ -145,7 +145,9 @@ describe('review.requested', () => {
         kind: 'tool-approval',
         callId: 'charge-1',
       });
-      expect(JSON.stringify(requested)).not.toContain('424242');
+      // The tool arguments (`{ cents: 424242 }`) never reach the event. Matched by the key, not the
+      // number, which a clock reading or an id can contain by chance.
+      expect(JSON.stringify(requested)).not.toContain('"cents"');
       expect(charges).toEqual([]);
     } finally {
       await bureau.dispose();
