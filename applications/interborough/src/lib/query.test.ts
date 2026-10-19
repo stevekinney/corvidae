@@ -16,6 +16,17 @@ import { keepPreviousData } from '@tanstack/svelte-query';
 import { createQueryClient, queryKeys } from './query.ts';
 
 describe('queryKeys — plan §4 list, verbatim', () => {
+  test('agents, which the editor invalidates by one prefix', () => {
+    expect(queryKeys.agents.definition('researcher')).toEqual([
+      'agents',
+      'definition',
+      'researcher',
+    ]);
+    expect(queryKeys.agents.revisions('researcher')).toEqual(['agents', 'revisions', 'researcher']);
+    expect(queryKeys.agents.catalog()).toEqual(['agents', 'catalog']);
+    expect(queryKeys.hostPaths()).toEqual(['host', 'paths']);
+  });
+
   test('workflows.list', () => {
     const filter = { status: 'running' as const };
     expect(queryKeys.workflows.list(filter)).toEqual(['workflows', 'list', filter]);

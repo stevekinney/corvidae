@@ -1,5 +1,6 @@
 import type { HttpClient } from '@lostgradient/weft';
 
+import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -37,6 +38,24 @@ async function probeBureau(): Promise<ViewProbeResult> {
   return { empty: true };
 }
 
+/** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
+async function probeAgentCatalog(): Promise<ViewProbeResult> {
+  await getAgentCatalog();
+  return { empty: false };
+}
+
+/**
+ * The editor for one agent needs an agent file it may edit. A code-defined agent can be read but
+ * not written, so it answers as one that is not there, as the Bureau does for a write.
+ */
+async function probeEditableAgent(id: string): Promise<ViewProbeResult> {
+  const agent = await getAgentDefinition(id);
+  if (agent.source === 'code') {
+    throw new ViewProbeFault(`The agent "${id}" is defined in code, so it cannot be edited.`, 404);
+  }
+  return { empty: false };
+}
+
 /**
  * The probe for a view, or `undefined` when the view needs none because the route itself says
  * what it is showing: one run's detail page handles a run that is missing in its own words.
@@ -47,6 +66,10 @@ export function probeFor(view: ViewName, parameters: ViewProbeParameters): ViewP
     case 'agents':
     case 'audit':
       return probeBureau;
+    case 'agent-editor': {
+      const id = parameters['id'];
+      return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
+    }
     case 'workflows':
       return async (client) => {
         await client.operations['weft.workflows.definitions.list']({});

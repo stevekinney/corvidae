@@ -111,6 +111,13 @@ const DARWIN_BASELINE: CoverageBaseline = {
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
     'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
     'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
+    // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
+    'src/routes/agent-editor': {
+      linesFound: 1444,
+      linesHit: 1430,
+      functionsFound: 330,
+      functionsHit: 325,
+    },
     'src/routes/dashboard': {
       linesFound: 1410,
       linesHit: 1174,
@@ -170,6 +177,13 @@ const LINUX_BASELINE: CoverageBaseline = {
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
     'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
     'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
+    // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
+    'src/routes/agent-editor': {
+      linesFound: 1444,
+      linesHit: 1430,
+      functionsFound: 330,
+      functionsHit: 325,
+    },
     'src/routes/dashboard': {
       linesFound: 1410,
       linesHit: 1174,

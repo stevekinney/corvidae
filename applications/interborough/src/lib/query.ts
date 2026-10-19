@@ -93,6 +93,16 @@ export const queryKeys = {
   retention: () => ['retention'] as const,
   metrics: () => ['metrics'] as const,
   principal: () => ['principal'] as const,
+  agents: {
+    /** One agent as `bureau.agents.definitions.get` shows it. */
+    definition: (id: string) => ['agents', 'definition', id] as const,
+    /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */
+    revisions: (id: string) => ['agents', 'revisions', id] as const,
+    /** The models and tools an agent may name (`bureau.agents.catalog`). */
+    catalog: () => ['agents', 'catalog'] as const,
+  },
+  /** Where the host keeps what a person may edit by hand (`/host/paths`). */
+  hostPaths: () => ['host', 'paths'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */
   view: (view: string, instance: string | null) => ['view', view, instance] as const,
   /** `weft.system.lease` (COR-124), read only by the System route's Health & lease tab. */

@@ -20,6 +20,7 @@ export interface RouteDefinition {
 }
 
 const placeholder = () => import('../routes/placeholder/index.svelte');
+const agentEditor = () => import('../routes/agent-editor/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
@@ -27,6 +28,9 @@ export const routes: readonly RouteDefinition[] = [
   { pattern: '/chat', view: 'chat', load: placeholder },
   { pattern: '/chat/:sessionId', view: 'chat', load: placeholder },
   { pattern: '/agents', view: 'agents', load: placeholder },
+  // `new` is a path segment, not an agent: this route comes before any `/agents/:id`.
+  { pattern: '/agents/new', view: 'agent-editor', load: agentEditor },
+  { pattern: '/agents/:id/edit', view: 'agent-editor', load: agentEditor },
   // `/workflows` is the catalog of workflow definitions. A run of one lives under `/runs`.
   { pattern: '/workflows', view: 'workflows', load: placeholder },
   { pattern: '/workflows/:type', view: 'workflows', load: placeholder },

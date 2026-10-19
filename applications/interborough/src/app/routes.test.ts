@@ -92,6 +92,36 @@ describe('the route table', () => {
   });
 });
 
+describe('the agent editor’s routes', () => {
+  test('are /agents/new and /agents/:id/edit, both in the agent editor view', () => {
+    expect(matchRoute('/agents/new')).toEqual({ pattern: '/agents/new', params: {} });
+    expect(matchRoute('/agents/researcher/edit')).toEqual({
+      pattern: '/agents/:id/edit',
+      params: { id: 'researcher' },
+    });
+    for (const pattern of ['/agents/new', '/agents/:id/edit']) {
+      expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
+        'agent-editor',
+      );
+    }
+  });
+
+  test('come before any route that would read `new` as an agent identifier', () => {
+    const patterns = routes.map((route) => route.pattern);
+    const newRoute = patterns.indexOf('/agents/new');
+    expect(newRoute).toBeGreaterThanOrEqual(0);
+    for (const [index, pattern] of patterns.entries()) {
+      if (/^\/agents\/:[a-z]+$/i.test(pattern)) expect(index, pattern).toBeGreaterThan(newRoute);
+    }
+  });
+
+  test('load one component, which both routes render', async () => {
+    const editor = await defaultOf(import('../routes/agent-editor/index.svelte'));
+    expect(await componentOf('/agents/new')).toBe(editor);
+    expect(await componentOf('/agents/:id/edit')).toBe(editor);
+  });
+});
+
 describe('a link to a run', () => {
   test('starts with /runs/', () => {
     expect(workflowDetailPath('run-1')).toBe('/runs/run-1');

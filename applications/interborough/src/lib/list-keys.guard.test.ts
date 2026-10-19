@@ -14,6 +14,7 @@ const SOURCE_ROOT = join(import.meta.dir, '..');
 /** Lists over server records with no id of their own, which must go through the helper. */
 const OCCURRENCE_KEYED_LISTS: readonly string[] = [
   'app/fault-boundary.svelte',
+  'routes/agent-editor/agent-editor-page.svelte',
   'routes/system/alerts-tab.svelte',
   'routes/workers/contract-failure-notice.svelte',
   'routes/workers/diagnostics-view.svelte',

@@ -16,6 +16,7 @@ const WIDTHS = [375, 1280] as const;
 const PATHS: Readonly<Record<ViewName, string>> = {
   chat: '/chat',
   agents: '/agents',
+  'agent-editor': '/agents/new',
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
@@ -27,7 +28,8 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   engine: '/engine',
 };
 
-type Outcome = ViewStateName | 'ready';
+/** The states this spec drives from the view's own path: a view is not found only at an item's address, which `21-chat.spec.ts` covers. */
+type Outcome = Exclude<ViewStateName, 'not-found'> | 'ready';
 
 /** How a view's probe is recognised on the wire, and what an empty answer looks like. */
 type ProbeRoute = {
@@ -46,6 +48,7 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   chat: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
   agents: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
   audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
+  'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
   workflows: jsonRpcProbe('weft.workflows.definitions.list'),
   runs: {
     matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',
@@ -116,8 +119,7 @@ for (const view of VIEW_NAMES) {
         await expect(frame).toHaveAttribute('data-state', outcome);
         if (outcome !== 'ready') {
           const copy = VIEW_COPY[view];
-          const title =
-            outcome === 'empty' ? copy.empty?.title : copy[outcome as ViewStateName]?.title;
+          const title = outcome === 'empty' ? copy.empty?.title : copy[outcome]?.title;
           await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
         }
         await checkA11y(`${view} — ${outcome} at ${width}px`);

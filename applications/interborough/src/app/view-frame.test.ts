@@ -43,7 +43,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   const url = requestUrl(input);
   const call = operationOf(init?.body);
   if (call !== undefined) {
-    return Response.json({ jsonrpc: '2.0', id: call.id, result: { items: [] } });
+    // The agent editor's probe parses the catalog, so it answers one.
+    const result =
+      call.method === 'bureau.agents.catalog' ? { models: [], tools: [] } : { items: [] };
+    return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
   if (url.pathname.endsWith('/schedules')) {

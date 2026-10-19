@@ -19,7 +19,7 @@
   import { untrack, type Snippet } from 'svelte';
 
   import { Button, EmptyState, Skeleton } from '@lostgradient/cinder';
-  import { CircleAlert, Inbox, Lock } from '@lucide/svelte';
+  import { CircleAlert, Inbox, Lock, SearchX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
@@ -57,7 +57,10 @@
 
   const probeQuery = createQuery(
     () => ({
-      queryKey: queryKeys.view(initial.view, initial.parameters['id'] ?? null),
+      queryKey: queryKeys.view(
+        initial.view,
+        initial.parameters['id'] ?? initial.parameters['sessionId'] ?? null,
+      ),
       queryFn: () => (probe ? probe(client) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
@@ -75,13 +78,25 @@
     return treatment?.kind === 'unauthorized' && treatment.mode === 'forbidden';
   }
 
-  const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'ready'>(() => {
-    if (scopeDenied) return 'forbidden';
-    if (probe === undefined || creating) return 'ready';
-    if (probeQuery.isError) return isForbiddenFault(probeQuery.error) ? 'forbidden' : 'error';
-    if (probeQuery.isPending) return 'loading';
-    return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
-  });
+  function isNotFoundFault(error: unknown): boolean {
+    if (error instanceof ViewProbeFault) return error.status === 404;
+    return classifyFault(error)?.kind === 'not-found';
+  }
+
+  const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'not-found' | 'ready'>(
+    () => {
+      if (scopeDenied) return 'forbidden';
+      if (probe === undefined || creating) return 'ready';
+      if (probeQuery.isError) {
+        if (isForbiddenFault(probeQuery.error)) return 'forbidden';
+        return copy.notFound !== undefined && isNotFoundFault(probeQuery.error)
+          ? 'not-found'
+          : 'error';
+      }
+      if (probeQuery.isPending) return 'loading';
+      return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
+    },
+  );
 
   $effect(() => {
     if (!probeQuery.isError || !isForbiddenFault(probeQuery.error)) return;
@@ -140,6 +155,14 @@
           >
         {/if}
       {/snippet}
+    </EmptyState>
+  {:else if state === 'not-found' && copy.notFound}
+    <EmptyState
+      title={copy.notFound.title}
+      description={copy.notFound.description}
+      headingLevel={1}
+    >
+      {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
   {:else if state === 'error'}
     <EmptyState title={copy.error.title} description={copy.error.description} headingLevel={1}>
