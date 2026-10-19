@@ -17,6 +17,7 @@ import {
   browserBuildOptions,
   BUILD_ASSET_DIRECTORY,
   buildApplication,
+  CURATED_SHIKI_REGISTRIES,
   curatedShikiPlugin,
   DEFAULT_BUILD_DIRECTORY,
   ENTRY_HTML_PATH,
@@ -301,19 +302,16 @@ describe('curatedShikiPlugin', () => {
     expect(constraints[0]?.filter.test('@shikijs/langs/typescript')).toBe(false);
   });
 
-  it('resolves each registry to a module whose tables are empty', async () => {
+  it('resolves each registry to the module of curated tables, which are not empty', async () => {
     const { hooks } = registered();
 
-    const resolved = await hooks[0]?.({ path: 'shiki/langs' });
-    const loaded = (await hooks[1]?.({ path: 'shiki/langs' })) as {
-      contents: string;
-      loader: string;
-    };
-
-    expect(resolved).toEqual({ path: 'shiki/langs', namespace: 'curated-shiki' });
-    expect(loaded.loader).toBe('js');
-    expect(loaded.contents).toContain('bundledLanguages = {}');
-    expect(loaded.contents).toContain('bundledThemes = {}');
+    for (const path of ['shiki/langs', 'shiki/themes']) {
+      expect(await hooks[0]?.({ path })).toEqual({ path: CURATED_SHIKI_REGISTRIES });
+    }
+    // Empty tables once broke Chat's highlighter, which renders every block as plain text then.
+    const registries = await import(CURATED_SHIKI_REGISTRIES);
+    expect(Object.keys(registries.bundledLanguages)).toContain('json');
+    expect(Object.keys(registries.bundledThemes)).toContain('github-light');
   });
 });
 

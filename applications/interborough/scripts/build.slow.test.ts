@@ -72,7 +72,8 @@ describe('buildApplication', () => {
     // messages with Markdown, which registers its own curated set (`BUNDLED_LANGUAGES` in
     // `packages/markdown/src/rendering/highlighter.ts`) and the grammars those embed (`postcss`
     // for CSS inside Svelte and HTML, `shellscript` for the shell family). The complete registries
-    // Cinder offers are never reachable (`curatedShikiPlugin` in `build.ts`).
+    // Cinder offers are never reachable: `curatedShikiPlugin` (`build.ts`) resolves them to
+    // `src/lib/curated-shiki-registries.ts`, whose tables Chat's highlighter reads.
     expect(emittedModules(metafile, GRAMMAR_MODULE)).toEqual([
       'bash',
       'css',
@@ -90,6 +91,18 @@ describe('buildApplication', () => {
       'yaml',
     ]);
     expect(emittedModules(metafile, THEME_MODULE)).toEqual(['github-dark', 'github-light']);
+  });
+});
+
+describe('buildApplication Chat highlighting', () => {
+  it('gives Chat’s highlighter the curated registries and not Shiki’s complete ones', async () => {
+    const { metafile } = await builtApplication();
+
+    const inputs = Object.values(metafile.outputs).flatMap((output) => Object.keys(output.inputs));
+    expect(inputs.some((input) => input.endsWith('src/lib/curated-shiki-registries.ts'))).toBe(
+      true,
+    );
+    expect(inputs.some((input) => /shiki\/dist\/(?:langs|themes)/.test(input))).toBe(false);
   });
 });
 

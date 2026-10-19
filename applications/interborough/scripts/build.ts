@@ -63,25 +63,30 @@ export default (imports) => WebAssembly.instantiateStreaming(fetch(url), imports
   },
 };
 
+/** The module the complete Shiki registries are resolved to (`src/lib/curated-shiki-registries.ts`). */
+export const CURATED_SHIKI_REGISTRIES = join(
+  PACKAGE_DIRECTORY,
+  'src',
+  'lib',
+  'curated-shiki-registries.ts',
+);
+
 /**
  * Cinder exports a highlighter over Shiki's complete language and theme registries
- * (`fullShikiHighlighter`), whose lookup tables make a bundler emit every grammar and theme Shiki
- * ships. The application never uses it: it registers the grammars it needs
- * (`src/lib/code-highlighter.ts`), and Markdown, which Chat renders messages with, registers its
- * own curated set. `@lostgradient/chat` imports Cinder's whole entry for its styles, which keeps
- * that export in the module graph, so the registries are resolved to empty tables and the build
- * emits only what the application registers.
+ * (`fullShikiHighlighter`), whose lookup tables (`shiki/langs` and `shiki/themes`) make a bundler
+ * emit every grammar and theme Shiki ships. `@lostgradient/chat` publishes that highlighter for
+ * every code block in a transcript, so the registries are reachable and Chat does use them: it
+ * highlights each tool call's JSON arguments and result with it. Both specifiers are therefore
+ * resolved to a module that holds curated tables (`src/lib/curated-shiki-registries.ts`): the
+ * grammars and themes the application already ships, and nothing else. Tables that were empty
+ * would keep the bundle small and break the highlighter, which renders every block as plain text
+ * with a console warning.
  */
 export const curatedShikiPlugin: Bun.BunPlugin = {
   name: 'curated-shiki',
   setup(builder) {
-    builder.onResolve({ filter: /^shiki\/(?:langs|themes)$/ }, ({ path }) => ({
-      path,
-      namespace: 'curated-shiki',
-    }));
-    builder.onLoad({ filter: /.*/, namespace: 'curated-shiki' }, () => ({
-      loader: 'js',
-      contents: 'export const bundledLanguages = {}; export const bundledThemes = {};',
+    builder.onResolve({ filter: /^shiki\/(?:langs|themes)$/ }, () => ({
+      path: CURATED_SHIKI_REGISTRIES,
     }));
   },
 };
