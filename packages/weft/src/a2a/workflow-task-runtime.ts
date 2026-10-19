@@ -21,8 +21,10 @@
  *
  * Engine retention can purge a terminal workflow before the runtime has reconciled
  * its outcome, for example while no handler runs. A task whose workflow then reads
- * as `null` is settled as `FAILED`, with a status message saying the workflow record
- * is gone, since the engine keeps no trace of a purged run's outcome. That is safe to
+ * as `null` is settled from the terminal event this process heard for it, if any, so
+ * a sweep that lands while that event is being reconciled loses nothing. Otherwise it
+ * is settled as `FAILED`, with a status message saying the workflow record is gone,
+ * since the engine keeps no trace of a purged run's outcome. That is safe to
  * conclude from a task record alone: the executor writes a task only after
  * `engine.get` has returned its workflow, so a workflow still being started has no
  * task record to settle, and its reads find no task.
@@ -36,6 +38,10 @@ import { ServerCallContext } from '@a2a-js/sdk/server';
 
 import type { Engine } from '../core/engine.ts';
 import type { SignalWaitingEvent } from '../core/events/signal-events.ts';
+import type {
+  WorkflowCompletedEvent,
+  WorkflowFailedEvent,
+} from '../core/events/workflow-events.ts';
 import type { WorkflowState } from '../core/types/state.ts';
 import { type A2ACallerScope, callerScope } from './store-support.ts';
 import type {
@@ -51,6 +57,7 @@ import {
   reconcileTask,
   statusUpdateEvent,
   withStatus,
+  type WorkflowOutcome,
   type WorkflowResultArtifacts,
 } from './workflow-task-projection.ts';
 
@@ -69,6 +76,22 @@ const RECONCILING_EVENTS = [
 ] as const;
 
 const SIGNAL_WAITING = 'signal:waiting';
+
+/** The outcome each terminal engine event reports, read off the event itself. */
+function outcomeOf(event: Event): WorkflowOutcome | undefined {
+  switch (event.type) {
+    case 'workflow:completed':
+      return { status: 'completed', result: (event as WorkflowCompletedEvent).result };
+    case 'workflow:failed':
+      return { status: 'failed', error: (event as WorkflowFailedEvent).error.message };
+    case 'workflow:cancelled':
+      return { status: 'cancelled' };
+    case 'workflow:timed-out':
+      return { status: 'timed-out' };
+    default:
+      return undefined;
+  }
+}
 
 /** The status message of a task settled because its workflow was purged. */
 export const PURGED_WORKFLOW_MESSAGE =
@@ -160,6 +183,11 @@ export function createWorkflowTaskRuntime(
   const { engine, namespace, log, sender, now, onError, artifactsOf } = options;
   /** Workflows with a delivery in flight or a consumed name still recorded. */
   const trackers = new Map<string, DeliveryTracker>();
+  /**
+   * Terminal outcomes heard from engine events whose reconciliation is still running,
+   * so a workflow purged meanwhile settles with its real outcome.
+   */
+  const heardOutcomes = new Map<string, WorkflowOutcome>();
   /** Deliveries recorded so far, so a read can tell which records it predates. */
   let recorded = 0;
   /** One reconciliation at a time per task, so commits arrive in order. */
@@ -235,8 +263,11 @@ export function createWorkflowTaskRuntime(
       const timestamp = new Date(now()).toISOString();
       if (state === null) {
         trackers.delete(taskId);
+        const heard = heardOutcomes.get(taskId);
         const commit = await log.commit(scope, taskId, (stored) =>
-          settlePurgedTask(stored.task, timestamp),
+          heard === undefined
+            ? settlePurgedTask(stored.task, timestamp)
+            : reconcileTask(stored.task, heard, [], timestamp, artifactsOf),
         );
         await publish(commit, context);
         return commit?.stored;
@@ -266,7 +297,15 @@ export function createWorkflowTaskRuntime(
     } else if (event.type.startsWith('workflow:') && event.type !== 'workflow:started') {
       trackers.delete(workflowId);
     }
-    const work = reconcileWorkflow(workflowId).catch(onError);
+    const outcome = outcomeOf(event);
+    if (outcome !== undefined) heardOutcomes.set(workflowId, outcome);
+    const work = reconcileWorkflow(workflowId)
+      .catch(onError)
+      .finally(() => {
+        if (outcome !== undefined && heardOutcomes.get(workflowId) === outcome) {
+          heardOutcomes.delete(workflowId);
+        }
+      });
     background.add(work);
     void work.finally(() => background.delete(work));
   };

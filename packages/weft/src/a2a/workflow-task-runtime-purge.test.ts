@@ -151,6 +151,49 @@ describe('a task whose workflow was purged before it was reconciled', () => {
     expect(await subscription.next()).toEqual({ done: true, value: undefined });
   });
 
+  test('settles with the outcome its terminal event reported when a sweep purges the workflow mid-reconciliation', async () => {
+    const { engine, agent } = await createWorkflowAgentFixture();
+    const waiting = await startTask(agent, alice());
+
+    // The runtime's listener has already heard the completion when this one runs, so
+    // the purge lands after the event and before the runtime reads the workflow.
+    let purgeBeforeNextRead = false;
+    const completed = new Promise<void>((resolve) => {
+      engine.addEventListener(
+        'workflow:completed',
+        () => {
+          purgeBeforeNextRead = true;
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    const get = engine.get.bind(engine);
+    const purges: unknown[] = [];
+    engine.get = async (...args: Parameters<typeof get>) => {
+      if (purgeBeforeNextRead) {
+        purgeBeforeNextRead = false;
+        purges.push(await engine.purge({ type: approvalWorkflow.name }));
+      }
+      return get(...args);
+    };
+
+    await engine.signal(waiting.id, 'input', 'approved');
+    await completed;
+    await agent.idle();
+    engine.get = get;
+
+    expect(purges).toEqual([{ deleted: 1 }]);
+    expect(await engine.get(waiting.id)).toBeNull();
+    const settled = await agent.requestHandler.getTask({ tenant: '', id: waiting.id }, alice());
+    expect(settled.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
+    expect(settled.artifacts[0]?.parts[0]?.content).toEqual({
+      $case: 'data',
+      value: { request: expect.anything(), input: 'approved' },
+    });
+    expect(settled.history.map(textOf)).not.toContain(PURGED_WORKFLOW_MESSAGE);
+  });
+
   test('a task read while its workflow is still being started is not taken for a purged one', async () => {
     const { engine, agent } = await createWorkflowAgentFixture();
     const start = engine.start.bind(engine);
