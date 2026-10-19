@@ -2386,39 +2386,6 @@ export function scheduledFireApprovalMetadata(
   };
 }
 
-/**
- * COR-1596 — what a schedule fire's session keeps of the approvals its run did not commit: the
- * patch that drops each of the run's approvals (and its round) that `committed` does not name,
- * and the run's authority with the last of them. `undefined` when the session holds nothing of
- * the kind, so a caller writes nothing. Run when the fire settles, so a stale approval and its
- * authority do not outlive it.
- */
-export function withoutUncommittedFireApprovals(
-  metadata: Record<string, JSONValue>,
-  runId: string,
-  committed: ReadonlySet<string>,
-): Record<string, JSONValue> | undefined {
-  const prefix = `approval:${runId}:`;
-  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
-    isPlainAuthorityRecord(value) ? value : {};
-  const overrides = recordOf(metadata['pendingApprovalOverrides']);
-  const abandoned = Object.keys(overrides).filter(
-    (id) => id.startsWith(prefix) && !committed.has(id),
-  );
-  if (abandoned.length === 0) return undefined;
-  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
-    Object.fromEntries(Object.entries(record).filter(([id]) => !abandoned.includes(id)));
-  const remaining = without(overrides);
-  const authorities = recordOf(metadata['lastRequestAuthorities']);
-  const { [runId]: _ended, ...otherAuthorities } = authorities;
-  const holdsApproval = Object.keys(remaining).some((id) => id.startsWith(prefix));
-  return {
-    pendingApprovalOverrides: remaining,
-    pendingApprovalRounds: without(recordOf(metadata['pendingApprovalRounds'])),
-    lastRequestAuthorities: holdsApproval ? authorities : otherAuthorities,
-  };
-}
-
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
 
 export async function createRuntimeComposition(

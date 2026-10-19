@@ -20,6 +20,7 @@ function newState(now: () => number = () => 1_000): ScheduledFireReviewState {
     pendingApprovalOverrides: new Map(),
     pendingApprovalRounds: new Map(),
     terminalReviewSessions: new Map(),
+    approvalRequestedAt: new Map(),
     runRequestContexts: new Map(),
     runToolboxesByRunId: new Map(),
     resolvedReviewIds: new Set(),

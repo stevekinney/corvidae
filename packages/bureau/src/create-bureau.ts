@@ -252,7 +252,6 @@ import {
   SESSION_AGENT_REVISION_METADATA_KEY,
   sessionRunMediaOptions,
   wireDurableOptInTools,
-  withoutUncommittedFireApprovals,
 } from './runtime-composition';
 import {
   findRunAgentName,
@@ -319,11 +318,13 @@ import {
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
   type ScheduledFireReviewState,
+  trackScheduledFireReviewState,
+  withoutFireApprovals,
 } from './scheduled-fire-review-state';
 import {
   attributeScheduledFire,
   recordScheduleFired,
-  releaseScheduledFire,
+  releaseScheduledFire as releaseScheduledFireAttribution,
 } from './scheduled-fire-record';
 import {
   isPlainAuthorityRecord,
@@ -2374,9 +2375,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // policy gated the resumed call again), by review id. Absent means round 0.
   // Persisted beside the override so it survives a restart.
   const pendingApprovalRounds = new Map<string, number>();
+  // COR-1596: when each fire approval was requested; see `ScheduledFireReviewState`.
+  const approvalRequestedAt = new Map<string, number>();
   function dropPendingApprovalOverride(reviewId: string): void {
     pendingApprovalOverrides.delete(reviewId);
     pendingApprovalRounds.delete(reviewId);
+    approvalRequestedAt.delete(reviewId);
   }
   const terminalReviewSessions = new Map<
     string,
@@ -2385,9 +2389,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /**
    * COR-1596 — the runs of schedule fires that hold a tool approval, registered or restored. It
    * does not gate the terminal-run loop in `listPendingReviews`, which reads
-   * `terminalReviewSessions`: it marks the runs whose per-run state is a fire's, which is ended by
-   * `releaseTerminalRunReviewState`, pruned from the session by `persistReviewResolution`, and
-   * swept by `sweepExpiredReviews`, as a run on the store is by leaving it.
+   * `terminalReviewSessions`: it marks the runs whose per-run state is a fire's, which ends only
+   * through `releaseScheduledFireApproval` and `releaseScheduledFire`, whichever way an approval or
+   * the fire ends.
    */
   const scheduledFireApprovalRuns = new Set<string>();
   // COR-1596: the fires that take another step with an approval pending; see
@@ -2436,11 +2440,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // before this fix — every scheduled fire's terminal event forwards
   // synchronously, from inside `scheduleFireEvents`' own dispatch).
   runtime.scheduleFireEvents.addEventListener(ScheduleCompletedEvent.type, (event) => {
-    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
+    releaseScheduledFireAttribution(runAttribution, firedRunIds, event.runId);
     emitter.dispatch(new ScheduleCompletedEvent(event.scheduleId, event.runId));
   });
   runtime.scheduleFireEvents.addEventListener(ScheduleFailedEvent.type, (event) => {
-    releaseScheduledFire(runAttribution, firedRunIds, event.runId);
+    releaseScheduledFireAttribution(runAttribution, firedRunIds, event.runId);
     emitter.dispatch(new ScheduleFailedEvent(event.scheduleId, event.runId));
   });
   // COR-424 — the run-creation command ledger, in the same store as this
@@ -3634,6 +3638,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     pendingApprovalOverrides,
     pendingApprovalRounds,
     terminalReviewSessions,
+    approvalRequestedAt,
     runRequestContexts,
     runToolboxesByRunId,
     resolvedReviewIds,
@@ -4878,9 +4883,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           break;
         }
         let lastRequestAuthorities = session.metadata['lastRequestAuthorities'];
-        // COR-1596: a fire is never on the store, so its authority ends here by the set that
-        // marks it, as a run on the store's ends by its status.
-        const runHasEnded = run ? run.status !== 'running' : scheduledFireApprovalRuns.has(runId);
+        const runHasEnded = run ? run.status !== 'running' : false;
         if (
           runHasEnded &&
           !hasRemainingReviews &&
@@ -4939,6 +4942,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               : {}),
             ...(lastRequestAuthorities !== session.metadata['lastRequestAuthorities']
               ? { lastRequestAuthorities }
+              : {}),
+            // COR-1596: a fire is never on the store, so what ends with its approval is read
+            // from the session's own record of the fire's approvals, which keeps the authority
+            // while a sibling, one expired but not yet swept included, still holds it.
+            ...(removePendingApproval && !run && scheduledFireApprovalRuns.has(runId)
+              ? (withoutFireApprovals(session.metadata, runId, (id) => id === reviewId) ?? {})
               : {}),
           },
         };
@@ -5102,33 +5111,163 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** Whether this process still holds an approval of the fire: one that is expired counts. */
+  function holdsFireApproval(runId: string): boolean {
+    for (const id of pendingApprovalOverrides.keys()) {
+      if (id.startsWith(`approval:${runId}:`)) return true;
+    }
+    return false;
+  }
+
   /**
-   * COR-1596 — reconciles a settled fire's session with its checkpoint: an approval the session
-   * holds that the run never committed, and the authority and round it kept, do not outlive the
-   * fire. The in-memory copy of such an approval goes too.
+   * COR-1596 — takes the fire's approvals that `drop` names out of its session, durably, through
+   * the one function that knows every key an approval is recorded under
+   * (`withoutFireApprovals`). Retried like every post-decision session write.
    */
-  async function reconcileScheduledFireApprovals(runId: string): Promise<void> {
+  async function pruneFireApprovalsFromSession(
+    sessionId: string,
+    runId: string,
+    drop: (reviewId: string) => boolean,
+  ): Promise<void> {
     const sessionStore = runtime.sessionStore;
     if (sessionStore === undefined) return;
-    const record = await tasks.record(runId);
-    if (record === undefined) return;
-    const committed = await readCommittedFireApprovals(
-      runId,
-      'its session is not reconciled with it',
-    );
-    if (committed === undefined) return;
-    for (const id of pendingApprovalOverrides.keys()) {
-      if (id.startsWith(`approval:${runId}:`) && !committed.has(id))
-        dropPendingApprovalOverride(id);
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
+      try {
+        await sessionStore.update(sessionId, (session) => {
+          if (session === undefined) return undefined;
+          const patch = withoutFireApprovals(session.metadata, runId, drop);
+          return patch === undefined
+            ? undefined
+            : { ...session, metadata: { ...session.metadata, ...patch } };
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+        if (attempt < SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS) {
+          await sessionPersistenceSleep(sessionPersistenceRetryDelayMilliseconds);
+        }
+      }
     }
-    await sessionStore.update(record.contextId, (session) => {
-      if (session === undefined) return undefined;
-      const patch = withoutUncommittedFireApprovals(session.metadata, runId, committed);
-      return patch === undefined
-        ? undefined
-        : { ...session, metadata: { ...session.metadata, ...patch } };
-    });
-    releaseTerminalRunReviewState(runId);
+    throw lastError;
+  }
+
+  /**
+   * COR-1596 — the in-memory end of a fire's approval state, once it holds no approval: its
+   * request context and toolbox (which keeps the fire's services alive), its entries in the maps,
+   * and whoever follows its task is told. An approval that expired but was not yet swept still
+   * counts as held, so a sibling's decision cannot strand it unswept. Synchronous, for the
+   * resolution paths that cannot wait.
+   */
+  function endScheduledFireWhenNoApprovalRemains(runId: string): void {
+    if (!scheduledFireApprovalRuns.has(runId) || holdsFireApproval(runId)) return;
+    runRequestContexts.delete(runId);
+    runToolboxesByRunId.delete(runId);
+    if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
+      detachBestEffortPromise(tasks.announceChanged(runId));
+    }
+  }
+
+  /**
+   * COR-1596 — how one approval of a fire ends. Every way it can (decided, expired, canceled,
+   * revoked, abandoned by a crash, found unrestorable) goes through
+   * {@link releaseScheduledFireApproval}, and none prunes on its own, because the state is in two
+   * homes (the session's metadata and this process's maps) and an ending that released one
+   * forgot the other: resolve and expiry, then settle, then cancel each did, in turn.
+   */
+  type ScheduledFireApprovalEnding =
+    'resolved' | 'expired' | 'canceled' | 'revoked' | 'removed' | 'abandoned' | 'invalid';
+
+  /**
+   * COR-1596 — ends one approval of a fire, in both homes. `durablyPruned` is set by a decision,
+   * whose own session write already took the approval out in the same commit as the decision's
+   * fence.
+   */
+  async function releaseScheduledFireApproval(
+    runId: string,
+    reviewId: string,
+    ending: ScheduledFireApprovalEnding,
+    scope: { sessionId?: string | undefined; durablyPruned?: boolean } = {},
+  ): Promise<void> {
+    const sessionId = scope.sessionId ?? terminalReviewSessions.get(runId)?.sessionId;
+    if (ending === 'invalid') invalidApprovalReviewIds.add(reviewId);
+    else if (ending !== 'abandoned') resolvedReviewIds.add(reviewId);
+    dropPendingApprovalOverride(reviewId);
+    try {
+      if (scope.durablyPruned !== true && sessionId !== undefined) {
+        await pruneFireApprovalsFromSession(sessionId, runId, (id) => id === reviewId);
+      }
+    } finally {
+      endScheduledFireWhenNoApprovalRemains(runId);
+    }
+  }
+
+  /** The review ids of a fire's approvals this process holds or its session records. */
+  async function fireApprovalIds(runId: string, sessionId: string | undefined): Promise<string[]> {
+    const prefix = `approval:${runId}:`;
+    const ids = new Set(
+      Array.from(pendingApprovalOverrides.keys()).filter((id) => id.startsWith(prefix)),
+    );
+    const session =
+      sessionId === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+    const persisted = session?.metadata['pendingApprovalOverrides'];
+    if (isJsonObject(persisted)) {
+      for (const id of Object.keys(persisted)) if (id.startsWith(prefix)) ids.add(id);
+    }
+    return Array.from(ids);
+  }
+
+  /**
+   * COR-1596 — how a fire ends, and what it owes its approvals then. `settled` reconciles the
+   * session with the checkpoint, the only source of truth for which approvals exist: each one the
+   * run never committed ends as abandoned. `canceled` ends every approval, bindings revoked, so
+   * none can be restored to run a tool for a run that was canceled. `removed` (the fire's task
+   * left retention) ends whatever is left and retires the decision fence, which the task was the
+   * last thing to name. Each ends through {@link releaseScheduledFireApproval}.
+   */
+  async function releaseScheduledFire(
+    runId: string,
+    ending: 'settled' | 'canceled' | 'removed',
+    scope: { sessionId?: string | undefined } = {},
+  ): Promise<void> {
+    const recorded = scope.sessionId === undefined ? await tasks.record(runId) : undefined;
+    const sessionId =
+      scope.sessionId ?? terminalReviewSessions.get(runId)?.sessionId ?? recorded?.contextId;
+    if (ending === 'canceled') {
+      await revokePendingApprovalsForRun(runId, {
+        status: 'canceled',
+        principal: 'system:run-abort',
+      });
+    }
+    if (ending === 'settled') {
+      const committed = await readCommittedFireApprovals(
+        runId,
+        'its session is not reconciled with it',
+      );
+      if (committed === undefined) return;
+      for (const id of await fireApprovalIds(runId, sessionId)) {
+        if (!committed.has(id)) {
+          await releaseScheduledFireApproval(runId, id, 'abandoned', { sessionId });
+        }
+      }
+      return;
+    }
+    // Canceled or removed: nothing of the fire's approvals stays, whatever revoked it first.
+    for (const id of await fireApprovalIds(runId, sessionId)) {
+      await releaseScheduledFireApproval(
+        runId,
+        id,
+        ending === 'canceled' ? 'canceled' : 'removed',
+        {
+          sessionId,
+        },
+      );
+    }
+    if (ending === 'removed' && sessionId !== undefined) {
+      await prunePersistedResolvedReviewIds(sessionId, `approval:${runId}:`);
+      await prunePersistedResolvedReviewIds(sessionId, `human-wait:${runId}:`);
+    }
+    endScheduledFireWhenNoApprovalRemains(runId);
   }
 
   function restorePendingApprovalOverrides(
@@ -5247,9 +5386,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           await restoreApproval(approval as SignedPendingToolApproval);
         } catch (error) {
           if (!isTerminalApprovalBindingError(error)) throw error;
-          invalidApprovalReviewIds.add(reviewId);
-          dropPendingApprovalOverride(reviewId);
-          await prunePersistedInvalidApprovalReviewStateWithRetry(sessionId, runId, reviewId);
+          if (scheduledFireApprovalRuns.has(runId)) {
+            await releaseScheduledFireApproval(runId, reviewId, 'invalid', { sessionId });
+          } else {
+            invalidApprovalReviewIds.add(reviewId);
+            dropPendingApprovalOverride(reviewId);
+            await prunePersistedInvalidApprovalReviewStateWithRetry(sessionId, runId, reviewId);
+          }
           diagnose({
             level: 'warn',
             scope: 'approval-recovery',
@@ -8397,8 +8540,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     const approvalToolbox = runToolboxesByRunId.get(runId) ?? runtime.baseToolbox;
     const runState = store.getRun(runId);
-    const sessionId = runState ? getRunSessionIdentifier(runState) : '';
-    const agentName = runState ? findRunAgentName(runState) : undefined;
+    // COR-1596: a fire is not on the store; the session it ran in is the one it registered.
+    const firesSession = terminalReviewSessions.get(runId);
+    const sessionId = runState
+      ? getRunSessionIdentifier(runState)
+      : (firesSession?.sessionId ?? '');
+    const agentName = runState ? findRunAgentName(runState) : firesSession?.agentName;
 
     const toolApprovalReviews = new Map<
       string,
@@ -8451,6 +8598,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       resolvedReviewIds.add(review.id);
       await recordReviewStatusTransition(review, outcome.status, outcome.principal);
+      // COR-1596: a fire's approval is revoked in both homes, or a restart brings it back to run
+      // a tool for a run that was canceled.
+      if (scheduledFireApprovalRuns.has(runId)) {
+        await releaseScheduledFireApproval(runId, review.id, outcome.status);
+      }
     }
 
     for (const review of listPendingReviews()) {
@@ -9670,8 +9822,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // fire's task, which is the last thing that could name it.
     let removed = await tasks.expire(cutoff, bound, async (record) => {
       if (record.kind !== 'schedule-fire') return;
-      await prunePersistedResolvedReviewIds(record.contextId, `approval:${record.taskId}:`);
-      await prunePersistedResolvedReviewIds(record.contextId, `human-wait:${record.taskId}:`);
+      await releaseScheduledFire(record.taskId, 'removed', { sessionId: record.contextId });
     });
     for (const runId of expired) {
       if (bound.has(runId)) continue;
@@ -12760,6 +12911,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (approval.approvalBinding !== undefined && approval.approvalBinding.expiresAt <= now) {
           continue;
         }
+        // COR-1596: each approval of a fire that continues is listed at its own time.
+        const requestedAt = approvalRequestedAt.get(reviewId) ?? terminalReview.requestedAt;
         reviews.push({
           kind: 'tool-approval',
           id: reviewId,
@@ -12767,8 +12920,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           sessionId: terminalReview.sessionId,
           agentName: terminalReview.agentName,
           approval,
-          requestedAt: terminalReview.requestedAt,
-          ageMilliseconds: now - terminalReview.requestedAt,
+          requestedAt,
+          ageMilliseconds: now - requestedAt,
           status: 'pending',
           round: pendingApprovalRounds.get(reviewId) ?? 0,
         });
@@ -12780,23 +12933,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   function releaseTerminalRunReviewState(runId: string): void {
     const runState = store.getRun(runId);
-    // COR-1596: a fire's approvals outlive a run that was never on the store.
-    if (
-      runState === undefined ? !scheduledFireApprovalRuns.has(runId) : runState.status === 'running'
-    ) {
+    // COR-1596: a fire's approvals outlive a run that was never on the store, and end only when
+    // it holds none, an expired one not yet swept included.
+    if (runState === undefined) {
+      endScheduledFireWhenNoApprovalRemains(runId);
       return;
     }
+    if (runState.status === 'running') return;
     for (const review of listPendingReviews()) {
       if (review.runId === runId) return;
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
     recoveredRunIds.delete(runId);
-    // COR-1596: the last review of a fire closing is what lets a fire that settled with it open
-    // read as over, so whoever follows the fire's task is told.
-    if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
-      detachBestEffortPromise(tasks.announceChanged(runId));
-    }
   }
 
   /** Whether this process holds the run and it has not recorded its end. */
@@ -13874,8 +14023,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
         // Read before the drop, which deletes it: the record keeps the round the approval was at.
         const round = pendingApprovalRounds.get(id) ?? 0;
+        const requestedAt = approvalRequestedAt.get(id) ?? terminalReview.requestedAt;
         resolvedReviewIds.add(id);
-        dropPendingApprovalOverride(id);
         sweptCount += 1;
         await recordReviewStatusTransition(
           {
@@ -13885,19 +14034,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             sessionId: terminalReview.sessionId,
             agentName: terminalReview.agentName,
             approval,
-            requestedAt: terminalReview.requestedAt,
-            ageMilliseconds: effectiveNow - terminalReview.requestedAt,
+            requestedAt,
+            ageMilliseconds: effectiveNow - requestedAt,
             status: 'expired',
             round,
           },
           'expired',
           EXPIRY_ACTOR,
         );
-        await prunePersistedInvalidApprovalReviewStateWithRetry(
-          terminalReview.sessionId,
-          runId,
-          id,
-        );
+        if (scheduledFireApprovalRuns.has(runId)) {
+          await releaseScheduledFireApproval(runId, id, 'expired');
+        } else {
+          dropPendingApprovalOverride(id);
+          await prunePersistedInvalidApprovalReviewStateWithRetry(
+            terminalReview.sessionId,
+            runId,
+            id,
+          );
+        }
       }
       if (
         !Array.from(pendingApprovalOverrides.keys()).some((id) =>
@@ -16033,10 +16187,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runHumanWaits.forget(settlement.runId);
     announcedReviewRequests.delete(settlement.runId);
     endContinuingScheduledFire(scheduledFireReviewState, settlement.runId);
-    // COR-1596: the fire's checkpoint is complete now, so what its session holds is checked
-    // against it, once, and nothing stale outlives the fire.
+    // COR-1596: a canceled fire ends every approval it holds, by whichever route it was canceled;
+    // any other fire's checkpoint is complete now, so what its session holds is checked against
+    // it, once, and nothing stale outlives the fire.
     try {
-      await reconcileScheduledFireApprovals(settlement.runId);
+      await releaseScheduledFire(
+        settlement.runId,
+        settlement.status === 'canceled' ? 'canceled' : 'settled',
+      );
     } catch (error) {
       diagnose({
         level: 'error',
@@ -16296,5 +16454,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     await durableRecoveryBarrier;
   }
 
+  trackScheduledFireReviewState(bureau, scheduledFireReviewState);
   return bureau;
 }

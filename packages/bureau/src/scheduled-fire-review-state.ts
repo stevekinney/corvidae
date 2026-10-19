@@ -13,9 +13,11 @@
  * @module scheduled-fire-review-state
  */
 
+import type { JSONValue } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition';
+import { isPlainAuthorityRecord } from './session-authority';
 import type { PendingReview } from './types';
 
 type ToolApproval = Extract<PendingReview, { kind: 'tool-approval' }>['approval'];
@@ -28,6 +30,8 @@ export type ScheduledFireReviewState = {
     string,
     { sessionId: string; agentName: string; requestedAt: number }
   >;
+  /** When each approval was requested, so a fire that raises several lists each at its own time. */
+  readonly approvalRequestedAt: Map<string, number>;
   readonly runRequestContexts: Map<string, ToolRequestContext>;
   readonly runToolboxesByRunId: Map<string, BureauToolbox>;
   readonly resolvedReviewIds: Set<string>;
@@ -72,6 +76,9 @@ export function registerScheduledFireApproval(
   }
   state.scheduledFireApprovalRuns.add(fire.runId);
   if (!stepWasFinal) state.continuingScheduledFires.add(fire.runId);
+  if (!state.approvalRequestedAt.has(reviewId)) {
+    state.approvalRequestedAt.set(reviewId, state.now());
+  }
   if (!state.terminalReviewSessions.has(fire.runId)) {
     state.terminalReviewSessions.set(fire.runId, {
       sessionId: fire.sessionId,
@@ -118,6 +125,9 @@ export function releaseScheduledFireReviews(
   for (const id of state.pendingApprovalRounds.keys()) {
     if (id.startsWith(prefix)) state.pendingApprovalRounds.delete(id);
   }
+  for (const id of state.approvalRequestedAt.keys()) {
+    if (id.startsWith(prefix)) state.approvalRequestedAt.delete(id);
+  }
   return true;
 }
 
@@ -142,4 +152,76 @@ export function committedFireApprovalIds(
     }
   }
   return committed;
+}
+
+/**
+ * Every in-memory home of a fire's approval state that still holds something of `runId`, by name.
+ * Empty once the fire's approvals have all ended: this is what the matrix of endings asserts, and
+ * the one place that lists the homes, so a home added to {@link ScheduledFireReviewState} is
+ * checked by every ending's test (COR-1596).
+ */
+export function scheduledFireHoldings(state: ScheduledFireReviewState, runId: string): string[] {
+  const prefix = `approval:${runId}:`;
+  const holds = (ids: Iterable<string>) => Array.from(ids).some((id) => id.startsWith(prefix));
+  const held: string[] = [];
+  if (holds(state.pendingApprovalOverrides.keys())) held.push('pendingApprovalOverrides');
+  if (holds(state.pendingApprovalRounds.keys())) held.push('pendingApprovalRounds');
+  if (holds(state.approvalRequestedAt.keys())) held.push('approvalRequestedAt');
+  if (holds(state.resolvedReviewIds)) held.push('resolvedReviewIds');
+  if (state.terminalReviewSessions.has(runId)) held.push('terminalReviewSessions');
+  if (state.runRequestContexts.has(runId)) held.push('runRequestContexts');
+  if (state.runToolboxesByRunId.has(runId)) held.push('runToolboxesByRunId');
+  if (state.scheduledFireApprovalRuns.has(runId)) held.push('scheduledFireApprovalRuns');
+  if (state.continuingScheduledFires.has(runId)) held.push('continuingScheduledFires');
+  return held;
+}
+
+const stateOfBureau = new WeakMap<object, ScheduledFireReviewState>();
+
+/** Remembers a Bureau's review state so a test can read it; nothing in production reads it. */
+export function trackScheduledFireReviewState(
+  bureau: object,
+  state: ScheduledFireReviewState,
+): void {
+  stateOfBureau.set(bureau, state);
+}
+
+/** The review state of a Bureau that {@link trackScheduledFireReviewState} was given. */
+export function scheduledFireReviewStateOf(bureau: object): ScheduledFireReviewState {
+  const state = stateOfBureau.get(bureau);
+  if (state === undefined) throw new Error('This Bureau has no tracked fire review state.');
+  return state;
+}
+
+/**
+ * The patch that takes the approvals of `runId` that `drop` names out of a session's metadata:
+ * their overrides and rounds, and the run's request authority with the last of them. This is the
+ * one function that prunes a fire's approvals from a session, whichever way they ended (decided,
+ * expired, canceled, abandoned, removed), so no ending can forget one of the keys. `undefined`
+ * when the session holds none of them, so a caller writes nothing. The decision fence
+ * (`resolvedReviewIds`, `resolvedReviewDecisions`) is not touched: it outlives the approval, and
+ * is retired with the fire's task.
+ */
+export function withoutFireApprovals(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+  drop: (reviewId: string) => boolean,
+): Record<string, JSONValue> | undefined {
+  const prefix = `approval:${runId}:`;
+  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
+    isPlainAuthorityRecord(value) ? value : {};
+  const overrides = recordOf(metadata['pendingApprovalOverrides']);
+  const dropped = Object.keys(overrides).filter((id) => id.startsWith(prefix) && drop(id));
+  if (dropped.length === 0) return undefined;
+  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => !dropped.includes(id)));
+  const remaining = without(overrides);
+  const authorities = recordOf(metadata['lastRequestAuthorities']);
+  const { [runId]: _ended, ...otherAuthorities } = authorities;
+  const holdsApproval = Object.keys(remaining).some((id) => id.startsWith(prefix));
+  return {
+    pendingApprovalOverrides: remaining,
+    pendingApprovalRounds: without(recordOf(metadata['pendingApprovalRounds'])),
+    lastRequestAuthorities: holdsApproval ? authorities : otherAuthorities,
+  };
 }
