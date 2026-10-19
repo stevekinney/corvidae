@@ -84,6 +84,17 @@ describe('Reviews dashboard card', () => {
     expect(getByText('—')).not.toBeNull();
   });
 
+  test('is titled as the engine’s reviews, because it counts no Bureau review', async () => {
+    const { container } = render(DashboardCardHarness, {
+      props: { client: clientReturning([]) },
+    });
+
+    expect(container.querySelector('.weft-dashboard-card__title')?.textContent).toBe(
+      'Engine reviews',
+    );
+    expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Engine reviews');
+  });
+
   test('links to /reviews', async () => {
     const { container } = render(DashboardCardHarness, {
       props: { client: clientReturning([]) },

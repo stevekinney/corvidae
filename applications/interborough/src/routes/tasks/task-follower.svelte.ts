@@ -15,8 +15,10 @@
  *
  * ## Reconnecting
  *
- * A stream that drops, fails to open, or ends while the task is still going is opened again after
- * the shared reconnect backoff, and at once when the browser reports it is back online. A refusal
+ * A stream that drops or fails to open is opened again after the shared reconnect backoff, and at
+ * once when the browser reports it is back online. A stream the Bureau ends is the end: it ends
+ * after a task's terminal status, and a task started with `bureau.run()` streams one snapshot and
+ * ends, so the page reads such a task for its state. A refusal
  * that retrying cannot change (the task is not there, the Bureau keeps no history to follow, the
  * caller may not read it) ends the following for good.
  */
@@ -25,7 +27,6 @@ import { z } from 'zod';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import {
   followTaskEvents,
-  isTerminalState,
   SNAPSHOT_CURSOR,
   taskArtifactSchema,
   type TaskArtifact,
@@ -86,11 +87,6 @@ export type TaskFollowerOptions = {
   readonly taskId: string;
   /** Called with every element, after the follower has taken what it keeps from it. */
   readonly onElement?: (element: TaskEvent) => void;
-  /**
-   * Whether the page already knows the task is over. A stream resumed past a task's end has
-   * nothing to send, so it ends with no status to say why.
-   */
-  readonly isOver?: () => boolean;
   readonly storage?: TaskStorage | undefined;
   readonly fetch?: Fetcher;
   /** Waits out a backoff. Tests stand a sleep they release themselves in for the timer. */
@@ -105,6 +101,8 @@ export class TaskFollower {
   lastStatus = $state<TaskState | undefined>(undefined);
   /** The last position the Bureau gave, which a reconnect resumes from. */
   lastCursor = $state<string | undefined>(undefined);
+  /** Whether the Bureau said the task was removed. */
+  removed = $state(false);
 
   readonly #options: TaskFollowerOptions;
   readonly #storage: TaskStorage | undefined;
@@ -145,7 +143,10 @@ export class TaskFollower {
         this.artifact = element.artifact;
       }
     }
-    if (element.kind === 'task.removed') this.#removed = true;
+    if (element.kind === 'task.removed') {
+      this.#removed = true;
+      this.removed = true;
+    }
     if (element.cursor === SNAPSHOT_CURSOR) return;
     this.lastCursor = element.cursor;
     try {
@@ -156,14 +157,6 @@ export class TaskFollower {
     } catch {
       // Storage the browser will not let a page write is a convenience lost, not a failure.
     }
-  }
-
-  get #over(): boolean {
-    return (
-      this.#removed ||
-      (this.lastStatus !== undefined && isTerminalState(this.lastStatus)) ||
-      this.#options.isOver?.() === true
-    );
   }
 
   /** Waits out a backoff, or until the browser reports it is back online, or until disposed. */
@@ -207,10 +200,11 @@ export class TaskFollower {
           if (this.#removed) break;
         }
         if (this.#disposed) return;
-        if (this.#over) {
-          this.state = 'ended';
-          return;
-        }
+        // The Bureau ended the stream. That is the end, and not a dropped connection: a task it
+        // started with `bureau.run()` streams one snapshot and ends, and a session run's stream
+        // ends after its terminal status. The page reads a task whose stream is over for its state.
+        this.state = 'ended';
+        return;
       } catch (error) {
         if (this.#disposed) return;
         const treatment = classifyFault(error);

@@ -12,11 +12,18 @@
    */
   import { onMount, untrack } from 'svelte';
 
-  import { Badge, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Badge, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { SearchX } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY, VIEW_COPY } from '../../app/copy.ts';
-  import { getTask, isTerminalState, type TaskCleanup } from '../../lib/bureau-tasks.ts';
+  import { getContext } from '../../lib/bureau-client.ts';
+  import {
+    getTask,
+    isTerminalState,
+    type TaskCleanup,
+    type TaskView,
+  } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import TaskCancel from './task-cancel.svelte';
@@ -49,16 +56,30 @@
     undefined,
   );
 
+  const detailKey = queryKeys.bureauTasks.detail(initialTaskId);
+
   const follower = new TaskFollower({
     taskId: initialTaskId,
-    isOver: () => task.data !== undefined && isTerminalState(task.data.status),
     onElement: (element) => {
-      // A snapshot restates what the page read; any other element is a change, or a gap to repair.
-      if (element.kind !== 'task.snapshot') {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.bureauTasks.detail(initialTaskId),
-        });
+      if (element.kind === 'task.snapshot') {
+        // A snapshot is the whole of a task's stream when the Bureau started it with `bureau.run()`,
+        // so each one is applied: the status it carries shows at once, and the task is read again
+        // for what a snapshot does not carry (its waits and its cleanup). One that restates what the
+        // page read changes nothing.
+        const read = queryClient.getQueryData<TaskView>(detailKey);
+        if (read !== undefined && read.status !== element.status) {
+          queryClient.setQueryData<TaskView>(detailKey, {
+            ...read,
+            status: element.status,
+            finishReason: element.finishReason,
+            statusMessage: element.message,
+          });
+          void queryClient.invalidateQueries({ queryKey: detailKey });
+        }
+        return;
       }
+      // Any other element is a change, or a gap to repair.
+      void queryClient.invalidateQueries({ queryKey: detailKey });
     },
   });
 
@@ -66,6 +87,28 @@
     follower.start();
     return () => follower.dispose();
   });
+
+  // A stream the Bureau has ended says nothing more, and a task it started with `bureau.run()` ends
+  // its stream after one snapshot while it is still going. Until the task is over, the page reads
+  // it every few seconds, and stops once it is over or the page is left.
+  $effect(() => {
+    if (follower.state !== 'ended') return;
+    if (task.data !== undefined && isTerminalState(task.data.status)) return;
+    const timer = setInterval(() => void task.refetch(), TASK_COPY.endedPollMilliseconds);
+    return () => clearInterval(timer);
+  });
+
+  // A catalog task's `contextId` is its run handle, and no session has it, so the link to a chat is
+  // there only when the Bureau has the session.
+  const session = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.detail(task.data?.contextId ?? ''),
+      queryFn: ({ signal }) => getContext(task.data?.contextId ?? '', { signal }),
+      enabled: task.data !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
 
   function open(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -76,7 +119,15 @@
   }
 </script>
 
-{#if task.data}
+{#if follower.removed}
+  <EmptyState
+    title={VIEW_COPY.tasks.notFound?.title ?? ''}
+    description={VIEW_COPY.tasks.notFound?.description ?? ''}
+    headingLevel={1}
+  >
+    {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
+  </EmptyState>
+{:else if task.data}
   {@const current = task.data}
   {@const presentation = taskStatePresentation(current.status)}
   <article class="weft-task" aria-labelledby="weft-task-title">
@@ -94,14 +145,16 @@
         <dt>{TASK_COPY.agentFact}</dt>
         <dd>{current.agentName}</dd>
       {/if}
-      <dt>{TASK_COPY.sessionFact}</dt>
-      <dd>
-        <a
-          href={router.href(`/chat/${encodeURIComponent(current.contextId)}`)}
-          onclick={(event) => open(event, `/chat/${encodeURIComponent(current.contextId)}`)}
-          >{TASK_COPY.openChat}</a
-        >
-      </dd>
+      {#if session.isSuccess}
+        <dt>{TASK_COPY.sessionFact}</dt>
+        <dd>
+          <a
+            href={router.href(`/chat/${encodeURIComponent(current.contextId)}`)}
+            onclick={(event) => open(event, `/chat/${encodeURIComponent(current.contextId)}`)}
+            >{TASK_COPY.openChat}</a
+          >
+        </dd>
+      {/if}
       {#if current.finishReason !== null}
         <dt>{TASK_COPY.finishReasonFact}</dt>
         <dd>{current.finishReason}</dd>

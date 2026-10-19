@@ -67,7 +67,7 @@ describe('the task list', () => {
     expect(first?.textContent).toContain('Completed');
     expect(first?.textContent).toContain('assistant');
     expect(first?.querySelector('a[href="/tasks/run-a"]')).not.toBeNull();
-    expect(first?.querySelector('a[href="/chat/session-a"]')).not.toBeNull();
+    await waitFor(() => expect(first?.querySelector('a[href="/chat/session-a"]')).not.toBeNull());
     expect(rows(container)[1]?.textContent).toContain('Waiting for input');
     expect(container.querySelector('[data-view="tasks"]')?.getAttribute('data-state')).toBe(
       'ready',
@@ -151,5 +151,19 @@ describe('the task list', () => {
     const { container } = open('/tasks', { tasks: [waiting] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     expect(rows(container)[0]?.textContent).toContain('1 open wait');
+  });
+
+  test('links a task to its session only when the Bureau has that session', async () => {
+    const catalog = taskFixture({ id: 'run-h', contextId: 'run-h', agentName: 'assistant' });
+    const chat = taskFixture({ id: 'run-s', contextId: 'session-s', agentName: 'assistant' });
+    const { container } = open('/tasks', { tasks: [catalog, chat], contexts: ['session-s'] });
+    await waitFor(() => expect(rows(container).length).toBe(2));
+    await waitFor(() =>
+      expect(container.querySelector('a[href="/chat/session-s"]')).not.toBeNull(),
+    );
+    // A catalog task's contextId is its run handle, so it has no chat to open.
+    expect(container.querySelector('a[href="/chat/run-h"]')).toBeNull();
+    const asked = stub?.callsTo('bureau.contexts.get').map((call) => call.params['contextId']);
+    expect(asked?.toSorted()).toEqual(['run-h', 'session-s']);
   });
 });

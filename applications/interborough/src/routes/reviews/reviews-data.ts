@@ -24,6 +24,7 @@ import {
 } from '@tanstack/svelte-query';
 
 import {
+  isApprovalOutcomeNotWritten,
   listBureauReviews,
   resolveBureauReview,
   type BureauReview,
@@ -111,19 +112,40 @@ export interface ResolveBureauReviewVariables {
   readonly reason?: string;
 }
 
+/** What a decision came to: the Bureau's answer, or that it took effect and its outcome was not written. */
+export type ResolveBureauReviewResult = ReviewResolution & {
+  /** Set when the decision took effect and only its write into the conversation failed. */
+  readonly outcomeNotWritten?: true;
+};
+
 /**
  * Mutation for `bureau.reviews.resolve`. Whether the decision took effect or lost a race, the lists
- * are asked again at once, because either way the review is not what they last showed.
+ * are asked again at once, because either way the review is not what they last showed. A decision
+ * whose outcome the Bureau could not write into the conversation took effect, so it is a result
+ * and not a failure, and no toast says it failed.
  */
 export function resolveBureauReviewMutation(): CreateMutationResult<
-  ReviewResolution,
+  ResolveBureauReviewResult,
   Error,
   ResolveBureauReviewVariables
 > {
   const queryClient = useQueryClient();
 
   return createMutation(() => ({
-    mutationFn: (variables: ResolveBureauReviewVariables) => resolveBureauReview(variables),
+    mutationFn: async (variables: ResolveBureauReviewVariables) => {
+      try {
+        return await resolveBureauReview(variables);
+      } catch (error) {
+        if (!isApprovalOutcomeNotWritten(error)) throw error;
+        return {
+          id: variables.id,
+          kind: 'tool-approval' as const,
+          decision: variables.decision,
+          receipt: 'applied' as const,
+          outcomeNotWritten: true as const,
+        };
+      }
+    },
     onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },
@@ -146,8 +168,8 @@ export function answerHumanWaitMutation(): CreateMutationResult<
 
   return createMutation(() => ({
     mutationFn: (variables: AnswerHumanWaitVariables) =>
-      // One identifier per answer sent: a retry of the same answer is the Bureau's to deduplicate,
-      // and a second answer is a second command.
+      // One identifier per answer sent. The mutation does not retry, so each answer is one command,
+      // and an answer to a wait that was already answered is the Bureau's `Conflict`.
       respondToTask({ ...variables, messageId: crypto.randomUUID() }),
     onSettled: () => {
       void invalidateReviewQueries(queryClient);

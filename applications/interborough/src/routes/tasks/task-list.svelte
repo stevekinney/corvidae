@@ -25,6 +25,7 @@
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import TaskSession from './task-session.svelte';
   import { hasTaskFilter, parseTaskFilter, serializeTaskFilter } from './task-filter.ts';
   import { TASK_STATE_ORDER, taskStatePresentation } from './task-presentation.ts';
 
@@ -164,12 +165,7 @@
               >
             </Table.Cell>
             <Table.Cell>
-              <a
-                class="weft-tasks__link"
-                href={router.href(`/chat/${encodeURIComponent(task.contextId)}`)}
-                onclick={(event) => open(event, `/chat/${encodeURIComponent(task.contextId)}`)}
-                ><code title={task.contextId}>{truncateId(task.contextId)}</code></a
-              >
+              <TaskSession contextId={task.contextId} />
             </Table.Cell>
             <Table.Cell align="right">
               <span title={task.updatedAt}

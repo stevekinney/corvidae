@@ -8,6 +8,7 @@
  */
 import type { ReviewListEntry } from '@lostgradient/weft';
 
+import { contextFixture } from './bureau-fixtures.test-support.ts';
 import type { BureauReview } from './bureau-reviews.ts';
 import {
   StubFault,
@@ -34,6 +35,11 @@ export type StreamControl = {
 export type BureauWorld = {
   tasks: TaskView[];
   reviews: BureauReview[];
+  /**
+   * The chat sessions `bureau.contexts.get` knows, by identifier. Left out, every task's
+   * `contextId` is one; a catalog task's is its run handle, which no session has.
+   */
+  contexts?: readonly string[];
   /** The engine's reviews, which `GET /v1/reviews` answers by status. Empty unless a test sets some. */
   weftReviews: ReviewListEntry[];
 };
@@ -85,6 +91,15 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       const task = world.tasks.find((entry) => entry.id === id);
       if (task === undefined) throw notFound('task', id);
       return task;
+    },
+    'bureau.contexts.get': (params) => {
+      const id = String(params['contextId']);
+      const known =
+        world.contexts === undefined
+          ? world.tasks.some((task) => task.contextId === id)
+          : world.contexts.includes(id);
+      if (!known) throw notFound('context', id);
+      return contextFixture(id);
     },
     'bureau.reviews.list': () => ({
       reviews: world.reviews.filter((review) => review.status === 'pending'),

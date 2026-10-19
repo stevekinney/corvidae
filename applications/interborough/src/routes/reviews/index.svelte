@@ -71,12 +71,25 @@
       { id: review.id, decision, ...(reason === undefined ? {} : { reason }) },
       {
         onSuccess: (resolution) => {
-          if (resolution.receipt === 'superseded') {
-            outcome = { tone: 'warning', title: REVIEWS_COPY.superseded, message: '' };
+          if (resolution.outcomeNotWritten === true) {
+            outcome = {
+              reviewId: review.id,
+              tone: 'warning',
+              title: REVIEWS_COPY.outcomeNotWritten.title,
+              message: REVIEWS_COPY.outcomeNotWritten.message,
+            };
+          } else if (resolution.receipt === 'superseded') {
+            outcome = {
+              reviewId: review.id,
+              tone: 'warning',
+              title: REVIEWS_COPY.superseded,
+              message: '',
+            };
           }
         },
         onError: (error) => {
           outcome = {
+            reviewId: review.id,
             tone: 'danger',
             title: REVIEWS_COPY.decisionFailed,
             message: faultTreatment(error).message,
@@ -93,6 +106,7 @@
       {
         onError: (error) => {
           outcome = {
+            reviewId: review.id,
             tone: 'danger',
             title: REVIEWS_COPY.answerFailed,
             message: faultTreatment(error).message,

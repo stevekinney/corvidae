@@ -8,7 +8,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, jest, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { TASK_COPY } from '../../app/copy.ts';
+import { TASK_COPY, VIEW_COPY } from '../../app/copy.ts';
 import {
   humanWaitFixture,
   taskFixture,
@@ -24,7 +24,7 @@ import {
   type BureauWorld,
   type BureauWorldStub,
 } from '../../lib/bureau-world.test-support.ts';
-import { settle } from '../../lib/fake-timers.test-support.ts';
+import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Harness from './tasks-area.test-harness.svelte';
@@ -75,7 +75,9 @@ describe('what the page shows of a task', () => {
     await findByRole('heading', { level: 1, name: 'assistant task' });
     expect(container.textContent).toContain('Failed');
     expect(container.textContent).toContain('The model refused.');
-    expect(container.querySelector('a[href="/chat/session-1"]')).not.toBeNull();
+    await waitFor(() =>
+      expect(container.querySelector('a[href="/chat/session-1"]')).not.toBeNull(),
+    );
     expect(container.querySelector('[data-view="tasks"]')?.getAttribute('data-state')).toBe(
       'ready',
     );
@@ -325,5 +327,153 @@ describe('after a cancellation that is not finished', () => {
     jest.advanceTimersByTime(TASK_COPY.cleanupPollMilliseconds * 5);
     await settle();
     expect(stub?.callsTo('bureau.tasks.get').length).toBe(readsWhenDone);
+  });
+});
+
+describe('a task whose stream is its snapshot alone', () => {
+  // A task the Bureau started with `bureau.run()` is not a session run: its stream is one snapshot,
+  // and the task's state is read with `bureau.tasks.get`.
+  test('applies each snapshot, and does not call a stream that ended as designed a dropped connection', async () => {
+    const world = emptyBureauWorld({ tasks: [taskFixture({ id: 'run-c', status: 'working' })] });
+    stub = installBureauWorld(world);
+    router.navigate('/tasks/run-c', { replace: true });
+    const { container, findByText } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(snapshotElement('run-c', 'working'));
+    await findByText('Working');
+
+    // The poll that follows the end of a stream is the fake clock's.
+    jest.useFakeTimers();
+    stub?.streams[0]?.end();
+    await settle();
+    expect(container.textContent).not.toContain(TASK_COPY.followReconnecting);
+
+    // The task completes. Nothing is subscribed to again, so the page learns of it by asking.
+    world.tasks = [taskFixture({ id: 'run-c', status: 'completed' })];
+    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds);
+    await until(() => expect(container.querySelector('dl')?.textContent).toContain('Completed'));
+    expect(container.querySelector('button')).toBeNull();
+    expect(stub?.streams.length).toBe(1);
+  });
+
+  test('takes the status a snapshot carries, and reads the task again for what it does not', async () => {
+    const world = emptyBureauWorld({ tasks: [taskFixture({ id: 'run-c', status: 'working' })] });
+    stub = installBureauWorld(world);
+    router.navigate('/tasks/run-c', { replace: true });
+    const { findByText, container } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await findByText('Working');
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    const reads = stub?.callsTo('bureau.tasks.get').length ?? 0;
+    world.tasks = [taskFixture({ id: 'run-c', status: 'completed' })];
+    stub?.streams[0]?.push(
+      snapshotElement('run-c', 'completed', {
+        artifact: { artifactId: 'run-c:result', text: 'Catalog answer.', truncated: false },
+      }),
+    );
+    await findByText('Catalog answer.');
+    await findByText('Completed');
+    expect(stub?.callsTo('bureau.tasks.get').length).toBeGreaterThan(reads);
+    expect(container.querySelector('button')).toBeNull();
+  });
+
+  test('is not read again by a poll once the task is over', async () => {
+    const world = emptyBureauWorld({ tasks: [taskFixture({ id: 'run-c', status: 'completed' })] });
+    stub = installBureauWorld(world);
+    router.navigate('/tasks/run-c', { replace: true });
+    const { findByText } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await findByText('Completed');
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(snapshotElement('run-c', 'completed'));
+    jest.useFakeTimers();
+    stub?.streams[0]?.end();
+    await settle();
+    const reads = stub?.callsTo('bureau.tasks.get').length ?? 0;
+    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds * 4);
+    await settle();
+    expect(stub?.callsTo('bureau.tasks.get').length).toBe(reads);
+  });
+});
+
+describe('a schedule fire’s task', () => {
+  // A fire's stream stays open until the fire settles, and ends after its terminal element.
+  test('follows its stream to the end, with the answer, and does not poll after it', async () => {
+    const world = emptyBureauWorld({
+      tasks: [taskFixture({ id: 'run-f', status: 'working', actor: 'system:scheduler' })],
+    });
+    stub = installBureauWorld(world);
+    router.navigate('/tasks/run-f', { replace: true });
+    const { findByText, queryByText } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(snapshotElement('run-f', 'working'));
+    await findByText('Working');
+    world.tasks = [taskFixture({ id: 'run-f', status: 'completed', actor: 'system:scheduler' })];
+    stub?.streams[0]?.push(
+      statusElement('run-f', '0', 'completed', {
+        artifact: { artifactId: 'run-f:result', text: 'The fire’s answer.', truncated: false },
+      }),
+    );
+    stub?.streams[0]?.end();
+    await findByText('The fire’s answer.');
+    await findByText('Completed');
+    expect(queryByText(TASK_COPY.followReconnecting)).toBeNull();
+    expect(stub?.streams.length).toBe(1);
+  });
+});
+
+describe('the link from a task to its chat', () => {
+  test('is there when the Bureau has the session', async () => {
+    const { findByRole } = open(taskFixture({ contextId: 'session-1' }));
+    expect((await findByRole('link', { name: TASK_COPY.openChat })).getAttribute('href')).toBe(
+      '/chat/session-1',
+    );
+  });
+
+  test('is not there for a task whose contextId is its run handle and no session', async () => {
+    const { findByRole, queryByRole } = open(taskFixture({ id: 'run-c', contextId: 'run-c' }), {
+      contexts: [],
+    });
+    await findByRole('heading', { level: 1 });
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBe(1));
+    expect(stub?.callsTo('bureau.contexts.get')[0]?.params).toEqual({ contextId: 'run-c' });
+    expect(queryByRole('link', { name: TASK_COPY.openChat })).toBeNull();
+  });
+});
+
+describe('a task the Bureau removed', () => {
+  test('is the not-found treatment, not the last thing the page read', async () => {
+    const { findByText, queryByText } = open(taskFixture({ id: 'run-1', status: 'completed' }));
+    await findByText('Completed');
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.on('bureau.tasks.get', () => {
+      throw new StubFault('NotFound', 404, 'No task with id "run-1"');
+    });
+    stub?.streams[0]?.push({
+      taskId: 'run-1',
+      cursor: '40',
+      emittedAtMs: 1,
+      kind: 'task.removed',
+    });
+    await findByText(VIEW_COPY.tasks.notFound?.title ?? '');
+    expect(queryByText('Completed')).toBeNull();
   });
 });

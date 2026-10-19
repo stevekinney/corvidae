@@ -370,6 +370,11 @@ export const TASK_COPY = {
   cancelHeading: 'Cancellation',
   cancelAction: 'Cancel task',
   cancelFailed: 'The task was not canceled',
+  /**
+   * How often the page reads a task again while its stream has ended and the task has not. A task
+   * the Bureau started with `bureau.run()` streams one snapshot and ends, so its state is read.
+   */
+  endedPollMilliseconds: 5_000,
   /** How often the page reads a task again while its cancellation is still being carried out. */
   cleanupPollMilliseconds: 1_000,
   /** What each answer to a cancel says. A receipt is one of the states a cleanup can be in, or `rejected`. */
@@ -415,6 +420,16 @@ export const REVIEWS_COPY = {
   allCaughtUp: 'All caught up',
   nothingWaiting: 'No reviews are waiting on a decision.',
   decisionFailed: 'The decision was not recorded',
+  /**
+   * The Bureau's answer when a decision took effect and only its write into the conversation
+   * failed (`APPROVAL_OUTCOME_NOT_WRITTEN`). It is not a lost race, so it does not say the decision
+   * was not recorded.
+   */
+  outcomeNotWritten: {
+    title: 'The decision took effect',
+    message:
+      'The tool ran or was refused as you decided, but its outcome could not be written into the conversation. The chat may show the approval as pending until it is reloaded. Do not decide it again.',
+  },
   answerFailed: 'The answer was not sent',
   superseded:
     'The approval was gated again, so the tool did not run. A replacement approval is waiting.',

@@ -46,6 +46,11 @@
   import { router } from '../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
   import {
+    partitionPendingReviews,
+    pendingEntriesOnly,
+  } from '../../routes/reviews/review-domain.ts';
+  import {
+    REVIEW_POLL_MILLISECONDS,
     bureauReviewsQuery,
     weftReviewsQueryOptions,
   } from '../../routes/reviews/reviews-data.ts';
@@ -103,11 +108,25 @@
   );
 
   // One number from whichever sources answered; none while neither has.
+  // The engine's reviews are counted as the page files them: one past its deadline is under Timed
+  // out, not pending, so the badge and the page's count agree. The deadline is checked as often as
+  // the list is read.
+  let reviewsNow = $state(Date.now());
+  $effect(() => {
+    const timer = setInterval(() => {
+      reviewsNow = Date.now();
+    }, REVIEW_POLL_MILLISECONDS);
+    return () => clearInterval(timer);
+  });
+  const enginePending = $derived(
+    partitionPendingReviews(pendingEntriesOnly(engineReviews.data ?? []), reviewsNow).pending
+      .length,
+  );
   const reviewsPendingCount = $derived(
     bureauReviews.data === undefined && engineReviews.data === undefined
       ? undefined
       : (bureauReviews.data?.length ?? 0) +
-          (principalStore.hasScope('reviews:read') ? (engineReviews.data?.length ?? 0) : 0),
+          (principalStore.hasScope('reviews:read') ? enginePending : 0),
   );
   const workersUnhealthyCount = $derived(
     workersQuery.data?.items.filter(

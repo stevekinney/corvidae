@@ -224,16 +224,24 @@ describe('a stream that ends', () => {
     await waitFor(() => expect(current.state).toBe('ended'));
   });
 
-  test('is opened again when it ended while the task was still going', async () => {
+  test('is the end, not a dropped connection, when it ends cleanly while the task is still going', async () => {
     const { follower: current, sleeper } = follow();
     await waitFor(() => expect(stub?.streams.length).toBe(1));
-    stub?.streams[0]?.push(statusElement('run-1', '8', 'working'));
-    await waitFor(() => expect(current.lastCursor).toBe('8'));
+    stub?.streams[0]?.push(snapshotElement('run-1', 'working'));
+    await waitFor(() => expect(current.state).toBe('live'));
     stub?.streams[0]?.end();
-    await waitFor(() => expect(sleeper.pending()).toBe(1));
-    sleeper.release();
-    await waitFor(() => expect(stub?.streams.length).toBe(2));
-    expect(stub?.streams[1]?.lastEventId).toBe('8');
+    await waitFor(() => expect(current.state).toBe('ended'));
+    // A catalog task's stream is its snapshot alone: the Bureau ended it as designed.
+    expect(sleeper.pending()).toBe(0);
+    expect(stub?.streams.length).toBe(1);
+  });
+
+  test('says the task was removed, which the page shows as a task that is not there', async () => {
+    const { follower: current } = follow();
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    expect(current.removed).toBe(false);
+    stub?.streams[0]?.push({ taskId: 'run-1', cursor: '31', emittedAtMs: 1, kind: 'task.removed' });
+    await waitFor(() => expect(current.removed).toBe(true));
   });
 
   test('stops for good when a task is disposed, even while it waits to reconnect', async () => {

@@ -34,7 +34,14 @@ function stubEngine(
     const url = new URL(text, 'http://localhost');
     if (url.pathname.endsWith('/reviews')) {
       const items = Array.from({ length: options.pendingReviews ?? 0 }, (_, index) => ({
-        id: `review-${index}`,
+        status: 'pending',
+        reviewId: `review-${index}`,
+        workflowId: `wf-${index}`,
+        artifact: {},
+        reviewType: 'content',
+        reviewers: [],
+        allowPartial: false,
+        createdAt: Date.now(),
       }));
       return Response.json({ items });
     }

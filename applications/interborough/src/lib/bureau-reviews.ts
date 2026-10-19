@@ -5,6 +5,7 @@
  * `packages/bureau/src/http/bureau-reviews-operations.ts`, as `bureau-client.ts` restates a
  * context's.
  */
+import { HttpClientError } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { callBureau } from './bureau-client.ts';
@@ -98,6 +99,20 @@ const resolveAnswerSchema = z.object({
 });
 
 export type ReviewResolution = z.infer<typeof resolveAnswerSchema>;
+
+/**
+ * The token a `Conflict`'s reason begins with when a decision took effect (the tool ran or was
+ * refused) and only its write into the session's conversation failed. It is not a resolver that
+ * lost (`bureau.reviews.resolve`'s description).
+ */
+export const APPROVAL_OUTCOME_NOT_WRITTEN = 'APPROVAL_OUTCOME_NOT_WRITTEN';
+
+/** Whether a fault says the decision took effect and only its outcome was not written. */
+export function isApprovalOutcomeNotWritten(error: unknown): boolean {
+  if (!(error instanceof HttpClientError)) return false;
+  const reason: unknown = error.data?.['reason'];
+  return typeof reason === 'string' && reason.startsWith(`${APPROVAL_OUTCOME_NOT_WRITTEN}:`);
+}
 
 /** Approves, denies, or rejects a review (`bureau.reviews.resolve`). A rejection needs its reason. */
 export async function resolveBureauReview(

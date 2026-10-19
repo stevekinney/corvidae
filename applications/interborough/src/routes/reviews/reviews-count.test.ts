@@ -103,6 +103,25 @@ describe('the count in the navigation', () => {
     expect(stub?.weftRequests).toEqual([]);
   });
 
+  test('leaves out an engine review whose deadline has passed, as the page files it under Timed out', async () => {
+    const late: PendingReviewEntry = {
+      status: 'pending',
+      reviewId: 'late',
+      workflowId: 'wf_late',
+      artifact: {},
+      reviewType: 'Contract approval',
+      reviewers: [],
+      allowPartial: false,
+      createdAt: Date.now() - 120_000,
+      timeout: 60_000,
+    };
+    const { container } = open('/chat', {
+      reviews: [approval('a')],
+      weftReviews: [late, weft('w1')],
+    });
+    await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
+  });
+
   test('has no number when nothing is waiting', async () => {
     const { container } = open('/chat', {});
     await until(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(0));
@@ -145,6 +164,34 @@ describe('the count in the navigation', () => {
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.callsTo('bureau.reviews.resolve').length).toBe(1);
+  });
+});
+
+describe('answering a question in the inbox', () => {
+  test('changes the count at once, with no time advanced', async () => {
+    const question = humanWaitFixture({ sessionId: 'session-q' });
+    const { container, findByRole, findByLabelText } = open('/reviews', { reviews: [question] });
+    await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
+    await until(() =>
+      expect(container.querySelectorAll('.weft-reviews-inbox__list > li').length).toBe(1),
+    );
+    stub?.on('bureau.tasks.respond', () => {
+      world.reviews = [];
+      return {
+        taskId: question.runId,
+        messageId: 'm',
+        reviewId: question.id,
+        kind: 'human-wait',
+        decision: 'approve',
+        receipt: 'applied',
+      };
+    });
+
+    await fireEvent.input(await findByLabelText('Your answer'), { target: { value: 'staging' } });
+    await fireEvent.click(await findByRole('button', { name: 'Send answer' }));
+
+    await until(() => expect(navigationLabel(container)).toBe('Reviews'));
+    expect(stub?.callsTo('bureau.tasks.respond').length).toBe(1);
   });
 });
 

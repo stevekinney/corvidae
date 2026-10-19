@@ -7,7 +7,9 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { REVIEWS_COPY } from '../../app/copy.ts';
 import { humanWaitFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
+import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -165,6 +167,75 @@ describe('deciding a Bureau tool approval', () => {
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByText('The decision was not recorded');
     expect(rows(container).length).toBe(1);
+  });
+});
+
+describe('a decision that took effect', () => {
+  const NOT_WRITTEN =
+    'APPROVAL_OUTCOME_NOT_WRITTEN: The decision was recorded, but its outcome could not be written into the conversation.';
+
+  test('is not reported as not recorded when only its write into the conversation failed', async () => {
+    const { container, findByRole, findByText, queryByText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('Conflict', 409, 'The decision was recorded.', { reason: NOT_WRITTEN });
+    });
+    const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
+
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+
+    await findByText(REVIEWS_COPY.outcomeNotWritten.title);
+    expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
+    expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
+    // The list is read again, because the review is no longer waiting.
+    await waitFor(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads));
+  });
+
+  test('does not hide a Conflict that is a lost race, which is a decision that was not recorded', async () => {
+    const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new StubFault('Conflict', 409, 'Another resolver won.', {
+        reason: 'Another resolver won.',
+      });
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await findByText(REVIEWS_COPY.decisionFailed);
+  });
+});
+
+describe('what became of a decision', () => {
+  test('is shown with the review it was about, and not beside another one', async () => {
+    const first = toolApprovalFixture({
+      id: 'approval:run-a:call-1',
+      runId: 'run-a',
+      sessionId: 'session-a',
+      requestedAt: Date.now() - 200_000,
+    });
+    const second = toolApprovalFixture({
+      id: 'approval:run-b:call-1',
+      runId: 'run-b',
+      sessionId: 'session-b',
+      requestedAt: Date.now() - 100_000,
+    });
+    const { container, findByRole, findByText, queryByText } = open({ reviews: [first, second] });
+    await waitFor(() => expect(rows(container).length).toBe(2));
+    stub?.on('bureau.reviews.resolve', () => {
+      throw new Error('The Bureau broke.');
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await findByText(REVIEWS_COPY.decisionFailed);
+
+    const other = rows(container)[1]?.querySelector('button');
+    if (other === null || other === undefined) throw new Error('Expected a second row.');
+    await fireEvent.click(other);
+    await waitFor(() => expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull());
+
+    // Back on the first review, what became of it is still told.
+    const again = rows(container)[0]?.querySelector('button');
+    if (again === null || again === undefined) throw new Error('Expected a first row.');
+    await fireEvent.click(again);
+    await findByText(REVIEWS_COPY.decisionFailed);
   });
 });
 

@@ -298,7 +298,7 @@
                   {review}
                   {now}
                   submitting={resolving}
-                  {outcome}
+                  outcome={outcome?.reviewId === review.id ? outcome : undefined}
                   onResolve={(decision, reason) => onResolve(review, decision, reason)}
                   onAnswer={(answer) => {
                     if (review.kind === 'human-wait') onAnswer(review, answer);
