@@ -1050,6 +1050,29 @@ describe('a start retried after the Bureau restarted', () => {
       }
     });
   });
+
+  it('replays the failure of a run that failed, not an invented success', async () => {
+    await withHarness(
+      { script: [{ kind: 'fail', error: new Error('provider said no') }], storage: 'sqlite' },
+      async (harness) => {
+        await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
+        const restarted = await harness.restart([]);
+        try {
+          const retry = await readAgUiStream(
+            await restarted.handler(startRequest(runAgentInput())),
+          );
+
+          expect(retry.at(-1)!.event).toMatchObject({
+            type: EventType.RUN_ERROR,
+            message: expect.stringContaining('provider said no'),
+          });
+          expect(typesOf(retry)).not.toContain(EventType.RUN_FINISHED);
+        } finally {
+          await restarted.dispose();
+        }
+      },
+    );
+  });
 });
 
 describe('door refusals are one-event streams', () => {
