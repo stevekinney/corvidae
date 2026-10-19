@@ -104,14 +104,14 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // darwin with the command in `run-coverage.ts`, so the floors also rise to the code that arrived
   // since the last measurement. The Linux baseline below is not re-measured here: it needs a Linux
   // host, so `src/routes/tasks` has no Linux floor yet.
-  measuredAt: '2026-10-19T20:00:00.000Z',
-  overall: { linesFound: 65858, linesHit: 63964, functionsFound: 12957, functionsHit: 12576 },
+  measuredAt: '2026-10-19T21:30:00.000Z',
+  overall: { linesFound: 66106, linesHit: 64235, functionsFound: 12994, functionsHit: 12621 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 952, linesHit: 952, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 958, linesHit: 958, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3414, linesHit: 3347, functionsFound: 638, functionsHit: 620 },
-    'src/lib': { linesFound: 3254, linesHit: 3238, functionsFound: 529, functionsHit: 525 },
+    'src/app': { linesFound: 3431, linesHit: 3364, functionsFound: 642, functionsHit: 624 },
+    'src/lib': { linesFound: 3315, linesHit: 3299, functionsFound: 535, functionsHit: 531 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1447,
@@ -129,10 +129,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2850,
-      linesHit: 2768,
-      functionsFound: 601,
-      functionsHit: 577,
+      linesFound: 2885,
+      linesHit: 2831,
+      functionsFound: 603,
+      functionsHit: 586,
     },
     'src/routes/schedules': {
       linesFound: 3678,
@@ -154,10 +154,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1491, measured on darwin: the Tasks view.
     'src/routes/tasks': {
-      linesFound: 1691,
-      linesHit: 1576,
-      functionsFound: 324,
-      functionsHit: 308,
+      linesFound: 1820,
+      linesHit: 1700,
+      functionsFound: 349,
+      functionsHit: 334,
     },
     'src/routes/workers': {
       linesFound: 12913,
