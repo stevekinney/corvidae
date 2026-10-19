@@ -123,6 +123,24 @@ const REQUIRED_MEMBERS: ReadonlyArray<
   ['providerCopies', 'array'],
 ];
 
+/** Optional members the read path treats as strings: each must be a string when it is present. */
+const OPTIONAL_STRING_MEMBERS: ReadonlyArray<keyof AssetRecord> = [
+  'declaredMediaType',
+  'mediaType',
+  'digest',
+  'providerFetchUrl',
+  'retainUntil',
+  'duplicateOf',
+  'expiredAt',
+  'deletedAt',
+  'tombstoneUntil',
+];
+
+/** Whether a string parses as a finite date: `computeExpiresAt` throws a `RangeError` for one that does not. */
+function parsesAsDate(value: unknown): boolean {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -136,9 +154,11 @@ function hasType(value: unknown, type: 'string' | 'number' | 'array' | 'object')
 /**
  * Parses a stored record and checks the shape the service reads (COR-1581): `version` is 1, every
  * required member is present with the right top-level type, and each `references` entry carries a
- * string `holderId` and `until`, because `retain` reads both. The elements of the other arrays are
- * not checked. A stored `null` is no record at all (`undefined`, reading as not found); anything
- * else that fails throws {@link AssetRecordCorruptError}.
+ * string `holderId` and `until`, because `retain` reads both, and every date the claim path parses
+ * (`retainUntil`, each `until`) must be a date. Optional members the read path treats as strings
+ * must be strings when present. The elements of the other arrays are not checked. A stored `null`
+ * is no record at all (`undefined`, reading as not found); anything else that fails throws
+ * {@link AssetRecordCorruptError}.
  */
 function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
   let parsed: unknown;
@@ -155,6 +175,26 @@ function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
       throw new AssetRecordCorruptError(assetId, `${member} is missing or has the wrong type`);
     }
   }
+  // Every member the retain and claim paths read, down to the projection a claim returns: a value
+  // that passes the checks above but throws there (`computeExpiresAt` on an unparseable date,
+  // `modalityOf` on a non-string media type) would read as a transient failure and stall the drain.
+  for (const member of OPTIONAL_STRING_MEMBERS) {
+    if (parsed[member] !== undefined && typeof parsed[member] !== 'string') {
+      throw new AssetRecordCorruptError(assetId, `${member} is present but is not a string`);
+    }
+  }
+  if (parsed['byteLength'] !== undefined && typeof parsed['byteLength'] !== 'number') {
+    throw new AssetRecordCorruptError(assetId, 'byteLength is present but is not a number');
+  }
+  if (parsed['rejection'] !== undefined && !isPlainObject(parsed['rejection'])) {
+    throw new AssetRecordCorruptError(assetId, 'rejection is present but is not an object');
+  }
+  if (parsed['retainUntil'] !== undefined && !parsesAsDate(parsed['retainUntil'])) {
+    throw new AssetRecordCorruptError(assetId, 'retainUntil is not a date');
+  }
+  if (!isPlainObject(parsed['provenance']) || typeof parsed['provenance']['kind'] !== 'string') {
+    throw new AssetRecordCorruptError(assetId, 'provenance has no string kind');
+  }
   for (const reference of parsed['references'] as unknown[]) {
     if (
       !isPlainObject(reference) ||
@@ -162,6 +202,9 @@ function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
       typeof reference['until'] !== 'string'
     ) {
       throw new AssetRecordCorruptError(assetId, 'a reference lacks a string holderId or until');
+    }
+    if (!parsesAsDate(reference['until'])) {
+      throw new AssetRecordCorruptError(assetId, 'a reference until is not a date');
     }
   }
   return parsed as unknown as AssetRecord;

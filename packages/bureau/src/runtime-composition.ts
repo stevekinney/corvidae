@@ -2032,7 +2032,7 @@ export interface RuntimeComposition {
    * no session, which holds them itself. A catalog dispatch (`bureau.run()`, a child, a goal
    * attempt, a workflow step) and its recovery have no session.
    */
-  mediaOptionsFor(principalId: string | undefined, rowHolder?: MediaRowHolder): MediaRunOptions;
+  mediaOptionsFor(principalId: string | undefined, rowHolder: MediaRowHolder): MediaRunOptions;
   ready: boolean;
   provider: RedactedProviderConfiguration | undefined;
   providers: RedactedProviderRouteConfiguration[];
@@ -2870,7 +2870,7 @@ async function buildRuntimeComposition(
   /** {@link RuntimeComposition.mediaOptionsFor}. */
   function mediaOptionsFor(
     principalId: string | undefined,
-    rowHolder: MediaRowHolder = 'session',
+    rowHolder: MediaRowHolder,
   ): MediaRunOptions {
     const resolver = dependencies.contentSourceResolverFor?.(principalId);
     const admitter = dependencies.generatedMediaAdmitterFor?.(principalId, rowHolder);
@@ -3477,7 +3477,7 @@ async function buildRuntimeComposition(
         // resolves for whoever owns the session, as it did before the crash.
         ...sessionRunMediaOptions(
           sessionAgent,
-          mediaOptionsFor(resolveSessionOwner(session.metadata)),
+          mediaOptionsFor(resolveSessionOwner(session.metadata), 'session'),
         ),
         maximumSteps:
           typeof maximumStepsRaw === 'number'
@@ -3918,6 +3918,9 @@ async function buildRuntimeComposition(
       record.input,
       {
         agentName: record.agentName,
+        // The run's own id, as its first dispatch carried, so a row the agent seeds from `input`
+        // gets the id it had then (COR-1581) and the options carry the run's id.
+        runId,
         // AB-241 review finding: without this, a recovered catalog agent's
         // re-invoked `OPERATIVE_RESOLVE_RUN_OPTIONS` rebuilt `RunOptions` with
         // no `principal` at all, so a resumed run silently lost attribution
@@ -4313,7 +4316,7 @@ async function buildRuntimeComposition(
         generate: runRuntime.generate,
         toolbox: runRuntime.toolbox,
         conversation,
-        ...mediaOptionsFor(owner),
+        ...mediaOptionsFor(owner, 'session'),
         maximumSteps,
         stopWhen: options.stopWhen,
         // AB-260: the bureau's single composed RuntimeServices instance,

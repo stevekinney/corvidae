@@ -69,6 +69,21 @@ const corruptions: ReadonlyArray<
     ({ providerCopies: _copies, ...rest }) => JSON.stringify(rest),
   ],
   [
+    'a reference whose until is not a date',
+    (record) => JSON.stringify({ ...record, references: [{ holderId: 'h', until: 'not-a-date' }] }),
+  ],
+  [
+    'a retainUntil that is not a date',
+    (record) => JSON.stringify({ ...record, retainUntil: 'not-a-date' }),
+  ],
+  ['a numeric retainUntil', (record) => JSON.stringify({ ...record, retainUntil: 5 })],
+  ['a numeric mediaType', (record) => JSON.stringify({ ...record, mediaType: 5 })],
+  ['a numeric declaredMediaType', (record) => JSON.stringify({ ...record, declaredMediaType: 5 })],
+  ['a numeric digest', (record) => JSON.stringify({ ...record, digest: 5 })],
+  ['a string byteLength', (record) => JSON.stringify({ ...record, byteLength: '4' })],
+  ['a rejection that is not an object', (record) => JSON.stringify({ ...record, rejection: 'no' })],
+  ['a provenance with no kind', (record) => JSON.stringify({ ...record, provenance: {} })],
+  [
     'a reference without a holderId',
     (record) => JSON.stringify({ ...record, references: [{ until: reference.until }] }),
   ],

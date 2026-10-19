@@ -51,6 +51,14 @@ export function createAssetGeneratedMediaAdmitter(
      */
     readonly claimHolderFor?:
       ((runId: string | undefined) => ((rowId: string) => string) | undefined) | undefined;
+    /**
+     * Whether the port claims the input row a run is seeded with, at seed time. A run with no
+     * session has nothing else holding its input, so it does. A run with a session does not: the
+     * session's own commit already queued an outbox entry that claims the same row under the same
+     * holder, and the drain retries a transient failure without touching the run, where a claim
+     * made at seed time would end the run before its first step (COR-1581).
+     */
+    readonly claimSeededInput?: boolean | undefined;
   } = {},
 ): GeneratedMediaAdmitter {
   const principal = { id: principalId };
@@ -98,7 +106,7 @@ export function createAssetGeneratedMediaAdmitter(
     retainCommitted: retainRow,
     // A run's seeded input row references assets of its own. A run with a session has them claimed
     // by the session's commit; a run with none has nothing else holding them (COR-1581).
-    retainSeededInput: retainRow,
+    ...(options.claimSeededInput === true ? { retainSeededInput: retainRow } : {}),
   };
 }
 

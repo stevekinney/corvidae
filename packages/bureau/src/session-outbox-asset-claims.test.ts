@@ -226,8 +226,20 @@ function flaky(storage: AssetStorage, shouldFail: (key: string) => boolean): Ass
   };
 }
 
+function withMember(member: string, value: unknown): (raw: string) => string {
+  return (raw) =>
+    JSON.stringify({ ...(JSON.parse(raw) as Record<string, unknown>), [member]: value });
+}
+
 const corruptions: ReadonlyArray<readonly [string, (raw: string) => string]> = [
   ['JSON that does not parse', () => '{not json'],
+  // Shapes that pass the top-level checks but throw once the claim is projected (COR-1581).
+  [
+    'a reference whose until is not a date',
+    withMember('references', [{ holderId: 'h', until: 'not-a-date' }]),
+  ],
+  ['a retainUntil that is not a date', withMember('retainUntil', 'not-a-date')],
+  ['a numeric mediaType', withMember('mediaType', 5)],
   [
     'a record missing a field the service reads',
     (raw) => {

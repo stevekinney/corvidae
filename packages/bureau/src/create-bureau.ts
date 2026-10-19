@@ -1867,6 +1867,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 // `assets/row-asset-claims.ts`). A catalog dispatch (`bureau.run()`, a child, a
                 // goal attempt, a workflow step) never has a session, whether or not it is
                 // registered with the store, so it holds its own rows.
+                claimSeededInput: rowHolder === 'run',
                 claimHolderFor:
                   rowHolder === 'run'
                     ? (runId) =>
@@ -5748,7 +5749,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ...copyAgentOwnedRunOptions(sessionAgent?.options),
             // COR-716 — a managed asset in this run's input (or in input admitted to
             // its session mid-run) resolves as the run's owner.
-            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner)),
+            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, 'session')),
             maximumSteps: effectiveMaximumSteps,
             maximumTokens: effectiveMaximumTokens,
             // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
@@ -7547,7 +7548,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                     ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
                     ...sessionRunMediaOptions(
                       reattachedSessionAgent,
-                      runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata)),
+                      runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata), 'session'),
                     ),
                     // AB-260: the bureau's single composed RuntimeServices
                     // instance, snapshotted into every run it starts — including
@@ -10691,8 +10692,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           level: 'error',
           scope: 'assets',
           message: isPermanentClaimFailure(error)
-            ? `[bureau] Skipping the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}" for as long as this process runs, because the asset's stored record is corrupt and must be repaired: ${serializeUnknownError(error)}`
+            ? `[bureau] Skipping the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}" for as long as this process runs, because the asset's stored record is corrupt; once it is repaired, the claim is made by a later retain of the asset or after a restart: ${serializeUnknownError(error)}`
             : `[bureau] Could not update the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        }),
+      // A release that fails only changes how long an asset lives, so it is reported and moves on.
+      onReleaseFailure: (assetId: string, error: unknown, rowId: string) =>
+        diagnose({
+          level: 'error',
+          scope: 'assets',
+          message: `[bureau] Could not release the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}": ${serializeUnknownError(error)}`,
           cause: error,
         }),
       // An asset the principal cannot see is skipped quietly when the session has an owner: a hook
@@ -10750,7 +10759,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       context.principalId,
       context.holderOf,
       context.rows,
-      context.onFailure,
+      context.onReleaseFailure,
       claimedRowAssets,
     );
   }

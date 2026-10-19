@@ -8,7 +8,7 @@ import { RunErrorEvent } from '../events';
 import { retainSeededInput } from '../generated-media';
 import { countHumanWaitParks } from '../human-wait-parks';
 import { buildStepDeps } from '../loop';
-import { appendFinalAssistantMessage } from '../message-identifiers';
+import { appendFinalAssistantMessage, inputMessageIdentifier } from '../message-identifiers';
 import { deriveParts, runWideParts } from '../response-parts';
 import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import { createStepMediaAdmission } from '../run-step-media';
@@ -120,8 +120,10 @@ export function createRunWorkflow(
       })
       // A Weft workflow body MUST be an `async function*`: every durable operation
       // goes through `yield*` (ctx.run / ctx.memo), never a bare top-level `await`
-      // — a bare await would not be checkpointed. So the generator correctly has no
-      // own-level `await`; require-await is a false positive for this pattern.
+      // — a bare await would not be checkpointed. The generator has only two own-level
+      // awaits, and both are side effects that are safe to run again on a replay and whose
+      // results the body never reads: the seeded input's retention claim (below) and the
+      // session input's settlement. require-await is a false positive for this pattern.
       // eslint-disable-next-line @typescript-eslint/require-await -- Weft durable generator: async work flows through yield*, not a top-level await.
       .execute(async function* (ctx, input: AgentRunWorkflowInput | ScheduledAgentRunInput) {
         // The per-fire/per-run id is ALWAYS `ctx.workflowId`. For a normal run
@@ -183,12 +185,21 @@ export function createRunWorkflow(
           // (and ScheduledAgentRunInput has no `prompt` field), so appending again
           // would duplicate the user turn.
           if (!scheduled && input.prompt !== undefined) {
-            appendAgentInput(seeded, input.prompt);
+            // The row's id comes from the run's id, so a replay seeds the same row: the claim below
+            // is then made under the same holder, instead of one per replay. A conversation that
+            // already holds that id keeps the minted one.
+            const inputId = inputMessageIdentifier(runId);
+            const taken =
+              inputId !== undefined &&
+              seeded.getMessages({ includeHidden: true }).some((row) => row.id === inputId);
+            appendAgentInput(seeded, input.prompt, undefined, taken ? undefined : inputId);
           }
           // COR-1581: a run with no session holds nothing else on the managed assets its input
           // references, so the port is told about the input row before the first step. It is read
-          // and called inside this function and never held as a local across a `yield*`; a replay
-          // seeds again, and the call is idempotent.
+          // and called inside this function and never held as a local across a `yield*`. A replay
+          // runs this again, outside any checkpointed step, and claims the same row under the same
+          // holder because the row's id is derived from the run's id; a transient failure on that
+          // replay fails the run, as it did on the first attempt.
           await retainSeededInput(
             seededOptions.generatedMediaAdmitter,
             runId,

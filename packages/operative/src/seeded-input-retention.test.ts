@@ -150,7 +150,12 @@ describe('the durable workflow', () => {
 
       expect(result.finishReason).toBe('stop-condition');
       expect(scripted.retainedInput).toHaveLength(1);
-      expect(scripted.retainedInput[0]).toMatchObject({ runId: 'run-1', parts: [suppliedImage] });
+      // The row's id comes from the run's id, so a replay that seeds again claims the same row.
+      expect(scripted.retainedInput[0]).toMatchObject({
+        runId: 'run-1',
+        messageId: 'run-1:input',
+        parts: [suppliedImage],
+      });
       expect(seen).toEqual([1]);
     } finally {
       context.engine[Symbol.dispose]();
