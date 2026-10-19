@@ -81,12 +81,12 @@ export type A2AHandlerOptions = {
   readonly authenticate?: A2AAuthenticate;
   /** Sign the Agent Card and serve its public key at `/.well-known/jwks.json`. */
   readonly signing?: A2ASigningOptions;
-  /** Largest accepted JSON-RPC body. Defaults to 1 MiB; larger bodies get `413`. */
+  /** Largest accepted JSON-RPC body: a positive safe integer. Defaults to 1 MiB; larger bodies get `413`. */
   readonly maxRequestBodyBytes?: number;
   /**
    * How long an SSE response stays open before the kit closes it with a final comment
    * line, so a long-lived stream authenticates again on reconnect. Defaults to
-   * 900 000 ms (fifteen minutes).
+   * 900 000 ms (fifteen minutes). Must be an integer from 1 to 2 147 483 647.
    */
   readonly maxStreamDurationMs?: number;
 };
@@ -233,6 +233,9 @@ async function receiveJsonRpcRequest(
   }
 }
 
+/** The largest delay a timer accepts; Bun clamps anything above it to about 1 ms. */
+const MAX_TIMER_MS = 2_147_483_647;
+
 /**
  * {@link createA2AHandler} with the stream-duration timer injected. Tests drive it
  * with a manual clock; the public entry point uses `setTimeout`.
@@ -244,6 +247,20 @@ export function createA2AHandlerWithScheduler(
   const tenant = options.tenant;
   const maxStreamDurationMs = options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS;
   const maxBodyBytes = options.maxRequestBodyBytes ?? DEFAULT_REST_MAX_BODY_BYTES;
+  if (
+    !Number.isInteger(maxStreamDurationMs) ||
+    maxStreamDurationMs < 1 ||
+    maxStreamDurationMs > MAX_TIMER_MS
+  ) {
+    throw new RangeError(
+      `maxStreamDurationMs must be an integer from 1 to ${MAX_TIMER_MS}; received ${maxStreamDurationMs}.`,
+    );
+  }
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 1) {
+    throw new RangeError(
+      `maxRequestBodyBytes must be a positive safe integer; received ${maxBodyBytes}.`,
+    );
+  }
   const discovery = createAgentCardRoutes({
     agentCard: options.agentCard,
     publicUrl: options.publicUrl,
