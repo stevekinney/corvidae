@@ -57,7 +57,11 @@ export function callerScope(namespace: string, context: ServerCallContext): A2AC
   };
 }
 
-export type A2ARecordKind = 'task' | 'push' | 'push-head';
+/**
+ * `task-event` records are a workflow agent's durable per-task event log, and a
+ * `workflow-task` record names the caller scope that owns the task a workflow serves.
+ */
+export type A2ARecordKind = 'task' | 'push' | 'push-head' | 'task-event' | 'workflow-task';
 
 /** The prefix of every `kind` record of `namespace`, across all tenants and owners. */
 export function namespaceKeyPrefix(kind: A2ARecordKind, namespace: string): string {
@@ -85,6 +89,20 @@ export function scopedKey(
  */
 export function siblingKey(key: string, from: A2ARecordKind, to: A2ARecordKind): string {
   return `a2a:${to}:${key.slice(`a2a:${from}:`.length)}`;
+}
+
+/**
+ * The key of the record naming the caller scope that owns the task with this
+ * identifier. A workflow agent's task identifier is its workflow identifier, which is
+ * unique across scopes, so this record is keyed by the namespace alone.
+ */
+export function workflowTaskKey(namespace: string, taskId: string): string {
+  return namespaceKeyPrefix('workflow-task', namespace) + encodeStorageKeyComponent(taskId);
+}
+
+/** The prefix of every durable event of the task whose record has `taskKey`. */
+export function taskEventPrefix(taskKey: string): string {
+  return `${siblingKey(taskKey, 'task', 'task-event')}:`;
 }
 
 const textEncoder = new TextEncoder();

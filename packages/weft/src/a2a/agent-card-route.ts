@@ -50,7 +50,7 @@ export const JWKS_PATH = '/.well-known/jwks.json';
 const DISCOVERY_CACHE_CONTROL = 'public, max-age=300';
 const textEncoder = new TextEncoder();
 
-type ServedCard = { readonly body: string; readonly etag: string };
+type ServedCard = { readonly body: string; readonly etag: string; readonly lastModified: string };
 
 async function strongEntityTag(value: unknown): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', textEncoder.encode(canonicalJson(value)));
@@ -95,7 +95,12 @@ async function buildServedCard(options: AgentCardRouteOptions): Promise<ServedCa
           jku: `${discoveryBase(options.discoveryUrl)}${JWKS_PATH}`,
         })(unsigned);
   const json = AgentCard.toJSON(card);
-  return { body: JSON.stringify(json), etag: await strongEntityTag(json) };
+  return {
+    body: JSON.stringify(json),
+    etag: await strongEntityTag(json),
+    // The card never changes after the handler builds it, so it was last modified then.
+    lastModified: new Date().toUTCString(),
+  };
 }
 
 /**
@@ -152,8 +157,12 @@ export function createAgentCardRoutes(options: AgentCardRouteOptions): AgentCard
 
   async function serveAgentCard(request: Request): Promise<Response> {
     servedCard ??= buildServedCard(options);
-    const { body, etag } = await servedCard;
-    const headers = new Headers({ etag, 'cache-control': DISCOVERY_CACHE_CONTROL });
+    const { body, etag, lastModified } = await servedCard;
+    const headers = new Headers({
+      etag,
+      'last-modified': lastModified,
+      'cache-control': DISCOVERY_CACHE_CONTROL,
+    });
     if (matchesEntityTag(request.headers.get('if-none-match'), etag)) {
       return new Response(null, { status: 304, headers });
     }
