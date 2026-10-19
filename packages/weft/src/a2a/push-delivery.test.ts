@@ -224,7 +224,8 @@ describe('startPushDelivery', () => {
     expect(await throwingRejectionOf(startPushDelivery({ outbox: other, signal }))).toThrow(
       TypeError,
     );
-    for (const intervalMs of [0, -1, 1.5]) {
+    // Above the timer maximum, setTimeout fires after about 1 ms: a busy loop.
+    for (const intervalMs of [0, -1, 1.5, 2_147_483_648]) {
       expect(
         await throwingRejectionOf(
           startPushDelivery({ outbox: fixture.outbox, intervalMs, signal }),
