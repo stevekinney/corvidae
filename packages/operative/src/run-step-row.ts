@@ -23,8 +23,9 @@ export interface CommittedRow {
  * already holds the settled parts. If a hook changed the response after the wrapper committed it
  * (an output guardrail redacting, a `validateResponse` hook swapping the text), the streamed row is
  * stale and carries exactly what the hook meant to remove, so the loop rewinds to it and appends
- * the settled parts in its place. The row is always the last one at this point (tools have not
- * run), so the rewind removes nothing else.
+ * the settled parts in its place. The row is the last one at this point (tools have not run), so the
+ * rewind removes nothing else; a `streamedRowId` that is not the tail is not this step's row and is
+ * ignored.
  */
 export function commitAssistantRow(input: {
   readonly conversation: Conversation;
@@ -37,7 +38,13 @@ export function commitAssistantRow(input: {
   const { conversation, parts, metadata, streamedRowId, rowId } = input;
   const content = parts.length === 0 ? undefined : rowContentForParts(parts);
 
-  if (streamedRowId !== undefined) {
+  // Only the current attempt's own tail row can be reconciled. A response that names an earlier row
+  // (a cached streamed response replayed in a later turn) did not write one this step: rewinding to
+  // it would delete every turn after it, so it is treated as a response with no row of its own and
+  // the settled parts are appended fresh.
+  const streamedIsTail =
+    streamedRowId !== undefined && conversation.current.ids.at(-1) === streamedRowId;
+  if (streamedRowId !== undefined && streamedIsTail) {
     const streamed = conversation.current.messages[streamedRowId];
     if (streamed !== undefined) {
       if (content !== undefined && JSON.stringify(streamed.content) === JSON.stringify(content)) {

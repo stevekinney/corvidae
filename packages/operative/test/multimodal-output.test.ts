@@ -1,9 +1,11 @@
 import { HookRegistry, TypedEventTarget } from '@lostgradient/lifecycle';
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';
 import { z } from 'zod';
 
+import { withCache } from '../src/cache/with-cache';
 import { noToolCalls } from '../src/conditions/predicates';
 import { createAgent } from '../src/create-agent';
 import { createActiveRun } from '../src/create-run';
@@ -35,7 +37,7 @@ import {
 } from '../src/providers/test/mock-clients';
 import { withStreaming } from '../src/streaming';
 import { withEnhancedStreaming } from '../src/streaming/enhanced-streaming';
-import type { LivePartEvent, StreamEvent } from '../src/streaming/types';
+import type { LivePartEvent, StreamEvent, StreamEventMap } from '../src/streaming/types';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
 import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
@@ -1484,5 +1486,60 @@ describe('stream normalizers (correction)', () => {
       expect(events.at(-1)?.type).toBe('stream:error');
       expect(events.filter((event) => event.type === 'stream:complete')).toEqual([]);
     }
+  });
+});
+
+describe('a cached streamed response never rewinds a historical row (correction)', () => {
+  it('appends a fresh row and keeps every later turn when a hook changes the cached content', async () => {
+    const store = textValueStore(new MemoryStorage());
+    const streaming = withStreaming(async ({ streaming: handle }) => {
+      handle.update('cached answer');
+      return { content: 'cached answer', toolCalls: [] };
+    });
+    const cached = withCache(streaming, { store, keyStrategy: () => 'same-key' });
+    const conversation = new Conversation();
+
+    conversation.appendUserMessage('first question');
+    await run(baseOptions(cached, { conversation }));
+    conversation.appendUserMessage('second question');
+
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => ({ content: 'edited', toolCalls: [] }));
+    const result = await run(baseOptions(cached, { conversation, hooks }));
+
+    const rows = result.conversation
+      .getMessages()
+      .map((message) => [message.role, message.content]);
+    expect(rows).toEqual([
+      ['user', 'first question'],
+      ['assistant', 'cached answer'],
+      ['user', 'second question'],
+      ['assistant', 'edited'],
+    ]);
+    expect(result.steps[0]?.messageId).toBe(result.conversation.getMessages().at(-1)?.id);
+  });
+
+  it('appends a fresh row for a cached streamed response a hook leaves unchanged', async () => {
+    const store = textValueStore(new MemoryStorage());
+    const cached = withCache(
+      withStreaming(async ({ streaming: handle }) => {
+        handle.update('cached answer');
+        return { content: 'cached answer', toolCalls: [] };
+      }),
+      { store, keyStrategy: () => 'same-key' },
+    );
+    const conversation = new Conversation();
+    conversation.appendUserMessage('first question');
+    await run(baseOptions(cached, { conversation }));
+    conversation.appendUserMessage('second question');
+
+    const result = await run(baseOptions(cached, { conversation }));
+
+    expect(result.conversation.getMessages().map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+      'user',
+      'assistant',
+    ]);
   });
 });
