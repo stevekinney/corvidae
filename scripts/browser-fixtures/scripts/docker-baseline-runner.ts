@@ -19,6 +19,8 @@ import {
   PROVENANCE_FILE_NAME,
   REPOSITORY_ROOT,
   REQUIRED_BASELINE_ARCHITECTURE,
+  writeBaselineProvenance,
+  type BaselineProvenance,
   type RepositoryPins,
 } from './baseline-provenance.ts';
 
@@ -283,20 +285,24 @@ export function containerNameForRun(now: number = Date.now(), pid: number = proc
 }
 
 /**
- * Copy the refreshed baselines and provenance into the host tree and delete the
- * orphans (committed baselines no test regenerated). Nothing else is touched.
+ * Copy the refreshed baselines into the host tree, write `provenance`, and delete the
+ * orphans the caller names (committed baselines no test regenerated). The caller decides
+ * the provenance: a full run's own record, or the working tree's full-run record with a
+ * scoped run's component renders merged in (COR-1574). Nothing else is touched.
  */
 export async function applyBaselines(
   sourceDirectory: string,
   targetDirectory: string,
   relativePaths: readonly string[],
-  deletions: readonly string[] = [],
+  deletions: readonly string[],
+  provenance: BaselineProvenance,
 ): Promise<void> {
-  for (const path of [...relativePaths, PROVENANCE_FILE_NAME]) {
+  for (const path of relativePaths) {
     const target = join(targetDirectory, path);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(join(sourceDirectory, path), target);
   }
+  await writeBaselineProvenance(join(targetDirectory, PROVENANCE_FILE_NAME), provenance);
   for (const path of deletions) await rm(join(targetDirectory, path), { force: true });
 }
 
