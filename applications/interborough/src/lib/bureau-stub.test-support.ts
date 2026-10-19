@@ -34,6 +34,8 @@ export type BureauHandler = (params: Record<string, unknown>) => unknown;
 
 /** The directory the stub reports for agent files. */
 export const STUB_AGENT_DIRECTORY = '/home/tester/.interborough/agents';
+/** The directory the stub reports for workflow files. */
+export const STUB_WORKFLOW_DIRECTORY = '/home/tester/.interborough/workflows';
 
 export type BureauStub = {
   readonly calls: BureauCall[];
@@ -66,7 +68,7 @@ export function installBureauStub(
       const directory = options.hostPaths === undefined ? STUB_AGENT_DIRECTORY : options.hostPaths;
       return directory === null
         ? new Response('Not found', { status: 404 })
-        : Response.json({ agentDirectory: directory });
+        : Response.json({ agentDirectory: directory, workflowDirectory: STUB_WORKFLOW_DIRECTORY });
     }
     if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });

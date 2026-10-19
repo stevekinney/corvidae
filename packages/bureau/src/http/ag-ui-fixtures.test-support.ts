@@ -12,16 +12,27 @@ import {
   type StopCondition,
   stopWhen,
 } from '@lostgradient/operative';
-import { type AuthConfig, principalFromApiKey, type AuthorizationScope } from '@lostgradient/weft';
+import {
+  type AuthConfig,
+  createOperationHandler,
+  principalFromApiKey,
+  type AuthorizationScope,
+} from '@lostgradient/weft';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
 import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import type { Bureau, BureauDiagnostic } from '../types.ts';
-import type { AgUiOptions } from './ag-ui-mount.ts';
+import {
+  type AgUiAuthorization,
+  type AgUiBureau,
+  type AgUiOptions,
+  createAgUiMount,
+} from './ag-ui-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { mayAccessOwnedResource } from './owner-predicate.ts';
 
 export const AGENT = 'assistant';
 
@@ -226,5 +237,27 @@ export function cancelRequest(
   return new Request(`http://localhost${prefix}/runs/${encodeURIComponent(runId)}/cancel`, {
     method: 'POST',
     headers,
+  });
+}
+
+/**
+ * A handler over `bureau`, authenticating alice, whose authorization says every owner of record is
+ * alice's: what the owner-of-record read said before a thread was recreated under another owner,
+ * so a test can hand the mount a Bureau whose own records are another's.
+ */
+export function aliceHandlerOver(bureau: AgUiBureau): Handler {
+  const authorization: AgUiAuthorization = {
+    mayAccess: mayAccessOwnedResource,
+    ownerOf: async () => 'api-key:alice',
+  };
+  const mount = createAgUiMount(bureau, authorization, ['assistant'], {});
+  return createOperationHandler({
+    operations: [],
+    host: {} as never,
+    authenticate: async () => ({
+      method: 'api-key' as const,
+      principal: principalFromApiKey({ subject: 'alice', scopes: [] }),
+    }),
+    mounts: [mount],
   });
 }

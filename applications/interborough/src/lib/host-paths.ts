@@ -1,7 +1,7 @@
 /**
  * Where the host keeps the files a person may edit by hand. The browser cannot know the state
- * directory (`~/.interborough`, or `INTERBOROUGH_HOME`), and an agent is a file in it, so the host
- * says (`/host/paths`, `src/host/host.ts`).
+ * directory (`~/.interborough`, or `INTERBOROUGH_HOME`), and an agent and a workflow are each a file
+ * in it, so the host says (`/host/paths`, `src/host/host.ts`).
  */
 import { z } from 'zod';
 
@@ -10,7 +10,7 @@ import type { Fetcher } from './bureau-client.ts';
 /** The route the host answers with {@link HostPaths}. */
 export const HOST_PATHS_ROUTE = '/host/paths';
 
-const hostPathsSchema = z.object({ agentDirectory: z.string() });
+const hostPathsSchema = z.object({ agentDirectory: z.string(), workflowDirectory: z.string() });
 
 export type HostPaths = z.infer<typeof hostPathsSchema>;
 
@@ -32,4 +32,12 @@ export async function getHostPaths(options?: {
 export function agentFilePath(agentDirectory: string, id: string): string {
   const directory = agentDirectory.endsWith('/') ? agentDirectory.slice(0, -1) : agentDirectory;
   return `${directory}/${id}.md`;
+}
+
+/** The path of one workflow's file: its identifier under the workflow directory, with `.json`. */
+export function workflowFilePath(workflowDirectory: string, id: string): string {
+  const directory = workflowDirectory.endsWith('/')
+    ? workflowDirectory.slice(0, -1)
+    : workflowDirectory;
+  return `${directory}/${id}.json`;
 }

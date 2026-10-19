@@ -52,6 +52,7 @@ import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-w
 import type { Bureau, PendingReview, ResolveReviewInput } from '../types.ts';
 import { type AgUiResumePayload, interruptKey } from './ag-ui-interrupts.ts';
 import { type AgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
+import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { eventsResponse } from './ag-ui-sink.ts';
 import {
   interruptibleReviews,
@@ -118,11 +119,13 @@ export type ResumeRequest = {
   readonly principal: Principal;
   readonly owner: string;
   /**
-   * Whether the caller may read the thread, by the predicate the attach route uses (its owner,
-   * or `bureau.tasks:read`). A caller who may only write answers a human wait and is told no more
-   * than that the answer was applied.
+   * The owner of the thread's session when the caller may read the thread, by the predicate the
+   * attach route uses (its owner, or `bureau.tasks:read`), or `undefined` when it may not. A
+   * caller who may only write answers a human wait and is told no more than that the answer was
+   * applied. The owner is the one the decision was made on, and the stream reads the thread and
+   * the run only as that owner's. Asked once, after the interrupts are decided.
    */
-  readonly mayRead: Promise<boolean>;
+  readonly readableAs: () => Promise<string | undefined>;
 };
 
 const CANCELLED_REASON = 'cancelled by the client';
@@ -213,19 +216,20 @@ export function createResume(context: ResumeContext) {
    */
   function streamFor(
     request: ResumeRequest,
-    mayRead: boolean,
+    readableAs: string | undefined,
     result: ResumeResult,
     fresh?: {
       readonly prelude?: () => Event[];
       readonly answerRows?: ReadonlyArray<{ readonly id: string; readonly content: string }>;
     },
   ): Response {
-    if (!mayRead) return acknowledgement(request);
+    if (readableAs === undefined) return acknowledgement(request);
     const started = fresh?.prelude !== undefined;
     return openRunStream(environment, {
       threadId: request.threadId,
       runId: request.runId,
       nativeRunId: result.runId,
+      owner: readableAs,
       replay: started ? 'beginning' : 'open-step',
       messagesSnapshot: !started,
       ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),
@@ -285,15 +289,20 @@ export function createResume(context: ResumeContext) {
       }
     }
     const reviews = new Map<string, PendingReview>();
-    let sessionAgentName: Promise<string | undefined> | undefined;
-    const sessionAgent = (): Promise<string | undefined> => {
-      // A session that cannot be read names no agent, so the route is refused as an
+    const sessionAgentNames = new Map<string, Promise<string | undefined>>();
+    const sessionAgent = (reviewOwner: string | undefined): Promise<string | undefined> => {
+      if (reviewOwner === undefined) return Promise.resolve(undefined);
+      // The session is the review's owner's own. A session that cannot be read, or that another
+      // owner created under the same id, names no agent, so the route is refused as an
       // interrupt that does not exist there rather than throwing out of the resume.
-      sessionAgentName ??= bureau
-        .getSession(threadId)
-        .then((session) => session?.agentName)
-        .catch(() => undefined);
-      return sessionAgentName;
+      let agentName = sessionAgentNames.get(reviewOwner);
+      if (agentName === undefined) {
+        agentName = readSessionOwnedBy(bureau, threadId, reviewOwner)
+          .then((session) => session?.agentName)
+          .catch(() => undefined);
+        sessionAgentNames.set(reviewOwner, agentName);
+      }
+      return agentName;
     };
     for (const entry of entries) {
       const review = await bureau.getReview(entry.interruptId);
@@ -319,7 +328,7 @@ export function createResume(context: ResumeContext) {
       // A review with no agent recorded (one read back after a restart) is the session's;
       // with neither, nothing says which agent's it is, so no route is let through.
       const raisedBy =
-        review === undefined ? undefined : (review.agentName ?? (await sessionAgent()));
+        review === undefined ? undefined : (review.agentName ?? (await sessionAgent(reviewOwner)));
       const otherAgents = review !== undefined && raisedBy !== request.agentName;
       if (
         review === undefined ||
@@ -369,14 +378,14 @@ export function createResume(context: ResumeContext) {
       }
       const answered = await running.work;
       if ('code' in answered) return context.refuse(answered.code, answered.message);
-      return streamFor(request, await request.mayRead, answered.result);
+      return streamFor(request, await request.readableAs(), answered.result);
     }
     const work = settle(request, reviews, identity, digest, key);
     inFlight.set(key, { digest, work });
     try {
       const outcome = await work;
       if ('code' in outcome) return context.refuse(outcome.code, outcome.message);
-      return await streamForSettled(request, await request.mayRead, reviews, outcome);
+      return await streamForSettled(request, await request.readableAs(), reviews, outcome);
     } finally {
       inFlight.delete(key);
     }
@@ -385,11 +394,11 @@ export function createResume(context: ResumeContext) {
   /** The stream of an answer: a fresh one gets what the client has not seen, any other attaches to the run as it stands. */
   async function streamForSettled(
     request: ResumeRequest,
-    mayRead: boolean,
+    readableAs: string | undefined,
     reviews: ReadonlyMap<string, PendingReview>,
     { result, applied }: Settled,
   ): Promise<Response> {
-    if (!applied) return streamFor(request, mayRead, result);
+    if (!applied) return streamFor(request, readableAs, result);
     // Whether this attempt, or an attempt it took over, put the entry's answer to work.
     const delivered = (entry: ResumeEntry): boolean =>
       result.recovered === true ||
@@ -400,15 +409,20 @@ export function createResume(context: ResumeContext) {
             (result.takenOver === true && outcome.outcome === 'no-op')),
       );
     if (result.mode === 'continued') {
-      return streamFor(request, mayRead, result, {
+      return streamFor(request, readableAs, result, {
         answerRows: answerRowsOf(request, reviews, delivered),
       });
     }
     if (result.mode !== 'created' || result.recovered === true)
-      return streamFor(request, mayRead, result);
-    const session = await bureau.getSession(request.threadId);
+      return streamFor(request, readableAs, result);
+    // The prelude replays rows of the conversation to the reader, so it reads the session as the
+    // owner the reader was authorized on, and a caller who may not read gets no rows at all.
+    const session =
+      readableAs === undefined
+        ? undefined
+        : await readSessionOwnedBy(bureau, request.threadId, readableAs);
     const executed = executedArguments(request, reviews, delivered);
-    return streamFor(request, mayRead, result, {
+    return streamFor(request, readableAs, result, {
       prelude: () =>
         [...reviews.values()].flatMap((review) =>
           review.kind === 'tool-approval'
@@ -553,7 +567,7 @@ export function createResume(context: ResumeContext) {
     if (
       toolApprovals &&
       !approvesTool(request.entries, reviews) &&
-      !(await conversationAnswerable(request.threadId))
+      !(await conversationAnswerable(request.threadId, request.owner))
     ) {
       // Every tool approval was refused and no run can start from the conversation, as
       // when the attempt that died first saw it: the refusals are written, the command is
@@ -594,7 +608,9 @@ export function createResume(context: ResumeContext) {
     request: ResumeRequest,
     reviews: ReadonlyMap<string, PendingReview>,
   ): Promise<string> {
-    const session = await bureau.getSession(request.threadId);
+    // A tool approval is the owner's alone, so the session is the caller's own. Another owner's
+    // session under the same id is a missing one, and `createRun` below refuses it again.
+    const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
     const history = session?.conversationHistory;
     for (const review of reviews.values()) {
       if (review.kind !== 'tool-approval' || history === undefined) continue;
@@ -626,8 +642,9 @@ export function createResume(context: ResumeContext) {
   }
 
   /** Whether a run can start from the thread's conversation: it ends in a user or tool-result row, as `createRun` requires. */
-  async function conversationAnswerable(threadId: string): Promise<boolean> {
-    const session = await bureau.getSession(threadId);
+  async function conversationAnswerable(threadId: string, owner: string): Promise<boolean> {
+    // Only a tool approval asks this, and a tool approval is the owner's alone.
+    const session = await readSessionOwnedBy(bureau, threadId, owner);
     const history = session?.conversationHistory;
     const last = history?.ids.at(-1);
     const role = last === undefined ? undefined : history?.messages[last]?.role;
@@ -683,7 +700,9 @@ export function createResume(context: ResumeContext) {
     const hasToolApproval = entries.some(
       (entry) => reviews.get(entry.interruptId)?.kind === 'tool-approval',
     );
-    const canContinue = hasToolApproval ? await conversationAnswerable(request.threadId) : true;
+    const canContinue = hasToolApproval
+      ? await conversationAnswerable(request.threadId, request.owner)
+      : true;
     if (!canContinue && approvesTool(entries, reviews)) {
       return refuse('CONTINUATION_UNAVAILABLE', CONTINUATION_UNAVAILABLE_MESSAGE);
     }

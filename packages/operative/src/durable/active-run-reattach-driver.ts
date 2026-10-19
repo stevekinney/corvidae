@@ -10,6 +10,7 @@ import { type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import type { RecoveredRunHandle } from './active-run-event-surface';
 import {
+  announceRunFailure,
   classifyTimeoutMessage,
   finalizeRunResult,
   loadRunStateFromCheckpoint,
@@ -17,11 +18,29 @@ import {
   makeInterruptedRunResult,
   reconstructRunResult,
   reconstructTerminalRunError,
+  settleRejectedRun,
 } from './active-run-result-reconstruction';
 import {
   type AgentRunWorkflowResult,
   normalizeAgentRunWorkflowResult,
 } from './run-workflow-result';
+
+/**
+ * Whether the engine had already failed this run when the driver started. Reads the engine's own
+ * state, tolerating a missing or throwing `get` the way {@link classifyTimeoutMessage} does: a
+ * state that cannot be read is not evidence the run failed before replay.
+ */
+async function engineFailedRunBeforeReplay(
+  context: DurableActiveRunContext,
+  runId: string,
+): Promise<boolean> {
+  try {
+    const state = await context.engine.get(runId);
+    return state?.status === 'failed';
+  } catch {
+    return false;
+  }
+}
 
 export async function driveReattachedRun(
   context: DurableActiveRunContext,
@@ -31,13 +50,28 @@ export async function driveReattachedRun(
   abortOutcome: () => Promise<boolean> | undefined,
   reachability: { unreachable: boolean },
   runtime: RuntimeServices,
+  failedBeforeReplayFromCaller?: boolean,
 ): Promise<RunResult> {
   const runStartTime = runtime.monotonic.now();
+  // A caller that knows whether the engine failed this run before replay says so, and that is
+  // used as given. Otherwise the engine's own state is the inference, read before anything below
+  // awaits (see `engineFailedRunBeforeReplay`).
+  const failedBeforeReplay =
+    failedBeforeReplayFromCaller ?? engineFailedRunBeforeReplay(context, runId);
+  // A step's own `run.error`, so a rejection that follows it is not announced a second time.
+  let terminalErrorFromEvent: AgentRunError | undefined;
+  emitter.addEventListener('run.error', (event) => {
+    terminalErrorFromEvent = event.error;
+  });
 
   let summary: AgentRunWorkflowResult;
   try {
     summary = normalizeAgentRunWorkflowResult(await handle.result());
   } catch (error) {
+    // A summary this build cannot read is not the engine failing the run, so it is rethrown. A
+    // current-version summary that breaks its own shape (`InvalidRunResultError`) settles as
+    // `error` below on purpose, with the malformed field named: the run is over, and leaving its
+    // session `running` with no terminal event would hide the corruption.
     if (error instanceof UnsupportedRunResultVersionError) {
       throw error;
     }
@@ -90,32 +124,12 @@ export async function driveReattachedRun(
     // fire the terminal lifecycle here; otherwise the session is left stuck
     // `running` for a run that is actually terminal (Bugbot #38). `hooks: undefined`
     // per the reattach contract; the conversation comes from the checkpoint.
-    if (isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError') {
-      const message = await classifyTimeoutMessage(context, runId, error);
-      // Same checkpointed-usage reconstruction as the abort branch above — a
-      // circuit-breaker/deadline timeout after prior checkpointed steps must not
-      // under-report the run's accumulated usage.
-      const { runState, conversation } = await loadRunStateFromCheckpoint(context, runId, runtime);
-      return finalizeRunResult({
-        finishReason: 'error',
-        runState,
-        conversation,
-        hooks: undefined,
-        emitter,
-        runStartTime,
-        runtime,
-        errorMessage: message,
-      });
-    }
-    // Otherwise write-free. EngineDisposedError = bureau teardown mid-resume
-    // (leave running for a later boot). Any other rejection = the engine
-    // terminally failed this run pre-replay because the resolver returned
-    // services-unavailable, and the resolver ALREADY reconciled that session to
-    // `error`. Firing a terminal lifecycle here would clobber what the
-    // resolver/teardown owns, so we only log and resolve quiet.
-    // WorkflowCheckpointConflictError = another engine over the same store won
-    // a checkpoint compare-and-swap for this run and owns its durable state, so
-    // this engine stopped driving it and must not write a terminal over it.
+    const timedOut = isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError';
+
+    // EngineDisposedError = bureau teardown mid-resume (leave running for a later boot).
+    // WorkflowCheckpointConflictError = another engine over the same store won a checkpoint
+    // compare-and-swap for this run and owns its durable state, so this engine stopped driving it
+    // and must not write a terminal over it.
     if (
       isWeftErrorLike(error) &&
       (error.code === 'EngineDisposedError' || error.code === 'WorkflowCheckpointConflictError')
@@ -123,14 +137,45 @@ export async function driveReattachedRun(
       // AB-204 AC8: closed() classifies this as unresolved/unreachable,
       // never failed — see `reachability`'s doc comment above.
       reachability.unreachable = true;
-    } else {
+      return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+    }
+
+    // The engine terminally failed this run before replay, because the recovery resolver returned
+    // services-unavailable. The resolver that reconciles a session records it as `error`, and a
+    // terminal lifecycle here would write a second terminal save over that, so only log and
+    // resolve quiet. The fact comes from the caller when it knows it. Without it, it is inferred
+    // from the engine's state, which is read when this driver starts: a run that failed AFTER
+    // replay reads `failed` too when the engine's storage serves the read late (an I/O reordering,
+    // or a caller that reattaches a run that has already failed), and the inference then leaves
+    // it unreported, the same as before this driver reported failures at all. A recovery path that
+    // can tell the two apart should say so.
+    if (!timedOut && (await failedBeforeReplay)) {
       console.error(
-        `[operative] Reattached durable run "${runId}" did not settle cleanly: ${
+        `[operative] Reattached durable run "${runId}" was failed by the engine before replay, or failed before this process read its state: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
+      return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
     }
-    return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+
+    // Any other rejection is the run ending after replay in this process, and nothing else owns
+    // reporting it (COR-1587): an activity or workflow-body failure, such as a refused
+    // `durable-run:` write, rejects with a plain `Error` that carries no code. Settle it as `error`
+    // so the session, the run record, and attached streams end, rather than leaving them
+    // `running` until the next boot. Same checkpointed-usage reconstruction as the abort branch
+    // above, so a failure after prior checkpointed steps does not under-report accumulated usage.
+    const { runState, conversation } = await loadRunStateFromCheckpoint(context, runId, runtime);
+    return settleRejectedRun({
+      rejection: error,
+      ...(timedOut ? { message: await classifyTimeoutMessage(context, runId, error) } : {}),
+      runState,
+      conversation,
+      hooks: undefined,
+      emitter,
+      runStartTime,
+      runtime,
+      terminalError: terminalErrorFromEvent,
+    });
   }
 
   // COR-1390: `handle.result()` also settles when another engine reclaimed
@@ -146,6 +191,29 @@ export async function driveReattachedRun(
     runState,
     conversation: durableConversation,
   } = await reconstructRunResult(context, runId, summary, runtime);
+
+  // A run that ended in an error announces it with `run.error` before `run.completed`, as every
+  // failed run does, because that is what turns the run record to `error` and ends an attached
+  // stream with `RUN_ERROR`. The step's own `run.error` fired in the process that died when the
+  // run failed before the crash, so this one has not seen it: the summary is all that says so.
+  // One this process saw is kept and not repeated. Other failure reasons (a budget, a tripwire, a
+  // denied elicitation) keep their existing announcements.
+  const reportedError = result.error instanceof AgentRunError ? result.error : undefined;
+  const terminalError =
+    terminalErrorFromEvent ??
+    (result.finishReason === 'error'
+      ? announceRunFailure(
+          emitter,
+          runState.steps.length,
+          reportedError ??
+            reconstructTerminalRunError({
+              finishReason: result.finishReason,
+              steps: runState.steps.length,
+              errorMessage: summary.errorMessage,
+              tripwire: summary.tripwire,
+            }),
+        )
+      : reportedError);
 
   // `hooks: undefined` — the recovered run's `onRunComplete`/etc. hooks are
   // non-serializable run behavior; they were rebuilt by the resolver into
@@ -166,7 +234,7 @@ export async function driveReattachedRun(
     schemaValidation: summary.schemaValidation,
     output: summary.output,
     tripwire: summary.tripwire,
-    terminalError: result.error instanceof AgentRunError ? result.error : undefined,
+    terminalError,
   });
 }
 

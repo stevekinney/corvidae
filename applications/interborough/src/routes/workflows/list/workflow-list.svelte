@@ -26,6 +26,7 @@
   import { queryKeys } from '../../../lib/query.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
+  import { workflowRunsPath, workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import BulkSelectionBar from './bulk-selection-bar.svelte';
   import QueryBuilder from './query-builder.svelte';
   import QueryFaultBanner from './query-fault-banner.svelte';
@@ -34,9 +35,22 @@
   import WorkflowListPagination, { DEFAULT_PAGE_SIZE } from './workflow-list-pagination.svelte';
   import WorkflowTable from './workflow-table.svelte';
 
+  interface WorkflowListProps {
+    /**
+     * Narrows the list to one workflow type, whose runs live at their own address
+     * (`/workflows/:type/runs`). The type is the address's, so a `type` in the query string is
+     * ignored and the list offers no filter for it.
+     */
+    scopedType?: string | undefined;
+  }
+
+  let { scopedType = undefined }: WorkflowListProps = $props();
+
   const client = getClient();
   const principalStore = getPrincipalStore();
   const queryClient = useQueryClient();
+  /** The address the list lives at, which a change of filter keeps the page on. */
+  const listPath = $derived(scopedType === undefined ? '/runs' : workflowRunsPath(scopedType));
   const listGate = $derived(scopeGate(principalStore, ['workflows:read']));
   const bulkAdminGate = $derived(scopeGate(principalStore, ['workflows:admin']));
 
@@ -44,12 +58,13 @@
     limit: DEFAULT_PAGE_SIZE,
     offset: 0,
     ...parseWorkflowListFilter(router.current.search),
+    ...(scopedType === undefined ? {} : { type: scopedType }),
   });
 
   const hasActiveFilter = $derived(
     Boolean(
       filter.status ||
-      filter.type ||
+      (filter.type && scopedType === undefined) ||
       (filter.tags && filter.tags.length > 0) ||
       filter.idPrefix ||
       (filter.attributes && filter.attributes.length > 0) ||
@@ -60,9 +75,11 @@
   function navigateToFilter(next: WorkflowListQuery, resetOffset = false): void {
     const nextFilter = { ...next };
     if (resetOffset) delete nextFilter.offset;
+    // The address names the type, so the query string does not.
+    if (scopedType !== undefined) delete nextFilter.type;
     const params = serializeWorkflowListFilter(nextFilter);
     const query = params.toString();
-    router.navigate(`/runs${query ? `?${query}` : ''}`, { replace: true });
+    router.navigate(`${listPath}${query ? `?${query}` : ''}`, { replace: true });
   }
 
   const listQuery = createQuery(() => ({
@@ -155,6 +172,14 @@
     router.navigate('/runs?view=start');
   }
 
+  function onTypeLinkClick(event: MouseEvent, type: string): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(workflowTypePath(type));
+  }
+
   function onAggregateClick(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
@@ -173,33 +198,45 @@
 <div class="weft-workflow-list">
   <div class="weft-workflow-list__header">
     <div>
-      <h1>Runs</h1>
+      {#if scopedType === undefined}
+        <h1>Runs</h1>
+      {:else}
+        <h1>
+          Runs of
+          <a
+            href={router.href(workflowTypePath(scopedType))}
+            onclick={(event) => onTypeLinkClick(event, scopedType)}>{scopedType}</a
+          >
+        </h1>
+      {/if}
       <p class="weft-workflow-list__subtitle">
         Snapshot at page load{total > 0 ? ` · ${total.toLocaleString()} matching` : ''}
       </p>
     </div>
-    <div class="weft-workflow-list__header-actions">
-      <Button
-        variant="secondary"
-        size="sm"
-        class="weft-workflow-list__header-action"
-        href={router.href('/runs?view=aggregate')}
-        onclick={onAggregateClick}
-      >
-        <ChartBar aria-hidden="true" size={14} />
-        Aggregate view
-      </Button>
-      <Button
-        variant="primary"
-        size="sm"
-        class="weft-workflow-list__header-action"
-        href={router.href('/runs?view=start')}
-        onclick={onStartWorkflowClick}
-      >
-        <Plus aria-hidden="true" size={14} />
-        Start workflow
-      </Button>
-    </div>
+    {#if scopedType === undefined}
+      <div class="weft-workflow-list__header-actions">
+        <Button
+          variant="secondary"
+          size="sm"
+          class="weft-workflow-list__header-action"
+          href={router.href('/runs?view=aggregate')}
+          onclick={onAggregateClick}
+        >
+          <ChartBar aria-hidden="true" size={14} />
+          Aggregate view
+        </Button>
+        <Button
+          variant="primary"
+          size="sm"
+          class="weft-workflow-list__header-action"
+          href={router.href('/runs?view=start')}
+          onclick={onStartWorkflowClick}
+        >
+          <Plus aria-hidden="true" size={14} />
+          Start workflow
+        </Button>
+      </div>
+    {/if}
   </div>
 
   {#if listGate.disabled}
@@ -209,6 +246,7 @@
   {:else}
     <WorkflowListFilters
       {filter}
+      lockType={scopedType !== undefined}
       onFilterChange={(next) => navigateToFilter(next, true)}
       {queryBuilderOpen}
       onQueryBuilderOpenChange={(open) => (queryBuilderOpen = open)}
