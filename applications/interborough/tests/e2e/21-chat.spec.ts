@@ -23,6 +23,17 @@ const FOLLOW_UP_REPLY = 'The follow-up was delivered.';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
+/** Sends a follow-up and waits for the Bureau to answer it, so what follows acts on an admitted input. */
+async function sendFollowUp(page: Page, text: string): Promise<void> {
+  const answered = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/bureau/jsonrpc') &&
+      (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
+  );
+  await send(page, text);
+  await answered;
+}
+
 async function send(page: Page, text: string): Promise<void> {
   await composer(page).fill(text);
   await composer(page).press('Enter');
@@ -154,8 +165,7 @@ test.describe('a follow-up sent while the run is going', () => {
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
 
-    await send(page, 'Also this');
-    await expect(page.getByText('Sending…')).toHaveCount(0);
+    await sendFollowUp(page, 'Also this');
     await releaseBarrier(request);
 
     await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
@@ -173,7 +183,7 @@ test.describe('a follow-up sent while the run is going', () => {
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
 
-    await send(page, 'Also this');
+    await sendFollowUp(page, 'Also this');
     await releaseBarrier(request);
 
     // The run ended without delivering it, so the next run answers it, in the same conversation.
@@ -193,7 +203,7 @@ test.describe('a follow-up sent while the run is going', () => {
     await page.goto(`/chat/${threadId}`);
     await send(page, 'Start the work');
     await expectWaiting(request, 1);
-    await send(page, 'Also this');
+    await sendFollowUp(page, 'Also this');
 
     await page.getByRole('button', { name: /stop/i }).click();
 
