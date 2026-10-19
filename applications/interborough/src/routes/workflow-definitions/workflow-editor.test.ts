@@ -160,10 +160,10 @@ describe('the editor', () => {
     expect(stub?.file('digest')?.hash).toBe('hash-by-hand');
 
     await fireEvent.click(reload);
-    // The boolean, not the element: a failed expectation formats what it received, and an element
-    // of the happy-dom document takes seconds to print.
     await waitFor(() =>
-      expect(queryByRole('button', { name: WORKFLOW_COPY.stale.action }) === null).toBe(true),
+      expect(
+        queryByRole('button', { name: WORKFLOW_COPY.stale.action })?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(textarea(container).value).toContain('9h');
     expect(textarea(container).value).not.toContain('"1h"');

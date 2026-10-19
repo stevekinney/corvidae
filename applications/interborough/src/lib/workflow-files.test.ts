@@ -2,6 +2,8 @@
  * The browser's view of the Bureau's workflow files: the operations `bureau.workflows.*`, parsed
  * at the boundary, and the text of a file turned into what an update sends.
  */
+import { rejectionOf } from '@lostgradient/testing';
+import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -136,15 +138,16 @@ describe('the operations', () => {
 
   test('an update that still carries the name is refused, as the Bureau does', async () => {
     stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
-    await expect(
+    const refused = await rejectionOf(
       updateWorkflowFile('one', 'hash-1', { name: 'one', trigger: { kind: 'x' }, steps: [] }),
-    ).rejects.toThrow();
+    );
+    expect(refused).toBeInstanceOf(HttpClientError);
     expect(stub.file('one')?.hash).toBe('hash-1');
   });
 
   test('a stale hash is refused and changes nothing', async () => {
     stub = installWorkflowWorld(emptyWorld({ files: [readyFile('one')] }));
-    await expect(pauseWorkflowFile('one', 'old')).rejects.toThrow();
+    expect(await rejectionOf(pauseWorkflowFile('one', 'old'))).toBeInstanceOf(HttpClientError);
     expect(stub.file('one')?.paused).toBe(false);
     expect(workflowFaults.stale('x').weftCode).toBe('StaleRevision');
   });

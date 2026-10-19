@@ -591,7 +591,9 @@ describe('a write the Bureau refuses', () => {
     expect(alert.textContent).toContain(WORKFLOW_COPY.pauseFailed);
     expect(alert.textContent).toContain(WORKFLOW_COPY.forbidden);
     await fireEvent.click(within(alert).getByRole('button'));
-    await waitFor(() => expect(queryByText(WORKFLOW_COPY.pauseFailed)).toBeNull());
+    await waitFor(() =>
+      expect(queryByText(WORKFLOW_COPY.pauseFailed)?.outerHTML ?? null).toBeNull(),
+    );
   });
 
   test('shows the Bureau’s own words when it could not apply a resume or a delete', async () => {

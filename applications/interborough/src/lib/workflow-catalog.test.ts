@@ -3,6 +3,8 @@
  * workflow files, the answer to which of the two a type belongs to, the schedules that start a
  * type, and what a file's actions are.
  */
+import { rejectionOf } from '@lostgradient/testing';
+import { HttpClientError } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -215,7 +217,9 @@ describe('which service a type belongs to', () => {
     stub.on('weft.workflows.definitions.get', () => {
       throw workflowFaults.unavailable();
     });
-    await expect(resolveWorkflow(stub.client, 'digest')).rejects.toThrow();
+    expect(await rejectionOf(resolveWorkflow(stub.client, 'digest'))).toBeInstanceOf(
+      HttpClientError,
+    );
   });
 
   test('is a failure, not a missing type, when the Bureau breaks', async () => {
@@ -223,7 +227,9 @@ describe('which service a type belongs to', () => {
     stub.on('bureau.workflows.get', () => {
       throw workflowFaults.unavailable();
     });
-    await expect(resolveWorkflow(stub.client, 'digest')).rejects.toThrow();
+    expect(await rejectionOf(resolveWorkflow(stub.client, 'digest'))).toBeInstanceOf(
+      HttpClientError,
+    );
   });
 });
 
