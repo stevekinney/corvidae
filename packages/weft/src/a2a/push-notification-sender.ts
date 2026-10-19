@@ -15,9 +15,9 @@
 
 import { StreamResponse, type Task } from '@a2a-js/sdk';
 import {
-  type PushNotificationSender,
   STATE_HEADERS_KEY,
   ServerCallContext,
+  type PushNotificationSender,
   type User,
 } from '@a2a-js/sdk/server';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -32,7 +32,10 @@ import {
   type HttpDeliveryCredential,
 } from './http-delivery-adapter.ts';
 import { requirePushOutbox, stopPushDeliveries } from './push-delivery.ts';
-import type { WeftPushNotificationStore } from './push-notification-store.ts';
+import {
+  delegatePushConfigurationCreates,
+  type WeftPushNotificationStore,
+} from './push-notification-store.ts';
 import { callerScope } from './store-support.ts';
 
 /** The outbox delivery `kind` of every push notification. */
@@ -264,6 +267,7 @@ export function createOutboxPushNotificationSender(
       );
     },
   };
+  delegatePushConfigurationCreates(wrappedStore, pushStore);
 
   return {
     pushStore: wrappedStore,

@@ -122,11 +122,17 @@ export interface WorkflowResultWaiter {
   resolve: (value: unknown) => void;
   reject: (reason: unknown) => void;
   /**
-   * The {@link WorkflowState.workflowExecutionToken} of the run this waiter was created for.
+   * Whether the waiter is bound to a run yet. Set when the waiter is created while this engine
+   * holds the run, or from the first durable read otherwise. Kept apart from the token because a
+   * run recorded before tokens existed is bound with no token, and must still not match a later
+   * token-bearing run (COR-1604).
+   */
+  boundToRun: boolean;
+  /**
+   * The {@link WorkflowState.workflowExecutionToken} of the run this waiter is bound to.
    * `resultResolvers` is keyed by workflow id, and a `start-new` replacement reuses the id, so
-   * this is what keeps a settle that belongs to a different run from reaching the waiter. Bound
-   * when the waiter is created, or from the first durable read when this engine holds no local
-   * checkpoint for the run; `undefined` only for a run recorded before tokens existed.
+   * this is what keeps a settle that belongs to a different run from reaching the waiter.
+   * `undefined` while unbound, or when bound to a run recorded before tokens existed.
    */
   workflowExecutionToken?: string | undefined;
 }

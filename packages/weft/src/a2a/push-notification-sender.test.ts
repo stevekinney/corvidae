@@ -24,6 +24,7 @@ import {
   createOutboxPushNotificationSender,
   pushNotificationResolvers,
 } from './push-notification-sender.ts';
+import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
 
 usePushFixtures();
 
@@ -284,6 +285,14 @@ describe('createOutboxPushNotificationSender store wrapper', () => {
     expect(await store.list({ taskId: 'task-1' }, alice())).toMatchObject({
       configs: [expect.anything(), expect.anything()],
     });
+  });
+
+  test("plans a workflow agent's inline create with the push store's own planner", async () => {
+    const fixture = await createPushFixture();
+    const planner = pushConfigurationCreatePlannerOf(fixture.pushStore);
+
+    expect(planner).toBeFunction();
+    expect(pushConfigurationCreatePlannerOf(fixture.sender.pushStore)).toBe(planner);
   });
 
   test('delete defaults the configuration identifier to the task identifier', async () => {
