@@ -333,10 +333,15 @@ const isTerminalStatus = (status: TaskView['status']): boolean =>
  * The stream of a schedule fire (COR-1482). A fire runs headless on the durable engine: it writes
  * no `run.*` events to the durable history, so there is nothing to replay, and its end is what the
  * task registry records, which is the source `bureau.tasks.get` reads. The stream is a snapshot of
- * the task as it stands, then one element that carries the task's end (`completed`, `failed`, or
- * `canceled`, with its answer when it has one), then it ends; a fire already over gets both at
- * once. It has one resumable position: a client that reconnects with the terminal element's cursor
- * has seen the end already, and a fire that is over answers it with an empty stream.
+ * the task as it stands, then a status element each time what the task reads as changes while it
+ * is not over (a review of the fire opening makes it `input-required`; a wait answered or closed
+ * changes it back), then one element that carries the task's end (`completed`, `failed`, or
+ * `canceled`, with its answer when it has one), then it ends; a fire already over gets the
+ * snapshot and the end at once. A fire that settled with a review open ends when its last review
+ * closes, not when it settled (COR-1596). It has one resumable position: a client that reconnects
+ * with the end element's cursor has seen the end already, and a fire that is over answers it with
+ * an empty stream. The status elements before the end reuse the snapshot's cursor, `-1`, so none
+ * of them is a position to resume from.
  */
 function followScheduleFire(
   host: BureauTaskEventsOperationHost,

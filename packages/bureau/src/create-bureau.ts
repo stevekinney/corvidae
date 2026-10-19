@@ -1663,18 +1663,17 @@ export function createScheduledFireApprovalHook(
     reviewId: string,
     approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
     stepWasFinal: boolean,
-  ) => void,
+  ) => void | Promise<void>,
 ): OnStepHook {
-  return (stepResult) => {
+  return async (stepResult) => {
     for (const result of stepResult.results) {
       if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
-      register(
+      await register(
         `approval:${runId}:${result.pendingApproval.callId}`,
         result.pendingApproval,
         stepResult.final,
       );
     }
-    return Promise.resolve();
   };
 }
 
@@ -5086,7 +5085,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const durable = runtime.durable;
     if (durable === undefined) return undefined;
     try {
-      return committedFireApprovalIds(runId, await durable.checkpointStore.loadSteps(runId));
+      // Strict: a tolerant read skips a step record that fails the parts check, and a step
+      // skipped is a committed approval taken for an abandoned one.
+      return committedFireApprovalIds(
+        runId,
+        await durable.checkpointStore.loadSteps(runId, { strict: true }),
+      );
     } catch (error) {
       diagnose({
         level: 'error',
@@ -5143,11 +5147,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         : [],
     );
     if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return;
+    // A review the session records as decided is not pending, whatever override it still holds.
+    const decidedReviewIds = new Set(
+      Array.isArray(metadataRecord?.['resolvedReviewIds'])
+        ? stringValues(metadataRecord['resolvedReviewIds'])
+        : [],
+    );
     const rounds = metadataRecord?.['pendingApprovalRounds'];
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
       if (resolutionStartedIds.has(reviewId)) continue;
       if (invalidApprovalReviewIds.has(reviewId)) continue;
+      if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         pendingApprovalOverrides.set(
@@ -5220,9 +5231,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         : [],
     );
     if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) return;
+    const decidedReviewIds = new Set(
+      Array.isArray(metadataRecord?.['resolvedReviewIds'])
+        ? stringValues(metadataRecord['resolvedReviewIds'])
+        : [],
+    );
     for (const [reviewId, approval] of Object.entries(overrides as Record<string, unknown>)) {
       if (!reviewId.startsWith(`approval:${runId}:`)) continue;
       if (resolutionStartedIds.has(reviewId)) continue;
+      if (decidedReviewIds.has(reviewId)) continue;
       if (committed !== undefined && !committed.has(reviewId)) continue;
       if (approval && typeof approval === 'object' && !Array.isArray(approval)) {
         if (!(approval as { approvalBinding?: unknown }).approvalBinding) continue;
@@ -13835,6 +13852,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (approval.approvalBinding === undefined) continue;
         if (approval.approvalBinding.expiresAt > effectiveNow) continue;
 
+        // Read before the drop, which deletes it: the record keeps the round the approval was at.
+        const round = pendingApprovalRounds.get(id) ?? 0;
         resolvedReviewIds.add(id);
         dropPendingApprovalOverride(id);
         sweptCount += 1;
@@ -13849,7 +13868,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             requestedAt: terminalReview.requestedAt,
             ageMilliseconds: effectiveNow - terminalReview.requestedAt,
             status: 'expired',
-            round: pendingApprovalRounds.get(id) ?? 0,
+            round,
           },
           'expired',
           EXPIRY_ACTOR,
@@ -15322,7 +15341,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     registerTrailingOnStep(
       hooks,
       'bureau:scheduled-fire-approvals',
-      createScheduledFireApprovalHook(fire.runId, (reviewId, approval, stepWasFinal) => {
+      createScheduledFireApprovalHook(fire.runId, async (reviewId, approval, stepWasFinal) => {
+        // A review the session records as decided stays decided across a replay that makes the
+        // same call again (a decision made before the step committed): it is not listed.
+        const session = await runtime.sessionStore?.load(fire.sessionId);
+        const decided = session?.metadata['resolvedReviewIds'];
+        if (Array.isArray(decided) && decided.includes(reviewId)) return;
         registerScheduledFireApproval(
           scheduledFireReviewState,
           fire,

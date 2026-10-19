@@ -124,6 +124,39 @@ export function approvalToolbox(charges: number[]): Toolbox {
   ) as unknown as Toolbox;
 }
 
+/** Like {@link approvalToolbox}, but a resumed call is gated again, so each approval supersedes. */
+export function regatingApprovalToolbox(charges: number[]): Toolbox {
+  let evaluations = 0;
+  return createToolbox(
+    [
+      createTool({
+        name: 'charge-card',
+        version: '1.0.0',
+        description: 'Charge a payment card',
+        input: z.object({ cents: z.number() }),
+        async execute({ cents }) {
+          charges.push(cents);
+          return { charged: cents };
+        },
+      }),
+    ],
+    {
+      approvalSecret: 'schedule-fire-reviews-secret',
+      policy: {
+        beforeExecute: () => {
+          evaluations += 1;
+          return {
+            allow: false,
+            status: 'needs_approval',
+            reason: `Operator approval required (evaluation ${evaluations})`,
+            action: { message: 'Approve charge' },
+          };
+        },
+      },
+    },
+  ) as unknown as Toolbox;
+}
+
 export const chargesOnce: GenerateFunction = async (context) =>
   context.step === 0
     ? {

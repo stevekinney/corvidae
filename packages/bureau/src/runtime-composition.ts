@@ -2334,12 +2334,17 @@ export function scheduledFireApprovalMetadata(
   committed?: ReadonlySet<string>,
 ): Record<string, JSONValue> {
   const prefix = `approval:${runId}:`;
+  // A review the session records as decided is not recorded as pending again: a replay that
+  // makes the same call under the same id would list it for ever, with nothing to decide.
+  const decided = new Set(
+    Array.isArray(metadata['resolvedReviewIds']) ? metadata['resolvedReviewIds'] : [],
+  );
   const approvals: Array<[string, JSONValue]> = [];
   for (const result of results) {
     if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
     const approval = JSON.parse(JSON.stringify(result.pendingApproval)) as JSONValue;
     const callId = isPlainAuthorityRecord(approval) ? approval['callId'] : undefined;
-    if (typeof callId !== 'string') continue;
+    if (typeof callId !== 'string' || decided.has(`${prefix}${callId}`)) continue;
     approvals.push([`${prefix}${callId}`, approval]);
   }
   const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
@@ -3771,12 +3776,26 @@ async function buildRuntimeComposition(
       // COR-1596: a fire replaying after a crash may have left an approval in its session that
       // its checkpoint never held; only a replay can find one, so only a replay reads the
       // checkpoint, and reads it before the atomic update, which cannot wait on a read.
-      const committedApprovals = replaceCurrentFireTranscript
-        ? committedFireApprovalIds(
+      let committedApprovals: ReadonlySet<string> | undefined;
+      if (replaceCurrentFireTranscript && durable !== undefined) {
+        try {
+          // Strict, as every reader of the checkpoint for this is: a step record skipped is a
+          // committed approval taken for an abandoned one.
+          committedApprovals = committedFireApprovalIds(
             runId,
-            durable === undefined ? [] : await durable.checkpointStore.loadSteps(runId),
-          )
-        : undefined;
+            await durable.checkpointStore.loadSteps(runId, { strict: true }),
+          );
+        } catch (error) {
+          // A checkpoint that cannot be read drops nothing, and does not fail the fire's step:
+          // the approvals it holds are checked at the next boot and when the fire settles.
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not read the checkpoint of replaying schedule fire "${runId}", so its session keeps the approvals it holds: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+      }
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =

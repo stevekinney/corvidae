@@ -29,6 +29,7 @@ import {
   handlerOf,
   pollUntil,
   reviewOf,
+  regatingApprovalToolbox,
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
@@ -202,6 +203,67 @@ function crashAfterApprovalWrite() {
   return { storage, storageAfterCrash, reached: reached.promise };
 }
 
+/**
+ * The same storage with every step record of a run's checkpoint read back without its `parts`: a
+ * current-version record that fails the parts check, which a tolerant `loadSteps` skips and a
+ * strict one rejects. The record on disk is untouched.
+ */
+function withUnreadableStepRecords(storage: MemoryStorage): MemoryStorage {
+  const encoder = new TextEncoder();
+  return new Proxy(storage, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (typeof member !== 'function') return member;
+      if (property !== 'get') return (member as (...a: unknown[]) => unknown).bind(target);
+      return async (...args: unknown[]) => {
+        const value = await (member as (...a: unknown[]) => unknown).apply(target, args);
+        const key = String(args[0]);
+        if (
+          !key.startsWith('durable-run:') ||
+          !key.includes(':step:') ||
+          (typeof value !== 'string' && !(value instanceof Uint8Array))
+        ) {
+          return value;
+        }
+        const record = JSON.parse(typeof value === 'string' ? value : decoder.decode(value)) as {
+          parts?: unknown;
+        };
+        delete record.parts;
+        const unreadable = JSON.stringify(record);
+        return typeof value === 'string' ? unreadable : encoder.encode(unreadable);
+      };
+    },
+  });
+}
+
+describe('the audit record of an expired fire approval', () => {
+  it('keeps the round the approval had been superseded to', async () => {
+    const charges: number[] = [];
+    const bureau = await open({
+      generate: chargesOnce,
+      toolbox: regatingApprovalToolbox(charges),
+      stopWhen: stopAtApproval,
+    });
+    const { fireId } = await fireOnce(bureau, OWNER.alice, 'rounds-session');
+    const review = await reviewOf(bureau, fireId);
+    // Approving it gates the call again: the tool does not run, and the review is at round 1.
+    const superseded = await bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
+    expect(superseded.superseded).toBe(true);
+    expect(charges).toEqual([]);
+
+    expect(await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+
+    const records = await bureau.auditTrail?.query({ runId: fireId });
+    const expired = records?.find((record) => record.type === 'review.tool-approval.expired');
+    const detail = expired?.detail as { review?: { round?: number } } | undefined;
+    expect(detail?.review?.round).toBe(1);
+  });
+});
+
 describe('a crash between a fire step’s session write and its commit', () => {
   it('restores only the approvals the run committed, and approving one charges once', async () => {
     const { storage: holdingStorage, storageAfterCrash: raw, reached } = crashAfterApprovalWrite();
@@ -322,6 +384,121 @@ describe('a crash between a fire step’s session write and its commit', () => {
 
     expect(reviewsOf(third, fireId)).toEqual([]);
     expect(charges).toEqual([]);
+  });
+
+  it('keeps a committed approval whose step record fails the parts check, at settle and after a restart', async () => {
+    const storage = new MemoryStorage();
+    const generate: GenerateFunction = async (context) => {
+      if (context.step === 0) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 100 } }],
+        };
+      }
+      // The first process never gets past its second step: it is the one that dies.
+      if (dead) return new Promise<never>(() => {});
+      return { content: 'done', toolCalls: [] };
+    };
+    let dead = true;
+    const first = await open({
+      generate,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopWhen.noToolCalls(),
+      storage,
+    });
+    const { fireId } = await fireOnce(first, OWNER.alice, 'unreadable-session');
+    await reviewOf(first, fireId);
+    await pollUntil(async () => {
+      const metadata = await sessionMetadata(first, 'unreadable-session');
+      return keysOf(metadata['pendingApprovalOverrides']).length === 1 ? true : undefined;
+    }, 'the approval to reach the session');
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+
+    dead = false;
+    const diagnostics: string[] = [];
+    const second = await open({
+      generate,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopWhen.noToolCalls(),
+      storage: withUnreadableStepRecords(storage),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    await pollUntil(async () => {
+      const status = await durableStatus(second, fireId);
+      return status !== undefined && !['pending', 'running', 'suspended'].includes(status)
+        ? status
+        : undefined;
+    }, 'the recovered fire to settle');
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+
+    // Neither the replay's write-back nor the settle reconcile may take a step it could not read
+    // for a step that was never committed.
+    const kept = await sessionMetadata(second, 'unreadable-session');
+    expect(keysOf(kept['pendingApprovalOverrides'])).toEqual([`approval:${fireId}:charge-X`]);
+    expect(keysOf(kept['lastRequestAuthorities'])).toEqual([fireId]);
+    expect(diagnostics.join('\n')).toContain('Could not read what schedule fire');
+
+    const bootDiagnostics: string[] = [];
+    const third = await open({
+      generate,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopWhen.noToolCalls(),
+      storage: withUnreadableStepRecords(storage),
+      onDiagnostic: (diagnostic) => bootDiagnostics.push(diagnostic.message),
+    });
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+    const afterRestart = await sessionMetadata(third, 'unreadable-session');
+    expect(keysOf(afterRestart['pendingApprovalOverrides'])).toEqual([
+      `approval:${fireId}:charge-X`,
+    ]);
+    // Not listed while its checkpoint cannot be read, and said so, rather than taken for gone.
+    expect(reviewsOf(third, fireId)).toEqual([]);
+    expect(bootDiagnostics.join('\n')).toContain('Could not read what schedule fire');
+  });
+
+  it('does not list a review again that was decided before the crash, at the replay or at any later boot', async () => {
+    const { storage, storageAfterCrash, reached } = crashAfterApprovalWrite();
+    const firstCharges: number[] = [];
+    const first = await open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox(firstCharges),
+      stopWhen: stopAtApproval,
+      storage,
+    });
+    const { fireId } = await fireOnce(first, OWNER.alice, 'decided-crash-session');
+    await reached;
+    const review = await reviewOf(first, fireId);
+    // Decided in the window: the tool ran, and the step that raised the approval never commits.
+    await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    expect(firstCharges).toEqual([4242]);
+
+    // The replay makes the same call under the same id.
+    const secondCharges: number[] = [];
+    const second = await open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox(secondCharges),
+      stopWhen: stopAtApproval,
+      storage: storageAfterCrash,
+    });
+    await pollUntil(
+      async () => ((await durableStatus(second, fireId)) === 'completed' ? true : undefined),
+      'the replay to complete',
+    );
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+    expect(reviewsOf(second, fireId)).toEqual([]);
+    const metadata = await sessionMetadata(second, 'decided-crash-session');
+    expect(keysOf(metadata['pendingApprovalOverrides'])).toEqual([]);
+    expect(keysOf(metadata['lastRequestAuthorities'])).toEqual([]);
+
+    const third = await open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopAtApproval,
+      storage: storageAfterCrash,
+    });
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+    expect(reviewsOf(third, fireId)).toEqual([]);
+    expect(secondCharges).toEqual([]);
   });
 });
 
