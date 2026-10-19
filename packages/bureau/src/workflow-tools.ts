@@ -159,52 +159,6 @@ function issuesOf(error: WorkflowFileError): readonly WorkflowToolIssue[] {
     : issues.map((issue) => ({ path: issue.path, message: issue.message }));
 }
 
-/** `steps[0].handler` for the zod path `['steps', 0, 'handler']`. */
-function formatIssuePath(path: readonly PropertyKey[]): string {
-  let formatted = '';
-  for (const segment of path) {
-    formatted +=
-      typeof segment === 'number'
-        ? `[${String(segment)}]`
-        : formatted === ''
-          ? String(segment)
-          : `.${String(segment)}`;
-  }
-  return formatted;
-}
-
-/**
- * What the model sees of a tool's input is `schema`, but what armorer validates is any object, so
- * that input which does not match `schema` reaches the tool body and is answered as an `invalid`
- * result the model can read, not as a failed tool call.
- */
-function inputOf(schema: z.ZodType) {
-  return {
-    input: z.looseObject({}),
-    inputSchema: z.toJSONSchema(schema, { io: 'input' }) as NonNullable<
-      Parameters<typeof createTool>[0]['inputSchema']
-    >,
-  };
-}
-
-type ParsedInput<T> =
-  { readonly value: T; readonly refusal?: undefined } | { readonly refusal: WorkflowToolResult };
-
-function parseInput<T extends z.ZodType>(schema: T, raw: unknown): ParsedInput<z.infer<T>> {
-  const parsed = schema.safeParse(raw);
-  if (parsed.success) return { value: parsed.data };
-  return {
-    refusal: {
-      status: 'invalid',
-      code: 'invalid-input',
-      issues: parsed.error.issues.map((issue) => ({
-        path: formatIssuePath(issue.path),
-        message: issue.message,
-      })),
-    },
-  };
-}
-
 /** The result a failed write is reported as, or rethrows an error that is not one of the five. */
 function resultOfFailure(error: unknown, id: string): WorkflowToolResult {
   if (error instanceof WorkflowFileConflictError) {
@@ -308,11 +262,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-create',
     description:
       'Create a workflow: a JSON file of a trigger and steps that Bureau runs. `name` is what the workflow is called, and its identifier is derived from it (lowercase, with runs of other characters turned into one hyphen) unless you give `id`. A taken identifier is a conflict. The workflow is yours to change and starts working as soon as the call returns.',
-    ...inputOf(createInput),
-    execute: async (raw, context): Promise<WorkflowToolResult> => {
-      const parsed = parseInput(createInput, raw);
-      if (parsed.refusal !== undefined) return parsed.refusal;
-      const input = parsed.value;
+    input: createInput,
+    execute: async (input, context): Promise<WorkflowToolResult> => {
       const derived = input.id === undefined ? deriveWorkflowIdentifier(input.name) : undefined;
       const provisional =
         input.id ?? (derived !== undefined && 'id' in derived ? derived.id : input.name);
@@ -342,11 +293,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     name: 'workflows-update',
     description:
       'Replace a workflow with a new trigger and steps, if its file still has the `hash` workflows-list returned. The whole definition is replaced, and you become the agent that wrote it. Leave `paused` out to leave the workflow running.',
-    ...inputOf(updateInput),
-    execute: async (raw, context): Promise<WorkflowToolResult> => {
-      const parsed = parseInput(updateInput, raw);
-      if (parsed.refusal !== undefined) return parsed.refusal;
-      const input = parsed.value;
+    input: updateInput,
+    execute: async (input, context): Promise<WorkflowToolResult> => {
       const calling = await caller(context, input.id);
       if ('refusal' in calling) return calling.refusal;
       try {
@@ -369,11 +317,8 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
       description: paused
         ? 'Pause a workflow, if its file still has the `hash` workflows-list returned. A paused workflow starts nothing new; instances already running finish.'
         : 'Resume a paused workflow, if its file still has the `hash` workflows-list returned.',
-      ...inputOf(guardedInput),
-      execute: async (raw, context): Promise<WorkflowToolResult> => {
-        const parsed = parseInput(guardedInput, raw);
-        if (parsed.refusal !== undefined) return parsed.refusal;
-        const input = parsed.value;
+      input: guardedInput,
+      execute: async (input, context): Promise<WorkflowToolResult> => {
         const calling = await caller(context, input.id);
         if ('refusal' in calling) return calling.refusal;
         const guard = { expectedHash: input.expectedHash, actor: calling.actor };
@@ -391,15 +336,12 @@ export function createWorkflowTools(host: WorkflowToolHost): Record<string, Tool
     });
   }
 
-  const listInput = z.strictObject({});
   const list = createTool({
     name: 'workflows-list',
     description:
       'List the workflows: each one’s identifier, the `hash` the other workflow tools take as `expectedHash`, its state, whether it is paused, and its trigger kind. A file that cannot run is listed with a null trigger kind and the problem, so you can fix it.',
-    ...inputOf(listInput),
-    execute: async (raw, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
-      const parsed = parseInput(listInput, raw);
-      if (parsed.refusal !== undefined) return parsed.refusal;
+    input: z.object({}),
+    execute: async (_input, context): Promise<WorkflowToolResult | WorkflowToolListResult> => {
       const calling = await caller(context, '');
       if ('refusal' in calling) {
         // Nothing to hide for a caller that is not the owner: it sees no workflows at all. A caller
