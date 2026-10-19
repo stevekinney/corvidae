@@ -31,6 +31,7 @@ import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/serve
 import type { Engine } from '../core/engine.ts';
 import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
 import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
+import { requestSignalOf } from './sse-response.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';
 import { type StoredWorkflowTask, taskEventCursor, type TaskEventLog } from './task-event-log.ts';
 import type { WorkflowAgentInputMode } from './workflow-agent-card.ts';
@@ -380,7 +381,8 @@ export function createWorkflowAgentMessaging(options: {
       taskEventCursor(sequence),
     );
     if (isTerminalTaskState(task.status?.state)) return;
-    for await (const entry of log.follow(runtime.scopeOf(context), task.id, sequence)) {
+    const signal = requestSignalOf(context);
+    for await (const entry of log.follow(runtime.scopeOf(context), task.id, sequence, signal)) {
       yield withStreamEventCursor(entry.event, entry.cursor);
       if (endsStream(statusStateOf(entry.event))) return;
     }
@@ -394,7 +396,8 @@ export function createWorkflowAgentMessaging(options: {
   ): Promise<Task> {
     if (returnImmediately || isSettledTaskState(stored.task.status?.state)) return stored.task;
     const scope = runtime.scopeOf(context);
-    for await (const entry of log.follow(scope, stored.task.id, stored.sequence)) {
+    const signal = requestSignalOf(context);
+    for await (const entry of log.follow(scope, stored.task.id, stored.sequence, signal)) {
       if (isSettledTaskState(statusStateOf(entry.event))) break;
     }
     const latest = await log.read(scope, stored.task.id);
