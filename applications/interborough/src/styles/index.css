@@ -14,6 +14,7 @@
 @import './workers.css';
 @import './reviews.css';
 @import './storage.css';
+@import './chat.css';
 
 /* Theme contract: `color-scheme: light dark` lets the browser/OS pick a
  * default; an explicit `data-theme="light" | "dark"` attribute on <html>

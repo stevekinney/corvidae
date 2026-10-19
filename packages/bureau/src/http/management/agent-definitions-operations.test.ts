@@ -530,7 +530,13 @@ describe('publication', () => {
     const served = await serve();
     const handler = createBureauHandler(served.bureau, { unauthenticatedAccess: 'allow' });
     const none = await callAs(handler, 'bureau.agents.list', {});
-    expect(none.result?.['agents']).toEqual([]);
+    // Nothing is published, so the caller that may read definitions sees the code-defined agent as
+    // unpublished and nobody is offered it.
+    expect(listOf(none, 'agents').map((entry) => [entry['name'], entry['publishState']])).toEqual([
+      ['alpha', 'unpublished'],
+    ]);
+    const deployment = await callAs(handler, 'bureau.deployment.get', {});
+    expect(deployment.result?.['publishedAgents']).toEqual([]);
     const refused = await callAs(handler, 'bureau.agents.definitions.publish', {
       id: 'alpha',
       expectedHash: 'x',

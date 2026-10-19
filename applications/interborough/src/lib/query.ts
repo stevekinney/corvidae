@@ -39,6 +39,21 @@ export type WorkflowAggregateGroupBy =
  * assignable wherever a plain `QueryKey` is expected.
  */
 export const queryKeys = {
+  contexts: {
+    /** One chat session, as `bureau.contexts.get` shows it. */
+    detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+    /** The caller's sessions, all of them or one agent's. */
+    list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+  },
+  agents: {
+    list: () => ['agents', 'list'] as const,
+    /** One agent as `bureau.agents.definitions.get` shows it. */
+    definition: (id: string) => ['agents', 'definition', id] as const,
+    /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */
+    revisions: (id: string) => ['agents', 'revisions', id] as const,
+    /** The models and tools an agent may name (`bureau.agents.catalog`). */
+    catalog: () => ['agents', 'catalog'] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,
@@ -93,14 +108,6 @@ export const queryKeys = {
   retention: () => ['retention'] as const,
   metrics: () => ['metrics'] as const,
   principal: () => ['principal'] as const,
-  agents: {
-    /** One agent as `bureau.agents.definitions.get` shows it. */
-    definition: (id: string) => ['agents', 'definition', id] as const,
-    /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */
-    revisions: (id: string) => ['agents', 'revisions', id] as const,
-    /** The models and tools an agent may name (`bureau.agents.catalog`). */
-    catalog: () => ['agents', 'catalog'] as const,
-  },
   /** Where the host keeps what a person may edit by hand (`/host/paths`). */
   hostPaths: () => ['host', 'paths'] as const,
   /** The probe behind a view's loading, empty, error, and forbidden states (`app/view-frame.svelte`). */

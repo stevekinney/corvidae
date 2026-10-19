@@ -98,19 +98,17 @@ export function coverageMeasurementPlatform(): CoverageMeasurementPlatform | nul
 }
 
 const DARWIN_BASELINE: CoverageBaseline = {
-  // Re-measured for COR-1488, when the console moved into this application and gained its sidebar,
-  // view frame, and placeholder routes, on darwin with the command in `run-coverage.ts`. The areas
-  // keep the names they had in the console's own workspace; `src/views` and `src/routes/placeholder`
-  // are new, and the `src` area now holds the entry point and the route table. `src/lib` then lost
-  // `setApiKey`, ten lines and two functions that were all covered, with the API-key form it served.
-  measuredAt: '2026-10-18T04:00:00.000Z',
-  overall: { linesFound: 46825, linesHit: 44991, functionsFound: 9179, functionsHit: 8835 },
+  // Re-measured for COR-1490 and COR-1489, which add `src/routes/chat` and `src/routes/agents` (the
+  // chat and agents views). Every area is re-measured on darwin with the command in
+  // `run-coverage.ts`, so the floors also rise to the code that arrived since the last measurement.
+  measuredAt: '2026-10-19T12:00:00.000Z',
+  overall: { linesFound: 57240, linesHit: 55401, functionsFound: 11274, functionsHit: 10917 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
+    scripts: { linesFound: 926, linesHit: 926, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
-    'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
+    'src/app': { linesFound: 2974, linesHit: 2907, functionsFound: 606, functionsHit: 588 },
+    'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1444,
@@ -118,11 +116,13 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 330,
       functionsHit: 325,
     },
+    'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
+    'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
     'src/routes/dashboard': {
-      linesFound: 1410,
-      linesHit: 1174,
-      functionsFound: 246,
-      functionsHit: 222,
+      linesFound: 1472,
+      linesHit: 1236,
+      functionsFound: 254,
+      functionsHit: 230,
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
@@ -132,51 +132,52 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 421,
     },
     'src/routes/schedules': {
-      linesFound: 3675,
-      linesHit: 3597,
-      functionsFound: 790,
-      functionsHit: 767,
+      linesFound: 3678,
+      linesHit: 3600,
+      functionsFound: 791,
+      functionsHit: 768,
     },
     'src/routes/storage': {
-      linesFound: 2676,
-      linesHit: 2649,
-      functionsFound: 534,
-      functionsHit: 523,
+      linesFound: 2660,
+      linesHit: 2637,
+      functionsFound: 543,
+      functionsHit: 532,
     },
     'src/routes/system': {
-      linesFound: 8797,
-      linesHit: 8762,
-      functionsFound: 1804,
-      functionsHit: 1777,
+      linesFound: 10532,
+      linesHit: 10497,
+      functionsFound: 2106,
+      functionsHit: 2076,
     },
     'src/routes/workers': {
-      linesFound: 8553,
-      linesHit: 8407,
-      functionsFound: 1663,
-      functionsHit: 1649,
+      linesFound: 12904,
+      linesHit: 12769,
+      functionsFound: 2576,
+      functionsHit: 2560,
     },
     'src/routes/workflows': {
-      linesFound: 13274,
-      linesHit: 12599,
-      functionsFound: 2709,
-      functionsHit: 2566,
+      linesFound: 14788,
+      linesHit: 14111,
+      functionsFound: 3012,
+      functionsHit: 2869,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
-    tests: { linesFound: 127, linesHit: 103, functionsFound: 15, functionsHit: 14 },
+    tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },
   },
 };
 
 const LINUX_BASELINE: CoverageBaseline = {
-  // COR-1488 re-measured darwin only. The recorded Linux and darwin counts were identical at the
-  // last measurement on both, so this carries the darwin counts until a Linux run records its own.
-  measuredAt: '2026-10-18T04:00:00.000Z',
-  overall: { linesFound: 46825, linesHit: 44991, functionsFound: 9179, functionsHit: 8835 },
+  // COR-1490 and COR-1489 re-measured darwin only. The recorded Linux and darwin counts were
+  // identical at the last measurement on both, so this carries the darwin counts until a Linux run
+  // records its own.
+  measuredAt: '2026-10-19T12:00:00.000Z',
+  overall: { linesFound: 57240, linesHit: 55401, functionsFound: 11274, functionsHit: 10917 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 879, linesHit: 874, functionsFound: 60, functionsHit: 59 },
+    scripts: { linesFound: 926, linesHit: 926, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 2481, linesHit: 2405, functionsFound: 491, functionsHit: 471 },
-    'src/lib': { linesFound: 1490, linesHit: 1479, functionsFound: 259, functionsHit: 255 },
+    'src/app': { linesFound: 2974, linesHit: 2907, functionsFound: 606, functionsHit: 588 },
+    'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1444,
@@ -184,11 +185,13 @@ const LINUX_BASELINE: CoverageBaseline = {
       functionsFound: 330,
       functionsHit: 325,
     },
+    'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
+    'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
     'src/routes/dashboard': {
-      linesFound: 1410,
-      linesHit: 1174,
-      functionsFound: 246,
-      functionsHit: 222,
+      linesFound: 1472,
+      linesHit: 1236,
+      functionsFound: 254,
+      functionsHit: 230,
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
@@ -198,37 +201,37 @@ const LINUX_BASELINE: CoverageBaseline = {
       functionsHit: 421,
     },
     'src/routes/schedules': {
-      linesFound: 3675,
-      linesHit: 3597,
-      functionsFound: 790,
-      functionsHit: 767,
+      linesFound: 3678,
+      linesHit: 3600,
+      functionsFound: 791,
+      functionsHit: 768,
     },
     'src/routes/storage': {
-      linesFound: 2676,
-      linesHit: 2649,
-      functionsFound: 534,
-      functionsHit: 523,
+      linesFound: 2660,
+      linesHit: 2637,
+      functionsFound: 543,
+      functionsHit: 532,
     },
     'src/routes/system': {
-      linesFound: 8797,
-      linesHit: 8762,
-      functionsFound: 1804,
-      functionsHit: 1777,
+      linesFound: 10532,
+      linesHit: 10497,
+      functionsFound: 2106,
+      functionsHit: 2076,
     },
     'src/routes/workers': {
-      linesFound: 8553,
-      linesHit: 8407,
-      functionsFound: 1663,
-      functionsHit: 1649,
+      linesFound: 12904,
+      linesHit: 12769,
+      functionsFound: 2576,
+      functionsHit: 2560,
     },
     'src/routes/workflows': {
-      linesFound: 13274,
-      linesHit: 12599,
-      functionsFound: 2709,
-      functionsHit: 2566,
+      linesFound: 14788,
+      linesHit: 14111,
+      functionsFound: 3012,
+      functionsHit: 2869,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
-    tests: { linesFound: 127, linesHit: 103, functionsFound: 15, functionsHit: 14 },
+    tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },
   },
 };
 

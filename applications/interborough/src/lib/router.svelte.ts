@@ -110,12 +110,16 @@ class DashboardRouter {
   #pathname = $state<string | undefined>(undefined);
   #searchString = $state<string | undefined>(undefined);
   #listening = false;
+  // The key the outlet mounts the route under, while a navigation asked the page to keep it
+  // (`navigate`'s `keep`). `undefined` means the key is the pathname.
+  #keptKey = $state<string | undefined>(undefined);
 
   /** Subscribes to `popstate` on first use, so evaluating this module never touches `window`. */
   #listen(): void {
     if (this.#listening) return;
     this.#listening = true;
     window.addEventListener('popstate', () => {
+      this.#keptKey = undefined;
       this.#syncFromLocation();
     });
   }
@@ -135,6 +139,16 @@ class DashboardRouter {
   get search(): URLSearchParams {
     this.#listen();
     return new URLSearchParams(this.#searchString ?? window.location.search);
+  }
+
+  /**
+   * What the route outlet keys the mounted route on: the pathname, so a new path is a new page.
+   * A navigation that asks to `keep` the page leaves the key as it was, so the route that made it
+   * stays mounted under the new address (a new chat becoming its session, mid-run).
+   */
+  get viewKey(): string {
+    this.#listen();
+    return this.#keptKey ?? this.pathname;
   }
 
   /** The route matching the current `pathname`, or `null` for an unowned path. */
@@ -169,10 +183,14 @@ class DashboardRouter {
    * `options.replace`) and updates the reactive route state. `path` may
    * include a query string (e.g. `/runs?status=running`) — the browser
    * resolves it, so `pathname`/`search` are read back from
-   * `window.location` rather than re-parsed here.
+   * `window.location` rather than re-parsed here. With `keep`, the page that is mounted stays
+   * mounted (see {@link DashboardRouter.viewKey}); use it only with `replace`, for an address that
+   * names the same thing the page already shows.
    */
-  navigate(path: string, options?: { readonly replace?: boolean }): void {
+  navigate(path: string, options?: { readonly replace?: boolean; readonly keep?: boolean }): void {
     this.#listen();
+    // A kept page carries on under the key it already had; any other navigation ends that.
+    this.#keptKey = options?.keep === true ? this.viewKey : undefined;
     if (options?.replace) {
       window.history.replaceState(null, '', path);
     } else {

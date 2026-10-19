@@ -55,8 +55,8 @@ export type ViewDefinition = {
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
-  chat: { scopes: [], placeholder: true, canBeEmpty: true },
-  agents: { scopes: [], placeholder: true, canBeEmpty: true },
+  chat: { scopes: [], placeholder: false, canBeEmpty: true },
+  agents: { scopes: [], placeholder: false, canBeEmpty: true },
   // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
   'agent-editor': { scopes: [], placeholder: false, canBeEmpty: false },
   workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },

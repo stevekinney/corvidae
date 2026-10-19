@@ -63,6 +63,34 @@ export default (imports) => WebAssembly.instantiateStreaming(fetch(url), imports
   },
 };
 
+/** The module the complete Shiki registries are resolved to (`src/lib/curated-shiki-registries.ts`). */
+export const CURATED_SHIKI_REGISTRIES = join(
+  PACKAGE_DIRECTORY,
+  'src',
+  'lib',
+  'curated-shiki-registries.ts',
+);
+
+/**
+ * Cinder exports a highlighter over Shiki's complete language and theme registries
+ * (`fullShikiHighlighter`), whose lookup tables (`shiki/langs` and `shiki/themes`) make a bundler
+ * emit every grammar and theme Shiki ships. `@lostgradient/chat` publishes that highlighter for
+ * every code block in a transcript, so the registries are reachable and Chat does use them: it
+ * highlights each tool call's JSON arguments and result with it. Both specifiers are therefore
+ * resolved to a module that holds curated tables (`src/lib/curated-shiki-registries.ts`): the
+ * grammars and themes the application already ships, and nothing else. Tables that were empty
+ * would keep the bundle small and break the highlighter, which renders every block as plain text
+ * with a console warning.
+ */
+export const curatedShikiPlugin: Bun.BunPlugin = {
+  name: 'curated-shiki',
+  setup(builder) {
+    builder.onResolve({ filter: /^shiki\/(?:langs|themes)$/ }, () => ({
+      path: CURATED_SHIKI_REGISTRIES,
+    }));
+  },
+};
+
 /**
  * The `Bun.build` options every browser build of the application shares: the development host
  * and the production build differ only in `development`, in minification, and in where the files
@@ -85,6 +113,7 @@ export function browserBuildOptions(options: {
     target: 'browser',
     plugins: [
       wasmPlugin,
+      curatedShikiPlugin,
       sveltePlugin({ generate: 'client', injectCss: true, development: options.development }),
     ],
     optimizeImports: ['@lostgradient/cinder'],

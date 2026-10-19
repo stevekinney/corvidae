@@ -380,7 +380,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   agentDirectory?: string;
   /**
    * COR-1524 — the deployment's tool catalog: the tools an agent file may name in `tools`, by
-   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none.
+   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none. With
+   * {@link BureauOptions.workflowDirectory} Bureau adds `workflows-create`, `workflows-update`,
+   * `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529); a tool of the host's
+   * with one of those names is refused with `BureauError` (`BAD_REQUEST`).
    */
   agentTools?: Readonly<Record<string, Tool>>;
   /**
@@ -1193,8 +1196,9 @@ export interface BureauRecoveryReport {
   /**
    * `'failed'` when {@link BureauRecoveryReport.batchFailure} is set (no
    * handle was classified at all); otherwise `'partial'` when
-   * {@link BureauRecoveryReport.sweepFailure} is set or
-   * {@link BureauRecoveryReport.perRunFailures} is non-empty; otherwise
+   * {@link BureauRecoveryReport.sweepFailure} is set,
+   * {@link BureauRecoveryReport.perRunFailures} is non-empty, or
+   * {@link BureauRecoveryReport.skippedRuns} is non-empty; otherwise
    * `'clean'`. The `'skip'`, `'reattach'`, `'monitor'`, and
    * `'reattach-version-mismatch'` per-run verdicts never change `outcome`.
    */
@@ -1210,6 +1214,15 @@ export interface BureauRecoveryReport {
    * monitor-only.
    */
   readonly perRunFailures: readonly { readonly runId: string; readonly reason: string }[];
+  /**
+   * COR-1583 — one entry per stored run that was left untouched because its workflow type is not
+   * registered with this Bureau (a Bureau started without `workflowDirectory`, or a workflow whose
+   * file and stored revisions are both gone). A skipped run keeps its state and has no claim taken
+   * on it, so a later boot that has registered its type recovers it; no other run is held back by
+   * it. Empty when every stored run's type was registered. Each entry is also diagnosed once, as a
+   * `scope: 'recovery'` `warn`.
+   */
+  readonly skippedRuns: readonly { readonly runId: string; readonly type: string }[];
 }
 
 /** {@link BureauOptions.children}. */
@@ -1774,6 +1787,29 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     sessionId: string,
     request: SessionInputAdmissionRequest,
   ): Promise<SessionInputAdmissionOutcome>;
+
+  /**
+   * COR-1490 — resolves once the session has recorded the end of the run `runId`, however long
+   * its save takes (it waits on the save itself, never on a count of turns), and at once for a run
+   * whose end is already recorded or that this process does not hold (so a reader in another
+   * process can read a session that does not yet hold the run's final rows).
+   *
+   * Rejects when the run ended without this process saving its end: the engine lost a checkpoint
+   * compare-and-swap or was disposed and abandoned the run to whoever owns it, or the Bureau shut
+   * down first. The rejection comes when the run's own result settles, never at a deadline. A save
+   * that starts and keeps failing does not reject: it is diagnosed after its last attempt and this
+   * resolves, so a reader should check that the session holds what it needs. A reader that needs
+   * the thread as the run left it, such as the AG-UI mount's end-of-run snapshot, waits here before
+   * it reads the session.
+   */
+  whenRunRecorded(runId: string): Promise<void>;
+
+  /**
+   * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
+   * in delivery order, from the durable delivery record (which commits with the transcript the
+   * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
+   */
+  sessionInputsDeliveredBy(runId: string, sessionId: string): Promise<readonly string[]>;
 
   /**
    * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,

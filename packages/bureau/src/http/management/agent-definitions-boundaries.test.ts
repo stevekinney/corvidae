@@ -261,8 +261,14 @@ describe('published, for a code-defined agent', () => {
       const got = await callAs(served.local, 'bureau.agents.definitions.get', { id });
       expect([id, got.result?.['published']]).toEqual([id, published]);
     }
+    // The caller that holds every scope also sees the agent the allowlist does not name, as unpublished.
     const published = await callAs(served.local, 'bureau.agents.list', {});
-    expect(names(published)).toEqual(['alpha']);
+    expect(
+      listOf(published, 'agents').map((entry) => [entry['name'], entry['publishState']]),
+    ).toEqual([
+      ['alpha', 'published'],
+      ['beta', 'unpublished'],
+    ]);
   });
 });
 
