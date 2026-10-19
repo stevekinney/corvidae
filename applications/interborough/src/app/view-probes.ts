@@ -4,7 +4,8 @@ import type { QueryClient } from '@tanstack/svelte-query';
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
-import { queryKeys } from '../lib/query.ts';
+import { listMemories } from '../lib/memory-client.ts';
+import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
   loadCatalog,
@@ -154,6 +155,12 @@ export function probeFor(
         const agents = await listAgents();
         if (parameters['id'] === undefined) return { empty: agents.length === 0 };
         if (!agents.some((entry) => entry.name === parameters['id'])) throw notFound('agent');
+        // An agent's memory page is empty when the agent has no memory: ranking has no score floor,
+        // so a search finds something whenever one exists, and there is no other empty state.
+        if (pattern === AGENT_MEMORY_PATTERN) {
+          const page = await listMemories(parameters['id'], { limit: 1 });
+          return { empty: page.memories.length === 0 };
+        }
         return { empty: false };
       };
     case 'audit':

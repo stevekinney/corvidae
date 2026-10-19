@@ -45,6 +45,12 @@ export const routes: readonly RouteDefinition[] = [
   // `new` is a path segment, not an agent: this route comes before `/agents/:id`.
   { pattern: '/agents/new', view: 'agent-editor', load: agentEditor },
   { pattern: '/agents/:id/edit', view: 'agent-editor', load: agentEditor },
+  // What an agent remembers. It keeps the `agents` view, whose frame probes the memory too.
+  {
+    pattern: '/agents/:id/memory',
+    view: 'agents',
+    load: () => import('../routes/agents/agent-memory.svelte'),
+  },
   {
     pattern: '/agents/:id',
     view: 'agents',

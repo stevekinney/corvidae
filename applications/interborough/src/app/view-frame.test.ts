@@ -421,6 +421,108 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 });
 
+describe('an agent’s memory page, under the Agents view', () => {
+  const PATTERN = '/agents/:id/memory';
+  const rpc = (method: string, result: unknown) =>
+    Response.json({ jsonrpc: '2.0', id: method, result });
+  const fault = (status: number, code: string) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+  const MEMORY = {
+    id: 'memory-1',
+    content: 'The user prefers aisle seats.',
+    memoryClass: 'episodic',
+    source: 'conversation',
+    trust: 'untrusted',
+    createdAt: '2026-10-19T08:00:00.000Z',
+    sessionId: 'session-1',
+  };
+  const copy = VIEW_COPY.agents;
+
+  /** Answers the two operations the memory page's probe asks, by name. */
+  function stubBureau(memories: () => Response): void {
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      if (method === 'bureau.agents.list') return rpc(method, { agents: [{ ...AGENT }] });
+      if (method === 'bureau.memory.list') return memories();
+      throw new Error(`Unexpected request: ${method}`);
+    });
+  }
+
+  const mountMemory = () => mount('agents', { pattern: PATTERN, parameters: { id: 'assistant' } });
+
+  test('is loading, with the memory words, while the Bureau is asked', async () => {
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { container, findByRole } = mountMemory();
+    const words = copy.loadingByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('loading');
+    expect(words?.title).not.toBe(copy.loading.title);
+  });
+
+  test('is empty when the agent has no memory, which is the only empty state a search can have', async () => {
+    stubBureau(() => rpc('bureau.memory.list', { memories: [], nextOffset: null }));
+    const { container, findByRole } = mountMemory();
+    const words = copy.emptyByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('empty');
+  });
+
+  test('is failing, with a retry, when the Bureau cannot answer', async () => {
+    stubBureau(() => fault(500, 'EngineFailure'));
+    const { container, findByRole, getByRole } = mountMemory();
+    const words = copy.errorByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('error');
+    expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+  });
+
+  test('is forbidden, in the words that name the scope, when the Bureau refuses the caller the memory', async () => {
+    stubBureau(() => fault(403, 'Forbidden'));
+    const { container, findByRole } = mountMemory();
+    const words = copy.forbiddenByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain('bureau.memory:read');
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('forbidden');
+    expect(words?.title).not.toBe(copy.forbidden.title);
+  });
+
+  test('is ready when the agent remembers something', async () => {
+    stubBureau(() => rpc('bureau.memory.list', { memories: [MEMORY], nextOffset: null }));
+    const { container, findByTestId } = mountMemory();
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('is not found for an agent the Bureau does not list, before the memory is asked for', async () => {
+    const asked: string[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      asked.push(method);
+      return rpc(method, { agents: [{ ...AGENT, name: 'other' }] });
+    });
+    const { container, findByRole } = mountMemory();
+
+    expect(
+      await findByRole('heading', { level: 1, name: copy.notFound?.title ?? '' }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
+    expect(asked).toEqual(['bureau.agents.list']);
+  });
+});
+
 describe('the Workflows area', () => {
   const ROUTES = [
     { pattern: '/workflows', parameters: {} },
