@@ -65,8 +65,16 @@ type Harness = {
   readonly sent: Sent[];
 };
 
-/** The clocks of the agent and of its push store, each `Date.now` when absent. */
-type Clocks = { readonly agent?: () => number; readonly push?: () => number };
+/**
+ * The clocks of the agent and of its push store, each `Date.now` when absent, and
+ * whether the sender hands the agent a hand-written copy of the push store rather than
+ * the store `createWeftPushNotificationStore` made.
+ */
+type AgentOptions = {
+  readonly agent?: () => number;
+  readonly push?: () => number;
+  readonly handWrittenStore?: boolean;
+};
 
 /**
  * Serve the echo workflow with its task and push records written through `interpose`,
@@ -77,7 +85,7 @@ async function withAgent(
   open: () => Storage,
   interpose: ConditionalBatchInterposer,
   run: (harness: Harness) => Promise<void>,
-  clocks: Clocks = {},
+  clocks: AgentOptions = {},
 ): Promise<void> {
   const raw = open();
   const { storage } = interposedStorage(raw, interpose);
@@ -89,7 +97,7 @@ async function withAgent(
   });
   const sent: Sent[] = [];
   const sender: OutboxPushNotificationSender = {
-    pushStore,
+    pushStore: clocks.handWrittenStore === true ? { ...pushStore } : pushStore,
     async send(event: StreamResponse, context: ServerCallContext) {
       const payload = event.payload;
       const taskId =
@@ -170,7 +178,7 @@ for (const backend of a2aStoreBackends) {
     test("is stamped by the push store's clock, so it lists before a configuration added later", async () => {
       let pushTime = 2_000;
       // The agent's clock runs ahead of the push store's.
-      const clocks: Clocks = { agent: () => 10_000, push: () => ++pushTime };
+      const clocks: AgentOptions = { agent: () => 10_000, push: () => ++pushTime };
       await withAgent(
         open,
         () => undefined,
@@ -188,6 +196,28 @@ for (const backend of a2aStoreBackends) {
           expect(listed.configs.map((config) => config.token)).toEqual(['first', 'later']);
         },
         clocks,
+      );
+    });
+
+    test('is stored before the first status is sent through a hand-written push store too', async () => {
+      await withAgent(
+        open,
+        () => undefined,
+        async ({ storage, agent, pushStore, sent }) => {
+          const result = await agent.requestHandler.sendMessage(
+            sendRequest(userMessage({ messageId: 'first', text: 'x' }), {
+              taskPushNotificationConfig: webhook('copied'),
+            }),
+            east(),
+          );
+          await agent.idle();
+
+          const stored = await pushStore.load(taskIdOf(result), east());
+          expect(stored.map((config) => config.token)).toEqual(['copied']);
+          expect(sent.map((entry) => entry.configurations)).toEqual(sent.map(() => 1));
+          expect(await pushKeysOf(storage, east())).toHaveLength(2);
+        },
+        { handWrittenStore: true },
       );
     });
 
