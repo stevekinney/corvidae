@@ -32,7 +32,7 @@ import {
 } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError, ScheduleLocatorUnavailableError } from '../../create-bureau.ts';
 import type { Bureau } from '../../types.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
@@ -142,6 +142,16 @@ function invalidParams(path: string, message: string): OperationFault {
  * message of a plain `Error`, so those are read from it.
  */
 function faultOf(error: unknown, scheduleId: string): never {
+  // The schedule was created and only its summary could not be read, so the id is the caller's
+  // to keep: a retry of `create` would make a second schedule. Weft's `Unavailable` carries only
+  // a reason on the wire, so the id is in the message, and `bureau.schedules.get` reads it back.
+  if (error instanceof ScheduleLocatorUnavailableError) {
+    throw {
+      code: 'Unavailable',
+      message: `Schedule "${error.scheduleId}" was created, but its summary could not be read. Do not create it again: read it with bureau.schedules.get.`,
+      data: { reason: 'schedule-created-summary-unavailable' },
+    } satisfies OperationFault;
+  }
   if (error instanceof ScheduleStaleRevisionError) {
     throw {
       code: 'StaleRevision',
@@ -325,7 +335,13 @@ export const schedulesCreateOperation = defineOperation<
   tags: ['Schedules'],
   inputSchema: createInput,
   outputSchema: scheduleViewSchema,
-  producibleFaults: ['InvalidParams', 'Forbidden', 'NotFound', 'UnsupportedCapability'],
+  producibleFaults: [
+    'InvalidParams',
+    'Forbidden',
+    'NotFound',
+    'Unavailable',
+    'UnsupportedCapability',
+  ],
   access: { kind: 'authenticated' },
   discoverable: true,
   transports,

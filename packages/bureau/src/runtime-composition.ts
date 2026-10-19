@@ -108,6 +108,7 @@ import {
   type TextValueStore,
   textValueStore,
   WorkflowCancelledEvent,
+  WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   type WorkflowServicesResolution,
@@ -2317,6 +2318,23 @@ async function buildRuntimeComposition(
    * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
    * engine's event dispatch.
    */
+  /**
+   * COR-1482: tells the host which session incarnation a fire runs in. Binding a task to it is a
+   * record about the fire, so a host that cannot write it is diagnosed and the fire still runs.
+   */
+  async function reportScheduledSession(notice: ScheduledSessionNotice): Promise<void> {
+    try {
+      await dependencies.onScheduledSessionKnown?.(notice);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not bind the task of schedule fire "${notice.runId}" to its session: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
   function settleScheduledFire(settlement: ScheduledFireSettlement): void {
     const hook = dependencies.onScheduledFireSettled;
     if (hook === undefined) return;
@@ -2549,6 +2567,21 @@ async function buildRuntimeComposition(
         status: 'failed',
         finishReason: undefined,
         error: event.error instanceof Error ? event.error.message : String(event.error),
+        content: undefined,
+      });
+      scheduleFireEvents.dispatch(new ScheduleFailedEvent(scheduleId, event.workflowId));
+    });
+    // COR-1482: a fire that timed out is a fire that failed, and its task says so. Without this
+    // its task reads `working` until the next boot, and its attribution is never released.
+    durable.engine.addEventListener(WorkflowTimedOutEvent.type, (event) => {
+      const scheduleId = scheduledFireScheduleIds.get(event.workflowId);
+      if (scheduleId === undefined) return;
+      scheduledFireScheduleIds.delete(event.workflowId);
+      settleScheduledFire({
+        runId: event.workflowId,
+        status: 'failed',
+        finishReason: 'timed-out',
+        error: `The fire timed out (${event.timeoutType})`,
         content: undefined,
       });
       scheduleFireEvents.dispatch(new ScheduleFailedEvent(scheduleId, event.workflowId));
@@ -3532,11 +3565,7 @@ async function buildRuntimeComposition(
       // task is bound to once, so `bureau.tasks.list({ contextId })` finds the fire.
       if (!bound && saved !== undefined) {
         bound = true;
-        await dependencies.onScheduledSessionKnown?.({
-          runId,
-          sessionId,
-          incarnation: saved.incarnation,
-        });
+        await reportScheduledSession({ runId, sessionId, incarnation: saved.incarnation });
       }
     };
   }
@@ -4142,11 +4171,7 @@ async function buildRuntimeComposition(
     // COR-1482: a session that already exists has its incarnation now; a fresh one gets it when
     // the fire first saves it (below).
     if (existing !== undefined) {
-      await dependencies.onScheduledSessionKnown?.({
-        runId,
-        sessionId,
-        incarnation: existing.incarnation,
-      });
+      await reportScheduledSession({ runId, sessionId, incarnation: existing.incarnation });
     }
     let conversation: Conversation;
     if (existing) {

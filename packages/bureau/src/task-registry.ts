@@ -77,6 +77,9 @@ export type TaskCleanupState =
   | 'cleanup-unresolved'
   | 'unknown-outcome';
 
+/** The kinds of task that are not ordinary runs. */
+export type TaskKind = 'schedule-fire';
+
 /** One message in a task's own history: what the requester said, not the session transcript. */
 export interface TaskMessage {
   readonly messageId: string;
@@ -114,6 +117,13 @@ export interface TaskRecord {
    * principal, `system:scheduler`. Absent for a task its owner started.
    */
   readonly actor?: string | undefined;
+  /**
+   * What kind of task this is, when it is not an ordinary run: `schedule-fire` for one fire of a
+   * schedule (COR-1482). A fire runs headless on the durable engine: it has no live run in
+   * Bureau's run store and writes no `run.*` events to the durable history, so what is known of
+   * it is what this registry records. Absent for every other task.
+   */
+  readonly kind?: TaskKind | undefined;
   readonly createdAt: string;
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
@@ -129,6 +139,8 @@ export interface TaskAdmission {
   readonly owner: string;
   /** See {@link TaskRecord.actor}. */
   readonly actor?: string | undefined;
+  /** See {@link TaskRecord.kind}. */
+  readonly kind?: TaskKind | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** When the work began, if that was before this record was written (ISO 8601). */
@@ -239,6 +251,18 @@ export interface TaskRegistry {
    * or is already bound.
    */
   bindIncarnation(taskId: string, incarnation: string): Promise<boolean>;
+  /**
+   * The records of a context's schedule fires that have not been settled: the fires running, as
+   * far as this registry knows. They are not in Bureau's run store, so they are what makes a
+   * context live (and what deleting it must cancel) beside the runs the store holds.
+   */
+  unsettledFiresOfContext(contextId: string): Promise<readonly TaskRecord[]>;
+  /**
+   * Calls `listener` with the task's view once it is settled, and once only, whether the
+   * settlement was recorded by the run's end or by a cancellation. Returns the function that
+   * stops listening. A task already settled is not announced: read it with {@link get}.
+   */
+  onSettled(taskId: string, listener: (view: TaskView, record: TaskRecord) => void): () => void;
   /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
@@ -492,6 +516,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     isStringOrNull(value['agentName']) &&
     typeof value['owner'] === 'string' &&
     (value['actor'] === undefined || typeof value['actor'] === 'string') &&
+    (value['kind'] === undefined || value['kind'] === 'schedule-fire') &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
@@ -522,6 +547,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   const watchers = new Map<string, Promise<TaskCleanupState>>();
   /** Where each followed task's cleanup stands, set as soon as its acknowledgement arrives. */
   const observed = new Map<string, TaskCleanupState>();
+  /** Who is waiting to be told a task has settled (COR-1482). */
+  const settledListeners = new Map<string, Set<(view: TaskView, record: TaskRecord) => void>>();
 
   /**
    * The record at `key`, or `undefined` when its value cannot be read: another version, or
@@ -694,6 +721,37 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return watcher;
   }
 
+  async function getView(taskId: string): Promise<TaskView | undefined> {
+    const record = await read(taskId);
+    if (record === undefined) return undefined;
+    const grouped = reviewsByRun(host.pendingReviews().filter((review) => review.runId === taskId));
+    return viewOf(record, grouped.get(taskId));
+  }
+
+  /**
+   * Tells whoever waits that the task has settled. A listener is told once, and a task not yet
+   * settled (a write that changed something else) tells no one. A listener that throws is its
+   * own failure, never the write's.
+   */
+  async function announceSettled(taskId: string): Promise<void> {
+    const waiting = settledListeners.get(taskId);
+    if (waiting === undefined || waiting.size === 0) return;
+    const record = await read(taskId);
+    const view = await getView(taskId);
+    if (record === undefined || view === undefined) return;
+    if (view.status !== 'completed' && view.status !== 'failed' && view.status !== 'canceled') {
+      return;
+    }
+    settledListeners.delete(taskId);
+    for (const listener of waiting) {
+      try {
+        listener(view, record);
+      } catch (error) {
+        diagnose(`A listener of task "${taskId}" failed`, error);
+      }
+    }
+  }
+
   /** The receipt a cleanup state is reported as. */
   function receiptFor(
     view: TaskView,
@@ -730,6 +788,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         agentName: admission.agentName,
         owner: admission.owner,
         ...(admission.actor === undefined ? {} : { actor: admission.actor }),
+        ...(admission.kind === undefined ? {} : { kind: admission.kind }),
         createdAt,
         history,
       };
@@ -766,18 +825,40 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
-      return track(
+      const recorded = await track(
         update(taskId, (record) => {
           // A task has more than one writer of its settlement (the action that ended the run,
           // and the catalog hook that carries the answer), so the answer is never lost to
-          // whichever lands last. Only a catalog task records one: a session run's answer lives
-          // in its durable history.
+          // whichever lands last. Only a catalog task and a schedule fire record one: a session
+          // run's answer lives in its durable history, and a fire writes none there.
           const answer =
-            record.incarnation === '' ? (settlement.answer ?? record.settled?.answer) : undefined;
+            record.incarnation === '' || record.kind === 'schedule-fire'
+              ? (settlement.answer ?? record.settled?.answer)
+              : undefined;
           const { answer: _ignored, ...rest } = settlement;
           return { ...record, settled: { ...rest, ...(answer === undefined ? {} : { answer }) } };
         }),
       );
+      if (recorded) await announceSettled(taskId);
+      return recorded;
+    },
+
+    async unsettledFiresOfContext(contextId) {
+      const records = await recordsOfContext(contextId);
+      return records.filter(
+        (record) => record.kind === 'schedule-fire' && record.settled === undefined,
+      );
+    },
+
+    onSettled(taskId, listener) {
+      const waiting = settledListeners.get(taskId) ?? new Set();
+      waiting.add(listener);
+      settledListeners.set(taskId, waiting);
+      return () => {
+        const held = settledListeners.get(taskId);
+        held?.delete(listener);
+        if (held?.size === 0) settledListeners.delete(taskId);
+      };
     },
 
     async idle(maximumTurns = IDLE_MAXIMUM_TURNS) {
@@ -842,14 +923,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       return cleared;
     },
 
-    async get(taskId) {
-      const record = await read(taskId);
-      if (record === undefined) return undefined;
-      const grouped = reviewsByRun(
-        host.pendingReviews().filter((review) => review.runId === taskId),
-      );
-      return viewOf(record, grouped.get(taskId));
-    },
+    get: getView,
 
     async history(taskId) {
       const record = await read(taskId);
@@ -902,7 +976,12 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const waiting = new Set(host.pendingReviews().map((review) => review.runId));
       const activity = new Map<string, ContextActivity>();
       for (const contextId of contextIds) {
-        const held = live.get(contextId) ?? [];
+        // A schedule fire is live while it is unsettled, though it holds no run in the run store.
+        const fires = await this.unsettledFiresOfContext(contextId);
+        const held = [
+          ...(live.get(contextId) ?? []),
+          ...fires.map((record) => ({ taskId: record.taskId, phase: 'running' as const })),
+        ];
         if (held.length === 0) {
           activity.set(contextId, 'idle');
           continue;
@@ -912,7 +991,13 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         const owned: (typeof held)[number][] = [];
         for (const task of held) {
           const record = await read(task.taskId);
-          if (record !== undefined && belongsToIncarnation(record, incarnation)) owned.push(task);
+          // A fire written before its session had an incarnation is still the context's fire.
+          if (
+            record !== undefined &&
+            (belongsToIncarnation(record, incarnation) || record.kind === 'schedule-fire')
+          ) {
+            owned.push(task);
+          }
         }
         // The context's latest task alone decides: an older parked or working task does not.
         const latest = owned.at(-1);
@@ -974,6 +1059,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
               // A stop with no acknowledgement behind it: a repeat answers the same.
               cleanup: 'canceled',
             }));
+            await announceSettled(taskId);
             return { receipt: 'canceled' };
           }
           if (outcome.status === 'failed') throw outcome.error;

@@ -5,7 +5,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import {
   CHECK,
   createCheckValidator,
@@ -15,6 +15,7 @@ import {
 } from '../../testing/goal-fixtures.test-support';
 import {
   as,
+  authentication,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -298,5 +299,53 @@ describe('a goal that another principal owns', () => {
         ),
       ),
     ).toBe(404);
+  });
+});
+
+describe('the controller of a goal that was created', () => {
+  it('is reported as started for a goal whose controller runs', async () => {
+    const opened = await serve();
+
+    const created = await createdBy(opened, 'alice-key', 'alice-goal');
+
+    expect(created.result).toMatchObject({ controller: { status: 'started', reason: null } });
+    const again = await createdBy(opened, 'alice-key', 'alice-goal');
+    expect(again.result!['outcome']).toBe('existing');
+  });
+
+  it('is reported as start-failed, with why, so a goal that will never run does not read as pending forever', async () => {
+    const opened = await serve();
+    const failing = new Proxy(opened.bureau, {
+      get(target, key) {
+        if (key !== 'goals') return Reflect.get(target, key, target) as unknown;
+        return {
+          ...target.goals,
+          create: async (request: Parameters<typeof target.goals.create>[0]) => {
+            const outcome = await target.goals.create(request);
+            return outcome.outcome === 'created'
+              ? {
+                  ...outcome,
+                  controller: { status: 'start-failed' as const, reason: 'engine down' },
+                }
+              : outcome;
+          },
+        };
+      },
+    });
+    const handler = createBureauHandler(failing, { authentication });
+
+    const created = await rpc(
+      handler,
+      'bureau.goals.create',
+      { ...NEW_GOAL, idempotencyKey: 'failing' },
+      'alice-key',
+    );
+
+    expect(created.error).toBeUndefined();
+    expect(created.result).toMatchObject({
+      outcome: 'created',
+      goal: { status: 'pending' },
+      controller: { status: 'start-failed', reason: 'engine down' },
+    });
   });
 });

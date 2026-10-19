@@ -79,7 +79,6 @@ export type ScheduleCallbacks = {
   refreshScheduledWorkflowState: (state: ScheduleState) => Promise<RefreshedScheduleState>;
   startScheduledRun: (state: ScheduleState, options?: ScheduledRunStartOptions) => Promise<string>;
   applyScheduleOccurrence: (state: ScheduleState, occurrence?: number) => Promise<ScheduleState>;
-  settleBackfillScheduleState: (state: ScheduleState) => Promise<ScheduleState>;
   flushQueuedInlineWorkflowStartsDirectly: () => Promise<void>;
   failWorkflow: (workflowId: string, error: Error) => Promise<void>;
   handleCleanupError: (source: string, error: unknown, workflowId: string) => void;

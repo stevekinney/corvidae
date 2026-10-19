@@ -8,10 +8,12 @@ import { handleRequest, unauthenticatedLocalAuthContext } from '@lostgradient/we
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
-import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { ScheduleLocatorUnavailableError } from '../../create-bureau.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import {
   answering,
   as,
+  authentication,
   openBureau,
   type OpenedBureau,
   OWNER,
@@ -382,5 +384,30 @@ describe('a workflow file’s schedule', () => {
     }
     const awaited4 = await served.bureau.getSchedule(id);
     expect(awaited4?.status).toBe('active');
+  });
+});
+
+describe('a schedule whose creation lost its locator', () => {
+  it('is answered Unavailable, naming the schedule that exists, so a retry does not make a second one', async () => {
+    const opened = await serve();
+    const losing = new Proxy(opened.bureau, {
+      get(target, key) {
+        if (key !== 'createSchedule') return Reflect.get(target, key, target) as unknown;
+        return async (definition: Parameters<typeof target.createSchedule>[0]) => {
+          const summary = await target.createSchedule(definition);
+          throw new ScheduleLocatorUnavailableError(summary!.id);
+        };
+      },
+    });
+    const handler = createBureauHandler(losing, { authentication });
+
+    const lost = await rpc(handler, 'bureau.schedules.create', NEW_SCHEDULE, 'alice-key');
+
+    expect(status(lost)).toBe(503);
+    const listed = await rpc(opened.handler, 'bureau.schedules.list', {}, 'alice-key');
+    const schedules = listed.result!['schedules'] as Array<{ id: string }>;
+    expect(schedules).toHaveLength(1);
+    expect(lost.error?.message).toContain(schedules[0]!.id);
+    expect(lost.error?.message).toContain('bureau.schedules.get');
   });
 });

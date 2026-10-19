@@ -1014,3 +1014,97 @@ describe('a task started on its owner’s behalf (COR-1482)', () => {
     expect(found.tasks.map((task) => task.id)).toEqual(['fire-1']);
   });
 });
+
+describe('a schedule fire in the registry (COR-1482)', () => {
+  it('keeps its kind, is unsettled until it is settled, and keeps its answer however it is bound', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    await admit(registry, 'own-1', { contextId: 'context-2' });
+
+    const fireRecord = await registry.record('fire-1');
+    const ownRecord = await registry.record('own-1');
+    expect(fireRecord?.kind).toBe('schedule-fire');
+    expect(ownRecord?.kind).toBeUndefined();
+    const unsettled = await registry.unsettledFiresOfContext('context-1');
+    expect(unsettled.map((record) => record.taskId)).toEqual(['fire-1']);
+    expect(await registry.unsettledFiresOfContext('context-2')).toEqual([]);
+
+    await registry.bindIncarnation('fire-1', 'incarnation-1');
+    await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+      answer: { text: 'the answer', truncated: false },
+    });
+
+    const record = await registry.record('fire-1');
+    expect(record?.settled?.answer).toEqual({ text: 'the answer', truncated: false });
+    expect(await registry.unsettledFiresOfContext('context-1')).toEqual([]);
+  });
+
+  it('keeps its context running while it is unsettled, bound to the session or not', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+
+    const running = await registry.activityOf(['context-1']);
+    expect(running.get('context-1')).toBe('running');
+    await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+    });
+    const idle = await registry.activityOf(['context-1']);
+    expect(idle.get('context-1')).toBe('idle');
+  });
+
+  it('tells a listener once that it settled, whether the run ended or it was cancelled, and not before', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    await admit(registry, 'fire-2', { incarnation: '', kind: 'schedule-fire' });
+    const told: string[] = [];
+    registry.onSettled('fire-1', (view) => told.push(`${view.id}:${view.status}`));
+    registry.onSettled('fire-2', (view) => told.push(`${view.id}:${view.status}`));
+    const stopped = registry.onSettled('fire-2', () => told.push('stopped listener'));
+    stopped();
+
+    await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'failed',
+      finishReason: null,
+      message: 'it failed',
+    });
+    await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:02.000Z',
+      status: 'failed',
+      finishReason: null,
+      message: 'it failed again',
+    });
+    expect(told).toEqual(['fire-1:failed']);
+
+    const outcome = await registry.cancel('fire-2', 0);
+    expect(outcome?.receipt).toBe('canceled');
+    expect(told).toEqual(['fire-1:failed', 'fire-2:canceled']);
+  });
+
+  it('survives a listener that throws, diagnosing it', async () => {
+    const { registry, diagnostics } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    registry.onSettled('fire-1', () => {
+      throw new Error('listener failed');
+    });
+
+    const recorded = await registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+    });
+
+    expect(recorded).toBe(true);
+    expect(
+      diagnostics.some((message) => message.includes('listener of task "fire-1" failed')),
+    ).toBe(true);
+  });
+});

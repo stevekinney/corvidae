@@ -10560,6 +10560,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runTerminals,
         liveTasks,
       } = abandonSessionRuns(id);
+      // COR-1482: a schedule fire is a live task of its context too, though it is not in the run
+      // store, so deleting the context stops it as it stops every other live task in it.
+      for (const fire of await tasks.unsettledFiresOfContext(id)) {
+        const cancelled = await tasks.cancel(fire.taskId, 0).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'task-registry',
+            message: `[bureau] Could not cancel schedule fire "${fire.taskId}" with its context "${id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return undefined;
+        });
+        if (cancelled === undefined || cancelled.receipt === 'rejected') continue;
+        // A fire has no cleanup to acknowledge, so the stop is reported as one nothing confirms.
+        liveTasks.push({
+          taskId: fire.taskId,
+          closed: Promise.resolve({ status: 'unresolved', reason: 'unreachable' }),
+        });
+      }
 
       // AB-228/AB-371/AB-384, superseded by AB-389: `session.deleted` used
       // to be dispatched directly, right here, immediately after
@@ -15090,6 +15109,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         agentName: fire.agentName,
         owner: fire.owner,
         actor: SCHEDULER_ACTOR,
+        kind: 'schedule-fire',
         message: fire.message,
       });
     } catch (error) {

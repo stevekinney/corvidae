@@ -12,10 +12,7 @@ import { MemoryStorage } from '../storage/memory.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { decode, encode } from './codec.ts';
 import { Engine } from './engine.ts';
-import {
-  handleScheduledWorkflowTerminalForEngine,
-  settleBackfillScheduleStateForEngine,
-} from './engine/callback-creators-schedule.ts';
+import { handleScheduledWorkflowTerminalForEngine } from './engine/callback-creators-schedule.ts';
 import {
   computeScheduleJitterOffset,
   resolveEffectiveScheduleFireAt,
@@ -598,17 +595,6 @@ describe('recurring schedules', () => {
     expect(() => parseCronExpression('5-1 * * * *')).toThrow('Invalid cron range "5-1"');
     expect(() => parseCronExpression('*/0 * * * *')).toThrow('Invalid cron step "*/0"');
     expect(() => parseCronExpression(', * * * *')).toThrow('Invalid cron field ","');
-  });
-
-  it('returns the same backfill state when no current workflow is active', async () => {
-    const engine = createEngine({ now: 1 });
-    const state = createScheduleState();
-
-    try {
-      expect(await settleBackfillScheduleStateForEngine(engine, state)).toEqual(state);
-    } finally {
-      await engine[Symbol.asyncDispose]();
-    }
   });
 
   it('rejects resuming a cancelled schedule', async () => {

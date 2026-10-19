@@ -197,6 +197,29 @@ describe('what a record carries', () => {
   });
 });
 
+describe('a record about a resource with no owner', () => {
+  it('is read only through bureau.audit:read, and is hidden from every other caller', async () => {
+    const { opened } = await seed();
+    // The run it names is not one this Bureau holds, so the record has no owner to belong to.
+    await opened.bureau.auditTrail?.record({
+      runId: 'run-that-is-gone',
+      type: 'run.completed',
+      detail: { finishReason: 'stop' },
+    });
+
+    for (const key of ['alice-key', 'bob-key', 'tasks-operator-key']) {
+      const body = await rpc(opened.handler, 'bureau.audit.query', { limit: 100 }, key);
+      const resources = recordsOf(body).map((record) => record.resource);
+      expect([key, resources.includes('run-that-is-gone')]).toEqual([key, false]);
+    }
+    for (const key of ['audit-reader-key', 'operator-key']) {
+      const body = await rpc(opened.handler, 'bureau.audit.query', { limit: 100 }, key);
+      const resources = recordsOf(body).map((record) => record.resource);
+      expect([key, resources.includes('run-that-is-gone')]).toEqual([key, true]);
+    }
+  });
+});
+
 describe('filters and paging', () => {
   it('narrows by type, by run, and by time', async () => {
     const { opened, aliceRun } = await seed();

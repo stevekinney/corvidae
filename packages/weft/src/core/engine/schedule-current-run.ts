@@ -106,27 +106,23 @@ export async function applyScheduleOccurrence(
   );
 }
 
-export async function settleBackfillScheduleState(
+/**
+ * Waits for the scheduled run `workflowId` to finish its turn: starts the inline launches still
+ * queued, then waits for the run's own turn. The run's activity can call back into its schedule,
+ * and pause, resume, cancel, and update take the schedule's serialization, so a caller must not
+ * hold it while it waits here (COR-1482).
+ */
+export async function awaitScheduledRunTurn(
   internals: EngineInternals,
-  state: ScheduleState,
-  callbacks: Pick<
-    ScheduleCallbacks,
-    'flushQueuedInlineWorkflowStartsDirectly' | 'refreshScheduledWorkflowState'
-  >,
-): Promise<ScheduleState> {
-  if (!state.currentWorkflowId) {
-    return state;
-  }
-
+  workflowId: string,
+  callbacks: Pick<ScheduleCallbacks, 'flushQueuedInlineWorkflowStartsDirectly'>,
+): Promise<void> {
   await callbacks.flushQueuedInlineWorkflowStartsDirectly();
 
-  const pendingTurn = internals.inlineStrategy?.waitForWorkflowTurn(state.currentWorkflowId);
+  const pendingTurn = internals.inlineStrategy?.waitForWorkflowTurn(workflowId);
   if (pendingTurn) {
     await pendingTurn;
   }
-
-  const refreshed = await callbacks.refreshScheduledWorkflowState(state);
-  return refreshed.state;
 }
 
 export async function handleScheduledWorkflowTerminal(

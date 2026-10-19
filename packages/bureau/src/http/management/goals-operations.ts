@@ -306,6 +306,19 @@ const createOutput = z.object({
   /** `created` for a new goal, `existing` for the same request repeated. */
   outcome: z.enum(['created', 'existing']),
   goal: goalViewSchema,
+  /**
+   * How the goal's controller stood once the call returned. The goal is committed whatever this
+   * says: `started` (the controller runs), `not-needed` (the goal has ended, or a cancellation is
+   * recorded), or `start-failed` (the record exists, no controller does, so the goal stays
+   * `pending` until the Bureau recovers it; `reason` says why). `null` for an `existing` goal the
+   * call did not look at.
+   */
+  controller: z
+    .object({
+      status: z.enum(['started', 'not-needed', 'start-failed']),
+      reason: z.string().nullable(),
+    })
+    .nullable(),
 });
 
 /** The fault a refused creation is answered with. */
@@ -418,8 +431,20 @@ export const goalsCreateOperation = defineOperation<
     });
     switch (outcome.outcome) {
       case 'created':
-      case 'existing':
-        return { outcome: outcome.outcome, goal: viewOf(outcome.goal) };
+      case 'existing': {
+        const { controller } = outcome;
+        return {
+          outcome: outcome.outcome,
+          goal: viewOf(outcome.goal),
+          controller:
+            controller === undefined
+              ? null
+              : {
+                  status: controller.status,
+                  reason: controller.status === 'start-failed' ? controller.reason : null,
+                },
+        };
+      }
       case 'conflict':
         throw {
           code: 'Conflict',
