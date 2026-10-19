@@ -262,6 +262,25 @@ function isIdentifierConflictReason(value: unknown): value is IdentifierConflict
   return value === 'agent-file-exists' || value === 'shadows-code-agent';
 }
 
+/**
+ * The issues an `InvalidParams` fault carries, as `path: message` joined by `; `, or `undefined`
+ * when it carries none. Weft answers every parse failure with the fixed message `invalid params`
+ * and puts the offending key only in `data.issues`, so the editor must read it from there.
+ */
+function issueSummaryOf(data: Record<string, unknown>): string | undefined {
+  const issues = data['issues'];
+  if (!Array.isArray(issues)) return undefined;
+  const lines: string[] = [];
+  for (const issue of issues as unknown[]) {
+    if (typeof issue !== 'object' || issue === null) continue;
+    const { path, message } = issue as { path?: unknown; message?: unknown };
+    if (typeof message !== 'string') continue;
+    const segments = Array.isArray(path) ? (path as unknown[]).map(String) : [];
+    lines.push(segments.length === 0 ? message : `${segments.join('.')}: ${message}`);
+  }
+  return lines.length === 0 ? undefined : lines.join('; ');
+}
+
 /** Sorts a thrown fault into the {@link AgentFault} the editor shows. */
 export function agentFaultOf(error: unknown): AgentFault {
   if (!(error instanceof HttpClientError)) {
@@ -284,8 +303,14 @@ export function agentFaultOf(error: unknown): AgentFault {
         ? { kind: 'identifier-taken', reason }
         : { kind: 'other', message: error.message };
     }
+    case 'InvalidParams': {
+      const summary = issueSummaryOf(data);
+      return {
+        kind: 'rejected',
+        message: summary === undefined ? error.message : `${error.message}: ${summary}`,
+      };
+    }
     case 'Unprocessable':
-    case 'InvalidParams':
     case 'UnsupportedCapability':
       return { kind: 'rejected', message: error.message };
     case 'Forbidden':

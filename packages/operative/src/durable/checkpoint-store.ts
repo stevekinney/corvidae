@@ -227,7 +227,7 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
       if (cursor !== null && !isCurrentCheckpointRecord('cursor', cursor)) {
         if (options?.strict === true) {
           throw new Error(
-            `Persisted checkpoint data at "${keys.cursor(runId)}" is a cursor without its parts.`,
+            `Persisted checkpoint data at "${keys.cursor(runId)}" is a cursor without valid parts.`,
           );
         }
         return null;
@@ -325,7 +325,7 @@ export function createCheckpointStore(store: TextValueStore): CheckpointStore {
         if (!isCurrentCheckpointRecord('step', record)) {
           if (options?.strict === true) {
             throw new Error(
-              `Persisted checkpoint data at "${key}" is a step record without its parts.`,
+              `Persisted checkpoint data at "${key}" is a step record without valid parts.`,
             );
           }
           continue;

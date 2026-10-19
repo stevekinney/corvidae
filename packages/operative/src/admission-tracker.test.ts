@@ -49,6 +49,17 @@ describe('createAdmissionTracker().settle()', () => {
     expect(folded).toEqual({ status: 'failed', error });
   });
 
+  it('keeps a definite failure when an unresolved admission arrives after it (COR-1581)', async () => {
+    const error = new Error('teardown failed');
+
+    const folded = await foldOf(
+      { status: 'failed', error },
+      { status: 'unresolved', reason: 'unknown-effect' },
+    );
+
+    expect(folded).toEqual({ status: 'failed', error });
+  });
+
   it('is unresolved with unknown-effect for an admission that did not resolve', async () => {
     expect(await foldOf({ status: 'unresolved', reason: 'persistence-failed' })).toEqual({
       status: 'unresolved',

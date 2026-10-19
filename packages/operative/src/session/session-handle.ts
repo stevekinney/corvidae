@@ -31,6 +31,7 @@ import type {
 import { NoDurableEngineError, NoRunningRunError } from './session-handle-types';
 import { createSessionLiveness, type LivenessSubscriberRecord } from './session-liveness';
 import { createSessionMonitor } from './session-monitor';
+import { SESSION_OWNER_METADATA_KEY } from './session-owner';
 import { createSessionRecovery } from './session-recovery';
 import { createSessionRun, type SessionRunState } from './session-run';
 
@@ -303,12 +304,18 @@ export function createSessionHandle(
           ? historyOrEmpty(session.conversationHistory, runtime)
           : conversationThroughRun(session, options.throughRun);
 
-      // Create the forked session with a new id and empty runs[].
+      // Create the forked session with a new id and empty runs[]. It keeps the source's owner of
+      // record and no other metadata (COR-1581): the forked rows reference assets the owner may
+      // read, and an owner-less fork would claim them as the local principal, which cannot.
       const newSessionId = runtime.identifiers.next('session');
+      const sourceOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
       const forkedSession = createAgentSession({
         agentName: session.agentName,
         conversationHistory: forkedHistory,
         id: newSessionId,
+        ...(sourceOwner === undefined
+          ? {}
+          : { metadata: { [SESSION_OWNER_METADATA_KEY]: sourceOwner } }),
         runs: [],
         runtime,
       });

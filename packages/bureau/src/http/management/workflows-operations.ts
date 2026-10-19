@@ -84,7 +84,13 @@ const workflowDetailSchema = workflowListingSchema.extend({
   schedule: scheduleSchema.nullable(),
 });
 
-const definitionSchema = z.object({
+/**
+ * Strict, because Zod strips an undeclared key from a plain `z.object` and Weft's `unknownKeyPolicy`
+ * reaches only the payload's top level: a key such as `retries` would vanish and the write would
+ * still succeed (COR-1595). `trigger` stays loose, so the registered kind's own validator refuses
+ * the keys that kind does not declare.
+ */
+const definitionSchema = z.strictObject({
   agent: z.string().optional(),
   paused: z.boolean().optional(),
   trigger: z.looseObject({ kind: z.string() }),

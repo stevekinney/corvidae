@@ -4,7 +4,7 @@ import { Conversation, isConversation } from 'conversationalist';
 
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
-import type { GeneratedMediaAdmission } from './generated-media';
+import { type GeneratedMediaAdmission, retainSeededInput } from './generated-media';
 import { appendFinalAssistantMessage } from './message-identifiers';
 import { deriveParts } from './response-parts';
 import {
@@ -206,6 +206,27 @@ async function executeLoopBody(
       startError,
       costEstimation,
       undefined,
+      hookTracker,
+    );
+  }
+  // COR-1581: a run with no session holds nothing else on the managed assets its input references,
+  // so the port is told about the input row before the first step.
+  try {
+    await retainSeededInput(
+      options.generatedMediaAdmitter,
+      options.runId,
+      conversation.getMessages(),
+    );
+  } catch (error) {
+    emitter?.dispatch(new RunErrorEvent(0, error, 'load'));
+    return makeErrorResult(
+      runState,
+      conversation,
+      hooks,
+      emitter,
+      error,
+      costEstimation,
+      'load',
       hookTracker,
     );
   }

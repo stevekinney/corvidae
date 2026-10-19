@@ -220,6 +220,70 @@ describe('agentFaultOf', () => {
     }
   });
 
+  test('names each issue of an InvalidParams fault after the fault’s own message', () => {
+    expect(
+      agentFaultOf(
+        wireFault(
+          {
+            weftCode: 'InvalidParams',
+            httpStatus: 400,
+            issues: [
+              {
+                code: 'unrecognized_keys',
+                path: ['definition'],
+                message: 'Unrecognized key: "retries"',
+              },
+            ],
+          },
+          'invalid params',
+        ),
+      ),
+    ).toEqual({
+      kind: 'rejected',
+      message: 'invalid params: definition: Unrecognized key: "retries"',
+    });
+  });
+
+  test('joins several issues with semicolons, a path with dots, and gives an empty path the message alone', () => {
+    expect(
+      agentFaultOf(
+        wireFault(
+          {
+            weftCode: 'InvalidParams',
+            httpStatus: 400,
+            issues: [
+              { path: ['definition', 'steps', 0, 'name'], message: 'Required' },
+              { path: [], message: 'Unrecognized key: "owner"' },
+              { path: ['id'], message: 'Too long' },
+            ],
+          },
+          'invalid params',
+        ),
+      ),
+    ).toEqual({
+      kind: 'rejected',
+      message:
+        'invalid params: definition.steps.0.name: Required; Unrecognized key: "owner"; id: Too long',
+    });
+  });
+
+  test('keeps the fault’s message alone when an InvalidParams fault carries no issues', () => {
+    for (const issues of [undefined, [], 'nope']) {
+      expect(
+        agentFaultOf(
+          wireFault(
+            {
+              weftCode: 'InvalidParams',
+              httpStatus: 400,
+              ...(issues === undefined ? {} : { issues }),
+            },
+            'invalid params',
+          ),
+        ),
+      ).toEqual({ kind: 'rejected', message: 'invalid params' });
+    }
+  });
+
   test('sorts an HTTP error with no wire fault code, and an error that is not an HTTP answer', () => {
     expect(agentFaultOf(new HttpClientError(502, 'Bad gateway'))).toEqual({
       kind: 'other',
