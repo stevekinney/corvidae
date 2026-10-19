@@ -96,6 +96,7 @@ export type ResumeBureau = Pick<
   | 'getSession'
   | 'listPendingReviews'
   | 'locateRunCreationReceipt'
+  | 'pendingHumanWaitsOfRun'
   | 'resolveReview'
   | 'kv'
 >;
@@ -234,7 +235,19 @@ export function createResume(context: ResumeContext) {
       messagesSnapshot: !started,
       ...(fresh?.prelude === undefined ? {} : { preludeEvents: fresh.prelude }),
       ...(fresh?.answerRows === undefined ? {} : { answerRows: fresh.answerRows }),
+      answered: request.entries.map((entry) => entry.interruptId),
     });
+  }
+
+  /**
+   * The reviews of a run a client can be asked to answer now. A run this process holds, or whose
+   * reviews it lists, answers from that state; a run another process holds answers from durable
+   * state, where only a human wait it is parked on is pending (COR-1580).
+   */
+  async function interruptibleReviewsOf(runId: string): Promise<PendingReview[]> {
+    const local = interruptibleReviews(bureau, runId);
+    if (local.length > 0 || bureau.getRun(runId) !== undefined) return local;
+    return bureau.pendingHumanWaitsOfRun(runId);
   }
 
   /**
@@ -547,8 +560,10 @@ export function createResume(context: ResumeContext) {
     digest: string,
     holds: () => Promise<boolean>,
   ): Promise<ResumeResult | Refusal> {
-    const stillPending = new Set(bureau.listPendingReviews().map((review) => review.id));
     const answered = [...reviews.values()];
+    const interruptible = await interruptibleReviewsOf(answered[0]!.runId);
+    const stillPending = new Set(interruptible.map((review) => review.id));
+    for (const review of bureau.listPendingReviews()) stillPending.add(review.id);
     if (answered.some((review) => stillPending.has(review.id))) {
       const released = await ledger.release(entry);
       const retaken = released
@@ -671,7 +686,7 @@ export function createResume(context: ResumeContext) {
       return refuse('INVALID_INPUT', 'A resume must answer the interrupts of one run');
     }
     const [runId] = runIds;
-    const pending = interruptibleReviews(bureau, runId!);
+    const pending = await interruptibleReviewsOf(runId!);
     const pendingIds = new Set(pending.map((review) => review.id));
 
     const unaddressed = pending.filter(
@@ -761,9 +776,10 @@ export function createResume(context: ResumeContext) {
       // the command can start over; a part applied means the entry stays, and
       // the retry that takes it over applies the rest.
       const addressed = new Set(entries.map((entry) => entry.interruptId));
-      const stranded = bureau
-        .listPendingReviews()
-        .some((review) => review.runId === runId && addressed.has(review.id));
+      const stranded = [
+        ...bureau.listPendingReviews(),
+        ...(await interruptibleReviewsOf(runId!)),
+      ].some((review) => review.runId === runId && addressed.has(review.id));
       if (stranded) {
         if (!appliedAny) {
           return refuse(

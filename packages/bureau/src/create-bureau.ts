@@ -7919,12 +7919,45 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (fire !== null && isScheduledAgentRunInput(fire.input)) {
       return ownerOrLocal(fire.input.principal);
     }
+    // COR-1580: a session run another process created after this one booted. Its owner is the one
+    // its session recorded for it, found through the session its durable input names.
+    const sessionRunOwner = await persistedSessionRunOwner(runId, fire?.input);
+    if (sessionRunOwner !== undefined) return sessionRunOwner;
     // COR-1579: a `bureau.run()` run another process holds is in none of the maps above, but its
     // durable recovery record names who started it.
     const catalog = await runtime.classifyCatalogRecoveredRun(runId);
     return catalog.attribution === undefined
       ? undefined
       : ownerOrLocal(catalog.attribution.principal);
+  }
+
+  /** The session a durable run's input names, as a session run's `createRun` recorded it. */
+  function durableInputSessionId(input: unknown): string | undefined {
+    const sessionId =
+      typeof input === 'object' && input !== null
+        ? (input as { sessionId?: unknown }).sessionId
+        : undefined;
+    return typeof sessionId === 'string' ? sessionId : undefined;
+  }
+
+  /**
+   * COR-1580 — the owner a session recorded for one of its runs (`lastRunOwningPrincipals`), when
+   * the run's durable input names that session; `undefined` when either is missing.
+   */
+  async function persistedSessionRunOwner(
+    runId: string,
+    input: unknown,
+  ): Promise<string | undefined> {
+    const sessionId = durableInputSessionId(input);
+    if (sessionId === undefined || !runtime.sessionStore) return undefined;
+    const session = await runtime.sessionStore.load(sessionId);
+    if (session === undefined) return undefined;
+    const principal = resolvePersistedRunOwningPrincipal(session.metadata, runId);
+    if (principal === undefined) return undefined;
+    // A deleted run keeps its session entry (so its `run.removed` event stays owned), but it has
+    // no owner to authorize against: it fails closed as AB-313 decided, wherever it was deleted.
+    const removed = await eventHistoryInstance?.latestDeletionMarker({ kind: 'run', id: runId });
+    return removed === undefined ? ownerOrLocal(principal) : undefined;
   }
 
   /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */
@@ -8400,8 +8433,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       if (inputSessionId !== undefined) {
         await settleSessionInputsAfterRunEnd(inputSessionId, runId);
       }
+      if (store.getRun(runId) === undefined) {
+        // The cancellation committed; a session that could not be told stays as it was, and
+        // `cancelDurableRun` still never rejects.
+        await publishPeerCancellation(runId).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'session-persistence',
+            message: `[bureau] cancelDurableRun("${runId}") could not publish the cancellation to its session: ${serializeUnknownError(error)}`,
+          });
+        });
+      }
     }
     return outcome;
+  }
+
+  /**
+   * COR-1580 — the session's terminal status of a run this call cancelled while another process
+   * holds it. That holder sees another engine's terminal commit and writes nothing, so the canceller
+   * writes it: `lastRunStatus` and `lastFinishReason` `'aborted'`, only while the session's last run
+   * is still this one, and never the conversation. A session-less run has nothing to publish.
+   */
+  async function publishPeerCancellation(runId: string): Promise<void> {
+    if (!runtime.sessionStore) return;
+    const durable = await getDurableRun(runId);
+    const sessionId = durableInputSessionId(durable?.input);
+    if (sessionId === undefined) return;
+    await runtime.sessionStore.update(sessionId, (session) =>
+      session === undefined || session.metadata['lastRunId'] !== runId
+        ? undefined
+        : {
+            ...session,
+            metadata: {
+              ...session.metadata,
+              lastRunStatus: 'aborted',
+              lastFinishReason: 'aborted',
+            },
+          },
+    );
   }
 
   /**
