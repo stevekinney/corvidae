@@ -149,6 +149,15 @@ describe('a new agent', () => {
     ]);
   });
 
+  test('refuses a name that makes the identifier new, and says why', async () => {
+    bureau();
+    const { findByRole, getByRole, findByText } = mountEditor();
+    await type(await findByRole('textbox', { name: /^Name/ }), 'New');
+
+    expect(await findByText(AGENT_EDITOR_COPY.identifierReserved)).not.toBeNull();
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeDisabled();
+  });
+
   test('shows the file an identifier makes, and has no publish control, delete, or history', async () => {
     bureau();
     const { findByRole, getByTestId, queryByRole, queryByText } = mountEditor();
@@ -270,6 +279,23 @@ describe('an agent that exists', () => {
     });
     const definition = (update?.params['definition'] ?? {}) as Record<string, unknown>;
     expect(Object.keys(definition)).not.toContain('published');
+  });
+
+  test('keeps an unknown key of a skill when the agent is saved', async () => {
+    const detail = readyAgent();
+    const skill = { id: 'cite', name: 'Cite', description: 'Cites', tags: ['x'], futureKey: 7 };
+    const calls = bureau({
+      agent: {
+        ...detail,
+        definition: detail.definition && { ...detail.definition, skills: [skill] },
+      },
+    });
+    const { findByRole, getByRole } = mountEditor('researcher');
+    await findByRole('textbox', { name: /^Instructions/ });
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+    const [update] = calls.callsTo('bureau.agents.definitions.update');
+    expect(update?.params['definition']).toMatchObject({ skills: [skill] });
   });
 
   test('sends the model it was changed to, and only a model the catalog offers can be chosen', async () => {

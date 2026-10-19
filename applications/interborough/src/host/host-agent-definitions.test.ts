@@ -21,6 +21,7 @@ import {
   deleteAgent,
   getAgentCatalog,
   getAgentDefinition,
+  listAgentDefinitions,
   listAgentRevisions,
   publishAgent,
   updateAgent,
@@ -105,13 +106,16 @@ describe('the host’s /host/paths', () => {
 
 describe('the operations, against the real Bureau', () => {
   test('lists the models and tools the deployment offers, and nothing the catalog lacks', async () => {
-    const { fetcher } = await startConfigured();
+    const { host, fetcher } = await startConfigured();
     const catalog = await getAgentCatalog({ fetch: fetcher });
     expect(catalog.models.map((row) => `${row.provider}/${row.model}`)).toEqual([
       'anthropic/claude-sonnet-5',
     ]);
     expect(catalog.models[0]?.aliases.map((entry) => entry.alias)).toContain('sonnet');
-    expect(catalog.tools.map((tool) => tool.name)).toEqual(['lookup-order']);
+    // The tools are the Bureau's own tool catalog, which holds the host's tool and the workflow tools.
+    const offered = host.bureau.agents.tools().map((tool) => tool.name);
+    expect(catalog.tools.map((tool) => tool.name)).toEqual(offered);
+    expect(offered).toContain('lookup-order');
   });
 
   test('creates, reads, updates, publishes, withdraws, and deletes an agent file', async () => {
@@ -223,6 +227,12 @@ describe('the operations, against the real Bureau', () => {
     expect(broken.problem?.code).toBe('unknown-model');
     // An invalid file that parses still carries its definition, and a hash a delete can name.
     expect(typeof broken.hash).toBe('string');
+    // The list that holds invalid files says so, and `bureau.agents.list` leaves them out.
+    const listings = await listAgentDefinitions({ fetch: fetcher });
+    expect(listings.find((listing) => listing.id === 'broken')).toMatchObject({
+      state: 'invalid',
+      problem: { code: 'unknown-model' },
+    });
     await deleteAgent('broken', broken.hash ?? '', { fetch: fetcher });
     expect(await Bun.file(join(home, 'agents', 'broken.md')).exists()).toBe(false);
   });

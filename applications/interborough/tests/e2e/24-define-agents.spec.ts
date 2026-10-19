@@ -1,7 +1,7 @@
 /**
  * Defining agents in the application: the editor at `/agents/new` and `/agents/:id/edit`, against
  * the real host. An agent is a Markdown file in the host's temporary home, so the specs create,
- * edit, and delete real files, and the host's model catalog holds the one model its provider stub
+ * edit, and delete real files, and the host's model catalog holds the two models its provider stub
  * offers, so a save really writes. Every view meets axe at the two widths the application is
  * built for.
  */
@@ -17,8 +17,10 @@ import {
   createAgentFile,
   faultCodeOf,
   readAgent,
+  readCatalog,
   removeAgent,
 } from './agent-support.ts';
+import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -59,10 +61,14 @@ test.describe('a new agent', () => {
       await expect(editor(page)).toHaveAttribute('data-state', 'ready');
       await expect(page.getByRole('heading', { level: 1, name: copy.createHeading })).toBeVisible();
 
-      // Only the model the host's provider offers, and only the tool its catalog holds.
+      // Only the models and tools `bureau.agents.catalog` returns.
+      const catalog = await readCatalog(request);
       const options = page.getByRole('combobox', { name: 'Model' }).getByRole('option');
-      await expect(options).toHaveText(['anthropic/claude-sonnet-5']);
-      await expect(page.getByRole('checkbox')).toHaveCount(1);
+      await expect(options).toHaveText(
+        catalog.models.map((model) => `${model.provider}/${model.model}`),
+      );
+      await expect(options).toHaveText(['anthropic/claude-sonnet-5', 'anthropic/claude-haiku-4-5']);
+      await expect(page.getByRole('checkbox')).toHaveCount(catalog.tools.length);
       await expect(page.getByRole('checkbox', { name: /lookup-order/ })).toBeVisible();
 
       await page.getByRole('textbox', { name: /^Name/ }).fill('E2E New Agent');
@@ -75,6 +81,18 @@ test.describe('a new agent', () => {
 
       await page.getByRole('button', { name: copy.createAction }).click();
       await expect(page).toHaveURL(/\/agents\/e2e-new-agent$/);
+
+      // The save lands on the agent's page, which says the new agent is not published and offers
+      // no chat with it, but does offer its editor.
+      const detail = page.locator('[data-view="agents"]');
+      await expect(detail).toHaveAttribute('data-state', 'ready');
+      await expect(page.getByRole('heading', { level: 1, name: 'E2E New Agent' })).toBeVisible();
+      await expect(page.getByText('Not published').first()).toBeVisible();
+      await expect(page.getByRole('link', { name: 'New chat' })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: copy.editAction })).toHaveAttribute(
+        'href',
+        '/agents/e2e-new-agent/edit',
+      );
 
       const agent = await readAgent(request, 'e2e-new-agent');
       expect(agent.state).toBe('ready');
@@ -89,6 +107,16 @@ test.describe('a new agent', () => {
       expect(text).toContain('Answer in one short sentence.');
     });
   }
+
+  test('refuses a name that makes the identifier new, which is the address of this page', async ({
+    page,
+  }) => {
+    await page.goto('/agents/new');
+    await page.getByRole('textbox', { name: /^Name/ }).fill('New');
+
+    await expect(page.getByText(copy.identifierReserved)).toBeVisible();
+    await expect(page.getByRole('button', { name: copy.createAction })).toBeDisabled();
+  });
 
   test('reports a taken identifier on its field, for a file and for a code-defined agent, and writes nothing', async ({
     page,
@@ -144,6 +172,10 @@ test.describe('an agent that exists', () => {
       await page.getByRole('textbox', { name: /^Instructions/ }).fill('Edited in the browser.');
       await page.getByRole('button', { name: copy.saveAction }).click();
       await expect(page).toHaveURL(/\/agents\/e2e-edit$/);
+      // The save lands on the agent's page, which shows the agent and offers its editor.
+      await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
+      await expect(page.getByRole('heading', { level: 1, name: 'End-to-end agent' })).toBeVisible();
+      await expect(page.getByRole('link', { name: copy.editAction })).toBeVisible();
 
       const agent = await readAgent(request, 'e2e-edit');
       expect(agent.definition?.instructions).toBe('Edited in the browser.');
@@ -153,6 +185,27 @@ test.describe('an agent that exists', () => {
       expect(await readFile(path, 'utf8')).toContain('Edited in the browser.');
     });
   }
+
+  test('changes its model to another the catalog offers, and the file says so', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-model');
+    await page.goto('/agents/e2e-model/edit');
+    const select = page.getByRole('combobox', { name: 'Model' });
+    // The file wrote an alias, and the select shows the model it names.
+    await expect(select).toHaveValue('anthropic/claude-sonnet-5');
+
+    await select.selectOption('anthropic/claude-haiku-4-5');
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-model$/);
+
+    const agent = await readAgent(request, 'e2e-model');
+    expect(agent.definition?.model).toBe('anthropic/claude-haiku-4-5');
+    expect(await readFile(await agentFilePath(request, 'e2e-model'), 'utf8')).toContain(
+      'model: anthropic/claude-haiku-4-5',
+    );
+  });
 
   test('is published and withdrawn through its own control, never through a save', async ({
     page,
@@ -175,6 +228,9 @@ test.describe('an agent that exists', () => {
     const afterSave = await readAgent(request, 'e2e-publish');
     expect(afterSave.published).toBe(true);
     expect(afterSave.definition?.published).toBe(true);
+    // Its page says it is published, and offers a chat with it.
+    await expect(page.getByText('Published').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
 
     await page.goto('/agents/e2e-publish/edit');
     const again = page.getByRole('switch', { name: copy.publishedLabel });
@@ -183,12 +239,62 @@ test.describe('an agent that exists', () => {
     await expect(again).toHaveAttribute('aria-checked', 'false');
     const afterWithdraw = await readAgent(request, 'e2e-publish');
     expect(afterWithdraw.published).toBe(false);
+    // Withdrawn, its page says it is not published and offers no chat.
+    await page.goto('/agents/e2e-publish');
+    await expect(page.getByText('Not published').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'New chat' })).toHaveCount(0);
+  });
+
+  test('shows the revision that has run, by its short hash, once the published agent has been used', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-history');
+    await page.goto('/agents/e2e-history/edit');
+    await expect(page.getByTestId('agent-revisions-empty')).toBeVisible();
+    await page.getByRole('switch', { name: copy.publishedLabel }).click();
+    await expect(page.getByRole('switch', { name: copy.publishedLabel })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    const published = await readAgent(request, 'e2e-history');
+    const hash = published.hash ?? '';
+
+    // A client other than the page starts a run through the AG-UI mount, which a save never does.
+    const stream = await runToEnd(request, 'e2e-history', newThreadId('history'), 'Hello');
+    expect(stream).toContain('This reply comes from the end-to-end provider stub.');
+
+    await page.goto('/agents/e2e-history/edit');
+    const rows = page.getByTestId('agent-revision');
+    await expect(rows).toHaveCount(1);
+    await expect(rows.first().locator('code')).toHaveText(hash.slice(0, 8));
+    await expect(rows.first().locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/);
+
+    // Editing it makes a new file version, which is a revision only once it has run.
+    await page.getByRole('textbox', { name: /^Instructions/ }).fill('A second version.');
+    await page.getByRole('button', { name: copy.saveAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-history$/);
+    await page.goto('/agents/e2e-history/edit');
+    await expect(page.getByTestId('agent-revision')).toHaveCount(1);
+    const second = await readAgent(request, 'e2e-history');
+    await runToEnd(request, 'e2e-history', newThreadId('history'), 'Hello again');
+    await page.reload();
+    const both = page.getByTestId('agent-revision');
+    await expect(both).toHaveCount(2);
+    // Most recently run first.
+    await expect(both.first().locator('code')).toHaveText((second.hash ?? '').slice(0, 8));
+    await expect(both.nth(1).locator('code')).toHaveText(hash.slice(0, 8));
   });
 
   test('is deleted only after a confirmation, and its file goes', async ({ page, request }) => {
     await makeAgent(request, 'e2e-delete');
     const path = await agentFilePath(request, 'e2e-delete');
-    await page.goto('/agents/e2e-delete/edit');
+    // The agent is in the list until it is deleted.
+    await page.goto('/agents');
+    await expect(page.locator('[data-agent="e2e-delete"]')).toHaveCount(1);
+    await page.getByRole('link', { name: 'End-to-end agent' }).click();
+    await page.getByRole('link', { name: copy.editAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-delete\/edit$/);
 
     await page.getByRole('button', { name: copy.deleteAction }).click();
     const dialog = page.getByRole('dialog', { name: copy.deleteDialog.title });
@@ -204,7 +310,12 @@ test.describe('an agent that exists', () => {
       .getByRole('dialog', { name: copy.deleteDialog.title })
       .getByRole('button', { name: copy.deleteDialog.confirm })
       .click();
+    // The delete lands on the list, and the agent has left it.
     await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
+    await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+    await expect(page.locator('[data-agent="assistant"]')).toHaveCount(1);
+    await expect(page.locator('[data-agent="e2e-delete"]')).toHaveCount(0);
     await expect.poll(() => faultCodeOf(request, 'e2e-delete')).toBe('NotFound');
     const stillThere = await readFile(path, 'utf8').then(
       () => true,
@@ -351,6 +462,78 @@ test.describe('a file the Bureau cannot use', () => {
       );
     });
   }
+});
+
+test.describe('the list of agents', () => {
+  for (const width of WIDTHS) {
+    test(`offers New agent, and shows an invalid file with its error and its path, at ${width} pixels`, async ({
+      page,
+      request,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      const path = join(await agentDirectory(request), 'e2e-invalid-listed.md');
+      created.add('e2e-invalid-listed');
+      await writeFile(
+        path,
+        '---\nmodel: openai/gpt-4.1\n---\nA file with a model nobody offers.\n',
+      );
+      await makeAgent(request, 'e2e-listed');
+
+      await page.goto('/agents');
+      await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
+      const broken = page.locator('[data-agent="e2e-invalid-listed"]');
+      await expect(broken).toHaveAttribute('data-state', 'invalid');
+      await expect(broken).toContainText('unknown-model');
+      await expect(broken).toContainText(copy.invalidBadge);
+      await expect(broken.getByTestId('agent-file-path')).toHaveText(path);
+      // A file that loads is listed once, as an agent, and not as an invalid file.
+      await expect(page.locator('[data-agent="e2e-listed"]')).toHaveCount(1);
+      await expect(page.locator('[data-agent="e2e-listed"]')).not.toHaveAttribute(
+        'data-state',
+        'invalid',
+      );
+      await checkA11y(`the list with an invalid file at ${width}px`);
+
+      await broken.getByRole('link', { name: 'e2e-invalid-listed' }).click();
+      await expect(page).toHaveURL(/\/agents\/e2e-invalid-listed\/edit$/);
+      await expect(page.getByTestId('agent-problem')).toContainText('unknown-model');
+
+      // Fixed on disk, the file is an agent, and the list no longer calls it invalid.
+      await writeFile(
+        path,
+        '---\nname: Fixed Listed\nmodel: anthropic/sonnet\n---\nA file with a model the catalog offers.\n',
+      );
+      await page.goto('/agents');
+      await expect(page.locator('[data-agent="e2e-invalid-listed"]')).toHaveCount(1);
+      await expect(page.locator('[data-agent="e2e-invalid-listed"]')).not.toHaveAttribute(
+        'data-state',
+        'invalid',
+      );
+    });
+  }
+
+  test('New agent opens the form for a new agent', async ({ page }) => {
+    await page.goto('/agents');
+    await page.getByRole('link', { name: copy.newAction }).click();
+    await expect(page).toHaveURL(/\/agents\/new$/);
+    await expect(page.getByRole('heading', { level: 1, name: copy.createHeading })).toBeVisible();
+  });
+
+  test('offers an agent file its editor, and an agent defined in code none', async ({
+    page,
+    request,
+  }) => {
+    await makeAgent(request, 'e2e-entry');
+    await page.goto('/agents/assistant');
+    await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: copy.editAction })).toHaveCount(0);
+
+    await page.goto('/agents/e2e-entry');
+    await page.getByRole('link', { name: copy.editAction }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-entry\/edit$/);
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+  });
 });
 
 test.describe('an agent that cannot be edited', () => {

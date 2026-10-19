@@ -57,6 +57,9 @@ export const AGENT_EDITOR_COPY = {
   identifierEditDescription: 'The agent’s file name without .md. It cannot be changed.',
   identifierInvalid:
     'Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit, in at most 64 characters.',
+  /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
+  identifierReserved:
+    'This identifier is reserved: /agents/new is the page that creates an agent, so an agent called new could never be opened. Choose another.',
   identifierTaken: {
     'agent-file-exists': 'This identifier is taken. Another agent’s file already uses it.',
     'shadows-code-agent': 'This identifier is taken. An agent defined in code already uses it.',
@@ -81,6 +84,13 @@ export const AGENT_EDITOR_COPY = {
   publishedLabel: 'Published',
   publishedDescription:
     'A published agent can be started in a new chat. A withdrawn agent cannot, and keeps its history.',
+  /** The action on the agent list that opens the form for a new agent. */
+  newAction: 'New agent',
+  /** The action on an agent's page that opens its editor. */
+  editAction: 'Edit',
+  /** The badge on an agent file the Bureau cannot use, in the agent list. */
+  invalidBadge: 'Invalid file',
+  forbidden: 'This installation does not let you change agents.',
   createAction: 'Create agent',
   saveAction: 'Save changes',
   cancelAction: 'Cancel',

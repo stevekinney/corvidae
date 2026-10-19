@@ -79,6 +79,18 @@ export async function createAgentFile(
   return answer.result as { id: string; hash: string };
 }
 
+/** The models and tools `bureau.agents.catalog` offers, which is all the editor may offer. */
+export async function readCatalog(
+  request: APIRequestContext,
+): Promise<{ models: { provider: string; model: string }[]; tools: { name: string }[] }> {
+  const answer = await bureau(request, 'bureau.agents.catalog', {});
+  expect(answer.fault, 'reading the catalog').toBeUndefined();
+  return answer.result as {
+    models: { provider: string; model: string }[];
+    tools: { name: string }[];
+  };
+}
+
 /** The directory the host keeps agent files in, which is inside the temporary home. */
 export async function agentDirectory(request: APIRequestContext): Promise<string> {
   const response = await request.get('/host/paths');

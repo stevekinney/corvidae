@@ -1,8 +1,8 @@
 import type { HttpClient } from '@lostgradient/weft';
 
+import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
-import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */

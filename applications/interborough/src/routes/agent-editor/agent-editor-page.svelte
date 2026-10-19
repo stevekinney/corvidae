@@ -15,7 +15,14 @@
    */
   import { untrack } from 'svelte';
 
-  import { Alert, Button, ConfirmDialog, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    CodeLocation,
+    ConfirmDialog,
+    PageHeader,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
@@ -143,7 +150,7 @@
         editor?.markIdentifierTaken(fault.reason);
         return;
       case 'forbidden':
-        failure = { title, message: 'This installation does not let you change agents.' };
+        failure = { title, message: copy.forbidden };
         return;
       case 'rejected':
       case 'other':
@@ -259,7 +266,7 @@
   {#if filePath !== ''}
     <p class="weft-agent-editor__path">
       <span>{copy.fileLabel}</span>
-      <code data-testid="agent-file-path">{filePath}</code>
+      <CodeLocation file={filePath} data-testid="agent-file-path" />
     </p>
   {/if}
 

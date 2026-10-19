@@ -58,7 +58,8 @@ await buildApplication({ outdir: buildDirectory });
 // client that answers with a fixed reply. No model is called and no real key is read.
 const home = join(scratch, 'home');
 await mkdir(home, { recursive: true });
-await writeProviderHome(home);
+// Two models, so a spec can change an agent's model and save it.
+await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
 
 // The fixtures run on an engine of their own over memory storage, as they always have. Sharing the

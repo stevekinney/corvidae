@@ -103,6 +103,20 @@ describe('a new agent', () => {
     expect(form.canSave).toBe(true);
   });
 
+  test('refuses the identifier new, which is the address of the page that creates an agent', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = 'New';
+    expect(form.identifier).toBe('new');
+    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierReserved);
+    expect(form.canSave).toBe(false);
+    form.name = 'New Agent';
+    expect(form.identifierError).toBe('');
+    expect(form.canSave).toBe(true);
+    form.identifier = 'new';
+    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierReserved);
+    expect(form.canSave).toBe(false);
+  });
+
   test('has no error for an identifier that is still empty', () => {
     const form = AgentEditorState.create(catalogFixture());
     expect(form.identifier).toBe('');
@@ -173,6 +187,16 @@ describe('an agent that exists', () => {
     expect(form.hash).toBe('hash-1');
     expect(form.published).toBe(false);
     expect(form.canSave).toBe(true);
+  });
+
+  test('keeps a key of a skill this page does not know, and writes it back unchanged', () => {
+    const detail = readyAgent();
+    const skill = { id: 'cite', name: 'Cite', description: 'Cites', tags: [], futureKey: { a: 1 } };
+    const form = AgentEditorState.edit(
+      { ...detail, definition: detail.definition && { ...detail.definition, skills: [skill] } },
+      catalogFixture(),
+    );
+    expect(form.toDefinition().skills).toEqual([skill]);
   });
 
   test('carries the loaded skills through a save unchanged, and writes an unchanged alias back as written', () => {

@@ -17,14 +17,17 @@ import { callBureau, type Fetcher } from './bureau-client.ts';
  * What an agent's identifier must look like, and the longest it may be. The Bureau owns both rules
  * (`AGENT_IDENTIFIER_PATTERN` and `AGENT_IDENTIFIER_MAX_LENGTH` in its `agent-file.ts`); the
  * browser cannot import that module, so the editor repeats them to answer while the person types,
- * and `src/host/agent-identifier-rules.test.ts` fails if the two drift apart. The Bureau still
+ * and `src/host/host-agent-definitions.test.ts` fails if the two drift apart. The Bureau still
  * refuses an identifier that breaks them.
  */
 export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 
-/** The agent's `skills` entry. The editor never edits one, but a save sends them back unchanged. */
-const skillSchema = z.object({
+/**
+ * The agent's `skills` entry. The editor never edits one, but a save sends them back unchanged, so
+ * a key this page does not know is kept as it was read and never stripped.
+ */
+const skillSchema = z.looseObject({
   id: z.string(),
   name: z.string(),
   description: z.string(),
@@ -125,6 +128,50 @@ export async function listAgentRevisions(
     await callBureau('bureau.agents.definitions.revisions', { id }, options),
   );
   return result.revisions;
+}
+
+const listingSchema = z.object({
+  id: z.string(),
+  source: z.enum(['code', 'file']),
+  state: z.enum(['ready', 'invalid']),
+  name: z.string(),
+  description: z.string().nullable(),
+  published: z.boolean(),
+  hash: z.string().nullable(),
+  problem: problemSchema.nullable(),
+});
+
+/** One entry of `bureau.agents.definitions.list`, which holds the files the Bureau cannot use. */
+export type AgentListing = z.infer<typeof listingSchema>;
+
+const listingPageSchema = z.object({
+  agents: z.array(listingSchema),
+  nextOffset: z.number().nullable(),
+});
+
+/** The largest page `bureau.agents.definitions.list` answers. */
+const LISTING_PAGE_SIZE = 100;
+
+/**
+ * Every agent the definitions list holds, code-defined and file, `ready` and `invalid` alike.
+ * `bureau.agents.list` leaves an invalid file out, because it lists what can run; this is the
+ * list that says an agent file is broken. It follows the pages to the end.
+ */
+export async function listAgentDefinitions(options?: Options): Promise<readonly AgentListing[]> {
+  const listings: AgentListing[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const page: z.infer<typeof listingPageSchema> = listingPageSchema.parse(
+      await callBureau(
+        'bureau.agents.definitions.list',
+        { limit: LISTING_PAGE_SIZE, offset },
+        options,
+      ),
+    );
+    listings.push(...page.agents);
+    offset = page.nextOffset;
+  }
+  return listings;
 }
 
 /** The models and tools an agent may name. */

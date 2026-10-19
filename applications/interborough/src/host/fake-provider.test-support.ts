@@ -14,11 +14,18 @@ import type { HostOptions } from './host.ts';
 /** The fixture secret written for the provider. It is not a credential for anything. */
 export const FIXTURE_PROVIDER_KEY = 'fixture-anthropic-key-5e2b';
 
-/** Writes the provider configuration and its secret into a home directory that has neither. */
-export async function writeProviderHome(home: string): Promise<void> {
+/**
+ * Writes the provider configuration and its secret into a home directory that has neither. `models`
+ * is the provider's allowlist, each entry a model or an alias, so a test chooses how many models
+ * the catalog offers.
+ */
+export async function writeProviderHome(
+  home: string,
+  models: readonly string[] = ['sonnet'],
+): Promise<void> {
   await writeFile(
     join(home, 'configuration.json'),
-    JSON.stringify({ providers: { anthropic: { models: ['sonnet'] } } }),
+    JSON.stringify({ providers: { anthropic: { models } } }),
   );
   const bungalow = openBungalow({ name: 'interborough', environment: { INTERBOROUGH_HOME: home } });
   try {

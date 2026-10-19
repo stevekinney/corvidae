@@ -13,6 +13,7 @@ import {
   deleteAgent,
   getAgentCatalog,
   getAgentDefinition,
+  listAgentDefinitions,
   listAgentRevisions,
   publishAgent,
   updateAgent,
@@ -61,6 +62,35 @@ describe('the operations', () => {
       (error: unknown) => error,
     );
     expect(failure).toBeInstanceOf(Error);
+  });
+
+  test('get keeps a key of a skill that this client does not know', async () => {
+    const skill = { id: 'cite', name: 'Cite', description: 'Cites', tags: [], futureKey: [1, 2] };
+    const agent = readyAgent();
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...agent,
+        definition: agent.definition && { ...agent.definition, skills: [skill] },
+      }),
+    });
+    const detail = await getAgentDefinition('researcher');
+    expect(detail.definition?.skills).toEqual([skill]);
+  });
+
+  test('list follows the pages to the last, and asks for the largest page', async () => {
+    const first = { ...readyAgent(), id: 'one', problem: null };
+    stub = installBureauStub({
+      'bureau.agents.definitions.list': (params) =>
+        params['offset'] === 0
+          ? { agents: [first], nextOffset: 100 }
+          : { agents: [{ ...first, id: 'two' }], nextOffset: null },
+    });
+    const listings = await listAgentDefinitions();
+    expect(listings.map((listing) => listing.id)).toEqual(['one', 'two']);
+    expect(stub.calls.map((call) => call.params)).toEqual([
+      { limit: 100, offset: 0 },
+      { limit: 100, offset: 100 },
+    ]);
   });
 
   test('revisions lists the versions that have run', async () => {

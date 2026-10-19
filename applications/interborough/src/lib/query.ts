@@ -47,6 +47,8 @@ export const queryKeys = {
   },
   agents: {
     list: () => ['agents', 'list'] as const,
+    /** Every agent definition, invalid files included (`bureau.agents.definitions.list`). */
+    definitions: () => ['agents', 'definitions'] as const,
     /** One agent as `bureau.agents.definitions.get` shows it. */
     definition: (id: string) => ['agents', 'definition', id] as const,
     /** The versions of one agent that have run (`bureau.agents.definitions.revisions`). */

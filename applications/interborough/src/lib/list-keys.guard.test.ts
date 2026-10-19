@@ -15,6 +15,7 @@ const SOURCE_ROOT = join(import.meta.dir, '..');
 const OCCURRENCE_KEYED_LISTS: readonly string[] = [
   'app/fault-boundary.svelte',
   'routes/agent-editor/agent-editor-page.svelte',
+  'routes/agents/agent-list.svelte',
   'routes/system/alerts-tab.svelte',
   'routes/workers/contract-failure-notice.svelte',
   'routes/workers/diagnostics-view.svelte',

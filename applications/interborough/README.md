@@ -99,9 +99,11 @@ The host does not publish file agents through the Bureau handler yet; that comes
 - **Publishing** has its own control. It calls `publish` or `withdraw` with the `hash` of the file the form was filled from, and `published` never travels with a save.
 - **Conflicts.** Every write names that `hash`. A file that changed on disk since is refused as `StaleRevision`, and the page says the agent changed outside Interborough, with a reload that discards unsaved edits. A file that was deleted on disk is the not-found state, and so is an identifier that names no agent or an agent defined in code. A file the Bureau cannot use opens the editor in an error state with its problem and its path.
 - **The file path** comes from the host's `/host/paths`, which names the agent directory. The revision history under the form lists the versions that have run, each by its short hash and last-run time, most recently run first. A save alone does not add a row.
+- **Entry points.** The agent list has a New agent action, and an agent's page has an Edit action when the agent is a file; an agent defined in code has no Edit, because the editor would not find it. The list also shows each invalid agent file, with its error, its path, and a link to its editor, because `bureau.agents.list` leaves invalid files out and the list reads `bureau.agents.definitions.list` for them. A deleted agent leaves the list.
+- **The identifier `new`** is refused, because `/agents/new` is the page that creates an agent and an agent called `new` could never be opened.
 - **After a write** a save lands on `/agents/:id`, and a delete lands on `/agents`.
 
-The Playwright suite gives its host a provider configuration and a fixture key in the temporary home, and a fake provider client, so its catalog holds `anthropic/claude-sonnet-5` and saving, conflicts, history, and deletion run against the real Bureau (`tests/e2e/e2e-server.ts`, `src/host/fake-provider.test-support.ts`).
+The Playwright suite gives its host a provider configuration and a fixture key in the temporary home, and a fake provider client, so its catalog holds `anthropic/claude-sonnet-5` and `anthropic/claude-haiku-4-5`, and saving, conflicts, history, and deletion run against the real Bureau (`tests/e2e/e2e-server.ts`, `src/host/fake-provider.test-support.ts`).
 
 ## Workflow files
 

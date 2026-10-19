@@ -18,6 +18,12 @@ import {
   type IdentifierConflictReason,
 } from '../../lib/agent-definitions.ts';
 
+/**
+ * An identifier the Bureau accepts and the editor refuses: `/agents/new` creates an agent, so an
+ * agent whose identifier is `new` could be saved and then never opened.
+ */
+export const RESERVED_IDENTIFIER = 'new';
+
 /** One model an agent may name, written `<provider>/<model>`. */
 export type ModelOption = { readonly value: string; readonly label: string };
 
@@ -148,6 +154,7 @@ export class AgentEditorState {
     if (taken !== null && taken.identifier === this.identifier) {
       return AGENT_EDITOR_COPY.identifierTaken[taken.reason];
     }
+    if (this.identifier === RESERVED_IDENTIFIER) return AGENT_EDITOR_COPY.identifierReserved;
     return this.identifier !== '' && !this.#identifierIsValid()
       ? AGENT_EDITOR_COPY.identifierInvalid
       : '';
@@ -160,6 +167,7 @@ export class AgentEditorState {
 
   #identifierIsValid(): boolean {
     return (
+      this.identifier !== RESERVED_IDENTIFIER &&
       this.identifier.length <= AGENT_IDENTIFIER_MAX_LENGTH &&
       AGENT_IDENTIFIER_PATTERN.test(this.identifier)
     );
