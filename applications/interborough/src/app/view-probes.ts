@@ -3,6 +3,8 @@ import type { HttpClient } from '@lostgradient/weft';
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
+import { loadCatalog, orNotFound, resolveWorkflow } from '../lib/workflow-catalog.ts';
+import { getWorkflowFile } from '../lib/workflow-files.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -63,6 +65,34 @@ async function probeEditableAgent(id: string): Promise<ViewProbeResult> {
   return { empty: false };
 }
 
+/** The list: empty when neither the engine nor the Bureau has a workflow to list. */
+async function probeWorkflowList(client: HttpClient): Promise<ViewProbeResult> {
+  const rows = await loadCatalog(client);
+  return { empty: rows.length === 0 };
+}
+
+/**
+ * One workflow type's page, its runs, or its editor. The page and the runs need the type to exist,
+ * by the rule `resolveWorkflow` states; the editor needs a file, because a code-defined type has
+ * none to edit. The runs are empty when the engine lists none of that type's.
+ */
+async function probeWorkflowType(
+  client: HttpClient,
+  type: string,
+  pattern: string | undefined,
+): Promise<ViewProbeResult> {
+  if (pattern === '/workflows/:type/edit') {
+    if ((await orNotFound(getWorkflowFile(type))) === undefined) throw notFound('workflow');
+    return { empty: false };
+  }
+  if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
+  if (pattern === '/workflows/:type/runs') {
+    const page = await client.list({ type, limit: 1 });
+    return { empty: page.items.length === 0 };
+  }
+  return { empty: false };
+}
+
 /**
  * The probe for a view, or `undefined` when the view needs none because the route itself says
  * what it is showing: one run's detail page handles a run that is missing in its own words.
@@ -112,11 +142,12 @@ export function probeFor(
       const id = parameters['id'];
       return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
     }
-    case 'workflows':
-      return async (client) => {
-        await client.operations['weft.workflows.definitions.list']({});
-        return { empty: true };
-      };
+    case 'workflows': {
+      const type = parameters['type'];
+      return type === undefined
+        ? probeWorkflowList
+        : (client) => probeWorkflowType(client, type, pattern);
+    }
     case 'runs':
       if (parameters['id'] !== undefined) return undefined;
       return async (client) => {

@@ -18,7 +18,7 @@
  * fleet feed's replay buffer exactly as a workflow started after boot would.
  */
 import { Engine, LongPollWorker, RemoteWorker } from '@lostgradient/weft';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -47,6 +47,7 @@ import {
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
@@ -61,6 +62,18 @@ await mkdir(home, { recursive: true });
 // Two models, so a spec can change an agent's model and save it.
 await writeProviderHome(home, ['sonnet', 'claude-haiku-4-5']);
 const provider = fakeProvider('This reply comes from the end-to-end provider stub.');
+
+// Three workflow files, in the directory the Bureau reads at start (`26-workflows.spec.ts`): one
+// that loads and is started by a schedule, one started by a signal whose one step waits for another,
+// and one the Bureau cannot use. Each is written as a person would write it, by hand.
+const workflowDirectory = join(home, 'workflows');
+await mkdir(workflowDirectory, { recursive: true });
+for (const [name, document] of Object.entries(SEEDED_WORKFLOW_FILES)) {
+  await writeFile(
+    join(workflowDirectory, `${name}.json`),
+    `${JSON.stringify(document, null, 2)}\n`,
+  );
+}
 
 // The fixtures run on an engine of their own over memory storage, as they always have. Sharing the
 // Bureau's database would put two engines' timers and ownership claims on one set of keys, which

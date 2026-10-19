@@ -52,6 +52,8 @@
     onQueryBuilderOpenChange: (open: boolean) => void;
     /** How many attribute conditions are currently applied, shown on the disclosure toggle. */
     activeConditionCount: number;
+    /** The address names the type, so the list offers no filter for it. */
+    lockType?: boolean;
   }
 
   let {
@@ -60,6 +62,7 @@
     queryBuilderOpen,
     onQueryBuilderOpenChange,
     activeConditionCount,
+    lockType = false,
   }: WorkflowListFiltersProps = $props();
 
   const statuses = $derived(normalizeWorkflowStatusFilter(filter.status));
@@ -94,7 +97,7 @@
   const appliedFilters = $derived(
     [
       filter.idPrefix ? { key: 'idPrefix', value: filter.idPrefix, label: 'ID prefix' } : null,
-      filter.type ? { key: 'type', value: filter.type, label: 'Type' } : null,
+      filter.type && !lockType ? { key: 'type', value: filter.type, label: 'Type' } : null,
       createdPreset !== 'all' ? { key: 'created', value: createdPreset, label: 'Created' } : null,
     ].filter((entry): entry is AppliedFilter => entry !== null),
   );
@@ -170,7 +173,9 @@
     {onFilterRemove}
     {onClearAll}
     facets={[
-      { type: 'custom', key: 'type', label: 'Type', control: typeControl },
+      ...(lockType
+        ? []
+        : [{ type: 'custom' as const, key: 'type', label: 'Type', control: typeControl }]),
       { type: 'custom', key: 'tags', label: 'Tags', control: tagsControl },
       { type: 'custom', key: 'created', label: 'Created', control: createdControl },
     ]}

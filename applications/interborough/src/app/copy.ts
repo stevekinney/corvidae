@@ -23,6 +23,8 @@ export type ViewCopy = {
   readonly notFound?: ViewStateCopy;
   /** The words for a route of the view whose missing thing is not the one `notFound` names. */
   readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  /** The words for a route of the view whose nothing is not the one `empty` names. */
+  readonly emptyByPattern?: Readonly<Record<string, ViewEmptyCopy>>;
 };
 
 /** The label on the control that asks a view to try again. */
@@ -128,6 +130,137 @@ export const AGENT_EDITOR_COPY = {
     lastRunColumn: 'Last run',
     empty: 'No version of this agent has run yet.',
     failed: 'The revision history could not be loaded.',
+  },
+} as const;
+
+/** The words the Workflows area uses outside its view states (`/workflows` and under it). */
+export const WORKFLOW_COPY = {
+  /** The badge on every workflow the Bureau holds a file for. A code-defined type has none. */
+  agentAuthoredBadge: 'Agent-authored',
+  /** The label for the agent that owns a file, shown only when the file names one. */
+  owner: (agent: string): string => `Agent: ${agent}`,
+  /** The badge on a file the Bureau cannot use. */
+  invalidBadge: 'Invalid file',
+  pausedBadge: 'Paused',
+  /** The label on a workflow whose source failed to load, with the category of the failure. */
+  sourceFailed: (category: string): string => `Failed to load: ${category}`,
+  /** The directory under the state directory that holds workflow files, when the host does not say where. */
+  fallbackDirectory: 'workflows',
+  fileLabel: 'File',
+  problemLabel: 'Problem',
+  issuesLabel: 'Issues',
+  agentLabel: 'Agent',
+  triggerLabel: 'Trigger',
+  stepsLabel: 'Steps',
+  noSteps: 'This workflow has no steps.',
+  runsAction: 'Runs',
+  editAction: 'Edit',
+  pauseAction: 'Pause',
+  resumeAction: 'Resume',
+  deleteAction: 'Delete',
+  /** The accessible name of a link to a workflow's page. */
+  listLabel: 'Workflows',
+  definition: {
+    heading: 'Definition',
+    descriptionLabel: 'Description',
+    noDescription: 'No description.',
+    inputSchema: 'Input schema',
+    outputSchema: 'Output schema',
+    noSchema: 'None declared.',
+    signals: 'Accepted signals',
+    updates: 'Updates',
+    queries: 'Queries',
+    none: 'None',
+    revision: 'Active revision',
+    noRevision: 'None active',
+    /** An agent-authored workflow the engine has not registered yet, so it has no definition to show. */
+    notRegistered: 'The engine has no definition for this workflow yet.',
+  },
+  schedules: {
+    heading: 'Schedules',
+    none: 'No schedule starts this workflow.',
+    failed: 'The schedules could not be loaded.',
+    active: 'Active',
+    paused: 'Paused',
+  },
+  revisions: {
+    heading: 'Revisions that have run',
+    description: 'The versions of this workflow that have run, most recently run first.',
+    caption: 'Versions of this workflow that have run',
+    versionColumn: 'Version',
+    firstRunColumn: 'First run',
+    lastRunColumn: 'Last run',
+    empty: 'No version of this workflow has run yet.',
+    failed: 'The revision history could not be loaded.',
+  },
+  steps: {
+    agent: (agent: string, message: string): string => `Ask the agent ${agent}: ${message}`,
+    sleep: (duration: string): string => `Sleep for ${duration}`,
+    awaitSignal: (signal: string): string => `Wait for the signal ${signal}`,
+    activity: (handler: string): string => `Run the activity ${handler}`,
+    unknown: (kind: string): string => `A ${kind} step`,
+  },
+  triggers: {
+    schedule: (spec: string, overlap: string | null): string =>
+      overlap === null ? `On a schedule: ${spec}` : `On a schedule: ${spec} (overlap: ${overlap})`,
+    signal: (name: string): string => `When the signal ${name} is sent`,
+    unknown: (kind: string): string => `A ${kind} trigger`,
+  },
+  deleteDialog: {
+    title: 'Delete this workflow?',
+    description: (name: string): string =>
+      `This removes the file for ${name} and cancels its schedule. Runs already in progress finish on the version they started on.`,
+    confirm: 'Delete workflow',
+  },
+  stale: {
+    title: 'This workflow changed outside Interborough',
+    description:
+      'Its file was edited or replaced after this page loaded, so nothing was changed. Reloading shows what is on disk and discards your unsaved edits.',
+    action: 'Reload from disk',
+  },
+  pauseFailed: 'The workflow was not paused',
+  resumeFailed: 'The workflow was not resumed',
+  deleteFailed: 'The workflow was not deleted',
+  forbidden: 'This installation does not let you change workflows.',
+  loadFailed: {
+    title: 'The workflow could not be loaded',
+    description:
+      'The Bureau or the engine did not answer. Check that the host is running, then try again.',
+  },
+  signal: {
+    heading: 'Send a signal',
+    description:
+      'Delivers the signal to every running instance waiting for it, and starts every workflow whose trigger is that signal.',
+    nameLabel: 'Signal name',
+    payloadLabel: 'Payload',
+    payloadDescription: 'JSON. Optional.',
+    sendAction: 'Send signal',
+    invalidPayload: 'The payload must be valid JSON, or left empty.',
+    resultLabel: 'Signal result',
+    result: (started: number, delivered: number): string =>
+      `Started ${String(started)} ${started === 1 ? 'instance' : 'instances'}, delivered to ${String(delivered)} ${delivered === 1 ? 'instance' : 'instances'}.`,
+    failed: 'The signal was not sent',
+  },
+  editor: {
+    heading: (name: string): string => `Edit ${name}`,
+    textLabel: 'Workflow file',
+    textDescription:
+      'The file’s JSON. Its name is the file’s identifier, so it is not sent when you save.',
+    saveAction: 'Save changes',
+    cancelAction: 'Cancel',
+    saveFailed: 'The workflow was not saved',
+    notJson: 'This is not valid JSON, so nothing was saved.',
+    notObject: 'A workflow is a JSON object, so nothing was saved.',
+    invalid: {
+      title: 'This workflow’s file is invalid',
+      description:
+        'The Bureau cannot run it until the file is fixed. Edit it below, or fix the file and reload.',
+      action: 'Reload from disk',
+    },
+    unreadable: {
+      title: 'This workflow’s file cannot be read',
+      description: 'It has no content this page can edit. Fix the file on disk, then reload.',
+    },
   },
 } as const;
 
@@ -245,19 +378,38 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     label: 'Workflows',
     loading: {
       title: 'Loading workflows',
-      description: 'Reading the workflow definitions the engine knows.',
+      description: 'Reading the workflow definitions the engine knows and the Bureau’s files.',
     },
     empty: {
-      title: 'No workflow definitions yet',
+      title: 'No workflows yet',
       description:
-        'The catalog of workflow definitions will be listed here once this view is built.',
+        'Neither the engine nor the Bureau has a workflow. Ask an agent to write one, or add a JSON file to the workflows directory.',
       action: { label: 'See the runs', href: '/runs' },
     },
     error: {
       title: 'Workflows are unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      description:
+        'The engine or the Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Workflows are locked' },
+    notFound: {
+      title: 'This workflow was not found',
+      description:
+        'It may have been deleted, or its file may be gone. Open a workflow from the list.',
+    },
+    notFoundByPattern: {
+      '/workflows/:type/edit': {
+        title: 'This workflow was not found',
+        description:
+          'There is no workflow file with this name that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
+      },
+    },
+    emptyByPattern: {
+      '/workflows/:type/runs': {
+        title: 'This workflow has no runs yet',
+        description: 'Nothing has run it. Its runs are listed here once it starts.',
+      },
+    },
   },
   runs: {
     label: 'Runs',

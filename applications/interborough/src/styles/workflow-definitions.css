@@ -1,0 +1,36 @@
+/* ── Workflows area: the catalog, a type's page, and its editor ─────────────── */
+
+.weft-workflow-section__heading {
+  margin: 0;
+  font-size: var(--cinder-text-lg);
+  font-weight: 600;
+}
+
+/* A term and its value, side by side where there is room and stacked where there is not. */
+.weft-workflow-facts {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-4);
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-workflow-facts dt {
+  color: var(--cinder-text-muted);
+}
+
+.weft-workflow-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .weft-workflow-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .weft-workflow-facts dd {
+    margin-block-end: var(--cinder-space-2);
+  }
+}

@@ -30,8 +30,8 @@
  *   operations, relayed to its server.
  * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
  *   served by `createBureauHandler` with the `/bureau` prefix removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
- * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor can
- *   show an agent's file path.
+ * - `/host/paths`: where the host keeps the files a person edits by hand, so the agent editor and
+ *   the Workflows pages can show an agent's file path and a workflow's.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -294,6 +294,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
       });
     const agentDirectory = bungalow.directory(AGENT_DIRECTORY_NAME);
+    const workflowDirectory = bungalow.directory(WORKFLOW_DIRECTORY_NAME);
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: {
@@ -315,7 +316,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       agentDirectory,
       // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
       // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
-      workflowDirectory: bungalow.directory(WORKFLOW_DIRECTORY_NAME),
+      workflowDirectory,
       agentTools: createAgentFileTools(),
       resolveAgentGenerate: (descriptor) => {
         const provider = PROVIDER_NAMES.find((name) => name === descriptor.provider);
@@ -363,9 +364,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
         ...applicationRoutes(options.buildDirectory ?? DEFAULT_BUILD_DIRECTORY, refuse),
         [`${BUREAU_PATH_PREFIX}/*`]: (request: Request) =>
           refuse(request) ?? bureauHandler(withoutBureauPrefix(request)),
-        // Where a person edits what the host keeps by hand. The editor shows an agent's file path.
+        // Where a person edits what the host keeps by hand. The pages show an agent's file path and
+        // a workflow's.
         [HOST_PATHS_ROUTE]: {
-          GET: (request: Request) => refuse(request) ?? Response.json({ agentDirectory }),
+          GET: (request: Request) =>
+            refuse(request) ?? Response.json({ agentDirectory, workflowDirectory }),
         },
       },
       async fetch(request, listener) {

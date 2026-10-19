@@ -98,17 +98,18 @@ export function coverageMeasurementPlatform(): CoverageMeasurementPlatform | nul
 }
 
 const DARWIN_BASELINE: CoverageBaseline = {
-  // Re-measured for COR-1490 and COR-1489, which add `src/routes/chat` and `src/routes/agents` (the
-  // chat and agents views). Every area is re-measured on darwin with the command in
+  // Re-measured for COR-1533, which adds `src/routes/workflow-definitions` (the Workflows area:
+  // the catalog, a type's page, its runs, and its editor) and a scoped mode in the runs list
+  // (`src/routes/workflows/list`). Every area is re-measured on darwin with the command in
   // `run-coverage.ts`, so the floors also rise to the code that arrived since the last measurement.
-  measuredAt: '2026-10-19T12:00:00.000Z',
-  overall: { linesFound: 57240, linesHit: 55401, functionsFound: 11274, functionsHit: 10917 },
+  measuredAt: '2026-10-19T18:00:00.000Z',
+  overall: { linesFound: 62453, linesHit: 60585, functionsFound: 12319, functionsHit: 11951 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 926, linesHit: 926, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 942, linesHit: 942, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 2974, linesHit: 2907, functionsFound: 606, functionsHit: 588 },
-    'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
+    'src/app': { linesFound: 3257, linesHit: 3190, functionsFound: 629, functionsHit: 611 },
+    'src/lib': { linesFound: 2762, linesHit: 2747, functionsFound: 459, functionsHit: 455 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1447,
@@ -116,7 +117,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 332,
       functionsHit: 327,
     },
-    'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
+    'src/routes/agents': { linesFound: 641, linesHit: 641, functionsFound: 139, functionsHit: 138 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
     'src/routes/dashboard': {
       linesFound: 1472,
@@ -155,11 +156,18 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 2576,
       functionsHit: 2560,
     },
+    // COR-1533, measured on darwin: the Workflows area's catalog, a type's page, its runs, and its editor.
+    'src/routes/workflow-definitions': {
+      linesFound: 2366,
+      linesHit: 2348,
+      functionsFound: 499,
+      functionsHit: 492,
+    },
     'src/routes/workflows': {
-      linesFound: 14788,
-      linesHit: 14111,
-      functionsFound: 3012,
-      functionsHit: 2869,
+      linesFound: 14860,
+      linesHit: 14188,
+      functionsFound: 3028,
+      functionsHit: 2886,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
     tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },
@@ -167,17 +175,16 @@ const DARWIN_BASELINE: CoverageBaseline = {
 };
 
 const LINUX_BASELINE: CoverageBaseline = {
-  // COR-1490 and COR-1489 re-measured darwin only. The recorded Linux and darwin counts were
-  // identical at the last measurement on both, so this carries the darwin counts until a Linux run
-  // records its own.
-  measuredAt: '2026-10-19T12:00:00.000Z',
-  overall: { linesFound: 57240, linesHit: 55401, functionsFound: 11274, functionsHit: 10917 },
+  // COR-1533 re-measured darwin only. The recorded Linux and darwin counts were identical at the
+  // last measurement on both, so this carries the darwin counts until a Linux run records its own.
+  measuredAt: '2026-10-19T18:00:00.000Z',
+  overall: { linesFound: 62453, linesHit: 60585, functionsFound: 12319, functionsHit: 11951 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 926, linesHit: 926, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 942, linesHit: 942, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 2974, linesHit: 2907, functionsFound: 606, functionsHit: 588 },
-    'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
+    'src/app': { linesFound: 3257, linesHit: 3190, functionsFound: 629, functionsHit: 611 },
+    'src/lib': { linesFound: 2762, linesHit: 2747, functionsFound: 459, functionsHit: 455 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1447,
@@ -185,7 +192,7 @@ const LINUX_BASELINE: CoverageBaseline = {
       functionsFound: 332,
       functionsHit: 327,
     },
-    'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
+    'src/routes/agents': { linesFound: 641, linesHit: 641, functionsFound: 139, functionsHit: 138 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
     'src/routes/dashboard': {
       linesFound: 1472,
@@ -224,11 +231,18 @@ const LINUX_BASELINE: CoverageBaseline = {
       functionsFound: 2576,
       functionsHit: 2560,
     },
+    // COR-1533, measured on darwin: the Workflows area's catalog, a type's page, its runs, and its editor.
+    'src/routes/workflow-definitions': {
+      linesFound: 2366,
+      linesHit: 2348,
+      functionsFound: 499,
+      functionsHit: 492,
+    },
     'src/routes/workflows': {
-      linesFound: 14788,
-      linesHit: 14111,
-      functionsFound: 3012,
-      functionsHit: 2869,
+      linesFound: 14860,
+      linesHit: 14188,
+      functionsFound: 3028,
+      functionsHit: 2886,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
     tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },
