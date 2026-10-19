@@ -17,6 +17,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
@@ -63,7 +64,7 @@ function paintingAgent(seen: GenerateContext[] = []) {
 async function openBureau(
   options: {
     durable?: boolean;
-    policy?: { maxAssetBytes: number };
+    policy?: import('./assets/types').AssetPolicyInput;
     ports?: NonNullable<Parameters<typeof createBureau>[0]['assets']>['ports'];
   } = {},
   agent = paintingAgent(),
@@ -241,5 +242,77 @@ describe('a Bureau without an asset service', () => {
     expect(result.finishReason).toBe('error');
     expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
     expect((result.error as GeneratedMediaNotAdmittedError).reason).toBe('no-admitter');
+  });
+});
+
+describe('aggregate limits across the generated parts of one response (correction)', () => {
+  it('refuses parts that are each within the limit but exceed it together', async () => {
+    const size = generatedPng.byteLength;
+    const twoImages = createAgent({
+      generate: withBackendDescriptors(
+        async () => ({
+          content: '',
+          parts: [inlineImage, { ...inlineImage }],
+          toolCalls: [],
+        }),
+        imageOutputDescriptors,
+      ),
+    });
+    const bureau = await openBureau(
+      {
+        policy: {
+          limits: [
+            { scope: 'aggregate', modality: 'image', maxBytes: size + Math.floor(size / 2) },
+          ],
+        },
+      },
+      twoImages,
+    );
+
+    const run = bureau.run('painter', 'Draw', { principal: alice.id });
+    const result = await run.result();
+
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
+    expect((result.error as GeneratedMediaNotAdmittedError).rejectionCode).toBe(
+      'aggregate-limit-exceeded',
+    );
+    expect(await run.closed()).toEqual({ status: 'completed' });
+    expect(bureau.assets!.activeWork()).toEqual([]);
+  });
+});
+
+describe('the admission abort listener (correction)', () => {
+  it('is removed from the step signal once the admission settles', async () => {
+    const bureau = await openBureau();
+    let added = 0;
+    let removed = 0;
+    const listeners = new Set<unknown>();
+    const signal = {
+      aborted: false,
+      addEventListener: (_type: string, listener: unknown) => {
+        added += 1;
+        listeners.add(listener);
+      },
+      removeEventListener: (_type: string, listener: unknown) => {
+        removed += 1;
+        listeners.delete(listener);
+      },
+    } as unknown as AbortSignal;
+
+    const admission = await createAssetGeneratedMediaAdmitter(bureau.assets!, alice.id).admit({
+      part: inlineImage,
+      runId: 'run-1',
+      step: 0,
+      partIndex: 0,
+      messageId: undefined,
+      signal,
+    });
+    expect((await admission.settled()).outcome).toBe('available');
+    await admission.closed();
+
+    expect(added).toBe(1);
+    expect(removed).toBe(1);
+    expect(listeners.size).toBe(0);
   });
 });

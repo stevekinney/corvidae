@@ -1583,3 +1583,93 @@ describe('an onError retry never reissues a provider contract failure (correctio
     expect(client._calls).toHaveLength(2);
   });
 });
+
+describe('the generated parts of one response are admitted together (correction)', () => {
+  const secondImage: MultiModalContent = {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'inline', data: 'BBBBSECONDBYTES', encoding: 'base64' },
+  };
+  const twoImages: GenerateResponse = {
+    content: '',
+    parts: [inlineImage, secondImage],
+    toolCalls: [],
+  };
+
+  it('hands a batch-capable port every inline part in one admitAll call', async () => {
+    const admitter = createScriptedMediaAdmitter({ batch: true });
+
+    const result = await run(
+      baseOptions(createMockGenerate([twoImages]), { generatedMediaAdmitter: admitter.port }),
+    );
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(admitter.batches).toEqual([2]);
+    expect(admitter.admissions.map((record) => record.request.partIndex)).toEqual([0, 1]);
+    expect(result.parts).toMatchObject([
+      { source: { assetId: 'asset-1' } },
+      { source: { assetId: 'asset-2' } },
+    ]);
+  });
+
+  it('falls back to one admit per part for a port with no batch call', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    await run(
+      baseOptions(createMockGenerate([twoImages]), { generatedMediaAdmitter: admitter.port }),
+    );
+    expect(admitter.batches).toEqual([]);
+    expect(admitter.admissions).toHaveLength(2);
+  });
+
+  it('aborts the sibling admissions when one is rejected, then waits for them to settle', async () => {
+    const admitter = createScriptedMediaAdmitter({
+      modeAt: (position) => (position === 0 ? 'reject' : 'manual'),
+    });
+
+    const result = await run(
+      baseOptions(createMockGenerate([twoImages]), { generatedMediaAdmitter: admitter.port }),
+    );
+
+    expect(result.finishReason).toBe('error');
+    expect((result.error as GeneratedMediaNotAdmittedError).partIndex).toBe(0);
+    expect(admitter.admissions[1]?.aborted).toBe(true);
+    expect(admitter.admissions[1]?.settlement?.outcome).toBe('aborted');
+  });
+});
+
+describe('a read-only output hook cannot reach the admitted parts (correction)', () => {
+  it('gives onLLMOutput a copy: pushing inline media or editing a part changes nothing', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('onLLMOutput', async (context) => {
+      const parts = context.response.parts as MultiModalContent[];
+      try {
+        parts.push(inlineImage);
+      } catch {
+        // A frozen copy refuses the write; either way the settled response must be unchanged.
+      }
+      try {
+        (parts[0] as { source: unknown }).source = {
+          kind: 'inline',
+          data: 'EVIL',
+          encoding: 'base64',
+        };
+      } catch {
+        // Likewise.
+      }
+    });
+
+    const result = await run(
+      baseOptions(createMockGenerate([{ content: '', parts: [inlineImage], toolCalls: [] }]), {
+        hooks,
+        generatedMediaAdmitter: admitter.port,
+      }),
+    );
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(result.parts).toMatchObject([{ type: 'image', source: { kind: 'managed-asset' } }]);
+    expect(result.parts).toHaveLength(1);
+    expect(safeStringify(result)).not.toContain('EVIL');
+    expect(safeStringify(result)).not.toContain('UNIQUEBYTES');
+  });
+});

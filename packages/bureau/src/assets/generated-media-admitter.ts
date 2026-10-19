@@ -1,11 +1,18 @@
 import type {
   GeneratedMediaAdmission,
+  GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
   GeneratedMediaSettlement,
 } from '@lostgradient/operative';
 
 import { decodeBase64 } from './base64';
-import type { AssetService, AssetWorkResult, AssetDescriptor } from './types';
+import type {
+  AssetAdmission,
+  AssetAdmissionRequest,
+  AssetDescriptor,
+  AssetService,
+  AssetWorkResult,
+} from './types';
 
 /**
  * The media-admission port Bureau hands a run (COR-713): it admits a part a model generated as a
@@ -27,40 +34,56 @@ export function createAssetGeneratedMediaAdmitter(
   assets: AssetService,
   principalId: string,
 ): GeneratedMediaAdmitter {
+  const principal = { id: principalId };
   return {
     async admit(request): Promise<GeneratedMediaAdmission> {
-      const { source: inline } = request.part;
-      const bytes =
-        inline.encoding === 'base64'
-          ? decodeBase64(inline.data)
-          : new TextEncoder().encode(inline.data);
-      const admission = await assets.admit(
-        {
-          source: { kind: 'inline', bytes },
-          ...(request.part.mimeType === undefined
-            ? {}
-            : { declaredMediaType: request.part.mimeType }),
-        },
-        { id: principalId },
-      );
-      const { work } = admission;
-      if (request.signal.aborted) work.abort('The run was cancelled');
-      else {
-        request.signal.addEventListener('abort', () => work.abort('The run was cancelled'), {
-          once: true,
-        });
-      }
-      return {
-        source: admission.source,
-        async settled() {
-          return settlementOf(await work.result());
-        },
-        abort(reason) {
-          work.abort(reason);
-        },
-        closed: (options) => work.closed(options),
-      };
+      const admission = await assets.admit(assetRequest(request), principal);
+      return wrap(admission, request);
     },
+    // One response's parts share the policy's aggregate ceilings, so they go through the
+    // service's batch call: part N is decided after part N-1, and a refusal starts nothing.
+    async admitAll(requests): Promise<readonly GeneratedMediaAdmission[]> {
+      const admissions = await assets.admitAll(requests.map(assetRequest), principal);
+      return admissions.map((admission, index) => wrap(admission, requests[index]!));
+    },
+  };
+}
+
+function assetRequest(request: GeneratedMediaAdmissionRequest): AssetAdmissionRequest {
+  const { source: inline } = request.part;
+  const bytes =
+    inline.encoding === 'base64'
+      ? decodeBase64(inline.data)
+      : new TextEncoder().encode(inline.data);
+  return {
+    source: { kind: 'inline', bytes },
+    ...(request.part.mimeType === undefined ? {} : { declaredMediaType: request.part.mimeType }),
+  };
+}
+
+/**
+ * Wires the request's signal to the admission's work and removes that listener once the work
+ * settles, so a long-lived step signal does not accumulate one listener per admission.
+ */
+function wrap(
+  admission: AssetAdmission,
+  request: GeneratedMediaAdmissionRequest,
+): GeneratedMediaAdmission {
+  const { work, source } = admission;
+  const abort = () => work.abort('The run was cancelled');
+  if (request.signal.aborted) abort();
+  else request.signal.addEventListener('abort', abort, { once: true });
+  const detach = () => request.signal.removeEventListener('abort', abort);
+  void work.result().then(detach, detach);
+  return {
+    source,
+    async settled() {
+      return settlementOf(await work.result());
+    },
+    abort(reason) {
+      work.abort(reason);
+    },
+    closed: (options) => work.closed(options),
   };
 }
 

@@ -22,6 +22,8 @@ export interface ScriptedAdmissionRecord {
 export interface ScriptedMediaAdmitter {
   readonly port: GeneratedMediaAdmitter;
   readonly admissions: ScriptedAdmissionRecord[];
+  /** The size of each `admitAll` batch the port received; empty for a port with no batch call. */
+  readonly batches: number[];
 }
 
 /**
@@ -40,6 +42,10 @@ export function createScriptedMediaAdmitter(
     closedOutcome?: CleanupAcknowledgement;
     /** Called as each admission is accepted, so a test can wait for it without a timer. */
     onAdmit?: (record: ScriptedAdmissionRecord) => void;
+    /** Overrides `mode` for the admission at this position (0-based, in acceptance order). */
+    modeAt?: (position: number) => ScriptedAdmissionMode | undefined;
+    /** Gives the port an `admitAll`, as Bureau's has, recording each batch's size. */
+    batch?: boolean;
   } = {},
 ): ScriptedMediaAdmitter {
   const {
@@ -48,11 +54,26 @@ export function createScriptedMediaAdmitter(
     ignoreAbort = false,
     closedOutcome = { status: 'completed' },
     onAdmit,
+    modeAt,
+    batch = false,
   } = options;
   const admissions: ScriptedAdmissionRecord[] = [];
+  const batches: number[] = [];
 
   const port: GeneratedMediaAdmitter = {
+    ...(batch
+      ? {
+          async admitAll(requests: readonly GeneratedMediaAdmissionRequest[]) {
+            batches.push(requests.length);
+            const accepted: GeneratedMediaAdmission[] = [];
+            for (const request of requests) accepted.push(await port.admit(request));
+            return accepted;
+          },
+        }
+      : {}),
     async admit(request): Promise<GeneratedMediaAdmission> {
+      const position = admissions.length;
+      const effectiveMode = modeAt?.(position) ?? mode;
       const source: ManagedAssetReference = {
         kind: 'managed-asset',
         assetId: `asset-${admissions.length + 1}`,
@@ -84,13 +105,13 @@ export function createScriptedMediaAdmitter(
       if (request.signal.aborted) abort();
       else request.signal.addEventListener('abort', () => abort(), { once: true });
 
-      if (mode === 'available') {
+      if (effectiveMode === 'available') {
         record.settle({
           outcome: 'available',
           source,
           mimeType: request.part.mimeType ?? 'application/octet-stream',
         });
-      } else if (mode === 'reject') {
+      } else if (effectiveMode === 'reject') {
         record.settle({ outcome: 'rejected', code: rejectionCode, message: 'refused by policy' });
       }
 
@@ -114,5 +135,5 @@ export function createScriptedMediaAdmitter(
     },
   };
 
-  return { port, admissions };
+  return { port, admissions, batches };
 }

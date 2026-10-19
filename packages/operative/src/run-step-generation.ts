@@ -367,7 +367,7 @@ export async function executeGeneration(
         const onLLMOutputHookPromise = runHookSilently(hooks, 'onLLMOutput', {
           conversation: generateContext.conversation,
           step: generateContext.step,
-          response: Object.freeze({ ...response }),
+          response: readOnlyResponseView(response),
           duration: durationMilliseconds,
           usage: response.usage,
         });
@@ -564,4 +564,24 @@ function billedUsageOf(error: unknown): GenerateResponse['usage'] {
     return error.usage;
   }
   return undefined;
+}
+
+/**
+ * The response `onLLMOutput` sees: read-only by contract, so it gets its own frozen copy of the
+ * parts. A shallow freeze would share the settled `parts` array and its media sources with the
+ * response the loop commits, and a hook could then inject inline media or desynchronize the text
+ * from the parts after admission had settled them.
+ */
+function readOnlyResponseView(response: GenerateResponse): Readonly<GenerateResponse> {
+  const parts =
+    response.parts === undefined ? undefined : deepFreeze(structuredClone(response.parts));
+  return Object.freeze({ ...response, ...(parts === undefined ? {} : { parts }) });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const member of Object.values(value)) deepFreeze(member);
+  }
+  return value;
 }

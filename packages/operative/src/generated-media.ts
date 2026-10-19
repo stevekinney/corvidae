@@ -57,6 +57,16 @@ export interface GeneratedMediaAdmission {
  */
 export interface GeneratedMediaAdmitter {
   admit(request: GeneratedMediaAdmissionRequest): Promise<GeneratedMediaAdmission>;
+  /**
+   * Admits one response's generated parts as one batch that shares the policy's aggregate
+   * budgets (byte and duration ceilings across the parts), as the asset service's `admitAll`
+   * does, so individually valid parts cannot exceed an aggregate limit together. A port without
+   * it is called once per part. A streaming wrapper admits each part as it completes and so
+   * cannot batch; only a response admitted after `generate` returns can.
+   */
+  admitAll?(
+    requests: readonly GeneratedMediaAdmissionRequest[],
+  ): Promise<readonly GeneratedMediaAdmission[]>;
 }
 
 /** What a hook, adapter or streaming wrapper passes in: the step supplies the rest. */
@@ -74,6 +84,8 @@ export interface StepMediaAdmissionRequest {
  */
 export interface StepGeneratedMediaAdmitter {
   admit(request: StepMediaAdmissionRequest): Promise<GeneratedMediaAdmission>;
+  /** Admits several parts of one response as one batch; falls back to one call per part. */
+  admitAll(requests: readonly StepMediaAdmissionRequest[]): Promise<GeneratedMediaAdmission[]>;
 }
 
 export function createStepGeneratedMediaAdmitter(options: {
@@ -83,41 +95,78 @@ export function createStepGeneratedMediaAdmitter(options: {
   readonly signal: AbortSignal;
   readonly track?: ((admission: GeneratedMediaAdmission) => void) | undefined;
 }): StepGeneratedMediaAdmitter {
+  const refusal = (request: StepMediaAdmissionRequest, error: unknown): Error => {
+    if (error instanceof GeneratedMediaNotAdmittedError) return error;
+    return new GeneratedMediaNotAdmittedError({
+      reason: 'admission-failed',
+      step: options.step,
+      partIndex: request.partIndex,
+      messageId: request.messageId,
+      modality: request.part.type,
+      detail: error instanceof Error ? error.message : String(error),
+      cause: error,
+    });
+  };
+  const noPort = (request: StepMediaAdmissionRequest): GeneratedMediaNotAdmittedError =>
+    new GeneratedMediaNotAdmittedError({
+      reason: 'no-admitter',
+      step: options.step,
+      partIndex: request.partIndex,
+      messageId: request.messageId,
+      modality: request.part.type,
+    });
+  const portRequest = (request: StepMediaAdmissionRequest): GeneratedMediaAdmissionRequest => ({
+    part: request.part,
+    runId: options.runId,
+    step: options.step,
+    partIndex: request.partIndex,
+    messageId: request.messageId,
+    signal: options.signal,
+  });
+
   return {
     async admit(request) {
-      if (options.port === undefined) {
-        throw new GeneratedMediaNotAdmittedError({
-          reason: 'no-admitter',
-          step: options.step,
-          partIndex: request.partIndex,
-          messageId: request.messageId,
-          modality: request.part.type,
-        });
-      }
+      if (options.port === undefined) throw noPort(request);
       let admission: GeneratedMediaAdmission;
       try {
-        admission = await options.port.admit({
-          part: request.part,
-          runId: options.runId,
-          step: options.step,
-          partIndex: request.partIndex,
-          messageId: request.messageId,
-          signal: options.signal,
-        });
+        admission = await options.port.admit(portRequest(request));
       } catch (error) {
-        if (error instanceof GeneratedMediaNotAdmittedError) throw error;
-        throw new GeneratedMediaNotAdmittedError({
-          reason: 'admission-failed',
-          step: options.step,
-          partIndex: request.partIndex,
-          messageId: request.messageId,
-          modality: request.part.type,
-          detail: error instanceof Error ? error.message : String(error),
-          cause: error,
-        });
+        throw refusal(request, error);
       }
       options.track?.(admission);
       return admission;
+    },
+
+    async admitAll(requests) {
+      const first = requests[0];
+      if (first === undefined) return [];
+      const { port } = options;
+      if (port === undefined) throw noPort(first);
+      // A port with a batch call shares one aggregate budget across the parts; one without is
+      // called once per part. A part refused before it starts leaves the started ones aborted.
+      if (port.admitAll !== undefined) {
+        let admissions: readonly GeneratedMediaAdmission[];
+        try {
+          admissions = await port.admitAll(requests.map(portRequest));
+        } catch (error) {
+          throw refusal(first, error);
+        }
+        for (const admission of admissions) options.track?.(admission);
+        return [...admissions];
+      }
+      const started = await Promise.allSettled(requests.map((request) => this.admit(request)));
+      const failure = started.find((result) => result.status === 'rejected');
+      if (failure !== undefined) {
+        const open = started.flatMap((result) =>
+          result.status === 'fulfilled' ? [result.value] : [],
+        );
+        for (const admission of open) admission.abort('A sibling admission was refused');
+        await Promise.allSettled(open.map((admission) => admission.settled()));
+        throw failure.reason;
+      }
+      return started.map(
+        (result) => (result as PromiseFulfilledResult<GeneratedMediaAdmission>).value,
+      );
     },
   };
 }
@@ -176,10 +225,11 @@ export async function admitMediaPart(
 }
 
 /**
- * Admits every part that still carries inline bytes, concurrently, and returns the parts
- * with each replaced by its managed-asset form. A part already managed is left alone, so
- * settling a response twice never admits twice. Every admission is awaited to settlement
- * before a failure is rethrown, so a failed part never leaves a sibling still running.
+ * Admits every part that still carries inline bytes, as one batch, and returns the parts with
+ * each replaced by its managed-asset form. A part already managed is left alone, so settling a
+ * response twice never admits twice. When one admission is refused, the others are aborted and
+ * awaited to settlement before the first failure is rethrown, so a failed part never leaves a
+ * sibling running or an asset pending.
  */
 export async function admitInlineMedia(
   admitter: StepGeneratedMediaAdmitter | undefined,
@@ -188,17 +238,48 @@ export async function admitInlineMedia(
 ): Promise<readonly MultiModalContent[]> {
   const pending = inlineMediaParts(parts);
   if (pending.length === 0) return parts;
+  const settleContext = (index: number) => ({
+    step: context.step,
+    partIndex: index,
+    ...(context.messageId === undefined ? {} : { messageId: context.messageId }),
+  });
+  if (admitter === undefined) {
+    const { index, part } = pending[0]!;
+    throw new GeneratedMediaNotAdmittedError({
+      reason: 'no-admitter',
+      step: context.step,
+      partIndex: index,
+      messageId: context.messageId,
+      modality: part.type,
+    });
+  }
+  const admissions = await admitter.admitAll(
+    pending.map(({ index, part }) => ({
+      part,
+      partIndex: index,
+      messageId: context.messageId,
+    })),
+  );
+  let firstFailure: unknown;
+  let refused = false;
   const settled = await Promise.allSettled(
-    pending.map(({ index, part }) =>
-      admitMediaPart(admitter, part, {
-        step: context.step,
-        partIndex: index,
-        ...(context.messageId === undefined ? {} : { messageId: context.messageId }),
+    admissions.map((admission, position) =>
+      settleMediaAdmission(
+        admission,
+        pending[position]!.part,
+        settleContext(pending[position]!.index),
+      ).catch((error: unknown) => {
+        if (!refused) {
+          refused = true;
+          firstFailure = error;
+          for (const sibling of admissions) sibling.abort('A sibling admission was refused');
+        }
+        throw error;
       }),
     ),
   );
-  const failure = settled.find((result) => result.status === 'rejected');
-  if (failure !== undefined) throw failure.reason;
+  // The first refusal in time is the cause; siblings it aborted only echo it.
+  if (refused) throw firstFailure;
   const next = [...parts];
   for (const [position, { index }] of pending.entries()) {
     next[index] = (settled[position] as PromiseFulfilledResult<MediaContent>).value;
