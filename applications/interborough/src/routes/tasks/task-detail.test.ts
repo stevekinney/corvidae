@@ -443,9 +443,8 @@ describe('a schedule fire’s task', () => {
 describe('the link from a task to its chat', () => {
   test('is there when the Bureau has the session', async () => {
     const { findByRole } = open(taskFixture({ contextId: 'session-1' }));
-    expect((await findByRole('link', { name: TASK_COPY.openChat })).getAttribute('href')).toBe(
-      '/chat/session-1',
-    );
+    const link = await findByRole('link', { name: TASK_COPY.openChat });
+    expect(link.getAttribute('href')).toBe('/chat/session-1');
   });
 
   test('is not there for a task whose contextId is its run handle and no session', async () => {
