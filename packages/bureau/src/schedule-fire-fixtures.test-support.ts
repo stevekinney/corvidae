@@ -17,6 +17,7 @@ import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
+import { createMemoryAssetStorage } from './assets/storage';
 import { createBureau } from './create-bureau';
 import { createBureauHandler } from './http/create-bureau-handler.ts';
 import { authentication, OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -67,6 +68,8 @@ export function createScheduleFireHarness() {
         durableOwnership: { ownership: 'none' },
         toolbox: createToolbox([]),
         stopWhen: stopWhen.noToolCalls(),
+        // `createBureauHandler` serves the asset operations, so it needs a Bureau with assets.
+        assets: { storage: createMemoryAssetStorage() },
         ...options,
       });
       bureaus.push(bureau);
