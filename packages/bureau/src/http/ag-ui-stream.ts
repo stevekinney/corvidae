@@ -35,6 +35,7 @@ import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts'
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { snapshotMessages } from './ag-ui-messages.ts';
 import { type NativeTerminal, RECORDED, RunProjector, stepName } from './ag-ui-projection.ts';
+import { readSessionOwnedBy, runIsOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiSink, createAgUiSink } from './ag-ui-sink.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
@@ -66,6 +67,13 @@ export type OpenRunStream = {
   /** The `runId` the AG-UI run carries: the client's on start and resume, the native one on attach. */
   readonly runId: string;
   readonly nativeRunId: string;
+  /**
+   * The owner the route authorized: the owner of the record it decided on. The stream reads the
+   * thread's session and the run again, and treats a record whose own owner is another's as
+   * missing, because a thread or run deleted and created again by another owner since the route
+   * decided must not hand its data to the caller.
+   */
+  readonly owner: string;
   /** The parent's native id, on the stream of a child run. */
   readonly parentRunId?: string | undefined;
   /**
@@ -442,7 +450,7 @@ export function openRunStream(
       );
       if (delivered.length === 0) return true;
       await bureau.whenRunRecorded(request.nativeRunId);
-      const session = await bureau.getSession(request.threadId);
+      const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
       const history = session?.conversationHistory;
       if (history === undefined || !delivered.every((id) => history.ids.includes(id))) {
         return false;
@@ -698,12 +706,25 @@ export function openRunStream(
 
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
+      // The route authorized the run id on the owner `getOwner` reports, which reads run attribution
+      // before the child record. A child id can be chosen by whoever dispatches it, so the record
+      // located under an authorized id can be another owner's; refuse it as a missing run.
+      if (!runIsOwnedBy(request.child, request.owner)) {
+        fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
+        return;
+      }
       await openChild(request.child);
       return;
     }
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
-    const session = await bureau.getSession(request.threadId);
+    const session = await readSessionOwnedBy(bureau, request.threadId, request.owner);
     const detail: RunDetail | undefined = bureau.getRun(request.nativeRunId);
+    // A run held under another owner's name is not the one the route authorized. Nothing has been
+    // written yet, so the stream is one error.
+    if (detail !== undefined && !runIsOwnedBy(detail, request.owner)) {
+      fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
+      return;
+    }
     const conversation: ConversationHistory | undefined =
       detail?.transcript ?? session?.conversationHistory;
     const fence = history?.fence;
