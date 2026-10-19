@@ -15,6 +15,7 @@
   import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { listMemories, searchMemories, type Memory } from '../../lib/memory-client.ts';
   import { agentMemoryViewInstance, queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -98,7 +99,7 @@
     selectedId = id;
   }
 
-  const agentPath = `/agents/${encodeURIComponent(agentId)}`;
+  const backPath = agentPath(agentId);
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -122,10 +123,10 @@
       <p class="weft-chat-header__agent">{agentId}</p>
     </div>
     <Button
-      href={router.href(agentPath)}
+      href={router.href(backPath)}
       variant="secondary"
       size="sm"
-      onclick={(event) => goTo(event, agentPath)}>{MEMORY_COPY.backToAgent(agentId)}</Button
+      onclick={(event) => goTo(event, backPath)}>{MEMORY_COPY.backToAgent(agentId)}</Button
     >
   </header>
 
