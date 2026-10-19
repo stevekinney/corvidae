@@ -507,7 +507,7 @@ describe('parts an AG-UI assistant message cannot carry (COR-713)', () => {
       {
         type: 'code_execution_tool_result',
         tool_use_id: 'srvtoolu_3',
-        content: { type: 'code_execution_result', stdout: '2', stderr: '', return_code: 0 },
+        content: { type: 'code_execution_result', stdout: '2', stderr: 'none', return_code: 0 },
       },
     ],
     ['container_upload', { type: 'container_upload', file_id: 'file_1' }],
