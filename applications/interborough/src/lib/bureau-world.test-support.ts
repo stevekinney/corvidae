@@ -9,9 +9,14 @@
 import type { ReviewListEntry } from '@lostgradient/weft';
 
 import type { BureauReview } from './bureau-reviews.ts';
+import {
+  StubFault,
+  urlOf,
+  type BureauCall,
+  type BureauHandler,
+} from './bureau-stub.test-support.ts';
 import type { TaskView } from './bureau-tasks.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
-import { StubFault, urlOf, type BureauCall, type BureauHandler } from './bureau-stub.test-support.ts';
 
 /** One open subscription, and what a test does to it. */
 export type StreamControl = {
@@ -24,7 +29,6 @@ export type StreamControl = {
   end(): void;
   /** Breaks the connection, as a network drop does. */
   drop(): void;
-  readonly closed: boolean;
 };
 
 export type BureauWorld = {
@@ -136,7 +140,9 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
           if (closed) return;
           const cursor = typeof element['cursor'] === 'string' ? `id: ${element['cursor']}\n` : '';
           controller?.enqueue(
-            encoder.encode(`${cursor}event: ${String(element['kind'])}\ndata: ${JSON.stringify(element)}\n\n`),
+            encoder.encode(
+              `${cursor}event: ${String(element['kind'])}\ndata: ${JSON.stringify(element)}\n\n`,
+            ),
           );
         },
         end() {
@@ -148,9 +154,6 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
           if (closed) return;
           closed = true;
           controller?.error(new TypeError('network error'));
-        },
-        get closed() {
-          return closed;
         },
       };
       init?.signal?.addEventListener('abort', () => {
@@ -171,11 +174,9 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
     if (url.pathname !== '/bureau/jsonrpc' || typeof init?.body !== 'string') {
       return new Response('Not found', { status: 404 });
     }
-    const body: unknown = JSON.parse(init.body);
-    if (!isRecord(body) || typeof body['method'] !== 'string') {
-      return new Response('Bad request', { status: 400 });
-    }
-    const method = body['method'];
+    const parsed: unknown = JSON.parse(init.body);
+    const body = isRecord(parsed) ? parsed : {};
+    const method = String(body['method']);
     const params = isRecord(body['params']) ? body['params'] : {};
     calls.push({ method, params });
     const handler = table.get(method);

@@ -230,4 +230,37 @@ describe('following a task', () => {
     expect(failure).toBeInstanceOf(HttpClientError);
     expect(classifyFault(failure)?.kind).toBe('not-found');
   });
+
+  test('a refusal that has no JSON body still reads as the fault its status says it is', async () => {
+    const stub: Fetcher = async () => new Response('Bad gateway', { status: 502 });
+    const failure = await collect(followTaskEvents('run-1', { fetch: stub })).catch(
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(HttpClientError);
+    expect((failure as HttpClientError).status).toBe(502);
+    expect((failure as HttpClientError).message).toBe('The task stream answered 502.');
+  });
+
+  test('skips a task frame whose data is not JSON, and says when the Bureau has accepted the stream', async () => {
+    const opened: string[] = [];
+    const stub: Fetcher = async () =>
+      new Response(
+        `event: task.status\ndata: {not json\n\nid: 16\nevent: task.status\ndata: ${JSON.stringify({
+          taskId: 'run-1',
+          cursor: '16',
+          emittedAtMs: 2,
+          kind: 'task.status',
+          status: 'working',
+          finishReason: null,
+          message: null,
+          artifact: null,
+        })}\n\n`,
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    const elements = await collect(
+      followTaskEvents('run-1', { fetch: stub, onOpen: () => void opened.push('open') }),
+    );
+    expect(opened).toEqual(['open']);
+    expect(elements.map((element) => element.cursor)).toEqual(['16']);
+  });
 });
