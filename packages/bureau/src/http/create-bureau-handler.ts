@@ -132,6 +132,7 @@ export type BureauHandlerSource = Pick<
   | 'pendingHumanWaitsOfRun'
   | 'durableEngine'
   | 'getOwner'
+  | 'getScheduleAgentName'
   | 'tasks'
   | 'lifecycle'
   | 'eventHistory'
@@ -650,6 +651,7 @@ export function buildBureauHandlerHost(
       cancelSchedule: bureau.cancelSchedule,
       updateSchedule: bureau.updateSchedule,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
+      agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
       hasAgent: (name) => bureau.agents.has(name),
     },
     goals: bureau.goals,

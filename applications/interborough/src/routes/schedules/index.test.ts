@@ -39,7 +39,7 @@ describe('Schedules index router', () => {
     }
   });
 
-  test('/schedules?id=<id> renders the detail page, not the list', async () => {
+  test('/schedules/<id> renders the detail page, not the list', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -47,7 +47,7 @@ describe('Schedules index router', () => {
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
-    resetLocation('/schedules?id=nightly-rollup');
+    resetLocation('/schedules/nightly-rollup');
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
@@ -73,7 +73,7 @@ describe('Schedules index router', () => {
     }
   });
 
-  test('/schedules?id=<id>&edit=1 renders the detail page with the edit drawer open', async () => {
+  test('/schedules/<id>?edit=1 renders the detail page with the edit drawer open', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
       workflow: 'inventory-sync-sweep',
@@ -81,7 +81,7 @@ describe('Schedules index router', () => {
       cron: '0 2 * * *',
       input: { warehouseId: 'wh-main' },
     });
-    resetLocation('/schedules?id=nightly-rollup&edit=1');
+    resetLocation('/schedules/nightly-rollup?edit=1');
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {

@@ -8149,6 +8149,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return isScheduledAgentRunInput(input) ? ownerOrLocal(input.principal) : undefined;
   }
 
+  /**
+   * The agent an agent schedule runs, read from the stored input beside the owner. Only the name
+   * leaves: the input's text and its session stay in storage. A workflow file's schedule runs no
+   * agent of its own, so it has none.
+   */
+  async function getScheduleAgentName(scheduleId: string): Promise<string | undefined> {
+    if (!runtime.durable) return undefined;
+    if (workflowRuntime !== undefined && (await workflowRuntime.scheduleExists(scheduleId))) {
+      return undefined;
+    }
+    const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
+    if (!bytes) return undefined;
+    const state: unknown = decode(bytes);
+    const input =
+      typeof state === 'object' && state !== null
+        ? (state as { input?: unknown }).input
+        : undefined;
+    return isScheduledAgentRunInput(input) ? input.agentName : undefined;
+  }
+
   async function sessionOwner(sessionId: string): Promise<string | undefined> {
     const session = await runtime.sessionStore?.load(sessionId);
     return session === undefined ? undefined : resolveSessionOwner(session.metadata);
@@ -15719,6 +15739,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     listRuns,
     getRun,
     getOwner,
+    getScheduleAgentName,
     subscribeRunSnapshot,
     getRunReport,
     abortRun,

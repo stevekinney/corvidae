@@ -236,7 +236,9 @@ describe('bureau.tasks.events', () => {
         expect(task.result?.['status']).toBe('input-required');
         expect(statuses(frames).at(-1)).toBe('input-required');
         expect(statuses(frames)).not.toContain('completed');
-        expect(JSON.stringify(frames)).not.toContain('4242');
+        // The approval's tool arguments (`{ cents: 4242 }`) never reach the stream. Matched by the
+        // key, not the number, which a clock reading or an id can contain by chance.
+        expect(JSON.stringify(frames)).not.toContain('"cents"');
         expect(charges).toEqual([]);
       },
     );

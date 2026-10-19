@@ -125,7 +125,7 @@ describe('ScheduleList', () => {
       });
 
       const link = await waitFor(() => getByRole('link', { name: 'nightly-rollup' }));
-      expect(link.getAttribute('href')).toContain('id=nightly-rollup');
+      expect(link.getAttribute('href')).toBe('/schedules/nightly-rollup');
     } finally {
       await server.stop();
     }
@@ -153,7 +153,7 @@ describe('ScheduleList', () => {
       });
       await fireEvent.click(idCell);
 
-      expect(window.location.search).toContain('id=nightly-rollup');
+      expect(window.location.pathname).toBe('/schedules/nightly-rollup');
     } finally {
       await server.stop();
     }

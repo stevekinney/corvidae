@@ -39,6 +39,7 @@ import {
   summarizeTimelineValue,
   type TeardownClaim,
 } from '../state-utilities.ts';
+import { isSupersededBySameIdRun } from '../superseded-generation.ts';
 import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
 import { updateWorkflowState } from '../workflow-state-update.ts';
 import {
@@ -385,27 +386,6 @@ function notifyCompletionWaiters(
   } finally {
     if (!superseded) internals.resultResolvers.delete(workflowId);
   }
-}
-
-/**
- * Whether a same-engine `onTerminalConflict: 'start-new'` replacement has
- * taken over this id since the terminal commit. The state teardown protects is
- * this engine's in-memory state, so supersession is judged by local
- * generation: the cached checkpoint's `workflowExecutionToken` differs from
- * the one captured at commit. A replacement started by a different engine
- * purges only that engine's memory, so this engine's state still belongs to
- * the old run and the check correctly reads as not superseded. It is
- * synchronous and reads no storage, so it adds no post-commit failure point.
- * A missing checkpoint reads as not superseded (the pre-fix behavior).
- */
-function isSupersededBySameIdRun(
-  internals: EngineInternals,
-  workflowId: string,
-  capturedToken: string | undefined,
-): boolean {
-  const current = internals.checkpoints.get(workflowId);
-  if (current === undefined) return false;
-  return current.workflowExecutionToken !== capturedToken;
 }
 
 export async function completeWorkflow(

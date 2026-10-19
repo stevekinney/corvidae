@@ -23,9 +23,10 @@ import type {
   ValidatorIdentity,
 } from '../goal-decision';
 import type { FinishReason } from '../types';
+import { RUN_ENGINE_WORKFLOW_TYPE } from './run-engine-workflow-types';
 
 /** The registered workflow type, and the key `createRunEngine` registers it under. */
-export const GOAL_WORKFLOW_TYPE = 'goalRun' as const;
+export const GOAL_WORKFLOW_TYPE = RUN_ENGINE_WORKFLOW_TYPE.goalRun;
 
 /** The control-plane cancel signal. An optimisation only: the record's marker is authoritative. */
 export const GOAL_CANCEL_SIGNAL = 'cancel' as const;

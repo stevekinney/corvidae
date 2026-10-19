@@ -60,14 +60,19 @@ export type ScheduleFixture = {
   workflowType: string;
   status: 'active' | 'paused' | 'cancelled';
   cronExpression?: string;
+  intervalMs?: number;
   description?: string;
   overlap: string;
   backfill: boolean;
   revisionPolicy: string;
+  /** How many times the schedule itself has changed: `1` when created, then one more per change. */
+  revision: number;
   createdAt: number;
   updatedAt: number;
   missedFireCount: number;
   skippedCount: number;
+  nextFireAt: number | null;
+  queuedRuns: unknown[];
 };
 
 export type RunFixture = {
@@ -186,10 +191,13 @@ export function scheduleFixture(
     overlap: 'skip',
     backfill: false,
     revisionPolicy: 'active-at-fire',
+    revision: 1,
     createdAt: 1_760_000_000_000,
     updatedAt: 1_760_000_000_000,
     missedFireCount: 0,
     skippedCount: 0,
+    nextFireAt: 1_760_000_300_000,
+    queuedRuns: [],
     ...overrides,
   };
 }
@@ -216,6 +224,12 @@ export const workflowFaults = {
     new StubFault('StaleRevision', 409, 'The workflow file changed on disk.', {
       currentRevision,
       expectedRevision,
+    }),
+  /** A schedule that changed since the caller read it: Weft's guard, answered as the Bureau does. */
+  staleSchedule: (expectedRevision: number, currentRevision: number) =>
+    new StubFault('StaleRevision', 409, 'The schedule changed since it was read.', {
+      expectedRevision,
+      currentRevision,
     }),
   unprocessable: (message: string) =>
     new StubFault('Unprocessable', 422, message, { reason: 'invalid-document' }),
@@ -245,6 +259,14 @@ export type World = {
   workflowDirectory: string | null;
   /** Makes the engine's schedule list answer with a refusal, as a server that cannot read them would. */
   failSchedules: boolean;
+  /** The agent each Bureau schedule runs, by schedule id. A schedule that is not here is not a Bureau agent schedule. */
+  scheduleAgents: Record<string, string>;
+  /** What `bureau.agents.list` answers. */
+  agents: Array<Record<string, unknown>>;
+  /** Makes `bureau.schedules.list` answer with a fault, as a Bureau that is down would. */
+  failBureauSchedules: boolean;
+  /** Makes `bureau.workflows.list` answer with a fault, as a Bureau that is down would. */
+  failBureauFiles: boolean;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -258,6 +280,10 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     signalAnswer: { started: [], delivered: [] },
     workflowDirectory: STUB_WORKFLOW_DIRECTORY,
     failSchedules: false,
+    scheduleAgents: {},
+    agents: [],
+    failBureauSchedules: false,
+    failBureauFiles: false,
     ...overrides,
   };
 }
@@ -305,8 +331,136 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
   };
   const written = (file: FileFixture) => ({ id: file.id, hash: file.hash });
 
+  /** The engine counts every change to a schedule: a revision, and a new `updatedAt`. */
+  const touch = (schedule: ScheduleFixture): void => {
+    schedule.revision += 1;
+    schedule.updatedAt += 1;
+  };
+  const changeSchedulesOf = (workflowType: string, status: 'active' | 'paused'): void => {
+    for (const schedule of world.schedules) {
+      if (schedule.workflowType === workflowType && schedule.status !== status) {
+        schedule.status = status;
+        touch(schedule);
+      }
+    }
+  };
+  const findSchedule = (id: unknown) => world.schedules.find((schedule) => schedule.id === id);
+  const iso = (milliseconds: number | null) =>
+    milliseconds === null ? null : new Date(milliseconds).toISOString();
+  /**
+   * Whether a schedule is a workflow file's own, which the Bureau decides by the schedule's id and
+   * never by its type: `bureau-workflow-schedule:<file>:<generation>`. A schedule the engine made
+   * for a file's type has some other id, and is the engine's.
+   */
+  const isFileSchedule = (schedule: ScheduleFixture) =>
+    world.files.some((file) => schedule.id.startsWith(`bureau-workflow-schedule:${file.id}:`));
+  /** Whether the Bureau shows this schedule: it runs an agent, or it is a workflow file's. */
+  const bureauKnows = (schedule: ScheduleFixture) =>
+    schedule.id in world.scheduleAgents || isFileSchedule(schedule);
+  const bureauView = (schedule: ScheduleFixture) => ({
+    id: schedule.id,
+    owner: 'anonymous:local',
+    agentName: world.scheduleAgents[schedule.id] ?? null,
+    workflowType: schedule.workflowType,
+    description: schedule.description ?? null,
+    cronExpression: schedule.cronExpression ?? null,
+    intervalMs: schedule.intervalMs ?? null,
+    status: schedule.status,
+    overlap: schedule.overlap,
+    revision: schedule.revision,
+    nextFireAt: iso(schedule.nextFireAt),
+    lastFireAt: null,
+    missedFireCount: schedule.missedFireCount,
+    skippedCount: schedule.skippedCount,
+    createdAt: iso(schedule.createdAt),
+    updatedAt: iso(schedule.updatedAt),
+  });
+  const receipt = (schedule: ScheduleFixture) => ({
+    id: schedule.id,
+    status: schedule.status,
+    revision: schedule.revision,
+  });
+  /** A Bureau schedule write: the schedule must be a Bureau agent schedule, and a revision it names must be current. */
+  const bureauGuarded = (params: Record<string, unknown>): ScheduleFixture => {
+    const schedule = findSchedule(params['scheduleId']);
+    if (schedule === undefined || !(schedule.id in world.scheduleAgents)) {
+      throw workflowFaults.notFound(`schedule ${String(params['scheduleId'])}`);
+    }
+    const expected = params['expectedRevision'];
+    if (typeof expected === 'number' && expected !== schedule.revision) {
+      throw workflowFaults.staleSchedule(expected, schedule.revision);
+    }
+    return schedule;
+  };
+
   const bureauHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {
-    'bureau.workflows.list': () => ({ workflows: world.files.map(listing), nextOffset: null }),
+    'bureau.agents.list': () => ({ agents: world.agents }),
+    'bureau.schedules.list': () => {
+      if (world.failBureauSchedules) throw workflowFaults.unavailable();
+      return { schedules: world.schedules.filter(bureauKnows).map(bureauView), nextOffset: null };
+    },
+    'bureau.schedules.create': (params) => {
+      counter += 1;
+      const spec = String(params['spec']);
+      const schedule = scheduleFixture(`schedule-created-${String(counter)}`, 'agentRun', {
+        ...(typeof params['description'] === 'string'
+          ? { description: params['description'] }
+          : {}),
+        overlap: typeof params['overlap'] === 'string' ? params['overlap'] : 'skip',
+      });
+      if (/^\d+(?:ms|s|m|h|d)$/.test(spec)) {
+        delete schedule.cronExpression;
+        schedule.intervalMs = 60_000;
+      } else {
+        schedule.cronExpression = spec;
+      }
+      world.schedules.push(schedule);
+      world.scheduleAgents[schedule.id] = String(params['agentName']);
+      return bureauView(schedule);
+    },
+    'bureau.schedules.pause': (params) => {
+      const schedule = bureauGuarded(params);
+      if (schedule.status === 'active') {
+        schedule.status = 'paused';
+        touch(schedule);
+      }
+      return receipt(schedule);
+    },
+    'bureau.schedules.resume': (params) => {
+      const schedule = bureauGuarded(params);
+      if (schedule.status === 'paused') {
+        schedule.status = 'active';
+        touch(schedule);
+      }
+      return receipt(schedule);
+    },
+    'bureau.schedules.cancel': (params) => {
+      const schedule = bureauGuarded(params);
+      if (schedule.status !== 'cancelled') {
+        schedule.status = 'cancelled';
+        touch(schedule);
+      }
+      return receipt(schedule);
+    },
+    'bureau.schedules.update': (params) => {
+      const schedule = bureauGuarded(params);
+      const spec = String(params['spec']);
+      if (/^\d+(?:ms|s|m|h|d)$/.test(spec)) {
+        delete schedule.cronExpression;
+        schedule.intervalMs = 60_000;
+      } else {
+        schedule.cronExpression = spec;
+        delete schedule.intervalMs;
+      }
+      if (typeof params['description'] === 'string') schedule.description = params['description'];
+      if (typeof params['overlap'] === 'string') schedule.overlap = params['overlap'];
+      touch(schedule);
+      return receipt(schedule);
+    },
+    'bureau.workflows.list': () => {
+      if (world.failBureauFiles) throw workflowFaults.unavailable();
+      return { workflows: world.files.map(listing), nextOffset: null };
+    },
     'bureau.workflows.get': (params) => {
       const file = find(params['id']);
       if (file === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
@@ -323,6 +477,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const file = guarded(params);
       file.paused = true;
       if (file.schedule !== null) file.schedule.status = 'paused';
+      changeSchedulesOf(file.id, 'paused');
       rehash(file);
       return written(file);
     },
@@ -330,6 +485,7 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const file = guarded(params);
       file.paused = false;
       if (file.schedule !== null) file.schedule.status = 'active';
+      changeSchedulesOf(file.id, 'active');
       rehash(file);
       return written(file);
     },
@@ -365,11 +521,83 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
         throw workflowFaults.notFound(`definition ${String(params['name'])}`);
       return found;
     },
+    'weft.system.registry': () => ({
+      activeRevisions: Object.fromEntries(
+        world.definitions.map((definition) => [definition.name, definition.revision]),
+      ),
+    }),
     'weft.workflows.revisions.list': (params) =>
       world.installedRevisions[String(params['name'])] ?? [],
     'weft.workflows.active.get': () => {
       throw workflowFaults.notFound('active revision');
     },
+  };
+
+  /** The engine's schedule routes: `GET /schedules`, `GET|PATCH|DELETE /schedules/:id`, and `POST` to create, pause, or resume. */
+  const answerSchedule = (
+    id: string | undefined,
+    action: string | undefined,
+    init: RequestInit | undefined,
+    url: URL,
+  ): Response => {
+    const method = init?.method ?? 'GET';
+    if (id === undefined) {
+      if (method === 'POST') {
+        const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+        const request = isRecord(body) ? body : {};
+        calls.push({ method: 'POST /schedules', params: request });
+        counter += 1;
+        const created = scheduleFixture(
+          typeof request['id'] === 'string' ? request['id'] : `schedule-engine-${String(counter)}`,
+          String(request['type']),
+          typeof request['description'] === 'string' ? { description: request['description'] } : {},
+        );
+        // A fixture is on a cron cadence; one made with an interval has no cron expression.
+        if (typeof request['every'] === 'number') {
+          delete created.cronExpression;
+          created.intervalMs = request['every'];
+        }
+        world.schedules.push(created);
+        return Response.json({ id: created.id });
+      }
+      calls.push({ method: 'GET /schedules', params: Object.fromEntries(url.searchParams) });
+      if (world.failSchedules) {
+        return new Response('The schedules are unavailable.', { status: 422 });
+      }
+      const type = url.searchParams.get('workflowType');
+      const items = world.schedules.filter((s) => type === null || s.workflowType === type);
+      return Response.json({ items, total: items.length });
+    }
+    const verb = action === undefined ? method : `${method} ${action}`;
+    calls.push({ method: `${verb} /schedules/:id`, params: { id } });
+    const schedule = findSchedule(decodeURIComponent(id));
+    if (method === 'GET') return Response.json(schedule ?? null);
+    if (schedule === undefined) return new Response('Not found', { status: 404 });
+    if (action === 'pause' && schedule.status === 'active') {
+      schedule.status = 'paused';
+      touch(schedule);
+    } else if (action === 'resume' && schedule.status === 'paused') {
+      schedule.status = 'active';
+      touch(schedule);
+    } else if (method === 'DELETE' && schedule.status !== 'cancelled') {
+      schedule.status = 'cancelled';
+      touch(schedule);
+    } else if (method === 'PATCH') {
+      const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+      const request = isRecord(body) ? body : {};
+      calls.push({ method: 'PATCH /schedules/:id body', params: request });
+      if (typeof request['cronExpression'] === 'string') {
+        schedule.cronExpression = request['cronExpression'];
+        delete schedule.intervalMs;
+      } else if (typeof request['every'] === 'number') {
+        schedule.intervalMs = request['every'];
+        delete schedule.cronExpression;
+      }
+      if (typeof request['description'] === 'string') schedule.description = request['description'];
+      if (typeof request['overlap'] === 'string') schedule.overlap = request['overlap'];
+      touch(schedule);
+    }
+    return new Response(null, { status: 204 });
   };
 
   const restoreFetch = installFetchImplementation(async (input, init) => {
@@ -381,6 +609,12 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
             agentDirectory: STUB_AGENT_DIRECTORY,
             workflowDirectory: world.workflowDirectory,
           });
+    }
+    const scheduleRoute = url.pathname.endsWith('/jsonrpc')
+      ? null
+      : /\/schedules(?:\/([^/]+)(?:\/(pause|resume))?)?$/.exec(url.pathname);
+    if (scheduleRoute !== null) {
+      return answerSchedule(scheduleRoute[1], scheduleRoute[2], init, url);
     }
     if (typeof init?.body === 'string') {
       const body: unknown = JSON.parse(init.body);
@@ -410,14 +644,6 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           },
         });
       }
-    }
-    if (url.pathname.endsWith('/schedules')) {
-      calls.push({ method: 'GET /schedules', params: Object.fromEntries(url.searchParams) });
-      if (world.failSchedules)
-        return new Response('The schedules are unavailable.', { status: 422 });
-      const type = url.searchParams.get('workflowType');
-      const items = world.schedules.filter((s) => type === null || s.workflowType === type);
-      return Response.json({ items, total: items.length });
     }
     if (url.pathname.endsWith('/workflows')) {
       calls.push({ method: 'GET /workflows', params: Object.fromEntries(url.searchParams) });

@@ -1516,6 +1516,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
   /**
+   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
+   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
+   * durable engine is composed. It is read from the schedule's stored input and is the only part
+   * of that input this returns: never its text or its session. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   */
+  getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
+
+  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new

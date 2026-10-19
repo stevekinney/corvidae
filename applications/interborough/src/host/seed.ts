@@ -1,5 +1,6 @@
 /**
- * What a fresh Interborough has in it: four agents, one schedule, and one goal.
+ * What a fresh Interborough has in it: four agents, one schedule, and one goal, and a validator that
+ * never passes, which no goal names until somebody creates one.
  *
  * Every agent answers from a script, so a seeded agent calls no model and needs no provider key,
  * whatever providers the host is configured with. The scripts start over whenever the host does.
@@ -63,6 +64,14 @@ export const SEEDED_GOAL_RUN_IDENTIFIER = 'seeded-goal';
 
 /** The validator the seeded goal names. */
 export const SEEDED_VALIDATOR = { name: 'accepts-any-answer', version: '1' } as const;
+
+/**
+ * A validator that never passes, for a goal that is made to be cancelled: it waits on the attempt's
+ * answer for as long as it is allowed to, so the goal stays `evaluating` until an operator cancels
+ * it, and cancelling aborts it, which ends the goal as `canceled`. No goal names it until somebody
+ * creates one, so nothing runs against it on a fresh host.
+ */
+export const NEVER_PASSING_VALIDATOR = { name: 'never-passes', version: '1' } as const;
 
 function replyResponse(content: string): GenerateResponse {
   return { content, toolCalls: [] };
@@ -259,7 +268,7 @@ export function createSeededGenerate() {
 /** The seeded agents' definitions, which type the Bureau built over them. */
 export type SeededAgents = ReturnType<typeof createSeededAgents>;
 
-/** The validators the Bureau needs for the seeded goal. */
+/** The validators the Bureau needs for the seeded goal, and the one that never passes. */
 export function createSeededValidators(): Validator[] {
   return [
     {
@@ -269,6 +278,19 @@ export function createSeededValidators(): Validator[] {
         kind: 'pass',
         evidence: [{ source: 'seed', detail: { content: input.result.content } }],
       }),
+    },
+    {
+      identity: NEVER_PASSING_VALIDATOR,
+      determinism: 'deterministic',
+      // It answers only when the goal is cancelled, and then as cancelled, never as a pass.
+      validate: (_input, signal) =>
+        new Promise((resolve) => {
+          if (signal.aborted) {
+            resolve({ kind: 'canceled' });
+            return;
+          }
+          signal.addEventListener('abort', () => resolve({ kind: 'canceled' }), { once: true });
+        }),
     },
   ];
 }

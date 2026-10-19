@@ -56,6 +56,9 @@ describe('the owner of a schedule that is not an agent schedule (COR-718)', () =
         expect(
           await bureau.getOwner({ kind: 'audit', runId: 'schedule:heartbeat' }),
         ).toBeUndefined();
+        // Nor does it run an agent that can be named: only a valid agent schedule does.
+        expect(await bureau.getScheduleAgentName('heartbeat')).toBeUndefined();
+        expect(await bureau.getScheduleAgentName('no-such-schedule')).toBeUndefined();
         for (const principal of ['anonymous:local', 'api-key:alice']) {
           expect(
             await bureau.eventHistory({ kind: 'schedule', id: 'heartbeat' }, { principal }),
