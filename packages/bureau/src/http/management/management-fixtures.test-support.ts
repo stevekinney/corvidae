@@ -38,6 +38,11 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'agents-writer-key': { subject: 'agents-writer', scopes: ['bureau.agents:write'] },
   'workflows-reader-key': { subject: 'workflows-reader', scopes: ['bureau.workflows:read'] },
   'workflows-writer-key': { subject: 'workflows-writer', scopes: ['bureau.workflows:write'] },
+  'schedules-reader-key': { subject: 'schedules-reader', scopes: ['bureau.schedules:read'] },
+  'schedules-writer-key': { subject: 'schedules-writer', scopes: ['bureau.schedules:write'] },
+  'goals-reader-key': { subject: 'goals-reader', scopes: ['bureau.goals:read'] },
+  'goals-writer-key': { subject: 'goals-writer', scopes: ['bureau.goals:write'] },
+  'audit-reader-key': { subject: 'audit-reader', scopes: ['bureau.audit:read'] },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
 };
 
@@ -189,6 +194,8 @@ export async function openBureau(
     publish?: readonly string[];
     agents?: Parameters<typeof createBureau>[0]['agents'];
     durableHistory?: boolean;
+    /** The validators durable goals may name. */
+    validators?: Parameters<typeof createBureau>[0]['validators'];
   } = {},
 ): Promise<OpenedBureau> {
   const fixture =
@@ -202,6 +209,7 @@ export async function openBureau(
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
     storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
+    ...(options.validators === undefined ? {} : { validators: options.validators }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     stopWhen:
       options.humanInput === true

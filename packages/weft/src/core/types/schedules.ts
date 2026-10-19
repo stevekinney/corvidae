@@ -180,7 +180,15 @@ export interface ScheduleOptions {
 export type ScheduleUpdateOptions = Pick<
   ScheduleOptions,
   'description' | 'overlap' | 'backfill' | 'jitter' | 'revisionPolicy'
->;
+> & {
+  /**
+   * Apply the update only if the schedule's {@link ScheduleMetadata.revision} is still this
+   * value. The comparison is made inside the schedule's serialized write, so of two concurrent
+   * changes carrying the same `expectedRevision` exactly one applies and the other rejects with
+   * {@link ScheduleStaleRevisionError}. Omitted, the update applies whatever the revision is.
+   */
+  expectedRevision?: number;
+};
 
 /**
  * Options accepted by {@link Engine.pauseSchedule}, {@link Engine.resumeSchedule},
@@ -232,6 +240,15 @@ export type ScheduleUpdateOptions = Pick<
  * ```
  */
 export interface ScheduleTransitionOptions {
+  /**
+   * Apply the transition only if the schedule's {@link ScheduleMetadata.revision} is still this
+   * value. The comparison is made inside the schedule's serialized write, before the transition
+   * decides whether it changes anything, so a caller holding a stale view is refused even when
+   * the call would have been a no-op. A mismatch rejects with
+   * {@link ScheduleStaleRevisionError} and writes nothing, the caller's
+   * `additionalOperations` included. Omitted, the transition applies whatever the revision is.
+   */
+  expectedRevision?: number;
   /**
    * Caller-owned put/delete operations committed atomically with the schedule
    * state transition.
@@ -341,6 +358,20 @@ export interface ScheduleMetadata {
    * 'pinned'`.
    */
   pinnedRevision?: string;
+  /**
+   * How many times the schedule itself has changed: `1` when it is created, then one more for
+   * every update, pause (a caller's, or the automatic pause after a timer failure), resume, and
+   * cancel that changes the schedule. A call that changes nothing (pausing a paused schedule,
+   * resuming an active one, cancelling a cancelled one) and the engine's bookkeeping (timer
+   * ticks, fires, skips, missed fires, timer recovery at boot) leave it as it is. A stored
+   * schedule that predates the field reads as `0`.
+   *
+   * This is not a workflow revision: it counts changes to the schedule's own status and
+   * definition, and {@link ScheduleMetadata.pinnedRevision} is the workflow revision a pinned
+   * schedule runs. Pass it back as `expectedRevision` to pause, resume, cancel, or update only
+   * the schedule you read.
+   */
+  revision: number;
   createdAt: number;
   updatedAt: number;
   /** Most recent occurrence that started a scheduled workflow. */

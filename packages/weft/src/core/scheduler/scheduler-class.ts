@@ -42,7 +42,23 @@ type TimerScanIterators = {
   teardown: AsyncIterable<[string, Uint8Array]>;
 };
 
-type TimerProcessingResult = 'processed' | 'retry';
+/**
+ * `skipped`: another delivery of the same timer owner is still in flight in this process, so
+ * this one was not delivered and nothing about its entry was touched.
+ */
+type TimerProcessingResult = 'processed' | 'retry' | 'skipped';
+
+/**
+ * Who a timer delivery is on behalf of, for the in-flight guard. A schedule's callback is a tick
+ * that can run for as long as a backfilled run's turn, and it re-arms the schedule's next entry
+ * under another key while it is still going, so every entry of one schedule has one owner: the
+ * schedule. Every other timer kind is its own owner, by its entry key.
+ */
+function timerOwnerOf(timer: ScannedTimerEntry): string {
+  return timer.entry.kind === 'schedule'
+    ? `schedule:${timer.entry.workflowId}`
+    : `entry:${timer.key}`;
+}
 
 /**
  * Maximum expired timers read per timer source on one scheduler tick.
@@ -81,6 +97,13 @@ export class Scheduler implements Disposable {
   readonly #commitTimerCleanup: (operations: BatchOperation[]) => Promise<void>;
   #intervalHandle: ReturnType<typeof setInterval> | null = null;
   #stopped = false;
+  /**
+   * The owners whose timers this process is delivering, or has delivered and not yet cleaned up
+   * (COR-1482). A scan reads an expired entry again on every poll until the scan that delivered
+   * it has run its callback and committed its cleanup, so without this an overlapping scan hands
+   * the same entry to a second callback. Process-local, like the serialization it stands in for.
+   */
+  readonly #ownersInFlight = new Map<string, symbol>();
 
   constructor(options: SchedulerOptions) {
     this.#storage = options.storage;
@@ -183,7 +206,24 @@ export class Scheduler implements Disposable {
     const currentTime = now ?? this.#getNow();
     const timerSources = this.#createTimerSources(this.#scanExpiredTimers(currentTime));
     const cleanupOperations: BatchOperation[] = [];
+    // What this scan claimed, released only once its cleanup has been committed: an entry whose
+    // callback has returned is still in storage until then. Its own claims never block it: it
+    // delivers its entries one after another.
+    const claim = { token: Symbol('timer scan'), owners: [] as string[] };
+    try {
+      await this.#deliverExpiredTimers(timerSources, cleanupOperations, claim, respectStopped);
+      await this.#deleteProcessedTimerKeys(cleanupOperations);
+    } finally {
+      for (const owner of claim.owners) this.#ownersInFlight.delete(owner);
+    }
+  }
 
+  async #deliverExpiredTimers(
+    timerSources: TimerSource[],
+    cleanupOperations: BatchOperation[],
+    claim: { token: symbol; owners: string[] },
+    respectStopped: boolean,
+  ): Promise<void> {
     for (const timerSource of timerSources) {
       await advanceTimerSource(timerSource, this.#storage);
     }
@@ -200,16 +240,9 @@ export class Scheduler implements Disposable {
       // skips this check because its purpose is to drain remaining timers.
       if (respectStopped && this.#stopped) break;
 
-      const processingResult = await this.#processSelectedTimer(nextEntry, cleanupOperations);
-      if (processingResult === 'retry') {
-        await advanceTimerSource(selectedSource, this.#storage);
-        continue;
-      }
-
+      await this.#processSelectedTimer(nextEntry, cleanupOperations, claim);
       await advanceTimerSource(selectedSource, this.#storage);
     }
-
-    await this.#deleteProcessedTimerKeys(cleanupOperations);
   }
 
   #scanExpiredTimers(currentTime: number): TimerScanIterators {
@@ -274,7 +307,19 @@ export class Scheduler implements Disposable {
   async #processSelectedTimer(
     nextEntry: ScannedTimerEntry,
     cleanupOperations: BatchOperation[],
+    claim: { token: symbol; owners: string[] },
   ): Promise<TimerProcessingResult> {
+    // A delivery whose owner is in flight is skipped, and its entry is left exactly as it is: no
+    // callback, no cleanup, no log. Cleaning it up would delete a timer the delivery in flight
+    // has re-armed under the same key, and failing it would log on every poll. The scan after the
+    // one in flight sees whatever that scan left.
+    const owner = timerOwnerOf(nextEntry);
+    const holder = this.#ownersInFlight.get(owner);
+    if (holder !== undefined && holder !== claim.token) return 'skipped';
+    if (holder === undefined) {
+      this.#ownersInFlight.set(owner, claim.token);
+      claim.owners.push(owner);
+    }
     try {
       await this.#onTimerFired(nextEntry.entry);
     } catch (error) {

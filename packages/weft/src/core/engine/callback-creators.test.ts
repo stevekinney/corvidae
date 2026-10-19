@@ -272,6 +272,7 @@ describe('engine callback creators', () => {
           input: null,
           missedFireCount: 0,
           skippedCount: 0,
+          revision: 1,
           nextFireAt: 60_000,
           overlap: 'skip',
           queuedRuns: [],

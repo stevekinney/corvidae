@@ -77,6 +77,18 @@ import {
   bureauWorkflowsOperations,
 } from './management/workflows-operations.ts';
 import {
+  auditQueryOperation,
+  type BureauAuditOperationHost,
+} from './management/audit-operations.ts';
+import {
+  type BureauGoalsOperationHost,
+  bureauGoalsOperations,
+} from './management/goals-operations.ts';
+import {
+  type BureauSchedulesOperationHost,
+  bureauSchedulesOperations,
+} from './management/schedules-operations.ts';
+import {
   type BureauTaskEventsOperationHost,
   tasksEventsOperation,
 } from './management/tasks-events-operation.ts';
@@ -133,6 +145,14 @@ export type BureauHandlerSource = Pick<
   | 'modelCatalog'
   | 'auditTrail'
   | 'workflows'
+  | 'createSchedule'
+  | 'getSchedule'
+  | 'listSchedules'
+  | 'pauseSchedule'
+  | 'resumeSchedule'
+  | 'cancelSchedule'
+  | 'updateSchedule'
+  | 'goals'
   | 'submitSessionInput'
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
@@ -169,7 +189,10 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsOperationHost &
   BureauContextsInputOperationHost &
   BureauAgentDefinitionsOperationHost &
-  BureauWorkflowsOperationHost;
+  BureauWorkflowsOperationHost &
+  BureauSchedulesOperationHost &
+  BureauGoalsOperationHost &
+  BureauAuditOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -395,6 +418,9 @@ export const BUREAU_HANDLER_OPERATIONS = [
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
+  ...bureauSchedulesOperations,
+  ...bureauGoalsOperations,
+  auditQueryOperation,
 ] as const;
 
 /**
@@ -580,6 +606,24 @@ export function buildBureauHandlerHost(
       },
     },
     workflows: bureau.workflows,
+    schedules: {
+      createSchedule: bureau.createSchedule,
+      getSchedule: bureau.getSchedule,
+      listSchedules: bureau.listSchedules,
+      pauseSchedule: bureau.pauseSchedule,
+      resumeSchedule: bureau.resumeSchedule,
+      cancelSchedule: bureau.cancelSchedule,
+      updateSchedule: bureau.updateSchedule,
+      owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
+      hasAgent: (name) => bureau.agents.has(name),
+    },
+    goals: bureau.goals,
+    audit: {
+      get trail() {
+        return bureau.auditTrail;
+      },
+      ownerOf: ({ runId, detail }) => bureau.getOwner({ kind: 'audit', runId, detail }),
+    },
     respondLedger: createRespondLedger(bureau),
     respondInFlight: new Map(),
     deployment: {
