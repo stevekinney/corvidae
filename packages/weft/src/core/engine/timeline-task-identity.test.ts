@@ -89,6 +89,81 @@ describe('timeline entry taskOperationId', () => {
     }
   });
 
+  it('gives each engine retry its own entry, naming the record of that dispatch', async () => {
+    const flaky = activity({
+      name: 'flaky',
+      retry: { maxAttempts: 2, initialBackoff: 0, backoffMultiplier: 1, maxBackoff: 0 },
+      execute: async (_input: null) => 'local',
+    });
+    engine = new Engine({ activityExecution: { mode: 'remote' } });
+    engine.register(
+      workflow({ name: 'retrying-remote' })
+        .activities({ flaky })
+        .execute(async function* (context: WorkflowContext) {
+          return yield* context.run(flaky, null);
+        }),
+    );
+    const handle = await engine.start('retrying-remote', null, { id: 'retrying-remote-1' });
+    await waitForCondition(
+      async () => {
+        const queued = await queuedOperationIds(engine!);
+        return queued.length > 0;
+      },
+      { timeoutMs: 3_000, intervalMs: 10, label: 'the first dispatch' },
+    );
+    const [firstDispatch] = await queuedOperationIds(engine);
+    await engine.failAsyncActivity(firstDispatch ?? '', new Error('first dispatch failed'));
+    // The retry enqueues a second record; the failed first one stays in the ledger.
+    await waitForCondition(
+      async () => {
+        const queued = await queuedOperationIds(engine!);
+        return queued.some((id) => id !== firstDispatch);
+      },
+      { timeoutMs: 3_000, intervalMs: 10, label: 'the retry dispatch' },
+    );
+    const afterRetry = await queuedOperationIds(engine);
+    const retried = afterRetry.find((id) => id !== firstDispatch);
+    await engine.completeAsyncActivity(retried ?? '', 'recovered');
+    await handle.result();
+
+    const timeline = await engine.getTimeline('retrying-remote-1');
+    const entries = timeline.filter((entry) => entry.operationType === 'activity');
+    expect(entries).toHaveLength(2);
+    const [failed, succeeded] = entries;
+    expect(failed?.status).toBe('failed');
+    expect(succeeded?.status).toBe('completed');
+    // One entry per dispatch, each naming its own record, never the other's.
+    expect(failed?.taskOperationId).toBe(firstDispatch);
+    expect(succeeded?.taskOperationId).toBe(retried);
+    expect(succeeded?.taskOperationId).not.toBe(failed?.taskOperationId);
+  });
+
+  it('never sets it on a coordinator entry, whatever its branches enqueue', async () => {
+    engine = new Engine({ activityExecution: { mode: 'remote' } });
+    engine.register(
+      workflow({ name: 'coordinated-remote' })
+        .activities({ first, second })
+        .execute(async function* (context: WorkflowContext) {
+          return yield* context.all([context.run(first, null), context.run(second, null)]);
+        }),
+    );
+    await engine.start('coordinated-remote', null, { id: 'coordinated-remote-1' });
+    // Remote dispatch does not run a coordinator's branches: the run fails, leaving the
+    // coordinator's entry with the branches' deferrals but no task of its own.
+    await waitForCondition(
+      async () => {
+        const state = await engine?.get('coordinated-remote-1');
+        return state?.status === 'failed';
+      },
+      { timeoutMs: 3_000, intervalMs: 10, label: 'the coordinated run to fail' },
+    );
+
+    const timeline = await engine.getTimeline('coordinated-remote-1');
+    const coordinators = timeline.filter((entry) => entry.operationType !== 'activity');
+    expect(coordinators.length).toBeGreaterThan(0);
+    for (const entry of coordinators) expect(entry).not.toHaveProperty('taskOperationId');
+  });
+
   it('is absent on entries that did not go through the task ledger', async () => {
     engine = new Engine();
     engine.register(
