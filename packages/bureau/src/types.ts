@@ -2416,10 +2416,10 @@ export interface RunSummary {
    * `bureau.run()` handle reports when no attribution was recorded (one
    * reader, shared with {@link Bureau.getOwner}). A run reattached after
    * durable recovery keeps it: it is rehydrated from the owning session's
-   * `lastRunOwningPrincipals` (AB-359). `undefined` only for a run with no
-   * principal, which {@link Bureau.getOwner} reads as `anonymous:local`; the
-   * AG-UI mount compares it, through that same default, with the owner it
-   * authorized.
+   * `lastRunOwningPrincipals` (AB-359). A run created with no principal reads
+   * `undefined` on the direct branch and `anonymous:local` on the durable one;
+   * {@link Bureau.getOwner} and the AG-UI mount read both as `anonymous:local`
+   * through the same default.
    */
   principal: string | undefined;
   /**
