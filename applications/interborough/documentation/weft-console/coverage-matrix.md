@@ -22,7 +22,7 @@ When an issue lands that exposes a `tracked` row, change that row's `Status` to 
 
 ## Gaps without a catalog row
 
-Four dashboard issues own work that no `tracked` row can carry today. COR-166 (conditional workflow refresh) adds `weft.workflows.refresh` operations that do not exist yet, so the test will demand their rows when that issue lands. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 and COR-281 (remote activity execution and execution provenance) extend what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
+Three dashboard issues own work that no `tracked` row can carry today. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 and COR-281 (remote activity execution and execution provenance) extend what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
 
 ## Matrix
 
@@ -95,6 +95,8 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.workflows.list` | exposed | `src/routes/workflows/list/workflow-list.svelte` | `list` | `src/routes/workflows/list/workflow-list.test.ts` |  |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.query` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `query` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.refresh` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel-actions.test.ts` | COR-166 |  |
+| `weft.workflows.refresh.diagnostics` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel.test.ts` | COR-166 |  |
 | `weft.workflows.replay` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` | `replayTo` | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
 | `weft.workflows.resume` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `resume` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |

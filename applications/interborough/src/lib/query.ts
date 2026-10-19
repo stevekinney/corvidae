@@ -90,6 +90,8 @@ export const queryKeys = {
     /** `weft.workflows.revisions.get` (COR-1464) — extends `revisions(name)`, so invalidating the list invalidates every open detail too. */
     revision: (name: string, revision: string) => ['catalog', 'revisions', name, revision] as const,
     active: (name: string) => ['catalog', 'active', name] as const,
+    /** `weft.workflows.refresh.diagnostics` (COR-166) — one workflow's refresh source. */
+    refresh: (name: string) => ['catalog', 'refresh', name] as const,
     sources: (pagination: { readonly limit: number; readonly offset: number }) =>
       ['catalog', 'sources', pagination] as const,
     /**

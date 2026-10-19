@@ -75,6 +75,19 @@ describe('RevisionInstallForm', () => {
     ]);
   });
 
+  test('reports a successful install whose response it cannot name', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.workflows.revisions.install', { ok: true });
+
+    const { getByRole, getByLabelText, findByText } = renderForm();
+    await fireEvent.input(getByLabelText('Revision manifest (JSON)'), {
+      target: { value: JSON.stringify(MANIFEST) },
+    });
+    await fireEvent.click(getByRole('button', { name: 'Install revision' }));
+
+    expect(await findByText('Weft installed the revision.')).not.toBeNull();
+  });
+
   test('says so when the installed manifest belongs to another workflow', async () => {
     scripted = new ScriptedFetch();
     const other = revisionRecord('billing-rev-1');

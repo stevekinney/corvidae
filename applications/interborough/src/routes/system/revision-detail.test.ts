@@ -1,5 +1,5 @@
 /** Component tests for `<RevisionDetail>` (COR-1464): the fields `weft.workflows.revisions.get` returns, and every non-success state. */
-import { render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { createQueryClient } from '../../lib/query.ts';
@@ -40,6 +40,19 @@ describe('RevisionDetail', () => {
     expect(getByText('sha256:order-processing-rev-1-hash')).not.toBeNull();
     expect(getByText('2023-11-14T22:13:20.000Z')).not.toBeNull();
     expect(container.textContent).toContain('"workflowVersion": "0.0.0"');
+  });
+
+  test('the Close detail button calls onClose', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod(
+      'weft.workflows.revisions.get',
+      revisionRecord('order-processing-rev-1'),
+    );
+
+    const { findByRole, findByText } = renderDetail();
+    await fireEvent.click(await findByRole('button', { name: 'Close detail' }));
+
+    expect(await findByText('Detail closed')).not.toBeNull();
   });
 
   test('asks for exactly the selected name and revision', async () => {

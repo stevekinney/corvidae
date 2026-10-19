@@ -80,7 +80,10 @@ describe('WorkflowRevisionsPanel revision detail', () => {
     await fireEvent.click(getByRole('button', { name: 'Close detail' }));
 
     await waitFor(() =>
-      expect(queryByRole('region', { name: 'Revision order-processing-rev-1 detail' })).toBeNull(),
+      expect(
+        queryByRole('region', { name: 'Revision order-processing-rev-1 detail' })?.outerHTML ??
+          null,
+      ).toBeNull(),
     );
   });
 });
