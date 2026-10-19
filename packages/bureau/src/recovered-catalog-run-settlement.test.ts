@@ -110,7 +110,9 @@ describe('a recovered file-agent run', () => {
     const release = Promise.withResolvers<void>();
     const second = await open(directory, storagePath, release.promise);
     await second.bureau.waitForRecovery?.();
-    expect(await referenceOf(second.bureau, runId)).toEqual({});
+    const held = await referenceOf(second.bureau, runId);
+    expect(held).toBeDefined();
+    expect(held?.settledAt).toBeUndefined();
 
     release.resolve();
 
@@ -142,7 +144,9 @@ describe('a recovered file-agent run', () => {
     await third.bureau.waitForRecovery?.();
     expect(await durableStatusOf(third.bureau, runId)).toBe('running');
     expect(await taskStatusOf(third.bureau, runId)).toBe('working');
-    expect(await referenceOf(third.bureau, runId)).toEqual({});
+    const held = await referenceOf(third.bureau, runId);
+    expect(held).toBeDefined();
+    expect(held?.settledAt).toBeUndefined();
     expect(await third.bureau.tasks.cancel(runId, 0)).toMatchObject({
       receipt: expect.stringMatching(/^(cancel-requested|cleanup-pending|cleaned-up|canceled)$/u),
     });
