@@ -1427,6 +1427,17 @@ export type RuntimeCompositionDependencies = {
    */
   goalAttemptFence?: GoalAttemptFence;
   /**
+   * COR-1586 — the caller will wire the catalog agent run options resolver
+   * (`setCatalogAgentRunOptionsResolver`) once it has built the catalog the resolver reads, which
+   * is after this composition exists and after the engine has started reclaiming runs. Set, every
+   * reader of the resolver waits while it is unset, instead of answering that it is not
+   * configured: that answer is a terminal failure for a run, or a resume under the wrong agent.
+   * A caller that wires the resolver itself, or none, leaves this unset and gets the answer at once.
+   * `createBureau` sets it, and calls `abandonCatalogAgentRunOptionsResolver` if it will never wire
+   * the resolver.
+   */
+  awaitsCatalogAgentRunOptionsResolver?: boolean;
+  /**
    * COR-1510 — the engine's recovery hook, installed when the engine is created. The engine
    * reclaims and resumes runs whose claim has lapsed on its own interval, which can be before
    * `createBureau` calls `recoverAll()` with its hook; a run resumed that way must reach the same
@@ -1905,6 +1916,12 @@ export interface RuntimeComposition {
    */
   setCatalogAgentRunOptionsResolver(resolver: CatalogAgentRunOptionsResolver | undefined): void;
   /**
+   * COR-1586 — the resolver will never be wired, because the Bureau failed while it was being
+   * built. Every reader waiting for it, and every later one, is answered as unavailable with
+   * `reason`. A no-op for a composition built without `awaitsCatalogAgentRunOptionsResolver`.
+   */
+  abandonCatalogAgentRunOptionsResolver(reason: string): void;
+  /**
    * Persist the catalog-run recovery record `resolveRunServices` consults
    * on the next boot. Called from `bureau.run()`'s durable dispatch branch
    * before the durable engine starts. A no-op when this composition has no
@@ -2296,6 +2313,15 @@ async function buildRuntimeComposition(
   // `RuntimeCompositionOptions`'s doc comment) — `undefined` until then, and
   // for any direct `createRuntimeComposition` caller that never wires one.
   let catalogAgentRunOptionsResolver: CatalogAgentRunOptionsResolver | undefined;
+  // COR-1586: with `awaitsCatalogAgentRunOptionsResolver`, a reader of the resolver that finds it
+  // unset waits on this gate. It opens when the resolver is wired or abandoned, and stays open.
+  const catalogResolverGate = Promise.withResolvers<void>();
+  let catalogResolverGateOpen = false;
+  let catalogResolverAbandonedReason: string | undefined;
+  const openCatalogResolverGate = (): void => {
+    catalogResolverGateOpen = true;
+    catalogResolverGate.resolve();
+  };
 
   // AB-10: run ids the durable engine flags as version-mismatched during boot
   // recovery — see RuntimeComposition.workflowVersionMismatches.
@@ -3229,6 +3255,50 @@ async function buildRuntimeComposition(
   }
 
   /**
+   * COR-1586 — the resolver a reader needs. The engine reclaims runs on its own interval from the
+   * moment it exists, which is before `createBureau` has built the catalog the resolver reads, so
+   * a reader that finds the resolver unset waits for it when the caller said one is coming (see
+   * `awaitsCatalogAgentRunOptionsResolver`), saying once, as a `warn`, which run it is holding.
+   * `absent` is the answer of a composition that was never told to expect one, or whose resolver
+   * was cleared again; `abandoned` is the answer once the caller gave up on wiring it.
+   */
+  async function awaitCatalogAgentRunOptionsResolver(
+    runId: string | undefined,
+  ): Promise<
+    | { status: 'wired'; resolver: CatalogAgentRunOptionsResolver }
+    | { status: 'absent' }
+    | { status: 'abandoned'; reason: string }
+  > {
+    // Abandonment is terminal: a composition whose Bureau failed to build answers every reader
+    // with the failure, even if a resolver was wired before it failed.
+    if (catalogResolverAbandonedReason !== undefined) {
+      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
+    }
+    if (catalogAgentRunOptionsResolver) {
+      return { status: 'wired', resolver: catalogAgentRunOptionsResolver };
+    }
+    if (dependencies.awaitsCatalogAgentRunOptionsResolver !== true) return { status: 'absent' };
+    if (!catalogResolverGateOpen) {
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          `[bureau] ${runId === undefined || runId === '' ? 'A run' : `Run "${runId}"`} needs the ` +
+          `agent run options resolver before the bureau has wired it; holding it until the ` +
+          `bureau finishes building its agent catalog.`,
+      });
+      await catalogResolverGate.promise;
+    }
+    // Re-read after the wait: the gate opened because the resolver was wired or abandoned.
+    if (catalogResolverAbandonedReason !== undefined) {
+      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
+    }
+    return catalogAgentRunOptionsResolver
+      ? { status: 'wired', resolver: catalogAgentRunOptionsResolver }
+      : { status: 'absent' };
+  }
+
+  /**
    * COR-1577 — resolve the catalog agent a session run names, through the resolver `createBureau`
    * wires for catalog dispatch and boot recovery, so a session run and a catalog run of the same
    * agent resolve identically. The placeholder input is discarded: only the run options and the
@@ -3240,10 +3310,14 @@ async function buildRuntimeComposition(
     principal?: string,
     recorded?: { readonly agentDefinitionHash: string | undefined },
   ): Promise<SessionAgentRunResolution> {
-    if (!catalogAgentRunOptionsResolver) {
+    const wired = await awaitCatalogAgentRunOptionsResolver(runId);
+    if (wired.status === 'absent') {
       return { status: 'resolver-failed', error: new Error('No catalog agent resolver is wired.') };
     }
-    const resolution = await catalogAgentRunOptionsResolver(
+    if (wired.status === 'abandoned') {
+      return { status: 'resolver-failed', error: new Error(wired.reason) };
+    }
+    const resolution = await wired.resolver(
       agentName,
       SESSION_AGENT_PLACEHOLDER_INPUT,
       { agentName, ...(principal === undefined ? {} : { principal }) },
@@ -3436,9 +3510,13 @@ async function buildRuntimeComposition(
   ): Promise<SessionAgentRun | undefined> {
     if (agentName === undefined || agentName === BUREAU_AGENT_NAME) return undefined;
     // A composition with no catalog wired (`createBureau` always wires one) has no named agents,
-    // so the name is only a label and the run is the Bureau-wide runtime's.
-    if (catalogAgentRunOptionsResolver === undefined) return undefined;
+    // so the name is only a label and the run is the Bureau-wide runtime's. A Bureau that is
+    // still being built has one coming, and the run waits for it (COR-1586): resuming it under the
+    // Bureau-wide runtime would be resuming it under the wrong agent.
+    const wired = await awaitCatalogAgentRunOptionsResolver(runId);
     const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
+    if (wired.status === 'absent') return undefined;
+    if (wired.status === 'abandoned') throw new Error(`${label}: ${wired.reason}`);
     const owner = resolveSessionOwner(session.metadata);
     const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
@@ -3810,13 +3888,17 @@ async function buildRuntimeComposition(
     runId: string,
     record: CatalogRunRecoveryRecord,
   ): Promise<WorkflowServicesResolution> {
-    if (!catalogAgentRunOptionsResolver) {
+    const wired = await awaitCatalogAgentRunOptionsResolver(runId);
+    if (wired.status === 'absent') {
       return {
         status: 'unavailable',
         reason: `run ${runId}: no catalog agent recovery resolver is configured`,
       };
     }
-    const resolution = await catalogAgentRunOptionsResolver(
+    if (wired.status === 'abandoned') {
+      return { status: 'unavailable', reason: `run ${runId}: ${wired.reason}` };
+    }
+    const resolution = await wired.resolver(
       record.agentName,
       record.input,
       {
@@ -4542,6 +4624,12 @@ async function buildRuntimeComposition(
     },
     setCatalogAgentRunOptionsResolver(resolver) {
       catalogAgentRunOptionsResolver = resolver;
+      if (resolver !== undefined) openCatalogResolverGate();
+    },
+    abandonCatalogAgentRunOptionsResolver(reason) {
+      if (dependencies.awaitsCatalogAgentRunOptionsResolver !== true) return;
+      catalogResolverAbandonedReason ??= reason;
+      openCatalogResolverGate();
     },
     persistCatalogRunRecoveryRecord,
     claimCatalogRunRecoveryRecord,
