@@ -1,4 +1,7 @@
+import { SESSION_OWNER_METADATA_KEY, LOCAL_SESSION_OWNER } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
+
+import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 
 import {
   isSessionAuthorityAuthorized,
@@ -7,7 +10,6 @@ import {
   resolvePersistedRunOwningPrincipal,
   resolveSessionOwner,
   resolveSessionPreAdmission,
-  SESSION_OWNER_METADATA_KEY,
 } from './session-authority';
 
 describe('resolveSessionOwner / isSessionAuthorityAuthorized (COR-718)', () => {
@@ -175,5 +177,12 @@ describe('isSessionHistoryReadAuthorized (COR-718)', () => {
     expect(isSessionHistoryReadAuthorized({ [SESSION_OWNER_METADATA_KEY]: 7 }, 'alice')).toBe(
       false,
     );
+  });
+});
+
+describe('the owner a session without one belongs to', () => {
+  it('is the same string in Operative’s summary index and in Bureau’s read rule', () => {
+    expect(LOCAL_SESSION_OWNER).toBe(ANONYMOUS_LOCAL_OWNER);
+    expect(resolveSessionOwner({})).toBe(LOCAL_SESSION_OWNER);
   });
 });

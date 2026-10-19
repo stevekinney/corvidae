@@ -23,6 +23,12 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
   it('keeps its owner, anonymous:local when it was dispatched with no principal, readable through event history', async () => {
     const databasePath = join(tmpdir(), `owner-of-record-catalog-recovery-${process.pid}.sqlite`);
     let reachedStepOne = 0;
+    // A settlement that outlives the Bureau it belongs to writes into a closed database.
+    const settlementFailures: string[] = [];
+    const onDiagnostic = (diagnostic: { scope?: string; message: string }) => {
+      if (diagnostic.scope === 'catalog-run-settlement')
+        settlementFailures.push(diagnostic.message);
+    };
     const first = await createBureau({
       agents: {
         echo: createAgent({
@@ -39,6 +45,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       storage: { type: 'sqlite', path: databasePath },
       durableExecution: true,
       durableOwnership: { ownership: 'none' },
+      onDiagnostic,
     });
     try {
       first.run('echo', 'unowned');
@@ -62,6 +69,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
         storage: { type: 'sqlite', path: databasePath },
         durableExecution: true,
         durableOwnership: { ownership: 'none' },
+        onDiagnostic,
       });
       try {
         await waitForCondition(async () => {
@@ -103,5 +111,6 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       await rm(`${databasePath}-wal`, { force: true });
       await rm(`${databasePath}-shm`, { force: true });
     }
+    expect(settlementFailures).toEqual([]);
   });
 });

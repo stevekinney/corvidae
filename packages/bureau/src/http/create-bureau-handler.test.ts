@@ -423,7 +423,7 @@ describe('createBureauHandler authentication matrix', () => {
 });
 
 describe('createBureauHandler catalog', () => {
-  it('serves the events, runs events, and reviews operations and nothing else', async () => {
+  it('serves the management, events, runs events, and reviews operations and nothing else', async () => {
     await withBureau({}, async (bureau) => {
       const handler = createBureauHandler(bureau, { authentication: allScopes });
 
@@ -433,13 +433,24 @@ describe('createBureauHandler catalog', () => {
       const asyncDocument = JSON.stringify(await asyncApi.json());
 
       expect(document.methods.map((method) => method.name).toSorted()).toEqual([
+        'bureau.agents.list',
+        'bureau.contexts.delete',
+        'bureau.contexts.get',
+        'bureau.contexts.list',
+        'bureau.deployment.get',
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',
+        'bureau.tasks.cancel',
+        'bureau.tasks.get',
+        'bureau.tasks.list',
+        'bureau.tasks.respond',
         'rpc.discover',
+        'weft.system.principal',
       ]);
       expect(asyncDocument).toContain('/v1/subscriptions/bureau.events');
       expect(asyncDocument).toContain('/v1/subscriptions/operative.runs.events');
+      expect(asyncDocument).toContain('/v1/subscriptions/bureau.tasks.events');
     });
   });
 
@@ -585,6 +596,7 @@ describe('the Bureau scope list', () => {
       'bureau.schedules:write',
       'bureau.goals:read',
       'bureau.goals:write',
+      'bureau.contexts:read',
       'bureau.contexts:write',
       'bureau.events:observe-all',
     ]);

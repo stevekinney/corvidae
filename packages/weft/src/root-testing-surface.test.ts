@@ -22,6 +22,11 @@ describe('the root entry and the testing barrel', () => {
     expect(typeof root.flushPortableMicrotasks).toBe('function');
   });
 
+  test('the root exports weft.system.principal for a package handler to register', () => {
+    expect(root.getPrincipalOperation.name).toBe('weft.system.principal');
+    expect(root.getPrincipalOperation.kind ?? 'unary').toBe('unary');
+  });
+
   test('the root does not export the subprocess engine, which the testing subpath keeps', () => {
     const rootExports = root as Record<string, unknown>;
     const testingExports = testing as Record<string, unknown>;

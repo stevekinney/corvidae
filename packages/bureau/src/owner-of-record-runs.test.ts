@@ -2,11 +2,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import {
+  createAgent,
+  type GenerateFunction,
+  stopWhen,
+  SESSION_OWNER_METADATA_KEY,
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
-import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 import { waitForCondition } from './test';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 
