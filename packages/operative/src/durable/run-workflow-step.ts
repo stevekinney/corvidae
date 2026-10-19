@@ -6,6 +6,7 @@ import { toAgentRunError } from '../errors';
 import { buildStepDeps, createRunState } from '../loop';
 import { runStep } from '../run-step';
 import type { FinishReason, StepResult } from '../types';
+import { CHECKPOINT_RECORD_SCHEMA_VERSION } from './checkpoint-version';
 import { runDepsFrom } from './run-workflow-input';
 import {
   classifyErrorFinishReason,
@@ -87,7 +88,13 @@ export interface DurableStepMemoResult {
   conversationDelta?: ConversationSnapshotDelta | undefined;
   nextAccumulators: Pick<
     RunCursor,
-    'totalUsage' | 'cost' | 'lastContent' | 'schemaAttempts' | 'lastAppliedConfigVersion'
+    | 'totalUsage'
+    | 'cost'
+    | 'lastContent'
+    | 'lastParts'
+    | 'finalRowIsReplacement'
+    | 'schemaAttempts'
+    | 'lastAppliedConfigVersion'
   >;
   pendingWakeup?: PendingWakeup | undefined;
   pendingHumanWait?: PendingHumanWait | undefined;
@@ -159,6 +166,7 @@ export function runStepMemo(
       ...buildStepDeps(deps.options),
       toolbox: deps.toolbox,
       onStepToolbox: deps.onStepToolbox,
+      admissionTracker: deps.admissionTracker,
       runId,
       durableOperationKeys: true,
     };
@@ -170,6 +178,8 @@ export function runStepMemo(
     runState.totalUsage = { ...carriedAccumulators.totalUsage };
     runState.cost = carriedAccumulators.cost ? { ...carriedAccumulators.cost } : undefined;
     runState.lastContent = carriedAccumulators.lastContent;
+    runState.lastParts = carriedAccumulators.lastParts;
+    runState.finalRowIsReplacement = carriedAccumulators.finalRowIsReplacement;
     runState.schemaAttempts = carriedAccumulators.schemaAttempts;
     runState.lastAppliedConfigVersion = carriedAccumulators.lastAppliedConfigVersion;
     let outcome = await runStep(stepDeps, runState, conversation, stepIndex, deps.emitter);
@@ -192,8 +202,11 @@ export function runStepMemo(
     const stepMetadata = pushed ? { ...pushed.metadata, ...deps.getStepMetadata?.() } : undefined;
     const record: StepRecord | null = pushed
       ? {
+          schemaVersion: CHECKPOINT_RECORD_SCHEMA_VERSION,
           step: pushed.step,
           content: pushed.content,
+          parts: pushed.parts,
+          ...(pushed.messageId === undefined ? {} : { messageId: pushed.messageId }),
           toolCalls: pushed.toolCalls,
           results: pushed.results,
           ...(pushed.usage ? { usage: pushed.usage } : {}),
@@ -236,6 +249,8 @@ export function runStepMemo(
         totalUsage: runState.totalUsage,
         cost: runState.cost,
         lastContent: runState.lastContent,
+        lastParts: runState.lastParts,
+        finalRowIsReplacement: runState.finalRowIsReplacement,
         schemaAttempts: runState.schemaAttempts,
         lastAppliedConfigVersion: runState.lastAppliedConfigVersion,
       },

@@ -231,6 +231,7 @@ describe('Anthropic provider cache-aware context assembly', () => {
         { type: 'message_start', message: { usage: { input_tokens: 1 } } },
         { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
         { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'hi' } },
+        { type: 'content_block_stop', index: 0 },
         { type: 'message_delta', usage: { output_tokens: 1 } },
         { type: 'message_stop' },
       ],

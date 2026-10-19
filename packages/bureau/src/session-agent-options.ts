@@ -37,6 +37,7 @@ export const SESSION_AGENT_OPTION_DISPOSITIONS = {
   toolbox: 'composed',
   hooks: 'composed',
   contentSourceResolver: 'composed',
+  generatedMediaAdmitter: 'composed',
   assetSafety: 'composed',
   executeOptions: 'composed',
 

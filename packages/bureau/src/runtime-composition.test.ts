@@ -1148,6 +1148,8 @@ describe('memory hook registration (COR-41)', () => {
     const authority = createRunMemoryAuthority(defaultRunRequestContext, { runId: 'hook-run' });
     const hook = createMemoryPersistHook(memory, authority, 'session-memory');
     await hook({
+      parts: [],
+      messageId: undefined,
       step: 2,
       conversation: new Conversation(),
       content: 'remember this',
@@ -1415,7 +1417,16 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   // step, and assert one effect reaches the store.
 
   function stepContext(step: number, content: string, conversation: Conversation) {
-    return { step, conversation, content, toolCalls: [], results: [], final: true };
+    return {
+      parts: [],
+      messageId: undefined,
+      step,
+      conversation,
+      content,
+      toolCalls: [],
+      results: [],
+      final: true,
+    };
   }
 
   function handlerById(
@@ -1766,6 +1777,8 @@ describe('active skill metadata validation', () => {
       conversationSnapshot: {},
       nextAccumulators: {},
       record: {
+        schemaVersion: 2 as const,
+        parts: [],
         step: 0,
         content: 'done',
         toolCalls: [],
@@ -3044,6 +3057,8 @@ describe('createRuntimeComposition durable execution', () => {
       },
     ];
     const stepRecord: StepRecord = {
+      schemaVersion: 2,
+      parts: [],
       step: 0,
       content: 'checkpointed',
       toolCalls: [],
@@ -4511,6 +4526,8 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
 
         await firstRuntime.durable!.checkpointStore.saveStep(runId, {
+          schemaVersion: 2,
+          parts: [],
           step: 0,
           content: 'activated coding',
           toolCalls: [],
@@ -4643,6 +4660,8 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
 
         await firstRuntime.durable!.checkpointStore.saveStep(runId, {
+          schemaVersion: 2,
+          parts: [],
           step: 0,
           content: 'activated coding',
           toolCalls: [],
@@ -4773,6 +4792,8 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
 
         await firstRuntime.durable!.checkpointStore.saveStep(runId, {
+          schemaVersion: 2,
+          parts: [],
           step: 0,
           content: 'activated coding',
           toolCalls: [],
@@ -4905,6 +4926,8 @@ describe('createRuntimeComposition durable execution', () => {
         expect(running).toBe(true);
 
         await firstRuntime.durable!.checkpointStore.saveStep(runId, {
+          schemaVersion: 2,
+          parts: [],
           step: 0,
           content: 'user metadata collision',
           toolCalls: [],
@@ -4913,6 +4936,8 @@ describe('createRuntimeComposition durable execution', () => {
           final: false,
         });
         await firstRuntime.durable!.checkpointStore.saveStep(runId, {
+          schemaVersion: 2,
+          parts: [],
           step: 1,
           content: 'pre-upgrade committed step',
           toolCalls: [],
@@ -6607,6 +6632,8 @@ describe('active skills survive durable recovery (PRRT_kwDORvupsc6MZ1Md)', () =>
   }
 
   const stepContext = {
+    parts: [],
+    messageId: undefined,
     step: 0,
     conversation: new Conversation(),
     content: 'ok',

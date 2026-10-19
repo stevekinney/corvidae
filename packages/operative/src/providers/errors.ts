@@ -1,3 +1,5 @@
+import type { TokenUsage } from 'conversationalist';
+
 import type { ProviderName } from './types.ts';
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
@@ -88,6 +90,71 @@ export function isToolCallParseError(error: unknown): error is ToolCallParseErro
     candidate['name'] === 'ToolCallParseError' &&
     typeof candidate['toolName'] === 'string' &&
     typeof candidate['rawArguments'] === 'string' &&
+    typeof candidate['provider'] === 'string'
+  );
+}
+
+/**
+ * Why a provider response broke the adapter's mapping contract: a block, part or stream
+ * delta type the mapping table does not list, a media part whose modality the selected
+ * backend does not advertise as output, or a stream that ended before a block it opened had
+ * stopped (`truncated-stream`: the half block is never finalized into a part).
+ */
+export type ProviderContractReason =
+  'unlisted-block' | 'unadvertised-modality' | 'truncated-stream';
+
+/**
+ * Thrown when a provider returns output the adapter has no mapping for. Each built-in
+ * adapter maps every block type it can receive to a part, a tool call, usage, metadata or
+ * control; anything else would otherwise vanish silently, so it fails loudly instead.
+ *
+ * It is never retryable: the same request would produce the same block. `usage` is the
+ * billed usage of the response that carried the block, so the loop can account for it. A
+ * streaming adapter throws it after the stream has drained, with the usage the stream
+ * reported.
+ */
+export class ProviderContractError extends ProviderError {
+  readonly reason: ProviderContractReason;
+  readonly blockType: string;
+  /** The block's position in the provider's own sequence; an unlisted block never becomes a part. */
+  readonly partIndex: number;
+  readonly usage: TokenUsage | undefined;
+
+  constructor(options: {
+    provider: ProviderName;
+    reason: ProviderContractReason;
+    blockType: string;
+    partIndex: number;
+    usage: TokenUsage | undefined;
+  }) {
+    const what =
+      options.reason === 'unadvertised-modality'
+        ? `a ${options.blockType} part the selected backend does not advertise as output`
+        : options.reason === 'truncated-stream'
+          ? `a "${options.blockType}" block the stream ended before finishing`
+          : `an unmapped block "${options.blockType}"`;
+    super({
+      provider: options.provider,
+      cause: undefined,
+      message: `[provider:${options.provider}] response part ${options.partIndex} is ${what}.`,
+    });
+    this.name = 'ProviderContractError';
+    this.reason = options.reason;
+    this.blockType = options.blockType;
+    this.partIndex = options.partIndex;
+    this.usage = options.usage;
+  }
+}
+
+/** Structural guard for {@link ProviderContractError}, for a copy loaded from another package instance. */
+export function isProviderContractError(error: unknown): error is ProviderContractError {
+  if (error instanceof ProviderContractError) return true;
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as Record<string, unknown>;
+  return (
+    candidate['name'] === 'ProviderContractError' &&
+    typeof candidate['blockType'] === 'string' &&
+    typeof candidate['partIndex'] === 'number' &&
     typeof candidate['provider'] === 'string'
   );
 }

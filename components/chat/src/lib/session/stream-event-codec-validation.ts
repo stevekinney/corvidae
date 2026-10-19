@@ -279,12 +279,14 @@ export function isChatAgentRunErrorCode(value: unknown): value is ChatAgentRunEr
     value === 'ABORTED' ||
     value === 'BUDGET_EXCEEDED' ||
     value === 'ELICITATION_DENIED' ||
+    value === 'GENERATED_MEDIA_NOT_ADMITTED' ||
     value === 'INVALID_AGENT_HANDLE' ||
     value === 'INVALID_OUTPUT' ||
     value === 'MAXIMUM_STEPS' ||
     value === 'MEDIA_NOT_ADMITTED' ||
     value === 'NON_JSON_OUTPUT' ||
     value === 'OUTPUT_SCHEMA_CONVERSION_FAILED' ||
+    value === 'RESPONSE_PARTS_MISMATCH' ||
     value === 'SELECTION_REVALIDATION_FAILED' ||
     value === 'SUBAGENT_RUN_FAILED' ||
     value === 'TRIPWIRE' ||

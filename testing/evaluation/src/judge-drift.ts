@@ -175,6 +175,7 @@ function calibrationRun(response: string): RunResultBase {
     conversation: new Conversation(),
     steps: [],
     content: response,
+    parts: [{ type: 'text', text: response }],
     usage: { prompt: 0, completion: 0, total: 0 },
     finishReason: 'stop-condition',
   };

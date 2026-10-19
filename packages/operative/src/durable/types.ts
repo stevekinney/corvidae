@@ -1,11 +1,18 @@
 import type { AnyToolbox, ToolExecutionResult } from 'armorer';
 import type { JSONValue, ToolCall } from 'armorer/protocol';
-import type { ConversationSnapshot, MediaContent, TextContent } from 'conversationalist';
+import type {
+  ConversationSnapshot,
+  MediaContent,
+  MultiModalContent,
+  TextContent,
+} from 'conversationalist';
 
 import type { AccumulatedCost } from '../cost-estimation';
+import type { GeneratedMediaAdmission } from '../generated-media';
 import type { Effort } from '../providers/types';
 import type { EventDispatcher } from '../run-step';
 import type { RunOptions } from '../types';
+import type { CHECKPOINT_RECORD_SCHEMA_VERSION } from './checkpoint-version';
 
 /**
  * The durable cursor for a run. This is the minimal plain-cloneable state the
@@ -25,6 +32,11 @@ import type { RunOptions } from '../types';
  * never carried across a yield; per-step records are persisted instead).
  */
 export interface RunCursor {
+  /**
+   * The record version (COR-713), stamped on every write. A cursor written before records were
+   * versioned has none and fails to load with `UnsupportedCheckpointRecordVersionError`.
+   */
+  schemaVersion: typeof CHECKPOINT_RECORD_SCHEMA_VERSION;
   /** Zero-based index of the next step to execute. */
   step: number;
   /** Accumulated token usage across all completed steps. */
@@ -36,6 +48,15 @@ export interface RunCursor {
   cost?: AccumulatedCost | undefined;
   /** Content of the most recent assistant turn. */
   lastContent: string;
+  /**
+   * The parts of the run's final assistant row, set wherever `lastContent` is: the last step's
+   * settled parts, or the `onMaximumSteps` replacement row's parts when it replaced it. A
+   * recovered run rebuilds the run-wide `RunResult.parts` from the step records' parts followed
+   * by these when {@link RunCursor.finalRowIsReplacement}.
+   */
+  lastParts: readonly MultiModalContent[];
+  /** True when the final row is an `onMaximumSteps` replacement rather than the last step's row. */
+  finalRowIsReplacement: boolean;
   /** Run-scoped count of structured-output schema retries already consumed. */
   schemaAttempts: number;
   /**
@@ -68,8 +89,14 @@ export interface RunCursor {
  * persisted once per run as a {@link ConversationSnapshot} rather than per step.
  */
 export interface StepRecord {
+  /** The record version (COR-713); see {@link RunCursor.schemaVersion}. */
+  schemaVersion: typeof CHECKPOINT_RECORD_SCHEMA_VERSION;
   step: number;
   content: string;
+  /** The step's settled parts in provider order; generated media is a managed-asset reference. */
+  parts: readonly MultiModalContent[];
+  /** The id of the assistant row the step committed; absent when it committed none. */
+  messageId?: string | undefined;
   toolCalls: readonly ToolCall[];
   results: readonly ToolExecutionResult[];
   usage?: { prompt: number; completion: number; total: number } | undefined;
@@ -198,6 +225,12 @@ export interface DurableRunDeps {
    * returned data shares the step record's commit boundary.
    */
   getStepMetadata?: () => Record<string, JSONValue> | undefined;
+  /**
+   * COR-713: receives every generated-media admission a step starts, so the run's terminal
+   * result and `ActiveRun.closed()` wait for each to settle. Set by the driver that created the
+   * run; a step with no tracker still admits, it just cannot be waited on.
+   */
+  admissionTracker?: ((admission: GeneratedMediaAdmission) => void) | undefined;
 }
 
 // AB-42 — session-input admission and delivery semantics. Type-only: these

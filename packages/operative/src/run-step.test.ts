@@ -1058,6 +1058,8 @@ describe('runStep: AB-221 steering.applied dispatch', () => {
       runId: undefined,
     };
     const runState: RunState = {
+      lastParts: [],
+      finalRowIsReplacement: false,
       steps: [],
       totalUsage: { prompt: 0, completion: 0, total: 0 },
       lastContent: '',
@@ -1090,6 +1092,8 @@ describe('runStep: AB-221 steering.applied dispatch', () => {
       runId: 'run-1',
     });
     const runState: RunState = {
+      lastParts: [],
+      finalRowIsReplacement: false,
       steps: [],
       totalUsage: { prompt: 0, completion: 0, total: 0 },
       lastContent: '',
@@ -1123,6 +1127,8 @@ describe('runStep: AB-221 steering.applied dispatch', () => {
       runId: 'run-2',
     });
     const runState: RunState = {
+      lastParts: [],
+      finalRowIsReplacement: false,
       steps: [],
       totalUsage: { prompt: 0, completion: 0, total: 0 },
       lastContent: '',

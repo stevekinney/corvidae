@@ -1,3 +1,4 @@
+import { CHECKPOINT_RECORD_SCHEMA_VERSION } from './checkpoint-version';
 import { isSessionInputPayload } from './session-input-payload';
 import type { DurableRunDeps, RunCursor, SessionInputPayload } from './types';
 
@@ -80,9 +81,12 @@ export interface CreateRunWorkflowOptions {
 /** Build the cloneable cursor for a new workflow run. */
 export function initialCursor(version: string | undefined): RunCursor {
   return {
+    schemaVersion: CHECKPOINT_RECORD_SCHEMA_VERSION,
     step: 0,
     totalUsage: { prompt: 0, completion: 0, total: 0 },
     lastContent: '',
+    lastParts: [],
+    finalRowIsReplacement: false,
     schemaAttempts: 0,
     lastAppliedConfigVersion: 0,
     ...(version !== undefined ? { workflowVersion: version } : {}),

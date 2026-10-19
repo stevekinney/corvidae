@@ -419,7 +419,7 @@ describe('bureau.children over an ephemeral bureau', () => {
     });
 
     try {
-      await bureau.kv?.set('bureau-child:record:garbled', '{"schemaVersion":1}');
+      await bureau.kv?.set('bureau-child:record:garbled', '{"schemaVersion":2}');
 
       expect(
         await bureau.children.get({ parentRunId: 'anyone', childRunId: 'garbled' }),

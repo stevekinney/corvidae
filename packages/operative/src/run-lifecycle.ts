@@ -21,6 +21,7 @@ import {
   RunTripwireEvent,
 } from './events';
 import { observeHookPlan } from './hook-plan-events';
+import { runWideParts } from './response-parts';
 import {
   DEFAULT_MAXIMUM_STEPS,
   type EventDispatcher,
@@ -173,6 +174,7 @@ export function makeAbortResult(
     conversation,
     steps: runState.steps,
     content: runState.lastContent,
+    parts: runWideParts(runState),
     usage: runState.totalUsage,
     ...(costEstimate ? { costEstimate } : {}),
     finishReason: 'aborted',
@@ -224,6 +226,7 @@ export function makeErrorResult(
     conversation,
     steps: runState.steps,
     content: runState.lastContent,
+    parts: runWideParts(runState),
     usage: runState.totalUsage,
     ...(costEstimate ? { costEstimate } : {}),
     finishReason,
@@ -278,6 +281,7 @@ export function makeCompletedResult(
     conversation,
     steps: runState.steps,
     content: runState.lastContent,
+    parts: runWideParts(runState),
     usage: runState.totalUsage,
     ...(costEstimate ? { costEstimate } : {}),
     finishReason,

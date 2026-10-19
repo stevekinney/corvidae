@@ -1,6 +1,8 @@
 import { parseAnthropicToolCalls } from 'armorer';
 import { toAnthropicMessages } from 'conversationalist';
 
+import { concatenateTextParts } from '../response-parts.ts';
+import { anthropicPartsFromBlocks } from './anthropic-blocks.ts';
 import { createAnthropicSdkClient, isAnthropicClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
@@ -15,7 +17,7 @@ import {
   buildAnthropicUsage,
 } from './anthropic-shared.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
-import { ProviderError } from './errors.ts';
+import { isProviderContractError, ProviderError } from './errors.ts';
 import {
   classifyProviderError,
   extractSamplingParameterFields,
@@ -124,6 +126,8 @@ export function createAnthropicProvider(options: AnthropicProviderOptions): Gene
         lineage,
       );
     } catch (error) {
+      // A response the adapter has no mapping for is the model's output, not an API failure.
+      if (isProviderContractError(error)) throw error;
       throw (
         samplingParameterRejection(error, resolvedModel) ??
         new ProviderError({ provider: 'anthropic', cause: error })
@@ -190,14 +194,14 @@ function createAnthropicResponse(
   model: string,
   effort: string | undefined,
 ): GenerateResponse {
-  const text = response.content
-    .filter((block) => block.type === 'text' && block.text)
-    .map((block) => block.text)
-    .join('');
+  const usage = response.usage ? buildAnthropicUsage(response.usage) : undefined;
+  // Every block is a part, a tool call or an error: nothing the model returned vanishes.
+  const parts = anthropicPartsFromBlocks(response.content, usage);
   return {
-    content: text,
+    content: concatenateTextParts(parts),
+    parts,
     toolCalls: parseAnthropicToolCalls(response.content),
-    usage: response.usage ? buildAnthropicUsage(response.usage) : undefined,
+    usage,
     metadata: { effectiveModel: model, effectiveEffort: effort ?? 'none' },
   };
 }

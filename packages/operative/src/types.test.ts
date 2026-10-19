@@ -13,6 +13,7 @@ import { toRedactedRunResultSummary } from './types';
 describe('toRedactedRunResultSummary', () => {
   function buildResult(overrides: Partial<RunResultBase> = {}): RunResultBase {
     return {
+      parts: [],
       conversation: new Conversation(),
       steps: [],
       content: 'the secret is 42',

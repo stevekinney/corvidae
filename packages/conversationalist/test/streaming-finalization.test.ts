@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createConversationHistory as createConversation } from '../src/conversation/index';
+import { Conversation as HistoryController } from '../src/history';
 import {
   appendStreamingMessage,
   cancelStreamingMessage,
   finalizeStreamingMessage,
   getStreamingMessage,
   isStreamingMessage,
+  updateStreamingMessage,
 } from '../src/streaming';
 import type { ConversationHistory as Conversation, Message } from '../src/types';
 
@@ -237,5 +239,85 @@ describe('getStreamingMessage', () => {
 
     const streaming = getStreamingMessage(finalized);
     expect(streaming).toBeUndefined();
+  });
+});
+
+describe('finalizeStreamingMessage with committed content', () => {
+  const thinkingPart = {
+    type: 'thinking' as const,
+    thinking: 'Weighing the options.',
+    signature: 'sig-abc',
+  };
+
+  it('commits the content parts and clears the streaming flag in one write', () => {
+    const conv = createConversation({ id: 'test' }, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      { content: [thinkingPart, { type: 'text', text: 'Done.' }] },
+      testEnvironment,
+    );
+
+    const [message] = getOrderedMessages(finalized);
+    expect(isStreamingMessage(message!)).toBe(false);
+    expect(message?.content).toEqual([thinkingPart, { type: 'text', text: 'Done.' }]);
+  });
+
+  it('commits string content too', () => {
+    const conv = createConversation({ id: 'test' }, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+
+    const finalized = finalizeStreamingMessage(
+      conversation,
+      messageId,
+      { content: 'settled text' },
+      testEnvironment,
+    );
+
+    expect(getOrderedMessages(finalized)[0]?.content).toBe('settled text');
+  });
+
+  it('keeps the streamed content when no content option is given', () => {
+    const conv = createConversation({ id: 'test' }, testEnvironment);
+    const { conversation, messageId } = appendStreamingMessage(
+      conv,
+      'assistant',
+      undefined,
+      testEnvironment,
+    );
+    const updated = updateStreamingMessage(conversation, messageId, 'streamed', testEnvironment);
+
+    const finalized = finalizeStreamingMessage(updated, messageId, undefined, testEnvironment);
+
+    expect(getOrderedMessages(finalized)[0]?.content).toBe('streamed');
+  });
+
+  it('carries multi-part content through the history action API', () => {
+    const history = new HistoryController(
+      createConversation({ id: 'actions' }, testEnvironment),
+      testEnvironment,
+    );
+    const messageId = history.appendStreamingMessage('assistant');
+
+    history.updateStreamingMessage(messageId, [thinkingPart]);
+    history.finalizeStreamingMessage(messageId, {
+      content: [thinkingPart, { type: 'text', text: 'Answer' }],
+    });
+
+    const message = history.current.messages[messageId];
+    expect(message?.content).toEqual([thinkingPart, { type: 'text', text: 'Answer' }]);
+    expect(history.getStreamingMessage()).toBeUndefined();
   });
 });

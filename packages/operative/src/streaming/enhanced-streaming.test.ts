@@ -4,12 +4,14 @@ import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
 import { createAgent } from '../create-agent';
+import { createStepGeneratedMediaAdmitter } from '../generated-media';
 import { readGenerationProfile } from '../generation-profile';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
 } from '../providers/backend-descriptor-attachment';
 import { createModelCatalog } from '../providers/model-catalog';
+import { createScriptedMediaAdmitter } from '../testing/generated-media.test-support';
 import type { GenerateContext, GenerateResponse, StreamingGenerateFunction } from '../types';
 import { withEnhancedStreaming } from './enhanced-streaming';
 import type { StreamCustomEvent, StreamEvent, StreamEventMap, StreamState } from './types';
@@ -963,5 +965,287 @@ describe('withEnhancedStreaming — backend-descriptor propagation (AB-64, AB-24
     const agent = createAgent({ generate: withEnhancedStreaming(streamingGenerate) });
 
     expect(readGenerationProfile(agent).mode).toBe('fixed');
+  });
+});
+
+describe('withEnhancedStreaming part events', () => {
+  const thinkingPart = { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' } as const;
+  const inlineImage = {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'inline', data: 'AAAAUNIQUEBYTES', encoding: 'base64' },
+  } as const;
+
+  function recordAll(eventTarget: TypedEventTarget<StreamEventMap>): StreamEvent[] {
+    const events: StreamEvent[] = [];
+    const types = [
+      'stream:block-start',
+      'stream:block-delta',
+      'stream:block-complete',
+      'stream:text-delta',
+      'stream:part-start',
+      'stream:part-delta',
+      'stream:part-progress',
+      'stream:part-complete',
+      'stream:part-asset-linked',
+      'stream:part-asset-available',
+      'stream:part-failed',
+      'stream:complete',
+      'stream:error',
+    ] as const;
+    for (const type of types) {
+      eventTarget.addEventListener(type, (event) => {
+        events.push(event.detail);
+      });
+    }
+    return events;
+  }
+
+  function partEvents(events: StreamEvent[], partIndex: number): string[] {
+    return events
+      .filter((event) => 'partIndex' in event && event.partIndex === partIndex)
+      .map((event) => event.type);
+  }
+
+  it('emits one stable start, delta, complete sequence per part, parts interleaved in order', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const events = recordAll(eventTarget);
+    const generate = withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.reportPart?.({ type: 'start', partIndex: 0, kind: 'thinking' });
+        streaming.reportPart?.({
+          type: 'delta',
+          partIndex: 0,
+          sequence: 1,
+          delta: { kind: 'thinking', thinking: 'Plan.' },
+        });
+        streaming.reportPart?.({ type: 'complete', partIndex: 0, part: thinkingPart });
+        streaming.reportPart?.({ type: 'start', partIndex: 1, kind: 'text' });
+        streaming.reportPart?.({
+          type: 'delta',
+          partIndex: 1,
+          sequence: 1,
+          delta: { kind: 'text', text: 'Hi' },
+        });
+        streaming.reportPart?.({
+          type: 'delta',
+          partIndex: 1,
+          sequence: 2,
+          delta: { kind: 'text', text: '!' },
+        });
+        streaming.reportPart?.({
+          type: 'complete',
+          partIndex: 1,
+          part: { type: 'text', text: 'Hi!' },
+        });
+        return {
+          content: 'Hi!',
+          parts: [thinkingPart, { type: 'text', text: 'Hi!' }],
+          toolCalls: [],
+        };
+      },
+      { eventTarget },
+    );
+
+    const response = await generate(makeContext());
+
+    expect(partEvents(events, 0)).toEqual([
+      'stream:part-start',
+      'stream:part-delta',
+      'stream:part-complete',
+    ]);
+    expect(partEvents(events, 1)).toEqual([
+      'stream:part-start',
+      'stream:part-delta',
+      'stream:part-delta',
+      'stream:part-complete',
+    ]);
+    const deltas = events.filter((event) => event.type === 'stream:part-delta');
+    expect(deltas.map((event) => event.sequence)).toEqual([1, 1, 2]);
+    expect(
+      events.every((event) => !('messageId' in event) || event.messageId === response.messageId),
+    ).toBe(true);
+
+    // The legacy text channel still reports answer text only, concatenated over text parts.
+    const textDeltas = events.filter((event) => event.type === 'stream:text-delta');
+    expect(textDeltas.map((event) => event.accumulated)).toEqual(['Hi', 'Hi!']);
+  });
+
+  it('ignores a duplicate delta and a delta after completion', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const states: StreamState[] = [];
+    eventTarget.addEventListener('stream:complete', (event) => states.push(event.detail.state));
+    const generate = withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.reportPart?.({ type: 'start', partIndex: 0, kind: 'text' });
+        const delta = { kind: 'text', text: 'Hi' } as const;
+        streaming.reportPart?.({ type: 'delta', partIndex: 0, sequence: 1, delta });
+        streaming.reportPart?.({ type: 'delta', partIndex: 0, sequence: 1, delta });
+        streaming.reportPart?.({
+          type: 'complete',
+          partIndex: 0,
+          part: { type: 'text', text: 'Hi' },
+        });
+        streaming.reportPart?.({
+          type: 'delta',
+          partIndex: 0,
+          sequence: 2,
+          delta: { kind: 'text', text: ' late' },
+        });
+        return { content: 'Hi', parts: [{ type: 'text', text: 'Hi' }], toolCalls: [] };
+      },
+      { eventTarget },
+    );
+
+    await generate(makeContext());
+
+    expect(states).toHaveLength(1);
+    expect(states[0]?.parts[0]?.text).toBe('Hi');
+    expect(states[0]?.textContent).toBe('Hi');
+  });
+
+  it('gives a media part progress and link events, and no event ever shows its bytes', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const events = recordAll(eventTarget);
+    const admitter = createScriptedMediaAdmitter();
+    const controller = new AbortController();
+    const generate = withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.reportPart?.({
+          type: 'start',
+          partIndex: 0,
+          kind: 'image',
+          mimeType: 'image/png',
+        });
+        streaming.reportPart?.({
+          type: 'progress',
+          partIndex: 0,
+          sequence: 1,
+          receivedBytes: 15,
+          totalBytes: 15,
+        });
+        streaming.reportPart?.({ type: 'complete', partIndex: 0, part: inlineImage });
+        return { content: '', parts: [inlineImage], toolCalls: [] };
+      },
+      { eventTarget },
+    );
+
+    await generate(
+      makeContext({
+        signal: controller.signal,
+        generatedMediaAdmitter: createStepGeneratedMediaAdmitter({
+          port: admitter.port,
+          runId: 'run-1',
+          step: 0,
+          signal: controller.signal,
+        }),
+      }),
+    );
+
+    expect(partEvents(events, 0)).toEqual([
+      'stream:part-start',
+      'stream:part-progress',
+      'stream:part-complete',
+      'stream:part-asset-linked',
+      'stream:part-asset-available',
+    ]);
+    expect(JSON.stringify(events)).not.toContain('UNIQUEBYTES');
+    const complete = events.find((event) => event.type === 'stream:part-complete');
+    expect(complete?.type === 'stream:part-complete' && 'source' in complete.part).toBe(false);
+    const finalState = events.find((event) => event.type === 'stream:complete');
+    expect(finalState?.type === 'stream:complete' && finalState.state.parts[0]?.part).toMatchObject(
+      {
+        type: 'image',
+        source: { kind: 'managed-asset', assetId: 'asset-1' },
+      },
+    );
+  });
+
+  it('emits part-failed for a refused admission and a single stream:error, never a stream:complete', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const events = recordAll(eventTarget);
+    const admitter = createScriptedMediaAdmitter({ mode: 'reject' });
+    const controller = new AbortController();
+    const generate = withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.reportPart?.({ type: 'start', partIndex: 0, kind: 'image' });
+        streaming.reportPart?.({ type: 'complete', partIndex: 0, part: inlineImage });
+        return { content: '', parts: [inlineImage], toolCalls: [] };
+      },
+      { eventTarget },
+    );
+
+    let error: unknown;
+    try {
+      await generate(
+        makeContext({
+          signal: controller.signal,
+          generatedMediaAdmitter: createStepGeneratedMediaAdmitter({
+            port: admitter.port,
+            runId: 'run-1',
+            step: 0,
+            signal: controller.signal,
+          }),
+        }),
+      );
+    } catch (thrown) {
+      error = thrown;
+    }
+
+    expect(error).toBeDefined();
+    expect(events.map((event) => event.type)).toContain('stream:part-failed');
+    expect(events.filter((event) => event.type === 'stream:error')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream:complete')).toHaveLength(0);
+  });
+
+  it('emits exactly one terminal event when the row cannot be finalized, and stream:complete comes last', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const events = recordAll(eventTarget);
+    const real = new Conversation();
+    let failFinalize = true;
+    // `finalizeStreamingMessage` is an installed, read-only member, so wrap the conversation.
+    const conversation = new Proxy(real, {
+      get(target, property) {
+        if (property === 'finalizeStreamingMessage' && failFinalize) {
+          return () => {
+            throw new Error('finalize failed');
+          };
+        }
+        const value = Reflect.get(target, property, target) as unknown;
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const generate = withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.update('Hi');
+        return textResponse('Hi');
+      },
+      { eventTarget },
+    );
+
+    let error: unknown;
+    try {
+      await generate(makeContext({ conversation }));
+    } catch (thrown) {
+      error = thrown;
+    }
+    expect((error as Error).message).toBe('finalize failed');
+    expect(events.filter((event) => event.type === 'stream:error')).toHaveLength(1);
+    expect(events.filter((event) => event.type === 'stream:complete')).toHaveLength(0);
+
+    failFinalize = false;
+    const ok: StreamEvent[] = [];
+    const okTarget = new TypedEventTarget<StreamEventMap>();
+    for (const type of ['stream:complete', 'stream:error', 'stream:part-complete'] as const) {
+      okTarget.addEventListener(type, (event) => ok.push(event.detail));
+    }
+    await withEnhancedStreaming(
+      async ({ streaming }) => {
+        streaming.update('Hi');
+        return textResponse('Hi');
+      },
+      { eventTarget: okTarget },
+    )(makeContext());
+    expect(ok.map((event) => event.type)).toEqual(['stream:part-complete', 'stream:complete']);
   });
 });
