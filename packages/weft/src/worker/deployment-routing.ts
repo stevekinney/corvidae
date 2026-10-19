@@ -360,6 +360,28 @@ export class WorkerDeploymentCatalog {
     return applied ? next : this.markDraining(deploymentName, buildId);
   }
 
+  /**
+   * Move a build between `ready` and `draining`, whatever references it holds: a drain keeps
+   * existing work visible and only stops new untargeted work, so it must not wait for references
+   * to reach zero the way `markDraining` does. A build that is unknown or `removed` is returned
+   * untouched, and never revived.
+   */
+  async setVersionState(
+    deploymentName: string,
+    buildId: string,
+    state: 'ready' | 'draining',
+  ): Promise<WorkerDeploymentVersion | null> {
+    const current = await this.getVersion(deploymentName, buildId);
+    if (current === null || current.state === 'removed' || current.state === state) return current;
+    const key = versionKey(deploymentName, buildId);
+    const applied = await storageConditionalBatch(
+      this.#storage,
+      [{ key, expectedValue: encode(current) }],
+      [{ type: 'put', key, value: encode({ ...current, state }) }],
+    );
+    return applied ? { ...current, state } : this.setVersionState(deploymentName, buildId, state);
+  }
+
   async reference(
     deploymentName: string,
     buildId: string,
@@ -380,13 +402,28 @@ export class WorkerDeploymentCatalog {
     return applied ? next : this.reference(deploymentName, buildId, delta);
   }
 
+  /**
+   * Mark a build removed. Refuses (returns `false`) a build that does not exist, that an
+   * execution still references, or that the routing pointer names as its current or ramping
+   * build. The routing pointer's bytes are a condition of the same write, so a routing change
+   * that lands between the check and the write fails the removal instead of routing to a
+   * removed build.
+   */
   async removeVersion(deploymentName: string, buildId: string): Promise<boolean> {
     const current = await this.getVersion(deploymentName, buildId);
     if (current === null || current.executionReferences > 0) return false;
+    const routingBytes = await this.#storage.get(routingKey(deploymentName));
+    if (routingBytes !== null) {
+      const routing = decodeRouting(routingBytes);
+      if (routing.currentBuildId === buildId || routing.rampingBuildId === buildId) return false;
+    }
     const key = versionKey(deploymentName, buildId);
     return storageConditionalBatch(
       this.#storage,
-      [{ key, expectedValue: encode(current) }],
+      [
+        { key, expectedValue: encode(current) },
+        { key: routingKey(deploymentName), expectedValue: routingBytes },
+      ],
       [{ type: 'put', key, value: encode({ ...current, state: 'removed' as const }) }],
     );
   }

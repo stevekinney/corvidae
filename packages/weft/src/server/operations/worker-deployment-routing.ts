@@ -8,6 +8,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
 import { invalidParamsFault } from './operation-helpers.ts';
+import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 const routingInput = z.object({
   deploymentName: z.string().min(1),
@@ -70,7 +71,7 @@ function staleGenerationFault(
   return {
     code: 'Conflict',
     message: `Routing generation for deployment "${deploymentName}" changed concurrently${expected}; retry with generation ${currentGeneration}.`,
-    data: { reason: 'stale-generation', currentGeneration },
+    data: { reason: WORKER_CONFLICT_REASONS.staleGeneration, currentGeneration },
   };
 }
 
@@ -82,7 +83,7 @@ function versionNotReadyFault(
   return {
     code: 'Conflict',
     message: `Deployment build ${deploymentName}/${buildId} is ${state}, so it is not eligible for routing.`,
-    data: { reason: 'version-not-ready' },
+    data: { reason: WORKER_CONFLICT_REASONS.versionNotReady },
   };
 }
 
@@ -207,7 +208,9 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
       'Mark one deployment build removed so it can no longer be routed to. A build that does ' +
       'not exist, or was already removed, faults with NotFound. A build that a pinned run, ' +
       'schedule, pending requirement, attempt, or realm still references (`executionReferences` ' +
-      'above zero) faults with Conflict (`reason: "version-referenced"`) and is left as it was.',
+      'above zero) faults with Conflict (`reason: "version-referenced"`), and the current or ' +
+      'ramping build of the routing pointer faults with Conflict (`reason: "version-routed"`); ' +
+      'both are left as they were.',
     destructive: true,
     tags: ['System'],
     inputSchema: deploymentInput,
@@ -228,18 +231,7 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
         throw versionNotFoundFault(input.deploymentName, input.buildId);
       }
       if (!(await catalog.removeVersion(input.deploymentName, input.buildId))) {
-        // Either a reference was taken since the read, or the record changed under it. Read again
-        // so the fault reports what is true now.
-        const now = await catalog.getVersion(input.deploymentName, input.buildId);
-        if (now === null || now.state === 'removed') {
-          throw versionNotFoundFault(input.deploymentName, input.buildId);
-        }
-        const referenced: OperationFault = {
-          code: 'Conflict',
-          message: `Deployment build ${input.deploymentName}/${input.buildId} is still referenced by ${now.executionReferences} execution${now.executionReferences === 1 ? '' : 's'} and cannot be removed.`,
-          data: { reason: 'version-referenced' },
-        };
-        throw referenced;
+        throw await removalRefusal(catalog, input.deploymentName, input.buildId);
       }
       return {
         deploymentName: input.deploymentName,
@@ -428,3 +420,29 @@ export const workerDeploymentRemoveRestBinding = binding(
   '/v1/worker-deployments/remove',
   'weft.worker.deployments.remove',
 );
+
+/**
+ * Why `removeVersion` refused, read again so the fault reports what is true now: a reference was
+ * taken, the routing pointer moved onto the build, or the record changed under the write.
+ */
+async function removalRefusal(
+  catalog: WorkerDeploymentCatalog,
+  deploymentName: string,
+  buildId: string,
+): Promise<OperationFault> {
+  const now = await catalog.getVersion(deploymentName, buildId);
+  if (now === null || now.state === 'removed') return versionNotFoundFault(deploymentName, buildId);
+  const routing = await catalog.getRouting(deploymentName);
+  if (routing?.currentBuildId === buildId || routing?.rampingBuildId === buildId) {
+    return {
+      code: 'Conflict',
+      message: `Deployment build ${deploymentName}/${buildId} is a routing target and cannot be removed; route new traffic to another build first.`,
+      data: { reason: WORKER_CONFLICT_REASONS.versionRouted },
+    };
+  }
+  return {
+    code: 'Conflict',
+    message: `Deployment build ${deploymentName}/${buildId} is still referenced by ${now.executionReferences} execution${now.executionReferences === 1 ? '' : 's'} and cannot be removed.`,
+    data: { reason: WORKER_CONFLICT_REASONS.versionReferenced },
+  };
+}

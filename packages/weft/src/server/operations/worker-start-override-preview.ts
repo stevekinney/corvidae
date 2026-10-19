@@ -17,6 +17,10 @@ import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fau
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
+import {
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+} from './worker-conflict-reasons.ts';
 
 const inputSchema = z.object({
   workflowId: z.string().min(1),
@@ -86,19 +90,19 @@ async function issuePreview(
   const state = decodeWorkflowState(stateBytes, input.workflowId);
   if (!terminal(state.status)) {
     throw previewConflict(
-      'workflow-not-terminal',
+      WORKER_CONFLICT_REASONS.workflowNotTerminal,
       'Worker start override previews are only issued for terminal workflows.',
     );
   }
   if (state.workerBinding === undefined || state.workerVersioningPolicy === undefined) {
     throw previewConflict(
-      'no-worker-binding',
+      WORKER_CONFLICT_REASONS.noWorkerBinding,
       'Workflow has no durable worker binding to override.',
     );
   }
   if (state.workerVersioningPolicy.mode !== 'auto-upgrade' || state.revision === undefined) {
     throw previewConflict(
-      'policy-not-auto-upgrade',
+      WORKER_CONFLICT_REASONS.policyNotAutoUpgrade,
       'Worker start override previews require an auto-upgrade worker policy.',
     );
   }
@@ -112,7 +116,10 @@ async function issuePreview(
     realmAcquired: false,
   });
   if (!evaluation.allowed) {
-    throw previewConflict(`upgrade-${evaluation.reason}`, evaluation.message);
+    throw previewConflict(
+      `${UPGRADE_REFUSAL_REASON_PREFIX}${evaluation.reason}`,
+      evaluation.message,
+    );
   }
   return issueWorkflowWorkerStartOverridePreview({
     workflowId: input.workflowId,
@@ -141,7 +148,7 @@ async function resolveTargetBinding(
     });
   } catch (error) {
     if (error instanceof NoRoutedWorkerDeploymentError) {
-      throw previewConflict('no-routed-deployment', error.message);
+      throw previewConflict(WORKER_CONFLICT_REASONS.noRoutedDeployment, error.message);
     }
     throw error;
   }

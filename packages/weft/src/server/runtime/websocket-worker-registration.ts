@@ -12,6 +12,7 @@
 import type { ServerWebSocket } from 'bun';
 
 import { WorkerConnectedEvent } from '../../core/events.ts';
+import type { WorkerDeploymentVersionState } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import { digestCanonicalWorkerManifest, parseWorkerManifest } from '../../worker/manifest/index.ts';
 import {
@@ -23,9 +24,12 @@ import type { WorkerRegistrationInfo } from '../../worker/registry.ts';
 import type { ServeOptions } from '../index.ts';
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import type { ServerContext } from './context.ts';
+import { applyRecordedVersionState } from './deployment-version-registration.ts';
 import { drainLongPollQueueInBackground } from './long-poll-drain.ts';
 import {
   evaluateWorkerAdmissionPolicy,
+  HIJACK_MESSAGE,
+  isActiveWorkerIdHijack,
   principalMayRegisterWorker,
 } from './websocket-registration-admission.ts';
 import {
@@ -114,25 +118,23 @@ function admitReconnectingSocket(
   message: RegisterMessage,
   manifest: WorkerManifest,
 ): boolean {
-  const pendingRequeue = context.pendingWorkerRequeues.get(message.workerId);
-  const isGracePeriodReconnect = pendingRequeue !== undefined;
-  if (isGracePeriodReconnect) {
-    clearTimeout(pendingRequeue.timer);
-    context.pendingWorkerRequeues.delete(message.workerId);
-  }
-
-  const existingSocket = context.workerSockets.get(message.workerId);
-  if (!isGracePeriodReconnect && existingSocket !== undefined && existingSocket !== ws) {
+  // Decided before the pending requeue is cleared: a pending requeue is what marks a reconnect.
+  if (isActiveWorkerIdHijack(context, ws, message.workerId)) {
     rejectAndRecordRegistration(
       context,
       ws,
       'invalid_registration',
-      'workerId is already registered to an active connection',
+      HIJACK_MESSAGE,
       message.workerId,
       message.protocolVersion,
       { deploymentName: manifest.deployment.name, buildId: manifest.deployment.buildId },
     );
     return false;
+  }
+  const pendingRequeue = context.pendingWorkerRequeues.get(message.workerId);
+  if (pendingRequeue !== undefined) {
+    clearTimeout(pendingRequeue.timer);
+    context.pendingWorkerRequeues.delete(message.workerId);
   }
   return true;
 }
@@ -172,6 +174,7 @@ function commitWorkerRegistration(
   queue: string,
   concurrency: number,
   acceptedManifestDigest: string,
+  versionState: WorkerDeploymentVersionState | undefined,
   resumingSessionGeneration?: number,
 ): void {
   if (ws.readyState !== WebSocket.OPEN) return;
@@ -214,6 +217,8 @@ function commitWorkerRegistration(
   ws.data.workerRegistered = true;
   ws.data.workerProtocolVersion = message.protocolVersion;
   context.registry.register(registrationInfo, resumingSessionGeneration);
+  // A build the catalog records as draining or removed joins drained, before anything can route to it.
+  applyRecordedVersionState(context, manifest, versionState);
   context.workerSockets.set(message.workerId, ws);
   // The generation just committed — always defined immediately after a
   // successful `register()` call for this exact `workerId`.
@@ -238,8 +243,10 @@ function commitWorkerRegistration(
 
 /**
  * The tail of {@link registerWorker}, once the manifest is parsed and admitted:
- * clamp the concurrency, digest the manifest, record its deployment version in
- * the durable catalog, prove or forfeit a pending reconnect, and commit.
+ * clamp the concurrency, digest the manifest, prove or forfeit a pending reconnect,
+ * record its deployment version in the durable catalog (only once the read-only
+ * admission gates pass, and after the reconnect settles so a fast reconnect is not
+ * mistaken for a takeover), and commit.
  */
 async function completeRegistration(
   context: ServerContext,
@@ -259,16 +266,21 @@ async function completeRegistration(
 
   const acceptedManifestDigest = await digestCanonicalWorkerManifest(canonicalJson);
 
-  if (!(await recordVersionOrReject(context, ws, message, manifest, acceptedManifestDigest))) {
-    return;
-  }
-
   const resumingSessionGeneration = await resolveReconnectProof(
     context,
     options,
     message,
     cleanupWorkflowIndex,
   );
+
+  const recorded = await recordVersionOrReject(
+    context,
+    ws,
+    message,
+    manifest,
+    acceptedManifestDigest,
+  );
+  if (recorded === null) return;
 
   commitWorkerRegistration(
     context,
@@ -279,6 +291,7 @@ async function completeRegistration(
     queue,
     clampedConcurrency,
     acceptedManifestDigest,
+    recorded.state,
     resumingSessionGeneration,
   );
 }

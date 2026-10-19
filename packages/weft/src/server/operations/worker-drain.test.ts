@@ -67,6 +67,7 @@ async function fixture() {
   }
   return {
     registry,
+    catalog,
     drain: createDrainDeploymentOperation({ workerRegistry: registry, catalog, clock: () => 5 }),
     resume: createClearDeploymentDrainOperation({ workerRegistry: registry, catalog }),
   };
@@ -148,6 +149,47 @@ describe('weft.worker.deployments.drain and .resume — build-scoped', () => {
     expect(registry.getWorkerSummaries(1).find((worker) => worker.id === 'late')?.health).toBe(
       'active',
     );
+  });
+
+  it('writes the build’s state to the catalog: drain is draining, resume is ready', async () => {
+    const { catalog, drain, resume } = await fixture();
+    const stateOf = async (buildId: string) => {
+      const version = await catalog.getVersion('payments', buildId);
+      return version?.state;
+    };
+
+    await invoke(drain, { deploymentName: 'payments', buildId: 'build-1' });
+    expect(await stateOf('build-1')).toBe('draining');
+    expect(await stateOf('build-2')).toBe('ready');
+
+    await invoke(resume, { deploymentName: 'payments', buildId: 'build-1' });
+    expect(await stateOf('build-1')).toBe('ready');
+  });
+
+  it('keeps the drain on a build that has executions bound to it', async () => {
+    const { catalog, drain } = await fixture();
+    await catalog.reference('payments', 'build-1', 1);
+
+    await invoke(drain, { deploymentName: 'payments', buildId: 'build-1' });
+
+    const version = await catalog.getVersion('payments', 'build-1');
+    expect(version?.state).toBe('draining');
+  });
+
+  it('refuses to resume a removed build, leaving it removed and still drained', async () => {
+    const { registry, catalog, drain, resume } = await fixture();
+    await invoke(drain, { deploymentName: 'payments', buildId: 'build-1' });
+    await catalog.removeVersion('payments', 'build-1');
+
+    const fault = await faultOf(invoke(resume, { deploymentName: 'payments', buildId: 'build-1' }));
+
+    expect(fault).toMatchObject({
+      code: 'NotFound',
+      data: { resource: 'workerDeploymentVersion', identifier: 'payments/build-1' },
+    });
+    const version = await catalog.getVersion('payments', 'build-1');
+    expect(version?.state).toBe('removed');
+    expect(registry.findWorker('charge', { queue: 'default' })?.id).toBe('new-1');
   });
 
   it('resumes a build with no marker as a no-op, even one the catalog does not know', async () => {

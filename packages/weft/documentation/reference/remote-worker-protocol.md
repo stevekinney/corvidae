@@ -416,9 +416,13 @@ Server rejection of registration. The server sends this message, then closes the
 
 ### Deployment version recording
 
-An accepted registration also records the worker's `(deploymentName, buildId)` as a `ready` version in the durable deployment catalog that `weft.worker.deployments.*` lists and routes between. The record is made once: another worker of the same build, a reconnect, or two workers registering at the same moment leave the first record as it was, and a version an operator has drained or removed is never made `ready` again. The record is written after the in-memory digest check, so a build that conflicts with a connected worker is refused before anything is stored.
+An accepted registration also records the worker's `(deploymentName, buildId)` as a `ready` version in the durable deployment catalog that `weft.worker.deployments.*` lists and routes between. The record is made once, and a build's identity is its `artifactDigest`: another worker of the same build and artifact, a reconnect, or two workers registering at the same moment leave the first record (and its first-seen manifest) as it was, even when their manifests differ in runtime version or capabilities. Only a different artifact for a recorded build is a `deployment_conflict`.
 
-If the catalog cannot be written, the registration is not accepted and the server never half-registers the worker. A WebSocket worker's socket is closed with code `1013` (Try Again Later), so its `connect()` rejects and a retry registers normally once the catalog recovers; a long-poll registration is answered `503` with `Retry-After: 1` and `code: "catalog_unavailable"`, and `LongPollWorker` retries on its next poll cycle.
+The record is written only for a registration the server will admit. It comes after the in-memory digest check and the live-socket and `workerId` checks, so a build that conflicts with a connected worker, or a socket that tries to take over a live worker id, is refused before anything is stored.
+
+The stored state governs the worker that registers. `ready` registers normally. A build the catalog records as `draining` or `removed` still accepts the worker, but applies the build's drain marker first, so the worker takes no new untargeted work (the state is the same one `weft.worker.deployments.drain` gives a build); a build drained or removed by an operator stays out of service across a worker restart and a server restart. A stored version is never made `ready` again by a registration.
+
+If the catalog cannot be written, the registration is not accepted and the server never half-registers the worker. A WebSocket worker's socket is closed with code `1013` (Try Again Later); `RemoteWorker` does not read the code, so its `connect()` rejects and the caller's own retry loop registers again once the catalog recovers. A long-poll registration is answered `503` with `Retry-After: 1` and `code: "catalog_unavailable"`, and `LongPollWorker` retries on its next poll cycle.
 
 ### `protocolError`
 

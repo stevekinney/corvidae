@@ -11,7 +11,10 @@ import type { ServeOptions } from '../index.ts';
 import type { Principal } from '../principal.ts';
 import type { PendingTask } from '../task-queue-types.ts';
 import type { ServerContext } from './context.ts';
-import { recordDeploymentVersion } from './deployment-version-registration.ts';
+import {
+  applyRecordedVersionState,
+  recordDeploymentVersion,
+} from './deployment-version-registration.ts';
 import type { LongPollClaim } from './task-polling.ts';
 import {
   DEFAULT_POLL_TIMEOUT,
@@ -243,6 +246,7 @@ async function acceptWorkerSession(
     ...(registration.startedAt !== undefined ? { startedAt: registration.startedAt } : {}),
     capabilities: registration.manifest.capabilities as RemoteWorkerCapabilities,
   });
+  applyRecordedVersionState(context, registration.manifest, recording.state);
   const sessionGeneration = context.registry.sessionIdentity(sessionId)?.sessionGeneration ?? 1;
   const now = Date.now();
   context.longPollWorkerSessions.set(sessionId, {

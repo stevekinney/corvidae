@@ -134,7 +134,7 @@ export type SystemOperationTypes = {
     readonly input: { readonly buildId?: string; readonly deploymentName: string };
     readonly output:
       SharedAffectedWorkersHealthInF_c3f6ebcc | SharedAffectedWorkersBuildIdDe_a9c15090;
-    readonly faults: never;
+    readonly faults: 'NotFound';
   };
   'weft.worker.deployments.rollback': {
     readonly input: SharedBuildIdDeploymentNameExp_c4b280cb;

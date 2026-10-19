@@ -671,11 +671,13 @@ type DeploymentDrainResponse = {
 };
 ```
 
+A build drain is also written to the deployment catalog as the build's `draining` state (whatever executions reference it), so it survives a restart and `weft.worker.deployments.diagnostics` reports the build as `draining`; a worker that registers on a draining or removed build joins drained.
+
 The JSON-RPC operation name is `weft.worker.deployments.drain`.
 
 ### `DELETE /api/v1/worker-deployments/:deploymentName/drain`
 
-Clears the deployment-level drain marker. Requires `system:admin`. Any worker-specific drain markers remain in effect. Pass `?buildId=<id>` to clear one build's marker instead; a deployment-wide marker or a worker-specific marker that still applies keeps its workers drained, and clearing a build with no marker succeeds and changes nothing.
+Clears the deployment-level drain marker. Requires `system:admin`. Any worker-specific drain markers remain in effect. Pass `?buildId=<id>` to clear one build's marker instead; a deployment-wide marker or a worker-specific marker that still applies keeps its workers drained, and clearing a build with no marker succeeds and changes nothing. Resuming a build also returns its catalog state to `ready`. A build the catalog has removed faults with `NotFound` and stays drained.
 
 The JSON-RPC operation name is `weft.worker.deployments.resume`.
 
@@ -889,6 +891,7 @@ These operations answer with typed faults a client can branch on, not message te
 | `Conflict` | The routing pointer is no longer at `expectedGeneration`, or it or a target build changed between the read and the write. | `reason: "stale-generation"` and `currentGeneration` (JSON-RPC; REST discloses `currentGeneration`). Retry with that generation. |
 | `Conflict` | A target build exists but is not `ready` (for example, draining). | `reason: "version-not-ready"` (JSON-RPC). |
 | `Conflict` | `remove` names a build that execution references still hold. | `reason: "version-referenced"` (JSON-RPC). The build is left as it was. |
+| `Conflict` | `remove` names the current or ramping build of the routing pointer. | `reason: "version-routed"` (JSON-RPC). The build is left as it was; route new traffic to another build first. |
 | `NotFound` | A named build does not exist or has been removed. | `resource: "workerDeploymentVersion"`, `identifier: "<deployment>/<build>"`. |
 | `InvalidParams` | The ramping build equals the current build. | `issues: []`. |
 

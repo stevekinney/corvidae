@@ -24,10 +24,17 @@ class FlakyStorage extends MemoryStorage {
   }
 }
 
-function manifest(artifactDigest = 'sha256:artifact-a', buildId = 'build-1'): WorkerManifest {
-  return manifestForActivities(['checkout.charge'], {
+function manifest(
+  artifactDigest = 'sha256:artifact-a',
+  buildId = 'build-1',
+  runtimeVersion?: string,
+): WorkerManifest {
+  const base = manifestForActivities(['checkout.charge'], {
     deployment: { name: 'billing', buildId, artifactDigest },
   });
+  return runtimeVersion === undefined
+    ? base
+    : { ...base, runtime: { ...base.runtime, version: runtimeVersion } };
 }
 
 function setup() {
@@ -44,6 +51,7 @@ interface FakeSocket {
   sentMessages: string[];
   readyState: number;
   closeCode?: number;
+  terminated: boolean;
   send(message: string): void;
   close(code?: number, reason?: string): void;
   unsubscribe(topic: string): void;
@@ -55,6 +63,7 @@ function socket(): FakeSocket {
     data: { pathname: '/v1/tasks/default/stream', connectionType: 'worker', queue: 'default' },
     sentMessages: [],
     readyState: WebSocket.OPEN,
+    terminated: false,
     send(message) {
       this.sentMessages.push(message);
     },
@@ -62,7 +71,9 @@ function socket(): FakeSocket {
       if (code !== undefined) this.closeCode = code;
     },
     unsubscribe() {},
-    terminate() {},
+    terminate() {
+      this.terminated = true;
+    },
   };
 }
 
@@ -207,6 +218,74 @@ describe.each([
     },
   );
 
+  it('accepts a second worker of the same build and artifact on another runtime version, keeping the first-seen manifest', async () => {
+    const env = setup();
+    const first = await register(
+      env,
+      manifest('sha256:artifact-a', 'build-1', '1.3.14'),
+      'worker-1',
+    );
+    const stored = await versionOf(env.catalog);
+
+    const second = await register(
+      env,
+      manifest('sha256:artifact-a', 'build-1', '1.4.2'),
+      'worker-2',
+    );
+
+    expect(first.accepted).toBe(true);
+    expect(second.accepted).toBe(true);
+    // Identity is the artifact digest: the worker is told its own manifest digest, the record stays first-seen.
+    expect(second.digest).not.toBe(first.digest);
+    expect(await versionOf(env.catalog)).toEqual(stored);
+    expect(await env.catalog.listVersions()).toHaveLength(1);
+  });
+
+  it('still refuses a different artifact for the stored build', async () => {
+    const env = setup();
+    await register(env, manifest('sha256:artifact-a', 'build-1', '1.3.14'), 'worker-1');
+    // A restarted server has no in-memory digest record; only the catalog remembers the artifact.
+    const restarted = {
+      ...env,
+      context: { ...minimalServerContext(), workerDeploymentCatalog: env.catalog },
+    };
+    const result = await register(restarted, manifest('sha256:artifact-b', 'build-1'), 'worker-2');
+    expect(result.accepted).toBe(false);
+    expect(result.detail).toBe('deployment_conflict');
+    expect(await artifactOf(env.catalog)).toBe('sha256:artifact-a');
+  });
+
+  it.each(['draining', 'removed'] as const)(
+    'admits a worker of a %s build but takes it out of untargeted routing',
+    async (state) => {
+      const env = setup();
+      await register(env, manifest(), 'worker-1');
+      if (state === 'draining') await env.catalog.markDraining('billing', 'build-1');
+      else await env.catalog.removeVersion('billing', 'build-1');
+      // A restarted server has no drain marker in memory; only the catalog remembers.
+      const restarted = {
+        ...env,
+        context: { ...minimalServerContext(), workerDeploymentCatalog: env.catalog },
+      };
+
+      const result = await register(restarted, manifest(), 'worker-2');
+
+      expect(result.accepted).toBe(true);
+      expect(restarted.context.registry.size).toBe(1);
+      expect(
+        restarted.context.registry.findWorker('checkout.charge', { queue: 'default' }),
+      ).toBeUndefined();
+      expect(restarted.context.registry.getDeploymentSummaries(1)[0]?.health).not.toBe('active');
+      expect(await stateOf(env.catalog)).toBe(state);
+    },
+  );
+
+  it('a ready build registers as routable', async () => {
+    const env = setup();
+    await register(env, manifest(), 'worker-1');
+    expect(env.context.registry.findWorker('checkout.charge', { queue: 'default' })).toBeDefined();
+  });
+
   it('two workers of one new build registering at once produce one version', async () => {
     const env = setup();
     const results = await Promise.all([
@@ -291,5 +370,40 @@ describe('long-poll catalog failure carries Retry-After', () => {
     expect(response.status).toBe(503);
     expect(response.headers.get('Retry-After')).toBe('1');
     expect(warning).toHaveBeenCalled();
+  });
+});
+
+describe('WebSocket: a refused registration records nothing', () => {
+  it('does not record the build of a socket that tries to take over a live worker id', async () => {
+    const env = setup();
+    const live = await registerSocket(env.context, env.options, 'W1', manifest());
+    expect(answer(live).type).toBe('registerAck');
+    env.context.workerSockets.set('W1', live as never);
+
+    const hijack = await registerSocket(
+      env.context,
+      env.options,
+      'W1',
+      manifest('sha256:X', 'build-2'),
+    );
+
+    expect(answer(hijack).code).toBe('invalid_registration');
+    // The rejected socket is terminated by a short timer; let it fire so none outlives the test.
+    await waitForCondition(() => hijack.terminated, {
+      timeoutMs: 1_000,
+      label: 'socket terminated',
+    });
+    expect(await env.catalog.getVersion('billing', 'build-2')).toBeNull();
+
+    // The legitimate build-2, with its own digest, then registers.
+    const legitimate = await registerSocket(
+      env.context,
+      env.options,
+      'W2',
+      manifest('sha256:Y', 'build-2'),
+    );
+    expect(answer(legitimate).type).toBe('registerAck');
+    const recorded = await env.catalog.getVersion('billing', 'build-2');
+    expect(recorded?.artifactDigest).toBe('sha256:Y');
   });
 });

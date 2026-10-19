@@ -8,6 +8,8 @@
  * @module server/runtime/websocket-registration-admission
  */
 
+import type { ServerWebSocket } from 'bun';
+
 import type { WebSocketData } from '../json-rpc-websocket-runtime.ts';
 import { isAuthenticated } from '../principal.ts';
 import type {
@@ -15,6 +17,7 @@ import type {
   WorkerAdmissionPolicy,
   WorkerAdmissionRequest,
 } from '../worker-admission-policy.ts';
+import type { ServerContext } from './context.ts';
 
 /**
  * Whether the connection's principal is allowed to register a worker. An
@@ -44,4 +47,21 @@ export function evaluateWorkerAdmissionPolicy(
       reason: `workerAdmissionPolicy threw: ${error instanceof Error ? error.message : String(error)}`,
     };
   }
+}
+
+export const HIJACK_MESSAGE = 'workerId is already registered to an active connection';
+
+/**
+ * Read-only form of the hijack guard: another live socket owns this workerId and has not
+ * disconnected (no pending grace-period requeue). It changes nothing, so it can run before the
+ * durable catalog write that must not happen for a registration this server will refuse.
+ */
+export function isActiveWorkerIdHijack(
+  context: ServerContext,
+  ws: ServerWebSocket<WebSocketData>,
+  workerId: string,
+): boolean {
+  if (context.pendingWorkerRequeues.has(workerId)) return false;
+  const existingSocket = context.workerSockets.get(workerId);
+  return existingSocket !== undefined && existingSocket !== ws;
 }

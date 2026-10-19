@@ -283,6 +283,58 @@ describe('weft.worker.deployments.remove', () => {
     expect(await stateOf(catalog, 'build-b')).toBe('ready');
   });
 
+  it.each(['current', 'ramping'] as const)(
+    'refuses the %s build of the routing pointer with a version-routed Conflict',
+    async (role) => {
+      const catalog = await catalogWithBuilds();
+      await catalog.setRouting(
+        role === 'current'
+          ? { ...ROUTING, updatedAt: 1 }
+          : { ...ROUTING, rampingBuildId: 'build-b', rampBasisPoints: 2_500, updatedAt: 1 },
+      );
+      const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
+      const routed = role === 'current' ? 'build-a' : 'build-b';
+
+      const fault = await faultOf(invoke(remove, { deploymentName: 'billing', buildId: routed }));
+
+      expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-routed' } });
+      expect(await stateOf(catalog, routed)).toBe('ready');
+      const routing = await catalog.getRouting('billing');
+      expect(routing?.generation).toBe(1);
+    },
+  );
+
+  it('removes a build once routing has moved off it', async () => {
+    const catalog = await catalogWithBuilds();
+    await catalog.setRouting({ ...ROUTING, updatedAt: 1 });
+    await catalog.setRouting({ ...ROUTING, currentBuildId: 'build-b', updatedAt: 2 });
+
+    const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
+    expect(await invoke(remove, { deploymentName: 'billing', buildId: 'build-a' })).toMatchObject({
+      removed: true,
+    });
+  });
+
+  it('reports a routing change taken between its read and its write as version-routed, not a removal', async () => {
+    const storage = new InterleavingStorage();
+    const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
+    const rival = new WorkerDeploymentCatalog(storage);
+    await catalog.setRouting({ ...ROUTING, updatedAt: 1 });
+
+    storage.arm(async () => {
+      // The rival points routing at build-b between the operation's checks and its write.
+      await rival.setRouting({ ...ROUTING, currentBuildId: 'build-b', updatedAt: 2 });
+    });
+    const fault = await faultOf(
+      invoke(createRemoveWorkerDeploymentVersionOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'build-b',
+      }),
+    );
+    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-routed' } });
+    expect(await stateOf(catalog, 'build-b')).toBe('ready');
+  });
+
   it('faults NotFound for a build that never existed and for one already removed', async () => {
     const catalog = await catalogWithBuilds();
     const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });

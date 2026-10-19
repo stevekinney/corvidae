@@ -583,6 +583,17 @@ export class WorkerRegistry {
   }
 
   /**
+   * Drain one build only if no marker is set, so an operator's own reason and start time survive
+   * a worker of the build registering again. Used when the deployment catalog already records the
+   * build as draining or removed.
+   */
+  ensureBuildDraining(deploymentName: string, buildId: string, options?: WorkerDrainOptions): void {
+    const key = buildDrainKey(deploymentName, buildId);
+    if (!this.#buildDrainStates.has(key))
+      this.#buildDrainStates.set(key, createDrainRecord(options));
+  }
+
+  /**
    * Clear one build's drain marker. A deployment-level or worker-level marker
    * that still applies keeps the affected workers drained.
    */

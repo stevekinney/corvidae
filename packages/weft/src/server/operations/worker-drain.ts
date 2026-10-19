@@ -157,7 +157,9 @@ export function createDrainDeploymentOperation(options?: WorkerDrainOperationOpt
       'dispatching new tasks to them while in-flight tasks finish, with an optional `reason`. ' +
       'Pass `buildId` to drain only that build of the deployment and leave its other builds ' +
       'routable; omit it to drain the whole deployment. A build the deployment catalog has not ' +
-      'accepted, or has removed, faults with NotFound.',
+      'accepted, or has removed, faults with NotFound. A build drain is also recorded as the ' +
+      "build's `draining` state in the deployment catalog, so it survives a restart and a " +
+      'worker that registers on the build afterwards joins drained.',
     destructive: true,
     tags: ['System'],
     inputSchema: deploymentDrainInput,
@@ -181,6 +183,9 @@ export function createDrainDeploymentOperation(options?: WorkerDrainOperationOpt
       if (version === null || version.state === 'removed') {
         throw buildNotFoundFault(input.deploymentName, input.buildId);
       }
+      // The catalog is the durable record of the drain; the registry marker is what routing reads
+      // in this process. Writing the catalog first means a failed write drains nothing.
+      await catalog.setVersionState(input.deploymentName, input.buildId, 'draining');
       return registry.markBuildDraining(input.deploymentName, input.buildId, updated);
     },
   });
@@ -188,6 +193,7 @@ export function createDrainDeploymentOperation(options?: WorkerDrainOperationOpt
 
 export function createClearDeploymentDrainOperation(options?: WorkerDrainOperationOptions) {
   const registry = options?.workerRegistry;
+  const catalog = options?.catalog;
   return defineOperation({
     name: 'weft.worker.deployments.resume',
     mcpExposable: false,
@@ -196,20 +202,30 @@ export function createClearDeploymentDrainOperation(options?: WorkerDrainOperati
       'Clear the drain marker of a deployment, or of one build when `buildId` is given, so its ' +
       'workers are routable again. Clearing a marker that is not set succeeds and changes ' +
       'nothing. A wider marker still applies: resuming a build does not lift a deployment-wide ' +
-      'drain or a drain on one worker.',
+      'drain or a drain on one worker. A build the catalog has removed faults with NotFound and ' +
+      'stays drained.',
     destructive: false,
     tags: ['System'],
     inputSchema: deploymentDrainClearInput,
     outputSchema: workerDrainOutput,
     access: adminAccess,
+    producibleFaults: ['NotFound'],
     discoverable: true,
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
     invoke: async ({ input }): Promise<WorkerDrainOutput> => {
       if (registry === undefined) throw discoveryOnlyError('weft.worker.deployments.resume');
-      return input.buildId === undefined
-        ? registry.clearDeploymentDrain(input.deploymentName)
-        : registry.clearBuildDrain(input.deploymentName, input.buildId);
+      if (input.buildId === undefined) return registry.clearDeploymentDrain(input.deploymentName);
+      // A removed build stays out of service: lifting its marker would route to workers an
+      // operator took out. An unknown build has no catalog record, so there is nothing to refuse.
+      if (catalog !== undefined) {
+        const version = await catalog.getVersion(input.deploymentName, input.buildId);
+        if (version?.state === 'removed') {
+          throw buildNotFoundFault(input.deploymentName, input.buildId);
+        }
+        await catalog.setVersionState(input.deploymentName, input.buildId, 'ready');
+      }
+      return registry.clearBuildDrain(input.deploymentName, input.buildId);
     },
   });
 }

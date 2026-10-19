@@ -246,6 +246,11 @@ export * from './worker/index.ts';
 // barrel put `Bun.spawn` into the root's browser bundle, which the published package's
 // portability gate refused at the 0.26.0 release (COR-1192).
 export {
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+} from './server/operations/worker-conflict-reasons.ts';
+export type { WorkerConflictReason } from './server/operations/worker-conflict-reasons.ts';
+export {
   ChaosNonRetryableError,
   ChaosTimeoutError,
   ChaosTransientError,

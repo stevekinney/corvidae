@@ -8,6 +8,7 @@ import {
 } from '../operation-fault.ts';
 import type { RestInputContext } from '../rest-binding.ts';
 import { readRestTextBody } from '../rest-body.ts';
+import { WORKER_CONFLICT_REASONS } from './worker-conflict-reasons.ts';
 
 /** Type guard distinguishing an `OperationFault` from a value type. */
 export function isOperationFault(value: unknown): value is OperationFault {
@@ -46,7 +47,11 @@ export function invalidParamsFault(message: string, weftCode?: WeftErrorCode): O
  * string, not the message, so a client branches on it.
  */
 export function workerStartOverrideRejectedFault(message: string): OperationFault {
-  return { code: 'Conflict', message, data: { reason: 'override-token-rejected' } };
+  return {
+    code: 'Conflict',
+    message,
+    data: { reason: WORKER_CONFLICT_REASONS.overrideTokenRejected },
+  };
 }
 
 /**
