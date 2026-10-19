@@ -23,11 +23,20 @@ import { sha256Hex } from '../worker/manifest/content-digest.ts';
  * step's result. `previous` is the prior activity's output, the signal payload
  * after an `await-signal` step, `null` after a `sleep` step, and `null` for the
  * first step.
+ *
+ * `workflowId` and `step` identify the step being run: the instance's workflow
+ * id, and the zero-based index of the step among all of the document's steps
+ * (sleeps and signal waits count). The pair is the same every time that step
+ * runs, including when a restart re-executes an activity that was in flight, so
+ * a handler with an external effect can derive a deterministic key from it and
+ * recognise its own earlier attempt instead of repeating the effect.
  */
 export type DocumentActivityArgument = Readonly<{
   input: JSONValue;
   trigger: unknown;
   previous: unknown;
+  workflowId: string;
+  step: number;
 }>;
 
 /**

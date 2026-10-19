@@ -103,12 +103,12 @@ import {
   type ConditionalTextValueStore,
   decode,
   KEYS,
+  type Engine,
   type ListFilter,
   type ListOptions,
   Mailbox,
   MemoryStorage,
   type RecoveredWorkflowInfo,
-  type ScheduleSpec,
   textValueStore,
   type WorkflowState,
 } from '@lostgradient/weft';
@@ -274,6 +274,21 @@ import {
   principalDefect,
   RECOVERY_ACTOR,
 } from './owner-of-record';
+import { toScheduleSpec } from './schedule-spec';
+import {
+  agentStepResultFromRun,
+  agentStepResultFromState,
+  workflowStepRunId,
+} from './workflow-agent-step';
+import { parseWorkflowScheduleId } from './workflow-schedule';
+import { createWorkflowRuntime, type WorkflowRuntime } from './workflow-runtime';
+import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
+import {
+  type AgentStepRequest,
+  type AgentStepResult,
+  createWorkflowDocumentHost,
+  WorkflowAgentStepError,
+} from './workflow-host';
 import {
   attributeScheduledFire,
   recordScheduleFired,
@@ -853,32 +868,6 @@ function toBadRequest(message: string): never {
 function rejectReservedIdentifier(kind: string, id: string): void {
   const reason = reservedIdentifierReason(kind, id);
   if (reason !== undefined) toBadRequest(reason);
-}
-
-/**
- * The exact duration grammar weft's `parseDuration` accepts: a number (optionally
- * fractional, optionally space-separated from the unit) followed by a unit, where
- * the unit is `ms`/`s`/`m`/`h`/`d` or its full word (`seconds`, `minutes`, …).
- * Kept in lockstep with weft so we never route a string weft would accept as an
- * interval into the cron branch (and vice-versa). Note: weft does NOT support
- * weeks or ISO-8601 (`PT6H`) durations.
- */
-const WEFT_DURATION =
-  /^\d+(?:\.\d+)?\s*(?:ms|milliseconds?|s|seconds?|m|minutes?|h|hours?|d|days?)$/i;
-
-/**
- * Normalize a {@link DurableScheduleDefinition.spec} string into a weft
- * {@link ScheduleSpec}. Weft parses a BARE string as a cron expression
- * (`normalizeCronSpec`), so a duration like `'6h'` must be wrapped as `{ every }`
- * or it would be misparsed as cron. A string matching weft's duration grammar →
- * interval; everything else (cron expression, `@macro`) → cron.
- */
-function toScheduleSpec(spec: string): ScheduleSpec {
-  const trimmed = spec.trim();
-  if (WEFT_DURATION.test(trimmed)) {
-    return { every: trimmed };
-  }
-  return { cron: trimmed };
 }
 
 /** The text of the last user row in `rows`, or `''` when there is none. */
@@ -1651,6 +1640,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       );
     }
   }
+  // COR-1527: a workflow directory is a path, like the agent directory.
+  if (options.workflowDirectory !== undefined) {
+    if (typeof options.workflowDirectory !== 'string' || options.workflowDirectory.trim() === '') {
+      toBadRequest('"options.workflowDirectory" must be a non-empty path');
+    }
+  }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -1786,6 +1781,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const assetServiceInstance: AssetService | undefined = options.assets
     ? await createAssetService({ ...options.assets, runtime: runtimeServices })
     : undefined;
+  // COR-1527: the services resolver asks whether a workflow type came from a workflow file, and
+  // can be reached before the workflow runtime exists, so it reads this holder.
+  const workflowFileTypes: { current: ((type: string) => boolean) | undefined } = {
+    current: undefined,
+  };
   const assetServiceHolder: { current: AssetService | undefined } = {
     current: assetServiceInstance,
   };
@@ -1798,6 +1798,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
+      isWorkflowFileType: (type) => workflowFileTypes.current?.(type) ?? false,
       onScheduledFire: async (fire) => {
         const handler = await scheduledFireHandler.promise;
         await handler(fire);
@@ -1816,6 +1817,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // and report the composition error even if stopping fails.
     shutdownThenRethrow(error, async () => assetServiceInstance?.shutdown()),
   );
+  // COR-1527: a workflow file's schedule and instances need the durable engine, so a Bureau
+  // without one is refused rather than left with a directory that does nothing.
+  if (options.workflowDirectory !== undefined && !runtime.durable) {
+    await shutdownThenRethrow(
+      new BureauError(
+        '"options.workflowDirectory" needs a durable engine: configure storage (or durableExecution) so workflow instances and schedules can persist',
+        'BAD_REQUEST',
+      ),
+      async () => {
+        await assetServiceInstance?.shutdown();
+        runtime.disposeStorage?.();
+      },
+    );
+  }
   // AB-223: scheduled fires are headless (no per-run emitter — see
   // `runtime-composition.ts`'s `buildScheduledRunServices`), so a fire's
   // terminal `schedule.completed`/`schedule.failed` has nowhere else to
@@ -1973,6 +1988,36 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     files: fileAgents?.files,
     snapshots: fileAgents?.snapshots,
   });
+  // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
+  // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
+  // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
+  const workflowRuntime: WorkflowRuntime | undefined =
+    options.workflowDirectory === undefined || runtime.durable === undefined
+      ? undefined
+      : createWorkflowRuntime({
+          directory: options.workflowDirectory,
+          // The composition's engine type hides `register`; it is the one Weft `Engine`, and
+          // registering documents (`registerSource`) is exactly what it is lent out for here.
+          engine: runtime.durable.engine as Engine,
+          host: createWorkflowDocumentHost({
+            runAgentStep: (request) => runWorkflowAgentStep(request),
+          }),
+          snapshotStore: createWorkflowSnapshotStore({
+            store: runtime.kv,
+            nowISO: runtimeServices.clock.nowISO,
+          }),
+          runtime: runtimeServices,
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'workflow-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+          createError: (message, code) => new BureauError(message, code),
+          track: (promise, label) => runtimeServices.deferred.track(promise, label),
+        });
+  workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -6843,7 +6888,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if ((await tasks.record(summary.id)) !== undefined) continue;
         if (await isChildRun(summary.id)) continue;
         const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
-        if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) continue;
+        if (
+          loaded.status !== 'found' ||
+          loaded.record.goalAttempt !== undefined ||
+          loaded.record.workflowStep !== undefined
+        ) {
+          continue;
+        }
         await tasks.recordAdmission({
           taskId: summary.id,
           contextId: loaded.record.contextId ?? summary.id,
@@ -7537,6 +7588,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // engine keeps the fire's `ScheduledAgentRunInput`, `principal` included.
     if (!runtime.durable) return undefined;
     const fire = await runtime.durable.engine.get(runId);
+    // COR-1527: an instance of a workflow file belongs to the deployment's owner of record, as the
+    // file does.
+    if (
+      fire !== null &&
+      fire !== undefined &&
+      workflowRuntime !== undefined &&
+      (await workflowRuntime.isWorkflowType(fire.type))
+    ) {
+      return workflowRuntime.workflows.owner;
+    }
     return fire !== null && isScheduledAgentRunInput(fire.input)
       ? ownerOrLocal(fire.input.principal)
       : undefined;
@@ -7545,6 +7606,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /** COR-718 — the owner a schedule recorded in its `ScheduledAgentRunInput.principal`. */
   async function scheduleOwner(scheduleId: string): Promise<string | undefined> {
     if (!runtime.durable) return undefined;
+    // COR-1527: a workflow file's schedule belongs to the deployment's owner of record.
+    if (workflowRuntime !== undefined && (await workflowRuntime.scheduleExists(scheduleId))) {
+      return workflowRuntime.workflows.owner;
+    }
     const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
     if (!bytes) return undefined;
     const state: unknown = decode(bytes);
@@ -8963,6 +9028,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * a `bureau.run()` run, since those leave the run store on settling and are never deleted.
    * A run that has not settled keeps its snapshot, because it may still be resumed.
    */
+  async function retainWorkflowSnapshots(): Promise<void> {
+    if (workflowRuntime === undefined) return;
+    const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    if (retention === 'forever') return;
+    await workflowRuntime.pruneSnapshots(runtimeServices.clock.now() - retention.olderThan);
+  }
+
   async function retainAgentSnapshots(): Promise<void> {
     if (fileAgents === undefined) return;
     const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
@@ -9695,6 +9767,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       try {
         await reconcileAgentSnapshots();
         await retainAgentSnapshots();
+        await retainWorkflowSnapshots();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -9932,6 +10005,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         try {
           await reconcileAgentSnapshots();
           await retainAgentSnapshots();
+          await retainWorkflowSnapshots();
         } catch (error: unknown) {
           diagnose({
             level: 'error',
@@ -12863,8 +12937,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return runtime.durable.engine.listSchedules(filter);
   }
 
+  /**
+   * COR-1527 — a workflow file owns its schedule, so a write to it through the schedule methods is
+   * answered as if the schedule did not exist; the workflow's own operations are the only way to
+   * change it.
+   */
+  function refuseWorkflowSchedule(scheduleId: string): void {
+    if (workflowRuntime !== undefined && parseWorkflowScheduleId(scheduleId) !== undefined) {
+      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
+    }
+  }
+
   async function pauseSchedule(scheduleId: string): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
     await runtime.durable.engine.pauseSchedule(scheduleId);
     emitter.dispatch(new SchedulePausedEvent(scheduleId));
     return true;
@@ -12872,6 +12958,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function resumeSchedule(scheduleId: string): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
     await runtime.durable.engine.resumeSchedule(scheduleId);
     emitter.dispatch(new ScheduleResumedEvent(scheduleId));
     return true;
@@ -12879,6 +12966,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function cancelSchedule(scheduleId: string): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
     await runtime.durable.engine.cancelSchedule(scheduleId);
     emitter.dispatch(new ScheduleCancelledEvent(scheduleId));
     return true;
@@ -12947,6 +13035,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // newly started by an observer notified during that handle's settlement
     // is a different handle, and this `shutdown()` call does NOT wait for it.
     const modelCatalogRefreshClosedPromise = modelCatalog.inFlightRefresh()?.closed();
+    // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
+    // that is about to be disposed; the close itself is awaited at the end.
+    const workflowClosed = workflowRuntime?.close();
 
     // Which owners this bureau actually composes — a report row is emitted
     // ONLY for a composed owner (2026-09-02 coordinator ruling).
@@ -13448,6 +13539,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await modelCatalogRefreshClosedPromise;
       // COR-1524: stop watching the agent directory and wait for a scan in flight.
       await fileAgents?.files.close();
+      // COR-1527: stop watching the workflow directory; its listeners were detached when shutdown began.
+      await workflowClosed;
       return buildReport();
     })();
 
@@ -14094,60 +14187,114 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     diagnose,
   });
 
-  const { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun } =
-    createCatalogDispatcher({
-      agentCatalog,
-      runtime,
-      runtimeServices,
-      getShutdownPromise: () => shutdownPromise,
-      catalogRuns,
-      runAttribution,
-      detachBestEffortPromise,
-      createBureauError: (message, code) => new BureauError(message, code),
-      validateAgentRunInput,
-      validateBureauRunOptions,
-      // COR-1367 — handed down to each catalog agent as its inherited policy.
-      guardrails: options.guardrails,
-      registerCatalogRun,
-      // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
-      // handle is returned (a write that fails is diagnosed, not thrown, because
-      // `bureau.run` returns synchronously), and its end is recorded from its result.
-      onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
-        const taskId = handle.id;
-        catalogSettlements.follow(
-          publishFreshCatalogRun({
-            handle,
-            agentName,
-            admit: () =>
-              tasks.recordAdmission({
-                taskId,
-                contextId,
-                incarnation: '',
-                agentName,
-                owner,
-                message: originatingMessageText(input),
-              }),
-            hook: catalogRunSettlements,
-            durableEnd: catalogDurableEnd,
-            followCleanup: (closed) =>
-              void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
-            diagnose,
-          }),
-        );
-      },
-      fileAgents,
-      // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
-      humanInput: options.humanInput === true && runtime.durable !== undefined,
-      // COR-772 — a durable `bureau.run` parent aborted through its own handle
-      // is a cancelled parent like any other. Once shutdown has begun, dispose
-      // — not the policy — ends every live run, and boot recovery applies the
-      // policy to whatever it left running from the cancelled parent's
-      // durable state.
-      onDurableRunAborted: (runId, reason) => {
-        if (shutdownPromise) return;
-        void childTopology.parentCancelled(runId, reason);
-      },
-    });
+  const {
+    runAgent,
+    planChildRun,
+    startChildRun,
+    startGoalAttemptRun,
+    startWorkflowStepRun,
+    findCatalogRun,
+  } = createCatalogDispatcher({
+    agentCatalog,
+    runtime,
+    runtimeServices,
+    getShutdownPromise: () => shutdownPromise,
+    catalogRuns,
+    runAttribution,
+    detachBestEffortPromise,
+    createBureauError: (message, code) => new BureauError(message, code),
+    validateAgentRunInput,
+    validateBureauRunOptions,
+    // COR-1367 — handed down to each catalog agent as its inherited policy.
+    guardrails: options.guardrails,
+    registerCatalogRun,
+    // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
+    // handle is returned (a write that fails is diagnosed, not thrown, because
+    // `bureau.run` returns synchronously), and its end is recorded from its result.
+    onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
+      const taskId = handle.id;
+      catalogSettlements.follow(
+        publishFreshCatalogRun({
+          handle,
+          agentName,
+          admit: () =>
+            tasks.recordAdmission({
+              taskId,
+              contextId,
+              incarnation: '',
+              agentName,
+              owner,
+              message: originatingMessageText(input),
+            }),
+          hook: catalogRunSettlements,
+          durableEnd: catalogDurableEnd,
+          followCleanup: (closed) =>
+            void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
+          diagnose,
+        }),
+      );
+    },
+    fileAgents,
+    // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
+    humanInput: options.humanInput === true && runtime.durable !== undefined,
+    // COR-772 — a durable `bureau.run` parent aborted through its own handle
+    // is a cancelled parent like any other. Once shutdown has begun, dispose
+    // — not the policy — ends every live run, and boot recovery applies the
+    // policy to whatever it left running from the cancelled parent's
+    // durable state.
+    onDurableRunAborted: (runId, reason) => {
+      if (shutdownPromise) return;
+      void childTopology.parentCancelled(runId, reason);
+    },
+  });
+
+  /**
+   * COR-1527 — runs one `agent` step of a workflow file: a standalone durable run of the named
+   * agent as the deployment's owner, under an id that is a function of the instance and the step.
+   * A step a restart re-executes finds that run already in the engine (the boot recovery is
+   * resuming it) and waits for it instead of starting a second; only a step with no run yet
+   * starts one.
+   */
+  async function runWorkflowAgentStep(request: AgentStepRequest): Promise<AgentStepResult> {
+    const engine = runtime.durable?.engine;
+    if (engine === undefined) {
+      throw new WorkflowAgentStepError(
+        'agent-run-failed',
+        request.agent,
+        `Agent "${request.agent}" cannot run: this Bureau has no durable engine.`,
+      );
+    }
+    const runId = workflowStepRunId(request.workflowId, request.step);
+    if ((await engine.get(runId)) !== null) {
+      return agentStepResultFromState(request.agent, await waitForDurableRun(runId));
+    }
+    if (agentCatalog.find(request.agent) === undefined) {
+      throw new WorkflowAgentStepError(
+        'agent-not-found',
+        request.agent,
+        `Agent "${request.agent}" does not exist.`,
+      );
+    }
+    let handle: ReturnType<typeof startWorkflowStepRun>;
+    try {
+      handle = startWorkflowStepRun({
+        agentName: request.agent,
+        input: request.message,
+        runId,
+        workflowStep: { workflowId: request.workflowId, step: request.step },
+        principal: ANONYMOUS_LOCAL_OWNER,
+      });
+    } catch (error) {
+      throw new WorkflowAgentStepError(
+        error instanceof BureauError && error.code === 'NOT_FOUND'
+          ? 'agent-not-found'
+          : 'agent-run-failed',
+        request.agent,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    return agentStepResultFromRun(request.agent, await handle.result());
+  }
 
   // COR-772 — the durable parent-child topology, persisted in the same KV
   // store as the audit trail (or in memory for an ephemeral bureau, where
@@ -14281,6 +14428,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
     },
     agents: agentCatalog,
+    workflows: workflowRuntime?.workflows,
     modelCatalog,
     planSelection: (request) => modelPolicyPlanner.planSelection(request),
     // `runAgent`'s runtime signature is deliberately widened (`string`,
@@ -14736,6 +14884,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         message: `[bureau] Could not sweep orphaned steering logs: ${serializeUnknownError(error)}`,
       });
     });
+  }
+  // COR-1527: the workflow files' documents are registered with the engine, and their schedules
+  // put in place, before anything recovers: a run in flight on a workflow file resumes on the
+  // revision it began on only if that revision is loaded by then. The scheduler waits for this (see
+  // `startScheduler` in `runtime-composition.ts`) and starts as soon as it is done.
+  if (workflowRuntime !== undefined) {
+    try {
+      await workflowRuntime.start();
+    } catch (error) {
+      await shutdownThenRethrow(error, async () => {
+        await bureau.shutdown();
+      });
+    }
+    if (options.durableBackgroundTasks !== 'manual') runtime.durable?.engine.scheduler.start();
   }
   if (hasDeferredGatewayAuthority) {
     durableRecoveryDeferred = true;

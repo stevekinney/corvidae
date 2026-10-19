@@ -97,6 +97,13 @@ export const APPROVAL_SECRET_KEY = 'approval-secret';
 /** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
 export const AGENT_DIRECTORY_NAME = 'agents';
 
+/**
+ * The directory of workflow files under the Interborough home: `nightly-digest.json` is the
+ * workflow `nightly-digest` (COR-1527). Its steps may name any agent, the files in `agents/`
+ * included, and it runs as the deployment's one owner.
+ */
+export const WORKFLOW_DIRECTORY_NAME = 'workflows';
+
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
 
@@ -285,6 +292,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
       agentDirectory: bungalow.directory(AGENT_DIRECTORY_NAME),
+      // Workflow files: JSON files in Bungalow's `workflows/` directory are agent-authored
+      // workflows (COR-1527), registered with the Bureau's engine and run on their schedules.
+      workflowDirectory: bungalow.directory(WORKFLOW_DIRECTORY_NAME),
       agentTools: createAgentFileTools(),
       resolveAgentGenerate: (descriptor) => {
         const provider = PROVIDER_NAMES.find((name) => name === descriptor.provider);

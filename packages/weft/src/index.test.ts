@@ -10,6 +10,7 @@ import {
   IdempotencyKeyPurgedError,
   isWeftErrorLike,
   MemoryStorage,
+  normalizeScheduleSpec,
   StartOrSignalConflictError,
   tryDecodeStorageKeyComponent,
   WorkflowAlreadyExistsError,
@@ -25,6 +26,16 @@ describe('weft', () => {
     expect(tryDecodeStorageKeyComponent('%GG')).toBeNull();
     expect(formatSortableStorageTimestamp(123)).toBe('0000000000000123');
   });
+  it('exports normalizeScheduleSpec, which accepts what schedule() accepts and rejects what it rejects', () => {
+    expect(normalizeScheduleSpec('*/5 * * * *')).toEqual({
+      kind: 'cron',
+      cronExpression: '*/5 * * * *',
+    });
+    expect(normalizeScheduleSpec({ every: '1s' })).toEqual({ kind: 'interval', intervalMs: 1000 });
+    expect(() => normalizeScheduleSpec('not a cron')).toThrow();
+    expect(() => normalizeScheduleSpec({ every: 'soon' })).toThrow();
+  });
+
   it('exports Engine class', () => {
     expect(Engine).toBeDefined();
   });

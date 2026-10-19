@@ -1,3 +1,4 @@
+import type { BureauWorkflows } from './workflow-runtime';
 import type {
   EventIteratorOptions,
   EventObservableOptions,
@@ -389,6 +390,16 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * model cannot be set up, which leaves that file `invalid` with `unknown-model`.
    */
   resolveAgentGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
+  /**
+   * COR-1527 — a directory of JSON workflow files. Every `*.json` file in it is an agent-authored
+   * workflow (COR-1525's document plus `agent` and `paused`) whose identifier is the filename
+   * without the extension, registered with the durable engine as its own workflow type and run on
+   * the schedule its `trigger` names. Bureau reads, watches, and writes the directory and does not
+   * depend on where it lives; a directory that does not exist is an empty one. Requires a durable
+   * engine, and `createBureau` refuses the combination without one with `BureauError`
+   * (`BAD_REQUEST`). See `documentation/workflow-files.md`.
+   */
+  workflowDirectory?: string;
   /**
    * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
    * parent-child topology. Omit it and children still dispatch, persist, and
@@ -1336,6 +1347,11 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * string to a known agent name where TypeScript permits it.
    */
   readonly agents: BureauAgentCatalog<D>;
+  /**
+   * COR-1527 — the workflow files in {@link BureauOptions.workflowDirectory}, or `undefined` when
+   * the Bureau has none. Every workflow belongs to the deployment's owner of record.
+   */
+  readonly workflows: BureauWorkflows | undefined;
 
   /**
    * Dispatch to a named catalog agent (AB-15, AB-22) — synchronous, like

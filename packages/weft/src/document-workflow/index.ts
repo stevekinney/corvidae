@@ -6,6 +6,8 @@
  * @module document-workflow
  */
 
+export { normalizeScheduleSpec } from '../core/engine/validation/schedule.ts';
+export type { NormalizedScheduleSpec } from '../core/engine/validation/schedule.ts';
 export {
   WorkflowDocumentValidationError,
   canonicalWorkflowDocumentJson,
