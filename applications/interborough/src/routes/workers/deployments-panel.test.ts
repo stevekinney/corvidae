@@ -442,3 +442,61 @@ describe('DeploymentsPanel — set routing, failures, and cancellation', () => {
     }
   });
 });
+
+describe('DeploymentsPanel — overlapping actions', () => {
+  /** Resumes build-a (its call fails once released) and, optionally, build-b before it settles. */
+  async function resumeFailingBuildA(alsoResumeB: boolean) {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted);
+    scripted.routeJsonRpcMethod('weft.worker.deployments.resume', {
+      target: 'deployment',
+      deploymentName: 'api-prod',
+      buildId: 'build-b',
+      affectedWorkers: 0,
+      inFlight: 0,
+      health: 'active',
+    });
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const inner = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const body = typeof init?.body === 'string' ? parseJsonObject(init.body) : undefined;
+      const params = body?.['params'];
+      const buildId =
+        typeof params === 'object' && params !== null && 'buildId' in params
+          ? params.buildId
+          : undefined;
+      if (body?.['method'] === 'weft.worker.deployments.resume' && buildId === 'build-a') {
+        await gate;
+        return Response.json({
+          jsonrpc: '2.0',
+          id: 1,
+          error: {
+            code: -32000,
+            message: 'resume exploded',
+            data: { httpStatus: 500, weftCode: 'Internal' },
+          },
+        });
+      }
+      return inner(input, init);
+    }) as typeof fetch;
+    try {
+      const view = renderPanel();
+      await waitFor(() => expect(view.getAllByRole('button', { name: 'Resume' })).toHaveLength(3));
+      const [resumeA, resumeB] = view.getAllByRole('button', { name: 'Resume' });
+      await fireEvent.click(resumeA!);
+      if (alsoResumeB) await fireEvent.click(resumeB!);
+      release?.();
+      await waitFor(() =>
+        expect(view.queryByText(/resume exploded/)?.textContent ?? '').not.toBe(''),
+      );
+    } finally {
+      globalThis.fetch = inner;
+    }
+  }
+
+  test('control: a lone failed resume is reported', () => resumeFailingBuildA(false));
+
+  test('a failed resume of one build is still reported when another resume follows it', () =>
+    resumeFailingBuildA(true));
+});

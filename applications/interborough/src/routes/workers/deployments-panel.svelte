@@ -9,6 +9,7 @@
    * serves a workflow.
    */
   import { Alert, ConfirmDialog, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { WORKER_CONFLICT_REASONS } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import Lock from '@lucide/svelte/icons/lock';
 
@@ -55,9 +56,11 @@
   const overviewsQuery = deploymentOverviewsQuery(client);
   const refresh = () => invalidateDeploymentQueries(queryClient);
   const applyRouting = applyRoutingMutation(client, refresh);
-  const removeVersion = removeVersionMutation(client, refresh);
-  const drainVersion = drainVersionMutation(client, refresh);
-  const resumeVersion = resumeVersionMutation(client, refresh);
+  let actionError = $state<unknown>(null);
+  const reportFailure = (failure: unknown) => (actionError = failure);
+  const removeVersion = removeVersionMutation(client, refresh, reportFailure);
+  const drainVersion = drainVersionMutation(client, refresh, reportFailure);
+  const resumeVersion = resumeVersionMutation(client, refresh, reportFailure);
 
   $effect(() => {
     if (isForbidden(overviewsQuery.error) && principalStore.hasScope('system:read')) {
@@ -91,28 +94,21 @@
   // ---- build drain ----------------------------------------------------------------------------
   let drainOpen = $state(false);
   let drainTarget = $state<DrainTarget>({ kind: 'build', deploymentName: '', buildId: '' });
-  let actionError = $state<unknown>(null);
 
   function confirmDrain(reason: string | undefined): void {
     if (drainTarget.kind !== 'build') return;
     actionError = null;
-    drainVersion.mutate(
-      {
-        deploymentName: drainTarget.deploymentName,
-        buildId: drainTarget.buildId,
-        ...(reason === undefined ? {} : { reason }),
-      },
-      { onError: (failure) => (actionError = failure) },
-    );
+    drainVersion.mutate({
+      deploymentName: drainTarget.deploymentName,
+      buildId: drainTarget.buildId,
+      ...(reason === undefined ? {} : { reason }),
+    });
     drainOpen = false;
   }
 
   function resume(deploymentName: string, buildId: string): void {
     actionError = null;
-    resumeVersion.mutate(
-      { deploymentName, buildId },
-      { onError: (failure) => (actionError = failure) },
-    );
+    resumeVersion.mutate({ deploymentName, buildId });
   }
 
   // ---- removal --------------------------------------------------------------------------------
@@ -121,15 +117,18 @@
 
   function confirmRemove(): void {
     actionError = null;
-    removeVersion.mutate(removeTarget, { onError: (failure) => (actionError = failure) });
+    removeVersion.mutate(removeTarget);
     removeOpen = false;
   }
 
   /** What a failed drain, resume, or removal says, branching on the fault's reason, never its text. */
   function actionErrorMessage(failure: unknown): string {
     const reason = conflictReasonOf(failure);
-    if (reason === 'version-referenced') {
+    if (reason === WORKER_CONFLICT_REASONS.versionReferenced) {
       return 'That build is now referenced by an execution, so it was not removed. Reload to see its references.';
+    }
+    if (reason === WORKER_CONFLICT_REASONS.versionRouted) {
+      return 'That build is now a routing target, so it was not removed. Route new traffic to another build first.';
     }
     return faultTreatment(failure).message;
   }

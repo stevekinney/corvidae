@@ -253,15 +253,21 @@ export interface VersionVariables {
   readonly buildId: string;
 }
 
-/** `weft.worker.deployments.remove` (`system:admin`). */
+/**
+ * `weft.worker.deployments.remove` (`system:admin`). `onFailure` is an options-level callback: it
+ * fires for every failed call, where a callback passed to `mutate()` fires only for the latest one,
+ * so overlapping actions each report their own fault.
+ */
 export function removeVersionMutation(
   client: DeploymentOperations,
   onSettled: () => void,
-): CreateMutationResult<unknown, Error, VersionVariables> {
+  onFailure: (error: unknown) => void,
+): CreateMutationResult<unknown, unknown, VersionVariables> {
   return createMutation(() => ({
     mutationFn: (variables: VersionVariables) =>
       client.operations['weft.worker.deployments.remove'](variables),
     onSettled,
+    onError: onFailure,
   }));
 }
 
@@ -269,11 +275,13 @@ export function removeVersionMutation(
 export function drainVersionMutation(
   client: DeploymentOperations,
   onSettled: () => void,
-): CreateMutationResult<unknown, Error, VersionVariables & { readonly reason?: string }> {
+  onFailure: (error: unknown) => void,
+): CreateMutationResult<unknown, unknown, VersionVariables & { readonly reason?: string }> {
   return createMutation(() => ({
     mutationFn: (variables: VersionVariables & { readonly reason?: string }) =>
       client.operations['weft.worker.deployments.drain'](variables),
     onSettled,
+    onError: onFailure,
   }));
 }
 
@@ -281,10 +289,12 @@ export function drainVersionMutation(
 export function resumeVersionMutation(
   client: DeploymentOperations,
   onSettled: () => void,
-): CreateMutationResult<unknown, Error, VersionVariables> {
+  onFailure: (error: unknown) => void,
+): CreateMutationResult<unknown, unknown, VersionVariables> {
   return createMutation(() => ({
     mutationFn: (variables: VersionVariables) =>
       client.operations['weft.worker.deployments.resume'](variables),
     onSettled,
+    onError: onFailure,
   }));
 }
