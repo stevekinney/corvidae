@@ -36,7 +36,8 @@ async function makeStreamsSeverable(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const originalFetch = window.fetch.bind(window);
     const severs = new Set<() => void>();
-    window.fetch = async (input, init) => {
+    // `typeof fetch` carries Bun's `preconnect`, which a browser's does not have.
+    const severable = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const response = await originalFetch(input, init);
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       if (!url.includes('bureau.tasks.events') || response.body === null) return response;
@@ -71,6 +72,7 @@ async function makeStreamsSeverable(page: Page): Promise<void> {
         headers: response.headers,
       });
     };
+    window.fetch = Object.assign(severable, { preconnect: window.fetch.preconnect });
     Object.defineProperty(window, '__severTaskStreams', {
       value: () => {
         for (const sever of severs) sever();
