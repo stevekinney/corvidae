@@ -71,10 +71,9 @@ export async function loadScheduleOverlay(
     listBureauSchedules(options),
     listWorkflowFiles(options),
   ]);
-  const definitions =
-    files.status === 'rejected'
-      ? (await Promise.allSettled([listDefinitions(client)]))[0]
-      : undefined;
+  const engine =
+    files.status === 'rejected' ? await Promise.allSettled([listDefinitions(client)]) : undefined;
+  const definitions = engine?.[0];
   const agents = new Map<string, string>();
   const fileSchedules = new Map<string, string>();
   if (schedules.status === 'fulfilled') {
