@@ -220,4 +220,34 @@ describe('ConformancePanel', () => {
     expect(await findByText(/Refreshing the target list failed/)).not.toBeNull();
     expect(await findByText('bun-worker')).not.toBeNull();
   });
+
+  test('running a second target while the first is in flight settles both, not just the latest', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.conformance.targets', {
+      targets: [
+        { name: 'target-a', timeoutMs: 5_000 },
+        { name: 'target-b', timeoutMs: 5_000 },
+      ],
+    });
+    const pending = scripted.deferJsonRpcMethod('weft.conformance.report');
+    const view = renderPanel();
+    expect(await view.findByText('target-a')).not.toBeNull();
+    const [runA, runB] = view.getAllByRole('button', { name: 'Run conformance' });
+    await fireEvent.click(runA!);
+    await fireEvent.click(runB!);
+    pending.resolve({
+      ...REPORT,
+      ok: true,
+      checks: [{ name: 'register', ok: true, message: 'ok' }],
+    });
+
+    // Both runs answered: neither target may still read as running, and both offer another run.
+    await waitFor(() => {
+      expect(view.getAllByRole('button', { name: 'Run again' })).toHaveLength(2);
+    });
+    for (const target of ['target-a', 'target-b']) {
+      const running = view.queryByRole('status', { name: `Running conformance for ${target}` });
+      expect(running?.outerHTML ?? null).toBeNull();
+    }
+  });
 });

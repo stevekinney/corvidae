@@ -33,7 +33,11 @@ import {
 
 import { queryKeys } from '../../lib/query.ts';
 import type { RegistrySnapshotSource } from '../system/registry-view.ts';
-import { parseConformanceReport, parseConformanceTargets } from './conformance-evidence.ts';
+import {
+  parseConformanceReport,
+  parseConformanceTargets,
+  type ConformanceReport,
+} from './conformance-evidence.ts';
 import { parseRegistrySnapshot } from './registry-snapshot-guard.ts';
 import { parseDeadLetter, parseTaskDeliveries } from './task-delivery-evidence.ts';
 import { isTaskLedgerDetail } from './task-ledger-validation.ts';
@@ -133,11 +137,23 @@ export function conformanceTargetsQuery(client: WorkersOperations) {
   }));
 }
 
-/** Runs one target's conformance checks in a private sandbox (`weft.conformance.report`, `system:admin`). */
-export function runConformanceMutation(client: WorkersOperations) {
+/**
+ * Runs one target's conformance checks in a private sandbox (`weft.conformance.report`,
+ * `system:admin`). The outcome callbacks are options-level, so each receives its own target as the
+ * variables even when runs overlap; a callback passed to `mutate()` fires only for the latest call.
+ */
+export function runConformanceMutation(
+  client: WorkersOperations,
+  outcome: {
+    readonly onReport: (target: string, report: ConformanceReport) => void;
+    readonly onFailure: (target: string, error: unknown) => void;
+  },
+) {
   return createMutation(() => ({
     mutationFn: async (target: string) =>
       parseConformanceReport(await client.operations['weft.conformance.report']({ target })),
+    onSuccess: (report: ConformanceReport, target: string) => outcome.onReport(target, report),
+    onError: (error: Error, target: string) => outcome.onFailure(target, error),
   }));
 }
 

@@ -55,7 +55,6 @@
   const adminGate = $derived(scopeGate(principalStore, ['system:admin']));
 
   const targetsQuery = conformanceTargetsQuery(client);
-  const run = runConformanceMutation(client);
 
   type RunState =
     | { readonly kind: 'running' }
@@ -69,12 +68,14 @@
     runs = { ...runs, [target]: state };
   }
 
+  const run = runConformanceMutation(client, {
+    onReport: (target, report) => setRun(target, { kind: 'report', report }),
+    onFailure: (target, error) => setRun(target, { kind: 'failed', error }),
+  });
+
   function runTarget(target: string): void {
     setRun(target, { kind: 'running' });
-    run.mutate(target, {
-      onSuccess: (report) => setRun(target, { kind: 'report', report }),
-      onError: (error) => setRun(target, { kind: 'failed', error }),
-    });
+    run.mutate(target);
   }
 
   $effect(() => {
