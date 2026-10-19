@@ -121,8 +121,7 @@ export const deploymentGetOperation = defineOperation<
   invoke: async ({ host }) => ({
     id: host.deployment.id,
     state: host.deployment.state(),
-    publishedAgents: host
-      .deployment
+    publishedAgents: host.deployment
       .publishedAgents()
       .filter((agent) => agent.publishState === 'published')
       .map((agent) => agent.name),
