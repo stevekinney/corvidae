@@ -143,9 +143,12 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       expect(call.tools).toEqual(['lookup-order']);
     }
 
-    // Retention: every one of those runs, a recovered `bureau.run` run included, settled when it
-    // ended, so a maintenance pass a year on prunes all of their snapshots. The run is in no
-    // store, so only recovery's own settlement can have marked it.
+    // Retention: every one of those runs, a recovered `bureau.run` run included, had its snapshot
+    // reference settled when it ended, so a maintenance pass a year on prunes all of their
+    // snapshots. Either mechanism may have settled it, and this test does not tell them apart:
+    // recovery's own settlement when the run ended, or else the pass's reconciliation against
+    // the engine, which runs ahead of the prune. The run is in no store, so the store's own
+    // settlement cannot have.
     const recoveredShutdown = await bureau.shutdown();
     expect(recoveredShutdown.unresolved).toBe(0);
     const yearOn = createManualRuntimeServices({

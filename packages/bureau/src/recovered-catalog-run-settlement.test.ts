@@ -14,7 +14,7 @@ import { join } from 'node:path';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { AGENT_RUN_REFERENCE_KEY_PREFIX } from './agent-snapshot-store';
 import { createBureau } from './create-bureau';
@@ -129,6 +129,40 @@ describe('a recovered file-agent run', () => {
       'the recovered run settled its snapshot reference',
       ATTEMPTS,
     );
+  });
+
+  it('keeps its snapshot reference through maintenance for as long as the engine reports it unfinished', async () => {
+    const { directory, storagePath, runId } = await startRun();
+    const second = await open(directory, storagePath);
+    await second.bureau.waitForRecovery?.();
+    const engine = second.bureau.durableEngine();
+    if (engine === undefined) throw new Error('Expected a durable engine.');
+    // The recovered run is in no store and holds no handle in this process, so reconciliation
+    // decides from the engine alone. The engine is made to report each status in turn.
+    const original = engine.get.bind(engine);
+    const reporting = (status: string) =>
+      spyOn(engine, 'get').mockImplementation(async (id: string) => {
+        const record = await original(id);
+        return id === runId && record !== null && record !== undefined
+          ? ({ ...record, status } as typeof record)
+          : record;
+      });
+
+    for (const status of ['pending', 'running', 'suspended']) {
+      const spy = reporting(status);
+      await second.bureau.runDurableMaintenance();
+      spy.mockRestore();
+      const held = await referenceOf(second.bureau, runId);
+      expect([status, held !== undefined, held?.settledAt]).toEqual([status, true, undefined]);
+    }
+
+    // The same pass settles it once the engine reports the run over, so the assertions above
+    // are not vacuous: reconciliation does reach this run.
+    const ended = reporting('completed');
+    await second.bureau.runDurableMaintenance();
+    ended.mockRestore();
+    const settled = await referenceOf(second.bureau, runId);
+    expect(typeof settled?.settledAt).toBe('string');
   });
 
   it('is not settled by a graceful shutdown that interrupts it: its task, its snapshot reference, and its cancel survive for the next boot', async () => {

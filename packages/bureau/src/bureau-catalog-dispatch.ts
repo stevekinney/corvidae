@@ -604,6 +604,13 @@ export function createCatalogDispatcher({
       // to the snapshot (`hold`) at once for a minted id, which no other execution can claim, and
       // only once the claim is won for a fixed one, so a start that loses never touches the
       // reference of the run that won.
+      // Read before the snapshot is stored: the estimator is the one step between the store and
+      // the guarded block below that can throw, and a throw there would leave a stored start
+      // that nothing holds, abandons, or releases.
+      const goalCostEstimation =
+        goalAttempt === undefined
+          ? undefined
+          : goalAttemptCostEstimation(resolvedOptions.costEstimation);
       const fileStart = await fileAgents?.beginRunStart(agent);
       const fileBinding = fileStart?.binding;
       let heldReference = false;
@@ -629,9 +636,7 @@ export function createCatalogDispatcher({
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
-        ...(goalAttempt === undefined
-          ? {}
-          : { costEstimation: goalAttemptCostEstimation(resolvedOptions.costEstimation) }),
+        ...(goalCostEstimation === undefined ? {} : { costEstimation: goalCostEstimation }),
       };
       let claimLost = false;
       try {
