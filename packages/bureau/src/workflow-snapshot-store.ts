@@ -120,10 +120,16 @@ export interface WorkflowSnapshotStore {
   /**
    * Delete every snapshot `isHeld` does not hold whose last activity, as `lastActivityAt` reports
    * it, is before `cutoff` (epoch milliseconds). Resolves how many it deleted.
+   *
+   * A record that names the workflow of an instance still in flight, as `hasInFlight` reports it,
+   * is never deleted, however old or unreadable: it is the last trace Bureau has of that workflow,
+   * and without it the next boot cannot cancel the instance with a reason (COR-1583). That covers
+   * a snapshot record that cannot be read and a cancellation record.
    */
   readonly pruneUnheld: (options: {
     readonly cutoff: number;
     readonly isHeld: (snapshot: WorkflowSnapshot) => boolean | Promise<boolean>;
+    readonly hasInFlight: (id: string) => boolean | Promise<boolean>;
     readonly lastActivityAt: (snapshot: WorkflowSnapshot) => Promise<number | undefined>;
   }) => Promise<number>;
 }
@@ -338,15 +344,18 @@ export function createWorkflowSnapshotStore(
         );
     },
 
-    pruneUnheld({ cutoff, isHeld, lastActivityAt }) {
+    pruneUnheld({ cutoff, isHeld, hasInFlight, lastActivityAt }) {
       return exclusive(async () => {
         let removed = 0;
         for (const key of await store.list(WORKFLOW_SNAPSHOT_KEY_PREFIX)) {
           const named = splitKey(key);
           if (named === undefined) continue;
           const parsed = await read(named.id, named.workflowVersion);
-          // A record that cannot be read is not a snapshot anything can resume from.
+          // A record that cannot be read is not a snapshot anything can resume from, so it goes,
+          // unless an instance of its workflow is still in flight: the identifier its key names is
+          // then the only trace left of that instance.
           if (parsed.kind === 'invalid') {
+            if (await hasInFlight(named.id)) continue;
             await store.delete(key);
             removed += 1;
             continue;
@@ -364,12 +373,16 @@ export function createWorkflowSnapshotStore(
           await store.delete(key);
           removed += 1;
         }
-        // A cancellation record lives as long as the snapshots do: it keeps the run readable.
+        // A cancellation record lives as long as the snapshots do: it keeps the run readable, and
+        // while an instance of its workflow is still in flight (a cancel that kept failing) it is
+        // also the trace the next boot cancels that instance from.
         for (const key of await store.list(WORKFLOW_CANCELLATION_KEY_PREFIX)) {
           const cancellation = parseCancellation(await store.get(key));
-          if (cancellation === undefined || Date.parse(cancellation.cancelledAt) < cutoff) {
-            await store.delete(key);
+          if (cancellation !== undefined) {
+            if (!(Date.parse(cancellation.cancelledAt) < cutoff)) continue;
+            if (await hasInFlight(cancellation.id)) continue;
           }
+          await store.delete(key);
         }
         return removed;
       });

@@ -9882,7 +9882,7 @@ describe('createBureau review queue (AB-20)', () => {
         // createBureau() resolving at all (rather than rejecting) is itself
         // part of what this proves — recovery failure is always diagnostic.
         const report = await bureau.waitForRecovery?.();
-        expect(report).toEqual({ outcome: 'clean', perRunFailures: [] });
+        expect(report).toEqual({ outcome: 'clean', perRunFailures: [], skippedRuns: [] });
       } finally {
         await bureau.dispose();
       }
