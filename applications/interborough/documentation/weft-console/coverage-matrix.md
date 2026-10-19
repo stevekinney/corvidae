@@ -99,8 +99,8 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
 | `weft.workflows.resume` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `resume` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
 | `weft.workflows.revisions.activate` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
-| `weft.workflows.revisions.get` | tracked |  |  |  | COR-1464 |  |
-| `weft.workflows.revisions.install` | tracked |  |  |  | COR-1464 |  |
+| `weft.workflows.revisions.get` | exposed | `src/routes/system/revision-detail.svelte` |  | `src/routes/system/revision-detail.test.ts` | COR-1464 |  |
+| `weft.workflows.revisions.install` | exposed | `src/routes/system/revision-install-form.svelte` |  | `src/routes/system/revision-install-form.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.list` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
 | `weft.workflows.revisions.preload` | exposed | `src/routes/system/dynamic-source-panel.svelte` |  | `src/routes/system/dynamic-source-panel.test.ts` |  |  |
 | `weft.workflows.scheduleprovenance.get` | exposed | `src/routes/workflows/detail/lineage-panel.svelte` |  | `src/routes/workflows/detail/lineage-panel.test.ts` |  |  |

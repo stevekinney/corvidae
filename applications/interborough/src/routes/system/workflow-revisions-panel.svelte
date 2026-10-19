@@ -59,6 +59,8 @@
     type WorkflowActivationOutcome,
   } from './compatibility-verdict.ts';
   import QueryFaultBanner from './query-fault-banner.svelte';
+  import RevisionDetail from './revision-detail.svelte';
+  import RevisionInstallForm from './revision-install-form.svelte';
   import {
     isBackgroundRefreshing,
     isWorkflowCatalogActivePointerLike,
@@ -268,6 +270,9 @@
     confirmOpen = true;
   }
 
+  /** The revision whose `weft.workflows.revisions.get` detail is open (COR-1464). */
+  let selectedRevision = $state<string | null>(null);
+
   function refetchAll(): void {
     void revisionsQuery.refetch();
     void activeQuery.refetch();
@@ -336,6 +341,15 @@
           </dl>
           <Button
             size="sm"
+            variant="ghost"
+            label={selectedRevision === row.revision ? 'Hide detail' : 'View detail'}
+            aria-label={`${selectedRevision === row.revision ? 'Hide' : 'View'} detail for revision ${row.revision}`}
+            aria-expanded={selectedRevision === row.revision}
+            onclick={() =>
+              (selectedRevision = selectedRevision === row.revision ? null : row.revision)}
+          />
+          <Button
+            size="sm"
             variant="secondary"
             label={row.isActive ? 'Refresh' : 'Activate'}
             disabled={adminGate.disabled || activateMutation.isPending}
@@ -347,6 +361,16 @@
     </ul>
   {/if}
 
+  {#if canRead && selectedRevision !== null}
+    {#key selectedRevision}
+      <RevisionDetail
+        {workflowName}
+        revision={selectedRevision}
+        onClose={() => (selectedRevision = null)}
+      />
+    {/key}
+  {/if}
+
   {#if activateMutation.isSuccess}
     <ActivationOutcomeBanner
       outcome={activateMutation.data}
@@ -354,6 +378,8 @@
       onRefresh={refetchAll}
     />
   {/if}
+
+  <RevisionInstallForm {workflowName} />
 </section>
 
 <ConfirmDialog
