@@ -5,13 +5,13 @@
  * A thread is a Bureau session. The mount serves four routes under one prefix
  * (`/ag-ui` unless `agUi.pathPrefix` says otherwise); `<p>` is the prefix:
  *
- * | Route                           | Body            | Answer |
- * | ------------------------------- | --------------- | ------ |
- * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. |
- * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. |
- * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. |
- * | `GET <p>/threads/<threadId>/messages` | none      | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages, whether or not a run is going. A thread the caller may not read is a `NotFound` fault, as a missing one is. |
- * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. |
+ * | Route                           | Body            | Answer | On a process that does not hold the run |
+ * | ------------------------------- | --------------- | ------ | --------------------------------------- |
+ * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. | A start is admitted or refused `THREAD_BUSY` from durable state alone, the same in every process. A resume of a human wait another process holds is delivered through `resolveReview` (fenced by the review's decision record), and its stream is the peer stream: the answer, the snapshots, then the run's next interrupt or its outcome. |
+ * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. | The thread's run is the session's `lastRunId`, attachable while the session says `running` and its durable run is unsettled, or while the session holds an unexpired approval for it. The peer stream (`ag-ui-peer-stream.ts`): `RUN_STARTED`, `MESSAGES_SNAPSHOT`, a `STATE_SNAPSHOT` with the durable run's status, then the run's outcome after a second `MESSAGES_SNAPSHOT`, or its interrupt. No step, tool, or text-delta event. |
+ * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. | The same, for a run whose durable record exists and whose session (from the durable run's input) says it is attachable. Its owner of record is the one the session recorded for it. |
+ * | `GET <p>/threads/<threadId>/messages` | none      | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages, whether or not a run is going. A thread the caller may not read is a `NotFound` fault, as a missing one is. | The same: it reads only the session. |
+ * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. | The cancellation is committed to the durable run (`cancelDurableRun`), which publishes `aborted` to the session once: `aborting` when it commits, the settled run's own `completed`, `aborted` or `error` when it had already ended, and `NotFound` for a run with no durable record. |
  *
  * Every route is authenticated by the handler before the mount sees it, and
  * decides with the owner predicate every catalog operation decides with
@@ -75,6 +75,7 @@ import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
 import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
+import { settledOutcomeOf } from './ag-ui-peer-stream.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { type OwnedSession, ownedSession, runIsOwnedBy } from './ag-ui-session-owner.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
@@ -135,6 +136,7 @@ export type AgUiBureau = AgUiStreamBureau &
   Pick<
     Bureau,
     | 'abortRun'
+    | 'cancelDurableRun'
     | 'createRun'
     | 'listRuns'
     | 'hasDurableEngine'
@@ -269,7 +271,32 @@ export function createAgUiMount(
     const pending = bureau
       .listPendingReviews()
       .some((review) => review.runId === lastRunId && review.kind === 'tool-approval');
-    return pending ? lastRunId : undefined;
+    if (pending || bureau.getRun(lastRunId) !== undefined) return pending ? lastRunId : undefined;
+    // A run another process holds, or settled with an approval no process restored: the
+    // session's durable record says whether it is one to attach to. A run this process holds is
+    // decided by what it holds.
+    return (await attachableFromRecord(authorized.session, lastRunId)) ? lastRunId : undefined;
+  }
+
+  /**
+   * Whether `runId` is attachable by durable state alone, so a process that does not hold it
+   * answers as the one that does: the session's last run is this one, the session says `running`,
+   * and its durable run is unsettled; or the session holds an unexpired approval for it, by the
+   * rule {@link threadBusy} decides with. A read that fails is not attachable.
+   */
+  async function attachableFromRecord(session: AgentSession, runId: string): Promise<boolean> {
+    try {
+      const metadata = session.metadata;
+      if (metadata['lastRunId'] === runId && metadata['lastRunStatus'] === 'running') {
+        const durable = await bureau.getDurableRun(runId);
+        if (durable !== undefined && durable !== null && isDurableRunUnsettled(durable.status)) {
+          return true;
+        }
+      }
+      return holdsPendingApproval(metadata, runId, runtime.clock.now());
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -306,24 +333,29 @@ export function createAgUiMount(
           return true;
         }
       }
-      const overrides = metadata['pendingApprovalOverrides'];
-      if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
-        return false;
-      }
       // `expiresAt` was issued by Armorer's clock, read here with the mount's: the same
       // clock assumption the thread lease makes across processes (skew below the lease
       // length minus its renewal interval). A fast clock here admits a start a slow
       // holder could still approve.
-      const asOf = runtime.clock.now();
-      return Object.entries(overrides).some(([reviewId, approval]) => {
-        if (!reviewId.startsWith(`approval:${lastRunId}:`)) return false;
-        const expiresAt = (approval as { approvalBinding?: { expiresAt?: unknown } } | null)
-          ?.approvalBinding?.expiresAt;
-        return typeof expiresAt !== 'number' || expiresAt > asOf;
-      });
+      return holdsPendingApproval(metadata, lastRunId, runtime.clock.now());
     } catch {
       return true;
     }
+  }
+
+  /**
+   * A run another process holds, or settled with an approval no process restored, found by its
+   * durable record: its session (from the durable run's input) must say it is attachable.
+   */
+  async function attachableRunOfRecord(runId: string): Promise<string | undefined> {
+    if (bureau.getRun(runId) !== undefined) return undefined;
+    const durable = await bureau.getDurableRun(runId).catch(() => undefined);
+    if (durable === undefined || durable === null) return undefined;
+    const sessionId = await sessionOfRun(runId);
+    if (sessionId === undefined) return undefined;
+    const session = await bureau.getSession(sessionId).catch(() => undefined);
+    if (session === undefined) return undefined;
+    return (await attachableFromRecord(session, runId)) ? sessionId : undefined;
   }
 
   async function attachableRun(
@@ -392,7 +424,18 @@ export function createAgUiMount(
       // through that: a thread of its own (the child has no session), and the
       // parent's id on RUN_STARTED.
       const child = await bureau.children.locate(runId).catch(() => undefined);
-      if (child === undefined) return missing();
+      if (child === undefined) {
+        const sessionId = await attachableRunOfRecord(runId);
+        if (sessionId === undefined) return missing();
+        return openRunStream(environment, {
+          threadId: sessionId,
+          runId,
+          nativeRunId: runId,
+          owner,
+          replay: 'open-step',
+          messagesSnapshot: true,
+        });
+      }
       // The thread is the parent's session, as on every stream of this mount.
       const sessionId = await sessionOfRun(child.parentRunId);
       if (sessionId === undefined) return missing();
@@ -431,7 +474,7 @@ export function createAgUiMount(
     // Bureau holds no run for a child, so it is cancelled through the topology
     // that owns it, by the parent it names.
     const child = await bureau.children.locate(runId).catch(() => undefined);
-    if (child === undefined) return notFound('run', runId);
+    if (child === undefined) return cancelDurably(runId);
     const cancelled = await bureau.children.cancel({
       parentRunId: child.parentRunId,
       childRunId: child.childRunId,
@@ -442,6 +485,29 @@ export function createAgUiMount(
     }
     if (cancelled.outcome === 'not-found') return notFound('run', runId);
     return json({ code: 'Conflict', message: cancelled.reason }, 409);
+  }
+
+  /**
+   * A run no process-local handle holds: another process may, so the cancellation is committed
+   * to its durable run, which every process reads, and Bureau publishes it to the session.
+   */
+  async function cancelDurably(runId: string): Promise<Response> {
+    const outcome = await bureau.cancelDurableRun(runId);
+    switch (outcome.status) {
+      case 'requested':
+        return json({ runId, status: 'aborting' }, 200);
+      case 'already-terminal': {
+        const settled = await bureau.getDurableRun(runId);
+        const ended =
+          settled === undefined || settled === null ? undefined : settledOutcomeOf(settled);
+        // The settled run's own outcome: `completed`, `aborted` or `error`.
+        return json({ runId, status: ended ?? 'error' }, 200);
+      }
+      case 'failed':
+        throw outcome.error;
+      default:
+        return notFound('run', runId);
+    }
   }
 
   async function startRun(
@@ -725,6 +791,29 @@ export function createAgUiMount(
     pathPrefix,
     fetch: (request, context) => route(request, context),
   };
+}
+
+/**
+ * Whether a session holds an unexpired tool approval for `runId` in `pendingApprovalOverrides`.
+ * Bureau persists the entry when an approval is gated and removes it in the same write as the
+ * resolution; an entry whose binding has expired is not pending, by the rule `listPendingReviews`
+ * uses.
+ */
+function holdsPendingApproval(
+  metadata: AgentSession['metadata'],
+  runId: string,
+  asOf: number,
+): boolean {
+  const overrides = metadata['pendingApprovalOverrides'];
+  if (typeof overrides !== 'object' || overrides === null || Array.isArray(overrides)) {
+    return false;
+  }
+  return Object.entries(overrides).some(([reviewId, approval]) => {
+    if (!reviewId.startsWith(`approval:${runId}:`)) return false;
+    const expiresAt = (approval as { approvalBinding?: { expiresAt?: unknown } } | null)
+      ?.approvalBinding?.expiresAt;
+    return typeof expiresAt !== 'number' || expiresAt > asOf;
+  });
 }
 
 /**
