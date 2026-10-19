@@ -561,6 +561,33 @@ describe('cancel', () => {
     expect(waited).toEqual({ receipt: 'cleanup-pending' });
   });
 
+  it('lets a shutdown wait for the settlement and cleanup writes in flight', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-1');
+    const writing = registry.recordSettled('run-1', {
+      at: '2026-10-18T00:00:09.000Z',
+      status: 'completed',
+      finishReason: 'stop-condition',
+      message: null,
+    });
+
+    await registry.flush();
+
+    expect((await registry.record('run-1'))?.settled?.status).toBe('completed');
+    await writing;
+  });
+
+  it('lists the records no settlement has been written for', async () => {
+    const { registry } = build();
+    await admit(registry, 'run-open');
+    await admit(registry, 'run-done');
+    await settle(registry, 'run-done');
+
+    const open = await registry.unsettled();
+
+    expect(open.map((record) => record.taskId)).toEqual(['run-open']);
+  });
+
   it('answers a repeated cancel of a durable run it stopped as canceled, and records that on the task', async () => {
     const { registry } = build();
     await admit(registry, 'run-1');

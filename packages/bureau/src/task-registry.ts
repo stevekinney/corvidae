@@ -212,6 +212,13 @@ export interface TaskRegistry {
   /** Records how a task ended. The latest settlement wins. */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<void>;
   /**
+   * Resolves once every settlement and cleanup write now in flight has landed (or failed),
+   * including any that begin while it waits. A shutdown awaits it before storage closes.
+   */
+  flush(): Promise<void>;
+  /** The records of tasks that have not been settled: the ones a crash may have left so. */
+  unsettled(): Promise<readonly TaskRecord[]>;
+  /**
    * Follows a task's `closed()` acknowledgement and records where its cleanup
    * ended. A second call for a task already followed returns the first.
    */
@@ -409,6 +416,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     }
   }
 
+  /** Settlement and cleanup writes in flight, so a shutdown can wait for them. */
+  const inFlight = new Set<Promise<unknown>>();
+  function track<T>(write: Promise<T>): Promise<T> {
+    inFlight.add(write);
+    const finished = () => void inFlight.delete(write);
+    write.then(finished, finished);
+    return write;
+  }
+
   async function read(taskId: string): Promise<TaskRecord | undefined> {
     const key = recordKey(taskId);
     const raw = await kv.get(key);
@@ -546,7 +562,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       const state = cleanupStateOf(acknowledgement);
       observed.set(taskId, state);
       try {
-        await update(taskId, (record) => ({ ...record, cleanup: state }));
+        await track(update(taskId, (record) => ({ ...record, cleanup: state })));
       } catch (error) {
         diagnose(`Could not record the cleanup of task "${taskId}"`, error);
       }
@@ -614,7 +630,15 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async recordSettled(taskId, settlement) {
-      await update(taskId, (record) => ({ ...record, settled: settlement }));
+      await track(update(taskId, (record) => ({ ...record, settled: settlement })));
+    },
+
+    async flush() {
+      while (inFlight.size > 0) await Promise.allSettled([...inFlight]);
+    },
+
+    async unsettled() {
+      return (await allRecords()).filter((record) => record.settled === undefined);
     },
 
     watchCleanup,

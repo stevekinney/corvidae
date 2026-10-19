@@ -152,4 +152,41 @@ describe('a task’s own message history', () => {
       await bureau.dispose();
     }
   });
+
+  it('reports the cleanup of a run a shutdown aborted, after a restart', async () => {
+    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
+    const parks: GenerateFunction = ({ signal }) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+      });
+    const open = () =>
+      createBureau({
+        id: 'shutdown-abort',
+        agents: {},
+        generate: parks,
+        toolbox,
+        storage: fixture.configuration,
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+      });
+    try {
+      const first = await open();
+      const run = await first.createRun({ message: 'hold', principal: 'api-key:alice' });
+      await waitForCondition(() => first.getRun(run.id)?.status === 'running', 'running');
+      await first.shutdown({ policy: 'abort' });
+
+      const second = await open();
+      try {
+        const task = await second.tasks.get(run.id);
+        const repeated = await second.tasks.cancel(run.id, 0);
+
+        expect(task).toMatchObject({ status: 'canceled', cleanup: 'cleaned-up' });
+        expect(repeated).toEqual({ receipt: 'cleaned-up' });
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
 });

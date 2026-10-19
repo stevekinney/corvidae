@@ -3555,6 +3555,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? 'failed'
           : 'canceled';
     const failure = detail['error'];
+    // Every cancellation terminal, a shutdown's abort included, follows its run's cleanup the
+    // way an API cancellation does, so the task reports what the cleanup actually did.
+    if (status === 'canceled') {
+      const activeRun = store.getRun(action.runId)?.activeRun;
+      if (activeRun !== undefined) void tasks.watchCleanup(action.runId, activeRun.closed());
+    }
     void tasks
       .recordSettled(action.runId, {
         at: new Date(action.timestamp).toISOString(),
@@ -6522,12 +6528,106 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * rejects (AB-242's decision record — recovery failure stays diagnostic,
    * `createBureau()` never rejects on it, in whole or in part).
    */
+  /**
+   * COR-1481 — a crash can land between a run reaching its terminal state and the task record
+   * saying so, or between a catalog run's durable start and its task record being written. At
+   * boot, a task record whose durable run is terminal is settled from the durable state, and a
+   * durable catalog run with no task record is given one. A run still in flight is left to the
+   * recovery that reattaches it, which settles it as it ends.
+   */
+  async function reconcileTaskRecords(): Promise<void> {
+    const durable = runtime.durable;
+    if (!durable) return;
+    const settle = async (
+      taskId: string,
+      state: Awaited<ReturnType<typeof durable.engine.get>>,
+    ): Promise<void> => {
+      if (state === null) return;
+      if (
+        state.status !== 'completed' &&
+        state.status !== 'failed' &&
+        state.status !== 'cancelled' &&
+        state.status !== 'timed-out'
+      ) {
+        return;
+      }
+      const result =
+        state.result !== null && typeof state.result === 'object'
+          ? (state.result as Record<string, unknown>)
+          : {};
+      const finishReason =
+        typeof result['finishReason'] === 'string' ? result['finishReason'] : undefined;
+      const status =
+        state.status === 'completed'
+          ? settledTaskState('completed', finishReason)
+          : state.status === 'cancelled'
+            ? 'canceled'
+            : 'failed';
+      const content = typeof result['content'] === 'string' ? result['content'] : '';
+      await tasks.recordSettled(taskId, {
+        at: runtimeServices.clock.nowISO(),
+        status,
+        finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
+        message:
+          status === 'failed' && typeof state.error === 'string'
+            ? state.error.slice(0, 1000)
+            : null,
+        ...(status === 'completed' && content !== ''
+          ? {
+              answer: {
+                text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+                truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+              },
+            }
+          : {}),
+      });
+    };
+    for (const record of await tasks.unsettled()) {
+      if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
+      await settle(record.taskId, await durable.engine.get(record.taskId));
+    }
+    // A durable catalog run whose task record was never written.
+    for (let offset = 0; ;) {
+      const page = await durable.engine.list({
+        type: 'agentRun',
+        idPrefix: 'agent-run-',
+        limit: 100,
+        offset,
+      });
+      for (const summary of page.items) {
+        if ((await tasks.record(summary.id)) !== undefined) continue;
+        const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
+        if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) continue;
+        await tasks.recordAdmission({
+          taskId: summary.id,
+          contextId: summary.id,
+          incarnation: '',
+          agentName: loaded.record.agentName,
+          owner: ownerOrLocal(loaded.record.principal),
+          message: originatingMessageText(loaded.record.input),
+        });
+        await settle(summary.id, await durable.engine.get(summary.id));
+      }
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) break;
+    }
+  }
+
   async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
     // COR-1421 — retain every live frame for the first subscriber while the
     // pass runs.
     recoveryPassActive = true;
     try {
-      return await recoverDurableRunsPass();
+      const report = await recoverDurableRunsPass();
+      await reconcileTaskRecords().catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not reconcile task records at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+      return report;
     } finally {
       recoveryPassActive = false;
     }
@@ -12903,6 +13003,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             );
           }
           await Promise.allSettled(ownerDrains);
+          // COR-1481 — the settlement and cleanup writes of tasks whose runs have just ended land
+          // before the storage they write to is closed.
+          await tasks.flush();
 
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();
