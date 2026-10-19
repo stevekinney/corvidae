@@ -21,6 +21,7 @@ import {
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
@@ -628,6 +629,7 @@ describe('the reviews operations against a real Bureau', () => {
       return { content: 'approved and processed', toolCalls: [] };
     };
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-bureau',
       agents: {},
       generate,
@@ -734,6 +736,7 @@ describe('the reviews operations against a real Bureau', () => {
       },
     ) as unknown as Toolbox;
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-tool-approval-bureau',
       agents: {},
       generate: async () => {
@@ -847,6 +850,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
           }
         : { content: 'thanks', toolCalls: [] };
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'catalog-reviews-bureau',
       agents: {
         asker: createAgent({
