@@ -16,6 +16,7 @@ import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau
 import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
 import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
+import { createMemoryAssetStorage } from '../../assets/storage';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
@@ -457,6 +458,7 @@ describe('faults', () => {
 
   it('UnsupportedCapability on a Bureau with no workflow directory', async () => {
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'no-workflows',
       agents: {},
       storage: { type: 'memory' },

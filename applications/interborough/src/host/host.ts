@@ -46,6 +46,7 @@ import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgrad
 import {
   createBureau,
   createBureauHandler,
+  createDurableAssetStorage,
   createModelCatalogService,
   resolveProviderGenerate,
   type Bureau,
@@ -311,6 +312,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       validators: createSeededValidators(),
       modelCatalog,
       storage,
+      // Managed assets (COR-1547): the handler serves uploads and an asset's content, and a chat
+      // attachment is one, so the Bureau keeps them in the same database as everything else.
+      assets: { storage: createDurableAssetStorage(storage) },
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
       agentDirectory,

@@ -93,6 +93,14 @@ export async function beginUpload(
   return project(session);
 }
 
+export async function inspectUpload(
+  internals: AssetInternals,
+  uploadId: string,
+  principal: AssetPrincipal,
+): Promise<AssetUploadSession> {
+  return project(await loadOpenSession(internals, uploadId, principal));
+}
+
 export function appendUpload(
   internals: AssetInternals,
   uploadId: string,
