@@ -37,6 +37,7 @@
   } from '../../../lib/workflow-revision.ts';
   import { failureCategoryExplanation, failureCategoryLabel } from './failure-category.ts';
   import LineagePanel from './lineage-panel.svelte';
+  import WorkerBindingPanel from './worker-binding-panel.svelte';
 
   interface OverviewTabProps {
     readonly client: Pick<HttpClient, 'addTags' | 'removeTags' | 'get' | 'list'> & {
@@ -236,6 +237,8 @@
         Result pending — workflow still {workflow.status}.
       </div>
     {/if}
+
+    <WorkerBindingPanel {workflow} />
 
     <LineagePanel {client} {workflow} />
   </div>

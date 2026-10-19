@@ -15,7 +15,10 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: {
     command: `bun ${new URL('./tests/e2e/e2e-server.ts', import.meta.url).pathname}`,
-    url: E2E_BASE_URL,
+    // The host answers requests as soon as it listens, but `e2e-server.ts` seeds the ledger evidence
+    // after that and prints this line only once every seed has settled. Readiness is that line
+    // alone, not a URL that answers earlier, so a spec never reads a half-seeded server.
+    wait: { stdout: /Interborough E2E host listening/ },
     reuseExistingServer: !continuousIntegration,
     stdout: 'pipe',
     stderr: 'pipe',

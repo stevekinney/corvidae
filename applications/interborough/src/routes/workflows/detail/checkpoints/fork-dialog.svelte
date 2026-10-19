@@ -79,6 +79,7 @@
   import { formatRelativeTime, truncateId } from '../../../../lib/format/index.ts';
   import { queryKeys } from '../../../../lib/query.ts';
   import { getPrincipalStore, scopeGate } from '../../../../lib/scopes.svelte.ts';
+  import WorkerInheritanceNote from '../../../../lib/worker-inheritance-note.svelte';
   import { EAGER_REVISION_HEDGE } from '../../../../lib/workflow-revision.ts';
   import { router, workflowDetailPath } from '../../../../lib/router.svelte.ts';
   import type { ForkClient, ForkSourceClient } from './checkpoints-data.ts';
@@ -387,6 +388,8 @@
   <p class="weft-fork-dialog__note">
     A new workflow is created, linked via <code>forkedFrom</code>.
   </p>
+
+  <WorkerInheritanceNote surface="fork" />
 
   {#if forkMutation.isError}
     {#if revisionConflict}

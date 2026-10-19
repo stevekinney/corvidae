@@ -45,6 +45,7 @@ import {
   createGetWorkerDiagnosticsOperation,
   createGetWorkerDiagnosticsRestBinding,
   getWorkerDiagnosticsOperation,
+  type WorkerSessionTiming,
 } from './operations/get-worker-diagnostics.ts';
 import {
   createListTaskQueuesOperation,
@@ -61,18 +62,21 @@ import {
   createListWorkersRestBinding,
   listWorkersOperation,
 } from './operations/list-workers.ts';
+import { createStartOrSignalWorkflowOperation } from './operations/start-or-signal-workflow.ts';
 import { createStartWorkflowOperation } from './operations/start-workflow.ts';
 import { STATIC_OPERATIONS } from './operations/static-operations.ts';
 import { STATIC_REST_BINDINGS } from './operations/static-rest-bindings.ts';
 import {
   createPreviewWorkerDeploymentRoutingOperation,
   createPromoteWorkerDeploymentOperation,
+  createRemoveWorkerDeploymentVersionOperation,
   createRollbackWorkerDeploymentOperation,
   createSetWorkerDeploymentRoutingOperation,
   createWorkerDeploymentDiagnosticsOperation,
   workerDeploymentDiagnosticsRestBinding,
   workerDeploymentPreviewRestBinding,
   workerDeploymentPromoteRestBinding,
+  workerDeploymentRemoveRestBinding,
   workerDeploymentRollbackRestBinding,
   workerDeploymentRoutingRestBinding,
 } from './operations/worker-deployment-routing.ts';
@@ -141,6 +145,7 @@ export function createLiveRestBindings(): ReadonlyArray<UnknownRestBinding> {
     workerDeploymentPromoteRestBinding,
     workerDeploymentRollbackRestBinding,
     workerDeploymentPreviewRestBinding,
+    workerDeploymentRemoveRestBinding,
     listConformanceTargetsRestBinding,
     runConformanceReportRestBinding,
   ];
@@ -166,6 +171,8 @@ export type LiveOperationRegistryOptions = {
   storage?: Storage;
   taskQueue?: TaskQueue;
   clock?: () => number;
+  /** Where `weft.workers.diagnostics` reads each worker's reconnect-grace and session-lease instants. */
+  workerSessionTiming?: WorkerSessionTiming;
   workerStartOverrideSigningSecret?: string;
   /**
    * Runs the operator-registered targets behind `weft.conformance.targets` and
@@ -218,13 +225,21 @@ function buildDrainDeploymentOperationForRegistry(options: LiveOperationRegistry
   if (options.workerRegistry === undefined) return drainDeploymentOperation;
   return createDrainDeploymentOperation({
     workerRegistry: options.workerRegistry,
+    ...(options.workerDeploymentCatalog === undefined
+      ? {}
+      : { catalog: options.workerDeploymentCatalog }),
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
   });
 }
 
 function buildClearDeploymentDrainOperationForRegistry(options: LiveOperationRegistryOptions) {
   if (options.workerRegistry === undefined) return clearDeploymentDrainOperation;
-  return createClearDeploymentDrainOperation({ workerRegistry: options.workerRegistry });
+  return createClearDeploymentDrainOperation({
+    workerRegistry: options.workerRegistry,
+    ...(options.workerDeploymentCatalog === undefined
+      ? {}
+      : { catalog: options.workerDeploymentCatalog }),
+  });
 }
 
 function buildListTaskQueuesOperationForRegistry(options: LiveOperationRegistryOptions) {
@@ -254,6 +269,9 @@ function buildWorkerDiagnosticsOperationForRegistry(options: LiveOperationRegist
   return createGetWorkerDiagnosticsOperation({
     workerRegistry: options.workerRegistry,
     ...(options.clock !== undefined ? { clock: options.clock } : {}),
+    ...(options.workerSessionTiming !== undefined
+      ? { sessionTiming: options.workerSessionTiming }
+      : {}),
   });
 }
 
@@ -295,6 +313,9 @@ function buildWorkerDeploymentRoutingOperations(options: LiveOperationRegistryOp
     catalog === undefined
       ? createPreviewWorkerDeploymentRoutingOperation()
       : createPreviewWorkerDeploymentRoutingOperation({ catalog }),
+    catalog === undefined
+      ? createRemoveWorkerDeploymentVersionOperation()
+      : createRemoveWorkerDeploymentVersionOperation({ catalog }),
   ];
 }
 
@@ -306,6 +327,13 @@ function buildWorkerStartOverridePreviewOperation(options: LiveOperationRegistry
       : { serverSecret: options.workerStartOverrideSigningSecret }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+}
+
+function buildStartOrSignalWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
+  const { workerStartOverrideSigningSecret } = options;
+  const signing =
+    workerStartOverrideSigningSecret === undefined ? {} : { workerStartOverrideSigningSecret };
+  return createStartOrSignalWorkflowOperation(signing);
 }
 
 function buildStartWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
@@ -344,9 +372,11 @@ export function createLiveOperationRegistry(
     ...STATIC_OPERATIONS.map((operation) =>
       operation.name === 'weft.workflows.start'
         ? buildStartWorkflowOperationForRegistry(resolved)
-        : operation.name === 'weft.worker.startoverrides.preview'
-          ? buildWorkerStartOverridePreviewOperation(resolved)
-          : operation,
+        : operation.name === 'weft.workflows.startorsignal'
+          ? buildStartOrSignalWorkflowOperationForRegistry(resolved)
+          : operation.name === 'weft.worker.startoverrides.preview'
+            ? buildWorkerStartOverridePreviewOperation(resolved)
+            : operation,
     ),
     buildTaskDiagnosticsOperationForRegistry(resolved),
     buildSystemMetricsOperation(resolved),

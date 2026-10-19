@@ -14,6 +14,7 @@ function response(overrides: Record<string, unknown> = {}): unknown {
       instance: {
         workerId: 'worker-a',
         queue: 'default',
+        transport: 'websocket',
         health: 'active',
         connectedAt: 1,
         startedAt: 2,
@@ -94,6 +95,41 @@ describe('parseWorkerDiagnosticsResponse', () => {
     worker.instance['sessionGeneration'] = 'two';
     expect(() => parseWorkerDiagnosticsResponse(value)).toThrow(
       'malformed worker diagnostics at response.worker.instance.sessionGeneration',
+    );
+  });
+
+  test('carries the transport and each optional session timing the server reports', () => {
+    const value = response();
+    const worker = Reflect.get(value as object, 'worker') as { instance: Record<string, unknown> };
+    worker.instance['transport'] = 'long-poll';
+    worker.instance['sessionLeaseExpiresAt'] = 65_000;
+    const longPoll = parseWorkerDiagnosticsResponse(value)?.instance;
+    expect(longPoll).toMatchObject({ transport: 'long-poll', sessionLeaseExpiresAt: 65_000 });
+    expect(longPoll).not.toHaveProperty('reconnectGraceEndsAt');
+
+    worker.instance['transport'] = 'websocket';
+    delete worker.instance['sessionLeaseExpiresAt'];
+    worker.instance['reconnectGraceEndsAt'] = 7_000;
+    const socket = parseWorkerDiagnosticsResponse(value)?.instance;
+    expect(socket).toMatchObject({ transport: 'websocket', reconnectGraceEndsAt: 7_000 });
+    expect(socket).not.toHaveProperty('sessionLeaseExpiresAt');
+  });
+
+  test('rejects an unknown transport and a non-numeric session timing', () => {
+    const unknownTransport = response();
+    (
+      Reflect.get(unknownTransport as object, 'worker') as { instance: Record<string, unknown> }
+    ).instance['transport'] = 'carrier-pigeon';
+    expect(() => parseWorkerDiagnosticsResponse(unknownTransport)).toThrow(
+      'response.worker.instance.transport',
+    );
+
+    const badTiming = response();
+    (Reflect.get(badTiming as object, 'worker') as { instance: Record<string, unknown> }).instance[
+      'reconnectGraceEndsAt'
+    ] = 'soon';
+    expect(() => parseWorkerDiagnosticsResponse(badTiming)).toThrow(
+      'response.worker.instance.reconnectGraceEndsAt',
     );
   });
 

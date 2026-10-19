@@ -11,21 +11,32 @@
    * exactly Cinder's own documented escape hatch for "richer body content"
    * (`confirm-dialog/README.md`).
    */
-  import { Button, Modal, Textarea } from '@lostgradient/cinder';
+  import { Button, Callout, Modal, Textarea } from '@lostgradient/cinder';
+  import { TriangleAlert } from '@lucide/svelte';
 
   export type DrainTarget =
     | { readonly kind: 'worker'; readonly id: string }
-    | { readonly kind: 'deployment'; readonly name: string };
+    | { readonly kind: 'deployment'; readonly name: string }
+    | { readonly kind: 'build'; readonly deploymentName: string; readonly buildId: string };
 
   interface DrainDialogProps {
     readonly open: boolean;
     readonly target: DrainTarget;
+    /** For a build target: whether routing names the build as its current or ramping one. */
+    readonly routingRole?: 'current' | 'ramping' | 'none' | undefined;
     readonly submitting: boolean;
     readonly onDrain: (reason: string | undefined) => void;
     readonly onCancel: () => void;
   }
 
-  let { open = $bindable(), target, submitting, onDrain, onCancel }: DrainDialogProps = $props();
+  let {
+    open = $bindable(),
+    target,
+    routingRole = 'none',
+    submitting,
+    onDrain,
+    onCancel,
+  }: DrainDialogProps = $props();
 
   let reason = $state('');
 
@@ -33,8 +44,20 @@
     if (open) reason = '';
   });
 
-  const targetLabel = $derived(target.kind === 'worker' ? target.id : target.name);
-  const title = $derived(target.kind === 'worker' ? 'Drain worker' : 'Drain deployment');
+  const targetLabel = $derived(
+    target.kind === 'worker'
+      ? target.id
+      : target.kind === 'deployment'
+        ? target.name
+        : `${target.deploymentName}/${target.buildId}`,
+  );
+  const title = $derived(
+    target.kind === 'worker'
+      ? 'Drain worker'
+      : target.kind === 'deployment'
+        ? 'Drain deployment'
+        : 'Drain build',
+  );
 
   function handleDrain(): void {
     const trimmed = reason.trim();
@@ -53,6 +76,23 @@
       Draining <strong class="weft-drain-dialog__target">{targetLabel}</strong> stops new task assignment
       while in-flight work finishes. Resume clears the drain marker at any time.
     </p>
+    {#if target.kind === 'build' && routingRole !== 'none'}
+      <Callout variant="warning" semantic="note" title={`This is the ${routingRole} build`}>
+        {#snippet icon()}
+          <TriangleAlert aria-hidden="true" size={17} />
+        {/snippet}
+        {#if routingRole === 'current'}
+          Routing sends new traffic to this build, except the share it ramps to another build. While
+          it drains, the server refuses new starts of workflows that carry a worker versioning
+          policy that land on it, until you resume it or route traffic to another build.
+        {:else}
+          Routing sends only the ramp share of new traffic to this build. While it drains, the
+          server refuses new starts of workflows that carry a worker versioning policy and land in
+          that share; starts outside the share are not affected. Resume it or end the ramp to stop
+          the refusals.
+        {/if}
+      </Callout>
+    {/if}
     <Textarea
       id="drain-reason"
       label="Reason"

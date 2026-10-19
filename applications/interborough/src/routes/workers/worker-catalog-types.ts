@@ -35,6 +35,16 @@ export type StandardTaskDiagnosticItem = Extract<
       | 'dead-lettered';
   }
 >;
+export const PROVENANCE_FILTER_FIELDS = [
+  'deploymentName',
+  'buildId',
+  'artifactDigest',
+  'workerId',
+  'workflowRevision',
+] as const;
+export type ProvenanceFilterField = (typeof PROVENANCE_FILTER_FIELDS)[number];
+/** The bounded execution-identity filters `weft.tasks.diagnostics` accepts. */
+export type TaskProvenanceFilters = Readonly<Partial<Record<ProvenanceFilterField, string>>>;
 export type TaskDiagnosticsSummary = TaskDiagnosticsOutput['summary'];
 
 export type TaskLedgerOutput = Awaited<ReturnType<Operations['weft.tasks.get']>>;

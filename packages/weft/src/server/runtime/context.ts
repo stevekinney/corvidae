@@ -2,6 +2,7 @@ import type { ServerWebSocket } from 'bun';
 
 import type { McpSessionManager } from '../../mcp/session.ts';
 import type { MetricsCollector } from '../../observability/metrics.ts';
+import type { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import type { WorkerManifest } from '../../worker/manifest/index.ts';
 import type { WorkerRegistry } from '../../worker/registry.ts';
 import type { Authenticator, RateLimiter } from '../authentication.ts';
@@ -42,6 +43,16 @@ export type LongPollWorkerSession = Readonly<{
   createdAt: number;
   lastHeartbeatAt: number;
 }>;
+
+/**
+ * A deferred worker-disconnect requeue: the timer that will run it and the
+ * instant it fires. `endsAt` is when the reconnect grace window closes, which
+ * `weft.workers.diagnostics` reports as `reconnectGraceEndsAt`.
+ */
+export interface PendingWorkerRequeue {
+  readonly timer: ReturnType<typeof setTimeout>;
+  readonly endsAt: number;
+}
 
 /**
  * Internal closure state for a single `serve()` invocation.
@@ -103,7 +114,13 @@ export interface ServerContext {
    * Pending requeue timers keyed by `workerId`. A successful re-register clears
    * the timer for that worker, suppressing the deferred requeue.
    */
-  readonly pendingWorkerRequeues: Map<string, ReturnType<typeof setTimeout>>;
+  readonly pendingWorkerRequeues: Map<string, PendingWorkerRequeue>;
+  /**
+   * The durable deployment catalog. An accepted worker registration records its
+   * `(deploymentName, buildId)` version here (`deployment-version-registration.ts`).
+   * Absent only on a hand-built context that has no catalog to record into.
+   */
+  readonly workerDeploymentCatalog?: WorkerDeploymentCatalog;
   /** Mutex: prevents concurrent visibility scans from running simultaneously. */
   scanRunning: boolean;
   /** Fine-grained mutex for in-flight operation IDs being processed by expiry paths. */

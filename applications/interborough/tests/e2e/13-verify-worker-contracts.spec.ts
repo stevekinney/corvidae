@@ -13,8 +13,8 @@
  * produces, exactly as `weft worker verify` would report it. That drift is
  * the real state of the fixture, and the spec asserts it.
  *
- * The ledger-evidence worker (`ledger-evidence-seed.ts`, COR-124) also
- * serves `order-processing`, so a registry entry lists two drifting workers;
+ * The ledger-evidence workers (`ledger-evidence-seed.ts`, COR-124 and COR-281) also
+ * serve `order-processing`, so a registry entry lists three drifting workers;
  * per-worker assertions are scoped to the fleet worker's own table.
  */
 import type { Locator, Page } from '@playwright/test';
@@ -79,9 +79,10 @@ test('operator reads every serving worker’s verification from a registry entry
 }) => {
   const verification = await openRegistryVerification(page);
   await expect(verification).toBeVisible();
-  await expect(verification.getByText('Drift · 2 of 2 workers')).toBeVisible();
+  await expect(verification.getByText('Drift · 3 of 3 workers')).toBeVisible();
   await expect(verification.getByText('checkout-worker-fleet · e2e-build-1')).toBeVisible();
-  await expect(verification.getByText('ledger-evidence-fleet · e2e-ledger-build-1')).toBeVisible();
+  // Both ledger-evidence workers (COR-124's and COR-281's) serve this deployment and build.
+  await expect(verification.getByText('ledger-evidence-fleet · e2e-ledger-build-1')).toHaveCount(2);
   const fleetActivities = verification.getByRole('table', {
     name: 'e2e-fleet-worker-1 order-processing activity verification',
   });
@@ -220,7 +221,7 @@ const SURFACES = [
       return page.getByRole('region', { name: 'Contract verification' });
     },
   },
-  { name: 'registry detail', verdict: 'Drift · 2 of 2 workers', open: openRegistryVerification },
+  { name: 'registry detail', verdict: 'Drift · 3 of 3 workers', open: openRegistryVerification },
 ] as const;
 
 for (const surface of SURFACES) {

@@ -173,6 +173,7 @@ const TIMELINE_ENTRY_FIELD_CHECKS: readonly TimelineEntryFieldCheck[] = [
     entry['speculationOutcome'] === undefined ||
     entry['speculationOutcome'] === 'committed' ||
     entry['speculationOutcome'] === 'rolled-back',
+  (entry) => entry['taskOperationId'] === undefined || typeof entry['taskOperationId'] === 'string',
 ];
 
 export function isWorkflowTimelineEntry(value: unknown): value is WorkflowTimelineEntry {

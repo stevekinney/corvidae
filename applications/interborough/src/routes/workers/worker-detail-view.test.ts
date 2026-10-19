@@ -239,6 +239,7 @@ function sessionDiagnostics(
     instance: {
       workerId: 'wkr_1',
       queue: 'default',
+      transport: 'websocket',
       health: 'active',
       connectedAt: SESSION_NOW - 3_600_000,
       startedAt: SESSION_NOW - 3_700_000,
@@ -338,7 +339,7 @@ describe('WorkerDetailView — server-reported session', () => {
 
   test('shows an empty state when the server reports no live session', () => {
     const { container } = renderSession({ diagnostics: null });
-    expect(sessionRegion(container).getByText('No live session')).not.toBeNull();
+    expect(sessionRegion(container).getByText('Session closed')).not.toBeNull();
   });
 
   test('shows an unavailable state before diagnostics have been read', () => {
@@ -371,5 +372,85 @@ describe('WorkerDetailView — server-reported session', () => {
     const session = sessionRegion(container);
     expect(session.getByText('Something went wrong')).not.toBeNull();
     expect(session.getByText('Internal server error')).not.toBeNull();
+  });
+});
+
+describe('WorkerDetailView — transport-aware session lifecycle (COR-160)', () => {
+  test('a long-poll worker shows its lease expiry, no persistent connection, and the transport limit', () => {
+    const { container, getByText } = render(WorkerDetailView, {
+      props: {
+        worker: worker({ transport: 'long-poll' }),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics: sessionDiagnostics({
+          transport: 'long-poll',
+          sessionLeaseExpiresAt: SESSION_NOW + 42_000,
+        }),
+        now: SESSION_NOW,
+      },
+    });
+    const session = sessionRegion(container);
+
+    expect(session.getAllByText('HTTP long-poll').length).toBeGreaterThan(0);
+    expect(session.getByText(/No persistent connection/)).not.toBeNull();
+    expect(
+      session.getByText(
+        `Session lease expires ${new Date(SESSION_NOW + 42_000).toISOString()} (in 42s) unless a poll or heartbeat renews it`,
+      ),
+    ).not.toBeNull();
+    expect(session.getByText('Authoritative queue')).not.toBeNull();
+    expect(getByText(/HTTP long-poll workers have no server push/)).not.toBeNull();
+  });
+
+  test('a WebSocket worker in its grace window is reconnecting, registered, and has a closing instant', () => {
+    const { container, queryByText } = render(WorkerDetailView, {
+      props: {
+        worker: worker(),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics: sessionDiagnostics({ reconnectGraceEndsAt: SESSION_NOW + 1_500 }),
+        now: SESSION_NOW,
+      },
+    });
+    const session = sessionRegion(container);
+
+    expect(session.getAllByText('Reconnecting').length).toBeGreaterThan(0);
+    expect(session.getByText(/The socket is disconnected/)).not.toBeNull();
+    expect(session.getByText(/Registered with the server on queue default/)).not.toBeNull();
+    expect(session.getByText(/Reconnect grace window closes/)).not.toBeNull();
+    expect(queryByText(/HTTP long-poll workers have no server push/)).toBeNull();
+  });
+
+  test('a drained worker reads as closed, and a draining one as closing', () => {
+    const closed = render(WorkerDetailView, {
+      props: {
+        worker: worker({ health: 'drained' }),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics: sessionDiagnostics({ health: 'drained' }),
+        now: SESSION_NOW,
+      },
+    });
+    expect(sessionRegion(closed.container).getAllByText('Closed · drained').length).toBeGreaterThan(
+      0,
+    );
+    closed.unmount();
+
+    const closing = render(WorkerDetailView, {
+      props: {
+        worker: worker({ health: 'draining' }),
+        adminGate: OPEN_GATE,
+        onDrain: () => {},
+        onResume: () => {},
+        manifestDiagnostics: sessionDiagnostics({ health: 'draining' }),
+        now: SESSION_NOW,
+      },
+    });
+    expect(
+      sessionRegion(closing.container).getAllByText('Closing · draining').length,
+    ).toBeGreaterThan(0);
   });
 });

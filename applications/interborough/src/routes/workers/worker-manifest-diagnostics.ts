@@ -15,7 +15,9 @@ export type WorkerWorkflowContractDiagnostics = Readonly<{
 export type WorkerManifestDiagnostics = Readonly<{
   instance: Readonly<{
     workerId: string;
+    /** The queue this worker registered on; the server treats the registration's queue as authoritative. */
     queue: string;
+    transport: 'websocket' | 'long-poll';
     health: 'active' | 'draining' | 'drained';
     connectedAt: number;
     startedAt: number;
@@ -23,6 +25,13 @@ export type WorkerManifestDiagnostics = Readonly<{
     heartbeatAgeMs: number;
     /** Increments every time this worker id opens a new session; a change means the previous session was superseded. */
     sessionGeneration: number;
+    /**
+     * WebSocket only, and only while the socket is gone: when the reconnect
+     * grace window closes. Omitted otherwise.
+     */
+    reconnectGraceEndsAt?: number;
+    /** HTTP long-poll only: when the session lease runs out unless a poll or heartbeat renews it. */
+    sessionLeaseExpiresAt?: number;
   }>;
   deploymentVersion: Readonly<{
     deploymentName: string;
@@ -81,6 +90,14 @@ function numberAt(record: Record<string, unknown>, key: string, path: string): n
   return value;
 }
 
+function optionalNumberAt(
+  record: Record<string, unknown>,
+  key: string,
+  path: string,
+): number | undefined {
+  return record[key] === undefined ? undefined : numberAt(record, key, path);
+}
+
 function parseActivityContracts(
   value: unknown,
   path: string,
@@ -134,16 +151,34 @@ export function parseWorkerDiagnosticsResponse(value: unknown): WorkerManifestDi
     throw new MalformedWorkerDiagnosticsError('response.worker.instance.health');
   }
 
+  const transport = stringAt(instance, 'transport', 'response.worker.instance');
+  if (transport !== 'websocket' && transport !== 'long-poll') {
+    throw new MalformedWorkerDiagnosticsError('response.worker.instance.transport');
+  }
+  const reconnectGraceEndsAt = optionalNumberAt(
+    instance,
+    'reconnectGraceEndsAt',
+    'response.worker.instance',
+  );
+  const sessionLeaseExpiresAt = optionalNumberAt(
+    instance,
+    'sessionLeaseExpiresAt',
+    'response.worker.instance',
+  );
+
   return {
     instance: {
       workerId: stringAt(instance, 'workerId', 'response.worker.instance'),
       queue: stringAt(instance, 'queue', 'response.worker.instance'),
+      transport,
       health,
       connectedAt: numberAt(instance, 'connectedAt', 'response.worker.instance'),
       startedAt: numberAt(instance, 'startedAt', 'response.worker.instance'),
       lastHeartbeatAt: numberAt(instance, 'lastHeartbeatAt', 'response.worker.instance'),
       heartbeatAgeMs: numberAt(instance, 'heartbeatAgeMs', 'response.worker.instance'),
       sessionGeneration: numberAt(instance, 'sessionGeneration', 'response.worker.instance'),
+      ...(reconnectGraceEndsAt === undefined ? {} : { reconnectGraceEndsAt }),
+      ...(sessionLeaseExpiresAt === undefined ? {} : { sessionLeaseExpiresAt }),
     },
     deploymentVersion: {
       deploymentName: stringAt(deployment, 'deploymentName', 'response.worker.deploymentVersion'),
