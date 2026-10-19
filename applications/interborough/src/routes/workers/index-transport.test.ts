@@ -91,7 +91,7 @@ describe('Workers route — transports', () => {
     routeHappyPaths(scripted, {
       workers: [worker({ id: 'wkr_b1', deploymentName: 'billing', buildId: 'build-1' })],
     });
-    scripted.routeJsonRpcMethodBy('weft.worker.deployments.diagnostics', (params) => ({
+    scripted.routeJsonRpcMethodBy('weft.worker.deployments.diagnostics', () => ({
       versions: [
         {
           deploymentName: 'billing',
@@ -104,7 +104,7 @@ describe('Workers route — transports', () => {
           manifest: { deployment: {}, workflows: {} },
         },
       ],
-      routing: params['deploymentName'] === undefined ? null : null,
+      routing: null,
     }));
 
     const { findByRole, findByText } = renderRoute();
