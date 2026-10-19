@@ -23,39 +23,47 @@ export function createDrainRecord(options?: WorkerDrainOptions): DrainRecord {
  * the workers that report that exact `(deploymentName, buildId)` pair, so one
  * version can be drained and resumed without touching its siblings.
  */
+export type BuildDrainMarkers = Map<string, Map<string, DrainRecord>>;
+
 export type DrainStates = Readonly<{
   deployments: ReadonlyMap<string, DrainRecord>;
-  builds: BuildDrainMarkers;
+  builds: ReadonlyMap<string, ReadonlyMap<string, DrainRecord>>;
 }>;
 
-/**
- * Build drain markers, keyed by deployment name and then build id in nested maps. A deployment
+/*
+ * Build drain markers are keyed by deployment name and then build id, in nested maps. A deployment
  * name and a build id are free text, so no separator joins them safely: two different pairs can
  * read the same once joined. The same shape `DeploymentConsistencyGuard` uses.
  */
-export class BuildDrainMarkers {
-  readonly #markers = new Map<string, Map<string, DrainRecord>>();
 
-  get(deploymentName: string, buildId: string): DrainRecord | undefined {
-    return this.#markers.get(deploymentName)?.get(buildId);
-  }
+export function getBuildDrain(
+  markers: DrainStates['builds'],
+  deploymentName: string,
+  buildId: string,
+): DrainRecord | undefined {
+  return markers.get(deploymentName)?.get(buildId);
+}
 
-  has(deploymentName: string, buildId: string): boolean {
-    return this.get(deploymentName, buildId) !== undefined;
-  }
+export function setBuildDrain(
+  markers: BuildDrainMarkers,
+  deploymentName: string,
+  buildId: string,
+  record: DrainRecord,
+): void {
+  const builds = markers.get(deploymentName) ?? new Map<string, DrainRecord>();
+  builds.set(buildId, record);
+  markers.set(deploymentName, builds);
+}
 
-  set(deploymentName: string, buildId: string, record: DrainRecord): void {
-    const builds = this.#markers.get(deploymentName) ?? new Map<string, DrainRecord>();
-    builds.set(buildId, record);
-    this.#markers.set(deploymentName, builds);
-  }
-
-  delete(deploymentName: string, buildId: string): void {
-    const builds = this.#markers.get(deploymentName);
-    if (builds === undefined) return;
-    builds.delete(buildId);
-    if (builds.size === 0) this.#markers.delete(deploymentName);
-  }
+export function deleteBuildDrain(
+  markers: BuildDrainMarkers,
+  deploymentName: string,
+  buildId: string,
+): void {
+  const builds = markers.get(deploymentName);
+  if (builds === undefined) return;
+  builds.delete(buildId);
+  if (builds.size === 0) markers.delete(deploymentName);
 }
 
 /**
@@ -75,7 +83,7 @@ export function drainRecordForWorker(
   if (worker.deploymentName === undefined) return undefined;
   const deployment = states.deployments.get(worker.deploymentName);
   if (deployment !== undefined || worker.buildId === undefined) return deployment;
-  return states.builds.get(worker.deploymentName, worker.buildId);
+  return getBuildDrain(states.builds, worker.deploymentName, worker.buildId);
 }
 
 export function isWorkerDraining(worker: WorkerInfo, states: DrainStates): boolean {
