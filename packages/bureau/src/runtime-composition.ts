@@ -2314,11 +2314,6 @@ async function buildRuntimeComposition(
   const scheduledFireScheduleIds = new Map<string, string>();
 
   /**
-   * COR-1482: tells the host a schedule fire's run has ended. The settlement is a record about a
-   * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
-   * engine's event dispatch.
-   */
-  /**
    * COR-1482: tells the host which session incarnation a fire runs in. Binding a task to it is a
    * record about the fire, so a host that cannot write it is diagnosed and the fire still runs.
    */
@@ -2335,6 +2330,11 @@ async function buildRuntimeComposition(
     }
   }
 
+  /**
+   * COR-1482: tells the host a schedule fire's run has ended. The settlement is a record about a
+   * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
+   * engine's event dispatch.
+   */
   function settleScheduledFire(settlement: ScheduledFireSettlement): void {
     const hook = dependencies.onScheduledFireSettled;
     if (hook === undefined) return;

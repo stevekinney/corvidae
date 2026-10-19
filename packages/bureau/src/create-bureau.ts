@@ -10696,10 +10696,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
         if (cancelled === undefined || cancelled.receipt === 'rejected') continue;
         // A fire has no cleanup to acknowledge, so the stop is reported as one nothing confirms.
-        liveTasks.push({
-          taskId: fire.taskId,
-          closed: Promise.resolve({ status: 'unresolved', reason: 'unreachable' }),
+        // Followed here, so the receipt of this deletion says so even with no wait: left to the
+        // caller's wait of zero, the acknowledgement would not have been seen yet and the stop
+        // would read as a cleanup still pending.
+        const closed: Promise<RunCleanupAcknowledgement> = Promise.resolve({
+          status: 'unresolved',
+          reason: 'unreachable',
         });
+        await tasks.watchCleanup(fire.taskId, closed);
+        liveTasks.push({ taskId: fire.taskId, closed });
       }
 
       // AB-228/AB-371/AB-384, superseded by AB-389: `session.deleted` used

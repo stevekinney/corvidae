@@ -4,6 +4,7 @@ import type { EngineInternals } from './internals.ts';
 import { awaitScheduledRunTurn } from './schedule-current-run.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { collectDueScheduleOccurrences, getNextScheduleOccurrence } from './schedule-occurrence.ts';
+import { drainQueuedScheduleRun } from './schedule-overlap.ts';
 import type { ScheduleCallbacks } from './schedules.ts';
 import {
   loadScheduleState,
@@ -175,6 +176,17 @@ async function resumeScheduleTimer(
     const { work, now, index } = pending;
     const refreshed = await callbacks.refreshScheduledWorkflowState(current);
     let nextState = refreshed.state;
+    // The run this tick waited for is over and this section just cleared the slot, so its own
+    // terminal handler, which comes after this section, finds the slot no longer names it and
+    // drains nothing. A run queued behind it starts here instead, as it does when an occurrence
+    // finds the slot free, or it waits a whole cadence.
+    if (
+      current.currentWorkflowId !== undefined &&
+      nextState.currentWorkflowId === undefined &&
+      nextState.queuedRuns.length > 0
+    ) {
+      nextState = await drainQueuedScheduleRun(nextState, callbacks);
+    }
     if (index === work.occurrencesToProcess.length - 1) {
       nextState = {
         ...nextState,

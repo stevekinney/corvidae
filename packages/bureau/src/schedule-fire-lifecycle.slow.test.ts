@@ -210,7 +210,12 @@ describe('a running schedule fire and its context', () => {
         'alice-key',
       );
       expect(deleted.error).toBeUndefined();
-      expect(deleted.result?.['tasks']).toEqual([expect.objectContaining({ taskId: task.id })]);
+      // A fire has no cleanup to acknowledge: its stop is reported as one nothing confirms, with
+      // no wait for it, as the default wait of zero gives.
+      expect(deleted.result?.['receipt']).toBe('cleanup-unresolved');
+      expect(deleted.result?.['tasks']).toEqual([
+        expect.objectContaining({ taskId: task.id, cleanup: 'cleanup-unresolved' }),
+      ]);
       const after = await rpc(opened.handler, 'bureau.tasks.get', { taskId: task.id }, 'alice-key');
       expect(after.result).toMatchObject({ status: 'canceled' });
       gate.resolve();
