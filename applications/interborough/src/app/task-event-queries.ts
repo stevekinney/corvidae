@@ -2,9 +2,16 @@
  * Keeps task evidence current when the fleet feed reports a task's result
  * changing (COR-284). A dead-lettered result changes the task's ledger record,
  * the Diagnostics report (and with it the Dashboard's critical-alerts band),
- * and the task's delivery history; a delivery changes the delivery history
- * and, when the server dead-lettered the result, the ledger record. Nothing
- * here opens a connection: the shell's one shared fleet subscription calls it.
+ * and the task's delivery history; a `task:result-delivery` event, which the
+ * server emits for a duplicate or rejected delivery, changes the delivery
+ * history and, when the server dead-lettered the result, the ledger record.
+ *
+ * It does not cover a first-time `applied` result: the server suppresses
+ * `task:result-delivery` for that disposition and relies on the activity
+ * completion event instead, so an open task view picks that result up on its
+ * next poll, not live. Only the dead-letter refresh is live by contract.
+ * Nothing here opens a connection: the shell's one shared fleet subscription
+ * calls it.
  *
  * @module
  */
