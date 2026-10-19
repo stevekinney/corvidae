@@ -102,22 +102,22 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // `src/routes/goals`, and rework `src/routes/schedules` (what each schedule starts, and the
   // service that writes it). The areas those touch are re-measured on darwin with the command in
   // `run-coverage.ts`; the rest keep the counts the last measurement recorded.
-  measuredAt: '2026-10-19T19:00:00.000Z',
-  overall: { linesFound: 66546, linesHit: 64684, functionsFound: 13189, functionsHit: 12820 },
+  measuredAt: '2026-10-19T21:00:00.000Z',
+  overall: { linesFound: 66632, linesHit: 64770, functionsFound: 13198, functionsHit: 12829 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3442, linesHit: 3375, functionsFound: 639, functionsHit: 621 },
-    'src/lib': { linesFound: 3255, linesHit: 3239, functionsFound: 517, functionsHit: 513 },
+    'src/app': { linesFound: 3446, linesHit: 3379, functionsFound: 640, functionsHit: 622 },
+    'src/lib': { linesFound: 3318, linesHit: 3302, functionsFound: 523, functionsHit: 519 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
-      linesFound: 1447,
-      linesHit: 1433,
+      linesFound: 1448,
+      linesHit: 1434,
       functionsFound: 332,
       functionsHit: 327,
     },
-    'src/routes/agents': { linesFound: 641, linesHit: 641, functionsFound: 139, functionsHit: 138 },
+    'src/routes/agents': { linesFound: 639, linesHit: 639, functionsFound: 139, functionsHit: 138 },
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
@@ -129,10 +129,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1494, measured on darwin: the goals list, its create drawer, and its cancel.
     'src/routes/goals': {
-      linesFound: 1211,
-      linesHit: 1207,
-      functionsFound: 309,
-      functionsHit: 305,
+      linesFound: 1222,
+      linesHit: 1218,
+      functionsFound: 310,
+      functionsHit: 306,
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
@@ -143,10 +143,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
-      linesFound: 5056,
-      linesHit: 4982,
-      functionsFound: 1107,
-      functionsHit: 1084,
+      linesFound: 5065,
+      linesHit: 4991,
+      functionsFound: 1108,
+      functionsHit: 1085,
     },
     'src/routes/storage': {
       linesFound: 2660,
