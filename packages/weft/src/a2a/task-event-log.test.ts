@@ -4,6 +4,7 @@ import { type StreamResponse, type Task, TaskState } from '@a2a-js/sdk';
 
 import { MemoryStorage } from '../storage/memory.ts';
 import { callContext } from './a2a-store.test-support.ts';
+import { manualScheduler } from './push-delivery.test-support.ts';
 import { callerScope, encodeRecord, workflowTaskKey } from './store-support.ts';
 import { createTaskEventLog, type TaskEventEntry } from './task-event-log.ts';
 import { createWeftA2ATaskStore } from './task-store.ts';
@@ -27,6 +28,10 @@ function moveTo(task: Task, state: TaskState): { task: Task; events: StreamRespo
   const status = { state, message: undefined, timestamp: undefined };
   const next = withStatus(task, status);
   return { task: next, events: [statusUpdateEvent(next, status)] };
+}
+
+function sequenceOf(result: IteratorResult<TaskEventEntry, void>): number {
+  return result.value?.sequence ?? -1;
 }
 
 function setup() {
@@ -120,6 +125,102 @@ describe('the task event log', () => {
     await follower.return();
 
     expect(followed.map((entry) => entry.sequence)).toEqual([1, 2, 3, 4]);
+  });
+
+  test('re-reads storage on its interval while idle, replaying what another log committed once each', async () => {
+    const { storage, scope } = setup();
+    const scheduler = manualScheduler();
+    const log = createTaskEventLog({
+      storage,
+      namespace: NAMESPACE,
+      now: () => 0,
+      recheck: { intervalMs: 250, schedule: scheduler.schedule },
+    });
+    // Another process's log over the same storage: its commits notify no follower here.
+    const other = createTaskEventLog({ storage, namespace: NAMESPACE, now: () => 0 });
+    await log.create(scope, OWNER, moveTo(submitted(), TaskState.TASK_STATE_SUBMITTED));
+    const followed: number[] = [];
+    const follower = log.follow(scope, 'task-1', 0);
+
+    // Idle: the follower arms a re-read, and the other log commits two events.
+    let armed = scheduler.nextTimer();
+    const first = follower.next();
+    const firstTimer = await armed;
+    expect(firstTimer.delayMs).toBe(250);
+    for (const state of [TaskState.TASK_STATE_WORKING, TaskState.TASK_STATE_INPUT_REQUIRED]) {
+      await other.commit(scope, 'task-1', (stored) => moveTo(stored.task, state));
+    }
+    scheduler.fire();
+    followed.push(sequenceOf(await first));
+    followed.push(sequenceOf(await follower.next()));
+
+    // A re-read that finds nothing new arms the next one and yields nothing.
+    armed = scheduler.nextTimer();
+    const third = follower.next();
+    await armed;
+    armed = scheduler.nextTimer();
+    scheduler.fire();
+    const idleTimer = await armed;
+
+    // A commit through this log wakes the follower at once and cancels the re-read.
+    await log.commit(scope, 'task-1', (stored) =>
+      moveTo(stored.task, TaskState.TASK_STATE_WORKING),
+    );
+    followed.push(sequenceOf(await third));
+    expect(idleTimer.cancelled).toBe(true);
+
+    armed = scheduler.nextTimer();
+    const fourth = follower.next();
+    const lastTimer = await armed;
+    await other.commit(scope, 'task-1', (stored) =>
+      moveTo(stored.task, TaskState.TASK_STATE_COMPLETED),
+    );
+    scheduler.fire();
+    followed.push(sequenceOf(await fourth));
+    expect(lastTimer.cancelled).toBe(true);
+
+    await follower.return();
+    expect(followed).toEqual([1, 2, 3, 4]);
+  });
+
+  test('returns once its signal aborts while idle, leaving no re-read armed and no listener', async () => {
+    const { storage, scope } = setup();
+    const scheduler = manualScheduler();
+    const log = createTaskEventLog({
+      storage,
+      namespace: NAMESPACE,
+      now: () => 0,
+      recheck: { intervalMs: 250, schedule: scheduler.schedule },
+    });
+    await log.create(scope, OWNER, moveTo(submitted(), TaskState.TASK_STATE_SUBMITTED));
+    const request = new AbortController();
+    const follower = log.follow(scope, 'task-1', 0, request.signal);
+
+    // Idle with a re-read armed; the generator's own return() would wait behind it.
+    const armed = scheduler.nextTimer();
+    const pending = follower.next();
+    const timer = await armed;
+    request.abort();
+
+    // The abort cancels the re-read at once and ends the follower.
+    expect(timer.cancelled).toBe(true);
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(scheduler.timers).toHaveLength(1);
+    // A later commit finds no follower left to notify.
+    await log.commit(scope, 'task-1', (stored) =>
+      moveTo(stored.task, TaskState.TASK_STATE_WORKING),
+    );
+    expect(scheduler.timers).toHaveLength(1);
+  });
+
+  test('returns at once, after replaying, when its signal has already aborted', async () => {
+    const { log, scope } = setup();
+    await log.create(scope, OWNER, moveTo(submitted(), TaskState.TASK_STATE_SUBMITTED));
+    const followed: TaskEventEntry[] = [];
+    for await (const entry of log.follow(scope, 'task-1', -1, AbortSignal.abort())) {
+      followed.push(entry);
+    }
+    expect(followed.map((entry) => entry.sequence)).toEqual([0]);
   });
 
   test('is kept by a task store save and removed with its task by prune, but for its owner record', async () => {

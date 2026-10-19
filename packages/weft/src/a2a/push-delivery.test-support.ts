@@ -34,17 +34,25 @@ import {
 export const SIGNING_SECRET = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
 export const NAMESPACE = 'support-agent';
 
+type ManualTimer = { callback: () => void; delayMs: number; cancelled: boolean };
+
 /** A scheduler whose timers fire only when the test says so. */
 export function manualScheduler() {
-  const timers: Array<{ callback: () => void; delayMs: number; cancelled: boolean }> = [];
+  const timers: ManualTimer[] = [];
+  const waiting: Array<(timer: ManualTimer) => void> = [];
   return {
     timers,
     schedule(callback: () => void, delayMs: number) {
       const timer = { callback, delayMs, cancelled: false };
       timers.push(timer);
+      for (const resolve of waiting.splice(0)) resolve(timer);
       return () => {
         timer.cancelled = true;
       };
+    },
+    /** Resolves with the next timer armed after this call. */
+    nextTimer(): Promise<ManualTimer> {
+      return new Promise((resolve) => waiting.push(resolve));
     },
     /** Fire every timer still armed. */
     fire() {
