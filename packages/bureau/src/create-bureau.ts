@@ -12,8 +12,7 @@ import {
   type AgentInput,
   type AgentRun,
   type AgentSession,
-  type ChildSignalContract,
-  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  type ChildSignalContract, // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
@@ -91,6 +90,7 @@ import {
   TaskCancelledEvent,
   TaskDispatchedEvent,
   TaskPreemptedEvent,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -199,6 +199,7 @@ import {
   RecoveryRejectedEvent,
   type RecoveryRejectionReason,
   ReviewApprovedEvent,
+  ReviewRequestedEvent,
   ReviewCanceledEvent,
   ReviewDeniedEvent,
   ReviewExpiredEvent,
@@ -255,7 +256,25 @@ import {
   serializeUndispatchedCatalogRunDetail,
   serializeUnknownError,
 } from './serialization';
+import { createCatalogTaskSettler } from './catalog-task-settlement';
 import {
+  createCatalogRunSettlementHook,
+  type CatalogRunSettlement,
+  type DurableEnd,
+  type DurableEndReader,
+  createCatalogSettlementTracker,
+  publishFreshCatalogRun,
+  settlementForRejection,
+} from './catalog-run-settlement';
+import {
+  createTaskRegistry,
+  originatingMessageText,
+  settledTaskState,
+  TASK_ARTIFACT_TEXT_LIMIT,
+  type LiveTask,
+} from './task-registry';
+import {
+  ANONYMOUS_LOCAL_OWNER,
   EXPIRY_ACTOR,
   ownerFromPrincipal,
   ownerOrLocal,
@@ -274,7 +293,6 @@ import {
   resolvePersistedRunOwningPrincipal,
   resolveSessionOwner,
   resolveSessionPreAdmission,
-  SESSION_OWNER_METADATA_KEY,
   SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';
@@ -343,6 +361,7 @@ import type {
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
   ConfigurationResponse,
+  ContextDeletionReport,
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
   OwnedResource,
@@ -1357,6 +1376,8 @@ export async function monitorRecoveredCatalogRun(
   handle: RecoveredRunHandle,
   agentName: string,
   diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
+  settled?: (settlement: CatalogRunSettlement) => Promise<void>,
+  durableEnd?: DurableEndReader,
 ): Promise<void> {
   try {
     const result = await handle.result();
@@ -1376,12 +1397,40 @@ export async function monitorRecoveredCatalogRun(
         message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
       });
     }
+    const fields =
+      typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
+    const finishReason =
+      typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
+    await settled?.({
+      runId: handle.id,
+      agentName,
+      status: settledTaskState('completed', finishReason),
+      finishReason: finishReason ?? null,
+      message:
+        typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
+      content: typeof fields['content'] === 'string' ? fields['content'] : null,
+      recovered: true,
+    });
   } catch (error) {
+    // A rejection is not an end: disposing the engine rejects the handle of a run that is still
+    // running, and the next boot resumes it. Only a terminal state the durable run reached is
+    // published (see `settlementForRejection`).
+    const settlement = await settlementForRejection({
+      runId: handle.id,
+      agentName,
+      error,
+      recovered: true,
+      durableEnd,
+    });
     diagnose({
       level: 'error',
       scope: 'recovery',
-      message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
+      message:
+        settlement === undefined
+          ? `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") is no longer followed, and its durable run is not over: ${serializeUnknownError(error)}`
+          : `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
     });
+    if (settlement !== undefined) await settled?.(settlement);
   }
 }
 
@@ -3556,10 +3605,267 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * COR-1481 — the task registry behind `Bureau.tasks`. The host callbacks read
+   * the run store and the catalog dispatcher lazily, at call time.
+   */
+  function liveTaskOf(taskId: string): LiveTask | undefined {
+    const runState = store.getRun(taskId);
+    if (runState !== undefined) {
+      const summary = serializeRunState(
+        runState,
+        getRunSessionIdentifier(runState),
+        runAttribution.get(taskId),
+      );
+      const stored = runState.status;
+      const phase: LiveTask['phase'] =
+        stored === 'running'
+          ? abortingRunIds.has(taskId)
+            ? 'aborting'
+            : 'running'
+          : stored === 'aborting'
+            ? 'aborting'
+            : stored;
+      return {
+        phase,
+        finishReason: summary.finishReason,
+        error: summary.error,
+        updatedAt: runState.actions.at(-1)?.timestamp,
+      };
+    }
+    return findCatalogRun(taskId) === undefined
+      ? undefined
+      : { phase: 'submitted', finishReason: undefined, error: undefined, updatedAt: undefined };
+  }
+
+  const tasks = createTaskRegistry({
+    kv: runtime.kv,
+    clock: runtimeServices.clock,
+    identifiers: runtimeServices.identifiers,
+    diagnose: (message, cause) =>
+      diagnose({ level: 'error', scope: 'task-registry', message: `[bureau] ${message}`, cause }),
+    host: {
+      liveTask: liveTaskOf,
+      liveTasksOfContexts: (contextIds) => {
+        const wanted = new Set(contextIds);
+        const grouped = new Map<string, { taskId: string; phase: LiveTask['phase'] }[]>();
+        for (const [runId, runState] of store.getState().runs) {
+          const contextId = getRunSessionIdentifier(runState);
+          if (!wanted.has(contextId)) continue;
+          const phase = liveTaskOf(runId)?.phase;
+          if (phase === undefined) continue;
+          const held = grouped.get(contextId) ?? [];
+          held.push({ taskId: runId, phase });
+          grouped.set(contextId, held);
+        }
+        return grouped;
+      },
+      // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
+      // task too, so it holds the task at `input-required` and `respond` can answer it.
+      pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
+      currentIncarnation: async (contextId) => {
+        const session = await runtime.sessionStore?.load(contextId);
+        return session?.incarnation;
+      },
+      abort: (taskId) => {
+        try {
+          return abortRun(taskId).status === 'aborting' ? 'requested' : 'already-terminal';
+        } catch (error) {
+          if (error instanceof BureauError && error.code === 'NOT_FOUND') return 'not-found';
+          throw error;
+        }
+      },
+      cancelDurable: (taskId) => cancelDurableRun(taskId),
+      sleep: (milliseconds) =>
+        new Promise<void>((resolve) => {
+          runtimeServices.timers.setTimeout(resolve, milliseconds);
+        }),
+    },
+  });
+
+  /**
+   * COR-1481 — the catalog-run settlement hook (`catalog-run-settlement.ts`): every `bureau.run()`
+   * run publishes here when it ends, dispatched by this process or recovered after a restart. The
+   * task registry settles a catalog task from it, so a run that crossed a restart is settled like
+   * any other.
+   */
+  const catalogRunSettlements = createCatalogRunSettlementHook(diagnose);
+  /**
+   * The settlements being published: a fresh dispatch following its handle, and a recovered run
+   * being monitored. Each starts the writes that settle a task and a snapshot reference only
+   * after its run's result is known, which for a run ended by disposing the engine is after
+   * `shutdown()` has moved on. `shutdown()` waits for them (a bound of event-loop turns, not a
+   * barrier) before it closes storage.
+   */
+  const catalogSettlements = createCatalogSettlementTracker();
+  /**
+   * Where a catalog run stands in the durable engine, read when its handle rejects: disposing the
+   * engine rejects the handle of a run that is still running, and that is not an end. A read that
+   * fails rejects, and the caller treats it as a run that is not over.
+   */
+  const catalogDurableEnd: DurableEndReader = async (runId) => {
+    const state = await runtime.durable?.engine.get(runId);
+    if (state === null || state === undefined) return 'not-durable';
+    const ends: Partial<Record<typeof state.status, DurableEnd>> = {
+      completed: 'completed',
+      failed: 'failed',
+      'timed-out': 'failed',
+      cancelled: 'canceled',
+    };
+    return ends[state.status] ?? 'in-flight';
+  };
+  /**
+   * Whether a run is a child run rather than a task: the child topology holds it, or, failing
+   * that, its identifier is not a catalog run's.
+   */
+  const isChildRun = async (runId: string): Promise<boolean> =>
+    (await childTopologyStore.get(runId)) !== undefined || !runId.startsWith('agent-run-');
+  // COR-1524 — a recovered run's snapshot reference is settled when the run ends, through the same
+  // hook as its task. A fresh dispatch settles its own reference where it is dispatched. This
+  // subscriber filters on `recovered` and settles a child run's or a goal attempt's reference as
+  // well, since those hold a snapshot too; the task settler below is the one that skips them.
+  catalogRunSettlements.subscribe(async (settlement) => {
+    if (settlement.recovered && fileAgents !== undefined) {
+      await fileAgents.settleRun(settlement.runId);
+    }
+  });
+  catalogRunSettlements.subscribe(
+    createCatalogTaskSettler({
+      tasks,
+      loadRecoveryRecord: (runId) => runtime.loadCatalogRunRecoveryRecord(runId),
+      durableCreatedAt: async (runId) => {
+        const state = await runtime.durable?.engine.get(runId);
+        return state === null || state === undefined
+          ? undefined
+          : new Date(state.createdAt).toISOString();
+      },
+      isChildRun,
+      now: runtimeServices.clock.nowISO,
+      ownerOf: ownerOrLocal,
+      originatingMessage: originatingMessageText,
+    }),
+  );
+
+  /** COR-1481 — records how a task ended, from the action that ended its run. */
+  function recordTaskSettlement(action: {
+    readonly runId: string;
+    readonly type: string;
+    readonly detail: unknown;
+    readonly timestamp: number;
+  }): void {
+    if (
+      action.type !== 'run.completed' &&
+      action.type !== 'run.error' &&
+      action.type !== 'run.aborted'
+    ) {
+      return;
+    }
+    const detail =
+      action.detail !== null && typeof action.detail === 'object'
+        ? (action.detail as Record<string, unknown>)
+        : {};
+    const finishReason =
+      typeof detail['finishReason'] === 'string' ? detail['finishReason'] : undefined;
+    const status =
+      action.type === 'run.completed'
+        ? settledTaskState('completed', finishReason)
+        : action.type === 'run.error'
+          ? 'failed'
+          : 'canceled';
+    const failure = detail['error'];
+    // Every cancellation terminal, a shutdown's abort included, follows its run's cleanup the
+    // way an API cancellation does, so the task reports what the cleanup actually did.
+    if (status === 'canceled') {
+      const activeRun = store.getRun(action.runId)?.activeRun;
+      if (activeRun !== undefined) void tasks.watchCleanup(action.runId, activeRun.closed());
+    }
+    void tasks
+      .recordSettled(action.runId, {
+        at: new Date(action.timestamp).toISOString(),
+        status,
+        finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
+        message:
+          status === 'failed' && failure !== undefined && failure !== null
+            ? serializeUnknownError(failure).slice(0, 1000)
+            : null,
+      })
+      .catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record how task "${action.runId}" ended: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+  }
+
+  /**
+   * COR-1481 — the review ids already announced with `review.requested`, per run,
+   * so a review is announced once however many actions follow it. Dropped with the
+   * run.
+   */
+  const announcedReviewRequests = new Map<string, Set<string>>();
+
+  /**
+   * Announces a review becoming pending (`review.requested`), from the action that
+   * created it: a human-wait park, or a step that ended with a tool call awaiting
+   * approval. Reviews are derived from run state on read and have no event of their
+   * own; this is the one place that notices the moment one appears. The id is the
+   * id `listPendingReviews` mints for the same review. A park that recovery
+   * reconstructs (it carries a seeded `parkOrdinal`) happened in an earlier
+   * process, which announced it, so it is not announced again.
+   */
+  function announceReviewRequests(action: {
+    readonly runId: string;
+    readonly type: string;
+    readonly detail: unknown;
+  }): void {
+    const detail =
+      action.detail !== null && typeof action.detail === 'object'
+        ? (action.detail as Record<string, unknown>)
+        : undefined;
+    const announce = (
+      reviewId: string,
+      kind: 'human-wait' | 'tool-approval',
+      target: { signalName?: string; callId?: string },
+    ): void => {
+      const announced = announcedReviewRequests.get(action.runId) ?? new Set<string>();
+      announcedReviewRequests.set(action.runId, announced);
+      if (announced.has(reviewId)) return;
+      announced.add(reviewId);
+      const owner = runAttribution.get(action.runId)?.principal ?? ANONYMOUS_LOCAL_OWNER;
+      emitter.dispatch(new ReviewRequestedEvent(reviewId, action.runId, owner, kind, target));
+    };
+    if (action.type === HumanWaitParkedEvent.type) {
+      const signalName = detail?.['signalName'];
+      const runState = store.getRun(action.runId);
+      if (typeof signalName !== 'string' || signalName.length === 0 || runState === undefined) {
+        return;
+      }
+      if (typeof detail?.['parkOrdinal'] === 'number') return;
+      const ordinal = humanWaitParkOrdinal(action.runId, runState.actions);
+      announce(`human-wait:${action.runId}:${signalName}:${ordinal}`, 'human-wait', { signalName });
+      return;
+    }
+    if (action.type === 'step.completed' && Array.isArray(detail?.['results'])) {
+      for (const result of detail['results'] as readonly unknown[]) {
+        if (result === null || typeof result !== 'object') continue;
+        const { outcome, pendingApproval } = result as {
+          outcome?: unknown;
+          pendingApproval?: { callId?: unknown };
+        };
+        const callId = pendingApproval?.callId;
+        if (outcome !== 'action_required' || typeof callId !== 'string') continue;
+        announce(`approval:${action.runId}:${callId}`, 'tool-approval', { callId });
+      }
+    }
+  }
+
   const storeSubscription = store.toObservable().subscribe((event) => {
     switch (event.type) {
       case 'action': {
         const storeActionEvent = event as StoreActionEvent;
+        recordTaskSettlement(storeActionEvent.action);
         // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
         // `abortRun` resolve its id. Its actions stay off this bureau's
         // `'action'` stream and live frames, as they were before it was
@@ -3572,6 +3878,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
         if (catalogRunIds.has(storeActionEvent.action.runId)) break;
         emitter.dispatch(new ActionEvent(storeActionEvent.action));
+        announceReviewRequests(storeActionEvent.action);
         emitLiveFrame({
           type: 'event',
           runId: storeActionEvent.action.runId,
@@ -3615,6 +3922,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
         terminalReviewSessions.delete(removedRunId);
+        announcedReviewRequests.delete(removedRunId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === removedRunId) reviewResolutionCleanupPending.delete(reviewId);
         }
@@ -4694,6 +5002,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
     const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
+    // COR-1481 — a context being deleted takes no new task: it reads as one that does
+    // not exist, until the deletion has committed and the id may name a new incarnation.
+    if (inFlightSessionDeletions.has(sessionId)) {
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    }
     const runId = runtimeServices.identifiers.next('run');
     // The text that stands for the request where only text fits: flow control,
     // and the session's `lastUserMessage`.
@@ -5142,6 +5455,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
       try {
+        // COR-1481 — the task's record, before anything of the run starts, so a
+        // record that cannot be written ends the start like any other start failure.
+        await tasks.recordAdmission({
+          taskId: runId,
+          contextId: sessionId,
+          incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
+          agentName,
+          owner,
+          // The text the run began with, whether it came as `message` or as an appended user row.
+          message: request.message ?? (requestText === '' ? undefined : requestText),
+        });
         // COR-1476 — inside the block below, so a gate that cannot be built
         // (its session read fails) ends the promoted run like any other start
         // failure: its end is logged and its session's input settled.
@@ -5151,6 +5475,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
         );
         assertRunAdmissionOpen('run');
+        // COR-1481 — the fence again, now that the session is saved and before the run
+        // registers: a deletion that began during the awaits above has already looked
+        // for this session's runs and would not find this one.
+        if (inFlightSessionDeletions.has(sessionId)) {
+          throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+        }
         activeRun = createActiveRun(
           {
             generate: runRuntime.generate,
@@ -5237,6 +5567,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           { owner },
         );
       } catch (error) {
+        await tasks.discard(runId).catch(() => undefined);
         // Promoted but never started, so no terminal listener will ever log
         // its end: log it here, or every process would count this run as
         // starting and keep a pause bound to it accepted.
@@ -6318,15 +6649,22 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // review again, under the id it had, and the parks it makes from here on are heard.
       await runHumanWaits.restore(info.workflowId, info.input.agentName);
       runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
-      // COR-1524: a recovered run is in no store and has no handle of its own to settle its
-      // snapshot reference, so it settles here, as it ends.
-      const settleRecovered = (): void => {
-        runHumanWaits.forget(info.workflowId);
-        if (fileAgents !== undefined)
-          detachBestEffortPromise(fileAgents.settleRun(info.workflowId));
-      };
-      void info.handle.result().then(settleRecovered, settleRecovered);
-      void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
+      // COR-1524: a recovered run is in no store and has no handle of its own, so its snapshot
+      // reference settles from the catalog settlement hook, as it ends (see the subscription
+      // beside the hook's creation).
+      void info.handle.result().then(
+        () => runHumanWaits.forget(info.workflowId),
+        () => runHumanWaits.forget(info.workflowId),
+      );
+      catalogSettlements.follow(
+        monitorRecoveredCatalogRun(
+          info.handle,
+          info.input.agentName,
+          diagnose,
+          (settlement) => catalogRunSettlements.publish(settlement),
+          catalogDurableEnd,
+        ),
+      );
       return;
     }
 
@@ -6457,12 +6795,112 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * rejects (AB-242's decision record — recovery failure stays diagnostic,
    * `createBureau()` never rejects on it, in whole or in part).
    */
+  /**
+   * COR-1481 — a crash can land between a run reaching its terminal state and the task record
+   * saying so, or between a catalog run's durable start and its task record being written. At
+   * boot, a task record whose durable run is terminal is settled from the durable state, and a
+   * durable catalog run with no task record is given one. A run still in flight is left to the
+   * recovery that reattaches it, which settles it as it ends.
+   */
+  async function reconcileTaskRecords(): Promise<void> {
+    const durable = runtime.durable;
+    if (!durable) return;
+    const settle = async (
+      taskId: string,
+      state: Awaited<ReturnType<typeof durable.engine.get>>,
+    ): Promise<void> => {
+      if (state === null) return;
+      if (
+        state.status !== 'completed' &&
+        state.status !== 'failed' &&
+        state.status !== 'cancelled' &&
+        state.status !== 'timed-out'
+      ) {
+        return;
+      }
+      const result =
+        state.result !== null && typeof state.result === 'object'
+          ? (state.result as Record<string, unknown>)
+          : {};
+      const finishReason =
+        typeof result['finishReason'] === 'string' ? result['finishReason'] : undefined;
+      const status =
+        state.status === 'completed'
+          ? settledTaskState('completed', finishReason)
+          : state.status === 'cancelled'
+            ? 'canceled'
+            : 'failed';
+      const content = typeof result['content'] === 'string' ? result['content'] : '';
+      await tasks.recordSettled(taskId, {
+        at: runtimeServices.clock.nowISO(),
+        status,
+        finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
+        message:
+          status === 'failed' && typeof state.error === 'string'
+            ? state.error.slice(0, 1000)
+            : null,
+        ...(status === 'completed' && content !== ''
+          ? {
+              answer: {
+                text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+                truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+              },
+            }
+          : {}),
+      });
+    };
+    for (const record of await tasks.unsettled()) {
+      if (store.getRun(record.taskId) !== undefined || findCatalogRun(record.taskId)) continue;
+      await settle(record.taskId, await durable.engine.get(record.taskId));
+    }
+    // A durable catalog run still in flight whose task record was never written: the lost
+    // admission window. A run that is over is not given a record here: its task either was
+    // settled and has since been removed by retention, or never existed, and recreating it at
+    // every boot would resurrect expired tasks, message text included. The record is dated
+    // from the durable run, and the run settles it through the catalog settlement hook.
+    for (let offset = 0; ;) {
+      const page = await durable.engine.list({
+        type: 'agentRun',
+        idPrefix: 'agent-run-',
+        status: ['pending', 'running', 'suspended'],
+        limit: 100,
+        offset,
+      });
+      for (const summary of page.items) {
+        if ((await tasks.record(summary.id)) !== undefined) continue;
+        if (await isChildRun(summary.id)) continue;
+        const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
+        if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) continue;
+        await tasks.recordAdmission({
+          taskId: summary.id,
+          contextId: loaded.record.contextId ?? summary.id,
+          incarnation: '',
+          agentName: loaded.record.agentName,
+          owner: ownerOrLocal(loaded.record.principal),
+          message: originatingMessageText(loaded.record.input),
+          createdAt: new Date(summary.createdAt).toISOString(),
+        });
+      }
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) break;
+    }
+  }
+
   async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
     // COR-1421 — retain every live frame for the first subscriber while the
     // pass runs.
     recoveryPassActive = true;
     try {
-      return await recoverDurableRunsPass();
+      const report = await recoverDurableRunsPass();
+      await reconcileTaskRecords().catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not reconcile task records at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
+      return report;
     } finally {
       recoveryPassActive = false;
     }
@@ -7275,6 +7713,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const dispatched = findCatalogRun(id);
       if (!dispatched) throw new BureauError('Run not found', 'NOT_FOUND');
       dispatched.handle.abort('Aborted via API');
+      void tasks.watchCleanup(id, dispatched.handle.closed());
       return {
         ...serializeUndispatchedCatalogRun(
           id,
@@ -7301,6 +7740,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!abortingRunIds.has(id)) {
       abortingRunIds.set(id, runtimeServices.clock.now());
       runState.activeRun.abort('Aborted via API');
+      // COR-1481 — the task records where its cleanup ended.
+      void tasks.watchCleanup(id, runState.activeRun.closed());
       // Evict the transitional marker once cleanup genuinely settles — never
       // on `abort()` returning, which is synchronous and proves nothing
       // about teardown. `closed()` never rejects (AB-204), so this is a
@@ -7461,6 +7902,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runToolboxesByRunId.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
+    // A task record that cannot be removed is diagnosed, like every step after the run has left
+    // the store: a throw here would skip the pruning below and make a second delete answer
+    // `Run not found`.
+    await tasks.remove(id).catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not remove the task record of deleted run "${id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
     await restoreRunOwnershipAfterEvent(id, sessionId, ownerPrincipal, ownerIncarnation);
     if (sessionId) {
       await retryRunDeletionPersistenceWrite('pending-approvals', sessionId, `approval:${id}:`);
@@ -8611,9 +9063,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const settledAt = settledActionTimestamp(runState.actions);
       if (settledAt !== undefined && settledAt < cutoff) expired.push(runId);
     }
-    if (expired.length === 0) return 0;
     const bound = (await runCreationLedger?.boundRunIds()) ?? new Set<string>();
-    let removed = 0;
+    // COR-1481 — the records of tasks whose runs left the run store on their own
+    // (a catalog run releases itself when it settles) age out here.
+    let removed = await tasks.expire(cutoff, bound);
     for (const runId of expired) {
       if (bound.has(runId)) continue;
       try {
@@ -9612,14 +10065,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // runs (either via the commit callback or the `finally` safety net for
   // the never-existed-session path / a thrown error before commit) so it
   // never double-clears an entry a later, unrelated call may already own.
-  const inFlightSessionDeletions = new Map<string, Promise<void>>();
-  async function deleteSession(id: string): Promise<void> {
+  const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
+  async function deleteSession(
+    id: string,
+    deleteOptions?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextDeletionReport> {
     const existing = inFlightSessionDeletions.get(id);
     if (existing) return existing;
     let releaseCoalescing: (() => void) | undefined = () => {
       inFlightSessionDeletions.delete(id);
     };
-    const deletion = performDeleteSession(id, () => {
+    const deletion = performDeleteSession(id, deleteOptions?.incarnation, () => {
       releaseCoalescing?.();
       releaseCoalescing = undefined;
     }).finally(() => {
@@ -9686,6 +10142,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         { cause: error },
       );
     }
+  }
+
+  /**
+   * The steps before any session is removed, whether `deleteSession` removes it or an expiry
+   * (`sessionStore.cleanup`) does, so the two cannot differ:
+   *
+   * - each session's owner is recorded for its deletion's audit entry; a record that cannot be
+   *   written keeps every session;
+   * - COR-1481: the user's message text does not outlive the context it belonged to, so each
+   *   task of the incarnation keeps its status and cleanup and loses its history. This runs
+   *   before the removal commits, so a failure leaves the context in place and a retry finds it.
+   */
+  async function prepareSessionsForRemoval(sessions: readonly AgentSession[]): Promise<void> {
+    for (const session of sessions) await recordSessionDeletionOwner(session);
+    for (const session of sessions) await tasks.clearHistory(session.id, session.incarnation);
   }
 
   /**
@@ -9770,6 +10241,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     sessionRunIds: Set<string>;
     steeringGate: BureauSteeringGate | undefined;
     runTerminals: Array<Promise<void>>;
+    /** COR-1481 — the tasks that were live when the session's deletion began, with their cleanup. */
+    liveTasks: Array<{ taskId: string; closed: Promise<RunCleanupAcknowledgement> }>;
   } {
     const state = store.getState();
     const sessionRunIds = new Set<string>();
@@ -9782,14 +10255,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const steeringGate = steeringGates.get(id);
     const runTerminals: Array<Promise<void>> = [];
+    const liveTasks: Array<{ taskId: string; closed: Promise<RunCleanupAcknowledgement> }> = [];
     for (const runId of sessionRunIds) {
       const runState = store.getRun(runId);
       if (runState?.status !== 'running') continue;
       runTerminals.push(whenActiveRunTerminal(runState.activeRun));
+      const closed = runState.activeRun.closed();
+      void tasks.watchCleanup(runId, closed);
+      liveTasks.push({ taskId: runId, closed });
       const isPaused = steeringGate?.forRun(runId).getDesiredState().paused ?? false;
       if (!isPaused) abortRun(runId);
     }
-    return { sessionRunIds, steeringGate, runTerminals };
+    return { sessionRunIds, steeringGate, runTerminals, liveTasks };
   }
 
   /**
@@ -9852,12 +10329,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   async function performDeleteSession(
     id: string,
+    expectedIncarnation: string | undefined,
     onStoreDeletionCommitted: () => void,
-  ): Promise<void> {
+  ): Promise<ContextDeletionReport> {
     const sessionStore = requireSessionStore();
     const session = await sessionStore.load(id);
+    // COR-1481 — the caller authorized one incarnation of this id. An id reused since is
+    // another context, and nothing of it is cancelled or deleted here.
+    if (expectedIncarnation !== undefined && session?.incarnation !== expectedIncarnation) {
+      return { deleted: false, tasks: [] };
+    }
     if (session) {
-      await recordSessionDeletionOwner(session);
+      await prepareSessionsForRemoval([session]);
       for (const runId of persistedApprovalRunIds(session.metadata)) {
         await revokePendingApprovalsForRun(runId, {
           status: 'revoked',
@@ -9891,6 +10374,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         sessionRunIds,
         steeringGate: steeringGateForAbort,
         runTerminals,
+        liveTasks,
       } = abandonSessionRuns(id);
 
       // AB-228/AB-371/AB-384, superseded by AB-389: `session.deleted` used
@@ -9923,7 +10407,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       });
-      const removedLiveRecord = await sessionStore.delete(id);
+      const removedLiveRecord =
+        expectedIncarnation === undefined
+          ? await sessionStore.delete(id)
+          : await sessionStore.delete(id, { expectedIncarnation });
       onStoreDeletionCommitted();
       if (removedLiveRecord) await releaseSessionGeneratedAssets(session);
       // AB-389 — drain right here, before anything below that can stall
@@ -10025,9 +10512,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
         }
       }
-      return;
+      return { deleted: removedLiveRecord, tasks: liveTasks };
     }
     await sessionStore.delete(id);
+    return { deleted: false, tasks: [] };
   }
 
   /**
@@ -10041,7 +10529,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function requireSessionRunId(sessionId: string): Promise<string> {
     const session = await requireSessionStore().load(sessionId);
-    if (!session) {
+    if (!session || inFlightSessionDeletions.has(sessionId)) {
       throw new BureauError(`Session not found: ${sessionId}`, 'NOT_FOUND');
     }
     const runId = session.metadata['lastRunId'];
@@ -10203,6 +10691,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (!session || !sessionStoreForInput) {
       return { outcome: 'not-found' };
     }
+    // COR-1481: input to a context being deleted reads as input to one that is gone.
+    if (inFlightSessionDeletions.has(sessionId)) return { outcome: 'not-found' };
     // COR-301/COR-1569: the same live-run-aware checks steering makes,
     // across every process sharing this backend. A request carries no run
     // id, so authorization targets the session's sole live run.
@@ -12318,7 +12808,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function getReview(
     id: string,
-  ): Promise<(PendingReview & { status: ReviewStatus }) | undefined> {
+  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined> {
     const pending = listPendingReviews().find((candidate) => candidate.id === id);
     if (pending) return pending;
     // COR-1577: the park of a `bureau.run()` run, which no session holds.
@@ -12352,6 +12842,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...reviewDetail,
       ...(reviewDetail.kind === 'tool-approval' ? { round: reviewDetail.round ?? 0 } : {}),
       status: reviewStatusFromAuditType(match.type),
+      // Who decided it, as the audit trail recorded the decision.
+      ...(match.principal === undefined ? {} : { resolvedBy: match.principal }),
     };
   }
 
@@ -12948,6 +13440,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             );
           }
           await Promise.allSettled(ownerDrains);
+          // COR-1481 — the settlement and cleanup writes of tasks whose runs have just ended land
+          // before the storage they write to is closed.
+          await tasks.flush();
 
           emitter.dispatch(new BureauDisposedEvent());
           storeSubscription.unsubscribe();
@@ -13034,6 +13529,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             const engine = runtime.durable.engine;
             await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());
           }
+          // COR-1481 — disposing the engine is what ends a durable run that was still in flight,
+          // and each run's `closed()` acknowledgement lands as it does. The cleanup the registry
+          // follows is awaited, with the writes it starts, before the backend closes under them.
+          await catalogSettlements.settled();
+          await tasks.idle();
         } finally {
           try {
             // Pending steering log appends (run-boundary events are logged
@@ -13720,6 +14220,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // COR-1367 — handed down to each catalog agent as its inherited policy.
       guardrails: options.guardrails,
       registerCatalogRun,
+      // COR-1481 — a `bureau.run()` dispatch is a task: its record is written as the
+      // handle is returned (a write that fails is diagnosed, not thrown, because
+      // `bureau.run` returns synchronously), and its end is recorded from its result.
+      onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
+        const taskId = handle.id;
+        catalogSettlements.follow(
+          publishFreshCatalogRun({
+            handle,
+            agentName,
+            admit: () =>
+              tasks.recordAdmission({
+                taskId,
+                contextId,
+                incarnation: '',
+                agentName,
+                owner,
+                message: originatingMessageText(input),
+              }),
+            hook: catalogRunSettlements,
+            durableEnd: catalogDurableEnd,
+            followCleanup: (closed) =>
+              void tasks.watchCleanup(taskId, closed as Promise<RunCleanupAcknowledgement>),
+            diagnose,
+          }),
+        );
+      },
       fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: options.humanInput === true && runtime.durable !== undefined,
@@ -13868,6 +14394,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     scheduler: runtime.scheduler,
     sessionStore: runtime.sessionStore,
     kv: runtime.kv,
+    tasks,
+    get lifecycle() {
+      return bureau.completed ? 'stopped' : runAdmissionClosed ? 'draining' : 'ready';
+    },
     agents: agentCatalog,
     modelCatalog,
     planSelection: (request) => modelPolicyPlanner.planSelection(request),
@@ -14157,9 +14687,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // its deletion's audit entry the way `deleteSession` records it, before the store
   // removes anything; a session whose owner cannot be recorded is kept.
   sessionCleanupHandler.resolve(async (sessions) => {
-    // Every owner first: a record that cannot be written keeps every session, with
-    // its runs untouched.
-    for (const session of sessions) await recordSessionDeletionOwner(session);
+    // Every owner first, and every task history erased: a record that cannot be written
+    // keeps every session, with its runs untouched.
+    await prepareSessionsForRemoval(sessions);
     // An expired session's rows are gone with it, so its asset claims end too, but only once the
     // store has removed it: the claims are released when its `session.deleted` entry drains.
     for (const session of sessions) {

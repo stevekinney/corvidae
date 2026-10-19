@@ -31,6 +31,7 @@ import {
   type StepRecord,
   stopWhen,
   type StreamEventMap,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -74,7 +75,7 @@ import {
   removeLastScheduledFireTranscript,
   resolveProviderGenerate,
 } from './runtime-composition';
-import { SESSION_OWNER_METADATA_KEY } from './session-authority';
+
 import type { GenerateProviderName, ProviderConfiguration } from './types';
 
 // Drain Weft's deferred inline-launch queue between tests — a pending setTimeout(0)

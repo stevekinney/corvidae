@@ -2030,8 +2030,12 @@ describe('durable steering across two Bureau processes', () => {
       const sessionId = await startRunningSession(bureau);
       const kv = bureau.kv;
       if (kv === undefined) throw new Error('expected a durable store');
-      const listing = spyOn(kv, 'list').mockImplementation(() =>
-        Promise.reject(new Error('listing unavailable')),
+      // Only the steering log's listing fails: the task records' listing is not what this tests.
+      const listTasks = kv.list.bind(kv);
+      const listing = spyOn(kv, 'list').mockImplementation((prefix: string) =>
+        prefix.startsWith('bureau-task')
+          ? listTasks(prefix)
+          : Promise.reject(new Error('listing unavailable')),
       );
       try {
         await bureau.deleteSession(sessionId);

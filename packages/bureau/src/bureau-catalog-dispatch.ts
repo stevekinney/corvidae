@@ -78,6 +78,21 @@ export interface CatalogDispatcherDependencies {
    */
   readonly registerCatalogRun?: ((activeRun: ActiveRun) => void) | undefined;
   /**
+   * COR-1481 — called once for each `bureau.run()` dispatch, with its handle, as
+   * the handle is returned: the moment the run becomes a task. Child runs and goal
+   * attempts are not passed. `contextId` is the session id the caller named, or
+   * the run's own id when it named none.
+   */
+  readonly onCatalogRunAdmitted?:
+    | ((admission: {
+        readonly handle: AgentRun<unknown, boolean>;
+        readonly agentName: string;
+        readonly owner: string;
+        readonly contextId: string;
+        readonly input: AgentInput;
+      }) => void)
+    | undefined;
+  /**
    * COR-1367 — the deprecated `BureauOptions.guardrails`, handed down to each
    * catalog agent as its inherited policy. See {@link catalogRunGuardrailsContext}.
    */
@@ -249,6 +264,7 @@ export function createCatalogDispatcher({
   guardrails,
   humanInput,
   registerCatalogRun,
+  onCatalogRunAdmitted,
   fileAgents,
 }: CatalogDispatcherDependencies): {
   runAgent: (
@@ -608,6 +624,8 @@ export function createCatalogDispatcher({
         // empty on the new process.
         ...(principal !== undefined ? { principal } : {}),
         ...(fileBinding === undefined ? {} : { agentDefinitionHash: fileBinding.hash }),
+        // COR-1481: the context the caller named, so a task rebuilt from this record keeps it.
+        ...(runOptions?.sessionId === undefined ? {} : { contextId: runOptions.sessionId }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
@@ -951,11 +969,25 @@ export function createCatalogDispatcher({
       ...catalogRunGuardrailsContext(agent, guardrails),
     };
 
+    // COR-1481 — the dispatch is a task from the moment its handle exists.
+    const admitted = (handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> => {
+      onCatalogRunAdmitted?.({
+        handle,
+        agentName: name,
+        owner: ownerOrLocal(principal),
+        contextId: runOptions?.sessionId ?? handle.id,
+        input,
+      });
+      return handle;
+    };
+
     const hasResolver = hasDefinitionResolver(agent);
     if (runtime.durable && hasResolver) {
-      return indexCatalogRun(
-        runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
-        name,
+      return admitted(
+        indexCatalogRun(
+          runDurableCatalogAgent(name, input, runOptions, context, principal, agent),
+          name,
+        ),
       );
     }
     // COR-1302 — the direct branch's handle is returned before the agent's
@@ -979,30 +1011,32 @@ export function createCatalogDispatcher({
     // COR-1524 — a file agent's snapshot is stored, and this run tied to it, from the moment the
     // handle exists, and settled when the handle ends, however it ends.
     const fileReference = beginDirectFileReference(agent, context.runId);
-    return indexCatalogRun(
-      trackCatalogRun(
-        settleDirectFileReference(
-          createDeferredAgentRun(
-            () =>
-              resolveInvariantComposedAgent(
-                name,
-                input,
-                context,
-                principal,
-                agent,
-                hasResolver,
-                registerCatalogRun,
-                fileReference,
-              ),
-            input,
-            context,
-            name,
+    return admitted(
+      indexCatalogRun(
+        trackCatalogRun(
+          settleDirectFileReference(
+            createDeferredAgentRun(
+              () =>
+                resolveInvariantComposedAgent(
+                  name,
+                  input,
+                  context,
+                  principal,
+                  agent,
+                  hasResolver,
+                  registerCatalogRun,
+                  fileReference,
+                ),
+              input,
+              context,
+              name,
+            ),
+            fileReference,
+            context.runId,
           ),
-          fileReference,
-          context.runId,
         ),
+        name,
       ),
-      name,
     );
   }
 

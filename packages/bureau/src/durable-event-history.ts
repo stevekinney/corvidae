@@ -141,6 +141,7 @@ import type { EventTimestampResolver } from './event-timestamp';
 import type {
   ActionEvent,
   ReviewApprovedEvent,
+  ReviewRequestedEvent,
   ReviewCanceledEvent,
   ReviewDeniedEvent,
   ReviewExpiredEvent,
@@ -2301,6 +2302,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
   function reviewPayload(
     event:
       | ReviewApprovedEvent
+      | ReviewRequestedEvent
       | ReviewCanceledEvent
       | ReviewDeniedEvent
       | ReviewExpiredEvent
@@ -2315,6 +2317,21 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       kind: event.kind,
     };
   }
+  // COR-1481 — the one non-resolution review event: a review became pending. It
+  // is what lets a task's history show the task entering `input-required`. The
+  // payload adds only the identifier that addresses the wait (`signalName` for a
+  // human wait, `callId` for an approval) to the shared minimal shape, so it holds
+  // no prompt text and no tool arguments. A new kind inside the existing wrapper
+  // is additive: readers skip a kind they do not know, so `CURRENT_SCHEMA_VERSION`
+  // stays 1.
+  const reviewRequestedListener = (event: ReviewRequestedEvent): void => {
+    if (signal?.aborted) return;
+    sink({ kind: 'run', id: event.runId }, 'review.requested', {
+      ...reviewPayload(event),
+      ...(event.signalName === undefined ? {} : { signalName: event.signalName }),
+      ...(event.callId === undefined ? {} : { callId: event.callId }),
+    });
+  };
   const reviewApprovedListener = (event: ReviewApprovedEvent): void => {
     if (signal?.aborted) return;
     sink({ kind: 'run', id: event.runId }, 'review.approved', reviewPayload(event));
@@ -2343,6 +2360,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
     if (signal?.aborted) return;
     sink({ kind: 'run', id: event.runId }, 'review.superseded', reviewPayload(event));
   };
+  bureau.addEventListener('review.requested', reviewRequestedListener);
   bureau.addEventListener('review.approved', reviewApprovedListener);
   bureau.addEventListener('review.denied', reviewDeniedListener);
   bureau.addEventListener('review.rejected', reviewRejectedListener);
@@ -2381,6 +2399,7 @@ export function createDurableEventProducer<D extends AgentDefinitions = AgentDef
       bureau.removeEventListener('session.created', sessionCreatedListener);
       bureau.removeEventListener('session.saved', sessionSavedListener);
       bureau.removeEventListener('session.deleted', sessionDeletedListener);
+      bureau.removeEventListener('review.requested', reviewRequestedListener);
       bureau.removeEventListener('review.approved', reviewApprovedListener);
       bureau.removeEventListener('review.denied', reviewDeniedListener);
       bureau.removeEventListener('review.rejected', reviewRejectedListener);

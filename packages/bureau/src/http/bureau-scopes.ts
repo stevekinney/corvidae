@@ -13,9 +13,7 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * resources without any of them, and a kind's scope grants cross-owner access
  * to that kind. A write scope does not imply its read scope.
  * `bureau.events:observe-all` is the fleet-wide feed and is not implied by
- * `bureau.tasks:read`. The `bureau.deliveries:*` scopes are not registered, and
- * `bureau.contexts:read` is registered by the issue that adds the operation
- * which needs it (COR-1553).
+ * `bureau.tasks:read`. The `bureau.deliveries:*` scopes are not registered.
  */
 export const BUREAU_SCOPES = [
   'bureau.tasks:read',
@@ -27,6 +25,7 @@ export const BUREAU_SCOPES = [
   'bureau.schedules:write',
   'bureau.goals:read',
   'bureau.goals:write',
+  'bureau.contexts:read',
   'bureau.contexts:write',
   'bureau.events:observe-all',
 ] as const satisfies readonly PackageAuthorizationScope[];

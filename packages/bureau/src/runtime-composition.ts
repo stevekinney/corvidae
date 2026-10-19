@@ -78,6 +78,7 @@ import {
   withCache,
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   createSkillArtifactLoader,
@@ -146,7 +147,6 @@ import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
   resolveSessionOwner,
-  SESSION_OWNER_METADATA_KEY,
   SessionOwnerConflictError,
 } from './session-authority';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
@@ -863,6 +863,17 @@ export interface CatalogRunRecoveryRecord {
    * additive, a reader that predates it ignores it, and nothing is deployed.
    */
   readonly agentDefinitionHash?: string;
+  /**
+   * COR-1481 — set only when the dispatch named a context (`bureau.run(..., { sessionId })`): the
+   * task's `contextId`, so a task rebuilt from this record after a crash that lost its admission
+   * write is in the context the live admission would have put it in. Absent for a dispatch that
+   * named none, and for a record written before the field existed; the task is then in its own
+   * run's context.
+   *
+   * The record stays at `schemaVersion` 1, as `agentDefinitionHash` did: additive, and a reader
+   * that predates it ignores it.
+   */
+  readonly contextId?: string;
 }
 
 // Exported for tests only — lets `runtime-composition.test.ts` construct the
@@ -903,6 +914,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
   if (principal !== undefined && typeof principal !== 'string') return false;
   const agentDefinitionHash = value['agentDefinitionHash'];
   if (agentDefinitionHash !== undefined && typeof agentDefinitionHash !== 'string') return false;
+  const contextId = value['contextId'];
+  if (contextId !== undefined && typeof contextId !== 'string') return false;
   const goalAttempt = value['goalAttempt'];
   if (
     goalAttempt !== undefined &&
