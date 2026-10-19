@@ -150,6 +150,7 @@ import {
   resolveSessionOwner,
   SessionOwnerConflictError,
 } from './session-authority';
+import { committedFireApprovalIds } from './scheduled-fire-review-state';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import type {
   BureauMemoryAuthorityOptions,
@@ -2380,6 +2381,39 @@ export function scheduledFireApprovalMetadata(
   };
 }
 
+/**
+ * COR-1596 — what a schedule fire's session keeps of the approvals its run did not commit: the
+ * patch that drops each of the run's approvals (and its round) that `committed` does not name,
+ * and the run's authority with the last of them. `undefined` when the session holds nothing of
+ * the kind, so a caller writes nothing. Run when the fire settles, so a stale approval and its
+ * authority do not outlive it.
+ */
+export function withoutUncommittedFireApprovals(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+  committed: ReadonlySet<string>,
+): Record<string, JSONValue> | undefined {
+  const prefix = `approval:${runId}:`;
+  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
+    isPlainAuthorityRecord(value) ? value : {};
+  const overrides = recordOf(metadata['pendingApprovalOverrides']);
+  const abandoned = Object.keys(overrides).filter(
+    (id) => id.startsWith(prefix) && !committed.has(id),
+  );
+  if (abandoned.length === 0) return undefined;
+  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => !abandoned.includes(id)));
+  const remaining = without(overrides);
+  const authorities = recordOf(metadata['lastRequestAuthorities']);
+  const { [runId]: _ended, ...otherAuthorities } = authorities;
+  const holdsApproval = Object.keys(remaining).some((id) => id.startsWith(prefix));
+  return {
+    pendingApprovalOverrides: remaining,
+    pendingApprovalRounds: without(recordOf(metadata['pendingApprovalRounds'])),
+    lastRequestAuthorities: holdsApproval ? authorities : otherAuthorities,
+  };
+}
+
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
 
 export async function createRuntimeComposition(
@@ -3721,22 +3755,6 @@ async function buildRuntimeComposition(
    * rather than the bureau's interactive session ownership path, so a `running`
    * marker would only race any interactive run sharing the session.
    */
-  /**
-   * COR-1596 — the review ids of the tool approvals a fire's checkpoint holds: the steps the run
-   * committed before the one it is replaying.
-   */
-  async function committedScheduledFireApprovals(runId: string): Promise<ReadonlySet<string>> {
-    const committed = new Set<string>();
-    if (durable === undefined) return committed;
-    for (const step of await durable.checkpointStore.loadSteps(runId)) {
-      for (const result of step.results) {
-        if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
-        committed.add(`approval:${runId}:${result.pendingApproval.callId}`);
-      }
-    }
-    return committed;
-  }
-
   function createScheduledSessionPersistHook(
     store: SessionStore,
     sessionId: string,
@@ -3754,7 +3772,10 @@ async function buildRuntimeComposition(
       // its checkpoint never held; only a replay can find one, so only a replay reads the
       // checkpoint, and reads it before the atomic update, which cannot wait on a read.
       const committedApprovals = replaceCurrentFireTranscript
-        ? await committedScheduledFireApprovals(runId)
+        ? committedFireApprovalIds(
+            runId,
+            durable === undefined ? [] : await durable.checkpointStore.loadSteps(runId),
+          )
         : undefined;
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
         const activeSkillRecords = getActiveSkillRecords();

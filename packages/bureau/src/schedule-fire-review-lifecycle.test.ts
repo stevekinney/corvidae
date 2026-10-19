@@ -166,35 +166,45 @@ describe('an unanswered fire approval expires', () => {
   });
 });
 
+/**
+ * A storage whose first process dies between a fire step's session write, which records the
+ * approval, and the step's commit: the journal of the step is held for good, so the approval is in
+ * the session and not in the checkpoint. `storageAfterCrash` is what the next process opens. The
+ * held write is never released: that process is dead, and releasing it would make Weft warn that
+ * it lost a checkpoint compare-and-swap.
+ */
+function crashAfterApprovalWrite() {
+  const recordsApproval = (args: unknown[]) =>
+    storedText(args).includes('pendingApprovalOverrides');
+  const journalsStep = (args: unknown[]) => /wf:[^ ]+:ckpt/.test(storedText(args));
+  let armed = false;
+  let held = false;
+  const reached = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const storageAfterCrash = new MemoryStorage();
+  const storage = new Proxy(storageAfterCrash, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (typeof member !== 'function' || typeof property !== 'string') return member;
+      return (...args: unknown[]) => {
+        const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+        if (property !== 'conditionalBatch' || held) return call();
+        if (armed && journalsStep(args)) {
+          held = true;
+          reached.resolve();
+          return release.promise.then(call);
+        }
+        if (recordsApproval(args)) armed = true;
+        return call();
+      };
+    },
+  });
+  return { storage, storageAfterCrash, reached: reached.promise };
+}
+
 describe('a crash between a fire step’s session write and its commit', () => {
   it('restores only the approvals the run committed, and approving one charges once', async () => {
-    // The first process's journal of step 0 is held for good: that is a crash between the step's
-    // session write, which records the approval, and the step's commit, which the run never makes.
-    const recordsApproval = (args: unknown[]) =>
-      storedText(args).includes('pendingApprovalOverrides');
-    const journalsStep = (args: unknown[]) => /wf:[^ ]+:ckpt/.test(storedText(args));
-    let armed = false;
-    let held = false;
-    const reached = Promise.withResolvers<void>();
-    const release = Promise.withResolvers<void>();
-    const raw = new MemoryStorage();
-    const holdingStorage = new Proxy(raw, {
-      get(target, property) {
-        const member = Reflect.get(target, property, target) as unknown;
-        if (typeof member !== 'function' || typeof property !== 'string') return member;
-        return (...args: unknown[]) => {
-          const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
-          if (property !== 'conditionalBatch' || held) return call();
-          if (armed && journalsStep(args)) {
-            held = true;
-            reached.resolve();
-            return release.promise.then(call);
-          }
-          if (recordsApproval(args)) armed = true;
-          return call();
-        };
-      },
-    });
+    const { storage: holdingStorage, storageAfterCrash: raw, reached } = crashAfterApprovalWrite();
     let attempt = 0;
     const generate: GenerateFunction = async (context) => {
       if (context.step > 0) return { content: 'charged', toolCalls: [] };
@@ -218,7 +228,7 @@ describe('a crash between a fire step’s session write and its commit', () => {
       storage: holdingStorage,
     });
     const { fireId } = await fireOnce(first, OWNER.alice, 'crash-session');
-    await reached.promise;
+    await reached;
     const abandoned = await reviewOf(first, fireId);
     expect(abandoned.id).toBe(`approval:${fireId}:charge-A`);
 
@@ -249,6 +259,257 @@ describe('a crash between a fire step’s session write and its commit', () => {
     expect(restarted.listPendingReviews()).toEqual([]);
 
     // never released: this process is dead
+  });
+
+  it('lists nothing for an abandoned approval once the fire has ended, and leaves none in its session', async () => {
+    const { storage, storageAfterCrash, reached } = crashAfterApprovalWrite();
+    let attempt = 0;
+    const generate: GenerateFunction = async (context) => {
+      if (context.step > 0) return { content: 'charged', toolCalls: [] };
+      attempt += 1;
+      // The replay ends before its own write-back: the provider is down.
+      if (attempt === 2) throw new Error('the provider is down for the replay');
+      return {
+        content: '',
+        toolCalls: [{ id: `charge-${attempt}`, name: 'charge-card', arguments: { cents: 100 } }],
+      };
+    };
+    const first = await open({
+      generate,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopAtApproval,
+      storage,
+    });
+    const { fireId } = await fireOnce(first, OWNER.alice, 'ended-crash-session');
+    await reached;
+    const abandoned = await reviewOf(first, fireId);
+    expect(abandoned.id).toBe(`approval:${fireId}:charge-1`);
+
+    const diagnostics: string[] = [];
+    const second = await open({
+      generate,
+      toolbox: approvalToolbox([]),
+      stopWhen: stopAtApproval,
+      storage: storageAfterCrash,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    await pollUntil(async () => {
+      const status = await durableStatus(second, fireId);
+      return status !== undefined && !['pending', 'running', 'suspended'].includes(status)
+        ? status
+        : undefined;
+    }, 'the replay to end');
+    // Whatever settles the fire reconciles its session with its checkpoint, which never held
+    // the abandoned approval.
+    await pollUntil(async () => {
+      const metadata = await sessionMetadata(second, 'ended-crash-session');
+      return keysOf(metadata['pendingApprovalOverrides']).length === 0 ? true : undefined;
+    }, 'the fire’s session to shed the abandoned approval');
+    // The replay ended in error, which is what leaves the fire without a write-back of its own.
+    expect(diagnostics.join('\n')).toContain('the provider is down for the replay');
+    const metadata = await sessionMetadata(second, 'ended-crash-session');
+    expect(keysOf(metadata['lastRequestAuthorities'])).toEqual([]);
+    expect(keysOf(metadata['pendingApprovalRounds'])).toEqual([]);
+
+    const charges: number[] = [];
+    const third = await open({
+      generate,
+      toolbox: approvalToolbox(charges),
+      stopWhen: stopAtApproval,
+      storage: storageAfterCrash,
+    });
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+
+    expect(reviewsOf(third, fireId)).toEqual([]);
+    expect(charges).toEqual([]);
+  });
+});
+
+describe('a fire’s approval is fenced across Bureau processes by the durable decision record (COR-1579)', () => {
+  it('refuses a peer’s stale denial after the first decision’s session fence has retired with the task', async () => {
+    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const firstCharges: number[] = [];
+    const first = await open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox(firstCharges),
+      stopWhen: stopAtApproval,
+      storage,
+      taskRetention: { olderThan: 1 },
+    });
+    const { fireId } = await fireOnce(first, OWNER.alice, 'fenced-session');
+    const review = await reviewOf(first, fireId);
+    await pollUntil(
+      async () => ((await durableStatus(first, fireId)) === 'completed' ? true : undefined),
+      'the fire to end at its approval',
+    );
+    // A peer that lists the same approval, from the session the fire recorded it in.
+    const peerCharges: number[] = [];
+    const peer = await open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox(peerCharges),
+      stopWhen: stopAtApproval,
+      storage,
+    });
+    await reviewOf(peer, fireId);
+
+    await first.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    // The task leaves retention, and the session's own record of the decision goes with it.
+    await pollUntil(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await first.runDurableMaintenance(Date.now());
+      return (await first.tasks.record(fireId)) === undefined ? true : undefined;
+    }, 'the fire’s task to leave retention');
+    const metadata = await sessionMetadata(first, 'fenced-session');
+    expect(keysOf(metadata['resolvedReviewDecisions'])).toEqual([]);
+
+    const refusal = await rejectionOf(
+      peer.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.bob }),
+    );
+
+    expect((refusal as BureauError).code).toBe('CONFLICT');
+    expect(firstCharges).toEqual([4242]);
+    expect(peerCharges).toEqual([]);
+  });
+});
+
+describe('a fire’s task stream ends when its last review closes', () => {
+  const statusesOf = (frames: readonly { data?: unknown }[]) =>
+    frames.map((frame) => (frame.data as { status?: string }).status);
+
+  /** A fire held at its first step until `release`, so a subscriber can connect before it raises. */
+  async function heldFire() {
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const charges: number[] = [];
+    const generate: GenerateFunction = async (context) => {
+      if (context.step > 0) return { content: 'done', toolCalls: [] };
+      entered.resolve();
+      await gate.promise;
+      return {
+        content: '',
+        toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 4242 } }],
+      };
+    };
+    const bureau = await open({
+      generate,
+      toolbox: approvalToolbox(charges),
+      stopWhen: stopAtApproval,
+      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+    });
+    const created = await bureau.createSchedule({
+      agentName: 'researcher',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+    });
+    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await entered.promise;
+    const fireId = await pollUntil(async () => {
+      const schedule = await bureau.getSchedule(created?.id ?? '');
+      return schedule?.currentWorkflowId ?? undefined;
+    }, 'the fire to start');
+    const follow = async () =>
+      readFrames(
+        await handlerOf(bureau)(
+          subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+        ),
+        { timeoutMs: 8_000 },
+      );
+    return { bureau, fireId, follow, release: () => gate.resolve(), charges };
+  }
+
+  const closings = {
+    decided: async (bureau: Bureau, reviewId: string) => {
+      await bureau.resolveReview({ id: reviewId, decision: 'approve', principal: OWNER.alice });
+    },
+    expired: async (bureau: Bureau) => {
+      expect(await bureau.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    },
+  };
+
+  for (const [closing, close] of Object.entries(closings)) {
+    it(`gives a subscriber from before the review working, input-required, then its end, once the review is ${closing}`, async () => {
+      const { bureau, fireId, follow, release } = await heldFire();
+      const reading = follow();
+      release();
+      const review = await reviewOf(bureau, fireId);
+      await pollUntil(
+        async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
+        'the fire to settle with its approval open',
+      );
+
+      await close(bureau, review.id);
+      const frames = await reading;
+
+      expect(statusesOf(frames)).toEqual(['working', 'input-required', 'completed']);
+      expect(frames.map((frame) => frame.event)).toEqual([
+        'task.snapshot',
+        'task.status',
+        'task.status',
+      ]);
+    });
+
+    it(`gives a subscriber from while it waits input-required, then its end, once the review is ${closing}`, async () => {
+      const { bureau, fireId, follow, release } = await heldFire();
+      release();
+      const review = await reviewOf(bureau, fireId);
+      await pollUntil(
+        async () => ((await durableStatus(bureau, fireId)) === 'completed' ? true : undefined),
+        'the fire to settle with its approval open',
+      );
+      const reading = follow();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      await close(bureau, review.id);
+      const frames = await reading;
+
+      expect(statusesOf(frames)).toEqual(['input-required', 'completed']);
+    });
+  }
+
+  it('gives a subscriber from before a human wait working, input-required, working, then its end', async () => {
+    const gate = Promise.withResolvers<void>();
+    const entered = Promise.withResolvers<void>();
+    const generate: GenerateFunction = async (context) => {
+      if (context.step === 0) {
+        entered.resolve();
+        await gate.promise;
+      }
+      return askingGenerate()(context);
+    };
+    const bureau = await open({
+      generate,
+      humanInput: true,
+      stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      storage: { type: 'sqlite', path: harness.nextDatabasePath() },
+    });
+    const created = await bureau.createSchedule({
+      agentName: 'researcher',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+    });
+    await bureau.runDurableMaintenance(created?.nextFireAt ?? 0);
+    await entered.promise;
+    const fireId = await pollUntil(async () => {
+      const schedule = await bureau.getSchedule(created?.id ?? '');
+      return schedule?.currentWorkflowId ?? undefined;
+    }, 'the fire to start');
+    const reading = readFrames(
+      await handlerOf(bureau)(
+        subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+      ),
+      { timeoutMs: 8_000 },
+    );
+    gate.resolve();
+    const review = await reviewOf(bureau, fireId);
+    // Let the stream hear the park before the answer, so its order is the task's.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    await bureau.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    const frames = await reading;
+
+    expect(statusesOf(frames)).toEqual(['working', 'input-required', 'working', 'completed']);
   });
 });
 
@@ -374,6 +635,7 @@ describe('a fire that continues past an approval', () => {
     const charges: number[] = [];
     const secondStep = Promise.withResolvers<void>();
     const secondStepReached = Promise.withResolvers<void>();
+    const diagnostics: string[] = [];
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
         return {
@@ -390,6 +652,7 @@ describe('a fire that continues past an approval', () => {
       toolbox: approvalToolbox(charges),
       // No `stopWhen.pendingApproval()`: the fire takes another step with the approval pending.
       stopWhen: stopWhen.noToolCalls(),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
     });
     const { fireId } = await fireOnce(bureau, OWNER.alice, 'continuing-session');
     const review = await reviewOf(bureau, fireId);
@@ -404,6 +667,7 @@ describe('a fire that continues past an approval', () => {
     expect((failure as BureauError).code).toBe('CONFLICT');
     // The decision took effect: only the conversation could not keep it.
     expect(charges).toEqual([4242]);
+    expect(diagnostics.join('\n')).toContain('another step to take');
   });
 });
 

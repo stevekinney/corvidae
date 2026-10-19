@@ -120,3 +120,26 @@ export function releaseScheduledFireReviews(
   }
   return true;
 }
+
+/**
+ * The review ids of the tool approvals a run's checkpoint holds, which is the only source of truth
+ * for which of a fire's approvals exist (COR-1596). A fire's session records an approval before
+ * the step that raised it commits, so the session's record is a claim, and a reader of it, at boot
+ * or when the fire settles, checks it against these.
+ */
+export function committedFireApprovalIds(
+  runId: string,
+  steps: readonly {
+    readonly results: readonly { readonly outcome: string; readonly pendingApproval?: unknown }[];
+  }[],
+): Set<string> {
+  const committed = new Set<string>();
+  for (const step of steps) {
+    for (const result of step.results) {
+      if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
+      const callId = (result.pendingApproval as { callId?: unknown }).callId;
+      if (typeof callId === 'string') committed.add(`approval:${runId}:${callId}`);
+    }
+  }
+  return committed;
+}

@@ -252,6 +252,7 @@ import {
   SESSION_AGENT_REVISION_METADATA_KEY,
   sessionRunMediaOptions,
   wireDurableOptInTools,
+  withoutUncommittedFireApprovals,
 } from './runtime-composition';
 import {
   findRunAgentName,
@@ -313,6 +314,7 @@ import {
 } from './workflow-host';
 import {
   adoptRestoredScheduledFire,
+  committedFireApprovalIds,
   endContinuingScheduledFire,
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
@@ -5069,41 +5071,60 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1596 — the review ids of the tool approvals a schedule fire's run has committed, or
-   * `undefined` when the run has ended and so every approval its session holds is one it
-   * committed. A fire writes its session as each step completes, before the step is committed to
-   * the checkpoint, so a crash between the two leaves an approval in the session that the run
-   * never committed and, once recovered, will not make again under the same call. Only the
-   * checkpoint says which a run still in flight holds, so the boot restore lists those alone.
-   * A checkpoint that cannot be read restores none: the approval stays in the session and the
-   * next boot reads again.
+   * COR-1596 — the review ids of the tool approvals a schedule fire's run has committed, read from
+   * its checkpoint, which is the only source of truth for which of a fire's approvals exist,
+   * whatever the fire's status. A fire writes its session as each step completes and commits the
+   * step after, so the session can hold an approval the run never committed and, once recovered,
+   * will not make again under the same call: what the session holds is a claim, and a reader of
+   * it checks it here. `undefined` when the checkpoint cannot be read, which is diagnosed and
+   * which no caller acts on: the session is left as it is for the next read.
    */
-  async function committedScheduledFireApprovalIds(
+  async function readCommittedFireApprovals(
     runId: string,
+    purpose: string,
   ): Promise<ReadonlySet<string> | undefined> {
     const durable = runtime.durable;
     if (durable === undefined) return undefined;
     try {
-      const state = await durable.engine.get(runId);
-      if (state === null || !DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status))
-        return undefined;
-      const committed = new Set<string>();
-      for (const step of await durable.checkpointStore.loadSteps(runId)) {
-        for (const result of step.results) {
-          if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
-          committed.add(`approval:${runId}:${result.pendingApproval.callId}`);
-        }
-      }
-      return committed;
+      return committedFireApprovalIds(runId, await durable.checkpointStore.loadSteps(runId));
     } catch (error) {
       diagnose({
         level: 'error',
         scope: 'recovery',
-        message: `[bureau] Could not read what schedule fire "${runId}" committed, so its tool approvals are not restored this boot: ${serializeUnknownError(error)}`,
+        message: `[bureau] Could not read what schedule fire "${runId}" committed, so ${purpose}: ${serializeUnknownError(error)}`,
         cause: error,
       });
-      return new Set();
+      return undefined;
     }
+  }
+
+  /**
+   * COR-1596 — reconciles a settled fire's session with its checkpoint: an approval the session
+   * holds that the run never committed, and the authority and round it kept, do not outlive the
+   * fire. The in-memory copy of such an approval goes too.
+   */
+  async function reconcileScheduledFireApprovals(runId: string): Promise<void> {
+    const sessionStore = runtime.sessionStore;
+    if (sessionStore === undefined) return;
+    const record = await tasks.record(runId);
+    if (record === undefined) return;
+    const committed = await readCommittedFireApprovals(
+      runId,
+      'its session is not reconciled with it',
+    );
+    if (committed === undefined) return;
+    for (const id of pendingApprovalOverrides.keys()) {
+      if (id.startsWith(`approval:${runId}:`) && !committed.has(id))
+        dropPendingApprovalOverride(id);
+    }
+    await sessionStore.update(record.contextId, (session) => {
+      if (session === undefined) return undefined;
+      const patch = withoutUncommittedFireApprovals(session.metadata, runId, committed);
+      return patch === undefined
+        ? undefined
+        : { ...session, metadata: { ...session.metadata, ...patch } };
+    });
+    releaseTerminalRunReviewState(runId);
   }
 
   function restorePendingApprovalOverrides(
@@ -12734,7 +12755,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
     recoveredRunIds.delete(runId);
-    releaseScheduledFireReviews(scheduledFireReviewState, runId);
+    // COR-1596: the last review of a fire closing is what lets a fire that settled with it open
+    // read as over, so whoever follows the fire's task is told.
+    if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
+      detachBestEffortPromise(tasks.announceChanged(runId));
+    }
   }
 
   /** Whether this process holds the run and it has not recorded its end. */
@@ -15246,6 +15271,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       } else {
         emitter.dispatch(new ReviewDeniedEvent(review.id, review.runId, principal, review.kind));
       }
+      // COR-1596: a fire answered is no longer waiting, which whoever follows its task is told.
+      await tasks.announceChanged(review.runId);
     },
     decisions: reviewDecisions,
     classifyRun: (runId) => runtime.classifyCatalogRecoveredRun(runId),
@@ -15273,8 +15300,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       {
         agentName: fire.agentName,
         sessionId: fire.sessionId,
-        announce: (reviewId, signalName) =>
-          announceReview(fire.runId, reviewId, 'human-wait', { signalName }),
+        announce: (reviewId, signalName) => {
+          announceReview(fire.runId, reviewId, 'human-wait', { signalName });
+          detachBestEffortPromise(tasks.announceChanged(fire.runId));
+        },
       },
       services,
     );
@@ -15303,6 +15332,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           stepWasFinal,
         );
         announceReview(fire.runId, reviewId, 'tool-approval', { callId: approval.callId });
+        detachBestEffortPromise(tasks.announceChanged(fire.runId));
       }),
     );
   }
@@ -15958,6 +15988,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     runHumanWaits.forget(settlement.runId);
     announcedReviewRequests.delete(settlement.runId);
     endContinuingScheduledFire(scheduledFireReviewState, settlement.runId);
+    // COR-1596: the fire's checkpoint is complete now, so what its session holds is checked
+    // against it, once, and nothing stale outlives the fire.
+    try {
+      await reconcileScheduledFireApprovals(settlement.runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not reconcile the tool approvals of settled schedule fire "${settlement.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
     const status =
       settlement.status === 'completed'
         ? settledTaskState('completed', settlement.finishReason)
@@ -16061,7 +16103,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           const before = pendingApprovalOverrides.size;
           // COR-1596: a fire's session holds approvals its run may not have committed.
           const committed = isScheduledFireAuthority(metadata, restoredRunId)
-            ? await committedScheduledFireApprovalIds(restoredRunId)
+            ? ((await readCommittedFireApprovals(
+                restoredRunId,
+                'its tool approvals are not restored this boot',
+              )) ?? new Set<string>())
             : undefined;
           restorePendingApprovalOverrides(metadata, restoredRunId, committed);
           if (pendingApprovalOverrides.size > before) {

@@ -270,6 +270,18 @@ export interface TaskRegistry {
    */
   onSettled(taskId: string, listener: (view: TaskView, record: TaskRecord) => void): () => void;
   /**
+   * Calls `listener` with the task's view each time {@link announceChanged} finds it changed, for
+   * as long as it listens (COR-1596). Returns the function that stops listening.
+   */
+  onChanged(taskId: string, listener: (view: TaskView) => void): () => void;
+  /**
+   * Tells the task's listeners that a review of it opened or closed, which changes what its view
+   * says without a write to its record. Those waiting for it to settle are told too, once the
+   * closing of its last review is what lets a settled task read as over. Does nothing when no one
+   * listens.
+   */
+  announceChanged(taskId: string): Promise<void>;
+  /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
    */
@@ -561,6 +573,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   const observed = new Map<string, TaskCleanupState>();
   /** Who is waiting to be told a task has settled (COR-1482). */
   const settledListeners = new Map<string, Set<(view: TaskView, record: TaskRecord) => void>>();
+  /** Who is waiting to be told a task's view changed (COR-1596). */
+  const changedListeners = new Map<string, Set<(view: TaskView) => void>>();
 
   /**
    * The record at `key`, or `undefined` when its value cannot be read: another version, or
@@ -874,6 +888,34 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         held?.delete(listener);
         if (held?.size === 0) settledListeners.delete(taskId);
       };
+    },
+
+    onChanged(taskId, listener) {
+      const waiting = changedListeners.get(taskId) ?? new Set();
+      waiting.add(listener);
+      changedListeners.set(taskId, waiting);
+      return () => {
+        const held = changedListeners.get(taskId);
+        held?.delete(listener);
+        if (held?.size === 0) changedListeners.delete(taskId);
+      };
+    },
+
+    async announceChanged(taskId) {
+      const waiting = changedListeners.get(taskId);
+      if (waiting !== undefined && waiting.size > 0) {
+        const view = await getView(taskId);
+        if (view !== undefined) {
+          for (const listener of waiting) {
+            try {
+              listener(view);
+            } catch (error) {
+              diagnose(`A listener of task "${taskId}" failed`, error);
+            }
+          }
+        }
+      }
+      await announceSettled(taskId);
     },
 
     async idle(maximumTurns = IDLE_MAXIMUM_TURNS) {

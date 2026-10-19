@@ -306,7 +306,7 @@ const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled'>;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -356,12 +356,16 @@ function followScheduleFire(
           truncated: settled.answer.truncated,
         };
   let unsubscribe: (() => void) | undefined;
+  let unsubscribeChanged: (() => void) | undefined;
   let ended = false;
+  /** The status the stream last told, so a change is told once (COR-1596). */
+  let toldStatus: TaskView['status'] = task.status;
 
   const finish = (view: TaskView, settled: TaskRecord['settled']): void => {
     if (ended) return;
     ended = true;
     unsubscribe?.();
+    unsubscribeChanged?.();
     queue.push({
       kind: 'task.status',
       taskId,
@@ -401,14 +405,34 @@ function followScheduleFire(
           }
           return;
         }
+        // A fire waiting on a review is `input-required`, and answering it, or its expiring,
+        // changes what the task reads as without a write to its record, so a change is told as
+        // a status of its own (COR-1596); the end is told by the settlement below.
+        const tellChange = (view: TaskView): void => {
+          if (ended || isTerminalStatus(view.status) || view.status === toldStatus) return;
+          toldStatus = view.status;
+          queue.push({
+            kind: 'task.status',
+            taskId,
+            cursor: '-1',
+            emittedAtMs: runtime.clock.now(),
+            status: view.status,
+            finishReason: view.finishReason,
+            message: view.statusMessage,
+            artifact: null,
+          });
+        };
         // Listen first, then read again: a settlement that landed in between is not missed.
         unsubscribe = host.tasks.onSettled(taskId, (view, settledRecord) => {
           finish(view, settledRecord.settled);
         });
+        unsubscribeChanged = host.tasks.onChanged(taskId, tellChange);
         const latest = await host.tasks.get(taskId);
         if (latest !== undefined && isTerminalStatus(latest.status)) {
           const latestRecord = await host.tasks.record(taskId);
           finish(latest, latestRecord?.settled);
+        } else if (latest !== undefined) {
+          tellChange(latest);
         }
       })().catch((error: unknown) => queue.fail(error));
       return {
@@ -425,6 +449,7 @@ function followScheduleFire(
       close: () => {
         ended = true;
         unsubscribe?.();
+        unsubscribeChanged?.();
         queue.end();
       },
     },
