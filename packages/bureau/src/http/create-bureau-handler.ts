@@ -85,6 +85,10 @@ import {
   bureauGoalsOperations,
 } from './management/goals-operations.ts';
 import {
+  type BureauMemoryOperationHost,
+  bureauMemoryOperations,
+} from './management/memory-operations.ts';
+import {
   type BureauSchedulesOperationHost,
   bureauSchedulesOperations,
 } from './management/schedules-operations.ts';
@@ -155,6 +159,7 @@ export type BureauHandlerSource = Pick<
   | 'cancelSchedule'
   | 'updateSchedule'
   | 'goals'
+  | 'memory'
   | 'submitSessionInput'
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
@@ -194,6 +199,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauWorkflowsOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
+  BureauMemoryOperationHost &
   BureauAuditOperationHost;
 
 export type BureauHandlerOptions = {
@@ -422,6 +428,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauReviewsOperations,
   ...bureauSchedulesOperations,
   ...bureauGoalsOperations,
+  ...bureauMemoryOperations,
   auditQueryOperation,
 ] as const;
 
@@ -620,6 +627,7 @@ export function buildBureauHandlerHost(
       hasAgent: (name) => bureau.agents.has(name),
     },
     goals: bureau.goals,
+    memory: { governed: bureau.memory, tenantId: bureau.id },
     audit: {
       get trail() {
         return bureau.auditTrail;

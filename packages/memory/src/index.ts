@@ -295,6 +295,7 @@ export {
 } from './identity';
 export { CHUNK_INDEX_KEY, ingest } from './ingest';
 // The source-document key is public for ingestion metadata.
+export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 export { SOURCE_DOCUMENT_KEY } from './ingest';
 export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
 export { MemoryRecordVersionConflictError } from './memory-record-storage';

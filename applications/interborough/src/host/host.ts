@@ -10,6 +10,10 @@
  * (COR-1524): `researcher.md` is the agent `researcher`, its `model` is `<provider>/<model>` from
  * the catalog below, and its `tools` come from {@link createAgentFileTools}.
  *
+ * Memory is governed memory over the same database (`memory.ts`), embedded with a hashing
+ * embedder that needs no model provider, so every agent, the seeded ones included, remembers across
+ * its owner's chats.
+ *
  * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
  * an API key in its secrets (`providers.ts`). The seeded agents still answer from a script.
  *
@@ -71,6 +75,7 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { createHostMemory } from './memory.ts';
 import {
   createCatalogGenerate,
   loadProviders,
@@ -311,6 +316,9 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       validators: createSeededValidators(),
       modelCatalog,
       storage,
+      // Governed memory (COR-1546): an agent remembers across every chat its owner has with it, and
+      // the Memory page lists, searches, forgets, and corrects what it remembers.
+      memory: createHostMemory(storage),
       // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
       // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
       agentDirectory,

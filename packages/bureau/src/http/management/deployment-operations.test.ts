@@ -162,8 +162,10 @@ describe('bureau.deployment.get', () => {
       const body = await rpc(handler, 'bureau.deployment.get', {}, 'alice-key');
       const text = JSON.stringify(body);
 
+      // The storage setting would serialize as the quoted string `"memory"`; the operation names
+      // `bureau.memory.*` legitimately contain the word.
       for (const leaked of [
-        'memory',
+        '"memory"',
         'sqlite',
         'durableExecution',
         'resolveApiKeyPrincipal',

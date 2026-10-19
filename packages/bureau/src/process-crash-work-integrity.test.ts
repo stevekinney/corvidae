@@ -303,7 +303,7 @@ async function governedMemoryScenario(backend: Backend, scope: ScenarioScope): P
     expect(await recoveredRunCompleted(bureau, marker.runId)).toBe(true);
     expect(stepZeroCalls).toHaveLength(1);
 
-    const records = await governed.memory.list(inspector, { collection: marker.sessionId });
+    const records = await governed.memory.list(inspector, { collection: 'bureau' });
     expect(records).toHaveLength(1);
     expect(records[0]?.metadata['dedupeKey']).toBe(`${marker.runId}:0`);
 

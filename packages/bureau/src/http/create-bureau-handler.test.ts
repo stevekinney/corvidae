@@ -453,6 +453,11 @@ describe('createBureauHandler catalog', () => {
         'bureau.goals.create',
         'bureau.goals.get',
         'bureau.goals.list',
+        'bureau.memory.correct',
+        'bureau.memory.forget',
+        'bureau.memory.get',
+        'bureau.memory.list',
+        'bureau.memory.search',
         'bureau.reviews.get',
         'bureau.reviews.list',
         'bureau.reviews.resolve',
@@ -635,6 +640,8 @@ describe('the Bureau scope list', () => {
       'bureau.agents:write',
       'bureau.workflows:read',
       'bureau.workflows:write',
+      'bureau.memory:read',
+      'bureau.memory:write',
       'bureau.events:observe-all',
     ]);
   });

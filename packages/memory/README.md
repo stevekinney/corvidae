@@ -1572,7 +1572,7 @@ A record's trust comes from the policy's `sourceTrust` for its source (`MEMORY_T
 | Method | Returns |
 | --- | --- |
 | `get(authority, locator)` | One `GovernedMemoryRecord`, or `undefined`. A `MemoryRecordLocator` is `{ id, collection, visibility?, ownerId? }`; `visibility` defaults to `private` and `ownerId` to the caller's. |
-| `list(authority, { collection, visibility?, limit?, offset? })` | Readable records newest first, 100 by default. `visibility` defaults to `all`: the caller's private collection plus the shared one. |
+| `list(authority, { collection, visibility?, limit?, offset? })` | Readable records newest first, 100 by default. `visibility` defaults to `all`: the caller's private collection plus the shared one. A record that supersession or consolidation took out of active use stays stored and `get` still reads it, but only a caller holding `memory:inspect` sees it listed, as with a quarantined or revoked one. |
 | `search(authority, query, { collection, visibility?, limit?, memoryClass? })` | `{ record, score }` hits, 10 by default, ranked as 0.7 × vector similarity + 0.3 × text score, times the record's retrieval weight. Quarantined, revoked, superseded, and index-invalidated records never rank. |
 | `recallForModel(authority, query, { ...searchOptions, contextId? })` | A `MemoryEvidenceBundle`: `{ operationId, evidence, withheld, rendered }`, 5 records by default. |
 | `export(authority, { collection, visibility? })` | `{ status, exportId, records, recordIds }`: every readable record in the collection. It stores an export manifest in the ledger, then reads every exported record again and leaves out, and scrubs from the manifest, any record a deletion removed or claimed meanwhile. |
@@ -1774,6 +1774,14 @@ No `reason` carries a diagnostic, a policy detail, or another principal's data, 
 ## Testing
 
 The root API includes deterministic test helpers and the storage contract harness.
+
+### Hashing embedder
+
+```typescript
+import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from '@lostgradient/memory';
+```
+
+**`createHashingEmbedder()`:** Returns a deterministic `Embedder` that makes no network call and needs no model, so it runs where no model provider is configured. It hashes a text's words and word pairs into `HASHING_EMBEDDER_DIMENSION` (256) dimensions and normalizes the result to unit length, so two texts that share vocabulary have a positive cosine similarity. It is lexical, not semantic: it knows nothing of synonyms, and a deployment that wants meaning supplies a provider-backed embedder instead. An empty text embeds as the zero vector. `createMockEmbedder` is the test helper and stays one.
 
 ### Test utilities
 

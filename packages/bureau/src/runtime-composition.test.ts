@@ -1145,8 +1145,15 @@ describe('memory hook registration (COR-41)', () => {
 
   it('writes non-deduplicated conversation memory for a run without a run id', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
-    const authority = createRunMemoryAuthority(defaultRunRequestContext, { runId: 'hook-run' });
-    const hook = createMemoryPersistHook(memory, authority, 'session-memory');
+    const authority = createRunMemoryAuthority(defaultRunRequestContext, {
+      runId: 'hook-run',
+      tenantId: 'bureau',
+      ownerId: 'bureau',
+    });
+    const hook = createMemoryPersistHook(memory, authority, {
+      collection: 'session-memory',
+      sessionId: 'session-memory-chat',
+    });
     await hook({
       parts: [],
       messageId: undefined,
@@ -1444,16 +1451,23 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   it('bureau:memory-persist writes one memory when the same step replays', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
 
+    // COR-1546: the memory a run writes is partitioned by the composition's identifier and the
+    // run's owner of record, into its agent's collection.
     const runtime = await createRuntimeComposition({
+      id: 'bureau',
       generate: async () => ({ content: 'x', toolCalls: [] }),
       memory,
     });
-    const runRuntime = await runtime.createRunRuntime({
-      message: 'test',
-      sessionId: 'idempotency-session',
-      runId: 'idempotency-run',
-      requestContext: defaultRunRequestContext,
-    });
+    const runRuntime = await runtime.createRunRuntime(
+      {
+        message: 'test',
+        sessionId: 'idempotency-session',
+        runId: 'idempotency-run',
+        agentName: 'idempotency-agent',
+        requestContext: defaultRunRequestContext,
+      },
+      { memoryOwner: 'bureau' },
+    );
 
     const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
     expect(entry.options.replay).toBe('effectful');
@@ -1467,7 +1481,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
 
     // One dedupe key derived from run + step, not content, so the replay is a
     // no-op at the store and the original write survives.
-    const records = await memory.list(inspector, { collection: 'idempotency-session' });
+    const records = await memory.list(inspector, { collection: 'idempotency-agent' });
     expect(records.map((record) => [record.content, record.metadata['dedupeKey']])).toEqual([
       ['a durable thought', 'idempotency-run:3'],
     ]);
@@ -1476,16 +1490,23 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   it('bureau:memory-persist keys by step, so two different steps are two records', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
 
+    // COR-1546: the memory a run writes is partitioned by the composition's identifier and the
+    // run's owner of record, into its agent's collection.
     const runtime = await createRuntimeComposition({
+      id: 'bureau',
       generate: async () => ({ content: 'x', toolCalls: [] }),
       memory,
     });
-    const runRuntime = await runtime.createRunRuntime({
-      message: 'test',
-      sessionId: 'idempotency-session',
-      runId: 'idempotency-run',
-      requestContext: defaultRunRequestContext,
-    });
+    const runRuntime = await runtime.createRunRuntime(
+      {
+        message: 'test',
+        sessionId: 'idempotency-session',
+        runId: 'idempotency-run',
+        agentName: 'idempotency-agent',
+        requestContext: defaultRunRequestContext,
+      },
+      { memoryOwner: 'bureau' },
+    );
     const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
 
     const conversation = new Conversation();
@@ -1495,7 +1516,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     // The control for the test above: the key collapses a REPLAY, not two
     // genuinely distinct steps. Without this, a hook that returned one
     // constant key would pass the idempotency test and silently lose writes.
-    const records = await memory.list(inspector, { collection: 'idempotency-session' });
+    const records = await memory.list(inspector, { collection: 'idempotency-agent' });
     const keys = records.map((record) => String(record.metadata['dedupeKey']));
     expect(keys.toSorted((left, right) => left.localeCompare(right))).toEqual([
       'idempotency-run:0',
