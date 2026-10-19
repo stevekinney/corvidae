@@ -105,6 +105,43 @@ describe('reconcileTask', () => {
     ]);
   });
 
+  test('publishes the artifacts a mapper gives the result, each before the status, in order', () => {
+    const artifact = (artifactId: string, text: string) => ({
+      artifactId,
+      name: '',
+      description: '',
+      parts: [
+        {
+          content: { $case: 'text' as const, value: text },
+          metadata: undefined,
+          filename: '',
+          mediaType: '',
+        },
+      ],
+      metadata: undefined,
+      extensions: [],
+    });
+    const change = reconcileTask(
+      task(TaskState.TASK_STATE_WORKING),
+      workflowState({ status: 'completed', result: { summary: 'done', detail: 'all of it' } }),
+      [],
+      TIMESTAMP,
+      (result) => {
+        const { summary, detail } = result as { summary: string; detail: string };
+        return [artifact('summary', summary), artifact('detail', detail)];
+      },
+    );
+
+    expect(change?.task.artifacts.map((entry) => entry.artifactId)).toEqual(['summary', 'detail']);
+    expect(
+      change?.events.map((event) =>
+        event.payload?.$case === 'artifactUpdate'
+          ? event.payload.value.artifact?.artifactId
+          : event.payload?.$case,
+      ),
+    ).toEqual(['summary', 'detail', 'statusUpdate']);
+  });
+
   test('publishes an undefined result as a null data part', () => {
     const change = reconcileTask(
       task(TaskState.TASK_STATE_WORKING),

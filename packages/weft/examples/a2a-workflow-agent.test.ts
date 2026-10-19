@@ -51,6 +51,68 @@ describe('the A2A workflow agent example', () => {
     expect(cancelled.result?.['status'].state).toBe('TASK_STATE_CANCELED');
   });
 
+  test('answers each TCK scenario its messageId prefix names', async () => {
+    const agent = await startExampleAgent({ port: 0 });
+    running = agent;
+    const send = async (messageId: string) => {
+      const response = await rpc(agent, 'SendMessage', {
+        message: { messageId, role: 'ROLE_USER', parts: [{ text: 'TCK artifact test' }] },
+      });
+      return response.result;
+    };
+    const firstPart = async (messageId: string) => {
+      const result = await send(messageId);
+      const task = result?.['task'];
+      expect(task?.status.state).toBe('TASK_STATE_COMPLETED');
+      return task?.artifacts[0].parts[0];
+    };
+
+    expect(await firstPart('tck-artifact-text-1')).toEqual({ text: 'Generated text content' });
+    expect(await firstPart('tck-artifact-file-1')).toEqual({
+      raw: Buffer.from('tck').toString('base64'),
+      filename: 'output.txt',
+      mediaType: 'text/plain',
+    });
+    expect(await firstPart('tck-artifact-file-url-1')).toEqual({
+      url: 'https://example.com/output.txt',
+      filename: 'output.txt',
+      mediaType: 'text/plain',
+    });
+    expect(await firstPart('tck-artifact-data-1')).toEqual({ data: { key: 'value', count: 42 } });
+    expect(await firstPart('tck-complete-task-1')).toMatchObject({
+      data: { request: 'TCK artifact test' },
+    });
+    const reply = await send('tck-message-response-1');
+    expect(reply?.['task']).toBeUndefined();
+    expect(reply?.['message']).toMatchObject({
+      role: 'ROLE_AGENT',
+      parts: [{ text: 'Direct message response' }],
+    });
+  });
+
+  test('asks again for a tck-input-required answer, and takes any other TCK answer without the sleep', async () => {
+    const agent = await startExampleAgent({ port: 0 });
+    running = agent;
+    const send = async (messageId: string, text: string, taskId?: string) => {
+      const response = await rpc(agent, 'SendMessage', {
+        message: { messageId, role: 'ROLE_USER', parts: [{ text }], ...(taskId ? { taskId } : {}) },
+      });
+      return response.result?.['task'];
+    };
+
+    const task = await send('tck-input-required-1', 'start');
+    const again = await send('tck-input-required-2', 'history', task?.id);
+    const done = await send('tck-infer-ctx-1', 'finish', task?.id);
+
+    expect(task?.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+    expect(again?.status.state).toBe('TASK_STATE_INPUT_REQUIRED');
+    expect(done?.status.state).toBe('TASK_STATE_COMPLETED');
+    expect(done?.artifacts[0].parts[0]).toEqual({
+      data: { request: 'start', input: 'finish' },
+      mediaType: 'application/json',
+    });
+  });
+
   test('lets notifications reach any loopback port when told to trust loopback webhooks', async () => {
     const received = Promise.withResolvers<string>();
     const kitReceiver = Bun.serve({

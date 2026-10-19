@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { Role, TaskState } from '@a2a-js/sdk';
+import { type Message, Role, TaskState } from '@a2a-js/sdk';
 import {
   RequestMalformedError,
   TaskNotFoundError,
@@ -14,6 +14,7 @@ import { payloadOf } from './workflow-agent-messages.ts';
 import {
   callContext,
   choiceWorkflow,
+  collect,
   createWorkflowAgentFixture,
   dataPart,
   echoWorkflow,
@@ -323,6 +324,98 @@ describe('continuing a task with SendMessage', () => {
         startTask(agent, callContext({ user: 'bob' }), userMessage({ taskId: task.id })),
       ),
     ).toBeInstanceOf(TaskNotFoundError);
+  });
+});
+
+describe('the input option', () => {
+  test('hands the workflow the whole message, at its start and on each continuation', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({
+      input: (payload, message) => ({ payload, messageId: message.messageId }),
+    });
+    const task = await startTask(agent, alice(), userMessage({ messageId: 'first', text: 'hi' }));
+
+    const continued = await startTask(
+      agent,
+      alice(),
+      userMessage({ messageId: 'second', taskId: task.id, text: 'yes' }),
+    );
+
+    const state = await engine.get(task.id);
+    expect(state?.input).toEqual({ payload: 'hi', messageId: 'first' });
+    expect(continued.artifacts[0]?.parts[0]?.content).toEqual({
+      $case: 'data',
+      value: {
+        request: { payload: 'hi', messageId: 'first' },
+        input: { payload: 'yes', messageId: 'second' },
+      },
+    });
+  });
+});
+
+describe('the respond option', () => {
+  const directReply = (message: Message) =>
+    message.messageId.startsWith('direct') ? [textPart('Direct answer')] : undefined;
+
+  test('answers SendMessage with a bare agent Message and starts no workflow', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({ respond: directReply });
+
+    const reply = await agent.requestHandler.sendMessage(
+      sendRequest(userMessage({ messageId: 'direct-1', contextId: 'conversation-7' })),
+      alice(),
+    );
+
+    expect(reply).toMatchObject({
+      role: Role.ROLE_AGENT,
+      taskId: '',
+      contextId: 'conversation-7',
+      parts: [textPart('Direct answer')],
+    });
+    expect('messageId' in reply && reply.messageId).not.toBe('direct-1');
+    const runs = await engine.list();
+    expect(runs.total).toBe(0);
+    const listed = await agent.requestHandler.listTasks(
+      {
+        tenant: '',
+        contextId: '',
+        status: TaskState.TASK_STATE_UNSPECIFIED,
+        pageToken: '',
+        statusTimestampAfter: undefined,
+      },
+      alice(),
+    );
+    expect(listed.tasks).toEqual([]);
+  });
+
+  test('sends the reply as a stream’s one event, with a fresh contextId when the client sent none', async () => {
+    const { agent } = await createWorkflowAgentFixture({ respond: directReply });
+
+    const events = await collect(
+      agent.requestHandler.sendMessageStream(
+        sendRequest(userMessage({ messageId: 'direct-2' })),
+        alice(),
+      ),
+    );
+
+    const only = events[0]?.payload;
+    expect(events).toHaveLength(1);
+    expect(only?.$case).toBe('message');
+    expect(only?.$case === 'message' && only.value.contextId).not.toBe('');
+  });
+
+  test('starts the workflow when it returns undefined, and is never asked about a continuation', async () => {
+    const asked: string[] = [];
+    const { agent } = await createWorkflowAgentFixture({
+      respond: (message) => {
+        asked.push(message.messageId);
+        return undefined;
+      },
+    });
+
+    const task = await startTask(agent, alice(), userMessage({ messageId: 'start' }));
+    await startTask(agent, alice(), userMessage({ messageId: 'answer', taskId: task.id }));
+
+    expect(task.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(asked).toEqual(['start']);
   });
 });
 

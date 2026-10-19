@@ -26,7 +26,7 @@ import type { Engine } from '../core/engine.ts';
 import type { WorkflowState } from '../core/types/state.ts';
 import { type A2ACallerScope, callerScope } from './store-support.ts';
 import type { StoredWorkflowTask, TaskCommit, TaskEventLog, TaskOwner } from './task-event-log.ts';
-import { reconcileTask } from './workflow-task-projection.ts';
+import { reconcileTask, type WorkflowResultArtifacts } from './workflow-task-projection.ts';
 
 /** The engine events after which a workflow's task may read differently. */
 const RECONCILING_EVENTS = [
@@ -72,6 +72,8 @@ export type WorkflowTaskRuntimeOptions = {
   readonly sender: PushNotificationSender;
   readonly now: () => number;
   readonly onError: (error: unknown) => void;
+  /** The artifacts a completed workflow's result is published as. */
+  readonly artifactsOf: WorkflowResultArtifacts;
 };
 
 export type WorkflowTaskRuntime = {
@@ -100,7 +102,7 @@ export type WorkflowTaskRuntime = {
 export function createWorkflowTaskRuntime(
   options: WorkflowTaskRuntimeOptions,
 ): WorkflowTaskRuntime {
-  const { engine, namespace, log, sender, now, onError } = options;
+  const { engine, namespace, log, sender, now, onError, artifactsOf } = options;
   /** Signal-wait generations of workflows with a delivery in flight or recorded. */
   const generations = new Map<string, number>();
   const delivered = new Map<string, DeliveredSignal>();
@@ -149,7 +151,7 @@ export function createWorkflowTaskRuntime(
       const waits = liveWaits(state);
       const timestamp = new Date(now()).toISOString();
       const commit = await log.commit(scope, taskId, (stored) =>
-        reconcileTask(stored.task, state, waits, timestamp),
+        reconcileTask(stored.task, state, waits, timestamp, artifactsOf),
       );
       await publish(commit, context);
       return commit?.stored;

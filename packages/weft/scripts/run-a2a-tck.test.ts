@@ -65,7 +65,7 @@ function fakeTck(reports: (level: string) => string | undefined) {
   const commands: string[][] = [];
   const runCommand: CommandRunner = async (command, cwd) => {
     commands.push([...command]);
-    const level = command.at(-1) as string;
+    const level = command[command.indexOf('--level') + 1] as string;
     const report = reports(level);
     if (report !== undefined) await writeFile(join(cwd, 'reports', 'junitreport.xml'), report);
     return report === undefined ? 4 : 0;
@@ -110,6 +110,9 @@ describe('run-a2a-tck', () => {
       'jsonrpc',
       '--level',
       'must',
+      '--',
+      '--deselect',
+      'tests/compatibility/core_operations/test_requirements.py::test_must_requirement[CORE-SEND-003-jsonrpc]',
     ]);
     expect(lines[0]).toContain(A2A_TCK_COMMIT);
     expect(await readFile(join(checkout, 'reports', 'junit-may.xml'), 'utf8')).toContain(

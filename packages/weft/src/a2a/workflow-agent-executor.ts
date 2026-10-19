@@ -2,17 +2,19 @@
  * `createWorkflowAgentExecutor`: serve one registered Weft workflow as an A2A agent.
  *
  * Each A2A task is one workflow run, and its identifier is the workflow identifier.
- * A message without a `taskId` starts the workflow; a message with one is delivered
- * as the payload of the signal the workflow waits for (`ctx.waitForSignal`), which
- * the task reports as `INPUT_REQUIRED`. `CancelTask` cancels the workflow, and the
- * workflow's result is the task's one artifact.
+ * A message without a `taskId` starts the workflow, unless the `respond` option
+ * answers it with a bare agent `Message`; a message with one is delivered as the
+ * payload of the signal the workflow waits for (`ctx.waitForSignal`), which the task
+ * reports as `INPUT_REQUIRED`. `CancelTask` cancels the workflow, and the workflow's
+ * result becomes the task's artifacts (by default one, holding the result).
  *
  * The request handler is the SDK's `DefaultRequestHandler`, over the durable task
  * store and the outbox push sender, which keeps serving the Agent Card and the push
  * configuration methods. It serves the message and task methods itself, from each
  * task's durable event log (`task-event-log.ts`), because the SDK's versions follow an
- * in-memory event bus: they end a stream at `INPUT_REQUIRED`, cannot resume one after
- * a restart, and never read `Last-Event-ID`.
+ * in-memory event bus: they cannot resume a stream after a restart, never read
+ * `Last-Event-ID`, and end a subscription to a task waiting for input at once. Its
+ * streams end where the SDK's do, at a terminal state or `INPUT_REQUIRED`.
  *
  * @module a2a/workflow-agent-executor
  */
@@ -23,6 +25,7 @@ import {
   type GetTaskRequest,
   type ListTasksRequest,
   type ListTasksResponse,
+  type Message,
   type SendMessageRequest,
   type StreamResponse,
   type SubscribeToTaskRequest,
@@ -53,10 +56,17 @@ import {
 } from './workflow-agent-card.ts';
 import {
   createWorkflowAgentMessaging,
+  payloadAsInput,
   withHistoryLength,
+  type WorkflowAgentInput,
   type WorkflowAgentMessaging,
+  type WorkflowAgentResponder,
 } from './workflow-agent-messages.ts';
-import { isTerminalTaskState } from './workflow-task-projection.ts';
+import {
+  defaultResultArtifacts,
+  isTerminalTaskState,
+  type WorkflowResultArtifacts,
+} from './workflow-task-projection.ts';
 import { createWorkflowTaskRuntime, type WorkflowTaskRuntime } from './workflow-task-runtime.ts';
 
 /** Options for {@link createWorkflowAgentExecutor}. */
@@ -70,6 +80,25 @@ export type WorkflowAgentExecutorOptions = {
    * part (`'data'`) or its text parts concatenated (`'text'`).
    */
   readonly inputMode: WorkflowAgentInputMode;
+  /**
+   * Turns what `inputMode` reads into the workflow input or the signal payload, given
+   * the whole message as well, so a workflow can act on its `messageId`, `metadata`,
+   * or other parts. Defaults to what `inputMode` reads, unchanged.
+   */
+  readonly input?: WorkflowAgentInput;
+  /**
+   * Answers a message that names no task with a bare agent `Message` holding the parts
+   * this returns, instead of starting the workflow: `SendMessage` returns that message
+   * and `SendStreamingMessage` sends it as its one event. Returning `undefined` starts
+   * the workflow. No task, workflow run, or push configuration comes of a reply.
+   */
+  readonly respond?: WorkflowAgentResponder;
+  /**
+   * The artifacts a completed workflow's result is published as, in order, each as its
+   * own artifact update before the `COMPLETED` status. Defaults to one artifact
+   * (`artifactId: 'result'`) holding the result as one data part.
+   */
+  readonly artifacts?: WorkflowResultArtifacts;
   /** The Agent Card fields the workflow's definition cannot supply. */
   readonly card: WorkflowAgentCardOptions;
   /**
@@ -157,7 +186,10 @@ class WorkflowAgentRequestHandler extends DefaultRequestHandler {
     this.#engine = options.engine;
   }
 
-  override sendMessage(params: SendMessageRequest, context: ServerCallContext): Promise<Task> {
+  override sendMessage(
+    params: SendMessageRequest,
+    context: ServerCallContext,
+  ): Promise<Message | Task> {
     return this.#messaging.sendMessage(params, context);
   }
 
@@ -322,6 +354,7 @@ export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOption
     sender,
     now,
     onError: options.onError ?? console.error,
+    artifactsOf: options.artifacts ?? defaultResultArtifacts,
   });
   const messaging = createWorkflowAgentMessaging({
     engine,
@@ -332,6 +365,8 @@ export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOption
     runtime,
     pushStore: sender.pushStore,
     now,
+    toInput: options.input ?? payloadAsInput,
+    respond: options.respond,
   });
   const requestHandler = new WorkflowAgentRequestHandler({
     agentCard,

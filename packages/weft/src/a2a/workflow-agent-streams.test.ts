@@ -83,25 +83,40 @@ function subscribeRequest(taskId: string, headers: Record<string, string> = {}):
 }
 
 describe('SendStreamingMessage', () => {
-  test('stays open through INPUT_REQUIRED and closes when the task reaches a terminal state', async () => {
+  // Owner ruling, 2026-10-19: a stream ends at INPUT_REQUIRED, as the SDK's
+  // DefaultRequestHandler ends one, rather than staying open until a terminal state.
+  test('ends at INPUT_REQUIRED, and each answer’s stream follows the task to its next wait or its end', async () => {
     const { agent } = await createWorkflowAgentFixture({ workflowType: loopingWorkflow.name });
-    const stream = agent.requestHandler.sendMessageStream(sendRequest(userMessage()), alice());
-    const seen: string[] = [];
-    let taskId = '';
-    let answered = 0;
+    const started = await collect(
+      agent.requestHandler.sendMessageStream(sendRequest(userMessage()), alice()),
+    );
+    const opening = started[0]?.payload;
+    const taskId = opening?.$case === 'task' ? opening.value.id : '';
+    const answer = (text: string) =>
+      collect(
+        agent.requestHandler.sendMessageStream(sendRequest(userMessage({ taskId, text })), alice()),
+      );
 
-    for await (const event of stream) {
-      seen.push(describeEvent(event));
-      if (event.payload?.$case === 'task') taskId = event.payload.value.id;
-      if (statusOf(event) === TaskState.TASK_STATE_INPUT_REQUIRED) {
-        answered += 1;
-        await startTask(agent, alice(), userMessage({ taskId, text: `answer ${answered}` }));
-      }
-    }
+    const first = await answer('answer 1');
+    const second = await answer('answer 2');
 
-    expect(answered).toBe(2);
-    expect(seen.at(-1)).toBe('status:TASK_STATE_COMPLETED');
-    expect(seen.filter((entry) => entry === 'status:TASK_STATE_INPUT_REQUIRED')).toHaveLength(2);
+    expect(describeEvent(started.at(-1) as StreamResponse)).toEndWith(':TASK_STATE_INPUT_REQUIRED');
+    expect(describeEvent(first.at(-1) as StreamResponse)).toEndWith(':TASK_STATE_INPUT_REQUIRED');
+    expect(first.slice(1).map(describeEvent)).not.toContain('status:TASK_STATE_COMPLETED');
+    expect(describeEvent(second.at(-1) as StreamResponse)).toBe('status:TASK_STATE_COMPLETED');
+  });
+
+  test('ends with its first event when the task already waits for input', async () => {
+    const { agent } = await createWorkflowAgentFixture();
+    const message = userMessage({ messageId: 'asked-once' });
+    await startTask(agent, alice(), message);
+
+    // A retried message finds its task waiting for input, which announces nothing more.
+    const events = await collect(
+      agent.requestHandler.sendMessageStream(sendRequest(message), alice()),
+    );
+
+    expect(events.map(describeEvent)).toEqual(['task:TASK_STATE_INPUT_REQUIRED']);
   });
 
   test('applies configuration.historyLength to the task it starts with', async () => {
@@ -181,6 +196,22 @@ describe('SubscribeToTask', () => {
     ]);
     const completed = await agent.requestHandler.getTask({ tenant: '', id: task.id }, alice());
     expect(streamed.at(-2)?.payload).toMatchObject({ value: { artifact: completed.artifacts[0] } });
+  });
+
+  test('follows a task waiting for input past its snapshot, and ends at its next INPUT_REQUIRED', async () => {
+    const { agent } = await createWorkflowAgentFixture({ workflowType: loopingWorkflow.name });
+    const task = await startTask(agent, alice());
+    const subscription = agent.requestHandler.resubscribe({ tenant: '', id: task.id }, alice());
+    const snapshot = await subscription.next();
+
+    await startTask(agent, alice(), userMessage({ taskId: task.id, text: 'first' }));
+    const later = await collect({ [Symbol.asyncIterator]: () => subscription });
+
+    expect(describeEvent(snapshot.value as StreamResponse)).toBe('task:TASK_STATE_INPUT_REQUIRED');
+    expect(later.map(describeEvent)).toEqual([
+      'status:TASK_STATE_WORKING',
+      'status:TASK_STATE_INPUT_REQUIRED',
+    ]);
   });
 
   test('resumes with Last-Event-ID from the current task, then only the events after its cursor', async () => {

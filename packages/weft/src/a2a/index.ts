@@ -81,5 +81,14 @@ export {
   type WorkflowAgent,
   type WorkflowAgentExecutorOptions,
 } from './workflow-agent-executor.ts';
-export { SIGNAL_NAME_METADATA_KEY } from './workflow-agent-messages.ts';
-export { RESULT_ARTIFACT_ID, SIGNAL_NAMES_METADATA_KEY } from './workflow-task-projection.ts';
+export {
+  SIGNAL_NAME_METADATA_KEY,
+  type WorkflowAgentInput,
+  type WorkflowAgentResponder,
+} from './workflow-agent-messages.ts';
+export {
+  RESULT_ARTIFACT_ID,
+  SIGNAL_NAMES_METADATA_KEY,
+  resultArtifact,
+  type WorkflowResultArtifacts,
+} from './workflow-task-projection.ts';

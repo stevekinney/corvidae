@@ -7,7 +7,8 @@
  * at `--level must`, then `should`, then `may`. Each level's JUnit report is kept as
  * `reports/junit-<level>.xml` in the checkout. The run passes only when no report
  * holds a `failure` or `error` element; the TCK's `xfail` and `skipped` results do not
- * count against it.
+ * count against it. The tests {@link A2A_TCK_EXCLUSIONS} names are deselected, so they
+ * appear in no report.
  *
  * `--sut-host <url>` runs the same levels against an agent that is already running,
  * and starts nothing.
@@ -23,6 +24,19 @@ export const A2A_TCK_COMMIT = '263b9cfaf16a554bdfb166a7ba5b67716e946349';
 export const A2A_TCK_REPOSITORY = 'https://github.com/a2aproject/a2a-tck.git';
 export const A2A_TCK_LEVELS = ['must', 'should', 'may'] as const;
 export type A2ATckLevel = (typeof A2A_TCK_LEVELS)[number];
+
+/**
+ * TCK tests deselected by recorded owner ruling, each a defect in the TCK at
+ * {@link A2A_TCK_COMMIT}, as pytest node identifiers.
+ *
+ * - CORE-SEND-003 (ruling of 2026-10-19, COR-1473): the agent answers a part with an
+ *   unsupported media type with the `ContentTypeNotSupportedError` the requirement
+ *   names, but at this commit the requirement declares no `expected_error`, so the
+ *   TCK's requirement runner fails every error response to it.
+ */
+export const A2A_TCK_EXCLUSIONS = [
+  'tests/compatibility/core_operations/test_requirements.py::test_must_requirement[CORE-SEND-003-jsonrpc]',
+] as const;
 
 const WEFT_ROOT = join(import.meta.dir, '..');
 export const A2A_TCK_CHECKOUT = join(WEFT_ROOT, '.cache', 'a2a-tck');
@@ -71,7 +85,7 @@ export function parseArguments(argv: readonly string[]): { readonly sutHost?: st
   return {};
 }
 
-/** The TCK command for one level. */
+/** The TCK command for one level, deselecting {@link A2A_TCK_EXCLUSIONS}. */
 export function tckCommand(sutHost: string, level: A2ATckLevel): string[] {
   return [
     'uv',
@@ -83,6 +97,9 @@ export function tckCommand(sutHost: string, level: A2ATckLevel): string[] {
     'jsonrpc',
     '--level',
     level,
+    // `run_tck.py` hands everything after `--` to pytest.
+    '--',
+    ...A2A_TCK_EXCLUSIONS.flatMap((test) => ['--deselect', test]),
   ];
 }
 

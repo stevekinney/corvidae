@@ -1702,7 +1702,7 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
       reason:
         'The `if (import.meta.main)` entry point only binds `startExampleAgentAndReport` to the real process: the resolved example environment, `console.info`, and the shutdown signals. It runs when `test:a2a-tck` spawns the example, a separate process whose hits are never attributed to the parent LCOV report. `startExampleAgentAndReport` and `startExampleAgent` are covered in process by examples/a2a-workflow-agent.test.ts. The one function miss is the entry block’s signal handler.',
       functions: 1,
-      lines: new Set([171, 172, 173, 174, 175, 176, 177, 178, 179]),
+      lines: new Set([266, 267, 268, 269, 270, 271, 272, 273, 274]),
       requireUncoveredLines: true,
     },
   ],
@@ -1713,9 +1713,9 @@ export const CORVIDAE_COVERAGE_ALLOWANCES = buildAllowanceLayer('CORVIDAE_COVERA
         'The real process runners behind `test:a2a-tck`: `spawnAndWait`, `runGit`, and `ensureCheckout` run `git` and `uv` against a network clone of the TCK, `startExample` spawns the example agent, and `processDependencies` binds them for the one-line `import.meta.main` entry. They need Python, `uv`, and the network, so only the opt-in `test:a2a-tck` runs them, outside the default gate. Every decision the runner makes (argument parsing, the per-level TCK command, report collection, the pass rule, and stopping the example) is in `runA2ATck`, which scripts/run-a2a-tck.test.ts runs in process with stand-ins for each runner and a stub system under test.',
       functions: 5,
       lines: new Set([
-        166, 170, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
-        194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211,
-        212, 213, 214, 215, 216, 220, 221, 222, 223, 224,
+        183, 187, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206,
+        211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228,
+        229, 230, 231, 232, 233, 237, 238, 239, 240, 241,
       ]),
       requireUncoveredLines: true,
     },

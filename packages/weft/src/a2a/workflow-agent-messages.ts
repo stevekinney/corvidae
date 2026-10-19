@@ -1,13 +1,20 @@
 /**
  * `SendMessage` and `SendStreamingMessage` for a workflow agent: a message without a
- * `taskId` starts the workflow, and a message with one is delivered to the signal the
+ * `taskId` starts the workflow (or, when the agent's `respond` answers it, gets a bare
+ * agent `Message` instead), and a message with one is delivered to the signal the
  * workflow waits for.
+ *
+ * A stream ends once its task reaches a terminal state or `INPUT_REQUIRED`, as the
+ * SDK's `DefaultRequestHandler` ends one: the task then waits on its caller, whose
+ * next message opens a new stream.
  *
  * @module a2a/workflow-agent-messages
  */
 
 import {
   type Message,
+  type Part,
+  Role,
   type SendMessageRequest,
   type StreamResponse,
   type Task,
@@ -37,8 +44,27 @@ import { taskOwnerOf, type WorkflowTaskRuntime } from './workflow-task-runtime.t
 /** The metadata key on a continuation message that names the signal to deliver. */
 export const SIGNAL_NAME_METADATA_KEY = 'signalName';
 
+/**
+ * Turns what `inputMode` reads from a message into the workflow input (for a message
+ * that starts a task) or the signal payload (for a continuation), with the whole
+ * message at hand: its `messageId`, `metadata`, and every part.
+ */
+export type WorkflowAgentInput = (payload: unknown, message: Message) => unknown;
+
+/**
+ * Answers a message that names no task with a bare agent `Message` holding the parts
+ * it returns, instead of starting the workflow; `undefined` starts the workflow.
+ */
+export type WorkflowAgentResponder = (
+  message: Message,
+  context: ServerCallContext,
+) => readonly Part[] | undefined | Promise<readonly Part[] | undefined>;
+
+/** The default {@link WorkflowAgentInput}: what `inputMode` reads, unchanged. */
+export const payloadAsInput: WorkflowAgentInput = (payload) => payload;
+
 export type WorkflowAgentMessaging = {
-  sendMessage(params: SendMessageRequest, context: ServerCallContext): Promise<Task>;
+  sendMessage(params: SendMessageRequest, context: ServerCallContext): Promise<Message | Task>;
   sendMessageStream(
     params: SendMessageRequest,
     context: ServerCallContext,
@@ -117,6 +143,15 @@ function statusStateOf(event: StreamResponse): TaskState | undefined {
   return event.payload?.$case === 'statusUpdate' ? event.payload.value.status?.state : undefined;
 }
 
+/**
+ * Whether a stream ends once its task reaches `state`: a terminal state, or
+ * `INPUT_REQUIRED`, where the SDK's `DefaultRequestHandler` ends its streams too.
+ * `AUTH_REQUIRED` is not one, as it is not in the SDK either.
+ */
+export function endsStream(state: TaskState | undefined): boolean {
+  return isTerminalTaskState(state) || state === TaskState.TASK_STATE_INPUT_REQUIRED;
+}
+
 function foreignMessage(message: Message): RequestMalformedError {
   return new RequestMalformedError(
     `messageId '${message.messageId}' already started another caller's task; send the message with a new messageId.`,
@@ -126,6 +161,25 @@ function foreignMessage(message: Message): RequestMalformedError {
 function taskEvent(task: Task): StreamResponse {
   return { payload: { $case: 'task', value: task } };
 }
+
+/** The agent's reply to `message`, which named no task, holding `parts`. */
+function replyTo(message: Message, parts: readonly Part[]): Message {
+  return {
+    messageId: crypto.randomUUID(),
+    contextId: message.contextId === '' ? crypto.randomUUID() : message.contextId,
+    taskId: '',
+    role: Role.ROLE_AGENT,
+    parts: [...parts],
+    metadata: undefined,
+    extensions: [],
+    referenceTaskIds: [],
+  };
+}
+
+/** What a message gets: a bare reply, or the task it started or continued. */
+type Accepted =
+  | { readonly kind: 'reply'; readonly message: Message }
+  | { readonly kind: 'task'; readonly stored: StoredWorkflowTask };
 
 export function createWorkflowAgentMessaging(options: {
   readonly engine: Engine;
@@ -137,8 +191,11 @@ export function createWorkflowAgentMessaging(options: {
   readonly runtime: WorkflowTaskRuntime;
   readonly pushStore: PushNotificationStore;
   readonly now: () => number;
+  readonly toInput: WorkflowAgentInput;
+  readonly respond: WorkflowAgentResponder | undefined;
 }): WorkflowAgentMessaging {
   const { engine, workflowType, inputMode, inputModes, log, runtime, pushStore, now } = options;
+  const { toInput, respond } = options;
 
   async function installPushConfiguration(
     params: SendMessageRequest,
@@ -156,7 +213,7 @@ export function createWorkflowAgentMessaging(options: {
     params: SendMessageRequest,
     context: ServerCallContext,
   ): Promise<StoredWorkflowTask> {
-    const input = payloadOf(message, inputMode);
+    const input = toInput(payloadOf(message, inputMode), message);
     const user = encodeStorageKeyComponent(context.user?.userName ?? '');
     const handle = await engine.start(workflowType, input, {
       idempotencyKey: `${user}:${message.messageId}`,
@@ -217,7 +274,7 @@ export function createWorkflowAgentMessaging(options: {
     }
     const state = await engine.get(taskId);
     const signalName = signalFor(message, state === null ? [] : runtime.liveWaits(state));
-    const payload = payloadOf(message, inputMode);
+    const payload = toInput(payloadOf(message, inputMode), message);
 
     const generation = runtime.beginDelivery(taskId);
     try {
@@ -245,9 +302,13 @@ export function createWorkflowAgentMessaging(options: {
     return stored;
   }
 
-  function accept(params: SendMessageRequest, context: ServerCallContext) {
+  async function accept(params: SendMessageRequest, context: ServerCallContext): Promise<Accepted> {
     const message = requireMessage(params, inputModes);
-    return message.taskId === '' ? start(message, params, context) : continueTask(message, context);
+    if (message.taskId !== '')
+      return { kind: 'task', stored: await continueTask(message, context) };
+    const parts = await respond?.(message, context);
+    if (parts !== undefined) return { kind: 'reply', message: replyTo(message, parts) };
+    return { kind: 'task', stored: await start(message, params, context) };
   }
 
   async function* follow(
@@ -263,7 +324,7 @@ export function createWorkflowAgentMessaging(options: {
     if (isTerminalTaskState(task.status?.state)) return;
     for await (const entry of log.follow(runtime.scopeOf(context), task.id, sequence)) {
       yield withStreamEventCursor(entry.event, entry.cursor);
-      if (isTerminalTaskState(statusStateOf(entry.event))) return;
+      if (endsStream(statusStateOf(entry.event))) return;
     }
   }
 
@@ -284,13 +345,28 @@ export function createWorkflowAgentMessaging(options: {
 
   return {
     async sendMessage(params, context) {
-      const stored = await accept(params, context);
-      const task = await settled(stored, context, params.configuration?.returnImmediately === true);
+      const accepted = await accept(params, context);
+      if (accepted.kind === 'reply') return accepted.message;
+      const returnImmediately = params.configuration?.returnImmediately === true;
+      const task = await settled(accepted.stored, context, returnImmediately);
       return withHistoryLength(task, params.configuration?.historyLength);
     },
     async *sendMessageStream(params, context) {
-      const stored = await accept(params, context);
-      yield* follow(stored, context, params.configuration?.historyLength);
+      const accepted = await accept(params, context);
+      if (accepted.kind === 'reply') {
+        yield { payload: { $case: 'message', value: accepted.message } };
+        return;
+      }
+      const { stored } = accepted;
+      const historyLength = params.configuration?.historyLength;
+      // A task already waiting on its caller announces no further status before the
+      // caller answers, so the stream ends with its first event.
+      if (stored.task.status?.state === TaskState.TASK_STATE_INPUT_REQUIRED) {
+        const snapshot = taskEvent(withHistoryLength(stored.task, historyLength));
+        yield withStreamEventCursor(snapshot, taskEventCursor(stored.sequence));
+        return;
+      }
+      yield* follow(stored, context, historyLength);
     },
     follow,
   };

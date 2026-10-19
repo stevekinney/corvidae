@@ -170,6 +170,47 @@ describe('GetTask', () => {
   });
 });
 
+describe('the artifacts option', () => {
+  test('keeps a file artifact’s bytes, filename, and media type in the durable task', async () => {
+    const bytes = Buffer.from('report');
+    const { agent, push, engine } = await createWorkflowAgentFixture({
+      workflowType: echoWorkflow.name,
+      artifacts: () => [
+        {
+          artifactId: 'report',
+          name: 'report',
+          description: '',
+          parts: [
+            {
+              content: { $case: 'raw', value: bytes },
+              metadata: undefined,
+              filename: 'report.txt',
+              mediaType: 'text/plain',
+            },
+          ],
+          metadata: undefined,
+          extensions: [],
+        },
+      ],
+    });
+    const task = await startTask(agent, alice());
+    agent[Symbol.dispose]();
+
+    // A second agent over the same storage reads the task back from its durable record.
+    const { agent: reread } = serveWorkflow(push, engine, { workflowType: echoWorkflow.name });
+    const read = await reread.requestHandler.getTask({ tenant: '', id: task.id }, alice());
+
+    expect(read.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
+    expect(read.artifacts).toEqual(task.artifacts);
+    expect(read.artifacts[0]?.parts[0]).toEqual({
+      content: { $case: 'raw', value: bytes },
+      metadata: undefined,
+      filename: 'report.txt',
+      mediaType: 'text/plain',
+    });
+  });
+});
+
 describe('CancelTask', () => {
   test('cancels a running workflow through the engine', async () => {
     const { agent, engine } = await createWorkflowAgentFixture();

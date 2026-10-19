@@ -7,12 +7,12 @@
  * | `running`, no signal wait | `WORKING` |
  * | `running`, any signal wait | `INPUT_REQUIRED` |
  * | `suspended` | `WORKING` |
- * | `completed` | `COMPLETED`, with the result as one artifact holding one data part |
+ * | `completed` | `COMPLETED`, with the result's artifacts (by default one, holding one data part) |
  * | `failed`, `timed-out` | `FAILED` |
  * | `cancelled` | `CANCELED` |
  *
- * Each change is a `TaskStatusUpdateEvent` (preceded, on completion, by a
- * `TaskArtifactUpdateEvent`), and an agent message on a status (the signal names an
+ * Each change is a `TaskStatusUpdateEvent` (preceded, on completion, by one
+ * `TaskArtifactUpdateEvent` per artifact), and an agent message on a status (the signal names an
  * `INPUT_REQUIRED` task waits for, or a failure's reason) joins the task's history.
  * Nothing else the workflow does reaches the task.
  *
@@ -130,7 +130,10 @@ function sameNames(left: readonly string[] | undefined, right: readonly string[]
   return left !== undefined && left.length === right.length && left.every((n, i) => n === right[i]);
 }
 
-/** The single artifact a completed workflow's result is published as. */
+/** Maps a completed workflow's result to the artifacts its task is published with. */
+export type WorkflowResultArtifacts = (result: unknown) => readonly Artifact[];
+
+/** The single artifact a completed workflow's result is published as by default. */
 export function resultArtifact(result: unknown): Artifact {
   return {
     artifactId: RESULT_ARTIFACT_ID,
@@ -146,6 +149,26 @@ export function resultArtifact(result: unknown): Artifact {
     ],
     metadata: undefined,
     extensions: [],
+  };
+}
+
+/** The default {@link WorkflowResultArtifacts}: the result as one data part. */
+export const defaultResultArtifacts: WorkflowResultArtifacts = (result) => [resultArtifact(result)];
+
+/** An artifact-update event publishing `artifact` whole on `task`. */
+function artifactUpdateEvent(task: Task, artifact: Artifact): StreamResponse {
+  return {
+    payload: {
+      $case: 'artifactUpdate',
+      value: {
+        taskId: task.id,
+        contextId: task.contextId,
+        artifact,
+        append: false,
+        lastChunk: true,
+        metadata: undefined,
+      },
+    },
   };
 }
 
@@ -170,13 +193,16 @@ export function withStatus(task: Task, status: TaskStatus): Task {
 
 /**
  * The change that brings `task` in line with the workflow's `state`, or `undefined`
- * when it already matches. A terminal task never changes.
+ * when it already matches. A terminal task never changes. A completed workflow's
+ * result becomes the artifacts `artifactsOf` maps it to, each published as its own
+ * artifact update before the status.
  */
 export function reconcileTask(
   task: Task,
   state: WorkflowState,
   liveWaits: readonly string[],
   timestamp: string,
+  artifactsOf: WorkflowResultArtifacts = defaultResultArtifacts,
 ): TaskMutation | undefined {
   const current = task.status?.state;
   if (isTerminalTaskState(current)) return undefined;
@@ -190,21 +216,9 @@ export function reconcileTask(
   const events: StreamResponse[] = [];
   let next = task;
   if (target === TaskState.TASK_STATE_COMPLETED) {
-    const artifact = resultArtifact(state.result);
-    next = { ...next, artifacts: [artifact] };
-    events.push({
-      payload: {
-        $case: 'artifactUpdate',
-        value: {
-          taskId: task.id,
-          contextId: task.contextId,
-          artifact,
-          append: false,
-          lastChunk: true,
-          metadata: undefined,
-        },
-      },
-    });
+    const artifacts = [...artifactsOf(state.result)];
+    next = { ...next, artifacts };
+    events.push(...artifacts.map((artifact) => artifactUpdateEvent(task, artifact)));
   }
   const message =
     target === TaskState.TASK_STATE_INPUT_REQUIRED
