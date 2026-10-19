@@ -13,7 +13,7 @@
   import type { BureauHumanWait, BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
-  import { PendingCommandKey } from '../../lib/pending-command-key.ts';
+  import { createPendingCommandKey } from '../../lib/pending-command-key.ts';
   import { getPrincipalStore, isForbidden } from '../../lib/scopes.svelte.ts';
   import type { ReviewOutcome } from './bureau-review-detail.svelte';
   import type { ReviewDecisionSubmission } from './review-decision-form.svelte';
@@ -42,7 +42,7 @@
   const answerMutation = answerHumanWaitMutation();
   // One key stays with an answer until the Bureau confirms it, so a retry after a lost response is
   // the same command and the Bureau answers it from its ledger.
-  const answerKey = new PendingCommandKey();
+  const answerKey = createPendingCommandKey();
 
   $effect(() => {
     if (isForbidden(pendingQuery.error) || isForbidden(completedQuery.error)) {

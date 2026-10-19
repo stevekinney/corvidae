@@ -11,21 +11,25 @@
  * is minted only for a command that differs (a different scope or a different answer), and after a
  * response that confirms the command, which ends it.
  */
-export class PendingCommandKey {
-  #pending: { readonly scope: string; readonly content: string; readonly key: string } | undefined;
-
+export type PendingCommandKey = {
   /** The key for sending `content` under `scope`: the pending one for the same command, else a new one. */
-  keyFor(scope: string, content: string): string {
-    if (this.#pending?.scope === scope && this.#pending.content === content) {
-      return this.#pending.key;
-    }
-    const key = crypto.randomUUID();
-    this.#pending = { scope, content, key };
-    return key;
-  }
-
+  keyFor(scope: string, content: string): string;
   /** The command was confirmed by a response, so the next one is a new command. */
-  confirmed(): void {
-    this.#pending = undefined;
-  }
+  confirmed(): void;
+};
+
+export function createPendingCommandKey(): PendingCommandKey {
+  let pending:
+    { readonly scope: string; readonly content: string; readonly key: string } | undefined;
+  return {
+    keyFor(scope, content) {
+      if (pending?.scope === scope && pending.content === content) return pending.key;
+      const key = crypto.randomUUID();
+      pending = { scope, content, key };
+      return key;
+    },
+    confirmed() {
+      pending = undefined;
+    },
+  };
 }
