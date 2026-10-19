@@ -33,10 +33,7 @@
     readonly readTask: (input: { operationId: string }) => Promise<unknown>;
   }
 
-  let {
-    operationId,
-    readTask,
-  }: ActivityWorkerProvenanceProps = $props();
+  let { operationId, readTask }: ActivityWorkerProvenanceProps = $props();
   const instanceId = $props.id();
   const headingId = `activity-provenance-heading-${instanceId}`;
 
