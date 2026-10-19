@@ -146,8 +146,15 @@ test('an operator sets routing, rolls back, promotes, then drains and resumes on
     buildRow(page, E2E_CURRENT_BUILD_ID).getByText(/2 draining, 0 drained/),
   ).toBeVisible();
   await expect(buildRow(page, E2E_PREVIOUS_BUILD_ID).getByText(/drained/)).toHaveCount(0);
+  // The drain is the catalog's state for the build, so the version itself reads Draining.
+  await expect(
+    buildRow(page, E2E_CURRENT_BUILD_ID).getByText('Draining', { exact: true }),
+  ).toBeVisible();
 
   await buildRow(page, E2E_CURRENT_BUILD_ID).getByRole('button', { name: 'Resume' }).click();
+  await expect(
+    buildRow(page, E2E_CURRENT_BUILD_ID).getByText('Ready', { exact: true }),
+  ).toBeVisible();
   await expect(buildRow(page, E2E_CURRENT_BUILD_ID).getByText(/drained/)).toHaveCount(0);
   await checkA11y('workers—deployments after routing, drain, and resume');
 });

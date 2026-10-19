@@ -285,4 +285,51 @@ describe('build-scoped drain over REST and the live registry', () => {
       data: { resource: 'workerDeploymentVersion', identifier: 'payments/build-1' },
     });
   });
+
+  it('wires the catalog into the live resume operation so a drained build returns to ready and a removed one is refused', async () => {
+    const engine = createOperationTestEngine();
+    const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
+    for (const buildId of ['build-1', 'build-2']) {
+      await catalog.registerVersion({
+        deploymentName: 'payments',
+        buildId,
+        artifactDigest: `sha256:${buildId}`,
+        manifestDigest: `sha256:manifest-${buildId}`,
+        manifest: testWorkerManifest({
+          deployment: { name: 'payments', buildId, artifactDigest: `sha256:${buildId}` },
+        }),
+        state: 'ready',
+        firstSeenAt: 1,
+      });
+    }
+    const registry = createLiveOperationRegistry({
+      workerRegistry: new WorkerRegistry(),
+      workerDeploymentCatalog: catalog,
+    });
+    const call = (name: string, buildId: string) =>
+      executeOperation(
+        name,
+        { deploymentName: 'payments', buildId },
+        {
+          principal: principalFromApiKey({ subject: 'admin', scopes: ['system:admin'] }),
+          host: engine,
+          transport: 'jsonRpcStdio',
+          registry,
+        },
+      );
+
+    await call('weft.worker.deployments.drain', 'build-1');
+    const drained = await catalog.getVersion('payments', 'build-1');
+    expect(drained?.state).toBe('draining');
+    await call('weft.worker.deployments.resume', 'build-1');
+    const resumed = await catalog.getVersion('payments', 'build-1');
+    expect(resumed?.state).toBe('ready');
+
+    await catalog.removeVersion('payments', 'build-2');
+    const refused = await call('weft.worker.deployments.resume', 'build-2');
+    engine[Symbol.dispose]();
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error('expected a fault');
+    expect(refused.fault.code).toBe('NotFound');
+  });
 });

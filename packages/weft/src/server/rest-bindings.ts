@@ -234,7 +234,12 @@ function buildDrainDeploymentOperationForRegistry(options: LiveOperationRegistry
 
 function buildClearDeploymentDrainOperationForRegistry(options: LiveOperationRegistryOptions) {
   if (options.workerRegistry === undefined) return clearDeploymentDrainOperation;
-  return createClearDeploymentDrainOperation({ workerRegistry: options.workerRegistry });
+  return createClearDeploymentDrainOperation({
+    workerRegistry: options.workerRegistry,
+    ...(options.workerDeploymentCatalog === undefined
+      ? {}
+      : { catalog: options.workerDeploymentCatalog }),
+  });
 }
 
 function buildListTaskQueuesOperationForRegistry(options: LiveOperationRegistryOptions) {
