@@ -350,6 +350,62 @@ describe('faults', () => {
     expect(extra.error?.data?.httpStatus).toBe(400);
   });
 
+  it('InvalidParams naming the key for a definition with an undeclared key, and writes nothing (create)', async () => {
+    const served = await serve();
+    const response = await ownerRpc(served.owner, 'bureau.workflows.create', {
+      id: 'digest',
+      definition: { ...DEFINITION, retries: 3 },
+    });
+    expect(response.error?.data?.httpStatus).toBe(400);
+    expect(response.error?.data?.['weftCode']).toBe('InvalidParams');
+    expect(response.error?.data?.['issues']).toContainEqual(
+      expect.objectContaining({
+        code: 'unrecognized_keys',
+        path: ['definition'],
+        message: expect.stringContaining('"retries"'),
+      }),
+    );
+    expect(await Bun.file(join(served.directory, 'digest.json')).exists()).toBe(false);
+    expect(served.bureau.workflows?.list()).toEqual([]);
+  });
+
+  it('InvalidParams naming the key for a definition with an undeclared key, and leaves the file as it was (update)', async () => {
+    const served = await serve();
+    const created = await seed(served);
+    const before = await readFile(join(served.directory, 'digest.json'));
+    const response = await ownerRpc(served.owner, 'bureau.workflows.update', {
+      id: 'digest',
+      expectedHash: created.hash,
+      definition: { ...DEFINITION, retries: 3 },
+    });
+    expect(response.error?.data?.httpStatus).toBe(400);
+    expect(response.error?.data?.['weftCode']).toBe('InvalidParams');
+    expect(response.error?.data?.['issues']).toContainEqual(
+      expect.objectContaining({
+        code: 'unrecognized_keys',
+        path: ['definition'],
+        message: expect.stringContaining('"retries"'),
+      }),
+    );
+    const after = await readFile(join(served.directory, 'digest.json'));
+    expect(after.equals(before)).toBe(true);
+  });
+
+  it('leaves a trigger loose, so the trigger kind’s own validator refuses its unknown keys', async () => {
+    const served = await serve();
+    const response = await ownerRpc(served.owner, 'bureau.workflows.create', {
+      id: 'digest',
+      definition: { ...DEFINITION, trigger: { kind: 'schedule', spec: '1h', extra: 1 } },
+    });
+    expect(response.error?.data?.httpStatus).toBe(422);
+    expect(response.error?.data).toMatchObject({
+      weftCode: 'Unprocessable',
+      reason: 'invalid-document',
+    });
+    expect(await Bun.file(join(served.directory, 'digest.json')).exists()).toBe(false);
+    expect(served.bureau.workflows?.list()).toEqual([]);
+  });
+
   it('Unavailable for a write whose effect on the engine failed, which the next rescan applies', async () => {
     const diagnostics: string[] = [];
     const served = await serve((event) => diagnostics.push(event.message));
