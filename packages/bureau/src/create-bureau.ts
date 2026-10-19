@@ -2418,6 +2418,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
   const inFlightSessionInputSettlements = new Set<Promise<void>>();
+  /**
+   * The save that records a run's end in its session, while it is in flight, by run id. A reader
+   * that needs the session as the run left it (`Bureau.whenRunRecorded`) waits on this promise,
+   * not on a count of turns of the event loop, so however slow or retried the save is, it is waited
+   * for.
+   */
+  const terminalSessionRecords = new Map<string, Promise<void>>();
+  const terminalSessionRecordSettlers = new Map<
+    string,
+    { resolve: () => void; reject: (reason: unknown) => void }
+  >();
 
   /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
   const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
@@ -4132,11 +4143,81 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     saveSessionUpdate: () => Promise<unknown>,
     context: { runId: string; sessionId: string; status: 'completed' | 'error' | 'aborted' },
   ): void {
-    trackSessionInputSettlement(
-      persistSessionUpdate(saveSessionUpdate, context).then(() =>
-        settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
-      ),
+    const recorded = persistSessionUpdate(saveSessionUpdate, context).then(() =>
+      settleSessionInputsAfterRunEnd(context.sessionId, context.runId),
     );
+    const settler = terminalSessionRecordSettlers.get(context.runId);
+    terminalSessionRecordSettlers.delete(context.runId);
+    if (settler !== undefined) {
+      recorded.then(settler.resolve, settler.reject);
+    } else {
+      // A run nobody told us to expect: its record is this save.
+      terminalSessionRecords.set(context.runId, recorded);
+      void recorded
+        .then(
+          () => undefined,
+          () => undefined,
+        )
+        .finally(() => {
+          if (terminalSessionRecords.get(context.runId) === recorded) {
+            terminalSessionRecords.delete(context.runId);
+          }
+        });
+    }
+    trackSessionInputSettlement(recorded);
+  }
+
+  /**
+   * Makes `whenRunRecorded(runId)` wait from now on, until the run's terminal save has finished,
+   * even when it is asked before the run has reached its end. A durable terminal event can reach a
+   * reader before this process's own run listener has started the save.
+   */
+  function expectTerminalSessionRecord(runId: string): void {
+    if (terminalSessionRecords.has(runId)) return;
+    const record = Promise.withResolvers<void>();
+    terminalSessionRecords.set(runId, record.promise);
+    terminalSessionRecordSettlers.set(runId, { resolve: record.resolve, reject: record.reject });
+    void record.promise
+      .then(
+        () => undefined,
+        () => undefined,
+      )
+      .finally(() => {
+        if (terminalSessionRecords.get(runId) === record.promise) {
+          terminalSessionRecords.delete(runId);
+        }
+      });
+  }
+
+  /**
+   * Resolves once the session has recorded the end of `runId`, however long its save takes, and
+   * at once for a run whose end is already recorded or is not this process's. Rejects when the
+   * save could not be completed.
+   */
+  async function whenRunRecorded(runId: string): Promise<void> {
+    await terminalSessionRecords.get(runId);
+  }
+
+  /**
+   * The identifiers of the rows (conversation messages) `runId` itself took session input into, in
+   * delivery order. Read from the durable delivery record, which commits with the transcript the
+   * run saved, so it is the same answer before and after the session records the run's end. A
+   * Bureau with no session mailbox delivered none.
+   */
+  async function sessionInputsDeliveredBy(
+    runId: string,
+    sessionId: string,
+  ): Promise<readonly string[]> {
+    if (sessionInputDeliveryStore === undefined) return [];
+    const records = await sessionInputDeliveryStore.read(sessionId);
+    return Object.values(records)
+      .filter((record) => record.runId === runId && record.promotion !== undefined)
+      .toSorted(
+        (left, right) => (left.promotion?.providerTurn ?? 0) - (right.promotion?.providerTurn ?? 0),
+      )
+      .flatMap((record) =>
+        record.promotion === undefined ? [] : [record.promotion.conversationMessageId],
+      );
   }
 
   /** Resolves once every run-end session-input settlement already started has finished. */
@@ -5733,6 +5814,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       });
 
+      // The session will record this run's end once it is terminal; a reader that asks before that
+      // (`whenRunRecorded`) waits for the save, whenever the run gets there.
+      expectTerminalSessionRecord(runId);
       activeRun.once('run.completed', (event) => {
         activeRuns.delete(activeRun);
         releaseRunToolboxWhenIdle(runToolbox);
@@ -6409,6 +6493,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       recoveredRun.once('run.aborted', endSteering);
     }
 
+    expectTerminalSessionRecord(runId);
     recoveredRun.once('run.completed', (event) => {
       activeRuns.delete(recoveredRun);
       disposeRecoveredRunFrameForwarder();
@@ -14763,6 +14848,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     updateSession,
     querySession,
     submitSessionInput,
+    whenRunRecorded,
+    sessionInputsDeliveredBy,
     submitSteeringCommand,
     // AB-192: constant, not computed from runtime state — the built-in
     // `agentRun` workflow never registers `ctx.onUpdate`/`ctx.onQuery`

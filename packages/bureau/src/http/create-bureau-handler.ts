@@ -134,6 +134,8 @@ export type BureauHandlerSource = Pick<
   | 'auditTrail'
   | 'workflows'
   | 'submitSessionInput'
+  | 'whenRunRecorded'
+  | 'sessionInputsDeliveredBy'
 > & {
   readonly agents: {
     has(name: string): boolean;
