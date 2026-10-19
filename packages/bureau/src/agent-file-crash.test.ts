@@ -73,7 +73,7 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       stderr: 'pipe',
     });
     scope.onHang(() => child.kill('SIGKILL'));
-    await child.exited;
+    await scope.phase('child exit', () => child.exited);
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? unexpectedChildStderr(stderr)).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
@@ -87,47 +87,74 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       agentFileText({ model: OTHER_MODEL }, 'Rewritten edited.\n'),
     );
     // The dead holder's claim lapses on Weft's own wall clock.
-    await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
+    await scope.phase(
+      'claim lapse',
+      () => new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10)),
+    );
 
     const calls: Call[] = [];
-    bureau = await createBureau({
-      agents: {},
-      agentDirectory: agents,
-      // The tool catalog is the deployment's, so it is the same after the restart.
-      agentTools: { 'lookup-order': lookupTool },
-      resolveAgentGenerate:
-        (descriptor) =>
-        async ({ toolbox }) => {
-          calls.push({
-            model: descriptor.model,
-            tools: toolbox
-              .tools()
-              .map((tool) => tool.name)
-              .toSorted(),
-          });
-          return { content: 'resumed', toolCalls: [] };
+    bureau = await scope.phase('boot', () =>
+      createBureau({
+        agents: {},
+        agentDirectory: agents,
+        // The tool catalog is the deployment's, so it is the same after the restart.
+        agentTools: { 'lookup-order': lookupTool },
+        resolveAgentGenerate:
+          (descriptor) =>
+          async ({ toolbox }) => {
+            calls.push({
+              model: descriptor.model,
+              tools: toolbox
+                .tools()
+                .map((tool) => tool.name)
+                .toSorted(),
+            });
+            return { content: 'resumed', toolCalls: [] };
+          },
+        stopWhen: stopWhen.noToolCalls(),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+        durableOwnership: {
+          ownership: 'workflow-lease',
+          workflowClaimTtlMs: CLAIM_TTL_MS,
+          workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
         },
-      stopWhen: stopWhen.noToolCalls(),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      durableOwnership: {
-        ownership: 'workflow-lease',
-        workflowClaimTtlMs: CLAIM_TTL_MS,
-        workflowClaimRenewIntervalMs: CLAIM_RENEW_MS,
-      },
-    });
+      }),
+    );
     // The file for `gone` is gone, and `edited` now names a model and no tools.
     expect(bureau.agents.list().map((listing) => listing.id)).toEqual(['edited']);
 
-    const report = await bureau.waitForRecovery?.();
+    const recovering = bureau;
+    const report = await scope.phase('recovery', async () => recovering.waitForRecovery?.());
     if (report === undefined) throw new Error('waitForRecovery is unavailable');
     expect(report.perRunFailures).toEqual([]);
     expect(report.outcome).toBe('clean');
 
-    for (const run of marker.runs) await bureau.waitForDurableRun(run.runId);
-    await waitForBureauState([bureau], () =>
-      marker.runs.every(
-        (run) => run.kind === 'catalog' || bureau?.getRun(run.runId)?.status === 'completed',
+    for (const run of marker.runs) {
+      await scope.phase(`durable run ${run.kind} ${run.name} ${run.runId}`, async () => {
+        scope.observe(
+          async () =>
+            `durable status ${JSON.stringify((await recovering.getDurableRun(run.runId))?.status)}`,
+        );
+        return recovering.waitForDurableRun(run.runId);
+      });
+    }
+    await scope.phase('run status', () =>
+      waitForBureauState(
+        [recovering],
+        () =>
+          marker.runs.every(
+            (run) => run.kind === 'catalog' || recovering.getRun(run.runId)?.status === 'completed',
+          ),
+        {
+          scope,
+          label: 'every session run is completed in the bureau',
+          describe: () =>
+            marker.runs
+              .filter((run) => run.kind === 'session')
+              .map((run) => `${run.name} ${run.runId}: ${recovering.getRun(run.runId)?.status}`)
+              .join(', '),
+        },
       ),
     );
     for (const run of marker.runs) {
@@ -149,34 +176,36 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     // recovery's own settlement when the run ended, or else the pass's reconciliation against
     // the engine, which runs ahead of the prune. The run is in no store, so the store's own
     // settlement cannot have.
-    const recoveredShutdown = await bureau.shutdown();
+    const recoveredShutdown = await scope.phase('shutdown', () => recovering.shutdown());
     expect(recoveredShutdown.unresolved).toBe(0);
-    const yearOn = createManualRuntimeServices({
-      origin: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString(),
+    await scope.phase('maintenance', async () => {
+      const yearOn = createManualRuntimeServices({
+        origin: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      bureau = await createBureau({
+        agents: {},
+        agentDirectory: agents,
+        agentTools: { 'lookup-order': lookupTool },
+        resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),
+        stopWhen: stopWhen.noToolCalls(),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+        durableBackgroundTasks: 'manual',
+        runtime: yearOn,
+      });
+      const before = await Promise.all([
+        bureau.agents.revisions('gone'),
+        bureau.agents.revisions('edited'),
+      ]);
+      expect(before.map((revisions) => revisions.length)).toEqual([1, 1]);
+      await bureau.runDurableMaintenance();
+      const after = await Promise.all([
+        bureau.agents.revisions('gone'),
+        bureau.agents.revisions('edited'),
+      ]);
+      expect(after.map((revisions) => revisions.length)).toEqual([0, 0]);
     });
-    bureau = await createBureau({
-      agents: {},
-      agentDirectory: agents,
-      agentTools: { 'lookup-order': lookupTool },
-      resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),
-      stopWhen: stopWhen.noToolCalls(),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      durableOwnership: { ownership: 'none' },
-      durableBackgroundTasks: 'manual',
-      runtime: yearOn,
-    });
-    const before = await Promise.all([
-      bureau.agents.revisions('gone'),
-      bureau.agents.revisions('edited'),
-    ]);
-    expect(before.map((revisions) => revisions.length)).toEqual([1, 1]);
-    await bureau.runDurableMaintenance();
-    const after = await Promise.all([
-      bureau.agents.revisions('gone'),
-      bureau.agents.revisions('edited'),
-    ]);
-    expect(after.map((revisions) => revisions.length)).toEqual([0, 0]);
   } finally {
     const shutdown = await bureau?.shutdown();
     rmSync(directory, { recursive: true, force: true });

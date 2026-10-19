@@ -1,6 +1,7 @@
 import { expect, it } from 'bun:test';
 
-import { settleScenario } from './hoisted-scenario';
+import { createBureau } from '../create-bureau';
+import { settleScenario, waitForBureauState } from './hoisted-scenario';
 
 it('releases what a hung scenario registered, last first, before it returns', async () => {
   const released: string[] = [];
@@ -45,4 +46,76 @@ it('returns after a hang even when a release never settles', async () => {
 
   expect(outcome.failed).toBe(true);
   expect(otherReleaseStarted).toBe(true);
+});
+
+it('names the phase a hung scenario was running and how long each finished phase took', async () => {
+  const outcome = await settleScenario(async (scope) => {
+    await scope.phase('child exit', async () => {});
+    await scope.phase('claim lapse', async () => {});
+    await scope.phase('recovery', () => new Promise<never>(() => {}));
+  }, 10);
+
+  expect(outcome.failed).toBe(true);
+  const message = (outcome.error as Error).message;
+  expect(message).toContain('hang guard');
+  expect(message).toMatch(/stalled in phase "recovery"/);
+  expect(message).toMatch(/child exit \(\d+ms\)/);
+  expect(message).toMatch(/claim lapse \(\d+ms\)/);
+});
+
+it('says no phase was running when a hung scenario had not entered one', async () => {
+  const outcome = await settleScenario(async () => {
+    await new Promise<never>(() => {});
+  }, 10);
+
+  expect((outcome.error as Error).message).toContain('before its first phase');
+});
+
+it('does not name a phase that finished before the hang', async () => {
+  const outcome = await settleScenario(async (scope) => {
+    await scope.phase('boot', async () => {});
+    await new Promise<never>(() => {});
+  }, 10);
+
+  const message = (outcome.error as Error).message;
+  expect(message).not.toContain('stalled in phase "boot"');
+  expect(message).toContain('between phases after "boot"');
+});
+
+it('passes a phase result and rejection through unchanged', async () => {
+  const failure = new Error('phase failure');
+  const outcome = await settleScenario(async (scope) => {
+    expect(await scope.phase('first', async () => 7)).toBe(7);
+    await scope.phase('second', async () => {
+      throw failure;
+    });
+  }, 1000);
+
+  expect(outcome).toEqual({ failed: true, error: failure });
+});
+
+it('names the check and what it last read when a state wait is the stalled phase', async () => {
+  const bureau = await createBureau({ agents: {} });
+  try {
+    let reads = 0;
+    const outcome = await settleScenario(async (scope) => {
+      await scope.phase('run status', () =>
+        waitForBureauState(
+          [bureau],
+          () => {
+            reads += 1;
+            return false;
+          },
+          { scope, label: 'every session run completed', describe: () => `read ${reads} times` },
+        ),
+      );
+    }, 10);
+
+    const message = (outcome.error as Error).message;
+    expect(message).toContain('stalled in phase "run status"');
+    expect(message).toContain('waiting for "every session run completed"');
+    expect(message).toContain('last read: read 1 times');
+  } finally {
+    await bureau.shutdown();
+  }
 });
