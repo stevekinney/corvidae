@@ -1,5 +1,10 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
-import { MemoryStorage, workflow, yieldToPortableEventLoop } from '@lostgradient/weft';
+import {
+  MemoryStorage,
+  textValueStore,
+  workflow,
+  yieldToPortableEventLoop,
+} from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
@@ -14,6 +19,7 @@ import {
 import type { RunOptions } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
+import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine } from './create-run-engine';
 
 /**
@@ -59,7 +65,9 @@ async function pollUntil(predicate: () => boolean | Promise<boolean>): Promise<v
   throw new Error('pollUntil exceeded its attempt bound before the condition held');
 }
 
-const emptyCheckpointStore = { loadCheckpoint: async () => null };
+const emptyCheckpointStore = createCheckpointStore(
+  textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+);
 
 describe('a run another engine reclaimed and timed out', () => {
   it('is published once, by the engine that committed the timeout', async () => {

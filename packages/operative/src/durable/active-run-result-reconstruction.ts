@@ -359,8 +359,11 @@ export function settleRejectedRun(args: SettleRejectedRunArgs): RunResult {
  * save a host makes from `run.completed` would drop the committed rows, and any follow-up the run
  * delivered, from the session for good.
  *
- * Falls back to the launch conversation and an empty state only when the checkpoint holds neither
- * a step nor a transcript (the run failed before it committed anything) or cannot be read.
+ * Falls back to the launch conversation and an empty state when the checkpoint holds neither a
+ * step nor a transcript (the run failed before it committed anything). Also falls back when the
+ * checkpoint cannot be read, and says so with one warning that names the run: failing the settle
+ * instead would leave the run `running` with no terminal event, but the terminal record then
+ * carries no steps, so the fallback is never silent.
  */
 export async function loadSettlementState(
   context: DurableActiveRunContext,
@@ -369,13 +372,17 @@ export async function loadSettlementState(
   launchConversation: Conversation,
 ): Promise<{ runState: RunState; conversation: Conversation }> {
   try {
-    const loaded = await loadRunStateFromCheckpoint(context, runId, runtime);
+    const loaded = await readRunStateFromCheckpoint(context, runId, runtime);
     if (loaded.runState.steps.length > 0 || loaded.conversation.getMessages().length > 0) {
       return loaded;
     }
-  } catch {
-    // An older checkpoint record this build cannot read: settle from the launch state rather than
-    // fail the run's own terminal lifecycle.
+  } catch (error) {
+    console.warn(
+      `[operative] Could not read the checkpoint of durable run "${runId}" to settle it as failed; ` +
+        `settling from the launch conversation, so its terminal record may omit steps it committed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+    );
   }
   return { runState: emptyRunState(), conversation: launchConversation };
 }

@@ -848,11 +848,9 @@ describe('createRun with durable routing', () => {
     } as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
-      checkpointStore: {
-        loadCheckpoint: async () => {
-          throw new Error('unused');
-        },
-      },
+      checkpointStore: createCheckpointStore(
+        textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+      ),
     } as never;
 
     const activeRun = createDurableActiveRun(context, {
@@ -876,11 +874,9 @@ describe('createRun with durable routing', () => {
     } as unknown as RegistryAgnosticEngine;
     const context = {
       engine,
-      checkpointStore: {
-        loadCheckpoint: async () => {
-          throw new Error('unused');
-        },
-      },
+      checkpointStore: createCheckpointStore(
+        textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+      ),
     } as never;
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
     const completions: Array<{ finishReason: string; message: string | undefined }> = [];

@@ -1,7 +1,7 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { MemoryStorage, type Storage, textValueStore } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
 import { createConversationHistory } from 'conversationalist';
@@ -10,7 +10,7 @@ import { createActiveRun } from '../create-run';
 import { type CombinedOperativeEventMap, RunCompletedEvent, RunErrorEvent } from '../events';
 import type { RunOptions } from '../types';
 import { createCheckpointStore } from './checkpoint-store';
-import { createRunEngine } from './create-run-engine';
+import { createRunEngine, type RegistryAgnosticEngine } from './create-run-engine';
 import { createRunWorkflow } from './run-workflow';
 
 /**
@@ -189,6 +189,79 @@ describe('a durable run that fails after a committed step', () => {
       expect(errorSteps).toEqual([1]);
     } finally {
       engine[Symbol.dispose]();
+    }
+  });
+
+  it('keeps a committed transcript whose step record never landed', async () => {
+    // A step commits its transcript, and the follow-up it delivered, in one write before its step
+    // record. A failure between the two leaves a transcript with no step, and settling from the
+    // launch conversation would drop the reply and the delivered input for good.
+    const refusing = refusingStorage();
+    const checkpointStore = createCheckpointStore(
+      textValueStore(refusing.storage, { disposeUnderlyingStorage: false }),
+    );
+    const { engine } = await createRunEngine({
+      storage: refusing.storage,
+      runWorkflow: createRunWorkflow(checkpointStore),
+      recover: false,
+    });
+    refusing.refuseWritesUnder('durable-run:transcript-without-step:step:');
+
+    try {
+      const result = await createActiveRun(
+        {
+          generate: async () => ({ content: 'The reply.', toolCalls: [] }),
+          toolbox: createToolbox([noopTool]),
+          conversation: createConversationHistory(),
+          stopWhen: stopWhen.noToolCalls(),
+        },
+        { engine, checkpointStore, runId: 'transcript-without-step', prompt: 'Go.' },
+      ).result;
+
+      expect(result.finishReason).toBe('error');
+      expect(result.steps).toHaveLength(0);
+      expect(result.conversation.getMessages().map((message) => message.role)).toEqual([
+        'user',
+        'assistant',
+      ]);
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
+  it('settles from the launch conversation, and warns once, when the checkpoint cannot be read', async () => {
+    const engine = {
+      start: async () => ({ result: () => Promise.reject(new Error('the activity failed')) }),
+    } as unknown as RegistryAgnosticEngine;
+    const checkpointStore = {
+      loadCheckpoint: async () => {
+        throw new Error('the checkpoint store is unavailable');
+      },
+    } as never;
+    const warnings: string[] = [];
+    const warn = spyOn(console, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    try {
+      const result = await createActiveRun(
+        {
+          generate: async () => ({ content: 'unused', toolCalls: [] }),
+          toolbox: createToolbox([]),
+          conversation: createConversationHistory(),
+          stopWhen: stopWhen.noToolCalls(),
+        },
+        { engine, checkpointStore, runId: 'unreadable-checkpoint', prompt: 'Go.' },
+      ).result;
+
+      // The run still ends: failing the settle would leave it `running` with no terminal event.
+      expect(result.finishReason).toBe('error');
+      expect((result.error as Error).message).toContain('the activity failed');
+      expect(result.steps).toHaveLength(0);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('"unreadable-checkpoint"');
+      expect(warnings[0]).toContain('the checkpoint store is unavailable');
+    } finally {
+      warn.mockRestore();
     }
   });
 });

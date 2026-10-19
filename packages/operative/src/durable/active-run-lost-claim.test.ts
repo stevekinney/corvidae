@@ -3,6 +3,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { stopWhen } from '../conditions/index';
 import {
   type CombinedOperativeEventMap,
@@ -13,6 +14,7 @@ import {
 import type { RunOptions } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
+import { createCheckpointStore } from './checkpoint-store';
 import type { RegistryAgnosticEngine } from './create-run-engine';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 
@@ -55,7 +57,9 @@ function completedSummary(runId: string) {
 }
 
 /** No checkpoint: the kept-claim control reconstructs from an empty run state. */
-const emptyCheckpointStore = { loadCheckpoint: async () => null };
+const emptyCheckpointStore = createCheckpointStore(
+  textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+);
 
 /** What `handle.result()` settles with: the completed summary, or a rejection. */
 type Settlement = { rejectWith?: unknown };

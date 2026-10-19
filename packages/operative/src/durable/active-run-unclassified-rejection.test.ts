@@ -1,8 +1,9 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import {
   MemoryStorage,
-  WorkflowCheckpointConflictError,
+  textValueStore,
   workflow,
+  WorkflowCheckpointConflictError,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
@@ -20,6 +21,7 @@ import {
 import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
+import { createCheckpointStore } from './checkpoint-store';
 import { createRunEngine, type RegistryAgnosticEngine } from './create-run-engine';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 
@@ -70,7 +72,9 @@ const messageOf = (error: unknown): string | undefined =>
   error instanceof Error ? error.message : undefined;
 
 /** A checkpoint store with nothing in it: the run failed before it committed a step. */
-const emptyCheckpointStore = { loadCheckpoint: async () => null } as never;
+const emptyCheckpointStore = createCheckpointStore(
+  textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+);
 
 /** Resolves after one macrotask, so a rejection nobody handled has been reported by then. */
 const macrotask = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
