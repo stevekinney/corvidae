@@ -102,14 +102,21 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // `src/routes/goals`, and rework `src/routes/schedules` (what each schedule starts, and the
   // service that writes it). The areas those touch are re-measured on darwin with the command in
   // `run-coverage.ts`; the rest keep the counts the last measurement recorded.
-  measuredAt: '2026-10-19T21:00:00.000Z',
-  overall: { linesFound: 66632, linesHit: 64770, functionsFound: 13198, functionsHit: 12829 },
+  //
+  // COR-1546 re-measured darwin for the Memory page (`src/routes/agents`), its client and query keys
+  // (`src/lib`), and the view frame's per-pattern words (`src/app`). `src/routes/agents` is no
+  // longer 100% of lines: seven lines of `memory-detail.svelte` report no hits although the tests
+  // run them (the detail's loading state is asserted by name, and the same lines report no hits
+  // when that one file is measured alone), so they are Bun's per-line attribution for compiled
+  // Svelte and not code the tests miss. The Linux counts below are not re-measured.
+  measuredAt: '2026-10-20T00:00:00.000Z',
+  overall: { linesFound: 68150, linesHit: 66281, functionsFound: 13469, functionsHit: 13096 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3446, linesHit: 3379, functionsFound: 640, functionsHit: 622 },
-    'src/lib': { linesFound: 3318, linesHit: 3302, functionsFound: 523, functionsHit: 519 },
+    'src/app': { linesFound: 3650, linesHit: 3583, functionsFound: 643, functionsHit: 625 },
+    'src/lib': { linesFound: 3440, linesHit: 3424, functionsFound: 542, functionsHit: 538 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1448,
@@ -117,7 +124,12 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 332,
       functionsHit: 327,
     },
-    'src/routes/agents': { linesFound: 639, linesHit: 639, functionsFound: 139, functionsHit: 138 },
+    'src/routes/agents': {
+      linesFound: 1831,
+      linesHit: 1824,
+      functionsFound: 388,
+      functionsHit: 383,
+    },
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },

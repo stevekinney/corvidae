@@ -19,11 +19,9 @@
     Badge,
     Button,
     ConfirmDialog,
-    DescriptionList,
     Modal,
     Skeleton,
     Textarea,
-    type DescriptionListItem,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -38,7 +36,7 @@
   } from '../../lib/memory-client.ts';
   import { memoryListingsFilter, queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
-  import { formatMemoryTime, labelFor } from './memory-presentation.ts';
+  import { labelFor, lineageFields } from './memory-presentation.ts';
 
   type Props = {
     agentId: string;
@@ -74,9 +72,6 @@
 
   const forget = createMutation(() => ({
     mutationFn: () => forgetMemory(agentId, id),
-    onMutate: () => {
-      failure = undefined;
-    },
     onSuccess: (result) => {
       outcome = result;
       // A memory that is gone has no details to read again: the outcome stays on screen.
@@ -106,6 +101,12 @@
       correctionFailure = memoryFaultOf(error);
     },
   }));
+
+  /** Asks the Bureau to forget, with the last refusal forgotten first. */
+  function confirmForget(): void {
+    failure = undefined;
+    forget.mutate();
+  }
 
   function startCorrecting(content: string): void {
     draft = content;
@@ -150,20 +151,6 @@
   }
 </script>
 
-{#snippet chatDefinition(sessionId: string)}
-  <a
-    href={router.href(`/chat/${encodeURIComponent(sessionId)}`)}
-    onclick={(event) => goTo(event, `/chat/${encodeURIComponent(sessionId)}`)}
-    >{MEMORY_COPY.detail.openChat}</a
-  >
-{/snippet}
-
-{#snippet memoryLink(memoryId: string)}
-  <button type="button" class="weft-memory-detail__link" onclick={() => onOpen(memoryId)}>
-    {MEMORY_COPY.detail.openMemory}
-  </button>
-{/snippet}
-
 <section
   class="weft-memory-detail"
   aria-labelledby="weft-memory-detail-title"
@@ -196,64 +183,7 @@
   {:else if detail.data}
     {@const memory = detail.data.memory}
     {@const lineage = detail.data.lineage}
-    {@const items = [
-      {
-        id: 'source',
-        term: MEMORY_COPY.detail.fields.source,
-        definition: labelFor(MEMORY_COPY.source, memory.source),
-      },
-      {
-        id: 'trust',
-        term: MEMORY_COPY.detail.fields.trust,
-        definition: labelFor(MEMORY_COPY.trust, memory.trust),
-      },
-      {
-        id: 'class',
-        term: MEMORY_COPY.detail.fields.memoryClass,
-        definition: labelFor(MEMORY_COPY.memoryClass, memory.memoryClass),
-      },
-      {
-        id: 'created',
-        term: MEMORY_COPY.detail.fields.created,
-        definition: formatMemoryTime(memory.createdAt),
-      },
-      {
-        id: 'session',
-        term: MEMORY_COPY.detail.fields.session,
-        definition: memory.sessionId === null ? MEMORY_COPY.detail.notRecorded : sessionDefinition,
-      },
-      {
-        id: 'run',
-        term: MEMORY_COPY.detail.fields.run,
-        definition: lineage.runId ?? MEMORY_COPY.detail.notRecorded,
-      },
-      {
-        id: 'corrects',
-        term: MEMORY_COPY.detail.fields.corrects,
-        definition: lineage.corrects === null ? MEMORY_COPY.detail.notRecorded : correctsDefinition,
-      },
-      {
-        id: 'corrected-by',
-        term: MEMORY_COPY.detail.fields.correctedBy,
-        definition:
-          lineage.correctedBy === null ? MEMORY_COPY.detail.notRecorded : correctedByDefinition,
-      },
-      {
-        id: 'legal-hold',
-        term: MEMORY_COPY.detail.fields.legalHold,
-        definition: legalHold,
-      },
-    ] satisfies DescriptionListItem[]}
-
-    {#snippet sessionDefinition()}
-      {@render chatDefinition(memory.sessionId ?? '')}
-    {/snippet}
-    {#snippet correctsDefinition()}
-      {@render memoryLink(lineage.corrects ?? '')}
-    {/snippet}
-    {#snippet correctedByDefinition()}
-      {@render memoryLink(lineage.correctedBy ?? '')}
-    {/snippet}
+    {@const fields = lineageFields(memory, lineage, legalHold)}
 
     <blockquote class="weft-memory-detail__content" aria-label={MEMORY_COPY.detail.content}>
       {memory.content}
@@ -265,7 +195,28 @@
     </div>
 
     <h3 class="weft-memory-detail__subheading">{MEMORY_COPY.detail.lineage}</h3>
-    <DescriptionList {items} variant="two-column" />
+    <dl class="weft-memory-detail__fields">
+      {#each fields as field (field.id)}
+        <div class="weft-memory-detail__field" data-field={field.id}>
+          <dt>{field.term}</dt>
+          <dd>
+            {#if field.link?.kind === 'chat'}
+              {@const chatPath = `/chat/${encodeURIComponent(field.link.sessionId)}`}
+              <a href={router.href(chatPath)} onclick={(event) => goTo(event, chatPath)}
+                >{field.value}</a
+              >
+            {:else if field.link?.kind === 'memory'}
+              {@const target = field.link.id}
+              <button type="button" class="weft-memory-detail__link" onclick={() => onOpen(target)}>
+                {field.value}
+              </button>
+            {:else}
+              {field.value}
+            {/if}
+          </dd>
+        </div>
+      {/each}
+    </dl>
 
     {#if outcomeWords !== undefined && outcome !== undefined}
       <Alert variant={outcome.deletion === 'completed' ? 'success' : 'warning'}>
@@ -316,7 +267,7 @@
   description={MEMORY_COPY.forget.dialog.description}
   confirmLabel={MEMORY_COPY.forget.dialog.confirm}
   destructive
-  onConfirm={() => forget.mutate()}
+  onConfirm={confirmForget}
 />
 
 <Modal bind:open={correcting} title={MEMORY_COPY.correct.dialog.title}>
@@ -412,6 +363,29 @@
   .weft-memory-detail__targets {
     margin: 0;
     padding-inline-start: var(--cinder-space-5);
+  }
+
+  .weft-memory-detail__fields {
+    display: grid;
+    gap: var(--cinder-space-2);
+    margin: 0;
+  }
+
+  .weft-memory-detail__field {
+    display: grid;
+    grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr);
+    gap: var(--cinder-space-2);
+    align-items: baseline;
+  }
+
+  .weft-memory-detail__field dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .weft-memory-detail__field dd {
+    margin: 0;
+    overflow-wrap: anywhere;
   }
 
   .weft-memory-detail__link {

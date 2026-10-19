@@ -191,6 +191,20 @@ describe('the list and the search', () => {
   });
 });
 
+describe('leaving the page', () => {
+  test('goes back to the agent’s page, and leaves a modified click to the browser', async () => {
+    bureau();
+    const { findByRole } = open();
+
+    const back = await findByRole('link', { name: MEMORY_COPY.backToAgent('assistant') });
+    back.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/agents/assistant/memory');
+    back.click();
+
+    expect(router.pathname).toBe('/agents/assistant');
+  });
+});
+
 describe('one memory’s lineage', () => {
   test('shows its source, trust, class, creation time and chat from the memory, and its run, correction and corrector from the ledger', async () => {
     bureau({
@@ -279,6 +293,17 @@ describe('one memory’s lineage', () => {
         await view.findByRole('region', { name: MEMORY_COPY.detail.heading }),
       ).findByText(AISLE.content, { selector: 'blockquote' }),
     ).not.toBeNull();
+  });
+
+  test('shows a loading state while a memory is read', async () => {
+    bureau({ 'bureau.memory.get': () => new Promise(() => {}) });
+    const view = open();
+    await view.findByText(AISLE.content);
+
+    await fireEvent.click(view.getAllByRole('button', { name: /^Details/ })[0]!);
+
+    const loading = await view.findByRole('status', { name: MEMORY_COPY.detail.loading });
+    expect(loading.getAttribute('aria-busy')).toBe('true');
   });
 
   test('says a memory was not found when it is gone, and when it cannot be loaded', async () => {
@@ -429,6 +454,30 @@ describe('forgetting a memory', () => {
   });
 });
 
+describe('a forget the Bureau cannot answer', () => {
+  test('shows the Bureau’s own words, and lets the person dismiss them and try again', async () => {
+    const served = bureau({
+      'bureau.memory.forget': () => {
+        throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.forget.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+
+    await within(detail).findByText(MEMORY_COPY.forget.failed);
+    expect(detail.textContent).toContain('The Bureau broke.');
+    await fireEvent.click(within(detail).getByRole('button', { name: /dismiss/i }));
+
+    expect(within(detail).queryByText(MEMORY_COPY.forget.failed)).toBeNull();
+    expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
+  });
+});
+
 describe('correcting a memory', () => {
   async function correctWith(answer: BureauHandler, content = 'The user prefers the exit row.') {
     const served = bureau({ 'bureau.memory.correct': answer });
@@ -519,6 +568,44 @@ describe('correcting a memory', () => {
       cleanup();
       stub?.restore();
     }
+  });
+
+  test('closes without sending anything when it is cancelled', async () => {
+    const served = bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.correct.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.correct.dialog.cancel }),
+    );
+
+    await waitFor(() =>
+      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull(),
+    );
+    expect(served.callsTo('bureau.memory.correct')).toEqual([]);
+  });
+
+  test('closes with the dialog’s own close control, and keeps the memory as it was', async () => {
+    const served = bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.correct.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
+
+    await waitFor(() =>
+      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull(),
+    );
+    expect(served.callsTo('bureau.memory.correct')).toEqual([]);
+    // It opens again, from the memory’s own text.
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.correct.action }));
+    const again = await view.findByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+    expect(
+      (within(again).getByLabelText(MEMORY_COPY.correct.dialog.label) as HTMLTextAreaElement).value,
+    ).toBe(AISLE.content);
   });
 
   test('does not send a blank correction', async () => {
