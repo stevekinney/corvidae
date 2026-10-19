@@ -14,7 +14,7 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/weft';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
@@ -31,11 +31,20 @@ type StorageBehavior = {
   readonly writeMilliseconds?: number;
   /** Fails the first write of a session body once `arm()` has been called. */
   readonly failFirstSessionWrite?: boolean;
+  /**
+   * Once `arm()` has been called, corrupts the run's checkpoint under the next conditional write
+   * of it, so its terminal checkpoint commit loses the compare-and-swap and the engine abandons the
+   * run for whoever owns it, without a write.
+   */
+  readonly loseCheckpointCompareAndSwap?: boolean;
+  /** Once `arm()` has been called, refuses every write of a session body, however often it is retried. */
+  readonly refuseSessionWrites?: boolean;
 };
 
 const READS = new Set(['get']);
 const WRITES = new Set(['put', 'delete', 'batch', 'conditionalBatch']);
 const SESSION_BODY = 'agent-session-v2:body:';
+const RUN_CHECKPOINT = /wf:[^"]*:ckpt/;
 
 function touchesSessionBody(args: readonly unknown[]): boolean {
   return JSON.stringify(args).includes(SESSION_BODY);
@@ -46,6 +55,7 @@ function behaving(behavior: StorageBehavior) {
   const storage = new MemoryStorage();
   let armed = false;
   let failed = false;
+  let checkpointLost = false;
   const proxy = new Proxy(storage, {
     get(target, property, receiver) {
       const member: unknown = Reflect.get(target, property, receiver);
@@ -53,9 +63,22 @@ function behaving(behavior: StorageBehavior) {
       const name = String(property);
       const call = (...args: unknown[]) =>
         (member as (...rest: unknown[]) => unknown).apply(target, args);
+      if (behavior.loseCheckpointCompareAndSwap === true && name === 'conditionalBatch') {
+        return async (...args: unknown[]) => {
+          const key = RUN_CHECKPOINT.exec(JSON.stringify(args))?.[0];
+          if (armed && key !== undefined && !checkpointLost) {
+            checkpointLost = true;
+            await target.put(key, new Uint8Array([1, 2, 3]));
+          }
+          return call(...args);
+        };
+      }
       if (WRITES.has(name)) {
         return async (...args: unknown[]) => {
           if ((behavior.writeMilliseconds ?? 0) > 0) await sleep(behavior.writeMilliseconds ?? 0);
+          if (behavior.refuseSessionWrites === true && armed && touchesSessionBody(args)) {
+            throw new Error('Every session write is refused.');
+          }
           if (
             behavior.failFirstSessionWrite === true &&
             armed &&
@@ -94,6 +117,8 @@ async function openBureau(options: {
   script: readonly ScriptedGenerateStep[];
   behavior?: StorageBehavior;
   retryDelayMilliseconds?: number;
+  /** Collects what the Bureau reports, which a scenario that breaks storage on purpose expects to. */
+  diagnostics?: string[];
 }) {
   const generate = createScriptedGenerate(options.script);
   const storage = behaving(options.behavior ?? {});
@@ -107,17 +132,27 @@ async function openBureau(options: {
     durableExecution: true,
     sessionPersistenceRetryDelayMilliseconds: options.retryDelayMilliseconds ?? 0,
     stopWhen: stopWhen.noToolCalls(),
+    ...(options.diagnostics === undefined
+      ? {}
+      : {
+          onDiagnostic: (diagnostic: { message?: string }) => {
+            options.diagnostics?.push(diagnostic.message ?? '');
+          },
+        }),
   });
   return { bureau, generate, storage };
 }
 
 type Opened = Awaited<ReturnType<typeof openBureau>>;
 
-function mountOver(bureau: Parameters<typeof createBureauHandler>[0]) {
+function mountOver(
+  bureau: Parameters<typeof createBureauHandler>[0],
+  maxStreamDurationMs?: number,
+) {
   return createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
     publish: ['assistant'],
-    agUi: {},
+    agUi: maxStreamDurationMs === undefined ? {} : { maxStreamDurationMs },
   });
 }
 
@@ -312,5 +347,131 @@ describe('a later run on a thread that once took input', () => {
     } finally {
       await opened.bureau.dispose();
     }
+  });
+});
+
+describe('a run that reported an error and was then abandoned without a save', () => {
+  /** The deadline a hung stream would end at, which a prompt end is far from. */
+  const DEADLINE_MILLISECONDS = 3000;
+
+  it('ends its stream with the run’s own error, not at the stream’s deadline', async () => {
+    // Weft reports a lost compare-and-swap to operators as a process warning. It is part of the
+    // scenario, so capture it rather than let it reach stderr, and check it was raised.
+    const warnings: Error[] = [];
+    const emitWarning = spyOn(process, 'emitWarning').mockImplementation((warning) => {
+      if (warning instanceof Error) warnings.push(warning);
+    });
+    const opened = await openBureau({
+      script: [
+        { kind: 'block', barrier: 'hold' },
+        say('First.'),
+        { kind: 'block', barrier: 'second' },
+        { kind: 'fail', error: new Error('The model failed.') },
+      ],
+      behavior: { loseCheckpointCompareAndSwap: true },
+    });
+    try {
+      const handler = mountOver(opened.bureau, DEADLINE_MILLISECONDS);
+      const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+      await stream.until(EventType.STEP_STARTED);
+      await opened.generate.reached('hold');
+      await opened.bureau.submitSessionInput('thread-1', {
+        id: 'follow-up-1',
+        principal: 'anonymous:local',
+        deliveryMode: 'steer',
+        payload: 'One more thing',
+      });
+      opened.generate.release('hold');
+      await opened.generate.reached('second');
+      opened.storage.arm();
+      const recorded = opened.bureau.whenRunRecorded(opened.bureau.listRuns()[0]!.id).then(
+        () => 'resolved',
+        (error: unknown) => (error instanceof Error ? error.name : 'rejected'),
+      );
+      const released = performance.now();
+      opened.generate.release('second');
+      await stream.rest();
+
+      const last = stream.received.at(-1)?.event;
+      expect(last?.type).toBe(EventType.RUN_ERROR);
+      expect(last).toMatchObject({ message: 'The model failed.' });
+      expect(last).not.toMatchObject({ code: 'STREAM_DEADLINE' });
+      expect(performance.now() - released).toBeLessThan(DEADLINE_MILLISECONDS / 2);
+      // No save of the run's end happened here, so nothing will ever record it: the wait says so.
+      expect(await recorded).toBe('TerminalSessionRecordAbandonedError');
+      expect(warnings.map((warning) => warning.name)).toEqual([
+        'WeftWorkflowCheckpointConflictWarning',
+      ]);
+    } finally {
+      emitWarning.mockRestore();
+      await opened.bureau.dispose();
+    }
+  });
+});
+
+describe('the other ways a run that took input can end without its end being recorded', () => {
+  const DEADLINE_MILLISECONDS = 3000;
+
+  it('ends the stream promptly, naming the unreadable thread, when every save of the session is refused', async () => {
+    const diagnostics: string[] = [];
+    const opened = await openBureau({
+      script: [{ kind: 'block', barrier: 'hold' }, say('First.'), say('Answer.')],
+      behavior: { refuseSessionWrites: true },
+      diagnostics,
+    });
+    try {
+      const started = performance.now();
+      const stream = await runThatTakesInput(
+        opened,
+        mountOver(opened.bureau, DEADLINE_MILLISECONDS),
+        {
+          beforeRelease: () => opened.storage.arm(),
+        },
+      );
+
+      const last = stream.received.at(-1)?.event;
+      expect(last).toMatchObject({ type: EventType.RUN_ERROR, code: 'RUN_FAILED' });
+      expect((last as { message: string }).message).toContain('could not be read');
+      expect(performance.now() - started).toBeLessThan(DEADLINE_MILLISECONDS / 2);
+      expect(diagnostics.some((message) => message.includes('Failed to persist'))).toBe(true);
+    } finally {
+      await opened.bureau.dispose();
+    }
+  });
+
+  it('ends the stream promptly when the Bureau is disposed while the run is going, and the record settles', async () => {
+    const opened = await openBureau({
+      script: [
+        { kind: 'block', barrier: 'hold' },
+        say('First.'),
+        { kind: 'block', barrier: 'second' },
+      ],
+    });
+    const handler = mountOver(opened.bureau, DEADLINE_MILLISECONDS);
+    const stream = new FrameReader(await handler(startRequest(runAgentInput())));
+    await stream.until(EventType.STEP_STARTED);
+    await opened.generate.reached('hold');
+    await opened.bureau.submitSessionInput('thread-1', {
+      id: 'follow-up-1',
+      principal: 'anonymous:local',
+      deliveryMode: 'steer',
+      payload: 'One more thing',
+    });
+    opened.generate.release('hold');
+    await opened.generate.reached('second');
+    const runId = opened.bureau.listRuns()[0]!.id;
+    // Disposing ends the run, and the save of its end settles the record: it does not stay pending.
+    const recorded = opened.bureau.whenRunRecorded(runId).then(
+      () => 'settled',
+      () => 'settled',
+    );
+    const disposed = performance.now();
+
+    await opened.bureau.dispose();
+    await stream.rest();
+
+    expect(await recorded).toBe('settled');
+    expect(performance.now() - disposed).toBeLessThan(DEADLINE_MILLISECONDS / 2);
+    expect(stream.received.at(-1)).not.toMatchObject({ event: { code: 'STREAM_DEADLINE' } });
   });
 });

@@ -1791,9 +1791,16 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * COR-1490 — resolves once the session has recorded the end of the run `runId`, however long
    * its save takes (it waits on the save itself, never on a count of turns), and at once for a run
-   * whose end is already recorded or that this process does not hold. Rejects when the save could
-   * not be completed. A reader that needs the thread as the run left it, such as the AG-UI mount's
-   * end-of-run snapshot, waits here before it reads the session.
+   * whose end is already recorded or that this process does not hold (so a reader in another
+   * process can read a session that does not yet hold the run's final rows).
+   *
+   * Rejects when the run ended without this process saving its end: the engine lost a checkpoint
+   * compare-and-swap or was disposed and abandoned the run to whoever owns it, or the Bureau shut
+   * down first. The rejection comes when the run's own result settles, never at a deadline. A save
+   * that starts and keeps failing does not reject: it is diagnosed after its last attempt and this
+   * resolves, so a reader should check that the session holds what it needs. A reader that needs
+   * the thread as the run left it, such as the AG-UI mount's end-of-run snapshot, waits here before
+   * it reads the session.
    */
   whenRunRecorded(runId: string): Promise<void>;
 

@@ -844,6 +844,17 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
 export { ApprovalOutcomeNotWrittenError, BureauError };
 
 /**
+ * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
+ * end in the session, so no record of it is coming from here.
+ */
+class TerminalSessionRecordAbandonedError extends Error {
+  constructor(runId: string) {
+    super(`Run "${runId}" ended without its end being recorded in its session by this process.`);
+    this.name = 'TerminalSessionRecordAbandonedError';
+  }
+}
+
+/**
  * Thrown by `createSchedule` when a schedule registers successfully against
  * the engine but its {@link import('@lostgradient/weft').ScheduleSummary}
  * cannot be retrieved immediately afterward (`AgentScheduleHandle.describe()`
@@ -4169,9 +4180,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * A run that is over without its terminal save ever starting: the engine lost a checkpoint
+   * compare-and-swap, or was disposed, and abandoned the run to whoever owns it
+   * (`driveDurableRun`), so no terminal listener ran. Whoever waits on its record is told it will
+   * not come. Rejecting writes nothing, which the abandoned path requires: another engine over the
+   * same store may own the run's outcome and records it itself. A run whose save did start has no
+   * settler left, so this does nothing for it.
+   */
+  function abandonTerminalSessionRecord(runId: string): void {
+    const settler = terminalSessionRecordSettlers.get(runId);
+    if (settler === undefined) return;
+    terminalSessionRecordSettlers.delete(runId);
+    settler.reject(new TerminalSessionRecordAbandonedError(runId));
+  }
+
+  /**
    * Resolves once the session has recorded the end of `runId`, however long its save takes, and
-   * at once for a run whose end is already recorded or is not this process's. Rejects when the
-   * save could not be completed.
+   * at once for a run whose end is already recorded or is not this process's.
+   *
+   * Rejects with `TerminalSessionRecordAbandonedError` when the run ended without this process
+   * saving its end: the engine lost a checkpoint compare-and-swap, or was disposed, and abandoned
+   * the run to whoever owns it, or the Bureau shut down before the save began. It settles with the
+   * run's result in those cases, never with a deadline. A save that starts and keeps failing does
+   * not reject: it is diagnosed after its last attempt and resolves, so a reader should check that
+   * the session holds what it needs. A reader in another process can read a session that does not
+   * yet hold the run's final rows, because this resolves at once for a run it does not hold.
    */
   async function whenRunRecorded(runId: string): Promise<void> {
     await terminalSessionRecords.get(runId);
@@ -5958,6 +5991,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       detachBestEffortPromise(
         activeRun.result.finally(() => {
           disposeRegisteredStreamListeners(disposeStreamListeners);
+          // A result settles after any terminal event it carries has been dispatched, so a run
+          // whose save has not started by now will not save: its end is not recorded here.
+          abandonTerminalSessionRecord(runId);
           // A quietly settled run can stay `running` in the store; this
           // process no longer drives it, so its liveness is the engine's.
           // Only an abandoned one is kept: a terminal event already left
@@ -6437,6 +6473,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       recoveredRun.result
         .catch(() => undefined)
         .finally(() => {
+          abandonTerminalSessionRecord(runId);
           if (store.getRun(runId)?.status === 'running') {
             settledLocalRunIds.add(runId);
             releaseSessionSteeringPoll(sessionId, runId);
@@ -13804,6 +13841,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           await catalogSettlements.settled();
           await tasks.idle();
         } finally {
+          // A run that ended in the drain without a save leaves no one to settle its record.
+          for (const runId of [...terminalSessionRecordSettlers.keys()]) {
+            abandonTerminalSessionRecord(runId);
+          }
           try {
             // Pending steering log appends (run-boundary events are logged
             // in the background) finish before the backend closes under
