@@ -80,7 +80,8 @@
     undefined,
   );
   $effect(() => {
-    if (!choosing && !session.streaming) void context.refetch();
+    // Only the end of a run asks again. Reading the query here would make each answer ask again.
+    if (!choosing && !session.streaming) untrack(() => void context.refetch());
   });
   const displayTitle = $derived(context.data?.title ?? title ?? CHAT_COPY.untitled);
 
@@ -126,7 +127,8 @@
   }
 
   onMount(() => {
-    void session.attach();
+    // A new chat has no thread yet, so there is nothing to attach to or to read back.
+    if (!untrack(() => isNew)) void session.attach();
     return () => session.dispose();
   });
 

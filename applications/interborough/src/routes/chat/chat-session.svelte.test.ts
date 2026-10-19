@@ -202,16 +202,93 @@ describe('an attach', () => {
     expect(session.attaching).toBe(false);
   });
 
-  test('leaves an empty conversation when the thread has no run going', async () => {
-    const session = open(async () =>
-      sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]),
-    );
+  const messages = [
+    { id: 'u1', role: 'user', content: 'An earlier question' },
+    { id: 'a1', role: 'assistant', content: 'An earlier answer.' },
+  ];
+
+  /** The mount for a thread with no run going: nothing to attach to, and its messages to read. */
+  const settledThread =
+    (answer: () => Response): Fetcher =>
+    async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      return url.endsWith('/messages')
+        ? answer()
+        : sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+    };
+
+  test('restores a finished session’s whole transcript when no run is going', async () => {
+    const session = open(settledThread(() => Response.json({ threadId: THREAD, messages })));
+
+    await session.attach();
+
+    const texts = session.conversation.ids.map((id) => session.conversation.messages[id]?.content);
+    expect(texts).toEqual(['An earlier question', 'An earlier answer.']);
+    expect(session.streaming).toBe(false);
+    expect(session.attaching).toBe(false);
+  });
+
+  test('leaves an empty conversation for a thread the Bureau has no record of', async () => {
+    const session = open(settledThread(() => Response.json({}, { status: 404 })));
 
     await session.attach();
 
     expect(session.conversation.ids).toEqual([]);
-    expect(session.streaming).toBe(false);
-    expect(session.attaching).toBe(false);
+  });
+
+  test('keeps a row typed while the transcript was being read, behind the rows it restores', async () => {
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow = open(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.endsWith('/messages')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      await held;
+      return Response.json({ threadId: THREAD, messages });
+    });
+
+    const attaching = slow.attach();
+    // A row appears on screen while the Bureau is still being asked.
+    slow.conversation = {
+      ...slow.conversation,
+      ids: ['typed'],
+      messages: {
+        typed: {
+          id: 'typed',
+          role: 'user',
+          content: 'Typed meanwhile',
+          position: 0,
+          createdAt: '2026-10-19T00:00:00.000Z',
+          metadata: {},
+          hidden: false,
+        },
+      },
+    };
+    release?.();
+    await attaching;
+
+    const texts = slow.conversation.ids.map((id) => slow.conversation.messages[id]?.content);
+    expect(texts).toEqual(['An earlier question', 'An earlier answer.', 'Typed meanwhile']);
+  });
+
+  test('tells the page when a run it started begins', async () => {
+    let begun = 0;
+    const session = new ChatSessionState({
+      sessionId: THREAD,
+      agentName: () => 'assistant',
+      fetch: async () => sse([started, finished]),
+      onRunStarted: () => {
+        begun += 1;
+      },
+    });
+    sessions.push(session);
+
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Hi' }, []);
+
+    expect(begun).toBe(1);
   });
 });
 

@@ -500,3 +500,95 @@ async function expectEventually(condition: () => boolean): Promise<void> {
   for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) await Bun.sleep(5);
   expect(condition()).toBe(true);
 }
+
+describe('the thread’s history', () => {
+  const messages = [
+    { id: 'u1', role: 'user', content: 'Hello' },
+    { id: 'a1', role: 'assistant', content: 'Hi there.' },
+  ];
+  const json = (body: unknown, status = 200) => Response.json(body, { status });
+
+  test('is the conversation the mount returns, in order, under the thread’s id', async () => {
+    const { wiring, sent } = wiringOver([json({ threadId: THREAD, messages })], empty);
+
+    const history = await wiring.history(THREAD);
+
+    expect(sent[0]).toMatchObject({
+      url: `${AG_UI_PATH}/threads/${THREAD}/messages`,
+      method: 'GET',
+    });
+    expect(history?.id).toBe(THREAD);
+    expect(history?.ids.map((id) => history.messages[id]?.content)).toEqual(['Hello', 'Hi there.']);
+  });
+
+  test('is nothing for a thread the mount does not know or will not show', async () => {
+    const { wiring } = wiringOver([json({ code: 'NotFound' }, 404)], empty);
+
+    expect(await wiring.history(THREAD)).toBeUndefined();
+  });
+
+  test('is an error for any other answer', async () => {
+    const { wiring } = wiringOver([json({}, 500)], empty);
+
+    const failure = await wiring.history(THREAD).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(failure).toMatchObject({ status: 500 });
+  });
+
+  test('is an error for messages this page cannot read', async () => {
+    const { wiring } = wiringOver(
+      [json({ threadId: THREAD, messages: [{ role: 'nobody' }] })],
+      empty,
+    );
+
+    const failure = await wiring.history(THREAD).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+
+    expect(String(failure)).toContain('cannot read');
+  });
+});
+
+describe('a run’s beginning', () => {
+  test('is told to the page when a run it started begins', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    let begun = 0;
+    const stubbed = mount([stream([started(), finished()])]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'assistant',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+      onRunStarted: () => {
+        begun += 1;
+      },
+    });
+
+    await frames(wiring, conversation);
+
+    expect(begun).toBe(1);
+  });
+
+  test('is not told for a run the page attached to, which began elsewhere', async () => {
+    let begun = 0;
+    const stubbed = mount([
+      stream([started(), { type: 'MESSAGES_SNAPSHOT', messages: [] }, finished()]),
+    ]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'assistant',
+      fetch: stubbed.fetch,
+      conversation: empty,
+      onRunStarted: () => {
+        begun += 1;
+      },
+    });
+    await wiring.attach(THREAD);
+
+    await frames(wiring, empty());
+
+    expect(begun).toBe(0);
+  });
+});
