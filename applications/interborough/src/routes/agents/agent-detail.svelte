@@ -12,8 +12,9 @@
   import { ChatConversationList } from '@lostgradient/chat';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { CHAT_COPY } from '../../app/copy.ts';
-  import { getAgentDefinition, listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from '../chat/session-summary.ts';
@@ -56,12 +57,18 @@
       .map((context) => sessionSummary(context, agentsByName(agents.data ?? []))),
   );
 
-  function openNewChat(event: MouseEvent): void {
+  const editPath = `/agents/${encodeURIComponent(id)}/edit`;
+
+  function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;
     }
     event.preventDefault();
-    router.navigate(newChatPath(id));
+    router.navigate(path);
+  }
+
+  function openNewChat(event: MouseEvent): void {
+    goTo(event, newChatPath(id));
   }
 </script>
 
@@ -72,14 +79,25 @@
         <h1 id="weft-agent-title" class="weft-chat-header__title">{agent.displayName}</h1>
         <p class="weft-chat-header__agent">{agent.name}</p>
       </div>
-      {#if canChat(agent)}
-        <Button
-          href={router.href(newChatPath(id))}
-          variant="primary"
-          size="sm"
-          onclick={openNewChat}>{CHAT_COPY.newChat}</Button
-        >
-      {/if}
+      <div class="weft-agent__actions">
+        <!-- An agent defined in code has no file, so there is nothing to edit. -->
+        {#if agent.kind === 'file'}
+          <Button
+            href={router.href(editPath)}
+            variant="secondary"
+            size="sm"
+            onclick={(event) => goTo(event, editPath)}>{AGENT_EDITOR_COPY.editAction}</Button
+          >
+        {/if}
+        {#if canChat(agent)}
+          <Button
+            href={router.href(newChatPath(id))}
+            variant="primary"
+            size="sm"
+            onclick={openNewChat}>{CHAT_COPY.newChat}</Button
+          >
+        {/if}
+      </div>
     </header>
 
     <div class="weft-agents__badges">
@@ -128,3 +146,11 @@
     </section>
   </article>
 {/if}
+
+<style>
+  .weft-agent__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+</style>

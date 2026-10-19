@@ -70,7 +70,10 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
         ? { contexts: empty ? [] : [{ ...CONTEXT }], nextOffset: null }
         : call.method === 'bureau.agents.list'
           ? { agents: empty ? [] : [{ ...AGENT }] }
-          : { items: [] };
+          : call.method === 'bureau.agents.catalog'
+            ? // The agent editor's probe parses the catalog, so it answers one.
+              { models: [], tools: [] }
+            : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });

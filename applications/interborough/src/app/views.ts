@@ -9,6 +9,7 @@ import type { AuthorizationScope } from '../lib/scopes.svelte.ts';
 export const VIEW_NAMES = [
   'chat',
   'agents',
+  'agent-editor',
   'workflows',
   'runs',
   'schedules',
@@ -56,6 +57,8 @@ export type ViewDefinition = {
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   chat: { scopes: [], placeholder: false, canBeEmpty: true },
   agents: { scopes: [], placeholder: false, canBeEmpty: true },
+  // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
+  'agent-editor': { scopes: [], placeholder: false, canBeEmpty: false },
   workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },
   runs: {
     scopes: ['workflows:read'],

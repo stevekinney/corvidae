@@ -26,6 +26,7 @@ export interface RouteDefinition {
 }
 
 const placeholder = () => import('../routes/placeholder/index.svelte');
+const agentEditor = () => import('../routes/agent-editor/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
@@ -40,6 +41,9 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/chat/index.svelte'),
   },
   { pattern: '/agents', view: 'agents', load: () => import('../routes/agents/agent-list.svelte') },
+  // `new` is a path segment, not an agent: this route comes before `/agents/:id`.
+  { pattern: '/agents/new', view: 'agent-editor', load: agentEditor },
+  { pattern: '/agents/:id/edit', view: 'agent-editor', load: agentEditor },
   {
     pattern: '/agents/:id',
     view: 'agents',

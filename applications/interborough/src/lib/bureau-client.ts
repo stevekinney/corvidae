@@ -134,31 +134,6 @@ export async function listAgents(options?: {
   return body.agents;
 }
 
-/** What an agent file defines (`bureau.agents.definitions.get`); `null` for an agent defined in code. */
-const agentDefinitionSchema = z.object({
-  id: z.string(),
-  source: z.enum(['code', 'file']),
-  definition: z
-    .object({
-      model: z.string(),
-      tools: z.array(z.string()),
-      skills: z.array(z.object({ id: z.string(), name: z.string(), description: z.string() })),
-      instructions: z.string(),
-    })
-    .nullable(),
-});
-
-export type AgentDefinitionDetail = z.infer<typeof agentDefinitionSchema>;
-
-export async function getAgentDefinition(
-  id: string,
-  options?: { readonly signal?: AbortSignal },
-): Promise<AgentDefinitionDetail> {
-  return agentDefinitionSchema.parse(
-    await callBureau('bureau.agents.definitions.get', { id }, options),
-  );
-}
-
 const threadMessagesSchema = z.object({ threadId: z.string(), messages: z.array(z.unknown()) });
 
 /** A thread's conversation as AG-UI messages (`GET /bureau/ag-ui/threads/<id>/messages`), or a not-found fault. */

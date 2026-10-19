@@ -39,6 +39,98 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:id/edit`). */
+export const AGENT_EDITOR_COPY = {
+  createHeading: 'New agent',
+  editHeading: (name: string): string => `Edit ${name}`,
+  /** The accessible name of the form. */
+  formLabel: 'Agent definition',
+  /** The label before the agent's file path. */
+  fileLabel: 'File',
+  /** The directory under the state directory that holds agent files, when the host does not say where. */
+  fallbackDirectory: 'agents',
+  nameLabel: 'Name',
+  nameDescription: 'A label for people. It need not be unique.',
+  identifierLabel: 'Identifier',
+  identifierCreateDescription:
+    'The agent’s file name without .md. It follows the name until you change it, and it cannot be changed after the first save.',
+  identifierEditDescription: 'The agent’s file name without .md. It cannot be changed.',
+  identifierInvalid:
+    'Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit, in at most 64 characters.',
+  /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
+  identifierReserved:
+    'This identifier is reserved: /agents/new is the page that creates an agent, so an agent called new could never be opened. Choose another.',
+  identifierTaken: {
+    'agent-file-exists': 'This identifier is taken. Another agent’s file already uses it.',
+    'shadows-code-agent': 'This identifier is taken. An agent defined in code already uses it.',
+  },
+  descriptionLabel: 'Description',
+  descriptionDescription: 'What the agent does. Optional.',
+  modelLabel: 'Model',
+  modelDescription: 'Only the models this installation offers are listed.',
+  modelPlaceholder: 'Choose a model',
+  noModels: {
+    /** The only option the model field shows when there is no model to choose. */
+    option: 'No models available',
+    title: 'No models are available',
+    description:
+      'An agent cannot be saved without a model. Add a model provider to configuration.json in the state directory, then restart the host.',
+  },
+  toolsLabel: 'Tools',
+  toolsDescription: 'The tools this agent may call.',
+  noTools: 'This installation offers no tools.',
+  instructionsLabel: 'Instructions',
+  instructionsDescription: 'What the agent should do. This is the body of its file.',
+  publishedLabel: 'Published',
+  publishedDescription:
+    'A published agent can be started in a new chat. A withdrawn agent cannot, and keeps its history.',
+  /** The action on the agent list that opens the form for a new agent. */
+  newAction: 'New agent',
+  /** The action on an agent's page that opens its editor. */
+  editAction: 'Edit',
+  /** The badge on an agent file the Bureau cannot use, in the agent list. */
+  invalidBadge: 'Invalid file',
+  forbidden: 'This installation does not let you change agents.',
+  createAction: 'Create agent',
+  saveAction: 'Save changes',
+  cancelAction: 'Cancel',
+  deleteAction: 'Delete agent',
+  deleteDialog: {
+    title: 'Delete this agent?',
+    description: (name: string): string =>
+      `This removes the file for ${name}. Runs that already happened keep the version they used.`,
+    confirm: 'Delete agent',
+  },
+  saveFailed: 'The agent was not saved',
+  publishFailed: 'The agent’s publication was not changed',
+  deleteFailed: 'The agent was not deleted',
+  stale: {
+    title: 'This agent changed outside Interborough',
+    description:
+      'Its file was edited or replaced after this page loaded, so nothing was saved or deleted. Reloading shows what is on disk and discards your unsaved edits.',
+    action: 'Reload from disk',
+  },
+  invalid: {
+    title: 'This agent’s file is invalid',
+    description: 'The Bureau cannot run it until the file is fixed. Edit the file, then reload.',
+    action: 'Reload from disk',
+    fileLabel: 'File',
+  },
+  loadFailed: {
+    title: 'The agent could not be loaded',
+    description: 'The Bureau did not answer. Check that the host is running, then try again.',
+  },
+  revisions: {
+    heading: 'Revision history',
+    description: 'The versions of this agent that have run, most recently run first.',
+    caption: 'Versions of this agent that have run',
+    versionColumn: 'Version',
+    lastRunColumn: 'Last run',
+    empty: 'No version of this agent has run yet.',
+    failed: 'The revision history could not be loaded.',
+  },
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -130,6 +222,23 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     notFound: {
       title: 'This agent was not found',
       description: 'It may have been deleted, or it may not be published. Open one from the list.',
+    },
+  },
+  'agent-editor': {
+    label: 'Agent editor',
+    loading: {
+      title: 'Loading the agent editor',
+      description: 'Reading the agent’s file and the models and tools an agent may use.',
+    },
+    error: {
+      title: 'The agent editor is unavailable',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'The agent editor is locked' },
+    notFound: {
+      title: 'This agent was not found',
+      description:
+        'There is no agent with this identifier that you can edit. It may have been deleted, or it may be defined in code, which cannot be edited here.',
     },
   },
   workflows: {
