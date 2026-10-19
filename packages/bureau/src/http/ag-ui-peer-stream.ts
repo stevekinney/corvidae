@@ -438,30 +438,36 @@ async function settledSession(
   }
 }
 
-/** The run's last terminal record and whether a tripwire preceded it, from its durable history. */
+/**
+ * How the run ended, from its durable history: its first terminal record, labelled with a
+ * tripwire when the history holds one. The first terminal decides, as on the live tail: a run that
+ * fails records `run.error`, then (for a guardrail) `run.tripwire`, then the `run.completed` that
+ * carries its finish reason, and the error is how it ended.
+ */
 async function historyTerminal(
   bureau: PeerStreamBureau,
   runId: string,
 ): Promise<PeerTerminal | undefined> {
   let since: string | undefined;
   let tripwire = false;
-  let terminal: PeerTerminal | undefined;
+  let first: Omit<PeerTerminal, 'tripwire'> | undefined;
   for (;;) {
     const page = await bureau.eventHistory(
       { kind: 'run', id: runId },
       since === undefined ? {} : { since },
     );
-    if (!('events' in page)) return terminal;
+    if (!('events' in page)) break;
     for (const event of page.events) {
       if (event.kind === RECORDED.runTripwire) tripwire = true;
       const outcome = HISTORY_TERMINAL[event.kind];
-      if (outcome !== undefined) {
-        terminal = { outcome, detail: event.payload, tripwire, cursor: event.cursor };
+      if (outcome !== undefined && first === undefined) {
+        first = { outcome, detail: event.payload, cursor: event.cursor };
       }
     }
-    if (!page.hasMore || page.nextCursor === undefined) return terminal;
+    if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
   }
+  return first === undefined ? undefined : { ...first, tripwire };
 }
 
 /**

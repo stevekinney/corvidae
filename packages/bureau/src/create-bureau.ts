@@ -2281,6 +2281,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     ? createFlowController(options.flowControl)
     : undefined;
   const activeRuns = new Set<ActiveRun>();
+  /**
+   * Runs that reported `run.error` and have not yet dispatched the `run.completed` Operative
+   * follows it with. `run.error` takes a run out of `activeRuns`, but its terminal session save
+   * happens only on `run.completed`, which a durable run dispatches once its workflow's result
+   * settles: `shutdown()` waits for these, without aborting them, before it disposes the engine,
+   * or a dispose in that gap rejects the result and leaves the session saying `running` over a
+   * durable run that completed (COR-1580).
+   */
+  const erroredActiveRuns = new Set<ActiveRun>();
   // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
   // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
   // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
@@ -3799,6 +3808,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
   function getRunSessionIdentifier(runState: { activeRun: ActiveRun }): string {
     return runSessionIdentifiers.get(runState.activeRun) ?? '';
+  }
+
+  /**
+   * Resolves when a run that reported `run.error` dispatches the `run.completed` (or `run.aborted`)
+   * that ends it, or its result settles without one (an abandoned durable run).
+   */
+  function whenErroredRunEnds(activeRun: ActiveRun): Promise<void> {
+    return Promise.race([
+      new Promise<void>((resolve) => {
+        activeRun.once('run.completed', () => resolve());
+        activeRun.once('run.aborted', () => resolve());
+      }),
+      activeRun.result.then(
+        () => undefined,
+        () => undefined,
+      ),
+    ]);
   }
 
   /**
@@ -6339,6 +6365,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       expectTerminalSessionRecord(runId);
       activeRun.once('run.completed', (event) => {
         activeRuns.delete(activeRun);
+        erroredActiveRuns.delete(activeRun);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -6398,6 +6425,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
       activeRun.once('run.aborted', (event) => {
         activeRuns.delete(activeRun);
+        erroredActiveRuns.delete(activeRun);
         releaseRunToolboxWhenIdle(runToolbox);
         disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
@@ -6469,6 +6497,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
       activeRun.once('run.error', (_event) => {
         activeRuns.delete(activeRun);
+        erroredActiveRuns.add(activeRun);
         releaseRunToolboxWhenIdle(runToolbox);
         // The stream listeners are deliberately NOT disposed here. `run.error`
         // is not terminal: Operative follows it with `run.completed`, which
@@ -6498,6 +6527,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // disposers drain as they run, which makes this a no-op after a terminal listener ran.
       detachBestEffortPromise(
         activeRun.result.finally(() => {
+          erroredActiveRuns.delete(activeRun);
           disposeRegisteredStreamListeners(disposeStreamListeners);
           // A result settles after any terminal event it carries has been dispatched, so a run
           // whose save has not started by now will not save: its end is not recorded here.
@@ -14609,6 +14639,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
           activeRun.abort('Bureau disposed');
         }
+        // A run that already reported its error is over; it is not aborted, only waited for
+        // under the same bound, so its terminal session save starts before the engine goes.
+        for (const erroredRun of erroredActiveRuns) {
+          abortedRunTerminals.push(whenErroredRunEnds(erroredRun));
+        }
         // AB-22 review fix: `bureau.run(...)` dispatches are tracked
         // separately (see `trackCatalogRun`) since a catalog `RunnableAgent`'s
         // returned handle is not necessarily backed by a bureau-owned
@@ -14641,6 +14676,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // (above/below) is stopped like 'abort'.
         for (const activeRun of activeRuns) {
           runTerminals.push(whenActiveRunTerminal(activeRun));
+        }
+        for (const erroredRun of erroredActiveRuns) {
+          runTerminals.push(whenErroredRunEnds(erroredRun));
         }
         const currentCatalogRuns = [...catalogRuns];
         for (const catalogRun of currentCatalogRuns) {
