@@ -82,6 +82,9 @@
       return issuedPreview.preview;
     },
     onSuccess: (preview) => {
+      // The preview is bound to the run it was requested for. One issued for another run, a
+      // completion that outlived the dialog it was asked from, is dropped rather than shown here.
+      if (preview.workflowId !== workflow.id) return;
       issued = preview;
       confirmedByOperator = false;
     },

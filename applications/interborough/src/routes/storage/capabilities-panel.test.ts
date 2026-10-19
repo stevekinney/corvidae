@@ -1,43 +1,106 @@
 /**
- * Component tests for `<CapabilitiesPanel>` (plan §9.6): the honest
- * derivable/undiscoverable split (module doc comment) across the three
- * `conditionalBatchSupported` states.
+ * Component tests for `<CapabilitiesPanel>` (COR-1539): every capability
+ * `weft.storage.capabilities` reports, shown as the server reports it, plus
+ * the loading and fault states.
  */
-import { render } from '@testing-library/svelte';
+import type { StorageCapabilities } from '@lostgradient/weft';
+import { render, within } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { requireElement } from '../../../tests/dom.test-support.ts';
 import CapabilitiesPanel from './capabilities-panel.svelte';
 
+const supportedEverything: StorageCapabilities = {
+  persistence: 'local',
+  readAfterWrite: 'linearizable',
+  scanConsistency: 'snapshot',
+  atomicBatch: true,
+  conditionalBatch: true,
+  boundedRangeDelete: true,
+};
+
+/** The text of the `<dd>` paired with the `<dt>` named `term`. */
+function definitionFor(container: HTMLElement, term: string): HTMLElement {
+  const termElement = within(container).getByText(term);
+  expect(termElement.tagName).toBe('DT');
+  const definition = termElement.nextElementSibling;
+  if (!definition) throw new Error(`No definition for ${term}`);
+  return requireElement(definition, HTMLElement);
+}
+
 describe('CapabilitiesPanel', () => {
-  test('batch operations is always supported', async () => {
-    const { getAllByText } = render(CapabilitiesPanel, {
-      props: { conditionalBatchSupported: true },
+  test('shows all six reported capabilities', () => {
+    const { container } = render(CapabilitiesPanel, {
+      props: { capabilities: supportedEverything, loading: false, error: null },
     });
+    const root = requireElement(container, HTMLElement);
 
-    expect(getAllByText('Batch operations').length).toBeGreaterThan(0);
-    expect(getAllByText('supported').length).toBeGreaterThan(0);
+    expect(definitionFor(root, 'Persistence').textContent).toContain('local');
+    expect(definitionFor(root, 'Read after write').textContent).toContain('linearizable');
+    expect(definitionFor(root, 'Scan consistency').textContent).toContain('snapshot');
+    expect(definitionFor(root, 'Atomic batch').textContent).toContain('supported');
+    expect(definitionFor(root, 'Conditional batch').textContent).toContain('supported');
+    expect(definitionFor(root, 'Bounded range delete').textContent).toContain('supported');
   });
 
-  test('shows "checking…" while the probe is pending (undefined)', async () => {
-    const { getByText } = render(CapabilitiesPanel, {
-      props: { conditionalBatchSupported: undefined },
+  test('a capability reported as supported reads "supported"', () => {
+    const { container } = render(CapabilitiesPanel, {
+      props: { capabilities: supportedEverything, loading: false, error: null },
     });
+    const definition = definitionFor(requireElement(container, HTMLElement), 'Conditional batch');
 
-    expect(getByText('checking…')).not.toBeNull();
+    expect(within(definition).getByText('supported')).not.toBeNull();
+    expect(within(definition).queryByText('not supported')).toBeNull();
   });
 
-  test('shows "not supported" when the probe resolves false', async () => {
-    const { getByText } = render(CapabilitiesPanel, {
-      props: { conditionalBatchSupported: false },
+  test('a capability reported as unsupported reads "not supported"', () => {
+    const { container } = render(CapabilitiesPanel, {
+      props: {
+        capabilities: {
+          ...supportedEverything,
+          persistence: 'ephemeral',
+          conditionalBatch: false,
+          boundedRangeDelete: false,
+        },
+        loading: false,
+        error: null,
+      },
     });
+    const root = requireElement(container, HTMLElement);
 
-    expect(getByText('not supported')).not.toBeNull();
+    expect(
+      within(definitionFor(root, 'Conditional batch')).getByText('not supported'),
+    ).not.toBeNull();
+    expect(
+      within(definitionFor(root, 'Bounded range delete')).getByText('not supported'),
+    ).not.toBeNull();
+    expect(within(definitionFor(root, 'Atomic batch')).getByText('supported')).not.toBeNull();
+    expect(definitionFor(root, 'Persistence').textContent).toContain('ephemeral');
   });
 
-  test('links to the upstream capabilities-operation issue', async () => {
-    const { getByRole } = render(CapabilitiesPanel, { props: { conditionalBatchSupported: true } });
+  test('shows a loading status while the capabilities are being read', () => {
+    const { getByRole, queryByText } = render(CapabilitiesPanel, {
+      props: { capabilities: undefined, loading: true, error: null },
+    });
 
-    const link = getByRole('link', { name: /weft#727/ });
-    expect(link.getAttribute('href')).toBe('https://github.com/stevekinney/weft/issues/727');
+    expect(getByRole('status', { name: 'Loading storage capabilities' })).not.toBeNull();
+    expect(queryByText('Conditional batch')).toBeNull();
+  });
+
+  test('shows the fault, and no capability rows, when the read failed', () => {
+    const { getByRole, queryByText } = render(CapabilitiesPanel, {
+      props: { capabilities: undefined, loading: false, error: new Error('boom') },
+    });
+
+    expect(getByRole('alert')).not.toBeNull();
+    expect(queryByText('Conditional batch')).toBeNull();
+  });
+
+  test('no longer points at the retired upstream issue', () => {
+    const { queryByRole } = render(CapabilitiesPanel, {
+      props: { capabilities: supportedEverything, loading: false, error: null },
+    });
+
+    expect(queryByRole('link', { name: /weft#727/ })).toBeNull();
   });
 });

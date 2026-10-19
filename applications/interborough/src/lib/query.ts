@@ -100,7 +100,11 @@ export const queryKeys = {
   /** The five `weft.workflows.revisions.*`/`weft.workflows.active.get` catalog operations (WFT-11/WFT-115) — per-workflow-name keys, additive (WFT-115). */
   catalog: {
     revisions: (name: string) => ['catalog', 'revisions', name] as const,
+    /** `weft.workflows.revisions.get` (COR-1464) — extends `revisions(name)`, so invalidating the list invalidates every open detail too. */
+    revision: (name: string, revision: string) => ['catalog', 'revisions', name, revision] as const,
     active: (name: string) => ['catalog', 'active', name] as const,
+    /** `weft.workflows.refresh.diagnostics` (COR-166) — one workflow's refresh source. */
+    refresh: (name: string) => ['catalog', 'refresh', name] as const,
     sources: (pagination: { readonly limit: number; readonly offset: number }) =>
       ['catalog', 'sources', pagination] as const,
     /**

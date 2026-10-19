@@ -8,7 +8,8 @@ import type { WorkflowRevisionManifest } from '../contract/types.ts';
 import { Engine } from '../engine.ts';
 import type { RegisteredWorkflowDefinition } from '../types/workflow-registry.ts';
 import { WorkflowCatalog } from './workflow-catalog.ts';
-import { WorkflowRefreshCoordinator, type WorkflowRefreshArtifact } from './workflow-refresh.ts';
+import type { WorkflowRefreshArtifact } from './workflow-refresh-types.ts';
+import { WorkflowRefreshCoordinator } from './workflow-refresh.ts';
 
 const definition: RegisteredWorkflowDefinition = { type: 'checkout', version: '1.0.0', tags: [] };
 

@@ -4,8 +4,8 @@
    * a small set of put/delete operations applied atomically, plus
    * conditional batch (compare-and-swap) when `conditionalBatchSupported`
    * says the backend supports it — the plan's "conditional-batch shown only
-   * when capabilities().conditionalBatch" (`index.svelte` resolves that
-   * probe once and passes the result down). Not shown in the design mock's
+   * when capabilities().conditionalBatch" (`index.svelte` reads it from
+   * `weft.storage.capabilities` and passes it down). Not shown in the design mock's
    * illustrated forms (`stOps` lists `batch` as selectable but the mock only
    * wires up get/scan/put) — built to the same visual pattern as the other
    * panels, Tier-2 `ConfirmDialog` before applying (plan §10.6).

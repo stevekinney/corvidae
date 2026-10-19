@@ -33,6 +33,28 @@ export type {
 } from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type { AgentRevision } from './agent-snapshot-store';
+export type {
+  WorkflowDetail,
+  WorkflowRunDetail,
+  WorkflowRunFilter,
+  WorkflowRunSummary,
+  BureauWorkflows,
+} from './workflow-runtime';
+export type {
+  WorkflowFileDefinition,
+  WorkflowFileErrorCode,
+  WorkflowFileIssue,
+  WorkflowFileProblem,
+  WorkflowFileProblemCode,
+} from './workflow-file';
+export {
+  WORKFLOW_IDENTIFIER_PATTERN,
+  WorkflowFileConflictError,
+  WorkflowFileError,
+} from './workflow-file';
+export type { WorkflowListing, WorkflowFileWriteResult } from './workflow-file-catalog';
+export type { WorkflowRevision } from './workflow-snapshot-store';
+export { WorkflowAgentStepError, WorkflowHostConflictError } from './workflow-host';
 export type { AgentSkillsOptions } from './agent-skills';
 export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';

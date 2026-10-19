@@ -191,6 +191,27 @@ function goalAttemptCostEstimation(
   return selection;
 }
 
+/**
+ * COR-1527 — one `agent` step of a workflow file: a standalone durable run of the named agent under
+ * a run id that is a function of the workflow instance and the step, so a step that a restart
+ * re-executes finds its own run instead of starting a second.
+ */
+export interface WorkflowStepStart {
+  readonly agentName: string;
+  /** The step's message, with the instance's trigger and previous result appended. */
+  readonly input: string;
+  readonly runId: string;
+  /** Recorded with the run, so the step can later tell its own run from another at the same id. */
+  readonly workflowStep: WorkflowStepOwner;
+  readonly principal?: string | undefined;
+}
+
+/** Which workflow step a run was started for; see `CatalogRunRecoveryRecord.workflowStep`. */
+export interface WorkflowStepOwner {
+  readonly workflowId: string;
+  readonly step: number;
+}
+
 /** Which goal attempt a run was started for; see `CatalogRunRecoveryRecord.goalAttempt`. */
 interface GoalAttemptOwner {
   readonly goalRunId: string;
@@ -277,6 +298,7 @@ export function createCatalogDispatcher({
   ) => { readonly durable: boolean; readonly agentVersion: string } | undefined;
   startChildRun: (start: ChildTopologyStart) => AgentRun<unknown, boolean>;
   startGoalAttemptRun: (start: GoalAttemptStart) => GoalAttemptRun;
+  startWorkflowStepRun: (start: WorkflowStepStart) => AgentRun<unknown, boolean>;
   findCatalogRun: (id: string) => DispatchedCatalogRun | undefined;
 } {
   /**
@@ -310,6 +332,8 @@ export function createCatalogDispatcher({
    * a goal attempt's.
    */
   const goalAttemptAttributions = new WeakMap<RunAttribution, GoalAttemptOwner>();
+  /** The workflow step each attribution entry this dispatcher made for one stands for. */
+  const workflowStepAttributions = new WeakMap<RunAttribution, WorkflowStepOwner>();
   /**
    * How many live executions of a goal attempt hold each attribution object. A
    * same-attempt retry reuses the held object instead of replacing it, so an
@@ -363,6 +387,13 @@ export function createCatalogDispatcher({
       readonly resolve: () => void;
       readonly reject: (error: unknown) => void;
     },
+    /**
+     * COR-1527 — an `agent` step of a workflow file. Like a goal attempt, its id is a function
+     * of what started it, so a claim already holding this id is the same step's own claim from a
+     * start that died before the workflow existed; and like one, its run is not a task and is
+     * left to the engine's disposal at shutdown rather than aborted.
+     */
+    workflowStep?: WorkflowStepOwner,
   ): AgentRun<unknown, boolean> {
     const durable = runtime.durable;
     if (!durable) {
@@ -384,9 +415,12 @@ export function createCatalogDispatcher({
       // other holder, and an entry nothing here recorded, still conflicts.
       const sameAttempt =
         held !== undefined &&
-        goalAttempt !== undefined &&
-        goalAttemptAttributions.get(held)?.goalRunId === goalAttempt.goalRunId &&
-        goalAttemptAttributions.get(held)?.attemptIndex === goalAttempt.attemptIndex &&
+        ((goalAttempt !== undefined &&
+          goalAttemptAttributions.get(held)?.goalRunId === goalAttempt.goalRunId &&
+          goalAttemptAttributions.get(held)?.attemptIndex === goalAttempt.attemptIndex) ||
+          (workflowStep !== undefined &&
+            workflowStepAttributions.get(held)?.workflowId === workflowStep.workflowId &&
+            workflowStepAttributions.get(held)?.step === workflowStep.step)) &&
         held.agentName === name &&
         held.principal === ownerOrLocal(principal);
       if (held !== undefined && !sameAttempt) {
@@ -415,6 +449,7 @@ export function createCatalogDispatcher({
       ownAttribution = { agentName: name, principal: ownerOrLocal(principal) };
       runAttribution.set(runId, ownAttribution);
       if (goalAttempt !== undefined) goalAttemptAttributions.set(ownAttribution, goalAttempt);
+      if (workflowStep !== undefined) workflowStepAttributions.set(ownAttribution, workflowStep);
     }
     attributionHolders.set(ownAttribution, (attributionHolders.get(ownAttribution) ?? 0) + 1);
     // Lets go of this execution's share, once. The entry is deleted only when
@@ -505,7 +540,10 @@ export function createCatalogDispatcher({
     // the tool parks the workflow through the run's own `ctx.services`, captured by `onServices`
     // as the engine starts it, and announces the park on the emitter the run's `ActiveRun` uses.
     const offersHumanInput =
-      humanInput === true && runIdOverride === undefined && goalAttempt === undefined;
+      humanInput === true &&
+      runIdOverride === undefined &&
+      goalAttempt === undefined &&
+      workflowStep === undefined;
     const humanInputServices: { current?: DurableRunDeps } = {};
     const humanInputEmitter = offersHumanInput
       ? new CompletableEventTarget<CombinedOperativeEventMap>()
@@ -572,6 +610,13 @@ export function createCatalogDispatcher({
           // COR-851: a goal attempt's run is untracked and its activity retries
           // on failure, so a direct run here would be work no restart can find,
           // launched again by the retry. There is no fallback for an attempt.
+          if (workflowStep !== undefined) {
+            releaseAttribution();
+            throw createBureauError(
+              `Agent "${name}" cannot resolve its run options durably, so it cannot run a workflow step: ${error.message}`,
+              'CONFLICT',
+            );
+          }
           if (goalAttempt !== undefined) {
             releaseAttribution();
             throw new GoalAttemptNotDurableCapableError(
@@ -634,6 +679,7 @@ export function createCatalogDispatcher({
         // COR-1481: the context the caller named, so a task rebuilt from this record keeps it.
         ...(runOptions?.sessionId === undefined ? {} : { contextId: runOptions.sessionId }),
         ...(goalAttempt === undefined ? {} : { goalAttempt }),
+        ...(workflowStep === undefined ? {} : { workflowStep }),
         // COR-851: the estimator this run is configured with, written with the
         // claim, so pricing the attempt later never resolves the agent again.
         ...(goalCostEstimation === undefined ? {} : { costEstimation: goalCostEstimation }),
@@ -659,7 +705,7 @@ export function createCatalogDispatcher({
       }
       if (claimLost) {
         try {
-          if (goalAttempt === undefined) {
+          if (goalAttempt === undefined && workflowStep === undefined) {
             throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
           }
           // Only the same attempt's own claim may be continued. A claim another
@@ -667,8 +713,11 @@ export function createCatalogDispatcher({
           const existing = await runtime.loadCatalogRunRecoveryRecord(runId);
           const owned =
             existing.status === 'found' &&
-            existing.record.goalAttempt?.goalRunId === goalAttempt.goalRunId &&
-            existing.record.goalAttempt.attemptIndex === goalAttempt.attemptIndex &&
+            (goalAttempt !== undefined
+              ? existing.record.goalAttempt?.goalRunId === goalAttempt.goalRunId &&
+                existing.record.goalAttempt.attemptIndex === goalAttempt.attemptIndex
+              : existing.record.workflowStep?.workflowId === workflowStep?.workflowId &&
+                existing.record.workflowStep?.step === workflowStep?.step) &&
             existing.record.agentName === name &&
             existing.record.principal === principal;
           if (!owned) {
@@ -929,7 +978,7 @@ export function createCatalogDispatcher({
     // for good: its goal would read that as the attempt failing. Untracked, the
     // run is left to the engine's disposal, which is a crash for the next
     // process to recover, and the goal waits for it.
-    return goalAttempt ? guardedRun : trackCatalogRun(guardedRun);
+    return goalAttempt || workflowStep ? guardedRun : trackCatalogRun(guardedRun);
   }
 
   function prepareCatalogRunContext(
@@ -1175,6 +1224,47 @@ export function createCatalogDispatcher({
   }
 
   /**
+   * COR-1527 — starts one `agent` step of a workflow file as a standalone durable catalog run under
+   * the step's own deterministic id. Never falls back to an in-process run: a step with no
+   * workflow behind it is one no restart could find. The run is not a task, is not offered
+   * `requestHumanInput`, and is not aborted by shutdown, so an interrupted step resumes at the
+   * next boot.
+   */
+  function startWorkflowStepRun(start: WorkflowStepStart): AgentRun<unknown, boolean> {
+    if (getShutdownPromise()) {
+      throw createBureauError('Cannot start a workflow step: bureau is disposed', 'CONFLICT');
+    }
+    const agent = agentCatalog.find(start.agentName);
+    if (!agent) {
+      throw createBureauError(`Unknown agent "${start.agentName}"`, 'NOT_FOUND');
+    }
+    if (!runtime.durable || !hasDefinitionResolver(agent)) {
+      throw createBureauError(
+        `Agent "${start.agentName}" cannot run durably, so it cannot run a workflow step`,
+        'CONFLICT',
+      );
+    }
+    validateAgentRunInput(start.input);
+    const context: AgentRunContext = {
+      agentName: start.agentName,
+      ...(start.principal === undefined ? {} : { principal: start.principal }),
+      ...catalogRunGuardrailsContext(agent, guardrails),
+    };
+    return runDurableCatalogAgent(
+      start.agentName,
+      start.input,
+      undefined,
+      context,
+      start.principal,
+      agent,
+      start.runId,
+      undefined,
+      undefined,
+      start.workflowStep,
+    );
+  }
+
+  /**
    * COR-1277 — the agent this non-durable dispatch actually runs: the catalog
    * agent itself when nothing can be composed onto it, and otherwise a
    * one-shot synthetic agent carrying Bureau's invariant tier in front of the
@@ -1340,5 +1430,12 @@ export function createCatalogDispatcher({
     return dispatchedCatalogRuns.get(id);
   }
 
-  return { runAgent, planChildRun, startChildRun, startGoalAttemptRun, findCatalogRun };
+  return {
+    runAgent,
+    planChildRun,
+    startChildRun,
+    startGoalAttemptRun,
+    startWorkflowStepRun,
+    findCatalogRun,
+  };
 }

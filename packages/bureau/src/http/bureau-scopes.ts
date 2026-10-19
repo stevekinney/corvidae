@@ -29,6 +29,8 @@ export const BUREAU_SCOPES = [
   'bureau.contexts:write',
   'bureau.agents:read',
   'bureau.agents:write',
+  'bureau.workflows:read',
+  'bureau.workflows:write',
   'bureau.events:observe-all',
 ] as const satisfies readonly PackageAuthorizationScope[];
 

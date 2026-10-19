@@ -16,6 +16,8 @@ import { registerWorkflowDocuments } from './register.ts';
 
 const handlerCalls: string[] = [];
 const traces: { input: unknown; trigger: unknown; previous: unknown }[] = [];
+const identities: { workflowId: string; step: number }[] = [];
+let hangIdentify = false;
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -30,6 +32,10 @@ const host: DocumentWorkflowHost = {
     },
     version: ({ input }) => input,
     'payments.charge': () => null,
+    identify: ({ workflowId, step }) => {
+      identities.push({ workflowId, step });
+      return hangIdentify ? new Promise(() => undefined) : { workflowId, step };
+    },
     trace: ({ input, trigger, previous }) => {
       traces.push({ input, trigger, previous });
       return input;
@@ -441,5 +447,56 @@ describe('restarting after a crash', () => {
     const [handle] = await restarted.recoverAll();
 
     expect(await handle!.result()).toBe('"after":null');
+  });
+});
+
+describe('the identity every activity handler receives', () => {
+  it('names the instance and the zero-based index of the step among all steps', async () => {
+    identities.length = 0;
+    hangIdentify = false;
+    const document = createDocument('identity-steps', [
+      { kind: 'sleep', duration: 1 },
+      { kind: 'activity', handler: 'identify' },
+      { kind: 'activity', handler: 'identify' },
+    ]);
+    await using engine = await Engine.create({ storage: new MemoryStorage() });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+
+    const run = await engine.start('identity-steps', null, { id: 'identity-run' });
+
+    expect(await run.result()).toEqual({ workflowId: 'identity-run', step: 2 });
+    expect(identities).toEqual([
+      { workflowId: 'identity-run', step: 1 },
+      { workflowId: 'identity-run', step: 2 },
+    ]);
+  });
+
+  it('gives a step that a restart re-executes the same workflow id and step', async () => {
+    identities.length = 0;
+    const storage = new MemoryStorage();
+    const document = createDocument('identity-restart', [
+      { kind: 'activity', handler: 'trace', input: 'first' },
+      { kind: 'activity', handler: 'identify' },
+    ]);
+    hangIdentify = true;
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      await original.start('identity-restart', null, { id: 'identity-restart-run' });
+      await waitForCondition(async () => identities.length === 1, {
+        label: 'the identify step to start',
+      });
+    }
+    hangIdentify = false;
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [handle] = await restarted.recoverAll();
+
+    expect(await handle!.result()).toEqual({ workflowId: 'identity-restart-run', step: 1 });
+    expect(identities).toEqual([
+      { workflowId: 'identity-restart-run', step: 1 },
+      { workflowId: 'identity-restart-run', step: 1 },
+    ]);
   });
 });

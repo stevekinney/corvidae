@@ -20,6 +20,7 @@ import { getCatalogDiagnosticsRestBinding } from './get-catalog-diagnostics.ts';
 import { getCheckpointAtRestBinding } from './get-checkpoint-at.ts';
 import { getPrincipalRestBinding } from './get-principal.ts';
 import { getRealmDiagnosticsRestBinding } from './get-realm-diagnostics.ts';
+import { getRefreshDiagnosticsRestBinding } from './get-refresh-diagnostics.ts';
 import { getRegistryRestBinding } from './get-registry.ts';
 import { getRetentionOverviewRestBinding } from './get-retention-overview.ts';
 import { getReviewRestBinding } from './get-review.ts';
@@ -55,6 +56,7 @@ import { preloadWorkflowRevisionRestBinding } from './preload-workflow-revision.
 import { purgeWorkflowsRestBinding } from './purge-workflows.ts';
 import { queryWorkflowRestBinding, queryWorkflowWithInputRestBinding } from './query-workflow.ts';
 import { recoverAllRestBinding } from './recover-all.ts';
+import { refreshWorkflowRestBinding } from './refresh-workflow.ts';
 import { removeWorkflowTagsRestBinding } from './remove-workflow-tags.ts';
 import { replayWorkflowRestBinding } from './replay-workflow.ts';
 import { resumeScheduleRestBinding } from './resume-schedule.ts';
@@ -129,6 +131,8 @@ export const STATIC_REST_BINDINGS: ReadonlyArray<UnknownRestBinding> = [
   installWorkflowRevisionRestBinding,
   activateWorkflowRevisionRestBinding,
   preloadWorkflowRevisionRestBinding,
+  refreshWorkflowRestBinding,
+  getRefreshDiagnosticsRestBinding,
   getWorkflowRevisionRestBinding,
   listWorkflowRevisionsRestBinding,
   getActiveWorkflowRevisionRestBinding,

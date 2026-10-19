@@ -36,6 +36,8 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'contexts-writer-key': { subject: 'contexts-writer', scopes: ['bureau.contexts:write'] },
   'agents-reader-key': { subject: 'agents-reader', scopes: ['bureau.agents:read'] },
   'agents-writer-key': { subject: 'agents-writer', scopes: ['bureau.agents:write'] },
+  'workflows-reader-key': { subject: 'workflows-reader', scopes: ['bureau.workflows:read'] },
+  'workflows-writer-key': { subject: 'workflows-writer', scopes: ['bureau.workflows:write'] },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
 };
 

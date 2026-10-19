@@ -100,6 +100,27 @@ describe('task ledger response validation', () => {
 });
 
 describe('TaskLedgerDetailView', () => {
+  test('links its workflow to the run page, at /runs/:id', () => {
+    const { getByRole } = render(TaskLedgerDetailView, {
+      props: { task: parseTaskLedgerDetail(queuedTask()), now: NOW },
+    });
+
+    const link = getByRole('link', { name: /wf_1/ });
+    expect(link.getAttribute('href')).toBe('/runs/wf_1');
+    // Label in name: the accessible name contains the text the link shows.
+    expect(link.getAttribute('aria-label') ?? link.textContent).toContain(link.textContent ?? '\0');
+  });
+
+  test('says there is no workflow, and links nothing, when the record names none', () => {
+    const { workflowId: _omitted, ...withoutWorkflow } = queuedTask();
+    const { getByText, queryByRole } = render(TaskLedgerDetailView, {
+      props: { task: parseTaskLedgerDetail(withoutWorkflow), now: NOW },
+    });
+
+    expect(getByText('No workflow identifier')).not.toBeNull();
+    expect(queryByRole('link', { name: /wf_/ })).toBeNull();
+  });
+
   test('renders one state with attempt, dispatch, retry, and reservation evidence', () => {
     const { getByText } = render(TaskLedgerDetailView, {
       props: { task: parseTaskLedgerDetail(queuedTask()), now: NOW },

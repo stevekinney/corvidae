@@ -22,7 +22,7 @@ When an issue lands that exposes a `tracked` row, change that row's `Status` to 
 
 ## Gaps without a catalog row
 
-Three dashboard issues own work that no `tracked` row can carry today. COR-166 (conditional workflow refresh) adds `weft.workflows.refresh` operations that do not exist yet, so the test will demand their rows when that issue lands. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 (remote activity execution) extends what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
+Two dashboard issues own work that no `tracked` row can carry today. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 (remote activity execution) extends what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
 
 ## Matrix
 
@@ -48,7 +48,7 @@ Three dashboard issues own work that no `tracked` row can carry today. COR-166 (
 | `weft.schedules.pause` | exposed | `src/routes/schedules/schedule-queries.ts` | `pauseSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.resume` | exposed | `src/routes/schedules/schedule-queries.ts` | `resumeSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
 | `weft.schedules.update` | exposed | `src/routes/schedules/schedule-queries.ts` | `updateSchedule` | `src/routes/schedules/schedule-queries.test.ts` |  |  |
-| `weft.storage.capabilities` | tracked |  |  |  | COR-1539 |  |
+| `weft.storage.capabilities` | exposed | `src/routes/storage/index.svelte` |  | `src/routes/storage/index.test.ts` | COR-1539 |  |
 | `weft.system.lease` | exposed | `src/lib/system-lease.ts` |  | `src/lib/system-lease.test.ts` | COR-124 |  |
 | `weft.system.metrics` | exposed | `src/routes/system/metrics-tab.svelte` |  | `src/routes/system/metrics-tab.test.ts` |  |  |
 | `weft.system.principal` | exposed | `src/lib/scopes.svelte.ts` |  | `src/lib/scopes.svelte.test.ts` |  |  |
@@ -96,12 +96,14 @@ Three dashboard issues own work that no `tracked` row can carry today. COR-166 (
 | `weft.workflows.list` | exposed | `src/routes/workflows/list/workflow-list.svelte` | `list` | `src/routes/workflows/list/workflow-list.test.ts` |  |  |
 | `weft.workflows.purge` | exposed | `src/routes/workflows/list/bulk-operations-client.ts` |  | `src/routes/workflows/list/bulk-operations-client.test.ts` |  |  |
 | `weft.workflows.query` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `query` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
+| `weft.workflows.refresh` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel-actions.test.ts` | COR-166 |  |
+| `weft.workflows.refresh.diagnostics` | exposed | `src/routes/system/refresh-panel.svelte` |  | `src/routes/system/refresh-panel.test.ts` | COR-166 |  |
 | `weft.workflows.replay` | exposed | `src/routes/workflows/detail/checkpoints/checkpoints-data.ts` | `replayTo` | `src/routes/workflows/detail/checkpoints/checkpoints-data.test.ts` |  |  |
 | `weft.workflows.result.get` | not-in-dashboard |  |  |  |  | Workflow detail shows the result from the `weft.workflows.get` state it already loads, and this operation waits for the run to settle, which would hold a dashboard request open. |
 | `weft.workflows.resume` | exposed | `src/routes/workflows/detail/workflow-detail.svelte` | `resume` | `src/routes/workflows/detail/workflow-detail.test.ts` |  |  |
 | `weft.workflows.revisions.activate` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
-| `weft.workflows.revisions.get` | tracked |  |  |  | COR-1464 |  |
-| `weft.workflows.revisions.install` | tracked |  |  |  | COR-1464 |  |
+| `weft.workflows.revisions.get` | exposed | `src/routes/system/revision-detail.svelte` |  | `src/routes/system/revision-detail.test.ts` | COR-1464 |  |
+| `weft.workflows.revisions.install` | exposed | `src/routes/system/revision-install-form.svelte` |  | `src/routes/system/revision-install-form.test.ts` | COR-1464 |  |
 | `weft.workflows.revisions.list` | exposed | `src/routes/system/workflow-revisions-panel.svelte` |  | `src/routes/system/workflow-revisions-panel-activation.test.ts` |  |  |
 | `weft.workflows.revisions.preload` | exposed | `src/routes/system/dynamic-source-panel.svelte` |  | `src/routes/system/dynamic-source-panel.test.ts` |  |  |
 | `weft.workflows.scheduleprovenance.get` | exposed | `src/routes/workflows/detail/lineage-panel.svelte` |  | `src/routes/workflows/detail/lineage-panel.test.ts` |  |  |

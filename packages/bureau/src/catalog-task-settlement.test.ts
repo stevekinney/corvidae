@@ -68,6 +68,25 @@ describe('settling a catalog task from the hook', () => {
     expect(listed.tasks).toEqual([]);
   });
 
+  it('writes no record for a recovered goal attempt or a recovered workflow step, which are not tasks', async () => {
+    const goal = build({
+      status: 'found',
+      record: { ...found.record, goalAttempt: { goalRunId: 'goal-1', attemptIndex: 0 } },
+    });
+    const step = build({
+      status: 'found',
+      record: { ...found.record, workflowStep: { workflowId: 'run-1', step: 2 } },
+    });
+
+    await goal.settler(settlement);
+    await step.settler(settlement);
+
+    expect(await goal.registry.record('agent-run-1')).toBeUndefined();
+    expect(await step.registry.record('agent-run-1')).toBeUndefined();
+    const listed = await step.registry.list({ limit: 10, offset: 0 });
+    expect(listed.tasks).toEqual([]);
+  });
+
   it('puts a recovered run in the context its dispatch named, and in its own when it named none', async () => {
     const named = build({
       status: 'found',

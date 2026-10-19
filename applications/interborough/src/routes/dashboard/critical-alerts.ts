@@ -22,6 +22,9 @@
  */
 import type { PendingReviewEntry } from '@lostgradient/weft';
 
+import { workflowDetailPath } from '../../lib/router.svelte.ts';
+import type { TaskDiagnosticItem } from '../workers/worker-catalog-types.ts';
+
 /** Mirrors `TaskDiagnosticsSummary` (`weft/src/server/operations/get-task-diagnostics.ts`) — named locally since it isn't a public `@lostgradient/weft` export. */
 export interface TaskDiagnosticsSummary {
   readonly stuckQueued: number;
@@ -42,6 +45,8 @@ export interface AlertChip {
   readonly label: string;
   /** Router-relative deep link. */
   readonly href: string;
+  /** The run that owns every affected task, when they all belong to one, so the chip can open it directly. */
+  readonly workflow?: { readonly id: string; readonly href: string };
 }
 
 function pluralize(count: number, singular: string, plural: string): string {
@@ -106,6 +111,43 @@ const DIAGNOSTIC_KIND_ORDER: readonly (keyof TaskDiagnosticsSummary)[] = [
   'unadoptedTerminal',
 ];
 
+/** The `TaskDiagnosticItem.kind` that counts toward each summary key. */
+const ITEM_KIND_FOR_SUMMARY_KEY = {
+  deadLettered: 'dead-lettered',
+  stuckQueued: 'stuck-queued',
+  staleInflight: 'stale-inflight',
+  retryStorms: 'retry-storm',
+  allWorkersAtCapacity: 'all-workers-at-capacity',
+  delayed: 'delayed',
+  unadoptedTerminal: 'unadopted-terminal',
+} as const satisfies Record<keyof TaskDiagnosticsSummary, TaskDiagnosticItem['kind']>;
+
+/**
+ * The one run that owns every item of a kind, or `undefined` when the items name none, name
+ * more than one, or are only a page of a larger set: a chip is an aggregate, so it links a run only when there is exactly one to link.
+ * The Workers diagnostics view links each item's own run.
+ */
+function owningWorkflow(
+  items: readonly TaskDiagnosticItem[],
+  kind: keyof TaskDiagnosticsSummary,
+  total: number,
+): { readonly id: string; readonly href: string } | undefined {
+  const itemKind = ITEM_KIND_FOR_SUMMARY_KEY[kind];
+  const ids = new Set<string>();
+  let counted = 0;
+  for (const item of items) {
+    if (item.kind !== itemKind) continue;
+    counted += 1;
+    if (item.workflowId !== undefined) ids.add(item.workflowId);
+  }
+  const [only] = ids;
+  // The server caps the items it returns while the summary counts every task of the kind, so a
+  // page that does not hold them all says nothing about who owns the rest.
+  return counted === total && ids.size === 1 && only !== undefined
+    ? { id: only, href: workflowDetailPath(only) }
+    : undefined;
+}
+
 /**
  * Builds one chip per diagnostic kind with a non-zero count, in severity
  * order. Every chip deep-links to `/workers` with a `diagnostic=<kind>`
@@ -113,18 +155,23 @@ const DIAGNOSTIC_KIND_ORDER: readonly (keyof TaskDiagnosticsSummary)[] = [
  * that track's to define; this is a self-documenting convention, not a
  * frozen contract).
  */
-export function buildDiagnosticChips(summary: TaskDiagnosticsSummary): AlertChip[] {
+export function buildDiagnosticChips(
+  summary: TaskDiagnosticsSummary,
+  items: readonly TaskDiagnosticItem[] = [],
+): AlertChip[] {
   const chips: AlertChip[] = [];
   for (const kind of DIAGNOSTIC_KIND_ORDER) {
     const count = summary[kind];
     if (count <= 0) continue;
     const meta = DIAGNOSTIC_KIND_META[kind];
+    const workflow = owningWorkflow(items, kind, count);
     chips.push({
       id: `diagnostic:${kind}`,
       icon: meta.icon,
       tone: meta.tone,
       label: meta.label(count),
       href: `/workers?diagnostic=${kind}`,
+      ...(workflow === undefined ? {} : { workflow }),
     });
   }
   return chips;

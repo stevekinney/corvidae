@@ -69,6 +69,10 @@ import {
   type PublishedAgent,
 } from './management/deployment-operations.ts';
 import {
+  type BureauWorkflowsOperationHost,
+  bureauWorkflowsOperations,
+} from './management/workflows-operations.ts';
+import {
   type BureauTaskEventsOperationHost,
   tasksEventsOperation,
 } from './management/tasks-events-operation.ts';
@@ -124,6 +128,7 @@ export type BureauHandlerSource = Pick<
   | 'getDurableRun'
   | 'modelCatalog'
   | 'auditTrail'
+  | 'workflows'
 > & {
   readonly agents: {
     has(name: string): boolean;
@@ -155,7 +160,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
-  BureauAgentDefinitionsOperationHost;
+  BureauAgentDefinitionsOperationHost &
+  BureauWorkflowsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -376,6 +382,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsGetOperation,
   contextsDeleteOperation,
   ...bureauAgentDefinitionsOperations,
+  ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
@@ -557,6 +564,7 @@ export function buildBureauHandlerHost(
         await bureau.auditTrail?.record(entry);
       },
     },
+    workflows: bureau.workflows,
     respondLedger: createRespondLedger(bureau),
     respondInFlight: new Map(),
     deployment: {
