@@ -277,7 +277,8 @@ describe('session.run() — durable engine and terminal authority', () => {
       if (commitMode === 'matching') {
         // The engine's rejection settles the run as an error (COR-1587), so the session's own
         // terminal commit finds the matching `error` already there and the result resolves.
-        expect((await run).finishReason).toBe('error');
+        const settled = await run;
+        expect(settled.finishReason).toBe('error');
       } else {
         expect(await throwingRejectionOf(run)).toThrow(
           commitMode === 'conflict'
