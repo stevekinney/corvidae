@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { describe, expect, test } from 'bun:test';
 
 import type { Fetcher } from './bureau-client.ts';
@@ -78,6 +79,8 @@ describe('the Bureau’s review operations', () => {
 
   test('a review of a kind the Bureau does not define is a fault, not a row', async () => {
     const stub = answering({ reviews: [{ ...HUMAN_WAIT, kind: 'mystery' }] });
-    await expect(withFetch(stub.fetch, () => listBureauReviews())).rejects.toThrow();
+    expect(await rejectionOf(withFetch(stub.fetch, () => listBureauReviews()))).toBeInstanceOf(
+      Error,
+    );
   });
 });

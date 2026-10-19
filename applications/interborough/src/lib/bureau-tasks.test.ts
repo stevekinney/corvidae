@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -92,7 +93,7 @@ describe('the task operations', () => {
 
   test('a task the Bureau answers with an unknown state is a fault, not data to show', async () => {
     const stub = answering({ ...TASK, status: 'exploded' });
-    await expect(withFetch(stub.fetch, () => getTask('run-1'))).rejects.toThrow();
+    expect(await rejectionOf(withFetch(stub.fetch, () => getTask('run-1')))).toBeInstanceOf(Error);
   });
 
   test('cancel names the task and answers the receipt, with the task when the caller may read it', async () => {
