@@ -26,6 +26,7 @@ import {
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
+import { createMemoryAssetStorage } from '../../assets/storage';
 import { createBureau } from '../../create-bureau.ts';
 import { waitForRunState } from '../../test';
 import type { Bureau } from '../../types.ts';
@@ -108,6 +109,8 @@ async function open(options: { memory?: GovernedMemory | null } = {}) {
     id: BUREAU_ID,
     agents: { assistant: createAgent({ generate: recording() }) },
     persistence: textValueStore(new MemoryStorage()),
+    // The handler serves the asset operations too, so it needs an asset service.
+    assets: { storage: createMemoryAssetStorage() },
     stopWhen: stopWhen.noToolCalls(),
     ...(memory === undefined ? {} : { memory }),
   });
@@ -342,6 +345,7 @@ describe('the scopes bureau.memory:read and bureau.memory:write', () => {
       id: BUREAU_ID,
       agents: { assistant: createAgent({ generate: recording() }) },
       persistence: textValueStore(new MemoryStorage()),
+      assets: { storage: createMemoryAssetStorage() },
       stopWhen: stopWhen.noToolCalls(),
       memory,
     });
