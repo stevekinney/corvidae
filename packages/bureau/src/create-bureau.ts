@@ -6369,6 +6369,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       {
         runId,
         handle,
+        // COR-1587: only a run whose session is still `running` is reattached here (the hook runs
+        // after the resolver provided its services, and the post-recovery pass classifies a run
+        // whose session the resolver reconciled to `error` as `cancel`). Nothing has recorded an
+        // end for it, so a rejection settles it as `error` instead of being inferred from the
+        // engine's state as a failure before replay, which the engine's late read can misread.
+        failedBeforeReplay: false,
         ...(eventSurface
           ? {
               emitter: eventSurface.emitter,
@@ -6472,7 +6478,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // conversation behavior. A run the engine failed pre-replay (services
     // unavailable) or one interrupted by teardown fires NO terminal event — the
     // adapter stays write-free for those and the resolver/teardown owns the
-    // session status; so these listeners only run for a genuinely settled run.
+    // session status. A run that fails after replay (an activity or workflow-body
+    // failure, COR-1587) settles as `error`, with `run.error` then `run.completed`,
+    // so these listeners run for it too.
     // COR-625: a reattached run whose `result` REJECTS — a recovered
     // workflow whose stored result fails its schema-version check
     // (`UnsupportedRunResultVersionError`, rethrown by

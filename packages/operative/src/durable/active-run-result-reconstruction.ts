@@ -11,10 +11,10 @@ import {
   GuardrailTripwireError,
   MaximumStepsExceededError,
 } from '../errors';
-import type { OperativeEventEmitter } from '../events';
+import { type OperativeEventEmitter, RunErrorEvent } from '../events';
 import { createRunState } from '../loop';
 import { makeAbortResult, makeCompletedResult, makeErrorResult } from '../run-lifecycle';
-import type { RunState } from '../run-step';
+import type { EventDispatcher, RunState } from '../run-step';
 import { type FinishReason, type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';
@@ -288,6 +288,103 @@ export async function classifyTimeoutMessage(
   } catch {
     return fallback;
   }
+}
+
+/**
+ * Announce a run's failure with `run.error`, the way every other failed run does, at the step it
+ * failed at. Returns the error so a caller can hand the same object to the terminal result.
+ * `run.completed` follows it from `finalizeRunResult`.
+ */
+export function announceRunFailure(
+  emitter: OperativeEventEmitter,
+  step: number,
+  error: AgentRunError | undefined,
+): AgentRunError | undefined {
+  if (error === undefined) return undefined;
+  // The loose dispatcher the run lifecycle's own terminal helpers take.
+  const dispatcher: EventDispatcher = emitter;
+  const event = new RunErrorEvent(step, error, error.kind);
+  dispatcher.dispatch(event);
+  return event.error;
+}
+
+/** Arguments to {@link settleRejectedRun}. */
+type SettleRejectedRunArgs = Omit<
+  FinalizeArgs,
+  'finishReason' | 'errorMessage' | 'abortReason' | 'schemaValidation' | 'output' | 'tripwire'
+> & {
+  /** What `handle.result()` rejected with. */
+  rejection: unknown;
+  /** The message to report, when the rejection's own is not the one (a classified timeout). */
+  message?: string | undefined;
+};
+
+/**
+ * Settle a durable run whose `handle.result()` rejected with something its driver does not
+ * classify (COR-1587): an activity or workflow-body failure, such as a refused `durable-run:`
+ * write, which Weft reports as a plain `Error` that carries no code. The run is genuinely
+ * terminal and nothing else reports it, so it ends as `error` here, with the rejection's message.
+ *
+ * Fires `run.error` and then `run.completed`, the pair every other failed run fires. A listener
+ * that tells an ended run from a failed one reads `run.error` (the run store's `error` status,
+ * the AG-UI stream's `RUN_ERROR`); `run.completed` alone reads as a run that finished. A
+ * `run.error` a step already fired is not repeated, and its error is the one reported.
+ */
+export function settleRejectedRun(args: SettleRejectedRunArgs): RunResult {
+  const { rejection, message: reportedMessage, ...rest } = args;
+  const message =
+    reportedMessage ?? (rejection instanceof Error ? rejection.message : String(rejection));
+  const stepCount = rest.runState.steps.length;
+  const terminalError =
+    rest.terminalError ??
+    reconstructTerminalRunError({
+      finishReason: 'error',
+      steps: stepCount,
+      errorMessage: message,
+    })!;
+  if (rest.terminalError === undefined) announceRunFailure(rest.emitter, stepCount, terminalError);
+  return finalizeRunResult({
+    ...rest,
+    finishReason: 'error',
+    errorMessage: message,
+    terminalError,
+  });
+}
+
+/**
+ * The state a failed run settles from: what its checkpoint committed (COR-1587). The checkpoint is
+ * the authoritative transcript on the durable path, because the workflow mutates rehydrated
+ * snapshots per step and never the instance the run was launched with. A settlement from the
+ * launch conversation and an empty state would carry no steps and zero usage, and the terminal
+ * save a host makes from `run.completed` would drop the committed rows, and any follow-up the run
+ * delivered, from the session for good.
+ *
+ * Falls back to the launch conversation and an empty state when the checkpoint holds neither a
+ * step nor a transcript (the run failed before it committed anything). Also falls back when the
+ * checkpoint cannot be read, and says so with one warning that names the run: failing the settle
+ * instead would leave the run `running` with no terminal event, but the terminal record then
+ * carries no steps, so the fallback is never silent.
+ */
+export async function loadSettlementState(
+  context: DurableActiveRunContext,
+  runId: string,
+  runtime: RuntimeServices,
+  launchConversation: Conversation,
+): Promise<{ runState: RunState; conversation: Conversation }> {
+  try {
+    const loaded = await readRunStateFromCheckpoint(context, runId, runtime);
+    if (loaded.runState.steps.length > 0 || loaded.conversation.getMessages().length > 0) {
+      return loaded;
+    }
+  } catch (error) {
+    console.warn(
+      `[operative] Could not read the checkpoint of durable run "${runId}" to settle it as failed; ` +
+        `settling from the launch conversation, so its terminal record may omit steps it committed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+    );
+  }
+  return { runState: emptyRunState(), conversation: launchConversation };
 }
 
 /**
