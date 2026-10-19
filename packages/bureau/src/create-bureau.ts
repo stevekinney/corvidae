@@ -13842,7 +13842,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           await tasks.idle();
         } finally {
           // A run that ended in the drain without a save leaves no one to settle its record.
-          for (const runId of [...terminalSessionRecordSettlers.keys()]) {
+          for (const runId of terminalSessionRecordSettlers.keys()) {
             abandonTerminalSessionRecord(runId);
           }
           try {
