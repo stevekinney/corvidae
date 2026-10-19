@@ -83,6 +83,11 @@ export type {
 } from './mailbox-session-input-gate';
 export { readDurableRunResult } from './read-run-result';
 export type { DurableRunReading, ReadDurableRunResultOptions } from './read-run-result';
+export {
+  RUN_ENGINE_WORKFLOW_TYPE,
+  RUN_ENGINE_WORKFLOW_TYPES,
+  type RunEngineWorkflowType,
+} from './run-engine-workflow-types';
 export { createRunWorkflow } from './run-workflow';
 export { isAgentRunWorkflowInput } from './run-workflow-input';
 export type { AgentRunWorkflowInput, CreateRunWorkflowOptions } from './run-workflow-input';

@@ -124,7 +124,11 @@
         id="weft-schedule-form-workflow-type"
         label="Workflow type"
         bind:value={form.workflowType}
-        options={workflowTypeOptions.map((type) => ({ value: type, label: type }))}
+        options={[
+          // The select starts on no type, so the value the form holds matches an option.
+          { value: '', label: 'Choose a workflow type', disabled: true },
+          ...workflowTypeOptions.map((type) => ({ value: type, label: type })),
+        ]}
         error={form.errors.workflowType ?? ''}
       />
     {:else if mode === 'create'}

@@ -18,7 +18,9 @@
  * `StaleRevision` fault carrying the revision now current, and nothing is written. Bureau never
  * compares it itself.
  *
- * What a schedule's views omit: its input, which is the prompt each fire runs.
+ * What a schedule's views omit: its input, which is the prompt each fire runs. A view does name
+ * the agent each fire runs (`agentName`, `null` for a workflow file's schedule, which runs none),
+ * because that names a resource and carries no content.
  *
  * @module schedules-operations
  */
@@ -58,6 +60,8 @@ export type BureauSchedulesOperationHost = BureauOwnershipHost & {
   > & {
     /** The owner of record of a schedule, or `undefined` when it is not a Bureau schedule. */
     readonly owner: (scheduleId: string) => Promise<string | undefined>;
+    /** The agent an agent schedule runs, or `undefined` for one that runs none, a workflow file's. */
+    readonly agentName: (scheduleId: string) => Promise<string | undefined>;
     /** Whether the Bureau's agent catalog holds an agent named `name`. */
     readonly hasAgent: (name: string) => boolean;
   };
@@ -70,6 +74,8 @@ const expectedRevision = z.number().int().min(0).optional();
 const scheduleViewSchema = z.object({
   id: z.string(),
   owner: z.string(),
+  /** The catalog agent each fire runs; `null` for a schedule that runs none, a workflow file's. */
+  agentName: z.string().nullable(),
   workflowType: z.string(),
   description: z.string().nullable(),
   /** Set for a cron schedule, `null` for an interval one. */
@@ -100,10 +106,15 @@ function iso(milliseconds: number | null | undefined): string | null {
     : new Date(milliseconds).toISOString();
 }
 
-function viewOf(summary: ScheduleSummary, owner: string): z.infer<typeof scheduleViewSchema> {
+function viewOf(
+  summary: ScheduleSummary,
+  owner: string,
+  agentName: string | undefined,
+): z.infer<typeof scheduleViewSchema> {
   return {
     id: summary.id,
     owner,
+    agentName: agentName ?? null,
     workflowType: summary.workflowType,
     description: summary.description ?? null,
     cronExpression: summary.cronExpression ?? null,
@@ -264,7 +275,7 @@ export const schedulesListOperation = defineOperation<
       for (const summary of page.items) {
         const owner = await host.schedules.owner(summary.id);
         if (owner !== undefined && (everyOwner || owner === caller)) {
-          visible.push(viewOf(summary, owner));
+          visible.push(viewOf(summary, owner, await host.schedules.agentName(summary.id)));
         }
       }
       if (offset + page.items.length >= page.total || page.items.length === 0) break;
@@ -305,7 +316,7 @@ export const schedulesGetOperation = defineOperation<
     if (summary === null || summary === undefined) {
       throw resourceNotFound('schedule', input.scheduleId);
     }
-    return viewOf(summary, owner);
+    return viewOf(summary, owner, await host.schedules.agentName(input.scheduleId));
   },
 });
 
@@ -367,7 +378,7 @@ export const schedulesCreateOperation = defineOperation<
         principal: owner,
       });
       if (summary === undefined) throw unsupported();
-      return viewOf(summary, owner);
+      return viewOf(summary, owner, input.agentName);
     } catch (error) {
       return faultOf(error, input.agentName);
     }

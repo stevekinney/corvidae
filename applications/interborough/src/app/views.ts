@@ -18,6 +18,7 @@ export const VIEW_NAMES = [
   'storage',
   'system',
   'audit',
+  'goals',
   'engine',
 ] as const;
 
@@ -37,11 +38,6 @@ export type ViewDefinition = {
   /** The scopes the engine console gates the view on; none for a view Bureau serves. */
   readonly scopes: readonly AuthorizationScope[];
   /**
-   * Whether a later issue builds the view. A placeholder shows its empty state whenever the
-   * service behind it answers, because there is nothing to show yet.
-   */
-  readonly placeholder: boolean;
-  /**
    * Whether the view can have nothing to show. A view that always has something, such as the
    * engine's workers page with its task ledger and deployments, has no empty state.
    */
@@ -55,29 +51,36 @@ export type ViewDefinition = {
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
-  chat: { scopes: [], placeholder: false, canBeEmpty: true },
-  agents: { scopes: [], placeholder: false, canBeEmpty: true },
+  chat: { scopes: [], canBeEmpty: true },
+  agents: { scopes: [], canBeEmpty: true },
   // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
-  'agent-editor': { scopes: [], placeholder: false, canBeEmpty: false },
+  'agent-editor': { scopes: [], canBeEmpty: false },
   // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
   // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
-  workflows: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: true },
+  workflows: { scopes: ['workflows:read'], canBeEmpty: true },
   runs: {
     scopes: ['workflows:read'],
-    placeholder: false,
     canBeEmpty: true,
     creating: (search) => search.get('view') === 'start',
   },
   schedules: {
     scopes: ['schedules:read'],
-    placeholder: false,
     canBeEmpty: true,
     creating: (search) => search.get('create') === '1',
   },
-  inbox: { scopes: ['reviews:read'], placeholder: false, canBeEmpty: true },
-  workers: { scopes: ['system:read'], placeholder: false, canBeEmpty: false },
-  storage: { scopes: ['storage:admin'], placeholder: false, canBeEmpty: false },
-  system: { scopes: ['system:read'], placeholder: false, canBeEmpty: false },
-  audit: { scopes: [], placeholder: true, canBeEmpty: true },
-  engine: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: false },
+  inbox: { scopes: ['reviews:read'], canBeEmpty: true },
+  workers: { scopes: ['system:read'], canBeEmpty: false },
+  storage: { scopes: ['storage:admin'], canBeEmpty: false },
+  system: { scopes: ['system:read'], canBeEmpty: false },
+  // Holds no console scope: the Bureau shows each caller the records about what it owns, and a
+  // principal that may see none is answered with an empty page, so owner scoping is the gate.
+  audit: { scopes: [], canBeEmpty: true },
+  // Reached by address and by the empty states that link to it, and not from the sidebar. Holds no
+  // console scope, as the audit trail holds none: a caller sees the goals it owns.
+  goals: {
+    scopes: [],
+    canBeEmpty: true,
+    creating: (search) => search.get('create') === '1',
+  },
+  engine: { scopes: ['workflows:read'], canBeEmpty: false },
 };

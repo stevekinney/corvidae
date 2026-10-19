@@ -15,6 +15,12 @@
   import { onDestroy, untrack } from 'svelte';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import ToastHost, { provideToastHost } from '../../app/toast-host.svelte';
+  import {
+    installBureauStub,
+    type BureauHandler,
+    type BureauStub,
+  } from '../../lib/bureau-stub.test-support.ts';
   import { provideClient } from '../../lib/client.ts';
   import { FleetEventSource } from '../../lib/live-source/fleet-event-source.svelte.ts';
   import type { AuthorizationScope, Principal } from '../../lib/scopes.svelte.ts';
@@ -27,16 +33,49 @@
     scopes?: readonly AuthorizationScope[] | undefined;
     /** Test-only escape hatch: hands the test the same `QueryClient` this tree uses, so it can force a real `invalidateQueries()`/refetch — e.g. to simulate a background refetch racing an open form (schedule-form-drawer.test.ts's WFT-117 round-2 regression). */
     onQueryClient?: ((queryClient: QueryClient) => void) | undefined;
+    /**
+     * What the Bureau answers, by operation, beside the engine the `client` talks to. A Bureau that
+     * lists no schedules and no workflow files and no agents is the default, so a test of the engine's
+     * own schedules needs nothing here. Replaced `fetch` is restored when the harness unmounts.
+     */
+    bureau?: Record<string, BureauHandler> | undefined;
+    /** Hands the test the stub, to read what the Bureau was asked. */
+    onBureau?: ((stub: BureauStub) => void) | undefined;
+    /** The test has installed its own stand-in for the Bureau, which answers every request for it. */
+    externalBureau?: boolean | undefined;
   }
 
-  let { client, children, scopes, onQueryClient }: Props = $props();
+  let { client, children, scopes, onQueryClient, bureau, onBureau, externalBureau }: Props =
+    $props();
 
+  if (!untrack(() => externalBureau)) {
+    const bureauStub = installBureauStub(
+      {
+        'bureau.schedules.list': () => ({ schedules: [], nextOffset: null }),
+        'bureau.workflows.list': () => ({ workflows: [], nextOffset: null }),
+        'bureau.agents.list': () => ({ agents: [] }),
+        ...untrack(() => bureau),
+      },
+      { passThrough: true },
+    );
+    untrack(() => onBureau)?.(bureauStub);
+    onDestroy(() => bureauStub.restore());
+  }
+
+  // As the application's own client is made (`createQueryClient`): every result prop notifies, so a
+  // value a page reads from a query only inside a block that renders later still follows the query.
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, notifyOnChangeProps: 'all' },
+      mutations: { retry: false },
+    },
   });
   // One-shot, like `provideClient(untrack(() => client))` just below — this
   // harness never swaps `onQueryClient` after mount.
   untrack(() => onQueryClient)?.(queryClient);
+
+  // A write that fails is a toast, as it is in the shell, so the page's own toasts have somewhere to go.
+  provideToastHost();
 
   provideClient(untrack(() => client));
   const principalStore = providePrincipalStore();
@@ -60,4 +99,5 @@
 
 <QueryClientProvider client={queryClient}>
   {@render children()}
+  <ToastHost />
 </QueryClientProvider>

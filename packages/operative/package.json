@@ -3,7 +3,8 @@
   "description": "A composable agent loop with lazy Anthropic, OpenAI, and Gemini providers exposed through its source entry point.",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./run-engine-workflow-types": "./src/durable/run-engine-workflow-types.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json",

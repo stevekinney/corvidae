@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
 import { routes } from '../app/routes.ts';
-import { matchRoute, router, workflowDetailPath } from './router.svelte.ts';
+import { matchRoute, router, scheduleDetailPath, workflowDetailPath } from './router.svelte.ts';
 
 function happyDomAPI(): DetachedWindowAPI {
   if (!(window instanceof Window)) {
@@ -119,6 +119,22 @@ describe('router singleton', () => {
     expect(router.current.params['id']).toBe('order-123');
     router.navigate('/runs/_?__weft_workflow_id=..');
     expect(router.current.params['id']).toBe('..');
+  });
+
+  test('schedule detail paths preserve dot-only identifiers, and the override applies only to the placeholder path', () => {
+    for (const scheduleId of ['.', '..']) {
+      router.navigate(scheduleDetailPath(scheduleId));
+      expect(router.current.params['id']).toBe(scheduleId);
+    }
+    router.navigate('/schedules/nightly?__weft_schedule_id=..');
+    expect(router.current.params['id']).toBe('nightly');
+    router.navigate('/schedules/_?__weft_schedule_id=..');
+    expect(router.current.params['id']).toBe('..');
+    // The runs' escape means nothing on a schedule's path, and the schedules' means nothing on a run's.
+    router.navigate('/schedules/_?__weft_workflow_id=..');
+    expect(router.current.params['id']).toBe('_');
+    router.navigate('/runs/_?__weft_schedule_id=..');
+    expect(router.current.params['id']).toBe('_');
   });
 
   test('navigate() to an unowned path yields no match', () => {
