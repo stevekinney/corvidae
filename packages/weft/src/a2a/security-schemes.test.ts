@@ -52,30 +52,44 @@ describe('securitySchemesFromAuthConfig', () => {
     });
   });
 
-  test('maps mtls to a mutualTLS scheme', () => {
-    expect(securitySchemesFromAuthConfig({ mtls: { ca: 'ca', cert: 'cert', key: 'key' } })).toEqual(
-      {
-        securitySchemes: { mutualTLS },
-        securityRequirements: alternatives('mutualTLS'),
-      },
-    );
+  test('maps mtls to a mutualTLS scheme when the transport verifies client certificates', () => {
+    expect(
+      securitySchemesFromAuthConfig(
+        { mtls: { ca: 'ca', cert: 'cert', key: 'key' } },
+        { transportVerifiesClientCertificates: true },
+      ),
+    ).toEqual({
+      securitySchemes: { mutualTLS },
+      securityRequirements: alternatives('mutualTLS'),
+    });
   });
 
-  test('offers mutualTLS without rejectUnauthorized only when verifyClientCertificate can admit', () => {
-    const listener = { ca: 'ca', cert: 'cert', key: 'key', rejectUnauthorized: false };
-
-    expect(securitySchemesFromAuthConfig({ mtls: listener })).toEqual({
-      securitySchemes: {},
-      securityRequirements: [],
-    });
+  test('maps mtls to a mutualTLS scheme when verifyClientCertificate supplies the evidence', () => {
     expect(
       securitySchemesFromAuthConfig({
-        mtls: { ...listener, verifyClientCertificate: () => true },
+        mtls: { ca: 'ca', cert: 'cert', key: 'key', verifyClientCertificate: () => true },
       }),
     ).toEqual({
       securitySchemes: { mutualTLS },
       securityRequirements: alternatives('mutualTLS'),
     });
+  });
+
+  test('offers no mutualTLS scheme without evidence that a client certificate is verified', () => {
+    const none = { securitySchemes: {}, securityRequirements: [] };
+    const listener = { ca: 'ca', cert: 'cert', key: 'key' };
+
+    // TLS terminated outside serve(): the authenticator's evidence option defaults to false.
+    expect(securitySchemesFromAuthConfig({ mtls: listener })).toEqual(none);
+    expect(
+      securitySchemesFromAuthConfig({ mtls: { ...listener, rejectUnauthorized: true } }),
+    ).toEqual(none);
+    expect(
+      securitySchemesFromAuthConfig(
+        { mtls: { ...listener, rejectUnauthorized: false } },
+        { transportVerifiesClientCertificates: false },
+      ),
+    ).toEqual(none);
   });
 
   test('gives apiKeys and jwt together a single bearer scheme', () => {
@@ -100,7 +114,10 @@ describe('securitySchemesFromAuthConfig', () => {
   test('serializes as the A2A 1.0.1 AgentCard fields', () => {
     const json = AgentCard.toJSON({
       ...AgentCard.fromJSON({ name: 'n' }),
-      ...securitySchemesFromAuthConfig({ apiKeys: ['k'], mtls: { ca: 'ca', cert: 'c', key: 'k' } }),
+      ...securitySchemesFromAuthConfig(
+        { apiKeys: ['k'], mtls: { ca: 'ca', cert: 'c', key: 'k' } },
+        { transportVerifiesClientCertificates: true },
+      ),
     }) as Record<string, unknown>;
 
     expect(json['securitySchemes']).toEqual({

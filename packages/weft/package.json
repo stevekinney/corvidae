@@ -27,6 +27,7 @@
     "test:slow": "bun test .slow.test.ts",
     "test:benchmarks": "bun test ./scripts/benchmarks ./scripts/benchmarks/speculation.bench.ts ./scripts/benchmarks/cli-start.bench.ts ./scripts/benchmarks/sleep-accuracy.bench.ts ./scripts/benchmarks/postgres-binding-stamp.bench.ts",
     "test:coverage": "bun scripts/check-coverage.ts",
+    "test:a2a-tck": "bun scripts/run-a2a-tck.ts",
     "test:browser": "WEFT_BROWSER_SMOKE=1 bun test ./src/storage/indexeddb-browser.test.ts ./src/storage/web-extension-browser.test.ts ./src/service-worker/service-worker-browser.test.ts ./src/client/http-client-browser.test.ts",
     "types": "tsc -b tsconfig.source.json",
     "typecheck": "tsc --noEmit && bun run typecheck:fixtures && bun ../../scripts/typecheck-contracts.ts && bun run typecheck:documentation",
