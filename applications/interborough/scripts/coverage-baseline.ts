@@ -103,7 +103,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // service that writes it). The areas those touch are re-measured on darwin with the command in
   // `run-coverage.ts`; the rest keep the counts the last measurement recorded.
   measuredAt: '2026-10-19T19:00:00.000Z',
-  overall: { linesFound: 66561, linesHit: 64699, functionsFound: 13192, functionsHit: 12823 },
+  overall: { linesFound: 66546, linesHit: 64684, functionsFound: 13189, functionsHit: 12820 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
@@ -143,10 +143,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
-      linesFound: 5078,
-      linesHit: 5004,
-      functionsFound: 1110,
-      functionsHit: 1087,
+      linesFound: 5056,
+      linesHit: 4982,
+      functionsFound: 1107,
+      functionsHit: 1084,
     },
     'src/routes/storage': {
       linesFound: 2660,
