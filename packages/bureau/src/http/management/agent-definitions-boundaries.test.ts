@@ -26,6 +26,7 @@ import {
 } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
 import { readFile } from 'node:fs/promises';
+import { createMemoryAssetStorage } from '../../assets/storage';
 
 afterEach(disposeServed);
 
@@ -115,6 +116,7 @@ describe('a code-defined key', () => {
 
   it('answers NotFound to every write on a Bureau with no agent directory', async () => {
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'no-directory',
       agents: {
         alpha: createAgent({

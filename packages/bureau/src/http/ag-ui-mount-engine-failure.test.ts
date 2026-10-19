@@ -28,6 +28,7 @@ import { createBureau } from '../create-bureau.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 const WRITES = new Set(['put', 'delete', 'batch', 'conditionalBatch']);
 /** The durable run record: the key a run's own writes go to once the run is released. */
@@ -94,6 +95,7 @@ async function openBureau(options: {
   readonly maximumHistoryEvents?: number;
 }) {
   const bureau = await createBureau({
+    assets: { storage: createMemoryAssetStorage() },
     id: 'engine-failure',
     agents: {
       assistant: createAgent({

@@ -15,6 +15,8 @@ import {
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { z } from 'zod';
 
+import { type AssetStorage, createMemoryAssetStorage } from '../../assets/storage';
+import type { AssetPolicyInput, AssetPorts } from '../../assets/types';
 import { createBureau } from '../../create-bureau.ts';
 import { createSqliteStorageFixture } from '../../test/storage-fixtures';
 import type { Bureau } from '../../types.ts';
@@ -43,6 +45,13 @@ const credentials: Record<string, { subject: string; scopes: readonly Authorizat
   'goals-reader-key': { subject: 'goals-reader', scopes: ['bureau.goals:read'] },
   'goals-writer-key': { subject: 'goals-writer', scopes: ['bureau.goals:write'] },
   'audit-reader-key': { subject: 'audit-reader', scopes: ['bureau.audit:read'] },
+  'alice-assets-key': {
+    subject: 'alice',
+    scopes: ['bureau.assets:read', 'bureau.assets:write'],
+  },
+  'bob-assets-key': { subject: 'bob', scopes: ['bureau.assets:read', 'bureau.assets:write'] },
+  'assets-reader-key': { subject: 'assets-reader', scopes: ['bureau.assets:read'] },
+  'assets-writer-key': { subject: 'assets-writer', scopes: ['bureau.assets:write'] },
   'operator-key': { subject: 'operator', scopes: [...BUREAU_SCOPES] },
 };
 
@@ -196,6 +205,14 @@ export async function openBureau(
     durableHistory?: boolean;
     /** The validators durable goals may name. */
     validators?: Parameters<typeof createBureau>[0]['validators'];
+    /** The managed-asset policy; every Bureau here has an asset service, as the handler requires. */
+    assetPolicy?: AssetPolicyInput;
+    /** The asset service's storage, for a test that reads what it holds. */
+    assetStorage?: AssetStorage;
+    /** The asset service's injected ports: a metadata extractor or a safety gate a test scripts. */
+    assetPorts?: AssetPorts;
+    /** Passed to `createBureauHandler` beside the authentication. */
+    handlerOptions?: { readonly maxRequestBodyBytes?: number };
   } = {},
 ): Promise<OpenedBureau> {
   const fixture =
@@ -209,6 +226,11 @@ export async function openBureau(
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
     storage: options.storage ?? fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
+    assets: {
+      storage: options.assetStorage ?? createMemoryAssetStorage(),
+      ...(options.assetPolicy === undefined ? {} : { policy: options.assetPolicy }),
+      ...(options.assetPorts === undefined ? {} : { ports: options.assetPorts }),
+    },
     ...(options.validators === undefined ? {} : { validators: options.validators }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     stopWhen:
@@ -221,6 +243,7 @@ export async function openBureau(
   const handler = createBureauHandler(bureau, {
     authentication,
     ...(options.publish === undefined ? {} : { publish: options.publish }),
+    ...options.handlerOptions,
   });
   return {
     bureau,

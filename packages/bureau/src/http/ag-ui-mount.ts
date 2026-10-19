@@ -69,10 +69,11 @@ import { RunAgentInputSchema } from '@ag-ui/core/schemas';
 import type { OperationHandlerMount } from '@lostgradient/weft';
 import { createConversationHistory } from 'conversationalist';
 
+import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
-import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
+import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { type OwnedSession, ownedSession, runIsOwnedBy } from './ag-ui-session-owner.ts';
@@ -141,6 +142,7 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'getReview'
     | 'resolveReview'
     | 'kv'
+    | 'assets'
   >;
 
 /**
@@ -556,6 +558,20 @@ export function createAgUiMount(
           };
         }
 
+        // An asset the start names is the caller's to use and `available`, or the start is refused
+        // before anything is added to the thread or any run is created.
+        let unusable: string | undefined;
+        try {
+          unusable = await firstUnusableAsset(bureau, owner, appendMessages);
+        } catch {
+          return { response: refuse('RUN_FAILED', 'The run could not be started') };
+        }
+        if (unusable !== undefined) {
+          return {
+            response: refuse('INVALID_INPUT', unusable),
+          };
+        }
+
         // A start the thread already holds the rows of is the retry of one that
         // created them: it attaches to the run that did, rather than starting
         // another. A start that added new rows under a used runId falls through to
@@ -709,6 +725,33 @@ export function createAgUiMount(
     pathPrefix,
     fetch: (request, context) => route(request, context),
   };
+}
+
+/**
+ * Why the first managed asset `rows` name cannot be used by `owner`, as the message the start is
+ * refused with, or `undefined` when every one can. An asset another owner holds and one that does
+ * not exist read alike, as `was not found`, so no caller learns whether another owner's asset
+ * exists. An asset the owner holds that is not `available` (pending, rejected, quarantined,
+ * expired or deleted) is named by its state: a run resolves every asset in the thread on every
+ * turn, so a row that names one is committed only to fail the thread's every later turn.
+ */
+async function firstUnusableAsset(
+  bureau: Pick<AgUiBureau, 'assets'>,
+  owner: string,
+  rows: Parameters<typeof managedAssetIdsOf>[0],
+): Promise<string | undefined> {
+  const assets = bureau.assets;
+  if (assets === undefined) return undefined;
+  for (const assetId of managedAssetIdsOf(rows)) {
+    try {
+      const { state } = await assets.inspect(assetId, { id: owner });
+      if (state !== 'available') return `Asset "${assetId}" is ${state}`;
+    } catch (error) {
+      if (error instanceof AssetNotFoundError) return `Asset "${assetId}" was not found`;
+      throw error;
+    }
+  }
+  return undefined;
 }
 
 /** How a failure to create the run is told to the client, as a code and a message. */
