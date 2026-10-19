@@ -282,16 +282,20 @@ test.describe('creating a schedule', () => {
     page,
     request,
   }) => {
-    // The engine's registry holds every type the Bureau's run engine registers, and the file's type.
-    const registry = await request.post('/jsonrpc', {
-      data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
-    });
-    const held = Object.keys(
-      ((await registry.json()) as { result: { activeRevisions: Record<string, unknown> } }).result
-        .activeRevisions,
-    );
+    // The engine's registry holds every type the Bureau's run engine registers. It does not hold the
+    // file's type as active, because the engine loads a file's source lazily, so a typed name is
+    // what refuses the file's type.
+    const heldTypes = async (): Promise<string[]> => {
+      const registry = await request.post('/jsonrpc', {
+        data: { jsonrpc: '2.0', id: 1, method: 'weft.system.registry', params: {} },
+      });
+      const body = (await registry.json()) as {
+        result: { activeRevisions: Record<string, unknown> };
+      };
+      return Object.keys(body.result.activeRevisions);
+    };
+    const held = await heldTypes();
     for (const reserved of RUN_ENGINE_WORKFLOW_TYPES) expect(held, reserved).toContain(reserved);
-    expect(held).toContain('e2e-digest');
 
     await page.goto('/schedules?create=1');
     const drawer = page.getByRole('dialog', { name: 'Create schedule' });
