@@ -36,6 +36,8 @@ type Outcome = Exclude<ViewStateName, 'not-found'> | 'ready';
 type ProbeRoute = {
   readonly matches: (url: URL, body: string) => boolean;
   readonly empty: unknown;
+  /** A view that asks more than one question answers each by what the request asked. */
+  readonly emptyFor?: (body: string) => unknown;
 };
 
 function jsonRpcProbe(method: string): ProbeRoute {
@@ -58,7 +60,18 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
   'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
-  workflows: jsonRpcProbe('weft.workflows.definitions.list'),
+  // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
+  // empty only when neither lists anything.
+  workflows: {
+    matches: (url, body) =>
+      (url.pathname.endsWith('/jsonrpc') && body.includes('"weft.workflows.definitions.list"')) ||
+      (url.pathname === '/bureau/jsonrpc' && body.includes('"bureau.workflows.list"')),
+    empty: { definitions: [] },
+    emptyFor: (body) =>
+      body.includes('"bureau.workflows.list"')
+        ? { workflows: [], nextOffset: null }
+        : { definitions: [] },
+  },
   runs: {
     matches: (url) => url.pathname === '/v1/workflows' && url.searchParams.get('limit') === '1',
     empty: { items: [], total: 0 },
@@ -86,7 +99,12 @@ async function drive(page: Page, view: ViewName, outcome: Outcome): Promise<void
         // Hold the request: the probe stays pending for as long as the page is open.
         return;
       case 'empty':
-        await route.fulfill({ json: jsonRpcBody(request.postData(), probe.empty) });
+        await route.fulfill({
+          json: jsonRpcBody(
+            request.postData(),
+            probe.emptyFor === undefined ? probe.empty : probe.emptyFor(request.postData() ?? ''),
+          ),
+        });
         return;
       case 'error':
         await route.fulfill({ status: 500, json: { error: 'The server broke.' } });

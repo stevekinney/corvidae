@@ -59,7 +59,9 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   agents: { scopes: [], placeholder: false, canBeEmpty: true },
   // `/agents/new` and `/agents/:id/edit`. Never empty: it is where an agent is made.
   'agent-editor': { scopes: [], placeholder: false, canBeEmpty: false },
-  workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },
+  // The catalog of definitions, and under it one type's page, its runs, and its editor. It can be
+  // empty when neither the engine nor the Bureau lists a workflow, and a type's runs can be empty.
+  workflows: { scopes: ['workflows:read'], placeholder: false, canBeEmpty: true },
   runs: {
     scopes: ['workflows:read'],
     placeholder: false,

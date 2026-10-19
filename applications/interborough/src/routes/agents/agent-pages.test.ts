@@ -92,7 +92,10 @@ const READY_LISTING = {
 
 const hostPaths = (url: string) =>
   url.endsWith('/host/paths')
-    ? Response.json({ agentDirectory: '/home/tester/.interborough/agents' })
+    ? Response.json({
+        agentDirectory: '/home/tester/.interborough/agents',
+        workflowDirectory: '/home/tester/.interborough/workflows',
+      })
     : undefined;
 
 describe('the list of agents, and the agent editor', () => {

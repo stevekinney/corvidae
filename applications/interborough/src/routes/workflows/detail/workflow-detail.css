@@ -51,6 +51,16 @@
   overflow-wrap: anywhere;
 }
 
+.weft-workflow-detail__type-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.weft-workflow-detail__type-link:hover,
+.weft-workflow-detail__type-link:focus-visible {
+  text-decoration: underline;
+}
+
 .weft-workflow-detail__meta-row {
   display: flex;
   align-items: center;

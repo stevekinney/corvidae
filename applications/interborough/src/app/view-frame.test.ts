@@ -10,6 +10,16 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
+import {
+  codeDefinition,
+  emptyWorld,
+  installWorkflowWorld,
+  readyFile,
+  sourceDefinition,
+  workflowFaults,
+  type WorkflowStub,
+  type World,
+} from '../lib/workflow-world.test-support.ts';
 import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -43,6 +53,15 @@ const AGENT = {
   publishState: 'published',
 };
 
+function codeSummary() {
+  const {
+    contractHash: _hash,
+    contract: _contract,
+    ...summary
+  } = codeDefinition('order-processing');
+  return summary;
+}
+
 function requestUrl(input: RequestInfo | URL): URL {
   const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   return new URL(text, 'http://localhost');
@@ -73,7 +92,12 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
           : call.method === 'bureau.agents.catalog'
             ? // The agent editor's probe parses the catalog, so it answers one.
               { models: [], tools: [] }
-            : { items: [] };
+            : call.method === 'weft.workflows.definitions.list'
+              ? // The Workflows list joins the engine's definitions with the Bureau's files.
+                { definitions: empty ? [] : [codeSummary()] }
+              : call.method === 'bureau.workflows.list'
+                ? { workflows: [], nextOffset: null }
+                : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
@@ -394,5 +418,188 @@ describe('the chat list, a new chat, and the agents', () => {
 
     const found = mount('agents', { parameters: { id: 'assistant' } });
     expect(await found.findByTestId('content')).not.toBeNull();
+  });
+});
+
+describe('the Workflows area', () => {
+  const ROUTES = [
+    { pattern: '/workflows', parameters: {} },
+    { pattern: '/workflows/:type', parameters: { type: 'digest' } },
+    { pattern: '/workflows/:type/runs', parameters: { type: 'digest' } },
+    { pattern: '/workflows/:type/edit', parameters: { type: 'digest' } },
+  ] as const;
+
+  function world(overrides: Partial<World> = {}): WorkflowStub {
+    const stub = installWorkflowWorld(
+      emptyWorld({
+        definitions: [codeDefinition('order-processing'), sourceDefinition('digest')],
+        files: [readyFile('digest')],
+        ...overrides,
+      }),
+    );
+    restore = stub.restore;
+    return stub;
+  }
+
+  test('is not a placeholder, is gated on the engine’s workflows:read, and says whether it can be empty', () => {
+    const view = VIEWS.workflows;
+    expect(view.placeholder).toBe(false);
+    expect(view.scopes).toEqual(['workflows:read']);
+    expect(view.canBeEmpty).toBe(true);
+    // A view that can be empty has the words for it, and one for a type with no runs.
+    expect(VIEW_COPY.workflows.empty).toBeDefined();
+    expect(VIEW_COPY.workflows.emptyByPattern?.['/workflows/:type/runs']).toBeDefined();
+  });
+
+  for (const { pattern, parameters } of ROUTES) {
+    test(`${pattern} is forbidden without workflows:read, and asks nothing`, () => {
+      const stub = world();
+      const { container } = mount('workflows', { scopes: [], parameters, pattern });
+      expect(frame(container).dataset['state']).toBe('forbidden');
+      expect(container.textContent).toContain('Requires workflows:read');
+      expect(stub.calls).toEqual([]);
+    });
+
+    test(`${pattern} is not found for a type neither service knows`, async () => {
+      world({ definitions: [], files: [] });
+      const { container, findByRole } = mount('workflows', { parameters, pattern });
+      if (pattern === '/workflows') {
+        await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' });
+        expect(frame(container).dataset['state']).toBe('empty');
+        return;
+      }
+      const words =
+        VIEW_COPY.workflows.notFoundByPattern?.[pattern] ?? VIEW_COPY.workflows.notFound;
+      expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('not-found');
+    });
+
+    test(`${pattern} is failing, not missing, when the Bureau breaks`, async () => {
+      const stub = world();
+      stub.on('bureau.workflows.get', () => {
+        throw workflowFaults.unavailable();
+      });
+      stub.on('bureau.workflows.list', () => {
+        throw workflowFaults.unavailable();
+      });
+      const { container, findByRole } = mount('workflows', { parameters, pattern });
+      expect(
+        await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.error.title }),
+      ).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('error');
+    });
+
+    test(`${pattern} is failing, not missing, when the engine’s definitions break`, async () => {
+      const stub = world();
+      stub.on('weft.workflows.definitions.get', () => {
+        throw workflowFaults.unavailable();
+      });
+      stub.on('weft.workflows.definitions.list', () => {
+        throw workflowFaults.unavailable();
+      });
+      const { container, findByRole, findByTestId } = mount('workflows', { parameters, pattern });
+      if (pattern === '/workflows/:type/edit') {
+        // The editor reads only the Bureau's file, so the engine's failure is not its failure.
+        expect(await findByTestId('content')).not.toBeNull();
+        return;
+      }
+      expect(
+        await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.error.title }),
+      ).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('error');
+    });
+  }
+
+  for (const { pattern } of ROUTES.filter((route) => route.pattern !== '/workflows')) {
+    test(`${pattern} is not found for a name the engine refuses as malformed`, async () => {
+      const stub = world({ definitions: [], files: [] });
+      stub.on('weft.workflows.definitions.get', () => {
+        throw workflowFaults.invalidParams();
+      });
+      const { container, findByRole } = mount('workflows', {
+        parameters: { type: 'foo.bar' },
+        pattern,
+      });
+      const words =
+        VIEW_COPY.workflows.notFoundByPattern?.[pattern] ?? VIEW_COPY.workflows.notFound;
+      await findByRole('heading', { level: 1, name: words?.title ?? '' });
+      expect(frame(container).dataset['state']).toBe('not-found');
+    });
+  }
+
+  test('the list is ready with only a file, and empty with nothing in either service', async () => {
+    world({ definitions: [], files: [readyFile('digest')] });
+    const ready = mount('workflows', { pattern: '/workflows' });
+    expect(await ready.findByTestId('content')).not.toBeNull();
+    ready.unmount();
+    restore?.();
+
+    world({ definitions: [sourceDefinition('deleted-yesterday')], files: [] });
+    const { container, findByRole } = mount('workflows', { pattern: '/workflows' });
+    // A source with no file is left out, so the list is empty and reads as it will after a restart.
+    await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' });
+    expect(frame(container).dataset['state']).toBe('empty');
+  });
+
+  test('a type’s page is not found when the file is gone and the engine holds only its source', async () => {
+    world({ definitions: [sourceDefinition('digest')], files: [] });
+    const { container, findByRole } = mount('workflows', {
+      parameters: { type: 'digest' },
+      pattern: '/workflows/:type',
+    });
+    const words =
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type'] ?? VIEW_COPY.workflows.notFound;
+    await findByRole('heading', { level: 1, name: words?.title ?? '' });
+    expect(frame(container).dataset['state']).toBe('not-found');
+  });
+
+  test('a code-defined type’s page is ready, and its editor is not found, because it has no file', async () => {
+    world();
+    const page = mount('workflows', {
+      parameters: { type: 'order-processing' },
+      pattern: '/workflows/:type',
+    });
+    expect(await page.findByTestId('content')).not.toBeNull();
+    page.unmount();
+    restore?.();
+
+    world();
+    const editor = mount('workflows', {
+      parameters: { type: 'order-processing' },
+      pattern: '/workflows/:type/edit',
+    });
+    const words =
+      VIEW_COPY.workflows.notFoundByPattern?.['/workflows/:type/edit'] ??
+      VIEW_COPY.workflows.notFound;
+    await editor.findByRole('heading', { level: 1, name: words?.title ?? '' });
+    expect(frame(editor.container).dataset['state']).toBe('not-found');
+  });
+
+  test('the runs of a type with none are empty, in words about runs, and with some are ready', async () => {
+    world({ runs: [] });
+    const none = mount('workflows', {
+      parameters: { type: 'order-processing' },
+      pattern: '/workflows/:type/runs',
+    });
+    const words = VIEW_COPY.workflows.emptyByPattern?.['/workflows/:type/runs'];
+    await none.findByRole('heading', { level: 1, name: words?.title ?? '' });
+    expect(frame(none.container).dataset['state']).toBe('empty');
+    expect(none.container.textContent).toContain(words?.description ?? '');
+    expect(words?.title).not.toBe(VIEW_COPY.workflows.empty?.title);
+    none.unmount();
+    restore?.();
+
+    const stub = world({
+      runs: [
+        { id: 'run-1', type: 'order-processing', status: 'completed', createdAt: 1, updatedAt: 1 },
+      ],
+    });
+    const some = mount('workflows', {
+      parameters: { type: 'order-processing' },
+      pattern: '/workflows/:type/runs',
+    });
+    expect(await some.findByTestId('content')).not.toBeNull();
+    // The probe asks for this type's runs, and only the first.
+    expect(stub.callsTo('GET /workflows')[0]?.params).toMatchObject({ type: 'order-processing' });
   });
 });

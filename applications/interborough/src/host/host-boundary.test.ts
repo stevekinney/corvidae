@@ -97,6 +97,27 @@ describe('a rebound Host', () => {
   });
 });
 
+describe('/host/paths', () => {
+  test('names both directories a person edits by hand to the local caller', async () => {
+    const host = await start();
+    const response = await fetch(new URL('/host/paths', host.url));
+    expect(response.status).toBe(200);
+    const paths = (await response.json()) as Record<string, unknown>;
+    expect(Object.keys(paths).toSorted()).toEqual(['agentDirectory', 'workflowDirectory']);
+    expect(String(paths['workflowDirectory'])).toEndWith('workflows');
+  });
+
+  test('is refused for a rebound Host and for a cross-site page, with the directories unnamed', async () => {
+    const host = await start();
+    expect(await rawStatus(host, '/host/paths', 'attacker.example')).toBe(403);
+    const crossSite = await fetch(new URL('/host/paths', host.url), {
+      headers: { origin: 'https://attacker.example' },
+    });
+    expect(crossSite.status).toBe(403);
+    expect(await crossSite.text()).not.toContain('workflowDirectory');
+  });
+});
+
 describe('a cross-site request', () => {
   test('a form post changes nothing', async () => {
     const host = await start();
