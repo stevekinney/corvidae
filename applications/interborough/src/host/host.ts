@@ -7,6 +7,9 @@
  * `deploymentId`, so a restart finds its tasks, sessions, schedules, and goals where it left them.
  * Agent definitions are code, so they are rebuilt from {@link createSeededAgents} on every start.
  *
+ * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
+ * an API key in its secrets (`providers.ts`). The seeded agents still answer from a script.
+ *
  * Every request acts as the one local caller, `anonymous:local`, holding every Weft scope and
  * every Bureau scope. There is no sign-in: the host binds `127.0.0.1` only, and the Bureau handler
  * (`unauthenticatedAccess: 'allow'`) serves every request as that caller. A host that listened on
@@ -35,8 +38,14 @@ import { dirname, join, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { openBungalow, type Bungalow, type BungalowEnvironment } from '@lostgradient/bungalow';
-import { createBureau, createBureauHandler, type Bureau } from '@lostgradient/bureau';
-import { stopWhen, type GenerateFunction } from '@lostgradient/operative';
+import {
+  createBureau,
+  createBureauHandler,
+  createModelCatalogService,
+  resolveProviderGenerate,
+  type Bureau,
+} from '@lostgradient/bureau';
+import { createModelCatalog, stopWhen, type GenerateFunction } from '@lostgradient/operative';
 import {
   BunSQLiteStorage,
   serve,
@@ -56,6 +65,7 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
+import { createCatalogGenerate, loadProviders, type ModelSelection } from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import {
   createSeededAgents,
@@ -110,6 +120,13 @@ export type HostOptions = {
   readonly engineServer?: Pick<ServeOptions, 'cancellationGracePeriodMs'>;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
+  /**
+   * Replaces Bureau's provider resolver, which {@link Host.generateFor} calls with the provider,
+   * model, and API key from Bungalow's secret. For tests that stand a fake client in for the SDK.
+   */
+  readonly resolveProviderGenerate?: typeof resolveProviderGenerate;
+  /** Receives the host's startup warnings. Defaults to `console.warn`. */
+  readonly warn?: (message: string) => void;
 };
 
 export type Host = {
@@ -125,6 +142,12 @@ export type Host = {
   readonly deploymentId: string;
   /** The SQLite database file the Bureau and the engine share. */
   readonly databasePath: string;
+  /**
+   * The generate for an agent assigned a model in the Bureau's catalog, resolved through Bureau's
+   * provider path with the API key from Bungalow's secrets. Throws for a model the catalog does
+   * not hold.
+   */
+  generateFor(selection: ModelSelection): GenerateFunction;
   /** Stop listening, shut the Bureau and the engine down, close the database, and release the lock. */
   close(): Promise<void>;
 };
@@ -212,7 +235,22 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
   try {
     const storage = new BunSQLiteStorage(bungalow.database);
     held.storage = storage;
-    // No provider key is read and no model is called: every agent answers from a script.
+    // The catalog holds the models of the providers `configuration.json` names that have a key in
+    // the secrets, and nothing else. It is installed before the Bureau exists, so no boot step
+    // plans against a provider that is not configured, and the refresh source returns the same
+    // rows so a refresh cannot bring one back. The seeded agents still answer from a script.
+    const providers = await loadProviders({
+      configurationPath: bungalow.configuration,
+      readSecret: (key) => bungalow.readSecret(key),
+      warn: options.warn ?? ((message) => console.warn(message)),
+    });
+    const modelCatalog = createModelCatalogService({
+      seed: createModelCatalog(),
+      descriptorSource: () => Promise.resolve(providers.rows),
+      now: () => new Date().toISOString(),
+      newRefreshId: () => `catalog-refresh-${crypto.randomUUID()}`,
+    });
+    modelCatalog.replaceCatalog(providers.rows);
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: createSeededAgents(approvalSecret(bungalow)),
@@ -224,6 +262,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       // calls to park for an operator's answer.
       humanInput: true,
       validators: createSeededValidators(),
+      modelCatalog,
       storage,
     });
     held.bureau = bureau;
@@ -305,6 +344,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       server,
       deploymentId: bungalow.deploymentId,
       databasePath: bungalow.database,
+      generateFor: (selection) =>
+        createCatalogGenerate(selection, {
+          rows: providers.rows,
+          apiKeys: providers.apiKeys,
+          resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
+        }),
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {
