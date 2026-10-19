@@ -107,7 +107,9 @@
       />
     </form>
   {:else if review.data.kind === 'tool-approval'}
-    <h3 class="weft-task-wait__title">{TASK_COPY.approvalHeading}: {review.data.approval.toolName}</h3>
+    <h3 class="weft-task-wait__title">
+      {TASK_COPY.approvalHeading}: {review.data.approval.toolName}
+    </h3>
     <dl class="weft-task-wait__facts">
       {#if review.data.approval.reason !== undefined}
         <dt>{TASK_COPY.approvalReason}</dt>

@@ -37,11 +37,13 @@
   );
 
   // Asked and answered: a task is there, or the Bureau says it is not, or it cannot say.
-  const taskExists = $derived(
-    task.isSuccess ? true : task.isError ? false : undefined,
-  );
+  const taskExists = $derived(task.isSuccess ? true : task.isError ? false : undefined);
   const target = $derived(bureauReviewTarget(review, taskExists));
-  const LINK_LABEL = { chat: REVIEWS_COPY.openChat, task: REVIEWS_COPY.openTask, run: REVIEWS_COPY.openRun } as const;
+  const LINK_LABEL = {
+    chat: REVIEWS_COPY.openChat,
+    task: REVIEWS_COPY.openTask,
+    run: REVIEWS_COPY.openRun,
+  } as const;
 
   const summary = $derived(
     review.kind === 'tool-approval'

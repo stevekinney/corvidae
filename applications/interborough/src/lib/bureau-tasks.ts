@@ -226,7 +226,8 @@ export async function* followTaskEvents(
     // A refusal on the REST surface is a flat `{ error: <message> }`, and its status is what
     // says what kind of fault it is.
     const body: unknown = await response.json().catch(() => undefined);
-    const message = typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
+    const message =
+      typeof body === 'object' && body !== null ? Reflect.get(body, 'error') : undefined;
     throw new HttpClientError(
       response.status,
       typeof message === 'string' ? message : `The task stream answered ${response.status}.`,

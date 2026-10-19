@@ -138,7 +138,9 @@ describe('the count in the navigation', () => {
       reviews: [approval('a'), approval('b')],
     });
     await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
-    await until(() => expect(container.querySelectorAll('.weft-reviews-inbox__list > li').length).toBe(2));
+    await until(() =>
+      expect(container.querySelectorAll('.weft-reviews-inbox__list > li').length).toBe(2),
+    );
 
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));

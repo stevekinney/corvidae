@@ -35,13 +35,21 @@ function open(path: string, world: Partial<BureauWorld> = {}) {
   stub = installBureauWorld(emptyBureauWorld(world));
   router.navigate(path, { replace: true });
   return render(Harness, {
-    props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: AUTHORIZATION_SCOPES },
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      scopes: AUTHORIZATION_SCOPES,
+    },
   } as never);
 }
 
 const THREE = [
   taskFixture({ id: 'run-a', contextId: 'session-a', agentName: 'assistant', status: 'completed' }),
-  taskFixture({ id: 'run-b', contextId: 'session-b', agentName: 'tool-runner', status: 'input-required' }),
+  taskFixture({
+    id: 'run-b',
+    contextId: 'session-b',
+    agentName: 'tool-runner',
+    status: 'input-required',
+  }),
   taskFixture({ id: 'run-c', contextId: 'session-a', agentName: 'assistant', status: 'failed' }),
 ];
 

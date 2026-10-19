@@ -8,7 +8,16 @@
    */
   import { untrack } from 'svelte';
 
-  import { Badge, Button, EmptyState, ErrorState, Input, Select, Skeleton, Table } from '@lostgradient/cinder';
+  import {
+    Badge,
+    Button,
+    EmptyState,
+    ErrorState,
+    Input,
+    Select,
+    Skeleton,
+    Table,
+  } from '@lostgradient/cinder';
   import { createInfiniteQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, TASK_COPY } from '../../app/copy.ts';
@@ -163,7 +172,9 @@
               >
             </Table.Cell>
             <Table.Cell align="right">
-              <span title={task.updatedAt}>{formatRelativeTime(Date.parse(task.updatedAt), Date.now())}</span>
+              <span title={task.updatedAt}
+                >{formatRelativeTime(Date.parse(task.updatedAt), Date.now())}</span
+              >
             </Table.Cell>
           </Table.Row>
         {/each}

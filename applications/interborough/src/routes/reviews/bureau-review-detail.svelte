@@ -34,7 +34,9 @@
   let answer = $state('');
 
   const argumentsText = $derived(
-    review.kind === 'tool-approval' ? JSON.stringify(review.approval.arguments ?? null, null, 2) : '',
+    review.kind === 'tool-approval'
+      ? JSON.stringify(review.approval.arguments ?? null, null, 2)
+      : '',
   );
 
   function send(event: SubmitEvent): void {

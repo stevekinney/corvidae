@@ -14,8 +14,8 @@ import {
   taskFixture,
   toolApprovalFixture,
 } from '../../lib/bureau-fixtures.test-support.ts';
-import { taskCancelReceiptSchema, type TaskView } from '../../lib/bureau-tasks.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
+import { taskCancelReceiptSchema, type TaskView } from '../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
@@ -48,7 +48,10 @@ function open(task: TaskView, world: Partial<BureauWorld> = {}) {
   stub = installBureauWorld(emptyBureauWorld({ tasks: [task], ...world }));
   router.navigate(`/tasks/${task.id}`, { replace: true });
   return render(Harness, {
-    props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: AUTHORIZATION_SCOPES },
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      scopes: AUTHORIZATION_SCOPES,
+    },
   } as never);
 }
 
@@ -95,7 +98,11 @@ describe('what the page shows of a task', () => {
     stub?.streams[0]?.push(snapshotElement('run-1', 'completed'));
     stub?.streams[0]?.push(
       statusElement('run-1', '21', 'completed', {
-        artifact: { artifactId: 'run-1:result', text: 'The release goes to staging.', truncated: false },
+        artifact: {
+          artifactId: 'run-1:result',
+          text: 'The release goes to staging.',
+          truncated: false,
+        },
       }),
     );
     await findByText('The release goes to staging.');
@@ -131,7 +138,10 @@ describe('what the page shows of a task', () => {
     stub.refuseStreams(501);
     router.navigate('/tasks/run-1', { replace: true });
     const { findByText } = render(Harness, {
-      props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: AUTHORIZATION_SCOPES },
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
     } as never);
     await findByText(TASK_COPY.followUnavailable);
   });
@@ -141,7 +151,9 @@ describe('a task that waits on a person', () => {
   test('with an open human wait shows the question the wait asks', async () => {
     const { findByText } = open(WAITING_FOR_ANSWER, { reviews: [humanWaitFixture()] });
     await findByText('Which environment should the release go to?');
-    expect(stub?.callsTo('bureau.reviews.get').at(-1)?.params).toEqual({ id: humanWaitFixture().id });
+    expect(stub?.callsTo('bureau.reviews.get').at(-1)?.params).toEqual({
+      id: humanWaitFixture().id,
+    });
   });
 
   test('with an open tool approval shows the reason and the message of that review', async () => {
@@ -149,7 +161,9 @@ describe('a task that waits on a person', () => {
     const task = taskFixture({
       id: 'run-3',
       status: 'input-required',
-      openWaits: [{ kind: 'tool-approval', reviewId: approval.id, callId: approval.approval.callId }],
+      openWaits: [
+        { kind: 'tool-approval', reviewId: approval.id, callId: approval.approval.callId },
+      ],
     });
     const { findByText, container } = open(task, { reviews: [approval] });
     await findByText('Tool "issue-refund" requires approval.');
@@ -164,7 +178,9 @@ describe('a task that waits on a person', () => {
   });
 
   test('answers a human wait with one text field, sent to the wait under its own message identifier', async () => {
-    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, { reviews: [humanWaitFixture()] });
+    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, {
+      reviews: [humanWaitFixture()],
+    });
     stub?.on('bureau.tasks.respond', () => ({
       taskId: 'run-2',
       messageId: 'm',
@@ -183,7 +199,9 @@ describe('a task that waits on a person', () => {
       answer: 'staging',
       signalName: 'environment',
     });
-    expect(String(stub?.callsTo('bureau.tasks.respond')[0]?.params['messageId']).length).toBeGreaterThan(8);
+    expect(
+      String(stub?.callsTo('bureau.tasks.respond')[0]?.params['messageId']).length,
+    ).toBeGreaterThan(8);
   });
 
   test('reads the task again once the answer is accepted, so the task shows it continued', async () => {
@@ -207,7 +225,9 @@ describe('a task that waits on a person', () => {
   });
 
   test('cannot send an empty answer', async () => {
-    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, { reviews: [humanWaitFixture()] });
+    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, {
+      reviews: [humanWaitFixture()],
+    });
     await findByLabelText('Your answer');
     expect(getByRole('button', { name: 'Send answer' }).hasAttribute('disabled')).toBe(true);
   });
@@ -281,7 +301,10 @@ describe('after a cancellation that is not finished', () => {
       taskFixture({ status: 'working', cleanup: 'cleanup-pending' }),
       taskFixture({ status: 'canceled', cleanup: 'cleaned-up' }),
     ];
-    stub?.on('bureau.tasks.get', () => answers.shift() ?? taskFixture({ status: 'canceled', cleanup: 'cleaned-up' }));
+    stub?.on(
+      'bureau.tasks.get',
+      () => answers.shift() ?? taskFixture({ status: 'canceled', cleanup: 'cleaned-up' }),
+    );
 
     await fireEvent.click(cancelButton);
     await settle();

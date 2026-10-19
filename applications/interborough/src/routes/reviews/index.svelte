@@ -61,7 +61,11 @@
   /** What became of the last decision or answer on a Bureau review, when it did not simply take effect. */
   let outcome = $state<ReviewOutcome | undefined>(undefined);
 
-  function resolve(review: BureauReview, decision: ReviewDecision, reason: string | undefined): void {
+  function resolve(
+    review: BureauReview,
+    decision: ReviewDecision,
+    reason: string | undefined,
+  ): void {
     outcome = undefined;
     resolveMutation.mutate(
       { id: review.id, decision, ...(reason === undefined ? {} : { reason }) },

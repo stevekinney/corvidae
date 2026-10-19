@@ -36,7 +36,10 @@ function open(path: string) {
   stub = installBureauWorld(emptyBureauWorld());
   router.navigate(path, { replace: true });
   return render(Harness, {
-    props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: AUTHORIZATION_SCOPES },
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      scopes: AUTHORIZATION_SCOPES,
+    },
   } as never);
 }
 
@@ -48,7 +51,10 @@ describe('the Tasks routes', () => {
     });
     router.navigate('/tasks', { replace: true });
     const view = render(Harness, {
-      props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: AUTHORIZATION_SCOPES },
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
     } as never);
     await waitFor(() =>
       expect(view.container.querySelector('[data-view="tasks"]')?.getAttribute('data-state')).toBe(

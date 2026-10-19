@@ -55,7 +55,9 @@
     onElement: (element) => {
       // A snapshot restates what the page read; any other element is a change, or a gap to repair.
       if (element.kind !== 'task.snapshot') {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.bureauTasks.detail(initialTaskId) });
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.bureauTasks.detail(initialTaskId),
+        });
       }
     },
   });
@@ -79,7 +81,9 @@
   {@const presentation = taskStatePresentation(current.status)}
   <article class="weft-task" aria-labelledby="weft-task-title">
     <header class="weft-task__header">
-      <h1 id="weft-task-title" class="weft-task__title">{TASK_COPY.detailTitle(current.agentName)}</h1>
+      <h1 id="weft-task-title" class="weft-task__title">
+        {TASK_COPY.detailTitle(current.agentName)}
+      </h1>
       <p class="weft-task__id"><code title={TASK_COPY.idLabel}>{current.id}</code></p>
     </header>
 

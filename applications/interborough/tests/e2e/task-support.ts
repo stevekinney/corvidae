@@ -25,7 +25,10 @@ export async function bureauCall(
 }
 
 /** The task of a session's run, which is the only one a session started through the mount has. */
-export async function taskOfSession(request: APIRequestContext, threadId: string): Promise<TaskRow> {
+export async function taskOfSession(
+  request: APIRequestContext,
+  threadId: string,
+): Promise<TaskRow> {
   const result = (await bureauCall(request, 'bureau.tasks.list', { contextId: threadId })) as {
     tasks: TaskRow[];
   };

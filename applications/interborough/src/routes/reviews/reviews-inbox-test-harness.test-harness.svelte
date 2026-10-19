@@ -12,7 +12,6 @@
 
   import type { ReviewListEntry, HttpClient } from '@lostgradient/weft';
 
-
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
@@ -38,7 +37,13 @@
   let {
     client,
     scopes = ['reviews:read', 'reviews:write', 'events:read'],
-    bureauQuery = { data: [], isPending: false, isError: false, error: undefined, refetch: () => {} },
+    bureauQuery = {
+      data: [],
+      isPending: false,
+      isError: false,
+      error: undefined,
+      refetch: () => {},
+    },
     pendingQuery,
     completedQuery,
     weftEnabled = true,

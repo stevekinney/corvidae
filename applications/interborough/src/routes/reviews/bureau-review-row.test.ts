@@ -34,9 +34,14 @@ afterEach(() => {
   stub = undefined;
 });
 
-function mount(review: ReturnType<typeof toolApprovalFixture> | ReturnType<typeof humanWaitFixture>, tasks = [] as ReturnType<typeof taskFixture>[]) {
+function mount(
+  review: ReturnType<typeof toolApprovalFixture> | ReturnType<typeof humanWaitFixture>,
+  tasks = [] as ReturnType<typeof taskFixture>[],
+) {
   stub = installBureauWorld(emptyBureauWorld({ tasks }));
-  return render(RowHarness, { props: { review, selected: false, now: review.requestedAt + 60_000 } } as never);
+  return render(RowHarness, {
+    props: { review, selected: false, now: review.requestedAt + 60_000 },
+  } as never);
 }
 
 const hrefs = (container: HTMLElement) =>

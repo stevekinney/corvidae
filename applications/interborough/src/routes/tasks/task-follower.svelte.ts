@@ -37,12 +37,7 @@ import { computeReconnectDelayMs } from '../../lib/live-source/backoff.ts';
 
 /** Where the follower stands, for the page to say. */
 export type TaskFollowState =
-  | 'connecting'
-  | 'live'
-  | 'reconnecting'
-  | 'ended'
-  | 'unavailable'
-  | 'not-found';
+  'connecting' | 'live' | 'reconnecting' | 'ended' | 'unavailable' | 'not-found';
 
 /** The `sessionStorage` key one task's cursor is kept under. */
 export function taskCursorKey(taskId: string): string {
@@ -183,7 +178,11 @@ export class TaskFollower {
       signal.addEventListener('abort', () => resolve(), { once: true });
     });
     try {
-      await Promise.race([(this.#options.sleep ?? sleepFor)(milliseconds, signal), online, aborted]);
+      await Promise.race([
+        (this.#options.sleep ?? sleepFor)(milliseconds, signal),
+        online,
+        aborted,
+      ]);
     } finally {
       if (onOnline !== undefined) window.removeEventListener('online', onOnline);
     }
