@@ -23,9 +23,10 @@
 
 import { StreamResponse, Task } from '@a2a-js/sdk';
 
-import type { BatchOperation, Storage } from '../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
 import {
   type A2ACallerScope,
+  type A2ACompareAndSwapAttempt,
   decodeRecord,
   encodeRecord,
   scopedKey,
@@ -74,11 +75,18 @@ export type TaskEventLog = {
    * writing nothing, when the scope already holds a task with this identifier, and
    * `'foreign'`, writing nothing, when another owner's task has (or had) it. The same
    * owner may create a task again after its record was pruned.
+   *
+   * `alongside`, when given, plans more writes for the same conditional batch. It runs
+   * inside each attempt, once the owner is known to be free, so a lost compare-and-swap
+   * plans again from what is stored then. Its records commit with the task or not at
+   * all: an outcome other than a commit, a failed batch, or a crash before the batch
+   * leaves none of them behind.
    */
   create(
     scope: A2ACallerScope,
     owner: TaskOwner,
     mutation: TaskMutation,
+    alongside?: () => Promise<A2ACompareAndSwapAttempt<unknown>>,
   ): Promise<TaskCommit | 'foreign' | undefined>;
   /**
    * Apply `mutate` to the stored task and append its events atomically. `mutate` may
@@ -213,7 +221,7 @@ export function createTaskEventLog(options: {
       return bytes === null ? undefined : readStored(decodeRecord(key, bytes));
     },
 
-    async create(scope, owner, mutation) {
+    async create(scope, owner, mutation, alongside) {
       const key = scopedKey('task', scope, mutation.task.id);
       const ownerKey = workflowTaskKey(namespace, mutation.task.id);
       const created = await withCompareAndSwap<TaskCommit | 'foreign' | undefined>(
@@ -228,16 +236,18 @@ export function createTaskEventLog(options: {
               return { result: 'foreign' as const };
             }
           }
+          const extra = await alongside?.();
           const { operations, commit } = writeMutation(key, -1, mutation);
           operations.push({ type: 'put', key: ownerKey, value: encodeRecord({ ...owner }) });
-          return {
-            conditions: [
-              { key, expectedValue: null },
-              { key: ownerKey, expectedValue: existingOwner },
-            ],
-            operations,
-            result: commit,
-          };
+          const conditions: ConditionalBatchCondition[] = [
+            { key, expectedValue: null },
+            { key: ownerKey, expectedValue: existingOwner },
+          ];
+          if (extra !== undefined && 'operations' in extra) {
+            conditions.push(...extra.conditions);
+            operations.push(...extra.operations);
+          }
+          return { conditions, operations, result: commit };
         },
       );
       if (created !== undefined && created !== 'foreign') notify(key, created.appended);

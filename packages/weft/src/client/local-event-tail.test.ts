@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 import type { Engine } from '../core/engine.ts';
 import { createWorkflowHandleEventIterator } from '../core/engine/handle-iteration.ts';
-import { SignalReceivedEvent, WorkflowCompletedEvent } from '../core/events.ts';
+import {
+  RemoteActivityQueuedEvent,
+  SignalReceivedEvent,
+  WorkflowCompletedEvent,
+} from '../core/events.ts';
 import type { WorkflowEvent, WorkflowState } from '../core/types.ts';
 import { sleepForTesting, withTimeout } from '../testing/fake-timers.test-support.ts';
 import { createLocalWorkflowEventTail } from './local-event-tail.ts';
@@ -98,6 +102,24 @@ describe('createLocalWorkflowEventTail', () => {
     // Only now begin iterating. The pre-iteration signal must still be delivered
     // (it was buffered, not dropped), followed by the terminal completion that
     // ends the tail cleanly.
+    const seen = await drain(tail);
+
+    expect(seen).toEqual(['signal:received', 'workflow:completed']);
+  });
+
+  it('drops live events the server watch channel does not broadcast', async () => {
+    // Regression (COR-1605 review): the handle iterator now yields every
+    // workflow-scoped kind, but the HTTP tail only ever receives the watch
+    // channel's client-visible kinds. The local tail must deliver the same
+    // records, so a kind such as `activity:remote-queued` is filtered out.
+    const handle = new FakeWorkflowHandle();
+    const tail = createLocalWorkflowEventTail(fakeEngine(handle), 'wf-visible');
+
+    await tail.whenConnected();
+    handle.dispatchEvent(new RemoteActivityQueuedEvent('operation-1', 'wf-visible', 'remote'));
+    handle.dispatchEvent(new SignalReceivedEvent('wf-visible', 'continue', 'go'));
+    handle.dispatchEvent(new WorkflowCompletedEvent('wf-visible', 'done', 1));
+
     const seen = await drain(tail);
 
     expect(seen).toEqual(['signal:received', 'workflow:completed']);

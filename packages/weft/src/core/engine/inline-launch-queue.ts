@@ -285,6 +285,11 @@ export async function drainQueuedInlineWorkflowStarts(
  * status/holder check is not proof it is still the SAME run. Split out of
  * `startQueuedInlineWorkflowExecution` purely to keep that function's own
  * cyclomatic complexity under the repository's ceiling.
+ *
+ * The token is compared exactly (COR-1604). A queued start carries the token of
+ * the record it was queued from, so it has none only for a pre-token run, and a
+ * replacement always has one: a missing token identifies the pre-token run, not
+ * every later run of the id.
  */
 async function isQueuedStartStillTheLiveRun(
   internals: EngineInternals,
@@ -294,8 +299,7 @@ async function isQueuedStartStillTheLiveRun(
   return (
     currentState !== null &&
     currentState.status === 'running' &&
-    (start.workflowExecutionToken === undefined ||
-      currentState.workflowExecutionToken === start.workflowExecutionToken)
+    currentState.workflowExecutionToken === start.workflowExecutionToken
   );
 }
 

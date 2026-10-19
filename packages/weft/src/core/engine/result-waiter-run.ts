@@ -12,6 +12,7 @@
  * @module core/engine/result-waiter-run
  */
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import { markResultReplaced } from './result-committer.ts';
 
@@ -21,29 +22,74 @@ export function workflowRunReplacedError(workflowId: string): Error {
 }
 
 /**
- * Whether `waiter` is the result waiter for the run identified by `executionToken`. A side with
- * no token (a run recorded before execution tokens existed, or a waiter not yet bound) cannot be
- * told apart from the other, so it is treated as the same run, as it was before tokens.
+ * The run this engine holds for `workflowId` right now, if any, which a new result waiter is bound
+ * to. The live checkpoint is replaced when a `start-new` replacement launches here, whereas the
+ * durable inline-operation record can still name the run it replaced, so the token is read from
+ * the checkpoint first. With neither, the execution attempt still names the run while it is
+ * suspended (COR-1604). A held run recorded before tokens existed is still held, with no token,
+ * so its waiter is bound to it and does not match a later token-bearing run.
+ */
+export function heldRunForResultWaiter(
+  internals: EngineInternals,
+  workflowId: string,
+): { readonly workflowExecutionToken: string | undefined } | undefined {
+  const held = [
+    internals.checkpoints?.get(workflowId),
+    internals.durableInlineOperations?.get(workflowId),
+    currentExecutionAttempt(internals, workflowId),
+  ].filter((run) => run !== undefined);
+  if (held.length === 0) return undefined;
+  return {
+    workflowExecutionToken: held.find((run) => run.workflowExecutionToken !== undefined)
+      ?.workflowExecutionToken,
+  };
+}
+
+/**
+ * Whether `waiter` is the result waiter for the run identified by `executionToken`. An unbound
+ * waiter matches any run, and is bound by its caller from the record it reads. A bound waiter
+ * matches only its own token, so a waiter bound to a run recorded before tokens existed does not
+ * match a token-bearing replacement. An `executionToken` of `undefined` names no run (a pre-token
+ * record, which cannot follow a token-bearing run, or a caller that holds no token) and matches.
  */
 export function waiterBelongsToRun(
   waiter: WorkflowResultWaiter,
   executionToken: string | undefined,
 ): boolean {
   return (
-    waiter.workflowExecutionToken === undefined ||
+    !waiter.boundToRun ||
     executionToken === undefined ||
     waiter.workflowExecutionToken === executionToken
   );
 }
 
-/** Bind `waiter` to the run `executionToken` identifies, unless it is already bound. */
+/**
+ * Whether two waiters registered for the same workflow id speak for the same run. Only two
+ * bound waiters can be told apart, and then by exact token, so a waiter bound to a pre-token
+ * run never answers for a token-bearing one.
+ */
+export function waitersBelongToSameRun(
+  first: WorkflowResultWaiter,
+  second: WorkflowResultWaiter,
+): boolean {
+  return (
+    !first.boundToRun ||
+    !second.boundToRun ||
+    first.workflowExecutionToken === second.workflowExecutionToken
+  );
+}
+
+/**
+ * Bind `waiter` to the run `executionToken` identifies, unless it is already bound. A record
+ * with no token binds the waiter to that pre-token run.
+ */
 export function bindResultWaiterToRun(
   waiter: WorkflowResultWaiter,
   executionToken: string | undefined,
 ): void {
-  if (waiter.workflowExecutionToken === undefined && executionToken !== undefined) {
-    waiter.workflowExecutionToken = executionToken;
-  }
+  if (waiter.boundToRun) return;
+  waiter.boundToRun = true;
+  waiter.workflowExecutionToken = executionToken;
 }
 
 /**
