@@ -63,10 +63,12 @@ describe('the task event log', () => {
   });
 
   test('ignores an owner record it cannot read', async () => {
-    const { storage, log } = setup();
+    const { storage, log, scope } = setup();
     await storage.put(workflowTaskKey(NAMESPACE, 'task-1'), encodeRecord({ tenant: 1 }));
 
     expect(await log.findOwner('task-1')).toBeUndefined();
+    // Creating a task under it fails closed: no reader can say the caller owns it.
+    expect(await log.create(scope, OWNER, { task: submitted(), events: [] })).toBe('foreign');
   });
 
   test('numbers events from zero and records the last one on the task', async () => {
@@ -120,7 +122,7 @@ describe('the task event log', () => {
     expect(followed.map((entry) => entry.sequence)).toEqual([1, 2, 3, 4]);
   });
 
-  test('is kept by a task store save and removed with its task by prune', async () => {
+  test('is kept by a task store save and removed with its task by prune, but for its owner record', async () => {
     const { storage, log, scope } = setup();
     let now = 0;
     const taskStore = createWeftA2ATaskStore({
@@ -141,9 +143,43 @@ describe('the task event log', () => {
     expect(await taskStore.prune()).toBe(1);
 
     expect(await log.read(scope, 'task-1')).toBeUndefined();
-    expect(await log.findOwner('task-1')).toBeUndefined();
+    // The owner record outlives the task, as the engine's start idempotency mapping does.
+    expect(await log.findOwner('task-1')).toEqual(OWNER);
     const remaining: string[] = [];
     for await (const [key] of storage.scan('a2a:')) remaining.push(key);
-    expect(remaining).toEqual([]);
+    expect(remaining).toEqual([workflowTaskKey(NAMESPACE, 'task-1')]);
+  });
+
+  test('refuses another owner, and lets the same owner create again, once a task was pruned', async () => {
+    const { storage, log, scope } = setup();
+    let now = 0;
+    const taskStore = createWeftA2ATaskStore({
+      storage,
+      namespace: NAMESPACE,
+      terminalRetentionMs: 10,
+      now: () => now,
+    });
+    await log.create(scope, OWNER, moveTo(submitted(), TaskState.TASK_STATE_COMPLETED));
+    now = 100;
+    expect(await taskStore.prune()).toBe(1);
+
+    const westScope = callerScope(NAMESPACE, callContext({ user: 'alice', tenant: 'west' }));
+    const foreign = await log.create(
+      westScope,
+      { ...OWNER, tenant: 'west' },
+      moveTo(submitted(), TaskState.TASK_STATE_SUBMITTED),
+    );
+    const recreated = await log.create(
+      scope,
+      OWNER,
+      moveTo(submitted(), TaskState.TASK_STATE_SUBMITTED),
+    );
+
+    expect(foreign).toBe('foreign');
+    expect(await log.read(westScope, 'task-1')).toBeUndefined();
+    expect(recreated).toMatchObject({ stored: { sequence: 0 } });
+    const stored = await log.read(scope, 'task-1');
+    expect(stored?.task.status?.state).toBe(TaskState.TASK_STATE_SUBMITTED);
+    expect(await log.findOwner('task-1')).toEqual(OWNER);
   });
 });

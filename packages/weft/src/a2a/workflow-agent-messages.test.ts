@@ -18,14 +18,17 @@ import {
   createWorkflowAgentFixture,
   dataPart,
   echoWorkflow,
+  followUpWorkflow,
   sendRequest,
   serveWorkflow,
   startTask,
+  statusOf,
   textPart,
   userMessage,
   useWorkflowAgentFixtures,
   waitForState,
 } from './workflow-agent.test-support.ts';
+import { SIGNAL_NAMES_METADATA_KEY } from './workflow-task-projection.ts';
 
 useWorkflowAgentFixtures();
 
@@ -131,6 +134,34 @@ describe('starting a workflow with SendMessage', () => {
         ),
       ),
     ).toBeInstanceOf(RequestMalformedError);
+  });
+
+  test('refuses another tenant’s message with the same key once the first task was pruned', async () => {
+    let now = 0;
+    const { agent } = await createWorkflowAgentFixture({
+      workflowType: echoWorkflow.name,
+      inputMode: 'text',
+      terminalRetentionMs: 10,
+      now: () => now,
+    });
+    const east = () => callContext({ user: 'alice', tenant: 'east' });
+    const west = () => callContext({ user: 'alice', tenant: 'west' });
+    const first = await startTask(agent, east(), userMessage({ messageId: 'shared', text: 'x' }));
+    expect(first.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
+    now = 100;
+    expect(await agent.taskStore.prune()).toBe(1);
+
+    const refusal = await rejectionOf(
+      startTask(agent, west(), userMessage({ messageId: 'shared', text: 'y' })),
+    );
+    const resent = await startTask(agent, east(), userMessage({ messageId: 'shared', text: 'x' }));
+
+    expect(refusal).toBeInstanceOf(RequestMalformedError);
+    expect(await agent.taskStore.load(first.id, west())).toBeUndefined();
+    // The owner sending the same message again gets its workflow's task back.
+    expect(resent.id).toBe(first.id);
+    expect(resent.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
+    expect(resent.artifacts).toEqual(first.artifacts);
   });
 
   test('rejects a message without a messageId', async () => {
@@ -313,6 +344,40 @@ describe('continuing a task with SendMessage', () => {
     expect(continued.status?.state).toBe(TaskState.TASK_STATE_COMPLETED);
     expect(continued.history.at(-1)?.parts[0]?.content).toEqual({ $case: 'text', value: 'fast' });
     expect(continued.history).toHaveLength(3);
+  });
+
+  test('keeps a new wait the workflow announced before the continuation recorded its message', async () => {
+    const { agent, engine } = await createWorkflowAgentFixture({
+      workflowType: followUpWorkflow.name,
+    });
+    const task = await startTask(agent, alice());
+    const signal = engine.signal.bind(engine);
+    engine.signal = (async (id: string, name: string, payload?: unknown) => {
+      await signal(id, name, payload);
+      // Reconciliation announces the `confirm` wait before the continuation commits.
+      for await (const event of agent.requestHandler.resubscribe({ tenant: '', id }, alice())) {
+        if (statusOf(event) === TaskState.TASK_STATE_INPUT_REQUIRED) break;
+      }
+    }) as typeof engine.signal;
+
+    const continued = await startTask(
+      agent,
+      alice(),
+      userMessage({ taskId: task.id, text: 'answer' }),
+    );
+    await agent.idle();
+    const latest = await agent.requestHandler.getTask({ tenant: '', id: task.id }, alice());
+
+    expect(continued.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(latest.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(latest.status?.message?.metadata?.[SIGNAL_NAMES_METADATA_KEY]).toEqual(['confirm']);
+    // One announcement per wait, and the answer once: no WORKING step re-announced `confirm`.
+    expect(latest.history.map((message) => message.role)).toEqual([
+      Role.ROLE_USER,
+      Role.ROLE_AGENT,
+      Role.ROLE_AGENT,
+      Role.ROLE_USER,
+    ]);
   });
 
   test('rejects a continuation to a task the caller does not own as not found', async () => {

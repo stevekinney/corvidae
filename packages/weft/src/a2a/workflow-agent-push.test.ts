@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { StreamResponse, type TaskPushNotificationConfig, TaskState } from '@a2a-js/sdk';
+import { Role, StreamResponse, type TaskPushNotificationConfig, TaskState } from '@a2a-js/sdk';
 import { ContentTypeNotSupportedError, RequestMalformedError } from '@a2a-js/sdk/errors';
 
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -169,6 +169,65 @@ describe('workflow agent push notifications', () => {
 
     expect(refusal).toBeInstanceOf(RequestMalformedError);
     expect(await fixture.push.pushStore.load(taskId, alice())).toEqual([]);
+  });
+
+  test('refuses a continuation whose configuration names a deleted configuration, delivering nothing', async () => {
+    const fixture = await createWorkflowAgentFixture();
+    const first = await fixture.agent.requestHandler.sendMessage(
+      sendRequest(userMessage(), { taskPushNotificationConfig: webhook(fixture, 'config-1') }),
+      alice(),
+    );
+    const taskId = 'id' in first ? first.id : '';
+    await fixture.push.pushStore.delete(taskId, alice(), 'config-1');
+    let signals = 0;
+    const signal = fixture.engine.signal.bind(fixture.engine);
+    fixture.engine.signal = ((...args: Parameters<typeof signal>) => {
+      signals += 1;
+      return signal(...args);
+    }) as typeof signal;
+
+    const refusal = await rejectionOf(
+      fixture.agent.requestHandler.sendMessage(
+        sendRequest(userMessage({ taskId, text: 'approved' }), {
+          taskPushNotificationConfig: webhook(fixture, 'config-1'),
+        }),
+        alice(),
+      ),
+    );
+
+    expect(refusal).toBeInstanceOf(A2APushConfigurationConflictError);
+    expect(signals).toBe(0);
+    const workflowState = await fixture.engine.get(taskId);
+    expect(workflowState?.status).toBe('running');
+    expect(workflowState?.waitingForSignals).toEqual(['input']);
+    const task = await fixture.agent.requestHandler.getTask({ tenant: '', id: taskId }, alice());
+    expect(task.status?.state).toBe(TaskState.TASK_STATE_INPUT_REQUIRED);
+    expect(task.history.filter((message) => message.role === Role.ROLE_USER)).toHaveLength(1);
+    expect(await fixture.push.pushStore.load(taskId, alice())).toEqual([]);
+  });
+
+  test('saves no configuration for a message refused as another caller’s', async () => {
+    const fixture = await createWorkflowAgentFixture();
+    const east = () => callContext({ user: 'alice', tenant: 'east' });
+    const west = () => callContext({ user: 'alice', tenant: 'west' });
+    const first = await fixture.agent.requestHandler.sendMessage(
+      sendRequest(userMessage({ messageId: 'shared' })),
+      east(),
+    );
+    const taskId = 'id' in first ? first.id : '';
+
+    const refusal = await rejectionOf(
+      fixture.agent.requestHandler.sendMessage(
+        sendRequest(userMessage({ messageId: 'shared' }), {
+          taskPushNotificationConfig: webhook(fixture, 'config-1'),
+        }),
+        west(),
+      ),
+    );
+
+    expect(refusal).toBeInstanceOf(RequestMalformedError);
+    expect(await fixture.push.pushStore.load(taskId, west())).toEqual([]);
+    expect(await fixture.push.pushStore.load(taskId, east())).toEqual([]);
   });
 
   test('refuses a retried message whose configuration names a deleted configuration', async () => {

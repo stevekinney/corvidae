@@ -34,7 +34,6 @@ import {
   siblingKey,
   taskEventPrefix,
   withCompareAndSwap,
-  workflowTaskKey,
 } from './store-support.ts';
 
 /** Terminal tasks are kept for thirty days after their last save unless told otherwise. */
@@ -142,15 +141,18 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
 
   /**
    * Delete one expired task, its push configurations, and, for a workflow agent's
-   * task, its durable events and owner record, conditioned on the task record it was
-   * judged by and on the task's push head, which every push create and delete bumps.
-   * Resolves `false`, deleting nothing, once the task has been saved again (or removed)
-   * since it was judged.
+   * task, its durable events, conditioned on the task record it was judged by and on
+   * the task's push head, which every push create and delete bumps. Resolves `false`,
+   * deleting nothing, once the task has been saved again (or removed) since it was
+   * judged.
+   *
+   * A workflow agent's owner record stays. The engine's start idempotency mapping is
+   * permanent, so another caller who sends the same user and `messageId` after the
+   * prune is handed the same workflow; the owner record is what refuses them.
    */
-  async function pruneTask(key: string, judged: Uint8Array, taskId: string): Promise<boolean> {
+  async function pruneTask(key: string, judged: Uint8Array): Promise<boolean> {
     const headKey = siblingKey(key, 'task', 'push-head');
     const pushPrefix = `${siblingKey(key, 'task', 'push')}:`;
-    const ownerKey = workflowTaskKey(namespace, taskId);
     return withCompareAndSwap(storage, key, async () => {
       const current = await storage.get(key);
       if (current === null || !bytesEqual(current, judged)) return { result: false };
@@ -163,8 +165,6 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
       for await (const [eventKey] of storage.scan(taskEventPrefix(key))) {
         operations.push({ type: 'delete', key: eventKey });
       }
-      if ((await storage.get(ownerKey)) !== null)
-        operations.push({ type: 'delete', key: ownerKey });
       return {
         conditions: [
           { key, expectedValue: judged },
@@ -248,8 +248,8 @@ export function createWeftA2ATaskStore(options: WeftA2ATaskStoreOptions): WeftA2
         );
       });
       let removed = 0;
-      for (const { key, bytes, record } of expired) {
-        if (await pruneTask(key, bytes, readTask(record).id)) removed += 1;
+      for (const { key, bytes } of expired) {
+        if (await pruneTask(key, bytes)) removed += 1;
       }
       return removed;
     },

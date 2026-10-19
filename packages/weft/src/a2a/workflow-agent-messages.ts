@@ -31,7 +31,12 @@ import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/serve
 import type { Engine } from '../core/engine.ts';
 import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';
-import { type StoredWorkflowTask, taskEventCursor, type TaskEventLog } from './task-event-log.ts';
+import {
+  sameOwner,
+  type StoredWorkflowTask,
+  taskEventCursor,
+  type TaskEventLog,
+} from './task-event-log.ts';
 import type { WorkflowAgentInputMode } from './workflow-agent-card.ts';
 import {
   isSettledTaskState,
@@ -214,6 +219,21 @@ export function createWorkflowAgentMessaging(options: {
     await pushStore.save(taskId, context, { ...config, taskId });
   }
 
+  /**
+   * Refuse a run another caller's task holds, or held before it was pruned, before
+   * anything is saved in this caller's scope.
+   */
+  async function refuseForeignRun(
+    message: Message,
+    taskId: string,
+    context: ServerCallContext,
+  ): Promise<void> {
+    const owner = await log.findOwner(taskId);
+    if (owner !== undefined && !sameOwner(owner, taskOwnerOf(context))) {
+      throw foreignMessage(message);
+    }
+  }
+
   /** Start (or, for a retried message, find) the workflow and its task. */
   async function start(
     message: Message,
@@ -231,11 +251,13 @@ export function createWorkflowAgentMessaging(options: {
     // The engine's idempotency keys span every workflow type and caller scope, so a key
     // another agent or tenant used first names a run that is not this caller's task.
     if (workflowState?.type !== workflowType) throw foreignMessage(message);
+    const existing = await log.read(scope, taskId);
+    if (existing === undefined) await refuseForeignRun(message, taskId, context);
     // Before the task is created, so its first status reaches the configuration; a
     // retried message returns the caller's existing task, and its configuration applies
     // to that task like any other.
     await installPushConfiguration(params, taskId, context);
-    if ((await log.read(scope, taskId)) === undefined) {
+    if (existing === undefined) {
       const contextId = message.contextId === '' ? taskId : message.contextId;
       const submitted: Task = {
         id: taskId,
@@ -272,7 +294,7 @@ export function createWorkflowAgentMessaging(options: {
     const taskId = message.taskId;
     const current = await runtime.reconcile(taskId, context);
     if (current === undefined) throw new TaskNotFoundError(`Task not found: ${taskId}`);
-    const { task } = current;
+    const { task, sequence } = current;
     if (message.contextId !== '' && message.contextId !== task.contextId) {
       throw new RequestMalformedError(
         `contextId '${message.contextId}' does not match task '${taskId}' context '${task.contextId}'.`,
@@ -303,7 +325,13 @@ export function createWorkflowAgentMessaging(options: {
     const commit = await log.commit(runtime.scopeOf(context), taskId, (stored) => {
       const history = [...stored.task.history, userMessage];
       const withMessage = { ...stored.task, history };
-      if (stored.task.status?.state !== TaskState.TASK_STATE_INPUT_REQUIRED) {
+      // Only the wait this message answered moves to WORKING. Once anything was
+      // committed since it was read, reconciliation already owns the status, and it may
+      // be a new wait the workflow announced after taking this answer.
+      if (
+        stored.sequence !== sequence ||
+        stored.task.status?.state !== TaskState.TASK_STATE_INPUT_REQUIRED
+      ) {
         return { task: withMessage, events: [] };
       }
       const status = { state: TaskState.TASK_STATE_WORKING, message: undefined, timestamp };

@@ -60,15 +60,21 @@ function junit(counts: { tests: number; failures?: number; errors?: number; skip
   return `<?xml version="1.0"?><testsuites><testsuite name="pytest">${cases.join('')}</testsuite></testsuites>`;
 }
 
-/** A command runner that records each command and writes the report `reports` names. */
-function fakeTck(reports: (level: string) => string | undefined) {
+/**
+ * A command runner that records each command, writes the report `reports` names, and
+ * exits with `exitCodes`' code for the level (by default 0 with a report, 4 without).
+ */
+function fakeTck(
+  reports: (level: string) => string | undefined,
+  exitCodes: (level: string) => number | undefined = () => undefined,
+) {
   const commands: string[][] = [];
   const runCommand: CommandRunner = async (command, cwd) => {
     commands.push([...command]);
     const level = command[command.indexOf('--level') + 1] as string;
     const report = reports(level);
     if (report !== undefined) await writeFile(join(cwd, 'reports', 'junitreport.xml'), report);
-    return report === undefined ? 4 : 0;
+    return exitCodes(level) ?? (report === undefined ? 4 : 0);
   };
   return { commands, runCommand };
 }
@@ -167,6 +173,31 @@ describe('run-a2a-tck', () => {
       expect(exitCode).toBe(1);
       expect(tck.commands).toHaveLength(3);
     }
+  });
+
+  test('fails when a level exits nonzero, even with a clean report', async () => {
+    const stub = stubSystemUnderTest();
+    const checkout = await temporaryCheckout();
+    // pytest's NO_TESTS_COLLECTED (5) can still leave a report with no failure or error.
+    const tck = fakeTck(
+      () => junit({ tests: 1 }),
+      (level) => (level === 'should' ? 5 : 0),
+    );
+    const lines: string[] = [];
+
+    const exitCode = await runA2ATck(['--sut-host', stub.url], {
+      runCommand: tck.runCommand,
+      ensureCheckout: async () => undefined,
+      startExample: async () => {
+        throw new Error('unused');
+      },
+      checkout,
+      log: (line) => lines.push(line),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(tck.commands).toHaveLength(3);
+    expect(lines).toContain('  should: run_tck.py exited 5');
   });
 
   test('refuses a system under test that serves no Agent Card', async () => {

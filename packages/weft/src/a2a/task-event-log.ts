@@ -11,6 +11,9 @@
  * them), scoped by namespace, tenant, and owner. Each task also has one owner record,
  * keyed by its identifier alone, naming the scope it belongs to, so a change the
  * engine reports with only a workflow identifier can be applied to the right task.
+ * The owner record outlives its task: pruning keeps it, because the engine's start
+ * idempotency mapping is permanent, and the record is what keeps another caller who
+ * reuses the same key from recreating the task in their own scope.
  *
  * Live delivery is in-process: a commit notifies the followers of the same log object.
  * A follower that falls behind reads the gap back from storage.
@@ -69,7 +72,8 @@ export type TaskEventLog = {
   /**
    * Store a new task with its first events and its owner record. Resolves `undefined`,
    * writing nothing, when the scope already holds a task with this identifier, and
-   * `'foreign'`, writing nothing, when another owner's task already has it.
+   * `'foreign'`, writing nothing, when another owner's task has (or had) it. The same
+   * owner may create a task again after its record was pruned.
    */
   create(
     scope: A2ACallerScope,
@@ -126,6 +130,15 @@ function readOwner(record: Record<string, unknown>): TaskOwner | undefined {
     return undefined;
   }
   return { tenant, authenticated, userName };
+}
+
+/** Whether two owner records name the same caller. */
+export function sameOwner(left: TaskOwner, right: TaskOwner): boolean {
+  return (
+    left.tenant === right.tenant &&
+    left.authenticated === right.authenticated &&
+    left.userName === right.userName
+  );
 }
 
 function readEntry(key: string, bytes: Uint8Array): TaskEventEntry {
@@ -209,13 +222,18 @@ export function createTaskEventLog(options: {
         async () => {
           if ((await storage.get(key)) !== null) return { result: undefined };
           const existingOwner = await storage.get(ownerKey);
-          if (existingOwner !== null) return { result: 'foreign' as const };
+          if (existingOwner !== null) {
+            const recorded = readOwner(decodeRecord(ownerKey, existingOwner));
+            if (recorded === undefined || !sameOwner(recorded, owner)) {
+              return { result: 'foreign' as const };
+            }
+          }
           const { operations, commit } = writeMutation(key, -1, mutation);
           operations.push({ type: 'put', key: ownerKey, value: encodeRecord({ ...owner }) });
           return {
             conditions: [
               { key, expectedValue: null },
-              { key: ownerKey, expectedValue: null },
+              { key: ownerKey, expectedValue: existingOwner },
             ],
             operations,
             result: commit,

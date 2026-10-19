@@ -132,7 +132,7 @@ async function readReport(path: string): Promise<string | undefined> {
 
 /**
  * Run every TCK level against the system under test and resolve with the exit code:
- * 0 only when every level produced a report with no failure and no error.
+ * 0 only when every level exited 0 and produced a report with no failure and no error.
  */
 export async function runA2ATck(
   argv: readonly string[],
@@ -169,7 +169,10 @@ export async function runA2ATck(
       log(
         `  ${level}: ${summary.tests} tests, ${passed} passed, ${summary.skipped} skipped or xfailed, ${summary.failures} failures, ${summary.errors} errors`,
       );
-      if (summary.failures > 0 || summary.errors > 0) failed = true;
+      // A clean report is not enough: pytest exits nonzero with one when it collects no
+      // tests (5) or is interrupted (2), so the run's own exit code must agree.
+      if (exitCode !== 0) log(`  ${level}: run_tck.py exited ${exitCode}`);
+      if (summary.failures > 0 || summary.errors > 0 || exitCode !== 0) failed = true;
     }
   } finally {
     await started?.stop();

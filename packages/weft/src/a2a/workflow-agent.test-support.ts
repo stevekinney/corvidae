@@ -86,6 +86,16 @@ export const loopingWorkflow = workflow({
   return { first, second };
 });
 
+/** Waits for `input`, then for a different signal, `confirm`, then completes. */
+export const followUpWorkflow = workflow({
+  name: 'agent-follow-up',
+  description: 'Asks for input, then for confirmation.',
+}).execute(async function* (ctx: WorkflowContext, _request: unknown) {
+  const input = yield* ctx.waitForSignal('input');
+  const confirmed = yield* ctx.waitForSignal('confirm');
+  return { input, confirmed };
+});
+
 /** A tool-style activity the progress workflow calls. */
 export const lookUpActivity = activity({
   name: 'lookUp',
@@ -116,6 +126,7 @@ export const FIXTURE_WORKFLOWS = [
   choiceWorkflow,
   echoWorkflow,
   failingWorkflow,
+  followUpWorkflow,
   loopingWorkflow,
   progressWorkflow,
 ];
