@@ -9,6 +9,25 @@ export type {
   CreateAgentCatalogOptions,
 } from './agent-catalog';
 export { createAgentCatalog } from './agent-catalog';
+export type {
+  AgentFileDefinition,
+  AgentFileDefinitionInput,
+  AgentFileErrorCode,
+  AgentFileFrontmatter,
+  AgentFileIssue,
+  AgentFileProblem,
+  AgentFileProblemCode,
+} from './agent-file';
+export {
+  AGENT_IDENTIFIER_PATTERN,
+  agentFileFrontmatterSchema,
+  AgentFileConflictError,
+  AgentFileError,
+  AgentSnapshotError,
+} from './agent-file';
+export type { AgentCatalogChange, AgentListing } from './agent-file-catalog';
+export type { AgentFileWriteResult } from './agent-file-writer';
+export type { AgentRevision } from './agent-snapshot-store';
 export type { AgentSkillsOptions } from './agent-skills';
 export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';

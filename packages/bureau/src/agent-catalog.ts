@@ -6,10 +6,20 @@
  * bureau's lifetime. `BureauAgentCatalog` is the read-only, immutable view
  * `bureau.agents` exposes over it — `get`/`find`/`has`/`names`/`entries`/
  * `query`, and nothing that mutates.
+ *
+ * With `BureauOptions.agentDirectory` (COR-1524) the catalog also holds agents loaded from
+ * Markdown files, which change at run time. Those are reached by runtime string: `find`, `list`,
+ * `revisions`, and the file write API. The `D`-typed accessors stay the code-defined map's.
  */
 
 import type { AgentGenerationProfile, AgentRun, RunnableAgent } from '@lostgradient/operative';
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
+
+import { AgentFileError } from './agent-file';
+import type { AgentCatalogChange, AgentFileCatalog, AgentListing } from './agent-file-catalog';
+import type { AgentFileWriter } from './agent-file-writer';
+import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
+import { ownerOrLocal } from './owner-of-record';
 
 /**
  * A plain literal map of agent name to `RunnableAgent`. There is no
@@ -168,6 +178,35 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    * provider configuration (AB-64's AB-15/AB-22 boundaries, AC9).
    */
   generationProfile(name: string): AgentGenerationProfile | undefined;
+  /**
+   * Every agent the deployment has, code-defined and file-based together (COR-1524): code agents
+   * first in definition order, then file agents by identifier. A file that cannot be used is
+   * listed with `state: 'invalid'` and a typed `problem`. Unlike {@link names} and
+   * {@link entries}, which describe the code-defined map the type parameter `D` types, this view
+   * is by runtime string.
+   */
+  list(): readonly AgentListing[];
+  /**
+   * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
+   * run that references it is retained (`BureauOptions.taskRetention`) and pruned after the last.
+   */
+  revisions(id: string): Promise<readonly AgentRevision[]>;
+  /**
+   * Rescan the agent directory now, and when the model catalog has changed since the last scan,
+   * revalidate against it. Resolves once the catalog reflects the directory. A no-op without
+   * `BureauOptions.agentDirectory`.
+   */
+  refresh(): Promise<void>;
+  /** Called after every rescan that added, changed, or removed a file agent. Returns its unsubscribe. */
+  onChange(listener: (change: AgentCatalogChange) => void): () => void;
+  /** The text and SHA-256 of an agent's file, the `expectedHash` of a later write. */
+  read: AgentFileWriter['read'];
+  /** Write a new agent file. Fails with `AgentFileConflictError` when the file exists. */
+  create: AgentFileWriter['create'];
+  /** Rewrite an agent file, keeping frontmatter keys Bureau does not know and the body. */
+  update: AgentFileWriter['update'];
+  /** Delete an agent file. */
+  delete: AgentFileWriter['delete'];
 }
 
 /**
@@ -181,6 +220,10 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
  */
 export interface CreateAgentCatalogOptions {
   readonly selectorAvailable?: boolean;
+  /** The agents loaded from `BureauOptions.agentDirectory` (COR-1524). */
+  readonly files?: AgentFileCatalog | undefined;
+  /** Where file agents' run snapshots live. */
+  readonly snapshots?: AgentSnapshotStore | undefined;
 }
 
 /**
@@ -205,6 +248,19 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   options?: CreateAgentCatalogOptions,
 ): BureauAgentCatalog<D> {
   const selectorAvailable = options?.selectorAvailable ?? false;
+  const files = options?.files;
+  const snapshots = options?.snapshots;
+  // A file agent is rebuilt whenever its file changes, so its profile is cached by the object.
+  const fileAgentProfiles = new WeakMap<object, AgentGenerationProfile>();
+  const requireFiles = (): AgentFileCatalog => {
+    if (files === undefined) {
+      throw new AgentFileError(
+        'agent-directory-not-configured',
+        'This Bureau has no agent directory. Pass BureauOptions.agentDirectory to use agent files.',
+      );
+    }
+    return files;
+  };
   // `Object.entries`/`Map` widen each value to the Record's own bound
   // (`RunnableAgent<never, false> | RunnableAgent<any, true>`), losing the
   // per-key precision `AgentCatalogEntry<D>` promises. The cast below
@@ -250,7 +306,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entry.agent as D[TName];
     },
     find(name) {
-      return byName.get(name)?.agent;
+      return byName.get(name)?.agent ?? files?.find(name);
     },
     has(name): name is keyof D & string {
       return byName.has(name);
@@ -265,8 +321,44 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return entries.filter(predicate);
     },
     generationProfile(name) {
-      return generationProfiles.get(name);
+      const cached = generationProfiles.get(name);
+      if (cached !== undefined) return cached;
+      const fileAgent = files?.find(name);
+      if (fileAgent === undefined) return undefined;
+      let profile = fileAgentProfiles.get(fileAgent);
+      if (profile === undefined) {
+        profile = buildCatalogGenerationProfile(fileAgent, selectorAvailable);
+        fileAgentProfiles.set(fileAgent, profile);
+      }
+      return profile;
     },
+    list() {
+      const owner = ownerOrLocal(undefined);
+      const code = entries.map((entry): AgentListing => ({
+        id: entry.name,
+        source: 'code',
+        state: 'ready',
+        name: entry.agent.name,
+        description: entry.agent.description ?? null,
+        published: false,
+        owner,
+      }));
+      return [...code, ...(files?.list() ?? [])];
+    },
+    revisions(id) {
+      return snapshots?.revisions(id) ?? Promise.resolve([]);
+    },
+    refresh() {
+      return files?.refresh() ?? Promise.resolve();
+    },
+    onChange(listener) {
+      return files?.onChange(listener) ?? (() => undefined);
+    },
+    read: async (id) => requireFiles().read(id),
+    create: async (id, definition) => requireFiles().create(id, definition),
+    update: async (id, definition, writeOptions) =>
+      requireFiles().update(id, definition, writeOptions),
+    delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
   };
 
   return Object.freeze(catalog);
