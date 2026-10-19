@@ -359,3 +359,62 @@ describe('withCache — backend-descriptor propagation (AB-64, AB-245, AB-288)',
     expect(readGenerationProfile(agent).mode).toBe('fixed');
   });
 });
+
+describe('withCache and response parts (COR-713)', () => {
+  const imageResponse: GenerateResponse = {
+    content: '',
+    parts: [
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'inline', data: 'AAAAUNIQUEBYTES', encoding: 'base64' },
+      },
+    ],
+    toolCalls: [],
+  };
+
+  it('does not cache a response that carries generated media, so its bytes are never re-admitted from the cache', async () => {
+    const store = textValueStore(new MemoryStorage());
+    const generate = createTrackingGenerate(imageResponse);
+    const wrapped = withCache(generate, { store });
+
+    await wrapped(makeContext());
+    await wrapped(makeContext());
+
+    expect(generate.calls).toHaveLength(2);
+    expect(await store.list('')).toEqual([]);
+  });
+
+  it('does not cache a response with provider-private replay parts either', async () => {
+    const store = textValueStore(new MemoryStorage());
+    const generate = createTrackingGenerate({
+      content: 'Hi',
+      parts: [
+        { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' },
+        { type: 'text', text: 'Hi' },
+      ],
+      toolCalls: [],
+    });
+    const wrapped = withCache(generate, { store });
+
+    await wrapped(makeContext());
+    await wrapped(makeContext());
+
+    expect(generate.calls).toHaveLength(2);
+  });
+
+  it('still caches a response whose parts are only text', async () => {
+    const store = textValueStore(new MemoryStorage());
+    const generate = createTrackingGenerate({
+      content: 'Hi',
+      parts: [{ type: 'text', text: 'Hi' }],
+      toolCalls: [],
+    });
+    const wrapped = withCache(generate, { store });
+
+    await wrapped(makeContext());
+    await wrapped(makeContext());
+
+    expect(generate.calls).toHaveLength(1);
+  });
+});

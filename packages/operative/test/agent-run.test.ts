@@ -193,6 +193,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('unwraps schema-backed output when output is configured', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"validated"}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -209,6 +210,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('preserves a validated undefined output', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"validated"}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -225,6 +227,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('omits output() from direct handles when no output schema is configured', () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: 'plain text',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -238,6 +241,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('throws a synthesized missing-output error when unwrap() expects output but none exists', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"missing"}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -253,6 +257,7 @@ describe('AgentRun.unwrap() and output()', () => {
   it('throws the terminal run error when unwrap() is called on a failed run', async () => {
     const failure = new Error('provider failed');
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '',
       conversation: {} as never,
       finishReason: 'error',
@@ -267,6 +272,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('throws a synthesized failure when unwrap() is called on an unsuccessful run without an Error', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '',
       conversation: {} as never,
       finishReason: 'aborted',
@@ -282,6 +288,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('throws a synthesized failure when output() is called on an unsuccessful run without an Error', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '',
       conversation: {} as never,
       finishReason: 'budget-exceeded',
@@ -298,6 +305,7 @@ describe('AgentRun.unwrap() and output()', () => {
   it('throws the schema validation error before returning content from unwrap()', async () => {
     const validationError = new Error('invalid answer');
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":1}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -312,6 +320,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('throws a synthesized schema failure when unwrap() sees failed validation without an Error', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":1}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -329,6 +338,7 @@ describe('AgentRun.unwrap() and output()', () => {
   it('throws the schema validation error when output() has no validated output', async () => {
     const validationError = new Error('missing output');
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"missing"}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -343,6 +353,7 @@ describe('AgentRun.unwrap() and output()', () => {
 
   it('throws a synthesized missing-output error when output() has no schema error', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"missing"}',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -358,6 +369,7 @@ describe('AgentRun.unwrap() and output()', () => {
   it('throws the maximum-steps policy error when output() is called on a capped run', async () => {
     const maximumStepsError = new MaximumStepsExceededError(3);
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: '{"answer":"missing"}',
       conversation: {} as never,
       finishReason: 'maximum-steps',
@@ -375,6 +387,7 @@ describe('AgentRun.unwrap() and output()', () => {
 describe('createDiagnosticAgentRun()', () => {
   it('removes schema-specific accessors from a recovered diagnostic run', async () => {
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: 'diagnostic result',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -394,6 +407,7 @@ describe('createDiagnosticAgentRun()', () => {
     // this proves createDiagnosticAgentRun actually has a way to receive
     // the registry that backs both, not only the always-empty default.
     const activeRun = createResolvedActiveRun({
+      parts: [],
       content: 'diagnostic result',
       conversation: {} as never,
       finishReason: 'stop-condition',
@@ -1004,6 +1018,7 @@ describe('AgentRun non-thenable contract', () => {
 describe('isSuccessfulRunResult', () => {
   function stopResult(overrides: Partial<RunResult> = {}): RunResult {
     return {
+      parts: [],
       conversation: {} as RunResult['conversation'],
       steps: [],
       content: 'ok',

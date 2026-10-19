@@ -108,6 +108,7 @@ function makeControllableAgent<O = never, H extends boolean = false>(): {
 
 function makeSuccessfulResult(content = 'ok'): SuccessfulRunResult {
   return {
+    parts: [],
     conversation: {} as never,
     content,
     finishReason: 'stop-condition',
@@ -194,6 +195,7 @@ describe('createSubagentTool', () => {
       'rejects with SubagentRunError carrying .result for finishReason %s',
       async (finishReason) => {
         const { agent } = makeMockAgent((): RunResult => ({
+          parts: [],
           conversation: {} as never,
           content: '',
           finishReason,
@@ -232,6 +234,7 @@ describe('createSubagentTool', () => {
         confidence: 1,
       });
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: '',
         finishReason: 'tripwire',
@@ -265,6 +268,7 @@ describe('createSubagentTool', () => {
     it('rejects with SubagentRunError when a clean stop fails schema validation (invalid output)', async () => {
       const validationError = new Error('output failed schema validation');
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: 'not json',
         finishReason: 'stop-condition',
@@ -429,6 +433,7 @@ describe('createSubagentTool', () => {
       // `z.undefined()`, an optional root) must still reach `toToolOutput`,
       // not be misclassified as "output missing".
       const { agent } = makeMockAgent<undefined, true>(() => ({
+        parts: [],
         conversation: {} as never,
         content: 'ok',
         finishReason: 'stop-condition',
@@ -453,6 +458,7 @@ describe('createSubagentTool', () => {
 
     it('no longer accepts treatMaximumStepsAsError — maximum-steps always rejects', async () => {
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: 'partial',
         finishReason: 'maximum-steps',
@@ -1218,6 +1224,7 @@ describe('createSubagentTool', () => {
       const usage = { prompt: 3, completion: 4, total: 7 };
       const steps: RunResult['steps'] = [];
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: 'verbatim',
         finishReason: 'stop-condition',
@@ -1256,6 +1263,7 @@ describe('createSubagentTool', () => {
   describe('AB-19 — SubagentRunError visibility through the real toolbox/agent-loop path', () => {
     it("is thrown with full identity from rawExecute, the boundary this tool's own code controls", async () => {
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: '',
         finishReason: 'error',
@@ -1282,6 +1290,7 @@ describe('createSubagentTool', () => {
 
     it('is normalized to a plain ToolError by armorer once driven through a real toolbox — a pre-existing, package-wide armorer behavior for every thrown tool error, not specific to this one', async () => {
       const { agent } = makeMockAgent((): RunResult => ({
+        parts: [],
         conversation: {} as never,
         content: '',
         finishReason: 'error',

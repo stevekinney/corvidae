@@ -4024,6 +4024,8 @@ describe('durable agentRun workflow', () => {
         const zeroAccumulators = {
           totalUsage: { prompt: 0, completion: 0, total: 0 },
           lastContent: '',
+          lastParts: [],
+          finalRowIsReplacement: false,
           schemaAttempts: 0,
           lastAppliedConfigVersion: 0,
         };
@@ -4049,7 +4051,7 @@ describe('durable agentRun workflow', () => {
               }
               yield* ctx.run('saveCursor', {
                 runId: ctx.workflowId,
-                cursor: { step: step + 1, ...zeroAccumulators },
+                cursor: { schemaVersion: 2 as const, step: step + 1, ...zeroAccumulators },
               });
             }
             return undefined;

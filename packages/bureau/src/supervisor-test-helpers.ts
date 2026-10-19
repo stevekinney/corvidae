@@ -6,6 +6,7 @@ export function makeRunResult(
   finishReason: RunResult['finishReason'] = 'stop-condition',
 ): RunResult {
   return {
+    parts: [],
     content,
     steps: [],
     conversation: new Conversation(),

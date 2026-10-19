@@ -76,7 +76,7 @@ import type {
   Tool,
   ToolRequestContext,
 } from 'armorer';
-import type { ConversationHistory, Message } from 'conversationalist';
+import type { ConversationHistory, Message, MultiModalContent } from 'conversationalist';
 
 import type {
   AgentDefinitions,
@@ -2371,6 +2371,10 @@ export type CancelDurableRunOutcome =
 export interface RunStepDetail {
   step: number;
   content: string;
+  /** The step's settled output parts; generated media is a managed-asset reference (COR-713). */
+  parts: readonly MultiModalContent[];
+  /** The id of the assistant row the step committed; absent when it committed none. */
+  messageId?: string | undefined;
   final: boolean;
   usage?: TokenUsage | undefined;
   toolCalls: readonly {

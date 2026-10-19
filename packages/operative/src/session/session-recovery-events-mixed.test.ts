@@ -42,6 +42,7 @@ describe('recover() — mixed outcomes and failures', () => {
       yield* ctx.waitForSignal('release-recovery-control');
       return {
         schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        parts: [],
         runId: olderRunId,
         steps: 1,
         content: 'resumed',

@@ -31,6 +31,7 @@
 
 import { type DelegationGrant, isDelegationGrant } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
+import { type MultiModalContent, multiModalContentSchema } from 'conversationalist';
 
 // ---------------------------------------------------------------------------
 // Record shapes
@@ -65,13 +66,37 @@ export interface BureauChildOutcome {
   readonly finishReason?: string | undefined;
   /** The child's final text, when it produced a result. */
   readonly content?: string | undefined;
+  /**
+   * The child's run-wide output parts (COR-713), when it produced a result; generated media is a
+   * managed-asset reference, never inline bytes.
+   */
+  readonly parts?: readonly MultiModalContent[] | undefined;
   /** Why the child ended without a clean result (an error, an abort reason, recovery). */
   readonly reason?: string | undefined;
 }
 
+/**
+ * The persisted child record's schema version. Version 2 (COR-713) adds `outcome.parts`; a
+ * version 1 record fails with {@link UnsupportedChildRecordVersionError}.
+ */
+export const CHILD_RECORD_SCHEMA_VERSION = 2 as const;
+
+/** Raised when a stored child record is at a schema version this build does not read. */
+export class UnsupportedChildRecordVersionError extends Error {
+  readonly version: number;
+
+  constructor(version: number) {
+    super(
+      `Unsupported child topology record schema version ${version}: this build reads version ${CHILD_RECORD_SCHEMA_VERSION}.`,
+    );
+    this.name = 'UnsupportedChildRecordVersionError';
+    this.version = version;
+  }
+}
+
 /** The durable description of one parent-child relationship. */
 export interface BureauChildRecord {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: typeof CHILD_RECORD_SCHEMA_VERSION;
   readonly parentRunId: string;
   readonly childRunId: string;
   readonly parentAgentName: string;
@@ -184,11 +209,22 @@ function isWorkflowIdentity(value: unknown): value is BureauChildWorkflowIdentit
   );
 }
 
+/** A child's recorded part is a valid content part and, like a run result's, never carries inline bytes. */
+function isStoredPart(part: unknown): boolean {
+  const parsed = multiModalContentSchema.safeParse(part);
+  if (!parsed.success) return false;
+  const source = (parsed.data as { source?: { kind?: string } }).source;
+  return source?.kind !== 'inline';
+}
+
 function isOutcome(value: unknown): value is BureauChildOutcome {
   return (
     isRecord(value) &&
     isOptional(value['finishReason'], 'string') &&
     isOptional(value['content'], 'string') &&
+    (value['parts'] === undefined ||
+      (Array.isArray(value['parts']) &&
+        (value['parts'] as unknown[]).every((part) => isStoredPart(part)))) &&
     isOptional(value['reason'], 'string')
   );
 }
@@ -198,7 +234,7 @@ function isChildRecord(value: unknown): value is BureauChildRecord {
   const revision = value['revision'];
   const recoveries = value['recoveries'];
   return (
-    value['schemaVersion'] === 1 &&
+    value['schemaVersion'] === CHILD_RECORD_SCHEMA_VERSION &&
     ['parentRunId', 'childRunId', 'parentAgentName', 'childAgentName'].every(
       (field) => typeof value[field] === 'string',
     ) &&
@@ -288,6 +324,13 @@ export interface ChildTopologyStore {
 export interface ChildTopologyStoreOptions {
   /** Called once per unreadable key encountered. Defaults to a no-op. */
   readonly onCorrupt?: ((key: string) => void) | undefined;
+  /**
+   * Called once per record a list skipped because it was written at another schema version
+   * (COR-713). A list never fails for one such record, so the rest still load; `get` and `update`
+   * still throw {@link UnsupportedChildRecordVersionError} for it. Defaults to a no-op.
+   */
+  readonly onUnsupported?:
+    ((key: string, error: UnsupportedChildRecordVersionError) => void) | undefined;
 }
 
 export function createChildTopologyStore(
@@ -295,6 +338,7 @@ export function createChildTopologyStore(
   options: ChildTopologyStoreOptions = {},
 ): ChildTopologyStore {
   const onCorrupt = options.onCorrupt ?? (() => {});
+  const onUnsupported = options.onUnsupported ?? (() => {});
 
   async function readRecord(
     key: string,
@@ -302,6 +346,13 @@ export function createChildTopologyStore(
     const raw = await kv.get(key);
     if (raw === null) return undefined;
     const parsed = parseJson(raw);
+    // COR-713: a record written at an older schema version is not corrupt and is not read as
+    // current; it fails explicitly, so an operator sees the version rather than a vanished child.
+    if (isRecord(parsed) && typeof parsed['schemaVersion'] === 'number') {
+      if (parsed['schemaVersion'] !== CHILD_RECORD_SCHEMA_VERSION) {
+        throw new UnsupportedChildRecordVersionError(parsed['schemaVersion']);
+      }
+    }
     if (!isChildRecord(parsed)) {
       onCorrupt(key);
       return { raw, record: undefined };
@@ -315,7 +366,20 @@ export function createChildTopologyStore(
   }
 
   async function readRecords(keys: readonly string[]): Promise<BureauChildRecord[]> {
-    const stored = await Promise.all(keys.map((key) => readRecord(key)));
+    // One record at another schema version is skipped and reported, not allowed to reject the
+    // whole list: recovery lists every child, and a single old record would otherwise leave every
+    // other child unrecovered for the life of the process.
+    const stored = await Promise.all(
+      keys.map(async (key) => {
+        try {
+          return await readRecord(key);
+        } catch (error) {
+          if (!(error instanceof UnsupportedChildRecordVersionError)) throw error;
+          onUnsupported(key, error);
+          return undefined;
+        }
+      }),
+    );
     return stored
       .map((entry) => entry?.record)
       .filter((record): record is BureauChildRecord => record !== undefined);

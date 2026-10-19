@@ -1,5 +1,6 @@
 import { CompletableEventTarget, createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
+import { type AdmissionTracker, createAdmissionTracker } from '../admission-tracker';
 
 import type { CombinedOperativeEventMap, OperativeEventEmitter } from '../events';
 import {
@@ -57,6 +58,11 @@ export interface RecoveredRunEventSurface {
   emitter: OperativeEventEmitter;
   abort: (reason?: string) => void;
   stopToolboxForward: () => void;
+  /**
+   * COR-713: collects the generated-media admissions the recovered run's steps start (it is
+   * installed on `services.admissionTracker`), so the reattached `ActiveRun.closed()` waits for them.
+   */
+  admissions: AdmissionTracker;
 }
 
 /**
@@ -207,8 +213,16 @@ export function createRecoveredRunEventSurface(
   };
   cleanups.push(() => toolboxForwarder.stop());
 
+  const admissions = createAdmissionTracker();
+  const priorAdmissionTracker = services.admissionTracker;
+  services.admissionTracker = (admission) => {
+    priorAdmissionTracker?.(admission);
+    admissions.track(admission);
+  };
+
   return {
     emitter,
+    admissions,
     stopToolboxForward: () => {
       for (const cleanup of cleanups) cleanup?.();
     },

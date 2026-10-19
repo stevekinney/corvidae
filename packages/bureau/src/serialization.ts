@@ -260,6 +260,8 @@ export function serializeRunDetail(
     stepDetails: runState.steps.map((step) => ({
       step: step.step,
       content: step.content,
+      parts: step.parts,
+      ...(step.messageId === undefined ? {} : { messageId: step.messageId }),
       final: step.final,
       usage: step.usage,
       toolCalls: step.toolCalls.map((toolCall) => ({

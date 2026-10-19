@@ -27,6 +27,7 @@ import {
 } from './child-topology';
 import {
   type BureauChildRecord,
+  CHILD_RECORD_KEY_PREFIX,
   type ChildTopologyStore,
   createChildTopologyStore,
 } from './child-topology-store';
@@ -62,15 +63,25 @@ function createFakeRun(slowToAbort = false): FakeRun {
     result: () => result,
     abort(reason?: string) {
       abortReasons.push(reason);
-      if (!slowToAbort) resolveResult({ finishReason: 'aborted', content: '' });
+      if (!slowToAbort) resolveResult({ finishReason: 'aborted', content: '', parts: [] });
     },
   } as unknown as AgentRun<unknown, boolean>;
   return {
     run,
     abortReasons,
-    complete: (content = 'done') => resolveResult({ finishReason: 'stop-condition', content }),
+    complete: (content = 'done') =>
+      resolveResult({
+        finishReason: 'stop-condition',
+        content,
+        parts: [{ type: 'text', text: content }],
+      }),
     finish: (finishReason, error) =>
-      resolveResult({ finishReason, content: '', ...(error === undefined ? {} : { error }) }),
+      resolveResult({
+        finishReason,
+        content: '',
+        parts: [],
+        ...(error === undefined ? {} : { error }),
+      }),
     reject: (error) => rejectResult(error),
   };
 }
@@ -255,7 +266,7 @@ async function startedChild(
 
 function runningRecord(overrides: Partial<BureauChildRecord> = {}): BureauChildRecord {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     parentRunId: 'parent-1',
     childRunId: 'child-a',
     parentAgentName: 'planner',
@@ -295,7 +306,7 @@ describe('children.dispatch', () => {
     expect(outcome).toEqual({
       outcome: 'started',
       child: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         parentRunId: 'parent-1',
         childRunId: 'child-a',
         parentAgentName: 'planner',
@@ -640,7 +651,11 @@ describe('child settlement', () => {
         status: 'completed',
         revision: 2,
         settledAt: fixture.runtime.clock.now(),
-        outcome: { finishReason: 'stop-condition', content: 'the answer' },
+        outcome: {
+          finishReason: 'stop-condition',
+          content: 'the answer',
+          parts: [{ type: 'text', text: 'the answer' }],
+        },
       }),
     });
     expect(auditTypes(fixture.audits)).toEqual(['child.started', 'child.completed']);
@@ -670,6 +685,7 @@ describe('child settlement', () => {
     expect(exhaustedRecord?.outcome).toEqual({
       finishReason: 'maximum-steps',
       content: '',
+      parts: [],
     });
   });
 
@@ -1399,6 +1415,24 @@ describe('recovery', () => {
     await fixture.topology.reconcileRecovery();
     await fixture.topology.drain();
   }
+
+  it('recovers a current child although another child record is at an unsupported version (COR-713)', async () => {
+    const engine = createFakeEngine();
+    const fixture = createFixture({ engine });
+    await fixture.store.register(runningRecord({ childRunId: 'current' }));
+    await fixture.kv.set(
+      `${CHILD_RECORD_KEY_PREFIX}old`,
+      JSON.stringify({ ...runningRecord({ childRunId: 'old' }), schemaVersion: 1 }),
+    );
+
+    await recover(fixture);
+
+    // The old record is skipped; the current child is reconciled (no workflow on the fake engine).
+    expect(await fixture.store.get('current')).toMatchObject({
+      status: 'failed',
+      outcome: { reason: 'workflow missing on recovery' },
+    });
+  });
 
   it('records children that cannot come back — process-local, no engine, or no workflow — as failed', async () => {
     const engine = createFakeEngine();

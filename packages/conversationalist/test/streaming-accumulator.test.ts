@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { contentOf, createStreamingAccumulator, toolCallsOf } from '../src/streaming-accumulator';
+import {
+  contentOf,
+  createStreamingAccumulator,
+  finalizeBlockState,
+  toolCallsOf,
+} from '../src/streaming-accumulator';
 
 const testEnvironment = {
   now: () => '2024-01-01T00:00:00.000Z',
@@ -330,5 +335,34 @@ describe('C4 — createStreamingAccumulator (multi-part accumulation)', () => {
         content: { stdout: 'ok', exit_code: 0 },
       },
     ]);
+  });
+
+  it('accumulates a container_upload block (file id seeded at openBlock)', () => {
+    const acc = createStreamingAccumulator();
+    acc.openBlock(0, { type: 'container_upload', file_id: 'file-123' });
+
+    expect(contentOf(acc.finalize())).toEqual([{ type: 'container_upload', file_id: 'file-123' }]);
+  });
+
+  it('finalizes one block on its own, so a caller can report it complete as its stop event arrives', () => {
+    expect(finalizeBlockState({ type: 'thinking', buffer: 'Plan.', signature: 'sig-1' })).toEqual({
+      type: 'thinking',
+      thinking: 'Plan.',
+      signature: 'sig-1',
+    });
+    expect(
+      finalizeBlockState({
+        type: 'server_tool_use',
+        id: 's1',
+        name: 'web_search',
+        inputBuffer: '{"q":"x"}',
+      }),
+    ).toEqual({ type: 'server_tool_use', id: 's1', name: 'web_search', input: { q: 'x' } });
+    expect(
+      finalizeBlockState({ type: 'text', buffer: 'cited', citations: [{ cited_text: 'c' }] }),
+    ).toEqual({ type: 'text', text: 'cited', citations: [{ cited_text: 'c' }] });
+    expect(
+      finalizeBlockState({ type: 'tool_use', id: 't1', name: 'tool', inputBuffer: '{}' }),
+    ).toBe(undefined);
   });
 });

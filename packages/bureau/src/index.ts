@@ -33,6 +33,7 @@ export { createAgentSkills } from './agent-skills';
 export type { AssetServiceOptions, BureauAssetOptions } from './assets/asset-service';
 export { createAssetService, managedAssetSource } from './assets/asset-service';
 export { createAssetContentSourceResolver } from './assets/content-source-resolver';
+export { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 export {
   AssetAccessDeniedError,
   AssetAdmissionError,
@@ -131,6 +132,7 @@ export type {
   BureauChildWaitOutcome,
 } from './child-topology';
 export { CHILD_AGENT_RUN_WORKFLOW_TYPE } from './child-topology';
+export { UnsupportedChildRecordVersionError } from './child-topology-store';
 export type {
   BureauChildOutcome,
   BureauChildParentCancellation,

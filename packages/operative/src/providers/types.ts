@@ -191,6 +191,20 @@ export interface AnthropicMessageResponse {
     id?: string | undefined;
     name?: string | undefined;
     input?: unknown;
+    /** A `thinking` block's reasoning text. */
+    thinking?: string | undefined;
+    /** A `thinking` block's signature; replayed verbatim. */
+    signature?: string | undefined;
+    /** A `redacted_thinking` block's encrypted payload; replayed verbatim. */
+    data?: string | undefined;
+    /** A `text` block's citations (`null` when absent); kept opaque. */
+    citations?: unknown;
+    /** The server tool use a result block answers. */
+    tool_use_id?: string | undefined;
+    /** A server-tool result block's content; kept opaque. */
+    content?: unknown;
+    /** A `container_upload` block's file id. */
+    file_id?: string | undefined;
   }>;
   usage?:
     | {
@@ -292,29 +306,10 @@ export interface AnthropicProviderOptions extends BaseProviderOptions {
    * `extendedCacheTtl` and `baseURL` as the other native-shape options on
    * this type.
    *
-   * ## Known limitation: thinking is not yet supported end-to-end with tool calls
-   *
-   * Setting this alongside a toolbox is **not** a supported combination today.
-   * Anthropic documents thinking-block replay as mandatory inside a tool-use
-   * turn — "Required: within a tool-use turn, pass thinking blocks back",
-   * "complete and unmodified", each block carrying the signed `signature` the
-   * server decrypts to reconstruct the reasoning. This provider extracts only
-   * `text` and `tool_use` blocks from the response, so the `thinking` (or
-   * `redacted_thinking`) block that accompanied the tool call never reaches
-   * the conversation, and the follow-up request that carries the tool result
-   * omits it. Anthropic does not hard-fail that request: it degrades — the API
-   * strips blocks that would form an invalid turn structure, or silently
-   * disables thinking for that request — so the failure mode is quality loss
-   * that never announces itself, not an error the caller can catch.
-   *
-   * Fixing it means preserving native response blocks in conversation history,
-   * which is **output**-side work owned by AB-73 (the multimodal output
-   * contract, project ABP-13) and reaches into conversationalist's message
-   * model and `run-step.ts`. AB-157 — the issue that added this option — is
-   * scoped to the *request* knob only, and is recorded as `related` to AB-73
-   * precisely so both do not quietly reshape the same response surface. Until
-   * AB-73 lands, use this option on tool-free requests, or accept that
-   * multi-step tool loops lose reasoning continuity between steps.
+   * The `thinking` and `redacted_thinking` blocks a response carries are kept as ordered
+   * `GenerateResponse.parts` in both factories, committed to the assistant row, and replayed
+   * byte-identical, before `tool_use` in the same assistant turn, on the next request, so thinking
+   * and tool calls combine without losing reasoning continuity.
    *
    * ## Validation
    *
@@ -424,6 +419,14 @@ export interface OpenAIChatCompletion {
   choices: Array<{
     message: {
       content?: (string | null) | undefined;
+      /** The model's refusal text; model output, kept in metadata. */
+      refusal?: (string | null) | undefined;
+      /** Citation annotations on `content`; kept in metadata. */
+      annotations?: unknown;
+      /** Audio output; unadvertised, so a response carrying it fails typed. */
+      audio?: unknown;
+      /** The deprecated single function call; unmapped, so a response carrying it fails typed. */
+      function_call?: unknown;
       tool_calls?:
         | Array<
             | {
@@ -518,6 +521,24 @@ export interface GeminiGenerateContentResult {
           parts?: Array<{
             text?: string;
             functionCall?: { name?: string; args?: Record<string, unknown> };
+            /** True for a thought-summary text part; never answer text. */
+            thought?: boolean;
+            /** Opaque replay data Gemini 2.5 attaches to a part; it has no content representation. */
+            thoughtSignature?: string;
+            /** Inline media output (image, audio, video, document), base64. */
+            inlineData?: { mimeType?: string; data?: string };
+            /** Every other `Part` field `@google/genai` declares, kept opaque so it is detected. */
+            fileData?: unknown;
+            executableCode?: unknown;
+            codeExecutionResult?: unknown;
+            functionResponse?: unknown;
+            toolCall?: unknown;
+            toolResponse?: unknown;
+            audioTranscription?: unknown;
+            videoMetadata?: unknown;
+            partMetadata?: unknown;
+            mediaResolution?: unknown;
+            mediaProcessing?: unknown;
           }>;
         };
       }>
@@ -843,12 +864,29 @@ export interface AnthropicStreamEvent {
       }
     | undefined;
   index?: number | undefined;
-  content_block?: { type: string; id?: string; name?: string; text?: string } | undefined;
+  content_block?:
+    | {
+        type: string;
+        id?: string;
+        name?: string;
+        text?: string;
+        thinking?: string;
+        signature?: string;
+        data?: string;
+        citations?: unknown;
+        tool_use_id?: string;
+        content?: unknown;
+        file_id?: string;
+        input?: unknown;
+      }
+    | undefined;
   delta?:
     | {
         type?: string;
         text?: string;
         thinking?: string;
+        signature?: string;
+        citation?: unknown;
         partial_json?: string;
         /**
          * Widened to allow `null`: the SDK's `RawMessageDeltaEvent.Delta.stop_reason`
@@ -868,6 +906,12 @@ export interface OpenAIChatCompletionChunk {
   choices: Array<{
     delta: {
       content?: (string | null) | undefined;
+      refusal?: (string | null) | undefined;
+      role?: string | undefined;
+      /** Audio output; unadvertised, so a stream carrying it fails typed. */
+      audio?: unknown;
+      /** The deprecated single function call; unmapped, so a stream carrying it fails typed. */
+      function_call?: unknown;
       tool_calls?:
         | Array<{
             index: number;

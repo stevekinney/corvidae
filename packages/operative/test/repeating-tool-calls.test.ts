@@ -32,6 +32,8 @@ function toolCallResponse(
 }
 
 const makeStepResult = (overrides: Partial<StepResult> = {}): StepResult => ({
+  parts: [],
+  messageId: undefined,
   step: 0,
   conversation: {} as any,
   content: '',

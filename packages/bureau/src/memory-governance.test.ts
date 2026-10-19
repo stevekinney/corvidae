@@ -65,7 +65,16 @@ const inspector = createMemoryAuthority({
 });
 
 function stepResult(step: number, content: string, final = true) {
-  return { step, conversation: new Conversation(), content, toolCalls: [], results: [], final };
+  return {
+    parts: [],
+    messageId: undefined,
+    step,
+    conversation: new Conversation(),
+    content,
+    toolCalls: [],
+    results: [],
+    final,
+  };
 }
 
 describe('createRunMemoryAuthority (COR-41)', () => {
