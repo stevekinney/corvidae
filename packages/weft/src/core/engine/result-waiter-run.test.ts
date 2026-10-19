@@ -13,8 +13,10 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { encode } from '../codec.ts';
+import { workflow, type WorkflowContext } from '../types.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { bootstrapWorkflowResultResolver, getWorkflowResultPromise } from './handle-result.ts';
+import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING, Engine } from './index.ts';
 import {
   bindResultWaiterToRun,
   resultWaiterForRun,
@@ -189,5 +191,73 @@ describe('getWorkflowResultPromise', () => {
     expect(promise).not.toBe(stale.promise);
     expect(await rejectionOf(stale.promise)).toEqual(workflowRunReplacedError(WORKFLOW_ID));
     expect(internals.resultResolvers.get(WORKFLOW_ID)?.workflowExecutionToken).toBe('run-b');
+  });
+});
+
+describe('a result() call while this engine holds the run suspended (COR-1604)', () => {
+  const maybeWait = workflow({ name: 'cor-1604-maybe-wait' }).execute(async function* (
+    ctx: WorkflowContext,
+    input: { wait: boolean; value: string },
+  ) {
+    if (input.wait) yield* ctx.waitForSignal('go');
+    return input.value;
+  });
+
+  /** A view of `shared` whose `get` of `key` waits for `gate` once `armed` is set. */
+  function gatedView(
+    shared: MemoryStorage,
+    key: string,
+    gate: { armed: boolean; reached: PromiseWithResolvers<void>; release: Promise<void> },
+  ): MemoryStorage {
+    return new Proxy(shared, {
+      get(target, property) {
+        if (property === 'get') {
+          return async (requested: string) => {
+            if (gate.armed && requested === key) {
+              gate.armed = false;
+              gate.reached.resolve();
+              await gate.release;
+            }
+            return await target.get(requested);
+          };
+        }
+        const value: unknown = Reflect.get(target, property, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  }
+
+  it('rejects as replaced when another engine replaces and ends the run before the first read', async () => {
+    const id = 'cor-1604-suspended-waiter';
+    const shared = new MemoryStorage();
+    const release = Promise.withResolvers<void>();
+    const gate = { armed: false, reached: Promise.withResolvers<void>(), release: release.promise };
+    await using holder = new Engine({ storage: gatedView(shared, KEYS.workflow(id), gate) });
+    await using other = new Engine({ storage: shared });
+    holder.register(maybeWait);
+    other.register(maybeWait);
+
+    await holder.start(maybeWait.name, { wait: true, value: 'original' }, { id });
+    await holder[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING](id);
+    await holder.suspend(id);
+
+    // The holder keeps no checkpoint for a suspended run, only the attempt that launched it.
+    gate.armed = true;
+    const result = holder.getHandle(id).result();
+    await gate.reached.promise;
+
+    // Another engine cancels the run and a `start-new` replacement runs to completion, all
+    // before the holder's result() reads the record for the first time.
+    await other.cancel(id);
+    const replacement = await other.start(
+      maybeWait.name,
+      { wait: false, value: 'replacement' },
+      { id, onTerminalConflict: 'start-new' },
+    );
+    expect(await replacement.result()).toBe('replacement');
+    release.resolve();
+
+    const reason = await rejectionOf(result);
+    expect(reason).toEqual(workflowRunReplacedError(id));
   });
 });

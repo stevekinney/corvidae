@@ -2,6 +2,7 @@ import type { WorkflowState } from '../types.ts';
 import { abandonedGenerationConflict } from './checkpoint-conflict-abandon.ts';
 import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { EngineDisposedError } from './errors.ts';
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import type { EngineInternals } from './internals.ts';
 import { copyResultCommitter, recordResultCommitter } from './result-committer.ts';
@@ -30,12 +31,15 @@ export function createWorkflowHandleWithResultPromise(
 /**
  * The token of the run this engine holds for `workflowId` right now. The live checkpoint is
  * replaced when a `start-new` replacement launches here, whereas the durable inline-operation
- * record can still name the run it replaced, so the checkpoint is read first.
+ * record can still name the run it replaced, so the checkpoint is read first. With neither, the
+ * execution attempt still names the run while it is suspended (COR-1604), so a waiter created
+ * then is bound to that run rather than to whichever run its first durable read finds.
  */
 function localRunToken(internals: EngineInternals, workflowId: string): string | undefined {
   return (
     internals.checkpoints?.get(workflowId)?.workflowExecutionToken ??
-    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken
+    internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken ??
+    currentExecutionAttempt(internals, workflowId)?.workflowExecutionToken
   );
 }
 
