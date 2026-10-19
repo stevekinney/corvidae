@@ -323,7 +323,8 @@ describe('a claim this execution loses', () => {
     await started.durablyStarted;
     // The continuation holds the winner's snapshot from the moment it starts, so a pass that
     // prunes snapshots nothing holds cannot take it from under the run.
-    expect((await h.snapshots.reference(attempt.runId))?.hash).toBe(winnerHash);
+    const tied = await h.snapshots.reference(attempt.runId);
+    expect(tied?.hash).toBe(winnerHash);
     await started.run.result();
     await settled(h);
 

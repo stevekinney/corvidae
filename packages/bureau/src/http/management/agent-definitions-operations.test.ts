@@ -471,9 +471,10 @@ describe('results', () => {
     expect(text).toContain(`model: ${OTHER_MODEL}`);
     expect(text.endsWith('Rewritten.\n')).toBe(true);
     expect(updated.result?.['hash']).toBe(served.hashOf('researcher'));
-    expect(
-      (await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' })).result,
-    ).toMatchObject({ published: true });
+    const afterwards = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'researcher',
+    });
+    expect(afterwards.result).toMatchObject({ published: true });
   });
 
   it('writes nothing for an update that changes nothing, and returns the same hash', async () => {
@@ -630,9 +631,8 @@ describe('publication', () => {
       ['alpha', 'published'],
       ['researcher', 'withdrawn'],
     ]);
-    expect(
-      (await callAs(served.local, 'bureau.deployment.get', {})).result?.['publishedAgents'],
-    ).toEqual(['alpha']);
+    const deploymentAfter = await callAs(served.local, 'bureau.deployment.get', {});
+    expect(deploymentAfter.result?.['publishedAgents']).toEqual(['alpha']);
   });
 
   it('keeps the allowlist as the only way to publish a code-defined agent', async () => {
@@ -685,10 +685,8 @@ describe('delete', () => {
     expect(deleted.error).toBeUndefined();
     await served.bureau.agents.refresh();
     expect(served.bureau.agents.find('researcher')).toBeUndefined();
-    expect(
-      (await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' })).error
-        ?.data?.httpStatus,
-    ).toBe(404);
+    const gone = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'researcher' });
+    expect(gone.error?.data?.httpStatus).toBe(404);
     // The run that began on the file is retained, so the snapshot it began on is too.
     const revisions = await callAs(served.owner, 'bureau.agents.definitions.revisions', {
       id: 'researcher',
@@ -817,7 +815,11 @@ describe('faults', () => {
   });
 
   it('UnsupportedCapability to write on a Bureau with no agent directory, while it still lists its code agents', async () => {
-    const bureau = await createBureau({ id: 'no-directory', agents: {}, storage: { type: 'memory' } });
+    const bureau = await createBureau({
+      id: 'no-directory',
+      agents: {},
+      storage: { type: 'memory' },
+    });
     try {
       const handler = createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
       const created = await callAs(handler, 'bureau.agents.definitions.create', {

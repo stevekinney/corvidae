@@ -394,7 +394,8 @@ export const agentDefinitionsUpdateOperation = defineOperation<
     const definitions = requireAccess(host, principal, 'bureau.agents:write', input.id);
     try {
       // The definition the caller supplies has no `published`: the file keeps the state it has.
-      const published = (await definitions.agents.detail(input.id))?.definition?.published;
+      const current = await definitions.agents.detail(input.id);
+      const published = current?.definition?.published;
       const result = await definitions.agents.update(
         input.id,
         { ...definitionOf(input.definition), ...(published === undefined ? {} : { published }) },

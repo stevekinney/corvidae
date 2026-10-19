@@ -208,7 +208,8 @@ describe('publish and withdraw', () => {
     for (const [name, text] of before) {
       expect(await readFile(join(fixture.directory, name), 'utf8')).toBe(text);
     }
-    expect((await readdir(fixture.directory)).toSorted()).toEqual(['off.md', 'on.md']);
+    const names = await readdir(fixture.directory);
+    expect(names.toSorted()).toEqual(['off.md', 'on.md']);
   });
 
   it('conflict, with the hash on disk, when the file changed since it was read, and write nothing', async () => {
