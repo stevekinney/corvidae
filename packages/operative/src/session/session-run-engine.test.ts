@@ -273,11 +273,18 @@ describe('session.run() — durable engine and terminal authority', () => {
         runOptions: createTestRunOptions(),
       });
 
-      expect(await throwingRejectionOf(handle.run('prompt').result())).toThrow(
-        commitMode === 'matching'
-          ? 'engine infrastructure failure'
-          : 'Failed to persist terminal failure',
-      );
+      const run = handle.run('prompt').result();
+      if (commitMode === 'matching') {
+        // The engine's rejection settles the run as an error (COR-1587), so the session's own
+        // terminal commit finds the matching `error` already there and the result resolves.
+        expect((await run).finishReason).toBe('error');
+      } else {
+        expect(await throwingRejectionOf(run)).toThrow(
+          commitMode === 'conflict'
+            ? 'has a conflicting terminal classification'
+            : 'disappeared before run',
+        );
+      }
       const rejectedSession = await baseStore.load('reject-terminal-authority');
       expect(rejectedSession?.runs[0]?.outcome).toEqual(
         commitMode === 'missing'

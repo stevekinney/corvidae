@@ -295,8 +295,10 @@ type SettleRejectedRunArgs = Omit<
   FinalizeArgs,
   'finishReason' | 'errorMessage' | 'abortReason' | 'schemaValidation' | 'output' | 'tripwire'
 > & {
-  /** What `handle.result()` rejected with, which no branch of the driver classified. */
+  /** What `handle.result()` rejected with. */
   rejection: unknown;
+  /** The message to report, when the rejection's own is not the one (a classified timeout). */
+  message?: string | undefined;
 };
 
 /**
@@ -311,8 +313,9 @@ type SettleRejectedRunArgs = Omit<
  * `run.error` a step already fired is not repeated, and its error is the one reported.
  */
 export function settleRejectedRun(args: SettleRejectedRunArgs): RunResult {
-  const { rejection, ...rest } = args;
-  const message = rejection instanceof Error ? rejection.message : String(rejection);
+  const { rejection, message: reportedMessage, ...rest } = args;
+  const message =
+    reportedMessage ?? (rejection instanceof Error ? rejection.message : String(rejection));
   const stepCount = rest.runState.steps.length;
   const terminalError =
     rest.terminalError ??

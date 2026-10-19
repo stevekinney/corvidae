@@ -141,3 +141,52 @@ describe('a durable run whose engine fails it (COR-1587)', () => {
     });
   }
 });
+
+describe('a durable run the engine times out (COR-1587)', () => {
+  it('ends the stream with RUN_ERROR, and the run record and session read error', async () => {
+    const generate = createScriptedGenerate([say('First.'), say('Second.'), say('Answer.')]);
+    const bureau = await createBureau({
+      id: 'engine-timeout',
+      agents: {
+        assistant: createAgent({ generate, name: 'assistant', stopWhen: stopWhen.noToolCalls() }),
+      },
+      generate,
+      storage: new MemoryStorage(),
+      durableExecution: true,
+      // A history this short is breached by the run's own events, which the engine reports as a
+      // timeout: a `WorkflowTimeoutError` that carries no `run.error` of its own.
+      durableGuardrails: { history: { maxEvents: 4 } },
+      sessionPersistenceRetryDelayMilliseconds: 0,
+      stopWhen: stopWhen.noToolCalls(),
+      onDiagnostic: () => undefined,
+    });
+    const handler = createBureauHandler(bureau, {
+      unauthenticatedAccess: 'allow',
+      publish: ['assistant'],
+      agUi: {},
+    });
+    const stream = new FrameReader(
+      await handler(startRequest(runAgentInput({ threadId: 'thread-1', runId: 'client-run-1' }))),
+    );
+    try {
+      let stuck: ReturnType<typeof setTimeout> | undefined;
+      const outcome = await Promise.race([
+        stream.rest().then(() => 'ended' as const),
+        new Promise<'stuck'>((resolve) => {
+          stuck = setTimeout(() => resolve('stuck'), STUCK_AFTER_MILLISECONDS);
+        }),
+      ]);
+      clearTimeout(stuck);
+
+      expect(outcome).toBe('ended');
+      expect(stream.received.at(-1)?.event.type).toBe(EventType.RUN_ERROR);
+      expect(typesOf(stream.received)).not.toContain(EventType.RUN_FINISHED);
+      expect(bureau.listRuns()[0]?.status).toBe('error');
+      const session = await bureau.getSession('thread-1');
+      expect(session?.metadata['lastRunStatus']).toBe('error');
+    } finally {
+      await stream.cancel().catch(() => undefined);
+      await bureau.dispose();
+    }
+  });
+});

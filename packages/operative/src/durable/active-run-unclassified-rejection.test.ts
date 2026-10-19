@@ -225,6 +225,39 @@ describe('a durable run whose result rejects with an unclassified error', () => 
   });
 });
 
+describe('a durable run whose result rejects with a WorkflowTimeoutError', () => {
+  const timeout = () =>
+    Object.assign(new Error('workflow timed out'), { code: 'WorkflowTimeoutError' });
+
+  for (const [driver, expected] of [
+    [drivers[0]!, 'execution deadline'],
+    [drivers[1]!, 'history circuit breaker'],
+  ] as const) {
+    it(`settles as error and fires run.error then one run.completed (${driver.name})`, async () => {
+      const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+      const terminalEvents = observeTerminalLifecycle(emitter);
+
+      const result = await driver.settle(timeout(), emitter, {
+        get: async () =>
+          expected === 'history circuit breaker'
+            ? { status: 'timed-out', terminationReason: 'history-circuit-breaker' }
+            : { status: 'timed-out' },
+      });
+      await macrotask();
+
+      // `run.error` is what turns the run record to `error` and ends an AG-UI stream with
+      // `RUN_ERROR`; `run.completed` alone reads as a run that finished.
+      expect(result.finishReason).toBe('error');
+      expect(messageOf(result.error)).toContain(expected);
+      expect(terminalEvents).toEqual([
+        { type: RunErrorEvent.type, error: messageOf(result.error) },
+        { type: RunCompletedEvent.type, finishReason: 'error', error: messageOf(result.error) },
+      ]);
+      expect(unhandledRejections).toEqual([]);
+    });
+  }
+});
+
 describe('a reattached run the recovery resolver already failed before replay', () => {
   it('fires no terminal lifecycle, because the resolver recorded the session as error', async () => {
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();

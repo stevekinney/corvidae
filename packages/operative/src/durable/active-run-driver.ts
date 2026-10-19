@@ -359,36 +359,21 @@ export async function driveDurableRun(
     // reattach driver rethrows it the same way.
     if (error instanceof UnsupportedRunResultVersionError) throw error;
 
-    // A `history.maxEvents` circuit-breaker (or a genuine execution-deadline timeout) rejects
-    // `handle.result()` with a `WorkflowTimeoutError`. The error code is `'WorkflowTimeoutError'`
-    // (no 'd' — distinct from the `WorkflowTimedOutEvent` name) and carries NO
-    // `terminationReason`, so the circuit-breaker-vs-deadline distinction must come from the
-    // engine's stored state. Either way the run is genuinely terminal (not abandoned-for-recovery
-    // like EngineDisposedError), so classify it as `error` and fire the terminal lifecycle here
-    // rather than rethrowing into the unawaited `.then()` chain (which would surface as an
-    // unhandled rejection and leave the session stuck `running`).
-    if (isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError') {
-      const message = await classifyTimeoutMessage(context, runId, error);
-      return finalizeRunResult({
-        finishReason: 'error',
-        runState: emptyRunState(),
-        conversation,
-        hooks,
-        emitter,
-        runStartTime,
-        runtime,
-        errorMessage: message,
-        costEstimation: options.costEstimation,
-        hookTracker,
-      });
-    }
-
-    // Anything else is an activity or workflow-body failure, which rejects `handle.result()`
-    // with a plain `Error` that carries no code (COR-1587). It is as terminal as a timeout and
-    // nothing else reports it, so settle it as `error` here. A `run.error` a step already fired
-    // keeps its real error.
+    // Anything that reaches here is the run ending in this process, and nothing else reports it
+    // (COR-1587). A `history.maxEvents` circuit-breaker (or a genuine execution-deadline timeout)
+    // rejects `handle.result()` with a `WorkflowTimeoutError`. The error code is
+    // `'WorkflowTimeoutError'` (no 'd' — distinct from the `WorkflowTimedOutEvent` name) and
+    // carries NO `terminationReason`, so the circuit-breaker-vs-deadline distinction must come
+    // from the engine's stored state. An activity or workflow-body failure rejects with a plain
+    // `Error` that carries no code. Either way the run is genuinely terminal (not
+    // abandoned-for-recovery like EngineDisposedError), so settle it as `error` and fire the
+    // terminal lifecycle here rather than rethrowing into the unawaited `.then()` chain (which
+    // would surface as an unhandled rejection and leave the session stuck `running`). A
+    // `run.error` a step already fired keeps its real error.
+    const timedOut = isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError';
     return settleRejectedRun({
       rejection: error,
+      ...(timedOut ? { message: await classifyTimeoutMessage(context, runId, error) } : {}),
       runState: emptyRunState(),
       conversation,
       hooks,

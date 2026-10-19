@@ -54,6 +54,11 @@ export async function driveReattachedRun(
   // Started before anything below awaits, so it reads the state as the recovery hook handed the
   // run over (see `engineFailedRunBeforeReplay`).
   const failedBeforeReplay = engineFailedRunBeforeReplay(context, runId);
+  // A step's own `run.error`, so a rejection that follows it is not announced a second time.
+  let terminalErrorFromEvent: AgentRunError | undefined;
+  emitter.addEventListener('run.error', (event) => {
+    terminalErrorFromEvent = event.error;
+  });
 
   let summary: AgentRunWorkflowResult;
   try {
@@ -149,26 +154,16 @@ export async function driveReattachedRun(
     // `running` until the next boot. Same checkpointed-usage reconstruction as the abort branch
     // above, so a failure after prior checkpointed steps does not under-report accumulated usage.
     const { runState, conversation } = await loadRunStateFromCheckpoint(context, runId, runtime);
-    if (timedOut) {
-      return finalizeRunResult({
-        finishReason: 'error',
-        runState,
-        conversation,
-        hooks: undefined,
-        emitter,
-        runStartTime,
-        runtime,
-        errorMessage: await classifyTimeoutMessage(context, runId, error),
-      });
-    }
     return settleRejectedRun({
       rejection: error,
+      ...(timedOut ? { message: await classifyTimeoutMessage(context, runId, error) } : {}),
       runState,
       conversation,
       hooks: undefined,
       emitter,
       runStartTime,
       runtime,
+      terminalError: terminalErrorFromEvent,
     });
   }
 

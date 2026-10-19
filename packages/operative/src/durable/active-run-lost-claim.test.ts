@@ -203,7 +203,7 @@ describe('a durable run whose rejected result is another engine’s outcome', ()
     await Promise.resolve();
 
     expect(result.finishReason).toBe('error');
-    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+    expect(terminalEvents).toEqual([RunErrorEvent.type, RunCompletedEvent.type]);
   });
 
   it('still publishes a timeout for a reattached run on the engine that kept its claim', async () => {
@@ -214,6 +214,6 @@ describe('a durable run whose rejected result is another engine’s outcome', ()
     const result = await recoveredRun.result;
 
     expect(result.finishReason).toBe('error');
-    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+    expect(terminalEvents).toEqual([RunErrorEvent.type, RunCompletedEvent.type]);
   });
 });

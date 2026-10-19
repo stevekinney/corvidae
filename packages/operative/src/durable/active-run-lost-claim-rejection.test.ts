@@ -113,7 +113,7 @@ describe('a run another engine reclaimed and timed out', () => {
       await activeRun.result;
       await Promise.resolve();
 
-      expect(eventsOnB).toEqual([RunCompletedEvent.type]);
+      expect(eventsOnB).toEqual([RunErrorEvent.type, RunCompletedEvent.type]);
       expect(eventsOnA).toEqual([]);
       expect(await activeRun.closed()).toEqual({ status: 'unresolved', reason: 'unreachable' });
     } finally {
