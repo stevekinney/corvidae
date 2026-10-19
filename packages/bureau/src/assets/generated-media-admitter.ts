@@ -2,7 +2,9 @@ import type {
   GeneratedMediaAdmission,
   GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
+  GeneratedMediaRetentionRequest,
   GeneratedMediaSettlement,
+  SeededInputRetentionRequest,
 } from '@lostgradient/operative';
 
 import { decodeBase64 } from './base64';
@@ -43,14 +45,37 @@ export function createAssetGeneratedMediaAdmitter(
   principalId: string,
   options: {
     /**
-     * Who holds the rows a run commits: the holder id for a row id, or `undefined` when the run is
-     * not known (nothing is claimed; the session's own claim pass takes it).
+     * Who holds the rows a run commits and the input row it was seeded with: the holder id for a
+     * row id, or `undefined` when the run's rows are claimed some other way (the session's own
+     * claim pass takes them).
      */
     readonly claimHolderFor?:
       ((runId: string | undefined) => ((rowId: string) => string) | undefined) | undefined;
   } = {},
 ): GeneratedMediaAdmitter {
   const principal = { id: principalId };
+
+  /** Claims a row's managed assets under the holder the run's claim rule resolves for it. */
+  async function retainRow(
+    request: GeneratedMediaRetentionRequest | SeededInputRetentionRequest,
+  ): Promise<void> {
+    const holderOf = options.claimHolderFor?.(request.runId);
+    if (holderOf === undefined) return;
+    let failure: { error: unknown } | undefined;
+    await claimRowAssets(
+      assets,
+      principalId,
+      holderOf,
+      [{ id: request.messageId, content: request.parts }],
+      {
+        onFailure: (_assetId, error) => {
+          failure ??= { error };
+        },
+      },
+    );
+    if (failure !== undefined) throw failure.error;
+  }
+
   return {
     async admit(request): Promise<GeneratedMediaAdmission> {
       // The single-part call reaches here from a streaming wrapper, which admits each part as it
@@ -70,21 +95,10 @@ export function createAssetGeneratedMediaAdmitter(
     // The row now references each generated asset, so it holds a claim on it for as long as the
     // session (or, for a run with no session, the run) holds the row: the policy's retention floor
     // alone would expire the asset under the row. See `row-asset-claims.ts`.
-    async retainCommitted(request) {
-      const holderOf = options.claimHolderFor?.(request.runId);
-      if (holderOf === undefined) return;
-      let failure: unknown;
-      await claimRowAssets(
-        assets,
-        principalId,
-        holderOf,
-        [{ id: request.messageId, content: request.parts }],
-        (_assetId, error) => {
-          failure ??= error;
-        },
-      );
-      if (failure !== undefined) throw failure;
-    },
+    retainCommitted: retainRow,
+    // A run's seeded input row references assets of its own. A run with a session has them claimed
+    // by the session's commit; a run with none has nothing else holding them (COR-1581).
+    retainSeededInput: retainRow,
   };
 }
 

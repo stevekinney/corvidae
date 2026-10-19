@@ -19,7 +19,12 @@
  * previous JSON, so the record and the owner/digest keys it implies change
  * together or not at all.
  */
-import { AssetAccessDeniedError, AssetConflictError, AssetNotFoundError } from './errors';
+import {
+  AssetAccessDeniedError,
+  AssetConflictError,
+  AssetNotFoundError,
+  AssetRecordCorruptError,
+} from './errors';
 import { mimeFamilyOf, modalityOf } from './media-inspection';
 import type { AssetStorage, AssetStorageOperation } from './storage';
 import type {
@@ -98,13 +103,82 @@ export interface LoadedRecord {
   readonly raw: string;
 }
 
+/** The members every record carries, and the top-level type each one must have. */
+const REQUIRED_MEMBERS: ReadonlyArray<
+  readonly [member: keyof AssetRecord, type: 'string' | 'number' | 'array' | 'object']
+> = [
+  ['assetId', 'string'],
+  ['revision', 'number'],
+  ['state', 'string'],
+  ['custody', 'string'],
+  ['ownerId', 'string'],
+  ['readers', 'array'],
+  ['media', 'object'],
+  ['provenance', 'object'],
+  ['createdAt', 'string'],
+  ['updatedAt', 'string'],
+  ['references', 'array'],
+  ['holds', 'array'],
+  ['safety', 'array'],
+  ['providerCopies', 'array'],
+];
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasType(value: unknown, type: 'string' | 'number' | 'array' | 'object'): boolean {
+  if (type === 'array') return Array.isArray(value);
+  if (type === 'object') return isPlainObject(value);
+  return typeof value === type;
+}
+
+/**
+ * Parses a stored record and checks the shape the service reads (COR-1581): `version` is 1, every
+ * required member is present with the right top-level type, and each `references` entry carries a
+ * string `holderId` and `until`, because `retain` reads both. The elements of the other arrays are
+ * not checked. A stored `null` is no record at all (`undefined`, reading as not found); anything
+ * else that fails throws {@link AssetRecordCorruptError}.
+ */
+function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AssetRecordCorruptError(assetId, 'the JSON does not parse');
+  }
+  if (parsed === null) return undefined;
+  if (!isPlainObject(parsed)) throw new AssetRecordCorruptError(assetId, 'it is not an object');
+  if (parsed['version'] !== 1) throw new AssetRecordCorruptError(assetId, 'version is not 1');
+  for (const [member, type] of REQUIRED_MEMBERS) {
+    if (!hasType(parsed[member], type)) {
+      throw new AssetRecordCorruptError(assetId, `${member} is missing or has the wrong type`);
+    }
+  }
+  for (const reference of parsed['references'] as unknown[]) {
+    if (
+      !isPlainObject(reference) ||
+      typeof reference['holderId'] !== 'string' ||
+      typeof reference['until'] !== 'string'
+    ) {
+      throw new AssetRecordCorruptError(assetId, 'a reference lacks a string holderId or until');
+    }
+  }
+  return parsed as unknown as AssetRecord;
+}
+
+/**
+ * Loads an asset's record, or `undefined` when it has none. Throws {@link AssetRecordCorruptError}
+ * for a record that is stored but cannot be read as one.
+ */
 export async function loadRecord(
   storage: Pick<AssetStorage, 'get'>,
   assetId: string,
 ): Promise<LoadedRecord | undefined> {
   const raw = await storage.get(KEYS.record(assetId));
   if (raw === null) return undefined;
-  return { record: JSON.parse(raw) as AssetRecord, raw };
+  const record = parseRecord(raw, assetId);
+  return record === undefined ? undefined : { record, raw };
 }
 
 export async function createRecord(

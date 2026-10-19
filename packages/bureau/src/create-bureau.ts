@@ -147,6 +147,7 @@ import { createAssetContentSourceResolver } from './assets/content-source-resolv
 import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
 import {
   claimRowAssets,
+  isPermanentClaimFailure,
   releaseRowAssetClaims,
   runRowHolderId,
   sessionRowHolderId,
@@ -1853,27 +1854,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assetServiceHolder.current === undefined
           ? undefined
           : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
-      generatedMediaAdmitterFor: (principalId) =>
+      generatedMediaAdmitterFor: (principalId, rowHolder) =>
         assetServiceHolder.current === undefined
           ? undefined
           : createAssetGeneratedMediaAdmitter(
               assetServiceHolder.current,
               ownerOrLocal(principalId),
               {
-                // A row a run commits is claimed by the session that holds it, or by the run
-                // when it has none (see `assets/row-asset-claims.ts`).
-                claimHolderFor: (runId) => {
-                  const runState = runId === undefined ? undefined : store.getRun(runId);
-                  if (runId === undefined || runState === undefined) return undefined;
-                  const sessionId = runSessionIdentifiers.get(runState.activeRun) ?? '';
-                  if (sessionId === '') return (rowId) => runRowHolderId(runId, rowId);
-                  // The session's incarnation is recorded by the run's first save; before that
-                  // nothing is claimed here, and the session's own commit claims the row.
-                  const incarnation = runSessionIncarnations.get(runId);
-                  return incarnation === undefined
-                    ? undefined
-                    : (rowId) => sessionRowHolderId(sessionId, incarnation, rowId);
-                },
+                // A row a run commits, and the input row it is seeded with, is claimed by the
+                // session that holds it, or by the run when it has none (COR-1581; see
+                // `assets/row-asset-claims.ts`). A catalog dispatch (`bureau.run()`, a child, a
+                // goal attempt, a workflow step) never has a session, whether or not it is
+                // registered with the store, so it holds its own rows.
+                claimHolderFor:
+                  rowHolder === 'run'
+                    ? (runId) =>
+                        runId === undefined ? undefined : (rowId) => runRowHolderId(runId, rowId)
+                    : (runId) => {
+                        const runState = runId === undefined ? undefined : store.getRun(runId);
+                        if (runId === undefined || runState === undefined) return undefined;
+                        const sessionId = runSessionIdentifiers.get(runState.activeRun) ?? '';
+                        // The session's incarnation is recorded by the run's first save; before
+                        // that nothing is claimed here, and the session's own commit claims the
+                        // row. A run the store holds without a session claims nothing here.
+                        const incarnation = runSessionIncarnations.get(runId);
+                        return sessionId === '' || incarnation === undefined
+                          ? undefined
+                          : (rowId) => sessionRowHolderId(sessionId, incarnation, rowId);
+                      },
               },
             ),
       goalWorkflow: goalWorkflowHost.workflow,
@@ -9758,19 +9766,26 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // it pending for the next pass. An expired session's claims are released here too once the
     // store has removed it; that only shortens an asset's life, so it runs beside the drain.
     if (entry.kind === 'session.created' || entry.kind === 'session.saved') {
-      try {
-        const committed = await outboxSessionStore.load(entry.sessionId);
-        if (committed !== undefined && committed.incarnation === entry.incarnation) {
-          await claimSessionAssets(committed);
+      // A Bureau with no asset service has no claims to take, so it does not read the session at
+      // all: a failing load cannot stop its drain, and the read costs nothing per entry.
+      if (assetServiceHolder.current !== undefined) {
+        try {
+          const committed = await outboxSessionStore.load(entry.sessionId);
+          if (committed !== undefined && committed.incarnation === entry.incarnation) {
+            await claimSessionAssets(committed);
+          }
+        } catch (error) {
+          // Only a transient failure reaches here: a claim that cannot succeed (a corrupt asset
+          // record) was reported, remembered and skipped by `claimSessionAssets`, so it never
+          // holds back the entry or the events behind it.
+          diagnose({
+            level: 'error',
+            scope: 'assets',
+            message: `[bureau] Could not claim the assets of session "${entry.sessionId}" for its outbox entry ${entry.ordinal}; leaving it pending for a later drain to retry: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return 'stop';
         }
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'assets',
-          message: `[bureau] Could not claim the assets of session "${entry.sessionId}" for its outbox entry ${entry.ordinal}; leaving it pending for a later drain to retry: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-        return 'stop';
       }
     } else if (entry.kind === 'session.deleted') {
       trackSessionInputSettlement(releaseExpiredSessionAssetClaims(entry));
@@ -10586,46 +10601,77 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   /** Sessions the store is about to expire, held until their `session.deleted` entry drains. */
   const expiringSessions = new Map<string, AgentSession>();
 
+  /**
+   * Skips the claim pass has already warned about, so a session that records no owner reports each
+   * one once for the life of the process instead of on every save.
+   */
+  const reportedOwnerlessSkips = new Set<string>();
+
   function rowClaimContext(session: AgentSession) {
     const service = assetServiceHolder.current;
     if (service === undefined) return undefined;
+    // A session records its owner when it is created. One that records none is claimed as the
+    // local principal, which cannot see an asset another principal owns (COR-1581).
+    const ownerless = session.metadata[SESSION_OWNER_METADATA_KEY] === undefined;
     return {
       service,
       principalId: ownerOrLocal(resolveSessionOwner(session.metadata)),
       holderOf: (rowId: string) => sessionRowHolderId(session.id, session.incarnation, rowId),
       rows: Object.values(session.conversationHistory.messages),
-      onFailure: (assetId: string, error: unknown) =>
+      onFailure: (assetId: string, error: unknown, rowId: string) =>
         diagnose({
           level: 'error',
           scope: 'assets',
-          message: `[bureau] Could not update the retention claim of session "${session.id}" on asset "${assetId}": ${serializeUnknownError(error)}`,
+          message: isPermanentClaimFailure(error)
+            ? `[bureau] Skipping the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}" for as long as this process runs, because the asset's stored record is corrupt and must be repaired: ${serializeUnknownError(error)}`
+            : `[bureau] Could not update the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}": ${serializeUnknownError(error)}`,
           cause: error,
         }),
+      // An asset the principal cannot see is skipped quietly when the session has an owner: a hook
+      // can supply a reference its owner may not read. Without one, the skip is probably this.
+      onSkipped: ownerless
+        ? (assetId: string, error: unknown, rowId: string) => {
+            const key = `${session.id}\u0000${session.incarnation}\u0000${rowId}\u0000${assetId}`;
+            if (reportedOwnerlessSkips.has(key)) return;
+            reportedOwnerlessSkips.add(key);
+            diagnose({
+              level: 'warn',
+              scope: 'assets',
+              message: `[bureau] Session "${session.id}" records no owner, so its claim on asset "${assetId}" in row "${rowId}" was made as the local principal and skipped: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        : undefined,
     };
   }
 
   /**
-   * Takes the claims of every row in a committed session. A claim that fails is reported and then
-   * thrown once every row has been tried, so the outbox drain leaves the commit's entry
-   * unacknowledged and replays it: the entry is the only cue that a committed row still needs its
-   * claim.
+   * Takes the claims of every row in a committed session. A claim that fails transiently is
+   * reported and then thrown once every row has been tried, so the outbox drain leaves the commit's
+   * entry unacknowledged and replays it: the entry is the only cue that a committed row still needs
+   * its claim. A claim that fails permanently (a corrupt asset record) is reported and remembered
+   * with the claims already taken, and never thrown: retrying it cannot help, and an entry held
+   * back for it would hold back every session's events until someone repaired the asset store.
    */
   async function claimSessionAssets(session: AgentSession): Promise<void> {
     const context = rowClaimContext(session);
     if (context === undefined) return;
-    let failure: { error: unknown } | undefined;
+    let transientFailure: { error: unknown } | undefined;
     await claimRowAssets(
       context.service,
       context.principalId,
       context.holderOf,
       context.rows,
-      (assetId, error) => {
-        context.onFailure(assetId, error);
-        failure ??= { error };
+      {
+        onFailure: (assetId, error, rowId) => {
+          context.onFailure(assetId, error, rowId);
+          if (!isPermanentClaimFailure(error)) transientFailure ??= { error };
+        },
+        onSkipped: context.onSkipped,
       },
       claimedRowAssets,
     );
-    if (failure !== undefined) throw failure.error;
+    if (transientFailure !== undefined) throw transientFailure.error;
   }
 
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {

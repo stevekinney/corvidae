@@ -5,6 +5,7 @@ import type {
   GeneratedMediaRetentionRequest,
   GeneratedMediaSettlement,
   ManagedAssetReference,
+  SeededInputRetentionRequest,
 } from '../generated-media';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';
 
@@ -27,6 +28,8 @@ export interface ScriptedMediaAdmitter {
   readonly batches: number[];
   /** Every `retainCommitted` call the port received; empty for a port with no retention call. */
   readonly retained: GeneratedMediaRetentionRequest[];
+  /** Every `retainSeededInput` call the port received; empty for a port with no such call. */
+  readonly retainedInput: SeededInputRetentionRequest[];
 }
 
 /**
@@ -49,7 +52,10 @@ export function createScriptedMediaAdmitter(
     modeAt?: (position: number) => ScriptedAdmissionMode | undefined;
     /** Gives the port an `admitAll`, as Bureau's has, recording each batch's size. */
     batch?: boolean;
-    /** Gives the port a `retainCommitted`, recording each call; `'fail'` makes it reject. */
+    /**
+     * Gives the port a `retainCommitted` and a `retainSeededInput`, recording each call; `'fail'`
+     * makes them reject.
+     */
     retention?: 'record' | 'fail';
   } = {},
 ): ScriptedMediaAdmitter {
@@ -66,6 +72,7 @@ export function createScriptedMediaAdmitter(
   const admissions: ScriptedAdmissionRecord[] = [];
   const batches: number[] = [];
   const retained: GeneratedMediaRetentionRequest[] = [];
+  const retainedInput: SeededInputRetentionRequest[] = [];
 
   const port: GeneratedMediaAdmitter = {
     ...(retention === undefined
@@ -73,6 +80,10 @@ export function createScriptedMediaAdmitter(
       : {
           async retainCommitted(request: GeneratedMediaRetentionRequest) {
             retained.push(request);
+            if (retention === 'fail') throw new Error('retention unavailable');
+          },
+          async retainSeededInput(request: SeededInputRetentionRequest) {
+            retainedInput.push(request);
             if (retention === 'fail') throw new Error('retention unavailable');
           },
         }),
@@ -150,5 +161,5 @@ export function createScriptedMediaAdmitter(
     },
   };
 
-  return { port, admissions, batches, retained };
+  return { port, admissions, batches, retained, retainedInput };
 }

@@ -5,6 +5,7 @@ import { Conversation, isConversation, type MultiModalContent } from 'conversati
 import { appendAgentInput } from '../agent-input';
 import { type AgentRunErrorCode, type AgentRunErrorKind, toAgentRunError } from '../errors';
 import { RunErrorEvent } from '../events';
+import { retainSeededInput } from '../generated-media';
 import { countHumanWaitParks } from '../human-wait-parks';
 import { buildStepDeps } from '../loop';
 import { appendFinalAssistantMessage } from '../message-identifiers';
@@ -168,7 +169,7 @@ export function createRunWorkflow(
         let cursor: RunCursor = initialCursor(workflowVersion);
         // Seed the conversation on the first run from the run's options + prompt,
         // then persist it so the adapter and any external reader see the transcript.
-        const seededConversation = (() => {
+        let snapshot = await (async () => {
           const seededOptions = runDepsFrom(ctx.services).options;
           const seeded = isConversation(seededOptions.conversation)
             ? seededOptions.conversation
@@ -184,9 +185,17 @@ export function createRunWorkflow(
           if (!scheduled && input.prompt !== undefined) {
             appendAgentInput(seeded, input.prompt);
           }
+          // COR-1581: a run with no session holds nothing else on the managed assets its input
+          // references, so the port is told about the input row before the first step. It is read
+          // and called inside this function and never held as a local across a `yield*`; a replay
+          // seeds again, and the call is idempotent.
+          await retainSeededInput(
+            seededOptions.generatedMediaAdmitter,
+            runId,
+            seeded.getMessages(),
+          );
           return seeded.snapshot();
         })();
-        let snapshot = seededConversation;
         // COR-1376 — the snapshot the latest step memo produced. A step whose
         // input is that snapshot records its conversation as a delta from it:
         // on replay the same snapshot is rebuilt from the same recorded results,
