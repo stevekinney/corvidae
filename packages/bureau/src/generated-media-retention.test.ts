@@ -9,6 +9,7 @@ import {
   createAgent,
   createAgentSession,
   createModelCatalog,
+  SESSION_OWNER_METADATA_KEY,
   waitForRunState,
   withBackendDescriptors,
 } from '@lostgradient/operative';
@@ -22,7 +23,6 @@ import {
 } from 'conversationalist';
 
 import { createBureau } from './create-bureau';
-import { SESSION_OWNER_METADATA_KEY } from './session-authority';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
 
