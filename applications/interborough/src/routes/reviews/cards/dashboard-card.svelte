@@ -41,19 +41,19 @@
       return;
     }
     event.preventDefault();
-    router.navigate('/inbox');
+    router.navigate('/reviews');
   }
 </script>
 
 <a
-  href={router.href('/inbox')}
+  href={router.href('/reviews')}
   onclick={onCardClick}
   class="weft-reviews-card-link"
-  aria-label="Reviews"
+  aria-label="Engine reviews"
 >
   <Card padding="none" class="weft-dashboard-card">
     {#snippet header()}
-      <span class="weft-dashboard-card__title">Reviews</span>
+      <span class="weft-dashboard-card__title">Engine reviews</span>
     {/snippet}
 
     {#if locked}

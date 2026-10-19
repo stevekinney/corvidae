@@ -201,6 +201,6 @@ export function buildReviewsNearTimeoutChip(
     icon: 'clipboard-check',
     tone: 'warning',
     label: `${count} ${pluralize(count, 'review', 'reviews')} near timeout`,
-    href: '/inbox',
+    href: '/reviews',
   };
 }

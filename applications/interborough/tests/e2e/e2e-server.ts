@@ -48,6 +48,7 @@ import {
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
 import { createEchoAgents, ECHO_AGENT_NAME } from './echo-agent.ts';
+import { createFireQuestionGenerate } from './fire-question.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
@@ -91,6 +92,8 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // the echo (`echo-agent.ts`), takes an attached image and sends it back.
 const barrier = createBarrier();
 const host = await startHost({
+  // A schedule's fire runs this, not its agent's script: it asks a question for one input.
+  generate: createFireQuestionGenerate(),
   extraAgents: {
     agents: { ...createBarrierAgents(barrier), ...createEchoAgents() },
     published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME, ECHO_AGENT_NAME],

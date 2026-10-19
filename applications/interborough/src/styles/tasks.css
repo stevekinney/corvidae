@@ -1,0 +1,162 @@
+/* ── Tasks: the list at /tasks and one task's page at /tasks/:id ─────────────── */
+
+.weft-tasks,
+.weft-task {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  padding: var(--cinder-space-6);
+  min-width: 0;
+}
+
+.weft-tasks__title,
+.weft-task__title {
+  margin: 0;
+  font-size: var(--cinder-text-xl);
+  font-weight: 600;
+}
+
+.weft-tasks__filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--cinder-space-3);
+  align-items: end;
+}
+
+.weft-tasks__filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+}
+
+.weft-tasks__waits {
+  margin-inline-start: var(--cinder-space-2);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-tasks__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.weft-tasks__link:hover {
+  text-decoration: underline;
+}
+
+.weft-tasks__more {
+  display: flex;
+  justify-content: center;
+}
+
+.weft-task__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+}
+
+.weft-task__id {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.weft-task__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+.weft-task__heading {
+  margin: 0;
+  font-size: var(--cinder-text-lg);
+  font-weight: 600;
+}
+
+/* A term and its value, side by side where there is room and stacked where there is not. */
+.weft-task__facts,
+.weft-task-wait__facts {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--cinder-space-1) var(--cinder-space-4);
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-task__facts dt,
+.weft-task-wait__facts dt {
+  color: var(--cinder-text-muted);
+}
+
+.weft-task__facts dd,
+.weft-task-wait__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.weft-task__answer {
+  margin: 0;
+  padding: var(--cinder-space-3);
+  border: 1px solid var(--cinder-border-muted);
+  border-radius: var(--cinder-radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.weft-task__note,
+.weft-task__cancel-status,
+.weft-task-wait__note {
+  margin: 0;
+  color: var(--cinder-text-muted);
+}
+
+.weft-task-wait {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+}
+
+.weft-task-wait__prompt {
+  margin: 0;
+  font-weight: 600;
+}
+
+.weft-task-wait__title {
+  margin: 0;
+  font-size: var(--cinder-text-base);
+}
+
+.weft-task-wait__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  align-items: flex-start;
+}
+
+.weft-task-wait__failure-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.weft-task-wait__failure {
+  margin: 0;
+}
+
+@media (max-width: 480px) {
+  .weft-tasks,
+  .weft-task {
+    padding: var(--cinder-space-4);
+  }
+
+  .weft-task__facts,
+  .weft-task-wait__facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .weft-task__facts dd,
+  .weft-task-wait__facts dd {
+    margin-block-end: var(--cinder-space-2);
+  }
+}

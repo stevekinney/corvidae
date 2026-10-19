@@ -1,7 +1,7 @@
 /**
  * Persona flow (b): approve-a-review-with-partial-sections (plan §11.4).
  *
- * inbox → partial section decisions → submit → decided archive.
+ * reviews → partial section decisions → submit → decided.
  *
  * Targets `fixtures/reviews.ts`'s `content-review` specimens — both of the
  * currently-pending ones carry `artifact.sections` (headline/body/
@@ -20,7 +20,7 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
   page,
   checkA11y,
 }) => {
-  await page.goto('/inbox');
+  await page.goto('/reviews');
   // See `01-debug-failed-workflow.spec.ts`'s module doc for why the first
   // axe check on every spec is gated behind real content, not the boot
   // skeleton `page.goto()`'s `load` event resolves under.
@@ -64,13 +64,14 @@ test('operator decides a sectioned review with a mixed partial outcome', async (
 
   await page.getByRole('button', { name: 'Submit decision' }).click();
 
+  // There is no Archive: the engine's decided reviews are one state of the inbox itself.
   await page
-    .getByRole('radiogroup', { name: 'View' })
-    .getByRole('radio', { name: 'Archive' })
+    .getByRole('radiogroup', { name: 'Review state' })
+    .getByRole('radio', { name: 'Decided' })
     .click();
 
-  const archivedRow = page.getByRole('row', { name: new RegExp(REVIEWER) });
-  await expect(archivedRow).toBeVisible();
-  await expect(archivedRow.getByText('Needs changes')).toBeVisible();
-  await checkA11y('reviews archive');
+  const decidedRow = page.getByRole('button', { name: new RegExp(REVIEWER) });
+  await expect(decidedRow).toBeVisible();
+  await expect(decidedRow.getByText('Needs changes')).toBeVisible();
+  await checkA11y('reviews — decided');
 });

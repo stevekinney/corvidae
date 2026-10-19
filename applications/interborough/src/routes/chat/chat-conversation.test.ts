@@ -3,8 +3,9 @@
  * composer and becomes its session when the run starts, and an existing session shows its header,
  * its transcript, and the approvals it waits on.
  */
+import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
@@ -198,6 +199,42 @@ describe('an existing session', () => {
     expect(reads).toBeLessThanOrEqual(2);
   });
 
+  test('lists the tasks of the session, each linking to its page, and asks for those of this session alone', async () => {
+    const stub = bureau({
+      'bureau.contexts.get': () => CONTEXT,
+      'bureau.tasks.list': () => ({
+        tasks: [
+          {
+            id: 'run-7',
+            contextId: 'session-1',
+            agentName: 'assistant',
+            owner: 'anonymous:local',
+            actor: null,
+            status: 'completed',
+            finishReason: null,
+            statusMessage: null,
+            createdAt: '2026-10-19T08:00:00.000Z',
+            updatedAt: '2026-10-19T08:00:01.000Z',
+            cleanup: null,
+            openWaits: [],
+          },
+        ],
+        nextOffset: null,
+      }),
+    });
+    restore = stub.restore;
+    landAt('/chat/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await waitFor(() => expect(container.querySelector('a[href="/tasks/run-7"]')).not.toBeNull());
+    expect(stub.calls.find((call) => call.method === 'bureau.tasks.list')?.params).toEqual({
+      contextId: 'session-1',
+    });
+  });
+
   test('restores a finished session’s transcript when it opens', async () => {
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) {
@@ -273,6 +310,75 @@ describe('a run that waits on a person’s answer', () => {
         payload: { decision: 'approve', answer: 'staging' },
       },
     ]);
+  });
+});
+
+describe('a run that waits on a tool approval', () => {
+  const APPROVAL = {
+    id: 'approval:native-1:call-refund',
+    reason: 'tool-approval',
+    toolCallId: 'call-refund',
+    message: 'Refund order-1001?',
+  };
+  const toolCall = [
+    { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{"cents":4200}' },
+    { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+    {
+      type: 'TOOL_CALL_RESULT',
+      messageId: 'result-1',
+      toolCallId: 'call-refund',
+      content: 'requires approval',
+      role: 'tool',
+    },
+  ];
+
+  test('is decided in the alert, and the decision makes the inbox read again at once', async () => {
+    const bodies: Array<{ resume?: unknown }> = [];
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+      const first = bodies.length === 1;
+      return sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: `run-${bodies.length}` },
+        ...(first ? toolCall : []),
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: `run-${bodies.length}`,
+          outcome: first ? { type: 'interrupt', interrupts: [APPROVAL] } : { type: 'success' },
+        },
+      ]);
+    }).restore;
+    landAt('/chat/session-1');
+    const { container, findByRole } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await sendMessage(container, 'Refund it');
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toContain('Needs your approval');
+
+    const invalidated = spyOn(QueryClient.prototype, 'invalidateQueries');
+    try {
+      await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+
+      await waitFor(() => expect(bodies[1]?.resume).toBeDefined());
+      // The Bureau's reviews, the engine's, and the tasks that hold them are all asked again: the
+      // approval is not what `/reviews` last listed, and the inbox does not wait for its poll.
+      await waitFor(() =>
+        expect(invalidated.mock.calls.map(([filters]) => filters?.queryKey?.[0])).toEqual(
+          expect.arrayContaining(['bureau-reviews', 'reviews', 'bureau-tasks']),
+        ),
+      );
+    } finally {
+      invalidated.mockRestore();
+    }
   });
 });
 

@@ -76,9 +76,9 @@ describe('the command palette', () => {
     );
   });
 
-  test('opens the inbox for a review, which has no page of its own', async () => {
+  test('opens the reviews page for a review, which has no page of its own', async () => {
     await choose('review-7', /review-7/);
-    await waitFor(() => expect(router.pathname).toBe('/inbox'));
+    await waitFor(() => expect(router.pathname).toBe('/reviews'));
   });
 });
 

@@ -71,6 +71,7 @@
   import ChildrenTab from './children-tab.svelte';
   import EventsTab from './events-tab.svelte';
   import Header from './header.svelte';
+  import RunTaskLink from './run-task-link.svelte';
   import LogsTab from './logs-tab.svelte';
   import OverviewTab from './overview-tab.svelte';
   import RestartDialog from './restart-dialog.svelte';
@@ -301,6 +302,7 @@
       {actionGate}
       {queryGate}
     />
+    <RunTaskLink runId={workflow.id} />
 
     {#if restartOpen}
       <RestartDialog {client} {workflow} onClose={() => (restartOpen = false)} />
