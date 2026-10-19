@@ -1,8 +1,9 @@
 import type { AuthorizationScope } from '../lib/scopes.svelte.ts';
 
 /**
- * Every view Interborough has. A view is what a sidebar entry opens, and it owns four states
- * besides its content: loading, empty, error, and forbidden (`view-frame.svelte`). Several routes
+ * Every view Interborough has. A view is what a sidebar entry opens, and it owns states besides
+ * its content: loading, empty, error, forbidden, and, for one that opens an item by its address,
+ * not found (`view-frame.svelte`). Several routes
  * can render one view, such as a run's list and one run's detail.
  */
 export const VIEW_NAMES = [
@@ -21,8 +22,12 @@ export const VIEW_NAMES = [
 
 export type ViewName = (typeof VIEW_NAMES)[number];
 
-/** The four states a view can be in besides showing its content. */
-export const VIEW_STATES = ['loading', 'empty', 'error', 'forbidden'] as const;
+/**
+ * The states a view can be in besides showing its content. `not-found` is for a view that opens
+ * one item by the address, such as a chat session: an item that does not exist, and one the
+ * caller may not see, both answer it, because the server does not tell them apart.
+ */
+export const VIEW_STATES = ['loading', 'empty', 'error', 'forbidden', 'not-found'] as const;
 
 export type ViewStateName = (typeof VIEW_STATES)[number];
 

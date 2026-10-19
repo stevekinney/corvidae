@@ -64,16 +64,24 @@ export const SEEDED_GOAL_RUN_IDENTIFIER = 'seeded-goal';
 /** The validator the seeded goal names. */
 export const SEEDED_VALIDATOR = { name: 'accepts-any-answer', version: '1' } as const;
 
+function replyResponse(content: string): GenerateResponse {
+  return { content, toolCalls: [] };
+}
+
+function callResponse(
+  name: string,
+  argumentsObject: Record<string, unknown>,
+  id = `seeded-${name}`,
+): GenerateResponse {
+  return { content: '', toolCalls: [{ id, name, arguments: argumentsObject }] };
+}
+
 function reply(content: string): ScriptedGenerateStep {
-  return { kind: 'respond', response: { content, toolCalls: [] } };
+  return { kind: 'respond', response: replyResponse(content) };
 }
 
 function call(name: string, argumentsObject: Record<string, unknown>): ScriptedGenerateStep {
-  const response: GenerateResponse = {
-    content: '',
-    toolCalls: [{ id: `seeded-${name}`, name, arguments: argumentsObject }],
-  };
-  return { kind: 'respond', response };
+  return { kind: 'respond', response: callResponse(name, argumentsObject) };
 }
 
 /** The signal the seeded `request-human-input` agent parks on, and the question it asks. */
@@ -92,6 +100,40 @@ function byStep(steps: readonly ScriptedGenerateStep[]): GenerateFunction {
       throw new Error('A seeded script needs at least one response.');
     }
     return chosen.response;
+  };
+}
+
+/**
+ * The script of `tool-runner`: it answers from where the turn has got to, not from the run's step
+ * number, because the run that follows an approval is a new run on the same session and starts at
+ * step 0. It looks the order up, then asks to refund it; once the refund's result is in the turn
+ * (the operator approved it, or denied it) it reports what became of it. A later turn of the same
+ * session starts from the lookup again.
+ */
+function toolRunnerGenerate(): GenerateFunction {
+  return async ({ conversation }) => {
+    const messages = conversation.getMessages();
+    const lastUser = messages.findLastIndex((message) => message.role === 'user');
+    const turn = messages.slice(lastUser + 1);
+    // A tool call identifier names one call in a conversation, so each turn's calls carry the
+    // number of the turn that makes them.
+    const turnNumber = messages.filter((message) => message.role === 'user').length;
+    const lookupId = `seeded-lookup-order-${turnNumber}`;
+    const refundId = `seeded-issue-refund-${turnNumber}`;
+    const resultOf = (callId: string) =>
+      turn.find((message) => message.toolResult?.callId === callId)?.toolResult;
+    const refund = resultOf(refundId);
+    if (refund !== undefined && refund.outcome !== 'action_required') {
+      return replyResponse(
+        refund.outcome === 'success'
+          ? 'Order order-1001 was refunded.'
+          : 'The refund of order order-1001 was not issued.',
+      );
+    }
+    if (resultOf(lookupId) !== undefined) {
+      return callResponse('issue-refund', { orderId: 'order-1001', cents: 4200 }, refundId);
+    }
+    return callResponse('lookup-order', { orderId: 'order-1001' }, lookupId);
   };
 }
 
@@ -173,11 +215,7 @@ export function createSeededAgents(approvalSecret: string) {
     'tool-runner': createAgent({
       name: 'tool-runner',
       description: 'Looks an order up, then asks for approval to refund it.',
-      generate: byStep([
-        call('lookup-order', { orderId: 'order-1001' }),
-        call('issue-refund', { orderId: 'order-1001', cents: 4200 }),
-        reply('Order order-1001 was refunded.'),
-      ]),
+      generate: toolRunnerGenerate(),
       toolbox: createToolRunnerToolbox(approvalSecret),
       executeOptions: { requestContext: LOCAL_REQUEST_CONTEXT },
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],

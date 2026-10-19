@@ -39,6 +39,10 @@ export type WorkflowAggregateGroupBy =
  * assignable wherever a plain `QueryKey` is expected.
  */
 export const queryKeys = {
+  contexts: {
+    /** One chat session, as `bureau.contexts.get` shows it. */
+    detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,

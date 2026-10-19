@@ -1,0 +1,46 @@
+/* ── Chat session ────────────────────────────────────────── */
+
+/* Chat fills its parent, so the route is a column with a definite height: the header and any
+ * approval take what they need and the conversation takes the rest. */
+.weft-chat-route {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  height: 100%;
+  min-height: 0;
+}
+
+.weft-chat-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+}
+
+.weft-chat-header__title {
+  margin: 0;
+  font-size: var(--cinder-text-xl);
+  font-weight: 600;
+}
+
+.weft-chat-header__agent {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.weft-chat-surface {
+  flex: 1;
+  min-height: 0;
+}
+
+.weft-chat-approval__title,
+.weft-chat-approval__message {
+  margin: 0;
+}
+
+.weft-chat-approval__actions {
+  display: flex;
+  gap: var(--cinder-space-2);
+  margin-block-start: var(--cinder-space-2);
+}

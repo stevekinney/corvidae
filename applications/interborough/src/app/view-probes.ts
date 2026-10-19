@@ -1,5 +1,6 @@
 import type { HttpClient } from '@lostgradient/weft';
 
+import { getContext } from '../lib/bureau-client.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -44,6 +45,15 @@ async function probeBureau(): Promise<ViewProbeResult> {
 export function probeFor(view: ViewName, parameters: ViewProbeParameters): ViewProbe | undefined {
   switch (view) {
     case 'chat':
+      // One session's page asks for that session, which settles whether it exists and may be seen.
+      if (parameters['sessionId'] !== undefined) {
+        const sessionId = parameters['sessionId'];
+        return async () => {
+          await getContext(sessionId);
+          return { empty: false };
+        };
+      }
+      return probeBureau;
     case 'agents':
     case 'audit':
       return probeBureau;

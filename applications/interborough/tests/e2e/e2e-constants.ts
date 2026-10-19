@@ -7,17 +7,18 @@
  * on its engine: one process serves the built application, the engine API, and a Bureau, on one
  * loopback origin, and every request acts as `anonymous:local`, so the suite needs no credential.
  */
+import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
-/** Fixed port the E2E host listens on. Distinct from the interactive host's default of 7234. */
-export const E2E_PORT = 7399;
+/** Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the interactive host's default of 7234. */
+export const E2E_PORT = endToEndPort();
 
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
 /**
- * Where the test-only barrier control listens. The chat specs hold a run on a barrier so no case
+ * Where the test-only barrier control listens, on the port after the host's. The chat specs hold a run on a barrier so no case
  * depends on timing (`barrier-agent.ts`); the host itself serves no such route.
  */
-export const E2E_BARRIER_PORT = 7398;
+export const E2E_BARRIER_PORT = E2E_PORT + 1;
 export const E2E_BARRIER_URL = `http://127.0.0.1:${E2E_BARRIER_PORT}`;
 
 /** `deploymentName` the E2E `RemoteWorker` registers under (flow (e), drain-a-deployment). */

@@ -25,7 +25,11 @@ export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
   { pattern: '/', view: 'chat', load: placeholder },
   { pattern: '/chat', view: 'chat', load: placeholder },
-  { pattern: '/chat/:sessionId', view: 'chat', load: placeholder },
+  {
+    pattern: '/chat/:sessionId',
+    view: 'chat',
+    load: () => import('../routes/chat/index.svelte'),
+  },
   { pattern: '/agents', view: 'agents', load: placeholder },
   // `/workflows` is the catalog of workflow definitions. A run of one lives under `/runs`.
   { pattern: '/workflows', view: 'workflows', load: placeholder },

@@ -106,6 +106,9 @@ export function errorEvent(
   return stamp({ type: EventType.RUN_ERROR, message, code }, context, label);
 }
 
+/** How many times a stream reads the session for the end of its run before it stops waiting. */
+const SESSION_SETTLE_ATTEMPTS = 200;
+
 type ReadHistory = {
   readonly fence: string | undefined;
   readonly lastCursorByKind: ReadonlyMap<string, string>;
@@ -409,6 +412,50 @@ export function openRunStream(
       interruptibleReviews(bureau, request.nativeRunId).map((review) => review.id),
     ]);
 
+  /**
+   * A run that took input the client sent while it was going ends with the thread as a
+   * `MESSAGES_SNAPSHOT`. The input never streams as an event of its own, so the snapshot is how a
+   * client that holds the input's row (under the id it sent the input with) learns the run
+   * delivered it, and where in the thread the run put it.
+   */
+  const writeDeliveredInputs = async (): Promise<void> => {
+    const history = (await settledSession())?.conversationHistory;
+    if (history === undefined) return;
+    const delivered = history.ids.some(
+      (id) => history.messages[id]?.metadata?.['sessionInputId'] !== undefined,
+    );
+    if (!delivered) return;
+    writeEvents([
+      stamp(
+        { type: EventType.MESSAGES_SNAPSHOT, messages: snapshotMessages(history) },
+        stampContext,
+        { durable: false },
+      ),
+    ]);
+  };
+
+  /**
+   * The thread's session once it holds this run's transcript. The session records a run's end after
+   * the run's own `run.completed`, so it is read again, a turn of the event loop apart, until it
+   * says the run is over. A session that never does reads as none, and the stream ends without the
+   * snapshot.
+   */
+  const settledSession = async () => {
+    for (let attempt = 0; attempt < SESSION_SETTLE_ATTEMPTS; attempt += 1) {
+      const session = await bureau.getSession(request.threadId).catch(() => undefined);
+      if (session === undefined) return undefined;
+      const metadata = session.metadata;
+      if (
+        metadata['lastRunId'] !== request.nativeRunId ||
+        metadata['lastRunStatus'] !== 'running'
+      ) {
+        return session;
+      }
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    return undefined;
+  };
+
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
     const closing = projector.closeOpen();
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
@@ -444,6 +491,8 @@ export function openRunStream(
         label,
       );
     } else {
+      await writeDeliveredInputs();
+      if (ended) return;
       const interrupts = pendingFor(bureau, request.nativeRunId).map(toInterrupt);
       const outcome: RunFinishedOutcome =
         interrupts.length > 0 ? { type: 'interrupt', interrupts } : { type: 'success' };

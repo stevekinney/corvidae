@@ -19,6 +19,8 @@ export type ViewCopy = {
   readonly empty?: ViewEmptyCopy;
   readonly error: ViewStateCopy;
   readonly forbidden: Pick<ViewStateCopy, 'title'>;
+  /** Present only for a view that opens one item by its address. */
+  readonly notFound?: ViewStateCopy;
 };
 
 /** The label on the control that asks a view to try again. */
@@ -35,8 +37,21 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/** The words the chat view uses outside its states. */
+export const CHAT_COPY = {
+  /** What a session with no title is called, in the header and in lists. */
+  untitled: 'New chat',
+  approvalTitle: 'Needs your approval',
+  approve: 'Approve',
+  deny: 'Deny',
+  failureTitle: 'The agent did not answer',
+  dismiss: 'Dismiss',
+  /** The accessible name of the transcript and composer region. */
+  regionLabel: 'Conversation',
+} as const;
+
 /**
- * The words every view's four states use. A view's state title and description live here and
+ * The words every view's states use. A view's state title and description live here and
  * nowhere else, so a change to the voice of the product is one edit and a test can name every
  * string a state can show.
  *
@@ -60,6 +75,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Chat is locked' },
+    notFound: {
+      title: 'This conversation was not found',
+      description:
+        'It may have been deleted, or it may belong to someone else. Open a conversation from the list.',
+    },
   },
   agents: {
     label: 'Agents',
