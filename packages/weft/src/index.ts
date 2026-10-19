@@ -280,9 +280,8 @@ export {
 export {
   WORKER_DEPLOYMENT_ROUTING_PREFIX,
   WORKER_DEPLOYMENT_VERSION_PREFIX,
-  WorkerDeploymentCatalog,
-  selectWorkerDeployment,
-} from './worker/deployment-routing.ts';
+} from './worker/deployment-records.ts';
+export { WorkerDeploymentCatalog, selectWorkerDeployment } from './worker/deployment-routing.ts';
 export type {
   DeploymentRoutingCandidate,
   DeploymentSelection,

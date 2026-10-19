@@ -20,6 +20,7 @@
  * @module core/engine/catalog-readiness
  */
 
+import { reconcileRemovalFences } from '../../worker/deployment-removal.ts';
 import { restoreWorkflowCatalog, WorkflowCatalog } from '../catalog/index.ts';
 import { CleanupWarningEvent } from '../events.ts';
 import { buildWorkflowManifestForType } from '../registry-workflow-manifest.ts';
@@ -179,6 +180,8 @@ export async function ensureWorkflowCatalogReady(engine: Engine): Promise<void> 
           ),
         );
       });
+      // A deployment build's removal fence left by a removal that crashed before its verdict.
+      await reconcileRemovalFences(internals.storage);
       internals.workflowCatalog = new WorkflowCatalog(
         internals.storage,
         await restoreWorkflowCatalog(internals.storage),

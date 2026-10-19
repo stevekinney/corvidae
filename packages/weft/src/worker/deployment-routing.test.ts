@@ -13,9 +13,9 @@ import {
 } from '../server/operations/worker-deployment-routing.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
+import { WORKER_DEPLOYMENT_VERSION_PREFIX } from './deployment-records.ts';
 import {
   selectWorkerDeployment,
-  WORKER_DEPLOYMENT_VERSION_PREFIX,
   WorkerDeploymentCatalog,
   type DeploymentRoutingCandidate,
   type WorkerDeploymentRouting,

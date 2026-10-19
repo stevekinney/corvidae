@@ -14,6 +14,7 @@ describe('worker Conflict reasons', () => {
       versionNotDraining: 'version-not-draining',
       versionReferenced: 'version-referenced',
       versionRemoved: 'version-removed',
+      versionRemoving: 'version-removing',
       versionRouted: 'version-routed',
       overrideTokenRejected: 'override-token-rejected',
       workflowNotTerminal: 'workflow-not-terminal',

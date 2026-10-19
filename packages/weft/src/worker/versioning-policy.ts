@@ -3,6 +3,7 @@
 import { decode, encode } from '../core/codec/index.ts';
 import type { WorkflowWorkerVersioningPolicy } from '../core/versioning.ts';
 import { KEYS, storageConditionalBatch, type Storage } from '../storage/interface.ts';
+import { workerBuildFenceAbsentCondition } from './deployment-removal-fence.ts';
 import {
   WorkerDeploymentCatalog,
   selectWorkerDeployment,
@@ -333,9 +334,11 @@ export async function recordWorkflowWorkerUpgrade(
     history: [current, ...previous.history].slice(0, limit),
   };
   state['workerBinding'] = record;
+  // The build the run moves onto must not be fenced by a removal, so the upgrade cannot land on a
+  // build that is removed, or being removed, after its scan.
   const applied = await storageConditionalBatch(
     storage,
-    [{ key, expectedValue: previousBytes }],
+    [{ key, expectedValue: previousBytes }, workerBuildFenceAbsentCondition(next)],
     [{ type: 'put', key, value: encode(state) }],
   );
   if (!applied) throw new Error('Concurrent workflow worker upgrade lost the binding CAS.');

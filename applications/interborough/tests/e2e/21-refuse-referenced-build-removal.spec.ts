@@ -43,6 +43,7 @@ test('a build with a run bound to it shows the count, and removal is refused fir
     },
   });
   expect(notDraining.status()).toBe(409);
+  expect(await notDraining.text()).toContain('not draining');
 
   // Drained, the build is refused for the run still bound to it.
   await buildRow(page).getByRole('button', { name: 'Drain' }).click();

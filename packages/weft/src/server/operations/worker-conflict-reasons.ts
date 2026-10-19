@@ -19,6 +19,8 @@ export const WORKER_CONFLICT_REASONS = {
   versionReferenced: 'version-referenced',
   /** A restart (or fork) would inherit a binding whose build has been removed. */
   versionRemoved: 'version-removed',
+  /** A removal is in progress on the build, so a run cannot be bound to it yet; retry once it settles. */
+  versionRemoving: 'version-removing',
   /** The routing pointer names the build as its current or ramping build. */
   versionRouted: 'version-routed',
   /** A start's override preview is expired, used, for another workflow, stale, or forged. */

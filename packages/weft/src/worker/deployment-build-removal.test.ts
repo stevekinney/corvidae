@@ -6,117 +6,27 @@
  */
 import { describe, expect, it } from 'bun:test';
 
-import { Engine } from '../core/engine.ts';
-import { workflow } from '../core/types.ts';
-import type { OperationFault } from '../server/operation-fault.ts';
 import { forkWorkflowOperation } from '../server/operations/fork-workflow.ts';
 import { createStartOrSignalWorkflowOperation } from '../server/operations/start-or-signal-workflow.ts';
 import { startWorkflowOperation } from '../server/operations/start-workflow.ts';
 import { createRemoveWorkerDeploymentVersionOperation } from '../server/operations/worker-deployment-routing.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
+import {
+  buildManifest,
+  DEPLOYMENT,
+  drainBuildOne,
+  faultOf,
+  fixture,
+  InterleavingStorage,
+  invoke,
+  REMOVE_BUILD_ONE,
+} from './deployment-build-fixture.test-support.ts';
 import { seedBoundRun, seedLedgerEntry } from './deployment-build-references.test-support.ts';
 import { WorkerDeploymentCatalog } from './deployment-routing.ts';
 import { WorkerDeploymentVersionRemovedError } from './deployment-version-removed-error.ts';
-import type { WorkerManifest } from './manifest/types.ts';
 import { NoRoutedWorkerDeploymentError } from './no-routed-deployment-error.ts';
 import { resolveWorkflowWorkerStartBinding } from './versioning-policy.ts';
-
-const DEPLOYMENT = 'test-deployment';
-
-function manifest(revision: string, buildId: string): WorkerManifest {
-  return {
-    manifestVersion: 1,
-    protocolVersion: 1,
-    sdkVersion: 'test',
-    runtime: { name: 'bun', version: 'test' },
-    deployment: { name: DEPLOYMENT, buildId, artifactDigest: `sha256:${buildId}` },
-    workflows: {
-      checkout: {
-        workflowVersion: '0.0.0',
-        workflowRevision: revision,
-        contractHash: 'sha256:workflow',
-        activities: { charge: { contractHash: 'sha256:charge', implementationRevision: buildId } },
-      },
-    },
-    capabilities: {},
-  };
-}
-
-type Invocable = { invoke: (context: never) => Promise<unknown> };
-
-function invoke(operation: Invocable, input: unknown, host?: unknown): Promise<unknown> {
-  return operation.invoke({ input, host } as never);
-}
-
-async function faultOf(promise: Promise<unknown>): Promise<OperationFault> {
-  try {
-    await promise;
-  } catch (error) {
-    if (typeof error === 'object' && error !== null && 'code' in error && 'data' in error) {
-      return error as OperationFault;
-    }
-    throw new Error(`Expected an OperationFault, received ${String(error)}`, { cause: error });
-  }
-  throw new Error('Expected the operation to fault, but it succeeded.');
-}
-
-/** An engine whose `checkout` runs wait for a `go` signal, over a catalog with two ready builds. */
-async function fixture(storage: MemoryStorage = new MemoryStorage(), seedCatalog = true) {
-  const engine = new Engine({ storage });
-  engine.register(
-    workflow({ name: 'checkout', workerVersioningPolicy: { mode: 'pinned' } }).execute(
-      async function* (ctx) {
-        return yield* ctx.waitForSignal<string>('go');
-      },
-    ),
-  );
-  const [firstRevision] = await engine.workflows.listRevisions('checkout');
-  const revision = firstRevision?.manifest.revision ?? '';
-  const catalog = new WorkerDeploymentCatalog(storage);
-  const disposable = {
-    storage,
-    engine,
-    catalog,
-    revision,
-    async [Symbol.asyncDispose]() {
-      engine[Symbol.dispose]();
-    },
-  };
-  if (!seedCatalog) return disposable;
-  for (const buildId of ['build-1', 'build-2']) {
-    await catalog.registerVersion({
-      deploymentName: DEPLOYMENT,
-      buildId,
-      artifactDigest: `sha256:${buildId}`,
-      manifestDigest: `sha256:manifest-${buildId}`,
-      manifest: manifest(revision, buildId),
-      state: 'ready',
-      firstSeenAt: 1,
-    });
-  }
-  await catalog.setRouting({
-    deploymentName: DEPLOYMENT,
-    currentBuildId: 'build-1',
-    rampBasisPoints: 10_000,
-    updatedAt: 1,
-  });
-  return disposable;
-}
-
-/** Route new work off `build-1` and drain it, so only the work already on it keeps it alive. */
-async function drainBuildOne(catalog: WorkerDeploymentCatalog): Promise<void> {
-  await catalog.setRouting({
-    deploymentName: DEPLOYMENT,
-    currentBuildId: 'build-2',
-    rampBasisPoints: 10_000,
-    updatedAt: 2,
-    expectedGeneration: 1,
-  });
-  await catalog.setVersionState(DEPLOYMENT, 'build-1', 'draining');
-}
-
-const REMOVE_BUILD_ONE = { deploymentName: DEPLOYMENT, buildId: 'build-1' };
 
 describe('removing a build that engine runs are bound to', () => {
   it('refuses while a run is bound, also after a restart, and removes once the run finishes', async () => {
@@ -173,7 +83,7 @@ describe('removing a build that engine runs are bound to', () => {
     ]);
   });
 
-  it('refuses when a run binds between the removal reading the build and writing it', async () => {
+  it('refuses a removal whose build was resumed, routed to and bound to between its checks and its fence', async () => {
     const storage = new InterleavingStorage();
     await using fx = await fixture(storage);
     const { engine, catalog } = fx;
@@ -262,7 +172,7 @@ describe('a restart or fork that would inherit a removed build', () => {
     expect(await storage.get('wf:checkout-1')).not.toBeNull();
   });
 
-  it('answers a restart through weft.workflows.start and startorsignal with Conflict version-removed', async () => {
+  it('answers a restart through startorsignal with Conflict version-removed, and a plain start of the same id is only a duplicate', async () => {
     await using fx = await finishedRunOnRemovedBuild();
     const { engine } = fx;
 
@@ -311,7 +221,7 @@ describe('seeded work is counted the way the engine records it', () => {
       buildId: 'build-1',
       artifactDigest: 'sha256:build-1',
       manifestDigest: 'sha256:manifest-build-1',
-      manifest: manifest('revision-a', 'build-1'),
+      manifest: buildManifest('revision-a', 'build-1'),
       state: 'draining',
       firstSeenAt: 1,
     });
@@ -348,16 +258,3 @@ describe('seeded work is counted the way the engine records it', () => {
     expect(await catalog.removeVersion(DEPLOYMENT, 'build-1')).toEqual({ outcome: 'removed' });
   });
 });
-
-class InterleavingStorage extends MemoryStorage {
-  #beforeCommit: (() => Promise<void>) | undefined;
-  arm(beforeCommit: () => Promise<void>): void {
-    this.#beforeCommit = beforeCommit;
-  }
-  override async conditionalBatch(...args: Parameters<MemoryStorage['conditionalBatch']>) {
-    const beforeCommit = this.#beforeCommit;
-    this.#beforeCommit = undefined;
-    if (beforeCommit !== undefined) await beforeCommit();
-    return super.conditionalBatch(...args);
-  }
-}

@@ -6,13 +6,13 @@ import { releaseInFlightStart, reserveInFlightStart } from '../catalog-removal.t
 import { releaseLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { resolveExecutableRegistrationOrRenamedNotFound } from '../dynamic-source-execution.ts';
 import { WorkflowTypeNotRegisteredForRecoveryError } from '../errors.ts';
-import { commitFencedEngineWrite } from '../fenced-write.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { normalizeForkStep, selectPersistedWorkflowStartHeaders } from '../state-utilities.ts';
 import { loadWorkflowState } from '../storage-io.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { launchWorkflowFromCheckpoint } from './checkpoint-launch.ts';
+import { commitForkWrite } from './fork-build-fence.ts';
 import {
   buildForkBatchOperations,
   buildForkCatalogEntryCondition,
@@ -450,7 +450,7 @@ export async function fork(
     try {
       const forkCheckpointBytes = serializeCheckpoint(forkCheckpoint);
       // Fence fork creation so a deposed engine cannot create a phantom run.
-      await commitFencedEngineWrite(
+      await commitForkWrite(
         internals,
         workflowId,
         buildForkBatchOperations(
@@ -463,6 +463,7 @@ export async function fork(
           callbacks,
         ),
         forkCatalogEntryCondition,
+        forkState,
         () =>
           buildForkCommitLostRaceError(
             workflowId,

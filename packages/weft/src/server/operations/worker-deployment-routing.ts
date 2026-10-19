@@ -214,8 +214,12 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
       'still bound to faults with Conflict (`reason: "version-referenced"`): that work is every ' +
       'run that is not terminal (running, pending, or suspended) whose current worker binding ' +
       'names the build, under any worker-versioning policy, and every task-ledger entry that is ' +
-      'not terminal whose execution requirement names the build. Schedules and revision realms ' +
-      'do not pin a build and do not count. A refused build is left as it was. The count is ' +
+      'not terminal whose execution requirement names the build; a dead-lettered entry is not ' +
+      'terminal and keeps the build until it is cleared. Schedules and revision realms do not pin ' +
+      'a build and do not count. Removal fences the build before it scans, so a run that tries ' +
+      'to bind to it meanwhile (a start, a restart, a fork, a child, an upgrade) fails with ' +
+      'Conflict (`reason: "version-removing"`), and with `"version-removed"` once it is removed. ' +
+      'A refused build is left as it was, and its fence is deleted. The count is ' +
       'computed when the build is removed or listed, it is the `executionReferences` of ' +
       '`weft.worker.deployments.diagnostics`, and it falls to zero as the work finishes.',
     destructive: true,
