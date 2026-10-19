@@ -63,6 +63,37 @@ function codeSummary() {
   return summary;
 }
 
+const GOAL = {
+  goalRunId: 'goal-1',
+  owner: 'anonymous:local',
+  agentName: 'assistant',
+  status: 'running',
+  terminalReason: null,
+  revision: 1,
+  createdAt: '2026-10-19T08:00:00.000Z',
+  updatedAt: '2026-10-19T08:00:00.000Z',
+  closedAt: null,
+  cancellation: null,
+  bounds: {
+    maximumAttempts: 3,
+    maximumTotalDurationMs: null,
+    maximumTotalSteps: null,
+    maximumTotalTokens: null,
+    maximumTotalCostUsd: null,
+  },
+  usage: { attempts: 0, steps: 0, tokens: 0, costUsd: null, durationMs: 0 },
+  attempts: [],
+};
+
+const AUDIT_RECORD = {
+  sequence: 1,
+  timestamp: '2026-10-19T08:00:00.000Z',
+  type: 'run.completed',
+  resource: 'run-1',
+  principal: null,
+  detail: null,
+};
+
 function requestUrl(input: RequestInfo | URL): URL {
   const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   return new URL(text, 'http://localhost');
@@ -83,6 +114,14 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   const empty = outcome === 'empty';
   const url = requestUrl(input);
   const call = operationOf(init?.body);
+  if (call !== undefined && call.method === 'bureau.audit.query') {
+    const records = empty ? [] : [AUDIT_RECORD];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { records, nextCursor: null } });
+  }
+  if (call !== undefined && call.method === 'bureau.goals.list') {
+    const goals = empty ? [] : [GOAL];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
+  }
   if (call !== undefined) {
     // The Bureau's list operations answer their own shapes, and an empty one has nothing in it.
     const result =
@@ -105,7 +144,6 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
                     : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
-  if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
   if (url.pathname.endsWith('/schedules')) {
     return Response.json({ items: empty ? [] : [{ id: 'schedule-1' }], total: empty ? 0 : 1 });
   }
@@ -213,8 +251,7 @@ describe('every view, in every state', () => {
 });
 
 describe('a view that finds something to show', () => {
-  const populated = VIEW_NAMES.filter((view) => !VIEWS[view].placeholder);
-  for (const view of populated) {
+  for (const view of VIEW_NAMES) {
     test(`${view} renders its content`, async () => {
       stub(view, 'content');
       const { container, findByTestId } = mount(view);
@@ -222,14 +259,6 @@ describe('a view that finds something to show', () => {
       expect(frame(container).dataset['state']).toBe('ready');
     });
   }
-
-  test('a placeholder view is empty even when its service answers', async () => {
-    stub('audit', 'content');
-    const { container, findByRole } = mount('audit');
-    const title = VIEW_COPY.audit.empty?.title ?? '';
-    expect(await findByRole('heading', { level: 1, name: title })).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('empty');
-  });
 
   test('one run’s page has no probe and shows its content once its scope is held', async () => {
     const { requests } = stub('runs', 'content');
@@ -446,9 +475,8 @@ describe('the Workflows area', () => {
     return stub;
   }
 
-  test('is not a placeholder, is gated on the engine’s workflows:read, and says whether it can be empty', () => {
+  test('is gated on the engine’s workflows:read, and says whether it can be empty', () => {
     const view = VIEWS.workflows;
-    expect(view.placeholder).toBe(false);
     expect(view.scopes).toEqual(['workflows:read']);
     expect(view.canBeEmpty).toBe(true);
     // A view that can be empty has the words for it, and one for a type with no runs.

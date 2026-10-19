@@ -1,3 +1,4 @@
+import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import {
   buildClaimAttemptRecordWrite,
   buildTaskAttemptTransitionEvent,
@@ -322,16 +323,19 @@ async function selectAndReserveWorker(
   // COR-198: attempt-by-attempt worker transition, fired only after the
   // durable claim above actually committed.
   options.engine.dispatchEvent(
-    await buildTaskAttemptTransitionEvent(options.engine.storage, {
-      operationId: task.operationId,
-      workflowId: task.workflowId,
-      activityName: task.activityName,
-      attempt: result.record.attempt,
-      attemptTokenDigest,
-      workerSessionId: worker.id,
-      executionIdentity,
-      executionRequirement: result.record.executionRequirement,
-    }),
+    tagWorkflowEventGeneration(
+      await buildTaskAttemptTransitionEvent(options.engine.storage, {
+        operationId: task.operationId,
+        workflowId: task.workflowId,
+        activityName: task.activityName,
+        attempt: result.record.attempt,
+        attemptTokenDigest,
+        workerSessionId: worker.id,
+        executionIdentity,
+        executionRequirement: result.record.executionRequirement,
+      }),
+      result.record.workflowExecutionToken,
+    ),
   );
 
   ws.send(

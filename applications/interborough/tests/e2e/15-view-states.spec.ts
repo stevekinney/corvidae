@@ -27,6 +27,7 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   storage: '/storage',
   system: '/system',
   audit: '/audit',
+  goals: '/goals',
   engine: '/engine',
 };
 
@@ -59,7 +60,8 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
 const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   chat: bureauProbe('bureau.contexts.list', { contexts: [], nextOffset: null }),
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
-  audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
+  audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
+  goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
   'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
   // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
   // empty only when neither lists anything.
@@ -129,7 +131,7 @@ function jsonRpcBody(post: string | null, result: unknown): unknown {
 function statesOf(view: ViewName): Outcome[] {
   const states: Outcome[] = ['loading', 'error', 'forbidden'];
   if (VIEWS[view].canBeEmpty) states.push('empty');
-  if (!VIEWS[view].placeholder) states.push('ready');
+  states.push('ready');
   return states;
 }
 

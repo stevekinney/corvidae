@@ -5,14 +5,19 @@
   import SchedulesIndex from './index.svelte';
   import SchedulesTestHarness from './schedules-test-harness.test-harness.svelte';
 
+  import type { AuthorizationScope } from '../../lib/scopes.svelte.ts';
+
   interface Props {
     client: HttpClient;
+    scopes?: readonly AuthorizationScope[] | undefined;
+    /** The test has installed its own stand-in for the Bureau. */
+    externalBureau?: boolean | undefined;
   }
 
-  let { client }: Props = $props();
+  let { client, scopes, externalBureau }: Props = $props();
 </script>
 
-<SchedulesTestHarness {client}>
+<SchedulesTestHarness {client} {scopes} {externalBureau}>
   {#snippet children()}
     <SchedulesIndex />
   {/snippet}

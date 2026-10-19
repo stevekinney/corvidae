@@ -51,8 +51,23 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   return params;
 }
 
-/** The path segment `workflowDetailPath` emits in place of a dot-only identifier. */
+/** The path segment `workflowDetailPath` and `scheduleDetailPath` emit in place of a dot-only identifier. */
 const DOT_ID_PLACEHOLDER = '_';
+
+/** The query key that carries the identifier a placeholder path stands for, by route pattern. */
+const ESCAPED_ID_QUERY: Readonly<Record<string, string>> = {
+  '/runs/:id': '__weft_workflow_id',
+  '/schedules/:id': '__weft_schedule_id',
+};
+
+/** `/<segment>/<id>`, with a dot-only `id` carried in the query, which no browser normalises away. */
+function identifierPath(segment: string, queryKey: string, id: string, search: URLSearchParams) {
+  const nextSearch = new URLSearchParams(search);
+  const dotOnly = id === '.' || id === '..';
+  if (dotOnly) nextSearch.set(queryKey, id);
+  const query = nextSearch.toString();
+  return `/${segment}/${dotOnly ? DOT_ID_PLACEHOLDER : encodeURIComponent(id)}${query ? `?${query}` : ''}`;
+}
 
 /**
  * Builds a workflow detail path. Dot-only identifiers use a query-carried
@@ -63,11 +78,25 @@ export function workflowDetailPath(
   workflowId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  const nextSearch = new URLSearchParams(search);
-  const dotOnly = workflowId === '.' || workflowId === '..';
-  if (dotOnly) nextSearch.set('__weft_workflow_id', workflowId);
-  const query = nextSearch.toString();
-  return `/runs/${dotOnly ? DOT_ID_PLACEHOLDER : encodeURIComponent(workflowId)}${query ? `?${query}` : ''}`;
+  return identifierPath('runs', '__weft_workflow_id', workflowId, search);
+}
+
+/** A schedule's page. A dot-only identifier is carried as `workflowDetailPath` carries one. */
+export function scheduleDetailPath(
+  scheduleId: string,
+  search: URLSearchParams = new URLSearchParams(),
+): string {
+  return identifierPath('schedules', '__weft_schedule_id', scheduleId, search);
+}
+
+/** A schedule's page with its edit drawer open. */
+export function scheduleEditPath(scheduleId: string): string {
+  return scheduleDetailPath(scheduleId, new URLSearchParams({ edit: '1' }));
+}
+
+/** The schedules list with the create drawer open. */
+export function scheduleCreatePath(): string {
+  return '/schedules?create=1';
 }
 
 interface RouteDefinitionMatch {
@@ -160,16 +189,17 @@ class DashboardRouter {
   get current(): RouteState {
     const found = findRouteDefinition(this.pathname, routes);
     const search = this.search;
-    // The override stands in for a dot-only identifier that cannot be a path segment, and
-    // `workflowDetailPath` pairs it with the placeholder `_`. On any other run's path it would
-    // make the page act on a different run than the one its address names.
-    const escapedWorkflowId =
-      found?.definition.pattern === '/runs/:id' && found.params['id'] === DOT_ID_PLACEHOLDER
-        ? search.get('__weft_workflow_id')
+    // The override stands in for a dot-only identifier that cannot be a path segment, and the
+    // path builders pair it with the placeholder `_`. On any other path it would make the page act
+    // on a different thing than the one its address names.
+    const escapeKey = found === null ? undefined : ESCAPED_ID_QUERY[found.definition.pattern];
+    const escapedIdentifier =
+      escapeKey !== undefined && found?.params['id'] === DOT_ID_PLACEHOLDER
+        ? search.get(escapeKey)
         : null;
     const params =
-      (escapedWorkflowId === '.' || escapedWorkflowId === '..') && found
-        ? { ...found.params, id: escapedWorkflowId }
+      (escapedIdentifier === '.' || escapedIdentifier === '..') && found
+        ? { ...found.params, id: escapedIdentifier }
         : (found?.params ?? {});
     return {
       route: found?.definition ?? null,

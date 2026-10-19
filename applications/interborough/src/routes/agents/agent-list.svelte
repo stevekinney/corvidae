@@ -15,6 +15,7 @@
 
   import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
   import { listAgentDefinitions } from '../../lib/agent-definitions.ts';
+  import { agentEditPath, agentPath } from '../../lib/agent-paths.ts';
   import { listAgents } from '../../lib/bureau-client.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -71,9 +72,8 @@
         <div class="weft-agents__identity">
           <a
             class="weft-agents__name"
-            href={router.href(`/agents/${encodeURIComponent(agent.name)}`)}
-            onclick={(event) => go(event, `/agents/${encodeURIComponent(agent.name)}`)}
-            >{agent.displayName}</a
+            href={router.href(agentPath(agent.name))}
+            onclick={(event) => go(event, agentPath(agent.name))}>{agent.displayName}</a
           >
           {#if agent.description}
             <p class="weft-agents__description">{agent.description}</p>
@@ -100,9 +100,8 @@
         <div class="weft-agents__identity">
           <a
             class="weft-agents__name"
-            href={router.href(`/agents/${encodeURIComponent(entry.id)}/edit`)}
-            onclick={(event) => go(event, `/agents/${encodeURIComponent(entry.id)}/edit`)}
-            >{entry.id}</a
+            href={router.href(agentEditPath(entry.id))}
+            onclick={(event) => go(event, agentEditPath(entry.id))}>{entry.id}</a
           >
           {#if entry.problem}
             <p class="weft-agents__description" data-testid="agent-problem">
