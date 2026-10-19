@@ -6,6 +6,7 @@ import type { TokenBudget } from '../../context/token-budget.ts';
 import type {
   ContextAssembler,
   MediaCostEstimator,
+  MediaCostOutcome,
   UnadmittedMediaCost,
 } from '../../context/types.ts';
 import { MediaAdmissionError } from '../../errors.ts';
@@ -83,7 +84,7 @@ export function createCacheAwareAssembly(
 function refuseOmittedMedia(
   context: GenerateContext,
   assembled: readonly Message[],
-  mediaCosts: readonly (UnadmittedMediaCost | { readonly outcome: 'estimated' })[],
+  mediaCosts: readonly MediaCostOutcome[],
 ): void {
   const kept = new Set(assembled.map((message) => message.id));
   const refused: UnadmittedMediaCost[] = mediaCosts.filter(
