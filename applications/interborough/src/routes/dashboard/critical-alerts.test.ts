@@ -55,6 +55,23 @@ describe('buildDiagnosticChips workflow links', () => {
     expect(chips[0]?.workflow).toEqual({ id: 'wf-1', href: '/runs/wf-1' });
   });
 
+  test('a truncated page never implies one run owns every affected task', () => {
+    // The server caps the items it returns, while the summary counts every task of the kind.
+    const page = Array.from({ length: 50 }, () => diagnosticItem('dead-lettered', 'wf-1'));
+
+    const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, deadLettered: 60 }, page);
+
+    expect(chips[0]?.workflow).toBeUndefined();
+  });
+
+  test('a page that holds every task of the kind still links its one run', () => {
+    const page = Array.from({ length: 3 }, () => diagnosticItem('dead-lettered', 'wf-1'));
+
+    const chips = buildDiagnosticChips({ ...ZERO_SUMMARY, deadLettered: 3 }, page);
+
+    expect(chips[0]?.workflow?.id).toBe('wf-1');
+  });
+
   test('a kind spread over several workflows, or with none named, offers no single workflow', () => {
     const several = buildDiagnosticChips({ ...ZERO_SUMMARY, retryStorms: 2 }, [
       diagnosticItem('retry-storm', 'wf-1'),

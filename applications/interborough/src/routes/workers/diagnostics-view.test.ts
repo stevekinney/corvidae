@@ -173,13 +173,21 @@ describe('DiagnosticsView — grouped kinds', () => {
     });
 
     expect(
-      getByRole('link', { name: 'Open workflow wf_abcdefghijklmnop' }).getAttribute('href'),
+      getByRole('link', { name: /open workflow wf_abcdefghijklmnop$/ }).getAttribute('href'),
     ).toBe('/runs/wf_abcdefghijklmnop');
-    expect(getByRole('link', { name: 'Open workflow wf with/slash' }).getAttribute('href')).toBe(
+    expect(getByRole('link', { name: /open workflow wf with\/slash$/ }).getAttribute('href')).toBe(
       '/runs/wf%20with%2Fslash',
     );
     // An item with no workflowId has no workflow to link to.
-    expect(queryByRole('link', { name: /Open workflow op_three/ })).toBeNull();
+    expect(queryByRole('link', { name: /op_three/ })).toBeNull();
+
+    // Label in name: what a sighted user reads on the link is part of what a screen reader says.
+    for (const link of [
+      getByRole('link', { name: /open workflow wf_abcdefghijklmnop$/ }),
+      getByRole('link', { name: /open workflow wf with\/slash$/ }),
+    ]) {
+      expect(link.getAttribute('aria-label')).toContain(link.textContent ?? '\0');
+    }
   });
 
   test('evidence rows show at most 3 items per group even when more are present', () => {

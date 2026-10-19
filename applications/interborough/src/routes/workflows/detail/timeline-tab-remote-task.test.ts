@@ -185,52 +185,81 @@ describe('TimelineTab remote task', () => {
     expect(await view.findByText('No task record')).not.toBeNull();
   });
 
-  test('a running activity awaiting a worker, whose entry has no record yet, says the dispatch record is not yet available', async () => {
-    const { taskOperationId: _omitted, ...running } = entry({ status: 'running' });
-    const view = renderTab(
-      [running],
-      async () => {
-        throw new HttpClientError(404, 'no such task');
-      },
-      [
-        {
-          token: 'as:wf-remote:2:1',
-          operationId: 'as:wf-remote:2:1',
-          activityName: 'chargeCard',
-          step: 3,
-          attempt: 1,
-          createdAt: 1_000,
+  describe('a running step, whose entry names no record', () => {
+    // The ledger key of a remote activity is the pending record's `token`. Its `operationId` is the
+    // workflow operation's own id, which names no ledger record, so the two differ here.
+    const TOKEN = 'async-act:v1:wf-remote:0:1';
+    const PENDING: PendingItem = {
+      token: TOKEN,
+      operationId: 'workflow-operation-id',
+      activityName: 'chargeCard',
+      step: 3,
+      attempt: 1,
+      createdAt: 1_000,
+    };
+
+    function ledgerKnowing(token: string, reads: string[]) {
+      return async ({ operationId }: { operationId: string }) => {
+        reads.push(operationId);
+        if (operationId !== token) throw new HttpClientError(404, 'no such task');
+        return { ...taskLedgerDetailFixture(), operationId };
+      };
+    }
+
+    test('a running remote step offers its queued record, read by the pending token', async () => {
+      const reads: string[] = [];
+      const view = renderTab([withoutTask({ status: 'running' })], ledgerKnowing(TOKEN, reads), [
+        PENDING,
+      ]);
+
+      await fireEvent.click(
+        await view.findByRole('button', { name: 'Remote task for chargeCard' }),
+      );
+
+      expect(await view.findByText(REMOTE_TASK_STATE_LABELS.queued)).not.toBeNull();
+      expect(reads).toContain(TOKEN);
+      expect(reads).not.toContain('workflow-operation-id');
+    });
+
+    test('a running step whose pending activity the ledger does not know offers nothing', async () => {
+      // A local `completeAsync()` deferral, or any pending activity that is not remote.
+      const reads: string[] = [];
+      const view = renderTab(
+        [withoutTask({ status: 'running' })],
+        ledgerKnowing('some-other-token', reads),
+        [PENDING],
+      );
+
+      await waitFor(() => expect(reads).toEqual([TOKEN]));
+      await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+
+      expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
+      expect(view.queryByText(/Dispatch record not yet available/)).toBeNull();
+      expect(view.queryByText('No task record')).toBeNull();
+    });
+
+    test('a running step offers nothing when the ledger read is refused', async () => {
+      const view = renderTab(
+        [withoutTask({ status: 'running' })],
+        async () => {
+          throw new HttpClientError(403, 'forbidden');
         },
-      ],
-    );
-    await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+        [PENDING],
+      );
 
-    await fireEvent.click(await view.findByRole('button', { name: 'Remote task for chargeCard' }));
+      await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
 
-    expect(await view.findByText('Dispatch record not yet available')).not.toBeNull();
-  });
+      expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
+    });
 
-  test('that same running step shows the record as soon as the ledger has it', async () => {
-    const { taskOperationId: _omitted, ...running } = entry({ status: 'running' });
-    const view = renderTab(
-      [running],
-      async ({ operationId }) => ({ ...taskLedgerDetailFixture(), operationId }),
-      [
-        {
-          token: 'as:wf-remote:2:1',
-          operationId: 'as:wf-remote:2:1',
-          activityName: 'chargeCard',
-          step: 3,
-          attempt: 1,
-          createdAt: 1_000,
-        },
-      ],
-    );
-    await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    test('a running step with no pending activity is not asked about at all', async () => {
+      const reads: string[] = [];
+      const view = renderTab([withoutTask({ status: 'running' })], ledgerKnowing(TOKEN, reads), []);
 
-    await fireEvent.click(await view.findByRole('button', { name: 'Remote task for chargeCard' }));
+      await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
 
-    expect(await view.findByText(REMOTE_TASK_STATE_LABELS.queued)).not.toBeNull();
-    expect(view.queryByText('Dispatch record not yet available')).toBeNull();
+      expect(reads).toEqual([]);
+      expect(view.queryAllByRole('button', { name: /^Remote task for / })).toHaveLength(0);
+    });
   });
 });

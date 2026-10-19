@@ -52,7 +52,7 @@
   } from './async-activity/async-activity-query.ts';
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
   import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
-  import RemoteActivityPanel from './remote-activity-panel.svelte';
+  import RemoteTaskStep from './remote-task-step.svelte';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -174,19 +174,16 @@
     );
   }
 
-  /** The timeline step whose remote task is open. */
-  let remoteTaskStep = $state<number | null>(null);
-
   /**
-   * The ledger record behind a mapped activity step, when the step is remote. The entry's own
-   * `taskOperationId` is what marks it (present on remote `ctx.run()` entries only). A running
-   * entry does not carry it until the next checkpoint, so a running step with a live
-   * pending-activity observation is offered by that observation's operation id, and the panel
-   * says the dispatch record is not yet available if the ledger has none.
+   * The ledger key behind a mapped activity step, when the step may be remote. A step whose entry
+   * names its record (`taskOperationId`) is remote, and the key is that id. A running step names
+   * none, so a step with a live pending-activity observation is keyed by that observation's
+   * `token`, the ledger key B13's in-flight drawer reads, and is `probe`d: it is offered only if
+   * the ledger holds a record for the token. Never the pending record's own `operationId`.
    */
   function remoteTaskFor(
     stepId: string,
-  ): { step: number; label: string; operationId: string; awaiting: boolean } | undefined {
+  ): { label: string; operationId: string; probe: boolean } | undefined {
     const stepNumber = stepNumberFromRunStepId(stepId);
     if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
     const found = entries.find(
@@ -194,23 +191,13 @@
     );
     if (found === undefined) return undefined;
     if (found.taskOperationId !== undefined) {
-      return {
-        step: stepNumber,
-        label: found.operationLabel,
-        operationId: found.taskOperationId,
-        awaiting: false,
-      };
+      return { label: found.operationLabel, operationId: found.taskOperationId, probe: false };
     }
     if (found.status !== 'running') return undefined;
     const pending = attachedPendingActivities.find((candidate) => candidate.stepId === stepId);
     return pending === undefined
       ? undefined
-      : {
-          step: stepNumber,
-          label: found.operationLabel,
-          operationId: pending.operationId,
-          awaiting: true,
-        };
+      : { label: found.operationLabel, operationId: pending.token, probe: true };
   }
 
   let openDrawerToken = $state<string | null>(null);
@@ -343,24 +330,14 @@
           {/if}
           {@const remote = readTask === undefined ? undefined : remoteTaskFor(step.id)}
           {#if remote !== undefined && readTask !== undefined}
-            <div class="weft-timeline-tab__step-provenance">
-              <Button
-                variant="ghost"
-                size="sm"
-                label={`Remote task for ${remote.label}`}
-                aria-expanded={remoteTaskStep === remote.step}
-                onclick={() =>
-                  (remoteTaskStep = remoteTaskStep === remote.step ? null : remote.step)}
+            {#key remote.operationId}
+              <RemoteTaskStep
+                operationId={remote.operationId}
+                label={remote.label}
+                {readTask}
+                probe={remote.probe}
               />
-              {#if remoteTaskStep === remote.step}
-                <RemoteActivityPanel
-                  operationId={remote.operationId}
-                  {readTask}
-                  label={remote.label}
-                  awaitingDispatchRecord={remote.awaiting}
-                />
-              {/if}
-            </div>
+            {/key}
           {/if}
           {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
           {#if settled?.taskOperationId !== undefined && readTask !== undefined}

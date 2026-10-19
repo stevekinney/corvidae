@@ -104,7 +104,7 @@
                 <a
                   class="weft-workers-id weft-workers-id-link"
                   href={router.href(workflowPath)}
-                  aria-label={`Open workflow ${item.workflowId}`}
+                  aria-label={`${truncateId(item.workflowId)}, open workflow ${item.workflowId}`}
                   onclick={(event) => {
                     event.preventDefault();
                     router.navigate(workflowPath);

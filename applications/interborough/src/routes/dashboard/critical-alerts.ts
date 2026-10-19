@@ -123,21 +123,27 @@ const ITEM_KIND_FOR_SUMMARY_KEY = {
 } as const satisfies Record<keyof TaskDiagnosticsSummary, TaskDiagnosticItem['kind']>;
 
 /**
- * The one run that owns every item of a kind, or `undefined` when the items name none, or name
- * more than one: a chip is an aggregate, so it links a run only when there is exactly one to link.
+ * The one run that owns every item of a kind, or `undefined` when the items name none, name
+ * more than one, or are only a page of a larger set: a chip is an aggregate, so it links a run only when there is exactly one to link.
  * The Workers diagnostics view links each item's own run.
  */
 function owningWorkflow(
   items: readonly TaskDiagnosticItem[],
   kind: keyof TaskDiagnosticsSummary,
+  total: number,
 ): { readonly id: string; readonly href: string } | undefined {
   const itemKind = ITEM_KIND_FOR_SUMMARY_KEY[kind];
   const ids = new Set<string>();
+  let counted = 0;
   for (const item of items) {
-    if (item.kind === itemKind && item.workflowId !== undefined) ids.add(item.workflowId);
+    if (item.kind !== itemKind) continue;
+    counted += 1;
+    if (item.workflowId !== undefined) ids.add(item.workflowId);
   }
   const [only] = ids;
-  return ids.size === 1 && only !== undefined
+  // The server caps the items it returns while the summary counts every task of the kind, so a
+  // page that does not hold them all says nothing about who owns the rest.
+  return counted === total && ids.size === 1 && only !== undefined
     ? { id: only, href: workflowDetailPath(only) }
     : undefined;
 }
@@ -158,7 +164,7 @@ export function buildDiagnosticChips(
     const count = summary[kind];
     if (count <= 0) continue;
     const meta = DIAGNOSTIC_KIND_META[kind];
-    const workflow = owningWorkflow(items, kind);
+    const workflow = owningWorkflow(items, kind, count);
     chips.push({
       id: `diagnostic:${kind}`,
       icon: meta.icon,

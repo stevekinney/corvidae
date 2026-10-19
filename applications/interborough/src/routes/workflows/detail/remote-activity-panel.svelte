@@ -30,20 +30,9 @@
     readonly readTask: (input: { operationId: string }) => Promise<unknown>;
     /** The activity's label, for the panel's accessible name. */
     readonly label: string;
-    /**
-     * True when the id comes from a live pending-activity observation because the running entry
-     * does not name its record yet (Weft persists it at the next checkpoint). A missing record is
-     * then "not yet available", not "removed".
-     */
-    readonly awaitingDispatchRecord?: boolean;
   }
 
-  let {
-    operationId,
-    readTask,
-    label,
-    awaitingDispatchRecord = false,
-  }: RemoteActivityPanelProps = $props();
+  let { operationId, readTask, label }: RemoteActivityPanelProps = $props();
 
   const taskQuery = createQuery(() => ({
     queryKey: queryKeys.tasks.detail(operationId),
@@ -75,11 +64,6 @@
     </EmptyState>
   {:else if error instanceof MalformedTaskLedgerError}
     <EmptyState title="Malformed server response" description={error.message} />
-  {:else if notRecorded && awaitingDispatchRecord}
-    <EmptyState
-      title="Dispatch record not yet available"
-      description="The task ledger has no record for this activity yet. A remote activity's record appears once its dispatch is checkpointed."
-    />
   {:else if notRecorded}
     <EmptyState
       title="No task record"
