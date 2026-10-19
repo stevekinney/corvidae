@@ -9,6 +9,7 @@ import {
   createAgent,
   type MediaCostEstimator,
   createScriptedGenerate,
+  type GuardrailsOptions,
   type ScriptedGenerate,
   type ScriptedGenerateStep,
   type StopCondition,
@@ -20,14 +21,17 @@ import {
   createOperationHandler,
   principalFromApiKey,
   type AuthorizationScope,
+  resolveStorage,
+  type Storage,
 } from '@lostgradient/weft';
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
 import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
+import { seamStorage, type StorageSeam } from '../test/session-input-fixtures.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
-import type { Bureau, BureauDiagnostic } from '../types.ts';
+import type { Bureau, BureauDiagnostic, BureauOptions } from '../types.ts';
 import {
   type AgUiAuthorization,
   type AgUiBureau,
@@ -46,6 +50,11 @@ export type Harness = {
   readonly bureau: Bureau;
   readonly handler: Handler;
   readonly generate: ScriptedGenerate;
+  /**
+   * The seam over this Bureau's own connection to the SQLite file, under `seamStorage: true`.
+   * A peer has a seam of its own over the same file.
+   */
+  readonly seam: StorageSeam | undefined;
   /** A second handler, with a mount of its own, over the same Bureau: what another process would serve. */
   remount(agUi?: AgUiOptions): Handler;
   /**
@@ -80,6 +89,18 @@ export type HarnessOptions = {
   readonly authentication?: AuthConfig;
   /** Receives the Bureau's diagnostics. */
   readonly onDiagnostic?: (diagnostic: BureauDiagnostic) => void;
+  /**
+   * With `storage: 'sqlite'`, each Bureau opens its own connection to the file through a
+   * {@link seamStorage}, exposed as `harness.seam`, so a test can hold or watch one Bureau's writes.
+   */
+  readonly seamStorage?: true;
+  /** The guardrails the harness agents run with, such as an input detector that trips. */
+  readonly guardrails?: GuardrailsOptions;
+  /**
+   * The durable engine's ownership posture. Two Bureaus over one store hear each other's commits
+   * (a signal, a cancel, a terminal) at the claim renewal interval, so a test of them shortens it.
+   */
+  readonly durableOwnership?: BureauOptions['durableOwnership'];
   /**
    * The backends the scripted model describes itself as, which decide the media it accepts and
    * produces. Omitted, it carries no descriptors and so admits no media.
@@ -128,6 +149,13 @@ async function build(
   ownsStorage = true,
 ): Promise<Harness> {
   const generate = createScriptedGenerate(options.script);
+  // Under `seamStorage`, this Bureau's own connection to the file, which Bureau does not close.
+  let real: Storage | undefined;
+  let seam: StorageSeam | undefined;
+  if (options.seamStorage === true && fixture !== undefined) {
+    real = await resolveStorage(fixture.configuration);
+    seam = seamStorage(real);
+  }
   if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
   const bureau = await createBureau({
     id: 'ag-ui-fixture',
@@ -140,6 +168,7 @@ async function build(
           generate,
           name,
           ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
+          ...(options.guardrails === undefined ? {} : { guardrails: options.guardrails }),
           ...(options.mediaCostEstimator === undefined
             ? {}
             : { mediaCostEstimator: options.mediaCostEstimator }),
@@ -150,7 +179,7 @@ async function build(
     ),
     generate,
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
-    storage: fixture?.configuration ?? { type: 'memory' },
+    storage: seam?.storage ?? fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
     // The handler serves the asset operations and the content route, so it needs the service.
     assets: { storage: createMemoryAssetStorage() },
@@ -161,6 +190,9 @@ async function build(
       : { durableBackgroundTasks: options.durableBackgroundTasks }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+    ...(options.durableOwnership === undefined
+      ? {}
+      : { durableOwnership: options.durableOwnership }),
     stopWhen: options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
   });
   const mount = (agUi: AgUiOptions | undefined): Handler =>
@@ -176,10 +208,12 @@ async function build(
     bureau: bureau as unknown as Bureau,
     handler: mount(options.agUi),
     generate,
+    seam,
     remount: (agUi) => mount(agUi ?? options.agUi),
     async restart(script, agUi) {
       restarted = true;
       await bureau.dispose();
+      real?.[Symbol.dispose]();
       return build({ ...options, script, ...(agUi === undefined ? {} : { agUi }) }, fixture);
     },
     peer: (script, agUi) =>
@@ -187,6 +221,7 @@ async function build(
     async dispose() {
       if (restarted) return;
       await bureau.dispose();
+      real?.[Symbol.dispose]();
       if (ownsStorage) await fixture?.dispose();
     },
   };
