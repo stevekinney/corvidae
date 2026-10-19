@@ -3,6 +3,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
+import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { stopWhen } from '../conditions/index';
 import {
   type CombinedOperativeEventMap,
@@ -13,6 +14,7 @@ import {
 import type { RunOptions } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
+import { createCheckpointStore } from './checkpoint-store';
 import type { RegistryAgnosticEngine } from './create-run-engine';
 import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 
@@ -55,7 +57,9 @@ function completedSummary(runId: string) {
 }
 
 /** No checkpoint: the kept-claim control reconstructs from an empty run state. */
-const emptyCheckpointStore = { loadCheckpoint: async () => null };
+const emptyCheckpointStore = createCheckpointStore(
+  textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false }),
+);
 
 /** What `handle.result()` settles with: the completed summary, or a rejection. */
 type Settlement = { rejectWith?: unknown };
@@ -88,7 +92,7 @@ function startFreshRun(lostClaim: boolean, runId: string, settlement: Settlement
     {
       engine: engineThat(lostClaim, runId, settlement),
       checkpointStore: emptyCheckpointStore,
-    } as never,
+    },
     { runId, sessionId: runId, options: runOptions(), emitter },
   );
   return { activeRun, terminalEvents };
@@ -100,7 +104,7 @@ function reattachRun(lostClaim: boolean, runId: string, settlement: Settlement =
   const recoveredRun = reattachDurableActiveRun(
     {
       engine: engineThat(lostClaim, runId, settlement),
-      checkpointStore: emptyCheckpointStore as never,
+      checkpointStore: emptyCheckpointStore,
     },
     {
       runId,
@@ -203,7 +207,7 @@ describe('a durable run whose rejected result is another engine’s outcome', ()
     await Promise.resolve();
 
     expect(result.finishReason).toBe('error');
-    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+    expect(terminalEvents).toEqual([RunErrorEvent.type, RunCompletedEvent.type]);
   });
 
   it('still publishes a timeout for a reattached run on the engine that kept its claim', async () => {
@@ -214,6 +218,6 @@ describe('a durable run whose rejected result is another engine’s outcome', ()
     const result = await recoveredRun.result;
 
     expect(result.finishReason).toBe('error');
-    expect(terminalEvents).toEqual([RunCompletedEvent.type]);
+    expect(terminalEvents).toEqual([RunErrorEvent.type, RunCompletedEvent.type]);
   });
 });

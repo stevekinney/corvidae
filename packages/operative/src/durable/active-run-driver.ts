@@ -6,6 +6,7 @@ import type { GeneratedMediaAdmission } from '../generated-media';
 
 import { AgentRunError, toAgentRunError } from '../errors';
 import type { OperativeEventEmitter } from '../events';
+import { UnsupportedRunResultVersionError } from '../run-envelope';
 import { makeErrorResult, startRunLifecycle } from '../run-lifecycle';
 import { type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
@@ -13,9 +14,11 @@ import {
   classifyTimeoutMessage,
   emptyRunState,
   finalizeRunResult,
+  loadSettlementState,
   lostRunToAnotherEngine,
   makeInterruptedRunResult,
   reconstructRunResult,
+  settleRejectedRun,
 } from './active-run-result-reconstruction';
 import {
   AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
@@ -352,29 +355,39 @@ export async function driveDurableRun(
         hookTracker,
       });
     }
-    // A `history.maxEvents` circuit-breaker (or a genuine execution-deadline
-    // timeout) rejects `handle.result()` with a `WorkflowTimeoutError`. The error
-    // code is `'WorkflowTimeoutError'` (no 'd' — distinct from the
-    // `WorkflowTimedOutEvent` name) and carries NO `terminationReason`, so the
-    // circuit-breaker-vs-deadline distinction must come from the engine's stored
-    // state. Either way the run is genuinely terminal (not abandoned-for-recovery
-    // like EngineDisposedError), so classify it as `error` and fire the terminal
-    // lifecycle here rather than rethrowing into the unawaited `.then()` chain
-    // (which would surface as an unhandled rejection and leave the session stuck
-    // `running`).
-    if (!isWeftErrorLike(error) || error.code !== 'WorkflowTimeoutError') throw error;
+    // `normalizeAgentRunWorkflowResult` rejects a RESOLVED result whose schema version this build
+    // cannot read. That is not the engine failing the run, so it is not classified here: the
+    // reattach driver rethrows it the same way. A summary of the current version that breaks its
+    // own shape (`InvalidRunResultError`) is different on purpose: the run is over, and a
+    // rejection would leave its session `running` with no terminal event, so it settles as
+    // `error` below with the malformed field named in the message.
+    if (error instanceof UnsupportedRunResultVersionError) throw error;
 
-    const message = await classifyTimeoutMessage(context, runId, error);
-    return finalizeRunResult({
-      finishReason: 'error',
-      runState: emptyRunState(),
-      conversation,
+    // Anything that reaches here is the run ending in this process, and nothing else reports it
+    // (COR-1587). A `history.maxEvents` circuit-breaker (or a genuine execution-deadline timeout)
+    // rejects `handle.result()` with a `WorkflowTimeoutError`. The error code is
+    // `'WorkflowTimeoutError'` (no 'd' — distinct from the `WorkflowTimedOutEvent` name) and
+    // carries NO `terminationReason`, so the circuit-breaker-vs-deadline distinction must come
+    // from the engine's stored state. An activity or workflow-body failure rejects with a plain
+    // `Error` that carries no code. Either way the run is genuinely terminal (not
+    // abandoned-for-recovery like EngineDisposedError), so settle it as `error` and fire the
+    // terminal lifecycle here rather than rethrowing into the unawaited `.then()` chain (which
+    // would surface as an unhandled rejection and leave the session stuck `running`). A
+    // `run.error` a step already fired keeps its real error.
+    const timedOut = isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError';
+    // From the checkpoint, so the terminal record keeps what the run committed before it failed.
+    const settled = await loadSettlementState(context, runId, runtime, conversation);
+    return settleRejectedRun({
+      rejection: error,
+      ...(timedOut ? { message: await classifyTimeoutMessage(context, runId, error) } : {}),
+      runState: settled.runState,
+      conversation: settled.conversation,
       hooks,
       emitter,
       runStartTime,
       runtime,
-      errorMessage: message,
       costEstimation: options.costEstimation,
+      terminalError: terminalErrorFromEvent,
       hookTracker,
     });
   }

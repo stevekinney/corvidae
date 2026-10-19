@@ -123,7 +123,9 @@ export async function startDurableRunResult(
 /**
  * Drive a REATTACHED recovered run: await the already-running handle, reconstruct
  * the `RunResult` from the checkpoint, and fire ONLY the terminal lifecycle (no
- * start lifecycle — seam #11). On a rejecting handle, stay write-free: the
- * resolver (services-unavailable → engine-failed) or the teardown
- * (`EngineDisposedError`) already owns that session's terminal status.
+ * start lifecycle — seam #11). On a rejecting handle, stay write-free when
+ * something else already owns that session's terminal status: the resolver
+ * (services-unavailable → engine-failed), the teardown (`EngineDisposedError`), or
+ * another engine. A rejection after replay began is the run failing, so it settles
+ * as `error` (COR-1587).
  */
