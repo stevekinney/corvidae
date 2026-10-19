@@ -183,6 +183,48 @@ describe('weft.workflows.refresh', () => {
     expect(activation?.compatibilityReasons).toContain('workflow-version-incompatible');
   });
 
+  it('returns the activation-conflict and generation-required refusals as data too', async () => {
+    engine = createEngine();
+    const artifact = await refreshArtifact('r1');
+    await engine.workflows.registerRefreshSource(
+      REFRESH_TEST_WORKFLOW,
+      refreshSource(() => artifact, { fetch: async () => ({ status: 200, artifact }) }),
+    );
+    // The catalog's own refusals are injected: reaching each one for real is the catalog's tests.
+    const activate = spyOn(WorkflowCatalog.prototype, 'activateCandidate')
+      .mockResolvedValueOnce({ applied: false, reason: 'conflict' })
+      .mockResolvedValueOnce({
+        applied: false,
+        reason: 'expected-generation-required',
+        currentGeneration: 4,
+      });
+
+    try {
+      const conflict = await refresh(engine, {
+        name: REFRESH_TEST_WORKFLOW,
+        activate: 'if-compatible',
+      });
+      const required = await refresh(engine, {
+        name: REFRESH_TEST_WORKFLOW,
+        activate: 'if-compatible',
+      });
+
+      expect(conflict.ok && conflict.value).toMatchObject({
+        status: 'installed',
+        activation: { applied: false, reason: 'conflict' },
+      });
+      expect(required.ok && required.value).toMatchObject({
+        activation: {
+          applied: false,
+          reason: 'expected-generation-required',
+          currentGeneration: 4,
+        },
+      });
+    } finally {
+      activate.mockRestore();
+    }
+  });
+
   const refusals: ReadonlyArray<
     readonly [
       string,

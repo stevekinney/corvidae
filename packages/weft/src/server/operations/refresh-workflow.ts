@@ -124,13 +124,11 @@ function activationOutput(
         reason: activation.reason,
         currentGeneration: activation.currentGeneration,
       };
-    case 'conflict':
-      return { applied: false, reason: 'conflict' };
-    default: {
-      const exhaustiveCheck: never = activation;
-      throw new Error(`Unknown activation refusal: ${JSON.stringify(exhaustiveCheck)}`);
-    }
   }
+  // Every other refusal is handled above, so this is the last variant. Adding one makes this
+  // assignment a compile error, which forces a deliberate wire mapping.
+  const conflict: { readonly reason: 'conflict' } = activation;
+  return { applied: false, reason: conflict.reason };
 }
 
 function refreshOutput(result: WorkflowRefreshResult): RefreshWorkflowOutput {
