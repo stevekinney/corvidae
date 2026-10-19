@@ -4,7 +4,9 @@ import { Conversation, isConversation } from 'conversationalist';
 
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
+import type { GeneratedMediaAdmission } from './generated-media';
 import { appendFinalAssistantMessage } from './message-identifiers';
+import { deriveParts } from './response-parts';
 import {
   makeAbortResult,
   makeCompletedResult,
@@ -51,6 +53,7 @@ export function buildStepDeps(options: RunOptions): StepDeps {
     hooks: options.hooks,
     contextManagement: options.contextManagement,
     contentSourceResolver: options.contentSourceResolver,
+    generatedMediaAdmitter: options.generatedMediaAdmitter,
     assetSafety: options.assetSafety,
     mediaCostEstimator: options.mediaCostEstimator,
     output: options.output,
@@ -99,6 +102,8 @@ export function createRunState(initialAppliedConfigVersion = 0): RunState {
     steps: [],
     totalUsage: { prompt: 0, completion: 0, total: 0 },
     lastContent: '',
+    lastParts: [],
+    finalRowIsReplacement: false,
     schemaAttempts: 0,
     lastAppliedConfigVersion: initialAppliedConfigVersion,
   };
@@ -126,12 +131,20 @@ export async function executeLoop(
   emitter?: EventDispatcher,
   hookTracker?: (promise: Promise<unknown>) => void,
   onStepToolbox?: (toolbox: AnyToolbox) => void,
+  admissionTracker?: (admission: GeneratedMediaAdmission) => void,
 ): Promise<RunResult> {
   let stopObservingHookPlan: (() => void) | undefined;
   try {
-    return await executeLoopBody(options, emitter, hookTracker, onStepToolbox, (stop) => {
-      stopObservingHookPlan = stop;
-    });
+    return await executeLoopBody(
+      options,
+      emitter,
+      hookTracker,
+      onStepToolbox,
+      (stop) => {
+        stopObservingHookPlan = stop;
+      },
+      admissionTracker,
+    );
   } finally {
     stopObservingHookPlan?.();
   }
@@ -153,6 +166,8 @@ async function executeLoopBody(
   // Handed back to `executeLoop` so its `finally` can release the observer
   // `startRunLifecycle` attaches partway through this function.
   onHookPlanObserverAttached?: (stop: () => void) => void,
+  // COR-713: receives every media admission a step starts, so `closed()` can wait for them.
+  admissionTracker?: (admission: GeneratedMediaAdmission) => void,
 ): Promise<RunResult> {
   const { maximumSteps = DEFAULT_MAXIMUM_STEPS, hooks, onMaximumSteps, costEstimation } = options;
 
@@ -166,7 +181,7 @@ async function executeLoopBody(
         runtime: options.runtime ?? createDefaultRuntimeServices(),
       });
 
-  const deps = { ...buildStepDeps(options), hookTracker, onStepToolbox };
+  const deps = { ...buildStepDeps(options), hookTracker, onStepToolbox, admissionTracker };
   // AB-199 cross-run dedupe: a brand-new run seeds its dedupe cursor from
   // the gate's own cross-run memory, not always 0, so a `configVersion` a
   // PRIOR run already applied is never re-observed as new by this one.
@@ -271,6 +286,9 @@ async function executeLoopBody(
       });
       if (typeof finalContent === 'string') {
         runState.lastContent = finalContent;
+        // COR-713: the replacement is its own row, so the run-wide parts end with it.
+        runState.lastParts = deriveParts(finalContent);
+        runState.finalRowIsReplacement = true;
         // The loop ran steps 0..maximumSteps-1, so the next index is free.
         appendFinalAssistantMessage(conversation, finalContent, options.runId, maximumSteps);
       }

@@ -1,4 +1,5 @@
 import type { StreamBlock, StreamEvent, StreamState } from '../../streaming/types';
+import { ProviderContractError } from '../errors';
 import type { OpenAIChatCompletionChunk } from '../types';
 import type { NormalizerState } from './stream-helpers';
 import { buildState, findBlock } from './stream-helpers';
@@ -28,7 +29,11 @@ export async function* normalizeOpenAIStream(
     buildState,
     findBlock,
   },
+  options: { readonly messageId?: string } = {},
 ): AsyncIterable<StreamEvent> {
+  const messageId = options.messageId ?? 'message';
+  let textPartSequence = 0;
+  let textPartComplete = false;
   const { buildState: dependencyBuildState, findBlock: dependencyFindBlock } = dependencies;
   const state: NormalizerState = {
     blocks: [],
@@ -66,6 +71,23 @@ export async function* normalizeOpenAIStream(
 
     const { delta, finish_reason } = choice;
 
+    for (const field of ['audio', 'function_call'] as const) {
+      if (delta[field] !== undefined && delta[field] !== null) {
+        // The stream ends at its error: nothing follows it, not even `stream:complete`.
+        yield {
+          type: 'stream:error',
+          error: new ProviderContractError({
+            provider: 'openai',
+            reason: 'unlisted-block',
+            blockType: field,
+            partIndex: 0,
+            usage: undefined,
+          }),
+        };
+        return;
+      }
+    }
+
     // Handle text content
     if (delta.content !== undefined && delta.content !== null && delta.content !== '') {
       // Lazily create a text block
@@ -81,6 +103,17 @@ export async function* normalizeOpenAIStream(
         blocks.push(block);
         yield { type: 'stream:block-start', block: { ...block } };
       }
+
+      if (textPartSequence === 0)
+        yield { type: 'stream:part-start', messageId, partIndex: 0, kind: 'text' };
+      textPartSequence += 1;
+      yield {
+        type: 'stream:part-delta',
+        messageId,
+        partIndex: 0,
+        sequence: textPartSequence,
+        delta: { kind: 'text', text: delta.content },
+      };
 
       const block = dependencyFindBlock(blocks, textBlockId);
       if (block) {
@@ -168,6 +201,15 @@ export async function* normalizeOpenAIStream(
     // stream:complete event until after the loop so that a trailing
     // usage-only chunk (OpenAI's stream_options.include_usage) is captured.
     if (finish_reason) {
+      if (textPartSequence > 0 && !textPartComplete) {
+        textPartComplete = true;
+        yield {
+          type: 'stream:part-complete',
+          messageId,
+          partIndex: 0,
+          part: { type: 'text', text: accumulatedText },
+        };
+      }
       // Complete the text block if one exists
       if (textBlockId) {
         const textBlock = dependencyFindBlock(blocks, textBlockId);

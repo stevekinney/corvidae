@@ -501,6 +501,7 @@ describe('OpenAI provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'gpt-4o', effectiveEffort: 'none' },
@@ -794,6 +795,7 @@ describe('Anthropic provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'claude-3-5-sonnet-20241022', effectiveEffort: 'none' },
@@ -1054,6 +1056,7 @@ describe('Gemini provider coverage', () => {
       }),
     ).toEqual({
       content: '',
+      parts: [],
       toolCalls: [],
       usage: undefined,
       metadata: { effectiveModel: 'gemini-pro', effectiveEffort: 'none' },

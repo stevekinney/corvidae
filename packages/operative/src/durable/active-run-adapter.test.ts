@@ -1949,6 +1949,9 @@ describe('createRun with durable routing', () => {
     // Pre-populate the checkpoint store with a completed step and usage —
     // simulating a multi-step run that checkpointed before cancel() won.
     await checkpointStore.saveCursor(runId, {
+      schemaVersion: 2,
+      lastParts: [],
+      finalRowIsReplacement: false,
       step: 1,
       totalUsage: { prompt: 42, completion: 17, total: 59 },
       lastContent: 'step 0 content',
@@ -1956,6 +1959,8 @@ describe('createRun with durable routing', () => {
       lastAppliedConfigVersion: 0,
     });
     await checkpointStore.saveStep(runId, {
+      schemaVersion: 2,
+      parts: [],
       step: 0,
       content: 'step 0 content',
       toolCalls: [],
@@ -2880,6 +2885,7 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId,
             steps: 1,
             content: 'recovered done',
@@ -2936,6 +2942,7 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId,
             steps: 0,
             content: 'done',
@@ -2978,6 +2985,7 @@ describe('AB-304: durable ActiveRun closed() awaits registered children', () => 
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId,
             steps: 2,
             content: 'already finished',
@@ -3431,6 +3439,7 @@ describe('reattachDurableActiveRun', () => {
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: 'reattach-event-facade',
             steps: 0,
             content: 'reattached',
@@ -3496,6 +3505,9 @@ describe('reattachDurableActiveRun', () => {
       // simulating a multi-step run that checkpointed step 0 in a prior
       // process before this process recovered it.
       await context.checkpointStore.saveCursor(runId, {
+        schemaVersion: 2,
+        lastParts: [],
+        finalRowIsReplacement: false,
         step: 1,
         totalUsage: { prompt: 42, completion: 17, total: 59 },
         lastContent: 'step 0 content',
@@ -3503,6 +3515,8 @@ describe('reattachDurableActiveRun', () => {
         lastAppliedConfigVersion: 0,
       });
       await context.checkpointStore.saveStep(runId, {
+        schemaVersion: 2,
+        parts: [],
         step: 0,
         content: 'step 0 content',
         toolCalls: [],
@@ -3763,6 +3777,7 @@ describe('reattachDurableActiveRun', () => {
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: 'reattach-dispose',
             steps: 0,
             content: '',
@@ -3794,6 +3809,7 @@ describe('reattachDurableActiveRun', () => {
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: 'reattach-schema-error',
             steps: 0,
             content: '',
@@ -3935,6 +3951,7 @@ describe('reattachDurableActiveRun', () => {
       // workflow id the real engine never started.
       resolveResult({
         schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        parts: [],
         runId: 'reattach-liveness',
         steps: 0,
         content: 'done',
@@ -4000,6 +4017,7 @@ describe('reattachDurableActiveRun', () => {
       await Promise.resolve();
       resolveResult({
         schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        parts: [],
         runId: 'reattach-tool-lifecycle',
         steps: 0,
         content: 'done',
@@ -4049,6 +4067,7 @@ describe('reattachDurableActiveRun.closed()', () => {
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: 'reattach-closed-not-required',
             steps: 0,
             content: 'done',
@@ -4710,6 +4729,7 @@ describe('AB-361: ActiveRun.durablyStarted settles with the initial workflow rec
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId: 'ab-361-reattached',
             steps: 0,
             content: 'recovered',
@@ -5007,6 +5027,7 @@ describe('COR-625: durable closed() folds a composer terminal-cleanup step', () 
       result: () =>
         Promise.resolve({
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'recovered done',
@@ -5042,6 +5063,7 @@ describe('COR-625: durable closed() folds a composer terminal-cleanup step', () 
         result: () =>
           Promise.resolve({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId,
             steps: 1,
             content: 'recovered done',

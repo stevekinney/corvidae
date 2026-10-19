@@ -677,6 +677,7 @@ function combineRuns(runs: readonly RunResultBase[], chosen: RunResultBase): Run
     conversation: chosen.conversation,
     steps: runs.flatMap((run) => run.steps),
     content: chosen.content,
+    parts: chosen.parts,
     usage: sumUsage(runs),
     finishReason: chosen.finishReason,
     ...(chosen.error === undefined ? {} : { error: chosen.error }),

@@ -49,6 +49,7 @@ describe('durable workflow result migration', () => {
     expect(() =>
       normalizeAgentRunWorkflowResult({
         schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+        parts: [],
         runId: 'legacy-summary-run',
         steps: 1,
         content: '{"answer":"legacy"}',
@@ -61,6 +62,7 @@ describe('durable workflow result migration', () => {
   it('accepts a current terminal summary with output', () => {
     const summary = normalizeAgentRunWorkflowResult({
       schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      parts: [],
       runId: 'legacy-summary-run',
       steps: 1,
       content: '{"answer":"legacy"}',
@@ -107,6 +109,7 @@ describe('durable workflow result migration', () => {
 describe('normalizeAgentRunWorkflowResult shape validation', () => {
   const valid = {
     schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+    parts: [],
     runId: 'run-1',
     steps: 1,
     content: 'done',
@@ -257,6 +260,7 @@ describe('durable result-only run helpers preserve output (regression PRRT_kwDOR
           resume: async () => ({
             result: async () => ({
               schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+              parts: [],
               runId: 'structured-output-undefined-run',
               steps: 1,
               content: '{"answer":"hi"}',

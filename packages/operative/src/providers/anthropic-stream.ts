@@ -1,6 +1,16 @@
 import type { ToolCallInput } from 'armorer/protocol';
-import { toAnthropicMessages } from 'conversationalist';
+import {
+  type BlockAccumulatorState,
+  createStreamingAccumulator,
+  finalizeBlockState,
+  type JSONValue,
+  type MultiModalContent,
+  toAnthropicMessages,
+} from 'conversationalist';
 
+import { concatenateTextParts } from '../response-parts.ts';
+import type { PartDelta } from '../streaming/types.ts';
+import { ANTHROPIC_CONTROL_EVENT_TYPES, anthropicOpeningState } from './anthropic-blocks.ts';
 import { createAnthropicSdkClient, isAnthropicStreamingClient } from './anthropic-sdk.ts';
 import {
   anthropicDescriptorsFor,
@@ -14,7 +24,7 @@ import {
   buildAnthropicMessageRequest,
 } from './anthropic-shared.ts';
 import { withBackendDescriptors } from './backend-descriptor-attachment.ts';
-import { ProviderError, ToolCallParseError } from './errors.ts';
+import { ProviderContractError, ProviderError, ToolCallParseError } from './errors.ts';
 import { createCacheAwareAssembly } from './shared/cache-aware-assembly.ts';
 import { resolveAnthropicEffort } from './shared/effort.ts';
 import { withInputLineage } from './shared/input-lineage.ts';
@@ -150,16 +160,53 @@ async function consumeAnthropicStream(
     cacheCreationTokens: undefined,
     cacheReadTokens: undefined,
     pendingToolCalls: new Map(),
+    accumulator: createStreamingAccumulator(),
+    parts: new Map(),
+    nextPartIndex: 0,
+    sequences: new Map(),
+    violation: undefined,
+    openBlocks: new Map(),
   };
   for await (const event of stream) {
     if (signal?.aborted) break;
     handleAnthropicStreamEvent(event, state, streaming);
   }
+  const usage = buildStreamUsage(state);
+  // An unlisted block or delta is the model's output the adapter cannot map. It fails the response
+  // after the stream has drained, carrying the usage the stream reported, so the loop accounts it.
+  if (state.violation !== undefined) {
+    throw new ProviderContractError({
+      provider: 'anthropic',
+      reason: 'unlisted-block',
+      blockType: state.violation.blockType,
+      partIndex: state.violation.position,
+      usage,
+    });
+  }
+  // A stream that ends before a block it opened has stopped was cut off. The half block is never
+  // finalized into a part and the response never completes empty: it fails typed, and is never
+  // retried (a contract error). An abort ends the loop early on purpose and is not truncation.
+  const truncated = signal?.aborted ? undefined : [...state.openBlocks.entries()][0];
+  if (truncated !== undefined) {
+    throw new ProviderContractError({
+      provider: 'anthropic',
+      reason: 'truncated-stream',
+      blockType: truncated[1],
+      partIndex: truncated[0],
+      usage,
+    });
+  }
   const toolCalls = completeAnthropicToolCalls(state.pendingToolCalls, signal?.aborted);
+  const parts = [...state.parts.values()]
+    .filter((entry) => entry.partIndex !== undefined)
+    .toSorted((left, right) => left.partIndex! - right.partIndex!)
+    .map((entry) => entry.part)
+    .filter((part): part is MultiModalContent => part !== undefined);
   return {
-    content: state.accumulatedText,
+    content: concatenateTextParts(parts),
+    parts,
     toolCalls,
-    usage: buildStreamUsage(state),
+    usage,
     metadata: { effectiveModel: model, effectiveEffort: effort ?? 'none' },
   };
 }
@@ -177,6 +224,18 @@ type StreamState = {
   cacheCreationTokens: number | null | undefined;
   cacheReadTokens: number | null | undefined;
   pendingToolCalls: Map<number, PendingToolCall>;
+  /** Accumulates every content block (not the client `tool_use`, which `pendingToolCalls` owns). */
+  accumulator: ReturnType<typeof createStreamingAccumulator>;
+  /** Provider block index to the part it became, and the part once its block stopped. */
+  parts: Map<number, { partIndex: number | undefined; part: MultiModalContent | undefined }>;
+  /** Parts count only content blocks, so a `tool_use` between two text blocks does not take an index. */
+  nextPartIndex: number;
+  /** The last delta sequence reported per part index. */
+  sequences: Map<number, number>;
+  /** The first block or delta outside the mapping table, in the provider's own sequence. */
+  violation: { blockType: string; position: number } | undefined;
+  /** Provider block index to type, for every block that has started and not yet stopped. */
+  openBlocks: Map<number, string>;
 };
 
 function handleAnthropicStreamEvent(
@@ -189,7 +248,15 @@ function handleAnthropicStreamEvent(
     return handleAnthropicBlockStart(event, state, streaming);
   if (event.type === 'content_block_delta')
     return handleAnthropicBlockDelta(event, state, streaming);
-  if (event.type === 'message_delta') state.outputTokens = event.usage?.output_tokens;
+  if (event.type === 'content_block_stop') return handleAnthropicBlockStop(event, state, streaming);
+  if (event.type === 'message_delta') {
+    state.outputTokens = event.usage?.output_tokens;
+    return;
+  }
+  // `message_stop` and `ping` carry no output; any other event type is outside the table.
+  if (!ANTHROPIC_CONTROL_EVENT_TYPES.has(event.type)) {
+    state.violation ??= { blockType: event.type, position: event.index ?? state.nextPartIndex };
+  }
 }
 
 function handleAnthropicMessageStart(
@@ -201,17 +268,76 @@ function handleAnthropicMessageStart(
   state.cacheReadTokens = event.message?.usage?.cache_read_input_tokens;
 }
 
+function partKindOf(blockState: BlockAccumulatorState): MultiModalContent['type'] {
+  return blockState.type === 'tool_use' ? 'text' : blockState.type;
+}
+
 function handleAnthropicBlockStart(
   event: import('./types.ts').AnthropicStreamEvent,
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
-  if (event.content_block?.type !== 'tool_use' || event.index === undefined) return;
-  const blockId = event.content_block.id;
-  const pending = { id: blockId, name: event.content_block.name!, partialJson: '', blockId };
-  state.pendingToolCalls.set(event.index, pending);
-  if (blockId !== undefined)
-    streaming.report?.({ type: 'stream:tool-call-start', toolName: pending.name, blockId });
+  const block = event.content_block;
+  if (block === undefined || event.index === undefined) return;
+  state.openBlocks.set(event.index, block.type);
+  if (block.type === 'tool_use') {
+    const blockId = block.id;
+    const pending = { id: blockId, name: block.name!, partialJson: '', blockId };
+    state.pendingToolCalls.set(event.index, pending);
+    if (blockId !== undefined)
+      streaming.report?.({ type: 'stream:tool-call-start', toolName: pending.name, blockId });
+    return;
+  }
+  const opening = anthropicOpeningState(block);
+  if (opening === undefined) {
+    state.violation ??= { blockType: block.type, position: event.index };
+    return;
+  }
+  const entry: { partIndex: number | undefined; part: MultiModalContent | undefined } = {
+    partIndex: undefined,
+    part: undefined,
+  };
+  state.parts.set(event.index, entry);
+  state.accumulator.openBlock(event.index, opening);
+  // A text block takes its part index with its first non-empty text, so an empty one (which the
+  // mapping table skips, as Anthropic rejects it on replay) leaves no hole in the indexes and no
+  // part; every other block is a part from its start.
+  if (opening.type !== 'text') {
+    ensurePart(state, streaming, entry, partKindOf(opening));
+    return;
+  }
+  // Text that arrives with the start event (a hand-built stream) is a delta like any other.
+  if (opening.buffer !== '') {
+    const partIndex = ensurePart(state, streaming, entry, 'text');
+    reportDelta(state, streaming, partIndex, { kind: 'text', text: opening.buffer });
+    state.accumulatedText += opening.buffer;
+    if (streaming.reportPart === undefined) streaming.update(state.accumulatedText);
+  }
+}
+
+/** Gives a block its part index and announces the part, once. */
+function ensurePart(
+  state: StreamState,
+  streaming: StreamingHandle,
+  entry: { partIndex: number | undefined },
+  kind: MultiModalContent['type'],
+): number {
+  if (entry.partIndex === undefined) {
+    entry.partIndex = state.nextPartIndex++;
+    streaming.reportPart?.({ type: 'start', partIndex: entry.partIndex, kind });
+  }
+  return entry.partIndex;
+}
+
+function reportDelta(
+  state: StreamState,
+  streaming: StreamingHandle,
+  partIndex: number,
+  delta: PartDelta,
+): void {
+  const sequence = (state.sequences.get(partIndex) ?? 0) + 1;
+  state.sequences.set(partIndex, sequence);
+  streaming.reportPart?.({ type: 'delta', partIndex, sequence, delta });
 }
 
 function handleAnthropicBlockDelta(
@@ -219,12 +345,77 @@ function handleAnthropicBlockDelta(
   state: StreamState,
   streaming: StreamingHandle,
 ): void {
-  if (event.delta?.type === 'text_delta' && event.delta.text) {
-    state.accumulatedText += event.delta.text;
-    streaming.update(state.accumulatedText);
+  const delta = event.delta;
+  if (delta === undefined || event.index === undefined) return;
+  const entry = state.parts.get(event.index);
+  const block = entry === undefined ? undefined : state.accumulator.getBlock(event.index);
+
+  if (delta.type === 'text_delta') {
+    if (!delta.text) return;
+    block?.appendTextDelta(delta.text);
+    state.accumulatedText += delta.text;
+    if (entry !== undefined) {
+      const partIndex = ensurePart(state, streaming, entry, 'text');
+      reportDelta(state, streaming, partIndex, { kind: 'text', text: delta.text });
+    }
+    if (streaming.reportPart === undefined) streaming.update(state.accumulatedText);
     return;
   }
-  handleAnthropicJsonDelta(event, state, streaming);
+  if (delta.type === 'thinking_delta') {
+    const thinking = delta.thinking ?? '';
+    if (thinking === '') return;
+    block?.appendThinkingDelta(thinking);
+    if (entry?.partIndex !== undefined)
+      reportDelta(state, streaming, entry.partIndex, { kind: 'thinking', thinking });
+    return;
+  }
+  if (delta.type === 'signature_delta') {
+    // The signature is replay data with no live meaning: the completed part carries it whole.
+    block?.appendSignatureDelta(delta.signature ?? '');
+    return;
+  }
+  if (delta.type === 'citations_delta') {
+    block?.appendCitationsDelta(delta.citation as JSONValue);
+    if (entry?.partIndex !== undefined) {
+      reportDelta(state, streaming, entry.partIndex, {
+        kind: 'citation',
+        citation: delta.citation as JSONValue,
+      });
+    }
+    return;
+  }
+  if (delta.type === 'input_json_delta') {
+    if (entry !== undefined) {
+      // A server tool's input.
+      block?.appendInputJsonDelta(delta.partial_json ?? '');
+      if (entry.partIndex === undefined) return;
+      reportDelta(state, streaming, entry.partIndex, {
+        kind: 'input-json',
+        partialJson: delta.partial_json ?? '',
+      });
+      return;
+    }
+    handleAnthropicJsonDelta(event, state, streaming);
+    return;
+  }
+  state.violation ??= { blockType: delta.type ?? 'unknown_delta', position: event.index };
+}
+
+function handleAnthropicBlockStop(
+  event: import('./types.ts').AnthropicStreamEvent,
+  state: StreamState,
+  streaming: StreamingHandle,
+): void {
+  if (event.index === undefined) return;
+  state.openBlocks.delete(event.index);
+  const entry = state.parts.get(event.index);
+  const block = entry === undefined ? undefined : state.accumulator.getBlock(event.index);
+  if (entry === undefined || block === undefined) return;
+  const part = finalizeBlockState(block.state);
+  // A block that never took a part index (an empty text block) is not a part.
+  if (part === undefined || entry.partIndex === undefined) return;
+  entry.part = part;
+  streaming.reportPart?.({ type: 'complete', partIndex: entry.partIndex, part });
 }
 
 function handleAnthropicJsonDelta(

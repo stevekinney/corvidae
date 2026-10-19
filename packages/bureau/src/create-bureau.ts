@@ -143,6 +143,13 @@ import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runt
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
 import { createAssetContentSourceResolver } from './assets/content-source-resolver';
+import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
+import {
+  claimRowAssets,
+  releaseRowAssetClaims,
+  runRowHolderId,
+  sessionRowHolderId,
+} from './assets/row-asset-claims';
 import type { AssetService } from './assets/types';
 import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -1796,6 +1803,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         assetServiceHolder.current === undefined
           ? undefined
           : createAssetContentSourceResolver(assetServiceHolder.current, ownerOrLocal(principalId)),
+      generatedMediaAdmitterFor: (principalId) =>
+        assetServiceHolder.current === undefined
+          ? undefined
+          : createAssetGeneratedMediaAdmitter(
+              assetServiceHolder.current,
+              ownerOrLocal(principalId),
+              {
+                // A row a run commits is claimed by the session that holds it, or by the run
+                // when it has none (see `assets/row-asset-claims.ts`).
+                claimHolderFor: (runId) => {
+                  const runState = runId === undefined ? undefined : store.getRun(runId);
+                  if (runId === undefined || runState === undefined) return undefined;
+                  const sessionId = runSessionIdentifiers.get(runState.activeRun) ?? '';
+                  if (sessionId === '') return (rowId) => runRowHolderId(runId, rowId);
+                  // The session's incarnation is recorded by the run's first save; before that
+                  // nothing is claimed here, and the session's own commit claims the row.
+                  const incarnation = runSessionIncarnations.get(runId);
+                  return incarnation === undefined
+                    ? undefined
+                    : (rowId) => sessionRowHolderId(sessionId, incarnation, rowId);
+                },
+              },
+            ),
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
       onScheduledFire: async (fire) => {
@@ -6145,6 +6175,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? {
               emitter: eventSurface.emitter,
               stopToolboxForward: eventSurface.stopToolboxForward,
+              admissions: eventSurface.admissions,
               abort: eventSurface.abort,
             }
           : {}),
@@ -9405,6 +9436,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return acknowledge();
   }
 
+  /** Releases an expired session's asset claims once its `session.deleted` entry drains; never rejects. */
+  async function releaseExpiredSessionAssetClaims(entry: SessionOutboxEntry): Promise<void> {
+    const key = `${entry.sessionId}\u0000${entry.incarnation}`;
+    const expired = expiringSessions.get(key);
+    if (expired === undefined) return;
+    expiringSessions.delete(key);
+    try {
+      await releaseSessionGeneratedAssets(expired);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'assets',
+        message: `[bureau] Could not release the asset claims of expired session "${entry.sessionId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
   async function drainOutboxEntry(
     entry: SessionOutboxEntry,
     owner: DurableEventOwner,
@@ -9421,6 +9470,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       !(await loadSessionDeletionOwner(entry.sessionId, entry.incarnation))
     ) {
       return 'stop';
+    }
+    // COR-713: every row that enters a session's history arrived in a commit this drain replays,
+    // so this is where the rows' claims on the assets they reference are taken, and they are
+    // taken BEFORE the entry is dispatched and acknowledged: the entry is the only cue that the
+    // commit still needs its claims, so a claim that fails (or a process that exits first) leaves
+    // it pending for the next pass. An expired session's claims are released here too once the
+    // store has removed it; that only shortens an asset's life, so it runs beside the drain.
+    if (entry.kind === 'session.created' || entry.kind === 'session.saved') {
+      try {
+        const committed = await outboxSessionStore.load(entry.sessionId);
+        if (committed !== undefined && committed.incarnation === entry.incarnation) {
+          await claimSessionAssets(committed);
+        }
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'assets',
+          message: `[bureau] Could not claim the assets of session "${entry.sessionId}" for its outbox entry ${entry.ordinal}; leaving it pending for a later drain to retry: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        return 'stop';
+      }
+    } else if (entry.kind === 'session.deleted') {
+      trackSessionInputSettlement(releaseExpiredSessionAssetClaims(entry));
     }
     // AB-389 (Codex P2 review finding, PR #598, "Isolate subscriber
     // exceptions while draining the outbox"): `emitter.dispatch()`
@@ -10217,6 +10290,75 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return { sessionRunIds, steeringGate, runTerminals, liveTasks };
   }
 
+  /**
+   * COR-713: a session's rows claim every managed asset they reference (supplied or generated, user
+   * or assistant) under holders keyed by the session and the row, so the asset policy's retention
+   * floor cannot expire an asset a persisted row still points at, and a row copied into another
+   * session is claimed there under that session's own holder. Every way a row enters a session's
+   * history is a session commit, and every commit is replayed through the outbox drain, which
+   * calls {@link claimSessionAssets}. The claim is the asset service's own `retain`; a claim that
+   * cannot be made or released only changes how long an asset lives, so a failure is reported and
+   * never fails the commit, the drain or the deletion.
+   */
+  const claimedRowAssets = new Set<string>();
+  /** Sessions the store is about to expire, held until their `session.deleted` entry drains. */
+  const expiringSessions = new Map<string, AgentSession>();
+
+  function rowClaimContext(session: AgentSession) {
+    const service = assetServiceHolder.current;
+    if (service === undefined) return undefined;
+    return {
+      service,
+      principalId: ownerOrLocal(resolveSessionOwner(session.metadata)),
+      holderOf: (rowId: string) => sessionRowHolderId(session.id, session.incarnation, rowId),
+      rows: Object.values(session.conversationHistory.messages),
+      onFailure: (assetId: string, error: unknown) =>
+        diagnose({
+          level: 'error',
+          scope: 'assets',
+          message: `[bureau] Could not update the retention claim of session "${session.id}" on asset "${assetId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        }),
+    };
+  }
+
+  /**
+   * Takes the claims of every row in a committed session. A claim that fails is reported and then
+   * thrown once every row has been tried, so the outbox drain leaves the commit's entry
+   * unacknowledged and replays it: the entry is the only cue that a committed row still needs its
+   * claim.
+   */
+  async function claimSessionAssets(session: AgentSession): Promise<void> {
+    const context = rowClaimContext(session);
+    if (context === undefined) return;
+    let failure: { error: unknown } | undefined;
+    await claimRowAssets(
+      context.service,
+      context.principalId,
+      context.holderOf,
+      context.rows,
+      (assetId, error) => {
+        context.onFailure(assetId, error);
+        failure ??= { error };
+      },
+      claimedRowAssets,
+    );
+    if (failure !== undefined) throw failure.error;
+  }
+
+  async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
+    const context = rowClaimContext(session);
+    if (context === undefined) return;
+    await releaseRowAssetClaims(
+      context.service,
+      context.principalId,
+      context.holderOf,
+      context.rows,
+      context.onFailure,
+      claimedRowAssets,
+    );
+  }
+
   async function performDeleteSession(
     id: string,
     expectedIncarnation: string | undefined,
@@ -10302,6 +10444,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? await sessionStore.delete(id)
           : await sessionStore.delete(id, { expectedIncarnation });
       onStoreDeletionCommitted();
+      if (removedLiveRecord) await releaseSessionGeneratedAssets(session);
       // AB-389 — drain right here, before anything below that can stall
       // (a genuinely stuck run's terminal await further down must never
       // block this durable fact from landing): this is the ONE call site
@@ -14161,6 +14304,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           scope: 'child-topology',
           message: `[bureau] Ignoring an unreadable child-topology record at "${key}".`,
         }),
+      onUnsupported: (key, error) =>
+        diagnose({
+          level: 'error',
+          scope: 'child-topology',
+          message: `[bureau] Skipping the child-topology record at "${key}", which this build cannot read: ${error.message}`,
+          cause: error,
+        }),
     },
   );
 
@@ -14572,6 +14722,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Every owner first, and every task history erased: a record that cannot be written
     // keeps every session, with its runs untouched.
     await prepareSessionsForRemoval(sessions);
+    // An expired session's rows are gone with it, so its asset claims end too, but only once the
+    // store has removed it: the claims are released when its `session.deleted` entry drains.
+    for (const session of sessions) {
+      expiringSessions.set(`${session.id}\u0000${session.incarnation}`, session);
+    }
     // Then the expiry is a deletion for the sessions' runs too: each still-running
     // run is orphan-marked and aborted (or released, if paused) exactly as
     // `performDeleteSession` does, so none of them writes into whatever session

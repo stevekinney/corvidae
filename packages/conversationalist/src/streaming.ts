@@ -231,16 +231,28 @@ const updateStreamingMessageInternal = (
 };
 
 /**
+ * What {@link finalizeStreamingMessage} can set while it clears the streaming flag.
+ *
+ * `content` is the settled content of the row. A caller that has the final parts
+ * (a streaming wrapper that admitted generated media, or whose response hooks
+ * changed the answer) commits them in the same write that clears the flag, so a
+ * reader never sees the row finalized with content other than the settled content.
+ * Without it the streamed content stays as it is.
+ */
+export interface FinalizeStreamingOptions {
+  tokenUsage?: TokenUsage;
+  metadata?: Record<string, JSONValue>;
+  content?: string | MultiModalContent[];
+}
+
+/**
  * Marks a streaming message as complete, removing the streaming flag.
- * Optionally adds token usage and additional metadata.
+ * Optionally adds token usage, additional metadata, and the settled content.
  */
 export function finalizeStreamingMessage(
   conversation: Conversation,
   messageId: string,
-  options?: {
-    tokenUsage?: TokenUsage;
-    metadata?: Record<string, JSONValue>;
-  },
+  options?: FinalizeStreamingOptions,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return finalizeStreamingMessageInternal(conversation, messageId, options, environment, true);
@@ -254,12 +266,7 @@ export function finalizeStreamingMessage(
 export function finalizeUnsafeStreamingMessage(
   conversation: Conversation,
   messageId: string,
-  options?:
-    | {
-        tokenUsage?: TokenUsage;
-        metadata?: Record<string, JSONValue>;
-      }
-    | Partial<ConversationEnvironment>,
+  options?: FinalizeStreamingOptions | Partial<ConversationEnvironment>,
   environment?: Partial<ConversationEnvironment>,
 ): Conversation {
   return finalizeStreamingMessageInternal(conversation, messageId, options, environment, false);
@@ -268,13 +275,7 @@ export function finalizeUnsafeStreamingMessage(
 const finalizeStreamingMessageInternal = (
   conversation: Conversation,
   messageId: string,
-  options:
-    | {
-        tokenUsage?: TokenUsage;
-        metadata?: Record<string, JSONValue>;
-      }
-    | Partial<ConversationEnvironment>
-    | undefined,
+  options: FinalizeStreamingOptions | Partial<ConversationEnvironment> | undefined,
   environment: Partial<ConversationEnvironment> | undefined,
   validate: boolean,
 ): Conversation => {
@@ -297,11 +298,18 @@ const finalizeStreamingMessageInternal = (
   };
 
   const finalizeOverrides: {
+    content?: string | MultiModalContent[];
     metadata?: Record<string, JSONValue>;
     tokenUsage?: TokenUsage;
   } = {
     metadata: finalMetadata,
   };
+  if (resolvedOptions?.content !== undefined) {
+    finalizeOverrides.content =
+      typeof resolvedOptions.content === 'string'
+        ? resolvedOptions.content
+        : [...resolvedOptions.content];
+  }
   if (resolvedOptions?.tokenUsage) {
     finalizeOverrides.tokenUsage = { ...resolvedOptions.tokenUsage };
   }

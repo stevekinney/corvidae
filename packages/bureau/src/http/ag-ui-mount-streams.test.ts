@@ -479,3 +479,79 @@ describe('reasoning', () => {
     expect(messages[1]).toMatchObject({ id: 'assistant-1', content: 'The answer.' });
   });
 });
+
+describe('parts an AG-UI assistant message cannot carry (COR-713)', () => {
+  const unrepresentable: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
+    [
+      'server_tool_use',
+      { type: 'server_tool_use', id: 'srvtoolu_1', name: 'web_search', input: { query: 'q' } },
+    ],
+    [
+      'web_search_tool_result',
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'srvtoolu_1',
+        content: [{ type: 'web_search_result', url: 'https://e.x', title: 't' }],
+      },
+    ],
+    [
+      'web_fetch_tool_result',
+      {
+        type: 'web_fetch_tool_result',
+        tool_use_id: 'srvtoolu_2',
+        content: { type: 'web_fetch_result', url: 'https://x.test' },
+      },
+    ],
+    [
+      'code_execution_tool_result',
+      {
+        type: 'code_execution_tool_result',
+        tool_use_id: 'srvtoolu_3',
+        content: { type: 'code_execution_result', stdout: '2', stderr: 'none', return_code: 0 },
+      },
+    ],
+    ['container_upload', { type: 'container_upload', file_id: 'file_1' }],
+    [
+      'managed-asset image',
+      {
+        type: 'image',
+        mimeType: 'image/png',
+        source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 },
+      },
+    ],
+  ];
+
+  it.each(unrepresentable)(
+    'a %s part never fails the snapshot: the row keeps its text',
+    (_name, part) => {
+      const history = appendMessages(
+        createConversationHistory({ id: 'thread-1' }),
+        { id: 'user-1', role: 'user', content: 'hi' },
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: [part as never, { type: 'text', text: 'The answer.' }],
+        },
+      );
+
+      const messages = snapshotMessages(history);
+
+      expect(messages.map((message) => message.role)).toEqual(['user', 'assistant']);
+      expect(messages[1]).toMatchObject({ id: 'assistant-1', content: 'The answer.' });
+    },
+  );
+
+  it('keeps a row that holds only such a part, without content, rather than dropping the thread', () => {
+    const history = appendMessages(
+      createConversationHistory({ id: 'thread-1' }),
+      { id: 'user-1', role: 'user', content: 'hi' },
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        content: [{ type: 'container_upload', file_id: 'f' } as never],
+      },
+    );
+
+    expect(snapshotMessages(history).map((message) => message.role)).toEqual(['user', 'assistant']);
+  });
+});

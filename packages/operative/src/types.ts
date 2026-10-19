@@ -10,6 +10,7 @@ import type {
   Conversation,
   ConversationHistory,
   MediaContent,
+  MultiModalContent,
   ResolvedMediaSource,
   ResolvedMediaSources,
   TokenUsage,
@@ -24,12 +25,13 @@ import type { MediaCostEstimator } from './context/types';
 import type { CostEstimate, CostEstimationOptions } from './cost-estimation';
 import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { AgentRunErrorCode, AgentRunErrorKind } from './errors';
+import type { GeneratedMediaAdmitter, StepGeneratedMediaAdmitter } from './generated-media';
 import type { AssetSafetyPolicy } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RetryMutator } from './retry/types';
 import type { SelectionGate } from './selection-gate';
-import type { LiveStreamEvent } from './streaming/types';
+import type { LivePartEvent, LiveStreamEvent } from './streaming/types';
 import type { ResponseFormat, ToolChoice } from './structured-output/types';
 
 export type { AnyToolbox, Toolbox, ToolExecuteOptions, ToolExecutionResult } from 'armorer';
@@ -266,6 +268,15 @@ export interface GenerateContext {
    * it back. Like `steering`, a hook cannot override it.
    */
   resolvedSources?: ResolvedMediaSources | undefined;
+  /**
+   * Admits a generated media part as a managed asset (see {@link RunOptions.generatedMediaAdmitter}).
+   * A streaming wrapper uses it when a media part completes. Without a port the admission
+   * fails with a `GeneratedMediaNotAdmittedError`.
+   *
+   * Like `steering`, it is bound by the loop for this step and re-applied after every
+   * `beforeGenerate` handler and retry mutation, so a hook cannot replace or drop it.
+   */
+  generatedMediaAdmitter?: StepGeneratedMediaAdmitter | undefined;
 }
 
 /**
@@ -298,7 +309,27 @@ export type ContentSourceResolver = (
  * Response returned by the user-provided generate function.
  */
 export interface GenerateResponse {
+  /**
+   * The answer text. For a response that carries `parts`, this is the in-order
+   * concatenation of the text parts.
+   */
   content: string;
+  /**
+   * The output parts in provider order: text (with its citations), thinking and
+   * redacted thinking, server-tool blocks, container uploads and generated media. Optional
+   * so a caller-supplied `generate` that returns only `content` keeps working; the loop
+   * then derives one text part from `content`, or none when `content` is empty. Every
+   * built-in adapter sets it.
+   *
+   * The response after the hooks is authoritative. A hook that returns `content` without
+   * `parts` gets its parts derived as text only, so a non-text part the provider returned
+   * is dropped; a hook that returns both must keep the text parts' concatenation equal to
+   * `content`, or the step fails with a `ResponsePartsMismatchError`. A response that
+   * passes every hook unchanged keeps its parts. A generated media part carries an `inline`
+   * source only inside `generate` (a `GenerateMiddleware` can see it); after `generate`
+   * returns, the loop has admitted it as a managed asset.
+   */
+  parts?: readonly MultiModalContent[] | undefined;
   toolCalls: ToolCallInput[];
   usage?: TokenUsage | undefined;
   metadata?: Record<string, JSONValue> | undefined;
@@ -308,6 +339,11 @@ export interface GenerateResponse {
    * its own `appendAssistantMessage` call to avoid duplicates.
    */
   messageAppended?: boolean | undefined;
+  /**
+   * The id of the row the generate function committed. Set together with
+   * `messageAppended`; the streaming wrappers set it from their streaming row.
+   */
+  messageId?: string | undefined;
 }
 
 /**
@@ -326,7 +362,20 @@ export type GenerateMiddleware = (next: GenerateFunction) => GenerateFunction;
 export interface StepResult {
   step: number;
   conversation: Conversation;
+  /** The step's answer text: the in-order concatenation of the text parts. */
   content: string;
+  /**
+   * The step's output parts in provider order, as settled after every hook. A part is
+   * identified by `(messageId, partIndex)`, where `partIndex` is its position in the
+   * committed row's content. A row that is a single text part without citations keeps the
+   * string shorthand, and that text is `partIndex` 0.
+   */
+  parts: readonly MultiModalContent[];
+  /**
+   * The id of the assistant row this step committed; `undefined` only when the step
+   * committed no row (it produced no parts).
+   */
+  messageId: string | undefined;
   toolCalls: readonly ToolCall[];
   results: readonly ToolExecutionResult[];
   usage?: TokenUsage | undefined;
@@ -433,7 +482,14 @@ export type StopCondition = (context: StepResult) => boolean | Promise<boolean>;
 export interface RunResultBase {
   conversation: Conversation;
   steps: readonly StepResult[];
+  /** The final assistant text. */
   content: string;
+  /**
+   * Run-wide output parts: every step's parts in step order, followed by the parts of an
+   * `onMaximumSteps` replacement row when there is one. A generated asset from any step
+   * therefore reaches the result as a managed-asset reference.
+   */
+  parts: readonly MultiModalContent[];
   usage: TokenUsage;
   /**
    * Cost estimate for `usage`, computed from `RunOptions.costEstimation` when
@@ -616,6 +672,15 @@ export interface RunOptionsBase {
    * and the step fails with a `MediaAdmissionError`; nothing is dropped.
    */
   contentSourceResolver?: ContentSourceResolver | undefined;
+  /**
+   * Admits a generated media part as a managed asset. Bureau supplies it on every run from
+   * its asset service, scoped to the run and its owning principal. The loop admits every
+   * media part right after `generate` returns, before any hook, event or row write sees the
+   * response, so no hook, event, row or persisted result ever observes inline bytes. Without
+   * a port, a generated media part fails the step with a `GeneratedMediaNotAdmittedError`.
+   * The run's terminal result and `ActiveRun.closed()` wait for every admission it started.
+   */
+  generatedMediaAdmitter?: GeneratedMediaAdmitter | undefined;
   /**
    * What to do with a resolved asset no safety gate gave a verdict (`unknown`)
    * (COR-716). Admission applies it to every resolved part a call sends, in
@@ -943,6 +1008,19 @@ export interface StreamingHandle {
    * the other opted in.
    */
   report?: ((event: LiveStreamEvent) => void) | undefined;
+  /**
+   * Live channel for the response's ordered parts: part start, a delta suited to the part's
+   * modality, completion and failure, each identified by its part index. The built-in
+   * adapters call it instead of `update` and describe every part they see, text, thinking,
+   * server-tool blocks and generated media alike; the wrapper owns the row, the state
+   * machine and the events, and admits a media part as a managed asset when it completes.
+   *
+   * Both wrappers install it. An adapter calls it as `streaming.reportPart?.(...)` and falls
+   * back to `update(accumulatedText)` when it is absent, which is what a bare handle built by
+   * a test, or a hand-written function that never calls it, gets: one text part, synthesized
+   * from `update` and the returned `content`.
+   */
+  reportPart?: ((event: LivePartEvent) => void) | undefined;
 }
 
 /**

@@ -125,6 +125,7 @@ describe('recover() — reattach failure and initial state', () => {
         id: runId,
         result: async () => ({
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',
@@ -237,6 +238,7 @@ describe('recover() — reattach failure and initial state', () => {
           id: runId,
           result: async () => ({
             schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+            parts: [],
             runId,
             steps: 1,
             content: 'done',
@@ -315,6 +317,7 @@ describe('recover() — reattach failure and initial state', () => {
         id: runId,
         result: async () => ({
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',

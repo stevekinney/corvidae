@@ -547,9 +547,21 @@ conversation = finalizeStreamingMessage(conversation, messageId, {
   tokenUsage: { prompt: 120, completion: 48, total: 168 },
 });
 
+// Or commit the settled content (a string, or content parts) in the same write that clears the
+// streaming flag, when the final parts differ from what streamed: thinking, server-tool blocks,
+// generated media admitted as managed assets.
+conversation = finalizeStreamingMessage(conversation, messageId, {
+  content: [
+    { type: 'thinking', thinking: 'Plan.', signature },
+    { type: 'text', text: 'Done.' },
+  ],
+});
+
 // Or cancel on error
 conversation = cancelStreamingMessage(conversation, messageId);
 ```
+
+`updateStreamingMessage` takes a string or content parts, on the pure function and on the `Conversation` action alike. `finalizeStreamingMessage`'s `content` option replaces the streamed content; omit it to keep what streamed. The OpenAI adapter skips an assistant row that projects to no text and carries no tool call (a row holding only provider-private reasoning), since an empty assistant message in front of the tool-call message is not a valid OpenAI turn. `finalizeBlockState(state)` finalizes one streaming-accumulator block on its own, so a caller can report a part complete when its stop event arrives.
 
 **Key exports:** `appendStreamingMessage`, `appendUnsafeStreamingMessage`, `updateStreamingMessage`, `updateUnsafeStreamingMessage`, `finalizeStreamingMessage`, `finalizeUnsafeStreamingMessage`, `cancelStreamingMessage`, `isStreamingMessage`, `getStreamingMessage`.
 

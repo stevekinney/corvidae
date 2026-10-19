@@ -1,6 +1,5 @@
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
-import { assistantRowIdentifierForAttempt } from '../message-identifiers';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -10,10 +9,9 @@ import type {
   GenerateFunction,
   GenerateResponse,
   StreamingGenerateFunction,
-  StreamingHandle,
 } from '../types';
-import { cancelStreamingIfActive } from './cancel-streaming';
 import { createStreamStateMachine } from './stream-state-machine';
+import { createStreamingRow, type PartStreamEvent } from './streaming-row';
 import type {
   EnhancedStreamingOptions,
   LiveStreamEvent,
@@ -61,14 +59,7 @@ export function withEnhancedStreaming(
     const { conversation } = context;
     const stateMachine = createStreamStateMachine();
 
-    const assistantId = assistantRowIdentifierForAttempt(conversation, context.assistantMessageId);
-    const messageId = conversation.appendStreamingMessage(
-      'assistant',
-      undefined,
-      assistantId === undefined ? undefined : { id: assistantId },
-    );
-    const textBlockId = `text-${messageId}`;
-
+    let textBlockId = '';
     let previousContent = '';
 
     /**
@@ -94,52 +85,64 @@ export function withEnhancedStreaming(
       return stateMachine.getState().blocks.find((block) => block.id === id);
     }
 
-    const handle: StreamingHandle = {
-      messageId,
-      update(content: string): void {
-        conversation.updateStreamingMessage(messageId, content);
+    /**
+     * The legacy text channel, derived from the same text-part deltas the part events are:
+     * one text block for the whole response, `accumulated` the concatenation of every text
+     * part so far.
+     */
+    function onText(delta: string, accumulated: string): void {
+      if (delta.length === 0) return;
+      // If this is the first delta, start a text block
+      if (previousContent.length === 0) {
+        stateMachine.process({
+          type: 'block-start',
+          id: textBlockId,
+          blockType: 'text',
+        });
 
-        // Compute the delta from the previous update
-        const delta = content.slice(previousContent.length);
-        if (delta.length > 0) {
-          // If this is the first delta, start a text block
-          if (previousContent.length === 0) {
-            stateMachine.process({
-              type: 'block-start',
-              id: textBlockId,
-              blockType: 'text',
-            });
+        emitEvent(eventTarget, 'stream:block-start', {
+          type: 'stream:block-start',
+          block: { ...findBlock(textBlockId)! },
+        });
+      }
 
-            emitEvent(eventTarget, 'stream:block-start', {
-              type: 'stream:block-start',
-              block: { ...findBlock(textBlockId)! },
-            });
-          }
+      stateMachine.process({
+        type: 'block-delta',
+        id: textBlockId,
+        delta,
+      });
 
-          stateMachine.process({
-            type: 'block-delta',
-            id: textBlockId,
-            delta,
-          });
+      previousContent = accumulated;
 
-          previousContent = content;
+      onTextDelta?.(delta, accumulated);
 
-          onTextDelta?.(delta, content);
+      emitEvent(eventTarget, 'stream:text-delta', {
+        type: 'stream:text-delta',
+        content: delta,
+        accumulated,
+      });
 
-          emitEvent(eventTarget, 'stream:text-delta', {
-            type: 'stream:text-delta',
-            content: delta,
-            accumulated: content,
-          });
+      emitEvent(eventTarget, 'stream:block-delta', {
+        type: 'stream:block-delta',
+        block: { ...findBlock(textBlockId)! },
+        delta,
+      });
+    }
 
-          emitEvent(eventTarget, 'stream:block-delta', {
-            type: 'stream:block-delta',
-            block: { ...findBlock(textBlockId)! },
-            delta,
-          });
-        }
+    const row = createStreamingRow({
+      conversation,
+      context,
+      machine: stateMachine,
+      observer: {
+        onPartEvent: (event: PartStreamEvent) => emitPartEvent(eventTarget, event),
+        onText,
       },
-    };
+    });
+    const { messageId, handle } = row;
+    textBlockId = `text-${messageId}`;
+
+    /** Set when the stream's one terminal event has been emitted. */
+    let terminated = false;
 
     /**
      * Opens a reported tool-call block and emits its start events.
@@ -215,7 +218,10 @@ export function withEnhancedStreaming(
     }
 
     try {
-      const response = await fn({ ...context, streaming: handle });
+      // The row is committed before the stream is announced complete: a response whose row cannot
+      // be finalized (a refused media admission, a failed write) must end in exactly one
+      // terminal event, `stream:error`, never a `stream:complete` followed by an error.
+      const response = await row.finish(await fn({ ...context, streaming: handle }));
 
       // Complete the text block if one was started
       if (previousContent.length > 0) {
@@ -398,29 +404,36 @@ export function withEnhancedStreaming(
 
       const finalState = stateMachine.getState();
 
+      terminated = true;
       emitEvent(eventTarget, 'stream:complete', {
         type: 'stream:complete',
         state: finalState,
       });
 
-      conversation.finalizeStreamingMessage(messageId, {
-        ...(response.usage === undefined ? {} : { tokenUsage: response.usage }),
-        ...(response.metadata === undefined ? {} : { metadata: response.metadata }),
-      });
-
-      return { ...response, messageAppended: true };
+      return response;
     } catch (error) {
-      emitEvent(eventTarget, 'stream:error', {
-        type: 'stream:error',
-        error,
-      });
+      if (!terminated) {
+        terminated = true;
+        emitEvent(eventTarget, 'stream:error', {
+          type: 'stream:error',
+          error,
+        });
+      }
 
-      cancelStreamingIfActive(conversation, messageId);
+      await row.abandon();
       throw error;
     }
   };
 
   return withBackendDescriptors(wrapped, readBackendDescriptors(fn));
+}
+
+/** Announces a part event on the event target. */
+function emitPartEvent(
+  eventTarget: TypedEventTarget<StreamEventMap> | undefined,
+  event: PartStreamEvent,
+): void {
+  emitEvent(eventTarget, event.type, event as never);
 }
 
 function emitEvent<K extends StreamEvent['type']>(

@@ -12,6 +12,7 @@ import {
 import type { AnyToolbox, ToolboxEventMap } from 'armorer';
 import { Conversation, isConversation } from 'conversationalist';
 
+import { createAdmissionTracker } from './admission-tracker';
 import { snapshotPayload } from './agent-input';
 import { createClosedAcknowledgement } from './closed-acknowledgement';
 import type { DurableActiveRunContext } from './durable/active-run-adapter';
@@ -355,6 +356,8 @@ export function createActiveRun(
   // `hookTracker` collects each hook's promise (threaded through
   // `executeLoop` → `StepDeps`/`run-lifecycle.ts`) so `resolveOutcome` can
   // await genuine hook completion before acknowledging cleanup.
+  // COR-713: the same for every generated-media admission the run starts.
+  const admissionTracker = createAdmissionTracker();
   const pendingHookPromises: Promise<unknown>[] = [];
   const hookTracker = (promise: Promise<unknown>): void => {
     pendingHookPromises.push(promise);
@@ -620,8 +623,12 @@ export function createActiveRun(
 
   const result = Promise.resolve()
     .then(() =>
-      executeLoop(loopOptions, emitter, hookTracker, (toolbox) =>
-        toolboxForwarder.onStepToolbox(toolbox),
+      executeLoop(
+        loopOptions,
+        emitter,
+        hookTracker,
+        (toolbox) => toolboxForwarder.onStepToolbox(toolbox),
+        admissionTracker.track,
       ),
     )
     .then(
@@ -715,7 +722,10 @@ export function createActiveRun(
     // pending (a slow tool-drain wait or run-owned hook, AB-204's own
     // AC7/AC8), and the fast path has no way to check that without
     // awaiting, which is exactly what `resolveOutcome` below is for.
-    hasInFlightWork: () => inFlightTools > 0 || (childRegistry?.children().length ?? 0) > 0,
+    hasInFlightWork: () =>
+      inFlightTools > 0 ||
+      (childRegistry?.children().length ?? 0) > 0 ||
+      admissionTracker.started() > 0,
     // AB-204: `result` settling is not, by itself, proof that cleanup is
     // done — a `failFast` tool batch can leave siblings executing
     // (PRRT_kwDORvupsc6elvRf) and a run-owned hook can still be running
@@ -723,12 +733,14 @@ export function createActiveRun(
     // child's own `closed()` must settle too. Await all three before
     // reporting `completed`.
     resolveOutcome: async () => {
-      await Promise.all([
+      const [, , , admissions] = await Promise.all([
         awaitToolDrain(),
         Promise.allSettled(pendingHookPromises),
         childRegistry?.awaitChildrenClosed() ?? Promise.resolve(),
+        // COR-713: an admission whose outcome cannot be confirmed is not a clean close.
+        admissionTracker.settle(),
       ]);
-      return { status: 'completed' };
+      return admissions;
     },
   });
 

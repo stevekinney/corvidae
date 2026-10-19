@@ -11,6 +11,7 @@ import {
   type RunFrame,
   runFrameSchema,
   type RunOptions,
+  stopWhen,
   StreamCustomEvent,
   type StreamEventMap,
 } from '@lostgradient/operative';
@@ -503,5 +504,51 @@ describe.each(budgetFailureSites)('createRunFrameForwarder when $name', ({ step,
         frame.type === 'notification' && frame.code === 'budget.exceeded',
     );
     expect(notifications.map((notification) => notification.step)).toEqual([step]);
+  });
+});
+
+describe('run frames carry response parts (COR-713)', () => {
+  it('emits an assistant-final frame for a step with no text, carrying its parts and row id', async () => {
+    const thinking = { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' } as const;
+    const addTool = createTool({
+      name: 'add',
+      description: 'add two numbers',
+      input: z.object({ a: z.number(), b: z.number() }),
+      execute: async ({ a, b }) => ({ total: a + b }),
+    });
+    const activeRun = createActiveRun({
+      generate: async ({ step }) =>
+        step === 0
+          ? {
+              content: '',
+              parts: [thinking],
+              toolCalls: [{ id: 'call-1', name: 'add', arguments: { a: 1, b: 2 } }],
+            }
+          : { content: 'Three.', toolCalls: [] },
+      toolbox: createTestToolbox([addTool]),
+      conversation: new Conversation(),
+      maximumSteps: 5,
+      stopWhen: stopWhen.noToolCalls(),
+      runId: 'run-parts-frames',
+    });
+    const frames: RunFrame[] = [];
+    const dispose = createRunFrameForwarder('run-parts-frames', activeRun, (frame) => {
+      frames.push(frame);
+    });
+
+    const result = await activeRun.result;
+    dispose();
+
+    const finals = frames.filter(
+      (frame): frame is Extract<RunFrame, { type: 'assistant-final' }> =>
+        frame.type === 'assistant-final',
+    );
+    expect(finals.map((frame) => [frame.step, frame.content, frame.parts])).toEqual([
+      [0, '', [thinking]],
+      [1, 'Three.', [{ type: 'text', text: 'Three.' }]],
+    ]);
+    expect(finals.map((frame) => frame.messageId)).toEqual(result.steps.map((s) => s.messageId));
+    for (const frame of frames)
+      expect(() => runFrameSchema.parse(JSON.parse(JSON.stringify(frame)))).not.toThrow();
   });
 });

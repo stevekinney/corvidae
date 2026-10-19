@@ -1,5 +1,6 @@
 import type { ToolExecutionResult } from 'armorer';
 import type { ToolCall } from 'armorer/protocol';
+import type { MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
 import {
@@ -20,19 +21,34 @@ export interface StepFinalizationDependencies {
   step: number;
   emitter: EventDispatcher | undefined;
   response: GenerateResponse;
+  /** The step's settled parts, and the id of the row it committed (`undefined` when none). */
+  parts: readonly MultiModalContent[];
+  messageId: string | undefined;
   materializedToolCalls: ToolCall[];
   results: ToolExecutionResult[];
 }
 
 export async function finalizeStep(input: StepFinalizationDependencies): Promise<StepOutcome> {
-  const { deps, runState, conversation, step, emitter, response, materializedToolCalls, results } =
-    input;
+  const {
+    deps,
+    runState,
+    conversation,
+    step,
+    emitter,
+    response,
+    parts,
+    messageId,
+    materializedToolCalls,
+    results,
+  } = input;
   const { hooks } = deps;
   const { content, usage, metadata } = response;
   emitter?.dispatch(
     new StepGeneratedEvent({
       step,
       content,
+      parts,
+      messageId,
       toolCalls: materializedToolCalls,
       usage,
     }),
@@ -42,6 +58,8 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
     step,
     conversation,
     content,
+    parts,
+    messageId,
     toolCalls: materializedToolCalls,
     results,
     usage,

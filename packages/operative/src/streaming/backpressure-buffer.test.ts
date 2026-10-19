@@ -16,6 +16,7 @@ function streamComplete(): StreamEvent {
     type: 'stream:complete',
     state: {
       blocks: [],
+      parts: [],
       activeBlock: undefined,
       textContent: '',
       toolCalls: [],

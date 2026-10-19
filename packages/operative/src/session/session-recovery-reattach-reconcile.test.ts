@@ -54,6 +54,7 @@ describe('recover() — concurrent terminal reconciliation', () => {
         id: runId,
         result: async () => ({
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',
@@ -114,6 +115,7 @@ describe('recover() — concurrent terminal reconciliation', () => {
         id: runId,
         result: async () => ({
           schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+          parts: [],
           runId,
           steps: 1,
           content: 'done',

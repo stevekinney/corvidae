@@ -138,10 +138,13 @@ function projectEvent(event: { type: string }): Record<string, unknown> {
  *   `` `${identifierPrefix}-${kind}-${n}` `` (Coordinator ruling on
  *   AB-337) — `identifierPrefix` is an alphanumeric base-36 derivation of
  *   the seed, so it (like `kind` and `n`) may contain digits, hence the
- *   middle segment allows both, not just letters.
+ *   middle segment allows both, not just letters;
+ * - the assistant row id a run with an id derives for step `n`,
+ *   `` `${runId}:step:${n}` `` (`message-identifiers.ts`), which `StepResult.messageId`
+ *   (COR-713) carries into captured events.
  */
 const IDENTIFIER_SHAPE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[a-z0-9][a-zA-Z0-9-]*-\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[a-z0-9][a-zA-Z0-9-]*-\d+$/;
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[a-z0-9][a-zA-Z0-9-]*-\d+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^[a-z0-9][a-zA-Z0-9-]*-\d+(?::step:\d+)?$/;
 
 /**
  * Rewrites every string produced by `RuntimeServices.identifiers` to its

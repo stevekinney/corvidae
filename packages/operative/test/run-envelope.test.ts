@@ -142,6 +142,7 @@ describe('buildRunReport', () => {
   it('builds a succeeded report for every terminal field', () => {
     const report = buildRunReport({
       runId: 'run-1',
+      parts: [],
       status: 'succeeded',
       finishReason: 'stop-condition',
       usage,
@@ -169,6 +170,7 @@ describe('buildRunReport', () => {
   it('stringifies an Error into the error field', () => {
     const report = buildRunReport({
       runId: 'run-2',
+      parts: [],
       status: 'failed',
       usage,
       error: new Error('provider timed out'),
@@ -179,6 +181,7 @@ describe('buildRunReport', () => {
   it('drops output for non-success reports', () => {
     const report = buildRunReport({
       runId: 'run-2b',
+      parts: [],
       status: 'failed',
       finishReason: 'maximum-steps',
       usage,
@@ -194,6 +197,7 @@ describe('buildRunReport', () => {
     circular['self'] = circular;
     const report = buildRunReport({
       runId: 'run-3',
+      parts: [],
       status: 'succeeded',
       usage,
       output: circular,
@@ -205,6 +209,7 @@ describe('buildRunReport', () => {
     const transcript = sampleTranscript();
     const report = buildRunReport({
       runId: 'run-4',
+      parts: [],
       status: 'aborted',
       usage,
       transcript,
@@ -219,6 +224,7 @@ describe('buildRunReport', () => {
   it('round-trips every field through JSON.parse(JSON.stringify(x))', () => {
     const report = buildRunReport({
       runId: 'run-5',
+      parts: [],
       status: 'budget_stopped',
       finishReason: 'budget-exceeded',
       usage,
@@ -320,7 +326,7 @@ describe('versioned frame parsing', () => {
     };
 
     expect(() => parseRunFrame(stale)).toThrow(UnsupportedRunResultVersionError);
-    expect(RUN_ENVELOPE_SCHEMA_VERSION).toBe(3);
+    expect(RUN_ENVELOPE_SCHEMA_VERSION).toBe(4);
   });
 
   it('rejects unknown envelope versions', () => {
@@ -346,6 +352,7 @@ describe('versioned frame parsing', () => {
         runId: 'legacy-run',
         status: 'succeeded',
         usage: { prompt: 1, completion: 2, total: 3 },
+        parts: [],
         output: { answer: 'current' },
       },
     });
@@ -374,7 +381,16 @@ describe('RunFrame constructors', () => {
         clock,
       ),
       createAssistantChunkFrame({ runId: 'run-1', step: 0, delta: 'Hi', accumulated: 'Hi' }, clock),
-      createAssistantFinalFrame({ runId: 'run-1', step: 0, content: 'Hi there' }, clock),
+      createAssistantFinalFrame(
+        {
+          runId: 'run-1',
+          step: 0,
+          content: 'Hi there',
+          parts: [{ type: 'text', text: 'Hi there' }],
+          messageId: 'row-1',
+        },
+        clock,
+      ),
       createToolPreFrame(
         {
           runId: 'run-1',
@@ -412,6 +428,7 @@ describe('RunFrame constructors', () => {
           runId: 'run-1',
           report: buildRunReport({
             runId: 'run-1',
+            parts: [],
             status: 'succeeded',
             usage: { prompt: 1, completion: 1, total: 2 },
           }),
@@ -455,5 +472,62 @@ describe('RunFrame constructors', () => {
       clock,
     );
     expect(frame.error).toBe('tool exploded');
+  });
+});
+
+describe('run envelope v4 carries response parts', () => {
+  const managedImage = {
+    type: 'image',
+    mimeType: 'image/png',
+    source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 },
+  } as const;
+  const thinking = { type: 'thinking', thinking: 'Plan.', signature: 'sig-1' } as const;
+
+  it('round-trips an assistant-final frame with thinking, a managed asset and its row id', () => {
+    const frame = createAssistantFinalFrame({
+      runId: 'run-1',
+      step: 2,
+      content: '',
+      parts: [thinking, managedImage],
+      messageId: 'row-9',
+    });
+    expect(frame.schemaVersion).toBe(4);
+    const parsed = parseRunFrame(roundTrip(frame));
+    expect(parsed).toEqual(frame);
+    expect(parsed.type === 'assistant-final' && parsed.parts).toEqual([thinking, managedImage]);
+  });
+
+  it('rejects a version 4 assistant-final frame that has no parts', () => {
+    const { parts: _parts, ...withoutParts } = createAssistantFinalFrame({
+      runId: 'run-1',
+      step: 0,
+      content: 'x',
+      parts: [],
+    });
+    expect(() => parseRunFrame(roundTrip(withoutParts))).toThrow();
+  });
+
+  it('fails a version 3 assistant-final frame with the explicit unsupported-version error', () => {
+    const v3 = {
+      schemaVersion: 3,
+      type: 'assistant-final',
+      runId: 'run-1',
+      step: 0,
+      content: 'old',
+      timestamp: 1,
+    };
+    expect(() => parseRunFrame(v3)).toThrow(UnsupportedRunResultVersionError);
+  });
+
+  it('carries the run-wide parts on the terminal report', () => {
+    const report = buildRunReport({
+      runId: 'run-1',
+      status: 'succeeded',
+      finishReason: 'stop-condition',
+      usage: { prompt: 1, completion: 1, total: 2 },
+      parts: [thinking, managedImage],
+    });
+    expect(report.parts).toEqual([thinking, managedImage]);
+    expect(runReportSchema.parse(roundTrip(report)).parts).toEqual(report.parts);
   });
 });
