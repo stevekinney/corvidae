@@ -5,9 +5,10 @@
  * one text field. Sessions are started through the AG-UI mount, the way a client other than the page
  * would.
  */
-import type { Page } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
 
 import { newThreadId, runToEnd } from './chat-support.ts';
+import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
@@ -150,18 +151,36 @@ test.describe('a question a run asks', () => {
   });
 });
 
+/** What is waiting, as the two services say it: the Bureau's reviews and the engine's pending ones. */
+async function waitingCount(request: APIRequestContext): Promise<number> {
+  const bureau = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+    reviews: unknown[];
+  };
+  const engine = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
+    params: { status: 'pending' },
+  });
+  return bureau.reviews.length + ((await engine.json()) as { items: unknown[] }).items.length;
+}
+
+/** The navigation's Reviews entry says exactly `count`, which is no number at all for none. */
+const showsCount = (count: number) => new RegExp(`Reviews\\s*${count === 0 ? '' : count}$`);
+
 test.describe('the count in the navigation', () => {
-  test('follows what is waiting, with no reload', async ({ page, request }) => {
+  test('is what is waiting across both services, and follows it with no reload', async ({
+    page,
+    request,
+  }) => {
+    const before = await waitingCount(request);
     await page.goto('/reviews');
     const link = page
       .getByRole('navigation', { name: 'Views' })
       .getByRole('link', { name: /^Reviews/ });
-    const before = Number(((await link.textContent()) ?? '').replace(/\D/g, '') || '0');
+    await expect(link).toHaveText(showsCount(before));
 
     await runToEnd(request, 'tool-runner', newThreadId('reviews-count'), 'Refund order-1001');
 
     // The page asks again every five seconds, so a new approval shows without a reload.
-    await expect(link).toContainText(String(before + 1), { timeout: 15_000 });
+    await expect(link).toHaveText(showsCount(before + 1), { timeout: 15_000 });
   });
 });
 
