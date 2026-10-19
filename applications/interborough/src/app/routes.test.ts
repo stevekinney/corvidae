@@ -6,7 +6,13 @@ import { Glob } from 'bun';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
 
-import { matchRoute, workflowDetailPath } from '../lib/router.svelte.ts';
+import {
+  matchRoute,
+  scheduleCreatePath,
+  scheduleDetailPath,
+  scheduleEditPath,
+  workflowDetailPath,
+} from '../lib/router.svelte.ts';
 import {
   workflowEditPath,
   workflowRunsPath,
@@ -200,6 +206,61 @@ describe('a link to a run', () => {
       // pattern, which names a workflow type as `:type`, is how the Workflows area is addressed and
       // is not a link to a run.
       if (/['"`]\/workflows[/?](?!:type)/.test(text)) offenders.push(path);
+    }
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('the routes for schedules and goals', () => {
+  test('put the schedules list at /schedules and one schedule at /schedules/:id, both in the schedules view', async () => {
+    expect(matchRoute('/schedules')).toEqual({ pattern: '/schedules', params: {} });
+    expect(matchRoute('/schedules/nightly-rollup')).toEqual({
+      pattern: '/schedules/:id',
+      params: { id: 'nightly-rollup' },
+    });
+    for (const pattern of ['/schedules', '/schedules/:id']) {
+      expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
+        'schedules',
+      );
+    }
+    expect(await componentOf('/schedules/:id')).toBe(await componentOf('/schedules'));
+  });
+
+  test('keep /goals as a route in its own view, and out of the sidebar', async () => {
+    expect(matchRoute('/goals')).toEqual({ pattern: '/goals', params: {} });
+    expect(routes.find((candidate) => candidate.pattern === '/goals')?.view).toBe('goals');
+    const sidebar = await Bun.file(join(sourceRoot, 'app/shell/sidebar.svelte')).text();
+    expect(sidebar).not.toContain("'goals'");
+    expect(sidebar).not.toContain('/goals');
+  });
+
+  test('read /audit as the audit trail, not a placeholder', async () => {
+    const audit = await defaultOf(import('../routes/audit/index.svelte'));
+    expect(await componentOf('/audit')).toBe(audit);
+  });
+});
+
+describe('a link to a schedule', () => {
+  test('is /schedules/<id>, built in one place', () => {
+    expect(scheduleDetailPath('nightly-rollup')).toBe('/schedules/nightly-rollup');
+    expect(scheduleDetailPath('a b/c')).toBe('/schedules/a%20b%2Fc');
+    expect(scheduleEditPath('nightly-rollup')).toBe('/schedules/nightly-rollup?edit=1');
+    expect(scheduleCreatePath()).toBe('/schedules?create=1');
+    expect(matchRoute(scheduleDetailPath('a b/c'))?.params).toEqual({ id: 'a b/c' });
+  });
+
+  test('keeps a dot-only id out of the path, which a browser would normalise away', () => {
+    expect(scheduleDetailPath('..')).toStartWith('/schedules/_?');
+    expect(scheduleEditPath('..')).toContain('edit=1');
+  });
+
+  test('is never the old query-string form anywhere in the source', async () => {
+    // Spelled in two halves so that this file is not an offender itself.
+    const old = 'schedules' + '?id=';
+    const offenders: string[] = [];
+    for await (const path of new Glob('**/*.{svelte,ts,md}').scan(sourceRoot)) {
+      const text = await Bun.file(join(sourceRoot, path)).text();
+      if (text.includes(old)) offenders.push(path);
     }
     expect(offenders).toEqual([]);
   });

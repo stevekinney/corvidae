@@ -28,27 +28,33 @@
 
   import type { ScheduleFilter, ScheduleStatus, ScheduleSummary } from '@lostgradient/weft';
 
-  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery } from '@tanstack/svelte-query';
 
+  import { SCHEDULE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import {
+    router,
+    scheduleCreatePath,
+    scheduleDetailPath,
+    scheduleEditPath,
+  } from '../../lib/router.svelte.ts';
+  import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
+  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
-  import {
-    cancelSchedule,
-    fetchScheduleList,
-    pauseSchedule,
-    resumeSchedule,
-  } from './schedule-queries.ts';
+  import { createScheduleActions } from './schedule-actions.svelte.ts';
+  import ScheduleNotice from './schedule-notice.svelte';
+  import { fetchScheduleList } from './schedule-queries.ts';
   import { missedFireBadgeVariant, scheduleStatusDescriptor } from './schedule-status.ts';
+  import ScheduleTarget from './schedule-target.svelte';
+  import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
 
   const client = getClient();
   const principal = getPrincipalStore();
-  const queryClient = useQueryClient();
 
   const SCHEDULE_STATUSES: readonly ScheduleStatus[] = ['active', 'paused', 'cancelled'];
 
@@ -113,29 +119,27 @@
     statusFilter !== 'all' || workflowTypeFilter !== 'all' || idPrefix.trim().length > 0,
   );
 
-  function invalidateSchedules(): void {
-    void queryClient.invalidateQueries({ queryKey: ['schedules'] });
+  // What the Bureau knows of these schedules: which start an agent, and which are a workflow's
+  // trigger. Until it answers a schedule is of no known kind, and nothing is written to it.
+  const overlay = createQuery(() => ({
+    queryKey: queryKeys.schedules.overlay(),
+    queryFn: ({ signal }) => loadScheduleOverlay({ signal }),
+    retry: false,
+  }));
+
+  const actions = createScheduleActions();
+
+  /** A row's schedule with the service that owns it, as a write needs both. */
+  function targetOf(schedule: ScheduleSummary): Target {
+    return { schedule, kind: kindOf(schedule, overlay.data) };
   }
 
-  const pauseMutation = createMutation(() => ({
-    mutationFn: (id: string) => pauseSchedule(client, id),
-    onSuccess: invalidateSchedules,
-  }));
-  const resumeMutation = createMutation(() => ({
-    mutationFn: (id: string) => resumeSchedule(client, id),
-    onSuccess: invalidateSchedules,
-  }));
-  const cancelMutation = createMutation(() => ({
-    mutationFn: (id: string) => cancelSchedule(client, id),
-    onSuccess: invalidateSchedules,
-  }));
-
   function openCreate(): void {
-    router.navigate('/schedules?create=1');
+    router.navigate(scheduleCreatePath());
   }
 
   function openDetail(id: string): void {
-    router.navigate(`/schedules?id=${encodeURIComponent(id)}`);
+    router.navigate(scheduleDetailPath(id));
   }
 
   /**
@@ -160,16 +164,20 @@
 
   function openEdit(id: string, event?: Event): void {
     event?.stopPropagation();
-    router.navigate(`/schedules?id=${encodeURIComponent(id)}&edit=1`);
+    router.navigate(scheduleEditPath(id));
+  }
+
+  /** The editor of the workflow whose file holds a schedule's trigger. */
+  function openWorkflowEditor(workflowType: string, event: Event): void {
+    event.stopPropagation();
+    router.navigate(workflowEditPath(workflowType));
   }
 
   function togglePause(schedule: ScheduleSummary, event: Event): void {
     event.stopPropagation();
-    if (schedule.status === 'paused') {
-      resumeMutation.mutate(schedule.id);
-    } else {
-      pauseMutation.mutate(schedule.id);
-    }
+    const target = targetOf(schedule);
+    if (schedule.status === 'paused') actions.resume.mutate(target);
+    else actions.pause.mutate(target);
   }
 
   /**
@@ -191,8 +199,8 @@
   }
 
   function confirmCancel(): void {
-    if (cancelTargetId === null) return;
-    cancelMutation.mutate(cancelTargetId);
+    const schedule = allItems.find((candidate) => candidate.id === cancelTargetId);
+    if (schedule !== undefined) actions.cancel.mutate(targetOf(schedule));
     cancelDialogOpen = false;
   }
 </script>
@@ -261,6 +269,22 @@
     <Search aria-hidden="true" size={14} />
   {/snippet}
 
+  {#if actions.notice !== null}
+    <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
+  {/if}
+
+  {#if overlay.isError}
+    <FaultBanner
+      treatment={{
+        kind: 'internal',
+        message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
+        maskedByRest: false,
+        tryViaJsonRpc: false,
+      }}
+      onRetry={() => void overlay.refetch()}
+    />
+  {/if}
+
   {#if readGate.disabled}
     <EmptyState title="Schedules are locked" description={readGate.title ?? ''} />
   {:else if listQuery.isPending}
@@ -301,7 +325,7 @@
         <Table.Row>
           <Table.HeaderCell>Status</Table.HeaderCell>
           <Table.HeaderCell>Schedule ID</Table.HeaderCell>
-          <Table.HeaderCell>Type</Table.HeaderCell>
+          <Table.HeaderCell>{SCHEDULE_COPY.startsLabel}</Table.HeaderCell>
           <Table.HeaderCell>Cadence</Table.HeaderCell>
           <Table.HeaderCell>Next fire</Table.HeaderCell>
           <Table.HeaderCell>Last fire</Table.HeaderCell>
@@ -312,20 +336,30 @@
       <Table.Body>
         {#each visibleItems as schedule (schedule.id)}
           {@const status = scheduleStatusDescriptor(schedule.status)}
-          <Table.Row onclick={() => openDetail(schedule.id)} class="weft-schedule-list__row">
+          {@const target = targetOf(schedule)}
+          {@const allowed = actionsOf(target)}
+          <Table.Row
+            onclick={() => openDetail(schedule.id)}
+            class="weft-schedule-list__row"
+            data-schedule={schedule.id}
+            data-kind={target.kind.kind}
+            data-status={schedule.status}
+          >
             <Table.Cell as="th">
               <Badge variant={status.variant}>{status.label}</Badge>
             </Table.Cell>
             <Table.Cell class="weft-schedule-list__id">
               <a
                 class="weft-schedule-list__id-link"
-                href={router.href(`/schedules?id=${encodeURIComponent(schedule.id)}`)}
+                href={router.href(scheduleDetailPath(schedule.id))}
                 onclick={(event) => onIdLinkClick(event, schedule.id)}
               >
                 {schedule.id}
               </a>
             </Table.Cell>
-            <Table.Cell>{schedule.workflowType}</Table.Cell>
+            <Table.Cell>
+              <ScheduleTarget {schedule} kind={target.kind} stopPropagation />
+            </Table.Cell>
             <Table.Cell>{describeCadence(schedule)}</Table.Cell>
             <Table.Cell class="weft-schedule-list__mono">
               {schedule.nextFireAt !== null ? formatRelativeTime(schedule.nextFireAt) : '—'}
@@ -345,9 +379,9 @@
                   <span class="weft-sr-only">Actions for {schedule.id}</span>
                 </Dropdown.Trigger>
                 <Dropdown.Menu>
-                  {#if schedule.status !== 'cancelled'}
+                  {#if allowed.pause || allowed.resume}
                     <Dropdown.Item
-                      disabled={writeGate.disabled}
+                      disabled={writeGate.disabled || actions.busy}
                       onclick={(event) => togglePause(schedule, event)}
                     >
                       {#if schedule.status === 'paused'}
@@ -357,16 +391,26 @@
                       {/if}
                     </Dropdown.Item>
                   {/if}
-                  <Dropdown.Item
-                    disabled={writeGate.disabled}
-                    onclick={(event) => openEdit(schedule.id, event)}
-                  >
-                    <Pencil aria-hidden="true" size={14} /> Edit
-                  </Dropdown.Item>
-                  {#if schedule.status !== 'cancelled'}
+                  {#if allowed.edit}
+                    <Dropdown.Item
+                      disabled={writeGate.disabled}
+                      onclick={(event) => openEdit(schedule.id, event)}
+                    >
+                      <Pencil aria-hidden="true" size={14} /> Edit
+                    </Dropdown.Item>
+                  {/if}
+                  {#if allowed.editInWorkflow}
+                    <Dropdown.Item
+                      onclick={(event) => openWorkflowEditor(schedule.workflowType, event)}
+                    >
+                      <Pencil aria-hidden="true" size={14} />
+                      {SCHEDULE_COPY.editWorkflowAction}
+                    </Dropdown.Item>
+                  {/if}
+                  {#if allowed.cancel}
                     <Dropdown.Item
                       variant="danger"
-                      disabled={writeGate.disabled}
+                      disabled={writeGate.disabled || actions.busy}
                       onclick={(event) => requestCancel(schedule.id, event)}
                     >
                       <CircleX aria-hidden="true" size={14} /> Cancel

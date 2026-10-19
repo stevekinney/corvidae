@@ -119,6 +119,13 @@ export class ScheduleFormState {
   revisionPolicy = $state<ScheduleRevisionPolicy>('active-at-fire');
 
   /**
+   * Workflow types this draft cannot schedule, each with why. A type the engine's schedules do not
+   * own, such as an agent-authored workflow, whose schedule is the trigger in its file, is chosen
+   * for a typed name too, so the form refuses it rather than leaving the Bureau to.
+   */
+  reservedTypes = $state<ReadonlyMap<string, string>>(new Map());
+
+  /**
    * The policy this draft started from — captured once at construction, not
    * reactive. `toUpdateRevisionPolicy()` diffs the live `revisionPolicy`
    * against this to decide whether an edit submission needs to send
@@ -160,8 +167,10 @@ export class ScheduleFormState {
     const idIssue = scheduleIdError(this.id);
     const inputIssue = inputJsonError(this.inputText);
     const jitterIssue = jitterError(this.jitterText) ?? this.clearedJitterError();
+    const reserved = this.reservedTypes.get(this.workflowType.trim());
     return {
       ...(this.workflowType.trim().length === 0 ? { workflowType: 'Choose a workflow type.' } : {}),
+      ...(reserved !== undefined ? { workflowType: reserved } : {}),
       ...(idIssue !== undefined ? { id: idIssue } : {}),
       ...(inputIssue !== undefined ? { input: inputIssue } : {}),
       ...(jitterIssue !== undefined ? { jitter: jitterIssue } : {}),

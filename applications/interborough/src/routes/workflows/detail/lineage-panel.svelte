@@ -24,7 +24,7 @@
    *   returns the durable `{ scheduleId, occurrence? }` a schedule-launched
    *   run recorded — verified live against the dev harness's
    *   `inventory-sync-every-5-minutes` fixture schedule actually firing.
-   *   Links to the schedule's detail page (`/schedules?id=...`).
+   *   Links to the schedule's detail page (`/schedules/<id>`).
    * - **Continuation chain**: real, with one honest limit. `WorkflowState.
    *   restartedFrom` (`{ workflowId, workflowExecutionToken, replacedAt }`)
    *   is the immediate predecessor `onTerminalConflict: 'start-new'`
@@ -134,7 +134,7 @@
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';
-  import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { router, scheduleDetailPath, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import {
     EAGER_REVISION_HEDGE,
     FRESH_START_REVISION_HEDGE,
@@ -208,7 +208,7 @@
   }
 
   function goToSchedule(scheduleId: string): void {
-    router.navigate(`/schedules?id=${encodeURIComponent(scheduleId)}`);
+    router.navigate(scheduleDetailPath(scheduleId));
   }
 </script>
 
@@ -226,7 +226,7 @@
         <CalendarClock aria-hidden="true" size={14} />
         <span class="weft-lineage-panel__row-label">Launched by schedule</span>
         <a
-          href={router.href(`/schedules?id=${encodeURIComponent(provenance.scheduleId)}`)}
+          href={router.href(scheduleDetailPath(provenance.scheduleId))}
           onclick={(event) => {
             event.preventDefault();
             goToSchedule(provenance.scheduleId);

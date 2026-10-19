@@ -273,6 +273,106 @@ export const WORKFLOW_COPY = {
   },
 } as const;
 
+/** The words the schedules area (`/schedules` and under it) uses outside its view states. */
+export const SCHEDULE_COPY = {
+  /** What a schedule starts, by the service that owns it. */
+  kind: {
+    'agent-run': 'Agent run',
+    'workflow-file': 'Agent-authored workflow',
+    code: 'Code-defined workflow',
+  },
+  /** A Bureau schedule the caller may not read the agent of. */
+  unnamedAgent: 'An agent',
+  startsLabel: 'Starts',
+  /** The action that opens the editor of the workflow whose file holds a schedule's trigger. */
+  editWorkflowAction: 'Edit workflow',
+  editWorkflowNote:
+    'This schedule is the trigger in a workflow’s file, so its cadence, overlap, and the rest are edited in the workflow, and it ends when the workflow is deleted.',
+  /** A write that named the revision of the schedule, or the hash of the file, that the caller read. */
+  stale: {
+    title: (id: string): string => `“${id}” changed since you loaded it`,
+    description:
+      'Someone or something changed it after this page read it, so nothing was changed. It has been reloaded, and what you see is what it is now. Try again if you still want to.',
+  },
+  /** The Bureau changed the workflow’s file, and the engine could not follow yet. */
+  unapplied: {
+    title: 'Saved, but the engine could not apply it yet',
+    description:
+      'The workflow’s file has the change. The engine did not follow it, and applies the file again by itself. This page shows what is on disk.',
+  },
+  overlayFailed: {
+    title: 'The Bureau did not say what these schedules start',
+    description:
+      'Until it answers, schedules are listed without their agents and cannot be changed. Check that the host is running, then try again.',
+  },
+  pauseFailed: 'The schedule was not paused',
+  resumeFailed: 'The schedule was not resumed',
+  cancelFailed: 'The schedule was not cancelled',
+  form: {
+    startsLabel: 'Start',
+    startsAgent: 'An agent run',
+    startsWorkflow: 'A workflow type',
+    agentLabel: 'Agent',
+    agentPlaceholder: 'Choose an agent',
+    agentDescription: 'The agent each fire runs. It must be in this installation’s catalog.',
+    agentFreeTextDescription: 'The list of agents is unavailable. Enter the agent’s name.',
+    noAgents: 'This installation lists no agents.',
+    inputLabel: 'Input',
+    inputDescription: 'The text each fire sends to the agent.',
+    sessionLabel: 'Session',
+    sessionDescription:
+      'Optional. Each fire continues this session. Without one, every fire is a new session.',
+    sessionWithAllow: 'A schedule that continues a session cannot allow its fires to overlap.',
+    overlapLabel: 'If a run is still going when the next fire is due',
+    descriptionLabel: 'Description',
+    descriptionDescription: 'Optional. Shown to operators alongside the schedule.',
+    cadenceLabel: 'Cadence',
+    agentRequired: 'Choose an agent.',
+    inputRequired: 'Enter the text to send.',
+    inputTooLong: 'The input is too long.',
+    reservedAgentRun:
+      'Agent runs are scheduled with “An agent run”, which checks the agent and its owner.',
+    reservedAgentAuthored:
+      'This workflow is agent-authored. Its schedule is the trigger in its file, so change it in the workflow.',
+    registryNote:
+      'Only workflows defined in code are listed. An agent-authored workflow is scheduled by the trigger in its file.',
+    overlayLoading: 'Checking which workflows are agent-authored.',
+    notEditable: 'This schedule cannot be edited here',
+  },
+} as const;
+
+/** The words the audit trail (`/audit`) uses outside its view states. */
+export const AUDIT_COPY = {
+  /** The accessible name of the search form. */
+  searchLabel: 'Search the audit trail',
+  sinceLabel: 'Since',
+  sinceDescription: 'Only records at or after this time, as YYYY-MM-DDTHH:mm in your time zone.',
+  typeLabel: 'Type',
+  typeDescription: 'The kind of record, such as run.completed or schedule.created.',
+  resourceLabel: 'Run or resource',
+  resourceDescription:
+    'A run id, or schedule:<id>, session:<id>, agent:<id>, or workflow:<id>, to see what happened to one thing.',
+  searchAction: 'Search',
+  clearAction: 'Clear',
+  loadMore: 'Load more',
+  /** The caption of the table, which also says how it is ordered. */
+  caption: 'Audit records, oldest first',
+  timeColumn: 'Time',
+  typeColumn: 'Type',
+  resourceColumn: 'Resource',
+  actorColumn: 'Actor',
+  detailColumn: 'Details',
+  noActor: 'None',
+  noMatches: {
+    title: 'No records match',
+    description: 'Nothing in the trail matches this search. Change or clear a filter to see more.',
+  },
+  failed: {
+    title: 'The search failed',
+    description: 'The Bureau did not answer this search. Check that the host is running, then try again.',
+  },
+} as const;
+
 /** The words the chat view uses outside its states. */
 export const CHAT_COPY = {
   /** What a session with no title is called, in the header and in lists. */
@@ -506,11 +606,11 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     empty: {
       title: 'No audit entries yet',
-      description: 'The record of who changed what will appear here once this view is built.',
+      description: 'The record of who changed what appears here once something has been done.',
     },
     error: {
       title: 'The audit trail is unavailable',
-      description: 'The service did not answer. Check that the host is running, then try again.',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'The audit trail is locked' },
   },

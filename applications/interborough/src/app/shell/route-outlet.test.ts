@@ -38,9 +38,15 @@ function mount() {
   });
 }
 
+/** An audit trail with nothing in it, which is how the Bureau answers the view's probe. */
+function emptyTrail(): () => Promise<Response> {
+  return async () =>
+    Response.json({ jsonrpc: '2.0', id: 'bureau.audit.query', result: { records: [], nextCursor: null } });
+}
+
 describe('the route outlet', () => {
-  test('renders a placeholder view in its frame, empty once the Bureau answers', async () => {
-    restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
+  test('renders a view in its frame, empty once the Bureau answers', async () => {
+    restore = installFetchImplementation(emptyTrail());
     landAt('/audit');
     const { container, findByRole } = mount();
     expect(
@@ -60,7 +66,7 @@ describe('the route outlet', () => {
   });
 
   test('is the page’s one main landmark, whatever the route renders', async () => {
-    restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
+    restore = installFetchImplementation(emptyTrail());
     landAt('/audit');
     const { findByRole, getAllByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
@@ -69,7 +75,7 @@ describe('the route outlet', () => {
   });
 
   test('says so when a route’s code cannot be loaded, and drops the page it came from', async () => {
-    restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
+    restore = installFetchImplementation(emptyTrail());
     landAt('/audit');
     const { findByRole, container } = mount();
     await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });

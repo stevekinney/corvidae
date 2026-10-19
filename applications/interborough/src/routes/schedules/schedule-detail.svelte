@@ -33,31 +33,36 @@
   } from '@lostgradient/cinder';
   import { CircleX, Info, Pause, Pencil, Play } from '@lucide/svelte';
 
-  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import { SCHEDULE_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
-  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { queryKeys } from '../../lib/query.ts';
+  import { router, scheduleEditPath, workflowDetailPath } from '../../lib/router.svelte.ts';
+  import { kindOf, loadScheduleOverlay } from '../../lib/schedule-kinds.ts';
   import { getPrincipalStore, scopeGate } from '../../lib/scopes.svelte.ts';
   import WorkerInheritanceNote from '../../lib/worker-inheritance-note.svelte';
+  import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import { workflowStatusPresentation } from '../workflows/detail/workflow-status.ts';
   import { cadenceToScheduleValue, describeCadence } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { overlapConsequence, overlapLabel } from './overlap-policy.ts';
   import { revisionPolicyLabel } from './revision-policy.ts';
+  import { createScheduleActions } from './schedule-actions.svelte.ts';
+  import ScheduleNotice from './schedule-notice.svelte';
   import {
-    cancelSchedule,
     fetchScheduleDetail,
     fetchScheduleRunHistory,
-    pauseSchedule,
-    resumeSchedule,
     scheduleDetailQueryKey,
     scheduleRunHistoryQueryKey,
   } from './schedule-queries.ts';
   import { scheduleStatusDescriptor } from './schedule-status.ts';
+  import ScheduleTarget from './schedule-target.svelte';
+  import { actionsOf, type ScheduleTarget as Target } from './schedule-writes.ts';
 
   interface Props {
     id: string;
@@ -109,27 +114,28 @@
 
   const writeGate = $derived(scopeGate(principal, ['schedules:write']));
 
-  const pauseMutation = createMutation(() => ({
-    mutationFn: () => pauseSchedule(client, id),
-    onSuccess: invalidateDetail,
+  // What the Bureau knows of this schedule: whether it starts an agent, or is a workflow's trigger.
+  // Until it answers, the schedule is of no known kind, and nothing is written to it.
+  const overlay = createQuery(() => ({
+    queryKey: queryKeys.schedules.overlay(),
+    queryFn: ({ signal }) => loadScheduleOverlay({ signal }),
+    retry: false,
   }));
-  const resumeMutation = createMutation(() => ({
-    mutationFn: () => resumeSchedule(client, id),
-    onSuccess: invalidateDetail,
-  }));
-  const cancelMutation = createMutation(() => ({
-    mutationFn: () => cancelSchedule(client, id),
-    onSuccess: invalidateDetail,
-  }));
+
+  const actions = createScheduleActions();
 
   let cancelDialogOpen = $state(false);
 
   function openEdit(): void {
-    router.navigate(`/schedules?id=${encodeURIComponent(id)}&edit=1`);
+    router.navigate(scheduleEditPath(id));
   }
 
   function backToList(): void {
     router.navigate('/schedules');
+  }
+
+  function openWorkflowEditor(workflowType: string): void {
+    router.navigate(workflowEditPath(workflowType));
   }
 </script>
 
@@ -166,8 +172,25 @@
   {:else}
     {@const schedule = detailQuery.data}
     {@const status = scheduleStatusDescriptor(schedule.status)}
+    {@const target = { schedule, kind: kindOf(schedule, overlay.data) } satisfies Target}
+    {@const allowed = actionsOf(target)}
     {@const cadenceValue = cadenceToScheduleValue(schedule)}
     {@const nextFires = computeNextFires(cadenceValue, 5)}
+
+    {#if actions.notice !== null}
+      <ScheduleNotice notice={actions.notice} onDismiss={actions.dismiss} />
+    {/if}
+    {#if overlay.isError}
+      <FaultBanner
+        treatment={{
+          kind: 'internal',
+          message: `${SCHEDULE_COPY.overlayFailed.title}. ${SCHEDULE_COPY.overlayFailed.description}`,
+          maskedByRest: false,
+          tryViaJsonRpc: false,
+        }}
+        onRetry={() => void overlay.refetch()}
+      />
+    {/if}
 
     <div class="weft-schedule-detail__header">
       <div>
@@ -180,18 +203,18 @@
           <ConnectionIndicator status={fleetSource.status} />
         </div>
         <span class="weft-schedule-detail__subtitle">
-          {schedule.workflowType} · {describeCadence(schedule)}
+          <ScheduleTarget {schedule} kind={target.kind} /> · {describeCadence(schedule)}
         </span>
       </div>
       <div class="weft-schedule-detail__actions">
-        {#if schedule.status !== 'cancelled'}
+        {#if allowed.pause || allowed.resume}
           <Button
             variant="secondary"
             size="sm"
-            disabled={writeGate.disabled}
+            disabled={writeGate.disabled || actions.busy}
             title={writeGate.title}
             onclick={() =>
-              schedule.status === 'paused' ? resumeMutation.mutate() : pauseMutation.mutate()}
+              schedule.status === 'paused' ? actions.resume.mutate(target) : actions.pause.mutate(target)}
           >
             {#if schedule.status === 'paused'}
               <Play aria-hidden="true" size={14} /> Resume
@@ -200,14 +223,22 @@
             {/if}
           </Button>
         {/if}
-        <Button variant="secondary" size="sm" onclick={openEdit}>
-          <Pencil aria-hidden="true" size={14} /> Edit
-        </Button>
-        {#if schedule.status !== 'cancelled'}
+        {#if allowed.edit}
+          <Button variant="secondary" size="sm" onclick={openEdit}>
+            <Pencil aria-hidden="true" size={14} /> Edit
+          </Button>
+        {/if}
+        {#if allowed.editInWorkflow}
+          <Button variant="secondary" size="sm" onclick={() => openWorkflowEditor(schedule.workflowType)}>
+            <Pencil aria-hidden="true" size={14} />
+            {SCHEDULE_COPY.editWorkflowAction}
+          </Button>
+        {/if}
+        {#if allowed.cancel}
           <Button
             variant="ghost"
             size="sm"
-            disabled={writeGate.disabled}
+            disabled={writeGate.disabled || actions.busy}
             title={writeGate.title}
             onclick={() => (cancelDialogOpen = true)}
           >
@@ -340,7 +371,7 @@
       description={`"${schedule.id}" will stop firing. This can't be undone — create a new schedule to resume this cadence.`}
       confirmLabel="Cancel schedule"
       destructive
-      onConfirm={() => cancelMutation.mutate()}
+      onConfirm={() => actions.cancel.mutate(target)}
     />
   {/if}
 </div>
