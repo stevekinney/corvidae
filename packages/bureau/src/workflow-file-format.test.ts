@@ -106,10 +106,33 @@ describe('parsing a workflow file', () => {
     }
   });
 
-  it('is invalid-document for a trigger kind other than schedule', () => {
-    const problem = problemOf('digest', file({ trigger: { kind: 'signal', name: 'go' } }));
+  it('is invalid-document for a trigger kind that is not registered', () => {
+    const problem = problemOf('digest', file({ trigger: { kind: 'webhook', name: 'go' } }));
     expect(problem.code).toBe('invalid-document');
     expect(problem.issues?.[0]?.path).toBe('trigger.kind');
+  });
+
+  it('accepts a signal trigger that is exactly { kind, name } with a non-empty name', () => {
+    for (const name of ['go', 'order.paid', 'with spaces', 'x']) {
+      const parsed = parseWorkflowFile('digest', file({ trigger: { kind: 'signal', name } }), host);
+      expect(parsed.ok, name).toBe(true);
+    }
+  });
+
+  it('is invalid-document for a signal trigger with another field, no name, or a name that is not a non-empty string', () => {
+    for (const trigger of [
+      { kind: 'signal' },
+      { kind: 'signal', name: '' },
+      { kind: 'signal', name: 3 },
+      { kind: 'signal', name: null },
+      { kind: 'signal', name: 'go', payload: 1 },
+      { kind: 'signal', name: 'go', spec: '1s' },
+      { kind: 'signal', name: 'go', overlap: 'skip' },
+    ]) {
+      const problem = problemOf('digest', file({ trigger }));
+      expect(problem.code, JSON.stringify(trigger)).toBe('invalid-document');
+      expect(problem.issues?.[0]?.path).toBe('trigger');
+    }
   });
 
   it('is invalid-document for an extra trigger field and a malformed spec', () => {

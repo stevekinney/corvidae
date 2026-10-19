@@ -56,11 +56,28 @@ export const validateScheduleTrigger: DocumentTriggerValidator = (trigger) => {
 };
 
 /**
- * The trigger kinds a workflow file may use. A kind is added here by the issue that owns it
- * (`signal`: COR-1528); a kind that is not here makes the file `invalid`.
+ * Why `trigger` is not a valid `signal` trigger, or `undefined` when it is. A signal trigger is
+ * exactly `{ kind: 'signal', name }`, where `name` follows the grammar of an `await-signal` step's
+ * signal name: a non-empty string.
+ */
+export const validateSignalTrigger: DocumentTriggerValidator = (trigger) => {
+  const extra = Object.keys(trigger).filter((key) => key !== 'kind' && key !== 'name');
+  if (extra.length > 0) {
+    return `a signal trigger takes only "name"; unknown ${extra.map((key) => `"${key}"`).join(', ')}`;
+  }
+  const name = trigger['name'];
+  if (typeof name !== 'string' || name === '') {
+    return 'a signal trigger needs a "name": the non-empty name of the signal that starts it';
+  }
+  return undefined;
+};
+
+/**
+ * The trigger kinds a workflow file may use; a kind that is not here makes the file `invalid`.
  */
 export const WORKFLOW_TRIGGER_KINDS: Readonly<Record<string, DocumentTriggerValidator>> = {
   schedule: validateScheduleTrigger,
+  signal: validateSignalTrigger,
 };
 
 /** What an `agent` step's run returns, and what the next step receives as `previous`. */

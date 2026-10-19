@@ -36,6 +36,7 @@ import {
 } from '@lostgradient/weft';
 
 import type { AgentFileOperations } from './agent-file-operations';
+import { auditTrailWorkflowOwnerId } from './audit-trail';
 import { ownerOrLocal } from './owner-of-record';
 import type { DirectoryChange } from './watched-directory';
 import type { WorkflowFileDefinition } from './workflow-file';
@@ -103,6 +104,39 @@ export interface WorkflowRunFilter {
   readonly offset: number;
 }
 
+/** Who made a write, for the audit trail. */
+export interface WorkflowWriteContext {
+  /**
+   * The actor the audit entry names: `agent-run:<runId>` for a write a tool made, the calling
+   * principal's owner string for one made over HTTP. Absent for a caller that cannot be attributed.
+   */
+  readonly actor?: string | undefined;
+}
+
+/** What `workflows.signal` did: the instances it started and the ones it delivered to. */
+export interface WorkflowSignalResult {
+  /** The identifiers of the instances it started, one for each matching workflow. */
+  readonly started: string[];
+  /** The identifiers of the running instances whose `await-signal` wait it satisfied. */
+  readonly delivered: string[];
+}
+
+/** The audit entry types a write to a workflow file appends. */
+export type WorkflowAuditType =
+  | 'workflow.created'
+  | 'workflow.updated'
+  | 'workflow.paused'
+  | 'workflow.resumed'
+  | 'workflow.deleted';
+
+/** One entry a write appends to the audit trail, filed under `workflow:<identifier>`. */
+export interface WorkflowAuditEntry {
+  readonly runId: string;
+  readonly type: WorkflowAuditType;
+  readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
+  readonly principal?: string;
+}
+
 /** The workflow files of a Bureau, as `Bureau.workflows`. */
 export interface BureauWorkflows {
   /** The deployment's owner of record, which every workflow file belongs to. */
@@ -112,23 +146,24 @@ export interface BureauWorkflows {
   readonly create: (
     id: string,
     definition: WorkflowFileDefinition,
+    context?: WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   readonly update: (
     id: string,
     definition: WorkflowFileDefinition,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   readonly pause: (
     id: string,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   readonly resume: (
     id: string,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   readonly delete: (
     id: string,
-    options: { readonly expectedHash: string },
+    options: { readonly expectedHash: string } & WorkflowWriteContext,
   ) => Promise<WorkflowFileWriteResult>;
   /** The revisions of `id` that have run, newest first; `undefined` when there is no such workflow. */
   readonly revisions: (id: string) => Promise<readonly WorkflowRevision[] | undefined>;
@@ -143,10 +178,27 @@ export interface BureauWorkflows {
   readonly onChange: (listener: (change: DirectoryChange) => void) => () => void;
   /**
    * Throws `BureauError` `NOT_FOUND` unless `id` is a ready, unpaused workflow: the check a path
-   * that starts a workflow by identifier (COR-1528's signal) makes, so a paused or deleted
-   * workflow is refused as if it did not exist.
+   * that starts a workflow by identifier (`signal`) makes, so a paused or deleted workflow is
+   * refused as if it did not exist.
    */
   readonly assertStartable: (id: string) => void;
+  /**
+   * Deliver a signal named `name` and start what it triggers (COR-1528), in that order. First
+   * `payload` goes to every running instance of a workflow file that is waiting at an
+   * `await-signal` step of that name, including the instances of a paused or deleted workflow,
+   * which still finish. Then one instance starts for each ready, unpaused workflow whose trigger
+   * is `{ kind: 'signal', name }`, with `{ kind: 'signal', name, payload }` as its `trigger`; an
+   * instance this call starts is never satisfied by this call's delivery, because the delivery
+   * is over before it starts. `signalId` is forwarded to Weft's signal delivery, so a delivery
+   * retried with the same `signalId` is applied once; starts are not deduplicated. It takes no
+   * owner: every workflow file belongs to the deployment's owner, and whether a caller may signal
+   * is the operation's decision.
+   */
+  readonly signal: (
+    name: string,
+    payload: unknown,
+    options?: { readonly signalId?: string | undefined },
+  ) => Promise<WorkflowSignalResult>;
 }
 
 /**
@@ -209,6 +261,11 @@ export interface WorkflowRuntimeOptions {
   readonly createError: (message: string, code: 'NOT_FOUND') => Error;
   /** Registers background work with the Bureau, so a test can wait for it to settle. */
   readonly track?: ((promise: Promise<unknown>, label: string) => void) | undefined;
+  /**
+   * Appends an entry to the audit trail for a write that changed a workflow file. Optional: a
+   * Bureau with no persistent storage keeps no trail.
+   */
+  readonly audit?: ((entry: WorkflowAuditEntry) => Promise<void>) | undefined;
   readonly operations?: AgentFileOperations | undefined;
   readonly watch?: boolean | undefined;
   readonly openWatcher?: Parameters<typeof createWorkflowFileCatalog>[0]['openWatcher'];
@@ -584,16 +641,89 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
   }
 
   /**
-   * Run a write to a workflow file, and wait until the engine and the schedules have followed it.
-   * A write whose apply failed is reported as a failure, because the file now says one thing and
-   * the engine another; the next rescan applies it again.
+   * Append the entry for a write that changed a file. A write that changed nothing (a no-op update,
+   * pausing a paused workflow) is not an event. The trail is best effort, so a failure to write it
+   * is reported and never fails the write.
    */
-  async function write<T>(work: () => Promise<T>): Promise<T> {
+  async function audit(
+    type: WorkflowAuditType,
+    result: WorkflowFileWriteResult,
+    actor: string | undefined,
+    previousHash: string | undefined,
+  ): Promise<void> {
+    if (options.audit === undefined) return;
+    if (previousHash !== undefined && result.hash === previousHash) return;
+    try {
+      await options.audit({
+        runId: auditTrailWorkflowOwnerId(result.id),
+        type,
+        detail: {
+          id: result.id,
+          hash: result.hash,
+          ...(previousHash === undefined ? {} : { previousHash }),
+        },
+        ...(actor === undefined ? {} : { principal: actor }),
+      });
+    } catch (error) {
+      options.diagnose(`Could not record the ${type} audit entry for "${result.id}".`, error);
+    }
+  }
+
+  /**
+   * Run a write to a workflow file, record it, and wait until the engine and the schedules have
+   * followed it. A write whose apply failed is reported as a failure, because the file now says
+   * one thing and the engine another; the next rescan applies it again. The audit entry is written
+   * either way, because the file did change.
+   *
+   * `previousHash` is the hash the write was guarded by, so a write that left the bytes as they
+   * were records nothing; `create` and `delete` have none and always record.
+   */
+  async function write(
+    type: WorkflowAuditType,
+    context: WorkflowWriteContext | undefined,
+    previousHash: string | undefined,
+    work: () => Promise<WorkflowFileWriteResult>,
+  ): Promise<WorkflowFileWriteResult> {
     const result = await work();
+    await audit(type, result, context?.actor, previousHash);
     if (applyPending) queueApply();
     await settled();
     if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
     return result;
+  }
+
+  /** The identifiers of the running instances of `type`, read before any is signalled. */
+  async function runningInstances(type: string): Promise<string[]> {
+    const identifiers: string[] = [];
+    for (let offset = 0; ;) {
+      const page = await engine.list({ type, status: ['running'], limit: 100, offset });
+      identifiers.push(...page.items.map((summary) => summary.id));
+      offset += page.items.length;
+      if (page.items.length === 0 || offset >= page.total) return identifiers;
+    }
+  }
+
+  /** Deliver `payload` to every running instance of a workflow file that waits at `name`. */
+  async function deliverSignal(
+    name: string,
+    payload: unknown,
+    signalId: string | undefined,
+  ): Promise<string[]> {
+    const delivered: string[] = [];
+    for (const type of [...registeredTypes].toSorted()) {
+      for (const id of await runningInstances(type)) {
+        try {
+          const state = await engine.get(id);
+          if (state?.waitingForSignals?.includes(name) !== true) continue;
+          await engine.signal(id, name, payload, signalId === undefined ? undefined : { signalId });
+          delivered.push(id);
+        } catch (error) {
+          // An instance that finished between the read and the delivery has nothing left to wait for.
+          options.diagnose(`Could not deliver the signal "${name}" to instance "${id}".`, error);
+        }
+      }
+    }
+    return delivered;
   }
 
   const workflows: BureauWorkflows = {
@@ -611,11 +741,20 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       };
     },
 
-    create: (id, definition) => write(() => catalog.create(id, definition)),
-    update: (id, definition, update) => write(() => catalog.update(id, definition, update)),
-    pause: (id, guard) => write(() => catalog.setPaused(id, true, guard)),
-    resume: (id, guard) => write(() => catalog.setPaused(id, false, guard)),
-    delete: (id, guard) => write(() => catalog.delete(id, guard)),
+    create: (id, definition, context) =>
+      write('workflow.created', context, undefined, () => catalog.create(id, definition)),
+    update: (id, definition, update) =>
+      write('workflow.updated', update, update.expectedHash, () =>
+        catalog.update(id, definition, update),
+      ),
+    pause: (id, guard) =>
+      write('workflow.paused', guard, guard.expectedHash, () => catalog.setPaused(id, true, guard)),
+    resume: (id, guard) =>
+      write('workflow.resumed', guard, guard.expectedHash, () =>
+        catalog.setPaused(id, false, guard),
+      ),
+    delete: (id, guard) =>
+      write('workflow.deleted', guard, undefined, () => catalog.delete(id, guard)),
 
     async revisions(id) {
       await Promise.allSettled(pendingStamps);
@@ -691,6 +830,30 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     async refresh() {
       await catalog.refresh();
       await settled();
+    },
+
+    async signal(name, payload, signalOptions) {
+      // Delivery first, and it finishes before any instance starts, so an instance this call
+      // starts whose first step awaits `name` is not satisfied by the payload it was started with.
+      const delivered = await deliverSignal(name, payload, signalOptions?.signalId);
+      await settled();
+      if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
+      const trigger = { kind: 'signal', name, payload: payload ?? null };
+      const startedIds: string[] = [];
+      for (const listing of catalog.list()) {
+        const file = catalog.find(listing.id);
+        if (file?.document.trigger.kind !== 'signal' || file.document.trigger['name'] !== name) {
+          continue;
+        }
+        try {
+          workflows.assertStartable(file.id);
+        } catch {
+          continue;
+        }
+        const handle = await engine.start(file.id, trigger);
+        startedIds.push(handle.id);
+      }
+      return { started: startedIds, delivered };
     },
 
     onChange: (listener) => catalog.onChange(listener),

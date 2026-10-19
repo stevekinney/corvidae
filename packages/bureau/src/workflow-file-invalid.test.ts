@@ -109,7 +109,7 @@ describe('an invalid file', () => {
     await fixture.put('pausey.json', workflowFileText('pausey', { paused: 'no' }));
     await fixture.put(
       'signalled.json',
-      workflowFileText('signalled', { trigger: { kind: 'signal' } }),
+      workflowFileText('signalled', { trigger: { kind: 'webhook' } }),
     );
     await fixture.catalog.refresh();
     for (const id of ['renamed', 'extra', 'agentless', 'pausey', 'signalled']) {

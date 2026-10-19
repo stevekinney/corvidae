@@ -48,6 +48,8 @@ export interface WorkflowListing {
   /** The identifier of the agent that wrote the file, or `null`. */
   readonly agent: string | null;
   readonly paused: boolean;
+  /** The `kind` of the file's trigger, for a ready file, and `null` for an invalid one. */
+  readonly triggerKind: string | null;
   /** Weft's `workflowVersion` of the document, for a ready file. */
   readonly version?: string;
   /** Why an `invalid` file cannot run. */
@@ -272,6 +274,7 @@ export function createWorkflowFileCatalog(
             owner,
             agent: entry.file?.agent ?? null,
             paused: entry.file?.paused ?? false,
+            triggerKind: entry.file?.document.trigger.kind ?? null,
             ...(entry.hash === undefined ? {} : { hash: entry.hash }),
             ...(entry.file === undefined ? {} : { version: entry.file.version }),
             ...(entry.problem === undefined ? {} : { problem: entry.problem }),

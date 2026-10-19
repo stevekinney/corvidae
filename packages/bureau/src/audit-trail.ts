@@ -915,6 +915,18 @@ export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
 /** The `runId` prefix of a session's synthetic audit owner, `session:<id>`. */
 export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
 
+/** The `runId` prefix of a workflow file's synthetic audit owner, `workflow:<id>` (COR-1529). */
+export const AUDIT_WORKFLOW_OWNER_PREFIX = 'workflow:';
+
+/**
+ * The synthetic `runId` a write to a workflow file is filed under, `workflow:<id>`: a write to a
+ * workflow file belongs to no run, and the file's owner is the deployment's.
+ * `query({ runId })` with it retrieves one workflow's writes, in order.
+ */
+export function auditTrailWorkflowOwnerId(workflowId: string): string {
+  return `${AUDIT_WORKFLOW_OWNER_PREFIX}${workflowId}`;
+}
+
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
 function ownerDetail(owner: string | undefined): { owner?: string } {
   return owner === undefined ? {} : { owner };

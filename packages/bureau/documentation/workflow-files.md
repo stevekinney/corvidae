@@ -33,7 +33,7 @@ The file is Weft's workflow document (`packages/weft/src/document-workflow`) plu
 - `name`: must equal the identifier. The filename without `.json` is the identifier, so this file is `nightly-digest.json`. An identifier matches `^[a-z](?:[a-z0-9-]*[a-z0-9])?$` and is at most 64 characters, because Bureau derives ids from it that must stay inside Weft's 128.
 - `agent`: optional. The identifier of the agent that wrote the file. It is only recorded; it is not checked against the agent catalog, so deleting that agent leaves the workflow valid.
 - `paused`: optional boolean, default `false`. A paused workflow starts nothing new. See [Pausing and deleting](#pausing-and-deleting).
-- `trigger`: `{ kind: 'schedule', spec, overlap? }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. Any other field, a malformed `spec`, or any other `kind` makes the file `invalid`; `signal` (COR-1528) is the next kind to be registered.
+- `trigger`: `{ kind: 'schedule', spec, overlap? }` or `{ kind: 'signal', name }`. `spec` is a cron expression (five or six fields) or a duration such as `1h` or `30 seconds`, exactly as `DurableScheduleDefinition.spec` accepts. `overlap` is `skip` (the default), `queue`, `cancel-running`, or `allow`. `name` is a non-empty string, the same grammar as an `await-signal` step's `signal`. Any other field, a malformed `spec`, a missing or empty `name`, or any other `kind` makes the file `invalid`. See [Signals](#signals).
 - `steps`: Weft's steps, run in order: `activity`, `sleep`, and `await-signal`. The only activity is `agent`.
 
 Only files ending exactly in `.json` count: dotfiles, `.JSON`, other extensions, and directories are ignored. A symbolic link to a file is followed. A file larger than 256 KiB is invalid. `agent` and `paused` are stripped before the document is handed to Weft, so neither is part of a revision.
@@ -122,11 +122,42 @@ Every startup, every rescan that finds a change, and every rescan after a failed
 
 `bureau.schedules.*` (the Bureau methods `getSchedule` and `listSchedules`) reads these schedules, and `getOwner` answers them with the deployment's owner. `pauseSchedule`, `resumeSchedule`, and `cancelSchedule` refuse them with `BureauError` (`NOT_FOUND`), as if they did not exist: the workflow's own operations are the only way to change one.
 
+## Signals
+
+A signal does two things, in this order, through `bureau.workflows.signal({ name, payload?, signalId? })` over the wire or `bureau.workflows.signal(name, payload, { signalId })` in process. It returns `{ started, delivered }`: the identifiers of the instances it started and the ones it delivered to.
+
+- **Delivery.** `payload` goes to every running instance of a workflow file that is waiting at an `await-signal` step named `name`, as Weft's `waitingForSignals` lists it. This includes the instances of a paused or deleted workflow, which still finish. An instance that is not waiting at that name, or that is waiting at another, receives nothing. An instance that finishes between Bureau's read of it and the delivery is skipped, reported through the diagnostic sink, and left out of `delivered`.
+- **Start.** Then one instance starts for every ready, unpaused workflow whose trigger is `{ kind: 'signal', name }`. Its `trigger` is `{ kind: 'signal', name, payload }`, with `payload` `null` when the call had none, and that is what an `agent` step's message shows after `Trigger:`. A paused, deleted, or `invalid` workflow is skipped and the call does not fail. Starts are not deduplicated: every call starts one instance per matching workflow.
+
+Delivery is over before any instance starts, so a new instance whose first step awaits the same name is not satisfied by the call that started it; it waits for the next signal.
+
+`signalId` is forwarded to Weft's signal delivery. A delivery retried with the same `signalId` is applied once, so an instance that moved on to a second wait at the same name does not take the retry as another signal. It does not deduplicate starts, and Weft's `startOrSignal` is not used.
+
+The operation needs the deployment's owner or `bureau.workflows:write`. Any other caller gets `{ started: [], delivered: [] }`, and nothing is delivered or started. If an earlier change to the files has not reached the engine, the call delivers, then fails with `Unavailable` (`workflow-apply-failed`) before it starts anything, as a write does.
+
+## Agent tools
+
+With a `workflowDirectory`, Bureau adds five tools to the deployment's tool catalog (`BureauOptions.agentTools`) itself, so an agent file receives them only when it lists them in `tools`: `workflows-create`, `workflows-update`, `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529). The names use hyphens because provider tool-name grammars exclude dots. A host tool with one of these names is refused at `createBureau` with `BureauError` (`BAD_REQUEST`). Code-defined agents take their tools from their own definitions and are not given these.
+
+The tools write through `Bureau.workflows`, the same methods the operations use, never to the filesystem directly.
+
+- **Who they act for.** Every workflow belongs to the deployment's owner of record. A tool acts only when the owner of record of the run that called it, read through `Bureau.getOwner` and not from anything the request carried, is that owner. For any other run `workflows-list` answers an empty list and every write answers `not-found`.
+- **The `agent` field.** `workflows-create` and `workflows-update` write the calling run's own agent identifier. `workflows-update` replaces the whole definition, and `paused` left out means running. `workflows-pause` and `workflows-resume` change only `paused`. A calling agent whose identifier is not an agent identifier gets `{ status: 'invalid', code: 'invalid-agent', issues }` from every tool and writes nothing.
+- **The identifier.** `workflows-create` takes a `name` and an optional `id`. Without `id` it lowercases the name, turns every run of characters outside `[a-z0-9]` into one `-`, trims `-` from both ends, and requires the result to start with a letter and be at most 64 characters; anything else is `{ status: 'invalid', code: 'invalid-identifier' }`. There is no automatic suffix, so a taken identifier is a `conflict`.
+- **Guarding a change.** `workflows-list` returns each workflow's `id`, `hash`, `state`, `paused`, and `triggerKind` (`null` for an `invalid` file, which also carries its `problem` code so its author can fix it). `workflows-update`, `workflows-pause`, and `workflows-resume` take that `hash` as `expectedHash`.
+- **Results.** Every outcome is an ordinary tool result, never a thrown error and never a failed tool call: `{ status: 'ok', id, hash }`; `{ status: 'conflict', id, reason: 'workflow-file-exists' | 'workflow-file-changed', currentHash? }`; `{ status: 'invalid', code, issues }`, with every schema failure of a document that would not load in `issues`; `{ status: 'not-found', id }`; and `{ status: 'unavailable', reason: 'workflow-apply-failed' }`. `workflows-list` answers `{ status: 'ok', workflows }`.
+
+A change takes effect before the call returns, as it does over HTTP. There is no `delete` or `get` tool.
+
+## Audit
+
+Every write to a workflow file that changed it is appended to the audit trail, whether a tool or an HTTP call made it: `workflow.created`, `workflow.updated`, `workflow.paused`, `workflow.resumed`, and `workflow.deleted`. The entry is filed under the `runId` `workflow:<identifier>`, so `auditTrail.query({ runId: 'workflow:digest' })` is one workflow's history, and its `detail` is `{ id, hash, previousHash? }`: `hash` is the file after the write (the file that was deleted, for a delete) and `previousHash` the one the write was guarded by. The actor, the entry's `principal`, is `agent-run:<runId>` for a tool call and the calling principal's owner string for HTTP. A write that changed nothing (a no-op update, pausing a paused workflow) and a write that was refused write no entry, and a write whose apply to the engine failed does, because the file changed. `getOwner` resolves the entry to the deployment's owner, so an owner-scoped reader sees it as the deployment's owner and no other principal does. Edits made by hand on disk are not audited. A Bureau with no persistent storage keeps no trail and records nothing.
+
 ## Pausing and deleting
 
 - **Paused.** `paused: true` in the file pauses the schedule. A paused workflow starts no new instance from its schedule, and an instance that is already running completes.
 - **Deleted.** Deleting the file cancels the schedule. Instances already running finish on the revision they began on, including after a restart; the revision stays registered as `retained` until none is left.
-- **Refusal happens on Bureau's own paths.** Weft has no start-admission hook, and Bureau adds none. A schedule fire goes straight to Weft, so pausing and cancelling the schedule is the whole refusal there. Bureau adds no path that starts a workflow by identifier; `bureau.workflows.assertStartable(id)` is what COR-1528's signal operation calls, and it throws `BureauError` (`NOT_FOUND`) for a workflow that is missing, invalid, deleted, or paused.
+- **Refusal happens on Bureau's own paths.** Weft has no start-admission hook, and Bureau adds none. A schedule fire goes straight to Weft, so pausing and cancelling the schedule is the whole refusal there. `bureau.workflows.signal` is the one path that starts a workflow, and it checks `bureau.workflows.assertStartable(id)` for each candidate, which throws `BureauError` (`NOT_FOUND`) for a workflow that is missing, invalid, deleted, or paused; the signal skips such a candidate and the call does not fail. A paused or deleted workflow's running instances still receive a delivered signal.
 - **Weft's own start is not covered.** Weft's start operation, relayed by Interborough's engine console, starts any registered workflow type, and a start there bypasses Bureau's pause and delete. A deleted workflow's last revision also stays registered with the engine as long as the process lives, so a start there still finds it.
 
 ## Owner
@@ -135,7 +166,7 @@ Every workflow file belongs to the deployment's owner of record (`anonymous:loca
 
 ## Operations
 
-`createBureauHandler` serves the workflow operations as JSON-RPC: `bureau.workflows.create`, `update`, `pause`, `resume`, `delete`, `get`, `list`, `revisions`, `runs.list`, and `runs.get`. A caller reaches workflows without a scope only when it is the deployment's owner, which under `unauthenticatedAccess: 'allow'` is the one local caller. `bureau.workflows:read` grants the reads to any caller and `bureau.workflows:write` the writes, and neither implies the other. A caller who may not see workflows is answered as if there were none: an empty page for `list` and `runs.list`, and `NotFound` for the rest; `create` has nothing to hide and answers `Forbidden`. A run that is not an instance of a workflow file is `NotFound` in `runs.get` for every caller.
+`createBureauHandler` serves the workflow operations as JSON-RPC: `bureau.workflows.create`, `update`, `pause`, `resume`, `delete`, `get`, `list`, `revisions`, `runs.list`, `runs.get`, and `signal`. A caller reaches workflows without a scope only when it is the deployment's owner, which under `unauthenticatedAccess: 'allow'` is the one local caller. `bureau.workflows:read` grants the reads to any caller and `bureau.workflows:write` the writes, and neither implies the other. A caller who may not see workflows is answered as if there were none: an empty page for `list` and `runs.list`, and `NotFound` for the rest; `create` has nothing to hide and answers `Forbidden`. A run that is not an instance of a workflow file is `NotFound` in `runs.get` for every caller. `signal` needs the owner or `bureau.workflows:write` and answers any other caller `{ started: [], delivered: [] }`, because it names no workflow to hide.
 
 ## The host is frozen
 
@@ -145,5 +176,5 @@ Bureau builds one `DocumentWorkflowHost` per engine, with the `agent` activity a
 
 - Writes are not safe against another process editing the same file (see Writing).
 - Per-user directories and Git history of the directory are out of scope.
-- `signal` triggers (COR-1528) and agent tools (COR-1529) come next; webhook and lifecycle triggers are not planned.
+- Webhook and lifecycle triggers are not planned; a signal is the one way in from outside, and an A2A message from another principal starts nothing.
 - `runs.list` reads at most 1,000 instances of a workflow.

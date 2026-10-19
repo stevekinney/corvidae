@@ -4,36 +4,17 @@
  * list so a later operation is covered without editing it), and each operation's results and
  * typed faults.
  */
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { createAgent, stopWhen } from '@lostgradient/operative';
-import {
-  AUTHORIZATION_SCOPES,
-  type AuthorizationScope,
-  createOperationHandler,
-  unauthenticatedLocalAuthContext,
-  type AuthenticatedPrincipal,
-} from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createBureau } from '../../create-bureau.ts';
-import type { Bureau } from '../../types.ts';
 import { AGENT_STEP, FAST_SCHEDULE } from '../../testing/workflow-file-fixtures.test-support.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
-import {
-  buildBureauHandlerHost,
-  BUREAU_HANDLER_OPERATIONS,
-  createBureauHandler,
-} from '../create-bureau-handler.ts';
-import {
-  authentication,
-  rpc,
-  type Handler,
-  type RpcBody,
-} from './management-fixtures.test-support.ts';
+import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
+import { rpc, type RpcBody } from './management-fixtures.test-support.ts';
+import { ownerRpc, type Served, serveWorkflows } from './workflows-fixtures.test-support.ts';
 import { bureauWorkflowsOperations } from './workflows-operations.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -41,74 +22,8 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();
 });
 
-interface Served {
-  readonly bureau: Bureau;
-  readonly directory: string;
-  /** Serves API-key callers, by the key the management fixtures define. */
-  readonly keyed: Handler;
-  /** Serves one `unauthenticated-local` caller who holds no Bureau scope: the owner, with no operator scope. */
-  readonly owner: Handler;
-}
-
-const agents: AgentDefinitions = {
-  writer: createAgent({
-    name: 'writer',
-    generate: async () => ({ content: 'written', toolCalls: [] }),
-  }),
-};
-
-async function serve(
-  onDiagnostic?: (event: { level: string; message: string }) => void,
-): Promise<Served> {
-  const directory = await mkdtemp(join(tmpdir(), 'bureau-workflow-operations-'));
-  const bureau = await createBureau({
-    id: 'workflows-bureau',
-    agents,
-    workflowDirectory: directory,
-    stopWhen: stopWhen.noToolCalls(),
-    storage: { type: 'memory' },
-    durableExecution: true,
-    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
-  });
-  cleanups.push(async () => {
-    await bureau.dispose();
-    await rm(directory, { recursive: true, force: true });
-  });
-  const keyed = createBureauHandler(bureau, { authentication });
-  const noBureauScopes = new Set<AuthorizationScope>(
-    [...(unauthenticatedLocalAuthContext().principal?.scopes ?? AUTHORIZATION_SCOPES)].filter(
-      (scope) => !(BUREAU_SCOPES as readonly string[]).includes(scope),
-    ),
-  );
-  const ownerPrincipal: AuthenticatedPrincipal = Object.freeze({
-    method: 'unauthenticated-local',
-    scopes: noBureauScopes,
-    claims: undefined,
-    subject: undefined,
-    hasScope: (scope: AuthorizationScope) => noBureauScopes.has(scope),
-  });
-  const owner = createOperationHandler({
-    operations: BUREAU_HANDLER_OPERATIONS,
-    host: buildBureauHandlerHost(bureau, []),
-    authenticate: async () => ({
-      method: 'unauthenticated-local' as const,
-      principal: ownerPrincipal,
-    }),
-    publicPaths: [],
-  });
-  return { bureau, directory, keyed, owner };
-}
-
-async function ownerRpc(handler: Handler, method: string, params: unknown): Promise<RpcBody> {
-  const response = await handler(
-    new Request('http://localhost/jsonrpc', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
-    }),
-  );
-  return (await response.json()) as RpcBody;
-}
+const serve = (onDiagnostic?: (event: { level: string; message: string }) => void) =>
+  serveWorkflows(cleanups, onDiagnostic === undefined ? {} : { onDiagnostic });
 
 /** The array an operation's result holds under `key`, empty when it holds none. */
 function listOf(response: RpcBody, key: string): Array<{ id: string }> {
@@ -119,7 +34,7 @@ function listOf(response: RpcBody, key: string): Array<{ id: string }> {
 const DEFINITION = { agent: 'writer', trigger: FAST_SCHEDULE, steps: [AGENT_STEP] };
 
 describe('the operations list', () => {
-  it('serves the ten workflow operations, with their scopes registered', () => {
+  it('serves the eleven workflow operations, with their scopes registered', () => {
     expect(bureauWorkflowsOperations.map((operation) => operation.name)).toEqual([
       'bureau.workflows.create',
       'bureau.workflows.update',
@@ -131,6 +46,7 @@ describe('the operations list', () => {
       'bureau.workflows.revisions',
       'bureau.workflows.runs.list',
       'bureau.workflows.runs.get',
+      'bureau.workflows.signal',
     ]);
     expect(BUREAU_SCOPES).toContain('bureau.workflows:read');
     expect(BUREAU_SCOPES).toContain('bureau.workflows:write');
@@ -189,6 +105,7 @@ const CALLS: readonly Call[] = [
     params: (hash) => ({ id: 'digest', expectedHash: hash }),
     scope: 'write',
   },
+  { method: 'bureau.workflows.signal', params: () => ({ name: 'go' }), scope: 'write' },
 ];
 
 describe('the owner predicate, with several principals', () => {
@@ -206,7 +123,10 @@ describe('the owner predicate, with several principals', () => {
         const { hash } = await seed(served);
         const before = await readFile(join(served.directory, 'digest.json'), 'utf8');
         const response = await rpc(served.keyed, call.method, call.params(hash), 'alice-key');
-        if (
+        if (call.method === 'bureau.workflows.signal') {
+          expect(response.error).toBeUndefined();
+          expect(response.result).toEqual({ started: [], delivered: [] });
+        } else if (
           call.method === 'bureau.workflows.list' ||
           call.method === 'bureau.workflows.runs.list'
         ) {
@@ -231,7 +151,7 @@ describe('the owner predicate, with several principals', () => {
         const deniedStatus = denied.error?.data?.httpStatus;
         const emptyPage =
           denied.result !== undefined &&
-          (['workflows', 'runs'] as const).some(
+          (['workflows', 'runs', 'started'] as const).some(
             (key) => listOf(denied, key).length === 0 && Array.isArray(denied.result?.[key]),
           );
         expect(emptyPage || deniedStatus === 404 || deniedStatus === 403).toBe(true);
@@ -458,6 +378,9 @@ describe('faults', () => {
       diagnostics.filter((message) => message.includes('Could not bring')).length,
     ).toBeGreaterThanOrEqual(1);
     failing = false;
+    // The file changed, so the write is in the audit trail even though its apply failed.
+    const audited = await served.bureau.auditTrail?.query({ runId: 'workflow:digest' });
+    expect(audited?.map((entry) => entry.type)).toEqual(['workflow.created', 'workflow.paused']);
     await served.bureau.workflows?.refresh();
     const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
     expect(got.result).toMatchObject({ paused: true, schedule: { status: 'paused' } });
