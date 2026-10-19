@@ -58,13 +58,15 @@ export async function buildDocumentWorkflowDefinition(
   const run = async function* (context: WorkflowContext, trigger: unknown) {
     const firedBy = trigger === undefined ? null : trigger;
     let previous: unknown = null;
-    for (const step of document.steps) {
+    for (const [index, step] of document.steps.entries()) {
       switch (step.kind) {
         case 'activity':
           previous = yield* context.run(step.handler, {
             input: step.input ?? null,
             trigger: firedBy,
             previous,
+            workflowId: context.workflowId,
+            step: index,
           });
           break;
         case 'sleep':

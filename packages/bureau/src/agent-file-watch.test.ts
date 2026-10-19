@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './agent-file-catalog';
+import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './watched-directory';
 import { nodeAgentFileOperations } from './agent-file-operations';
 import {
   type AgentFileFixture,
@@ -161,14 +161,14 @@ describe('the safety rescan', () => {
     // Without the interval, `refresh()` alone is one scan. A tick that already started a scan
     // makes it two: the scan the tick began, and the one `refresh()` asks for behind it.
     const before = listings;
-    await runtime.advance(AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS);
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS);
     await fixture.catalog.refresh();
     expect(listings - before).toBeGreaterThanOrEqual(2);
 
     // Stops with the catalog.
     await fixture.catalog.close();
     const afterClose = listings;
-    await runtime.advance(AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
+    await runtime.advance(DIRECTORY_POLL_INTERVAL_MILLISECONDS * 3);
     await fixture.catalog.refresh();
     expect(listings).toBe(afterClose);
   });

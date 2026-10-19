@@ -12,21 +12,14 @@
  *
  * ## Watching
  *
- * `fs.watch` is only a trigger. Any event marks the catalog dirty, and one single-flight loop
- * rescans the whole directory until nothing is dirty: bursts coalesce, and because a rescan is
- * idempotent it makes no difference whether a change arrived as an edit, a rename into place, a
- * delete, or the directory itself disappearing. There is no debounce interval. Because `fs.watch`
- * can drop an event, a once-a-second rescan ({@link AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS})
- * backs it up; it reports nothing when nothing changed. A
- * directory that does not exist is an empty catalog, watched through its nearest existing
- * ancestor until it appears.
+ * The directory is watched, rescanned, and backed up by a poll by `watched-directory.ts`, which this
+ * catalog shares with the workflow files (COR-1527).
  *
  * @module agent-file-catalog
  */
 
 import { randomUUID } from 'node:crypto';
-import { watch, type FSWatcher } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import type { FSWatcher } from 'node:fs';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -46,7 +39,6 @@ import {
   AgentSnapshotError,
   checkAgentIdentifier,
   decodeAgentFile,
-  hashAgentFileBytes,
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
@@ -58,16 +50,7 @@ import {
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { ModelCatalogService } from './model-catalog-refresh';
 import { ownerOrLocal } from './owner-of-record';
-
-/**
- * How often the catalog rescans the directory on its own, in milliseconds. `fs.watch` is the
- * primary signal, but it is lossy: on macOS a directory's creation went unreported in about one
- * of two hundred runs of a test that makes the directory and a file in it back to back. A rescan
- * is idempotent and finds nothing to report when nothing changed, so this safety net costs a
- * directory read and the agent files' bytes once a second, and bounds how long a change the
- * watcher missed can go unseen.
- */
-export const AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS = 1000;
+import { createWatchedDirectory } from './watched-directory';
 
 /** The default agent every `createRun` without `agentName` runs. No file may take its name. */
 export const RESERVED_DEFAULT_AGENT_IDENTIFIER = 'bureau';
@@ -151,7 +134,7 @@ export interface AgentFileCatalog extends AgentFileWriter {
 interface FileEntry {
   readonly id: string;
   readonly hash: string | undefined;
-  readonly modelRevision: number;
+  readonly revision: number;
   readonly definition?: AgentFileDefinition;
   readonly agent?: AnyRunnableAgent;
   readonly problem?: AgentFileProblem;
@@ -189,23 +172,14 @@ function isProblem(value: BackendDescriptor | AgentFileProblem): value is AgentF
   return 'code' in value && 'message' in value && !('provider' in value);
 }
 
-function sameSignature(left: FileEntry | undefined, right: FileEntry | undefined): boolean {
-  return (
-    left !== undefined &&
-    right !== undefined &&
-    left.hash === right.hash &&
-    left.problem?.code === right.problem?.code
-  );
+function sameSignature(left: FileEntry, right: FileEntry): boolean {
+  return left.hash === right.hash && left.problem?.code === right.problem?.code;
 }
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory } = options;
   const owner = ownerOrLocal(undefined);
-  const openWatcher =
-    options.openWatcher ?? ((path, listener) => watch(path, { persistent: false }, listener));
-  let entries = new Map<string, FileEntry>();
-  const listeners = new Set<(change: AgentCatalogChange) => void>();
 
   function missingTools(names: readonly string[]): string[] {
     return names.filter((name) => !Object.hasOwn(options.tools, name));
@@ -285,11 +259,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     };
   }
 
-  function evaluate(id: string, bytes: Uint8Array, hash: string, modelRevision: number): FileEntry {
+  function evaluate(id: string, bytes: Uint8Array, hash: string, revision: number): FileEntry {
     const invalid = (problem: AgentFileProblem): FileEntry => ({
       id,
       hash,
-      modelRevision,
+      revision,
       problem,
     });
     const identifierProblem = checkAgentIdentifier(id);
@@ -302,195 +276,48 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     if (!parsed.ok) return invalid(parsed.problem);
     const { definition } = parsed.file;
     const checked = checkDeployment(id, definition);
-    if ('problem' in checked)
-      return { id, hash, modelRevision, definition, problem: checked.problem };
+    if ('problem' in checked) return { id, hash, revision, definition, problem: checked.problem };
     try {
       const agent = buildAgent(id, hash, definition, checked.descriptor);
-      return { id, hash, modelRevision, definition, agent };
+      return { id, hash, revision, definition, agent };
     } catch (error) {
-      return { id, hash, modelRevision, definition, problem: modelSetupProblem(definition, error) };
+      return { id, hash, revision, definition, problem: modelSetupProblem(definition, error) };
     }
   }
 
-  async function loadEntry(
-    id: string,
-    name: string,
-    modelRevision: number,
-    previous: FileEntry | undefined,
-  ): Promise<FileEntry | undefined> {
-    const path = `${directory}/${name}`;
-    try {
-      const size = await operations.size(path);
-      if (size === undefined) return undefined;
-      if (size > AGENT_FILE_SIZE_LIMIT) {
-        return {
-          id,
-          hash: undefined,
-          modelRevision,
-          problem: {
-            code: 'file-too-large',
-            message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
-          },
-        };
-      }
-      const bytes = await operations.read(path);
-      if (bytes === undefined) return undefined;
-      const hash = hashAgentFileBytes(bytes);
-      if (previous?.hash === hash && previous.modelRevision === modelRevision) return previous;
-      return evaluate(id, bytes, hash, modelRevision);
-    } catch (error) {
-      return {
-        id,
-        hash: undefined,
-        modelRevision,
-        problem: {
-          code: 'unreadable',
-          message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-        },
-      };
-    }
-  }
-
-  async function scanOnce(): Promise<void> {
-    const listing = await operations.listDirectory(directory);
-    const modelRevision = options.modelCatalog.catalog().revision;
-    const next = new Map<string, FileEntry>();
-    for (const item of listing ?? []) {
-      if (!item.isFile || item.name.startsWith('.') || !item.name.endsWith(AGENT_FILE_EXTENSION)) {
-        continue;
-      }
-      const id = item.name.slice(0, -AGENT_FILE_EXTENSION.length);
-      const entry = await loadEntry(id, item.name, modelRevision, entries.get(id));
-      if (entry !== undefined) next.set(id, entry);
-    }
-    const added: string[] = [];
-    const changed: string[] = [];
-    const removed: string[] = [];
-    for (const [id, entry] of next) {
-      const before = entries.get(id);
-      if (before === undefined) added.push(id);
-      else if (!sameSignature(before, entry)) changed.push(id);
-    }
-    for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
-    entries = next;
-    if (added.length + changed.length + removed.length === 0) return;
-    for (const listener of listeners) {
-      try {
-        listener({ added, changed, removed });
-      } catch (error) {
-        options.diagnose('An agent catalog change listener threw.', error);
-      }
-    }
-  }
-
-  let dirty = false;
-  let running: Promise<void> | undefined;
-  let closed = false;
-  /** The watchers that are open, by the path each watches. */
-  const watchers = new Map<string, { readonly watcher: FSWatcher; readonly watches: string }>();
-  let forceRearm = false;
-  let pollTimer: unknown;
-
-  /**
-   * The nearest existing ancestor of the directory, and the name of the entry under it that leads
-   * to the directory. Deleting a watched directory raises no event on the directory itself, so
-   * the entry that holds it is watched too.
-   */
-  async function nearestExistingAncestor(): Promise<
-    { readonly path: string; readonly entry: string } | undefined
-  > {
-    let child = directory;
-    for (;;) {
-      const parent = dirname(child);
-      if (parent === child) return undefined;
-      if ((await operations.size(parent)) !== undefined) {
-        return { path: parent, entry: basename(child) };
-      }
-      child = parent;
-    }
-  }
-
-  function open(path: string, entry: string | undefined): void {
-    if (closed) return;
-    try {
-      const opened = openWatcher(path, (event, filename) => {
-        const name = filename ?? null;
-        if (entry !== undefined && name !== null && name !== entry) return;
-        if (entry === undefined && event === 'rename' && name === null) forceRearm = true;
-        trigger();
-      });
-      opened.on('error', (error) => {
-        options.diagnose('The agent directory watcher failed.', error);
-        forceRearm = true;
-        trigger();
-      });
-      watchers.set(path, { watcher: opened, watches: entry ?? '' });
-    } catch (error) {
-      options.diagnose('The agent directory could not be watched.', error);
-    }
-  }
-
-  async function arm(): Promise<void> {
-    if (closed || options.watch === false) return;
-    const wanted = new Map<string, string | undefined>();
-    if ((await operations.size(directory)) !== undefined) wanted.set(directory, undefined);
-    const ancestor = await nearestExistingAncestor();
-    // `close()` may have landed while the directory was being looked at: open nothing then.
-    if (closed) return;
-    if (ancestor !== undefined) wanted.set(ancestor.path, ancestor.entry);
-    for (const [path, held] of watchers) {
-      const entry = wanted.get(path);
-      if (
-        !wanted.has(path) ||
-        (entry ?? '') !== held.watches ||
-        (forceRearm && path === directory)
-      ) {
-        held.watcher.close();
-        watchers.delete(path);
-      }
-    }
-    forceRearm = false;
-    for (const [path, entry] of wanted) if (!watchers.has(path)) open(path, entry);
-  }
-
-  function startPolling(): void {
-    if (pollTimer !== undefined || closed || options.watch === false) return;
-    pollTimer = options.runtime.timers.setInterval(
-      trigger,
-      AGENT_DIRECTORY_POLL_INTERVAL_MILLISECONDS,
-    );
-  }
-
-  async function loop(): Promise<void> {
-    startPolling();
-    for (;;) {
-      // Decided and cleared in one synchronous step, so a `refresh()` is either behind a scan
-      // that has not started yet or starts a loop of its own, never handed a loop that is over.
-      if (!dirty || closed) {
-        running = undefined;
-        return;
-      }
-      dirty = false;
-      // Armed before the scan, so a change after the scan reads the directory is not missed.
-      try {
-        await arm();
-        await scanOnce();
-      } catch (error) {
-        options.diagnose('The agent directory could not be scanned.', error);
-      }
-    }
-  }
-
-  function trigger(): void {
-    if (closed) return;
-    dirty = true;
-    running ??= loop();
-  }
-
-  function refresh(): Promise<void> {
-    trigger();
-    return running ?? Promise.resolve();
-  }
+  const directoryWatcher = createWatchedDirectory<FileEntry>({
+    directory,
+    label: 'agent directory',
+    extension: AGENT_FILE_EXTENSION,
+    sizeLimit: AGENT_FILE_SIZE_LIMIT,
+    runtime: options.runtime,
+    diagnose: options.diagnose,
+    operations,
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
+    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
+    revision: () => options.modelCatalog.catalog().revision,
+    evaluate,
+    tooLarge: (id, size, revision) => ({
+      id,
+      hash: undefined,
+      revision,
+      problem: {
+        code: 'file-too-large',
+        message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
+      },
+    }),
+    unreadable: (id, error, revision) => ({
+      id,
+      hash: undefined,
+      revision,
+      problem: {
+        code: 'unreadable',
+        message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      },
+    }),
+    sameSignature,
+  });
+  const { refresh } = directoryWatcher;
 
   const writer = createAgentFileWriter({
     directory,
@@ -515,7 +342,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     ...writer,
 
     list() {
-      return [...entries.values()]
+      return [...directoryWatcher.entries().values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
         .map((entry): AgentListing => {
           const ready = entry.problem === undefined;
@@ -534,17 +361,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     find(id) {
-      return entries.get(id)?.agent;
+      return directoryWatcher.entries().get(id)?.agent;
     },
 
     refresh,
 
-    onChange(listener) {
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    },
+    onChange: directoryWatcher.onChange,
 
     agentFromSnapshot(snapshot) {
       // Not `checkDeployment`: a run resumes as the file it began as even if a code agent has
@@ -561,17 +383,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       return buildAgent(snapshot.id, snapshot.hash, snapshot.definition, checked.descriptor);
     },
 
-    async close() {
-      closed = true;
-      if (pollTimer !== undefined) options.runtime.timers.clearInterval(pollTimer);
-      pollTimer = undefined;
-      listeners.clear();
-      // A scan in flight may be setting watchers up: it opens none once `closed` is set, and the
-      // watchers it opened before are closed here, after it has stopped.
-      await running;
-      for (const held of watchers.values()) held.watcher.close();
-      watchers.clear();
-    },
+    close: directoryWatcher.close,
   };
 }
 

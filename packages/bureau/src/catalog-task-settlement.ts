@@ -9,9 +9,9 @@
  * A fresh dispatch whose own admission write failed has no such record to write from and is left
  * unrecorded, as the failure was diagnosed when it happened.
  *
- * What it filters: the hook also publishes a recovered child run and a recovered goal attempt, and
- * neither is a task. A run the child topology holds, and a goal attempt, is never given a record
- * here; a record that exists is settled whatever kind of run it is.
+ * What it filters: the hook also publishes a recovered child run, a recovered goal attempt, and a
+ * recovered workflow step's run, and none is a task. A run the child topology holds, a goal attempt, and a workflow step's run are never given a
+ * record here; a record that exists is settled whatever kind of run it is.
  *
  * @module catalog-task-settlement
  */
@@ -66,7 +66,13 @@ export function createCatalogTaskSettler({
     if (!settlement.recovered) return;
     if (await isChildRun(settlement.runId)) return;
     const loaded = await loadRecoveryRecord(settlement.runId);
-    if (loaded.status !== 'found' || loaded.record.goalAttempt !== undefined) return;
+    if (
+      loaded.status !== 'found' ||
+      loaded.record.goalAttempt !== undefined ||
+      loaded.record.workflowStep !== undefined
+    ) {
+      return;
+    }
     const createdAt = await durableCreatedAt(settlement.runId);
     await tasks.recordAdmission({
       taskId: settlement.runId,
