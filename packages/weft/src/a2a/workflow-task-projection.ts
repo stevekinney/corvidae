@@ -71,7 +71,13 @@ const SETTLED_STATUS_STATES: Readonly<Record<Exclude<WorkflowStatus, 'running'>,
 };
 
 /** The task state a workflow in `state` reads as, given the signal waits still live. */
-export function taskStateOf(state: WorkflowState, liveWaits: readonly string[]): TaskState {
+/**
+ * The part of a workflow's state its task is projected from. A purged workflow has no
+ * state left, and its terminal event supplies these fields instead.
+ */
+export type WorkflowOutcome = Pick<WorkflowState, 'status' | 'result' | 'error'>;
+
+export function taskStateOf(state: WorkflowOutcome, liveWaits: readonly string[]): TaskState {
   if (state.status !== 'running') return SETTLED_STATUS_STATES[state.status];
   return liveWaits.length > 0 ? TaskState.TASK_STATE_INPUT_REQUIRED : TaskState.TASK_STATE_WORKING;
 }
@@ -115,7 +121,7 @@ function waitingMessage(task: Task, liveWaits: readonly string[]): Message {
   return agentMessage(task, text, { [SIGNAL_NAMES_METADATA_KEY]: [...liveWaits] });
 }
 
-function failureMessage(task: Task, state: WorkflowState): Message {
+function failureMessage(task: Task, state: WorkflowOutcome): Message {
   if (state.status === 'timed-out') return agentMessage(task, 'The workflow timed out.');
   return agentMessage(task, state.error ?? 'The workflow failed.');
 }
@@ -199,7 +205,7 @@ export function withStatus(task: Task, status: TaskStatus): Task {
  */
 export function reconcileTask(
   task: Task,
-  state: WorkflowState,
+  state: WorkflowOutcome,
   liveWaits: readonly string[],
   timestamp: string,
   artifactsOf: WorkflowResultArtifacts = defaultResultArtifacts,
