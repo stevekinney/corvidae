@@ -5,16 +5,16 @@
  * genuinely engine-backed, not a mock). Proves the wire contract this
  * module's doc comment claims: raw-byte GET/PUT, NDJSON scan with base64
  * values, JSON batch/conditional-batch with base64 values, 404-is-null on a
- * missing GET, and `probeConditionalBatchSupported()` returning true for
- * `MemoryStorage` (which reports `conditionalBatch: true`). The unsupported
- * backend response is covered at the HTTP-client boundary because Weft 0.20
+ * missing GET. `weft.storage.capabilities` is read through the generated
+ * operation client, and reports `conditionalBatch: true` for `MemoryStorage`.
+ * The unsupported case is covered by component tests because Weft 0.20
  * refuses to start a remote-task server without conditional batches.
  */
+import { HttpClient } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import { startLiveSourceTestServer } from '../../lib/live-source/live-source-test-server.test-support.ts';
 import {
-  probeConditionalBatchSupported,
   storageBatch,
   storageConditionalBatch,
   storageDelete,
@@ -143,19 +143,19 @@ describe('storage-client (integration, real server)', () => {
     }
   });
 
-  test('probeConditionalBatchSupported returns true against MemoryStorage without writing anything', async () => {
+  test('weft.storage.capabilities reports MemoryStorage as supporting conditional batches', async () => {
     const server = await startLiveSourceTestServer();
     try {
-      const connection = connectionFor(server);
-      const before = await storageScan(connection, { prefix: '', limit: 10_000 });
+      const client = new HttpClient({
+        baseUrl: server.baseUrl,
+        headers: { Authorization: `Bearer ${server.token}` },
+      });
 
-      const supported = await probeConditionalBatchSupported(connection);
-      expect(supported).toBe(true);
+      const capabilities = await client.operations['weft.storage.capabilities']({});
 
-      const after = await storageScan(connection, { prefix: '', limit: 10_000 });
-      expect(after.entries.map((entry) => entry.key)).toEqual(
-        before.entries.map((entry) => entry.key),
-      );
+      expect(capabilities.conditionalBatch).toBe(true);
+      expect(capabilities.atomicBatch).toBe(true);
+      expect(capabilities.persistence).toBe('ephemeral');
     } finally {
       await server.stop();
     }

@@ -6,13 +6,14 @@
  * component tests in parallel.
  */
 import { notifyManager, type QueryClient } from '@tanstack/svelte-query';
-import { render, waitFor } from '@testing-library/svelte';
-import { describe, expect, test } from 'bun:test';
+import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { describe, expect, spyOn, test } from 'bun:test';
 import { tick } from 'svelte';
 
 import { HttpClient, HttpClientError } from '@lostgradient/weft';
 
 import { invalidateForTaskEvent } from '../../app/task-event-queries.ts';
+import { router } from '../../lib/router.svelte.ts';
 import { TASK_HEARTBEAT_STALE_AFTER_MS } from '../workers/worker-catalog-types.ts';
 import CriticalAlertsBandHarness from './critical-alerts-band-test-harness.test-harness.svelte';
 
@@ -143,6 +144,48 @@ describe('CriticalAlertsBand', () => {
     );
     const link = getByText('3 dead-lettered tasks').closest('a');
     expect(link?.getAttribute('href')).toBe('/workers?diagnostic=deadLettered');
+  });
+
+  test('a chip whose items all belong to one workflow also links to that run', async () => {
+    const client = alertClient({
+      diagnostics: {
+        items: [
+          {
+            kind: 'dead-lettered',
+            state: 'dead-lettered',
+            operationId: 'op-1',
+            workflowId: 'wf-owner',
+            retryCount: 0,
+            requeueCount: 0,
+            evidence: [],
+          },
+        ],
+        summary: { ...EMPTY_DIAGNOSTICS_SUMMARY, deadLettered: 1 },
+        limit: 50,
+      },
+      reviews: [],
+    });
+
+    const { getByText, getByRole } = render(CriticalAlertsBandHarness, { props: { client } });
+
+    await waitFor(
+      () => expect(getByText('1 dead-lettered task')).not.toBeNull(),
+      WAIT_FOR_TWO_QUERIES,
+    );
+    expect(getByText('1 dead-lettered task').closest('a')?.getAttribute('href')).toBe(
+      '/workers?diagnostic=deadLettered',
+    );
+    expect(getByRole('link', { name: 'Open workflow wf-owner' }).getAttribute('href')).toBe(
+      '/runs/wf-owner',
+    );
+
+    const navigate = spyOn(router, 'navigate').mockImplementation(() => {});
+    try {
+      await fireEvent.click(getByRole('link', { name: 'Open workflow wf-owner' }));
+      expect(navigate).toHaveBeenCalledWith('/runs/wf-owner');
+    } finally {
+      navigate.mockRestore();
+    }
   });
 
   test('renders a reviews-near-timeout chip that deep-links to /inbox', async () => {

@@ -21,6 +21,7 @@
     RegistryWorkflowRow,
     SchemaTreeNode,
   } from './registry-view.ts';
+  import RefreshPanel from './refresh-panel.svelte';
   import WorkflowRevisionsPanel from './workflow-revisions-panel.svelte';
 
   /** The connected workers' accepted manifests, for the contract-verification panel (COR-162). */
@@ -269,6 +270,8 @@
   {/if}
 
   <WorkflowRevisionsPanel workflowName={row.type} />
+
+  <RefreshPanel workflowName={row.type} />
 </div>
 
 <style>

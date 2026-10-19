@@ -91,3 +91,27 @@ export async function seedWorkflowRevisions(engine: WorkflowRevisionsEngine): Pr
   });
   await engine.workflows.install(candidateManifest);
 }
+
+/** Opaque revision id of the manifest the console's install flow submits in `tests/e2e/21-install-workflow-revision.spec.ts`. */
+export const ORDER_PROCESSING_CONSOLE_INSTALLED_REVISION = 'order-processing-console-installed';
+
+/**
+ * A valid manifest for `order-processing` that nothing has installed — what an
+ * operator pastes into the Registry's install control. Built with the real
+ * published builders, so its `contractHash` is the one Weft recomputes. Installing it adds a
+ * row and never activates it.
+ */
+export async function buildConsoleInstallableManifest(): Promise<WorkflowRevisionManifest> {
+  const contract = buildWorkflowContract({
+    name: 'order-processing',
+    version: '3.0.0',
+    inputSchema: rawJsonSchema({
+      type: 'object',
+      required: ['orderId'],
+      properties: { orderId: { type: 'string' } },
+    }),
+  });
+  return buildWorkflowRevisionManifest(contract, {
+    revision: ORDER_PROCESSING_CONSOLE_INSTALLED_REVISION,
+  });
+}

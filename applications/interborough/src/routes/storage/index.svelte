@@ -18,7 +18,6 @@
   import CapabilitiesPanel from './capabilities-panel.svelte';
   import KvBrowser from './kv-browser.svelte';
   import { storageQueryKeys } from './queries.ts';
-  import { probeConditionalBatchSupported } from './storage-client.ts';
 
   const client = getClient();
   const principalStore = getPrincipalStore();
@@ -41,7 +40,7 @@
   const capabilitiesQuery = createQuery(
     () => ({
       queryKey: storageQueryKeys.capabilities(),
-      queryFn: () => probeConditionalBatchSupported(client),
+      queryFn: () => client.operations['weft.storage.capabilities']({}),
       enabled: untrack(() => hasStorageAdmin),
       staleTime: Infinity,
       retry: false,
@@ -76,10 +75,15 @@
         <Tabs.Trigger value="capabilities">Capabilities</Tabs.Trigger>
       </Tabs.List>
       <Tabs.Panel value="browser">
-        <KvBrowser {client} conditionalBatchSupported={capabilitiesQuery.data} />
+        <KvBrowser {client} conditionalBatchSupported={capabilitiesQuery.data?.conditionalBatch} />
       </Tabs.Panel>
       <Tabs.Panel value="capabilities">
-        <CapabilitiesPanel conditionalBatchSupported={capabilitiesQuery.data} />
+        <CapabilitiesPanel
+          capabilities={capabilitiesQuery.data}
+          loading={capabilitiesQuery.isPending}
+          error={capabilitiesQuery.error}
+          onRetry={() => void capabilitiesQuery.refetch()}
+        />
       </Tabs.Panel>
     </Tabs>
   {/if}

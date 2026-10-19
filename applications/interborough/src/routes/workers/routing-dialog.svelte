@@ -86,6 +86,15 @@
 
   let step = $state<Step>({ kind: 'form' });
 
+  /**
+   * Which invocation owns `step`. Opening, closing, and every new preview take a
+   * new number, and an async completion that finds a different number discards
+   * itself. Without it, a slow preview for one build, finishing after the dialog
+   * was closed and opened for another, would overwrite the new dialog's step, and
+   * Confirm would apply the old build under the new labels.
+   */
+  let invocation = 0;
+
   function changeFor(): RoutingChange {
     if (request.kind === 'setrouting') {
       return {
@@ -109,25 +118,32 @@
   }
 
   async function preview(): Promise<void> {
+    const mine = ++invocation;
     step = { kind: 'previewing' };
     const change = changeFor();
     try {
       const result = await onPreview(change);
-      step = { kind: 'confirm', preview: result, action: actionFor(change), change };
+      if (mine === invocation) {
+        step = { kind: 'confirm', preview: result, action: actionFor(change), change };
+      }
     } catch (error) {
-      step = { kind: 'failed', error };
+      if (mine === invocation) step = { kind: 'failed', error };
     }
   }
 
   async function confirm(): Promise<void> {
     if (step.kind !== 'confirm') return;
     const { action, preview: previewed } = step;
+    const mine = ++invocation;
     step = { kind: 'applying' };
     try {
       await onApply(action, previewed.currentGeneration);
-      open = false;
+      // The change was applied whatever the dialog is showing now, so the page still refreshes;
+      // only a dialog that is still this invocation's closes.
+      if (mine === invocation) open = false;
       onApplied();
     } catch (error) {
+      if (mine !== invocation) return;
       const generation = staleGenerationOf(error);
       step =
         generation === undefined
@@ -140,6 +156,8 @@
   // its preview. Only `open` is tracked, so the 30 second refresh of the builds never resets a form
   // the operator is editing.
   $effect(() => {
+    // Closing ends the invocation too, so nothing that was running reaches a later opening.
+    invocation += 1;
     if (!open) return;
     untrack(() => {
       currentBuildId = initial.currentBuildId ?? readyVersions[0]?.buildId ?? '';

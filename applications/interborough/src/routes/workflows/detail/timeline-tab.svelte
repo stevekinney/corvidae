@@ -52,6 +52,7 @@
   } from './async-activity/async-activity-query.ts';
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
   import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
+  import RemoteTaskStep from './remote-task-step.svelte';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -171,6 +172,32 @@
         candidate.status !== 'running' &&
         candidate.taskOperationId !== undefined,
     );
+  }
+
+  /**
+   * The ledger key behind a mapped activity step, when the step may be remote. A step whose entry
+   * names its record (`taskOperationId`) is remote, and the key is that id. A running step names
+   * none, so a step with a live pending-activity observation is keyed by that observation's
+   * `token`, the ledger key B13's in-flight drawer reads, and is `probe`d: it is offered only if
+   * the ledger holds a record for the token. Never the pending record's own `operationId`.
+   */
+  function remoteTaskFor(
+    stepId: string,
+  ): { label: string; operationId: string; probe: boolean } | undefined {
+    const stepNumber = stepNumberFromRunStepId(stepId);
+    if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
+    const found = entries.find(
+      (candidate) => candidate.step === stepNumber && candidate.operationType === 'activity',
+    );
+    if (found === undefined) return undefined;
+    if (found.taskOperationId !== undefined) {
+      return { label: found.operationLabel, operationId: found.taskOperationId, probe: false };
+    }
+    if (found.status !== 'running') return undefined;
+    const pending = attachedPendingActivities.find((candidate) => candidate.stepId === stepId);
+    return pending === undefined
+      ? undefined
+      : { label: found.operationLabel, operationId: pending.token, probe: true };
   }
 
   let openDrawerToken = $state<string | null>(null);
@@ -300,6 +327,17 @@
                 />
               </div>
             {/if}
+          {/if}
+          {@const remote = readTask === undefined ? undefined : remoteTaskFor(step.id)}
+          {#if remote !== undefined && readTask !== undefined}
+            {#key remote.operationId}
+              <RemoteTaskStep
+                operationId={remote.operationId}
+                label={remote.label}
+                {readTask}
+                probe={remote.probe}
+              />
+            {/key}
           {/if}
           {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
           {#if settled?.taskOperationId !== undefined && readTask !== undefined}

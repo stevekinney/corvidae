@@ -854,6 +854,16 @@ export interface CatalogRunRecoveryRecord {
    */
   readonly costEstimation?: GoalAttemptCostEstimation;
   /**
+   * COR-1527 — set only on the run an `agent` step of a workflow file started: which instance and
+   * which step it was started for. The run's id is a function of the pair, so the id alone does
+   * not prove the run is the step's; this marker, written by the step's own start, does. Like a
+   * goal attempt, the run is not a task.
+   */
+  readonly workflowStep?: {
+    readonly workflowId: string;
+    readonly step: number;
+  };
+  /**
    * COR-1524 — set only when the run is of a file-based agent: the SHA-256 of the agent file's
    * bytes the run started with. Recovery builds the agent from the snapshot stored under that
    * hash (`agent-snapshot-store.ts`), never from the file, so a run resumed after the file was
@@ -926,6 +936,19 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
       Number.isSafeInteger(goalAttempt['attemptIndex']) &&
       goalAttempt['attemptIndex'] >= 0 &&
       (goalAttempt['tombstonedAt'] === undefined || typeof goalAttempt['tombstonedAt'] === 'string')
+    )
+  ) {
+    return false;
+  }
+  const workflowStep = value['workflowStep'];
+  if (
+    workflowStep !== undefined &&
+    !(
+      isRecord(workflowStep) &&
+      typeof workflowStep['workflowId'] === 'string' &&
+      typeof workflowStep['step'] === 'number' &&
+      Number.isSafeInteger(workflowStep['step']) &&
+      workflowStep['step'] >= 0
     )
   ) {
     return false;
@@ -1418,6 +1441,13 @@ export type RuntimeCompositionDependencies = {
    * responsible for recording once.
    */
   onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
+  /**
+   * COR-1527 — whether `type` is a workflow Bureau registered from a workflow file. An instance of
+   * one needs no services: its steps are the host's activities, and its fire or its recovery must
+   * not be answered "unrecognized workflow type". Late-bound by the caller, since the workflow
+   * files are read after the composition exists.
+   */
+  isWorkflowFileType?: (type: string) => boolean;
   /**
    * COR-716 — the {@link ContentSourceResolver} a run owned by `principalId` is
    * given, so a managed asset in its input reaches a provider as bytes or a
@@ -2375,7 +2405,11 @@ async function buildRuntimeComposition(
       checkpointStore,
       recover: false,
       backgroundTasks: options.durableBackgroundTasks ?? 'automatic',
-      startScheduler: options.durableBackgroundTasks !== 'manual',
+      // COR-1527: with workflow files the scheduler waits until their documents are registered,
+      // so a schedule that is due the moment the engine exists cannot fire a type Weft does not
+      // have yet. `createBureau` starts it, before the engine recovers, once they are.
+      startScheduler:
+        options.durableBackgroundTasks !== 'manual' && options.workflowDirectory === undefined,
       resolveWorkflowServices: resolveRunServices,
       ...(dependencies.onRecoveredWorkflow === undefined
         ? {}
@@ -3747,6 +3781,7 @@ async function buildRuntimeComposition(
       options.humanInput === true &&
       durable !== undefined &&
       record.goalAttempt === undefined &&
+      record.workflowStep === undefined &&
       resolution.recoveredChild !== true;
     const humanInputServices: { current?: DurableRunDeps } = {};
     const toolbox = offersHumanInput
@@ -4142,6 +4177,10 @@ async function buildRuntimeComposition(
         status: 'unavailable',
         reason: `run ${info.workflowId}: composition failed`,
       };
+    }
+    // COR-1527: an instance of a workflow file runs the interpreter, which reads no services.
+    if (dependencies.isWorkflowFileType?.(info.workflowType) === true) {
+      return { status: 'available', services: undefined };
     }
     if (!sessionStore) {
       return { status: 'unavailable', reason: 'no session store configured' };

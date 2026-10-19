@@ -90,6 +90,10 @@ You are a careful researcher.
 
 The host does not publish file agents through the Bureau handler yet; that comes with the network operations. See the Bureau's `documentation/agent-files.md` for the format.
 
+## Workflow files
+
+Workflows are JSON files in `workflows/` under the same directory, `~/.interborough/workflows/` or `$INTERBOROUGH_HOME/workflows/`. The host creates the directory and passes it to the Bureau as `workflowDirectory`, so a file `nightly-digest.json` is the workflow `nightly-digest`: it runs on the schedule its `trigger` names, its `agent` steps run any agent above, and a change to the directory takes effect without a restart. Every workflow belongs to the one local owner. See the Bureau's `documentation/workflow-files.md` for the format.
+
 ## The shell
 
 The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as do `/chat`, `/agents`, and `/audit`. `/engine` is the engine overview the sidebar's status pill opens.
