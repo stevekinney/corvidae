@@ -12,6 +12,7 @@ import {
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
   type ScheduledFireReviewState,
+  scheduledFireHoldings,
 } from './scheduled-fire-review-state';
 import type { BureauToolbox } from './runtime-composition';
 
@@ -111,6 +112,44 @@ describe('registerScheduledFireApproval', () => {
       expect(state.scheduledFireApprovalRuns.size).toBe(0);
       expect(state.runToolboxesByRunId.size).toBe(0);
     }
+  });
+});
+
+describe('scheduledFireHoldings', () => {
+  it('names every home that holds something of the run, and none for another run', () => {
+    const state = newState();
+    registerScheduledFireApproval(state, fire, toolbox, reviewId, approval(), false);
+    state.resolvedReviewIds.add(reviewId);
+    state.invalidApprovalReviewIds.add(reviewId);
+    state.pendingApprovalRounds.set(reviewId, 1);
+
+    expect(scheduledFireHoldings(state, 'fire-1').toSorted()).toEqual(
+      [
+        'approvalRequestedAt',
+        'continuingScheduledFires',
+        'invalidApprovalReviewIds',
+        'pendingApprovalOverrides',
+        'pendingApprovalRounds',
+        'resolvedReviewIds',
+        'runRequestContexts',
+        'runToolboxesByRunId',
+        'scheduledFireApprovalRuns',
+        'terminalReviewSessions',
+      ].toSorted(),
+    );
+    expect(scheduledFireHoldings(state, 'fire-2')).toEqual([]);
+  });
+
+  it('is empty once the fire is released, an approval found invalid included', () => {
+    const state = newState();
+    registerScheduledFireApproval(state, fire, toolbox, reviewId, approval(), true);
+    state.invalidApprovalReviewIds.add(reviewId);
+
+    releaseScheduledFireReviews(state, 'fire-1');
+    endContinuingScheduledFire(state, 'fire-1');
+    state.pendingApprovalOverrides.delete(reviewId);
+
+    expect(scheduledFireHoldings(state, 'fire-1')).toEqual([]);
   });
 });
 

@@ -5111,6 +5111,44 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * COR-1596 — whether the engine's own status for a run is that it was canceled. The engine
+   * spells it `cancelled` (Weft's `WorkflowStatus`); Bureau's settlement and task states spell it
+   * `canceled`. This is the one place the engine's spelling is compared, so a check written
+   * against the wrong one cannot pass a test and fail in production.
+   */
+  function isEngineCancelled(status: string): boolean {
+    return status === 'cancelled';
+  }
+
+  /**
+   * COR-1596 — what the engine says of a fire, the truth for whether it was canceled, as the
+   * checkpoint is the truth for which approvals it committed; no bookkeeping order decides either.
+   * `ended` is any status but cancelled, terminal or not: those fires' committed approvals are
+   * still the operator's to decide. `absent` is a run the engine no longer holds, and
+   * `unreadable` one whose status could not be read, which is diagnosed once.
+   */
+  async function readFireEngineStatus(
+    runId: string,
+    consequence: string,
+  ): Promise<'cancelled' | 'ended' | 'absent' | 'unreadable'> {
+    const durable = runtime.durable;
+    if (durable === undefined) return 'unreadable';
+    try {
+      const state = await durable.engine.get(runId);
+      if (state === null) return 'absent';
+      return isEngineCancelled(state.status) ? 'cancelled' : 'ended';
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'recovery',
+        message: `[bureau] Could not read the engine status of schedule fire "${runId}", so ${consequence}: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+      return 'unreadable';
+    }
+  }
+
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
   function holdsFireApproval(runId: string): boolean {
     for (const id of pendingApprovalOverrides.keys()) {
@@ -5190,8 +5228,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     scope: { sessionId?: string | undefined; durablyPruned?: boolean } = {},
   ): Promise<void> {
     const sessionId = scope.sessionId ?? terminalReviewSessions.get(runId)?.sessionId;
+    const heldHere = pendingApprovalOverrides.has(reviewId) || scheduledFireApprovalRuns.has(runId);
     if (ending === 'invalid') invalidApprovalReviewIds.add(reviewId);
-    else if (ending !== 'abandoned') resolvedReviewIds.add(reviewId);
+    else if (ending !== 'abandoned' && heldHere) resolvedReviewIds.add(reviewId);
     dropPendingApprovalOverride(reviewId);
     try {
       if (scope.durablyPruned !== true && sessionId !== undefined) {
@@ -5252,7 +5291,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       return;
     }
-    // Canceled or removed: nothing of the fire's approvals stays, whatever revoked it first.
+    // Canceled or removed: the fire takes no further step, and nothing of its approvals stays,
+    // whatever revoked it first.
+    endContinuingScheduledFire(scheduledFireReviewState, runId);
     for (const id of await fireApprovalIds(runId, sessionId)) {
       await releaseScheduledFireApproval(
         runId,
@@ -5268,6 +5309,38 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await prunePersistedResolvedReviewIds(sessionId, `human-wait:${runId}:`);
     }
     endScheduledFireWhenNoApprovalRemains(runId);
+  }
+
+  /**
+   * COR-1596 — which of a fire's persisted approvals a boot may restore, by the two truths: the
+   * engine's status says whether the fire was canceled, and the checkpoint says which approvals
+   * it committed. `'not-a-fire'` leaves a session run's approvals to the restore they always had;
+   * `'none'` restores nothing, having released a canceled fire's approvals or, when the status
+   * or the checkpoint cannot be read, having left them for the next boot; otherwise the committed
+   * ids.
+   */
+  async function restorableBootApprovals(
+    metadata: Record<string, JSONValue>,
+    runId: string,
+    sessionId: string,
+  ): Promise<'not-a-fire' | 'none' | ReadonlySet<string>> {
+    if (!isScheduledFireAuthority(metadata, runId)) return 'not-a-fire';
+    const engineStatus = await readFireEngineStatus(
+      runId,
+      'its tool approvals are not restored this boot',
+    );
+    if (engineStatus === 'cancelled') {
+      // The prune lands through the session's own record of the fire's approvals; none was ever
+      // restored here, so there is no binding to revoke, and the audit entry of the cancel was
+      // written by the process that took it.
+      await releaseScheduledFire(runId, 'canceled', { sessionId });
+      return 'none';
+    }
+    if (engineStatus === 'absent' || engineStatus === 'unreadable') return 'none';
+    return (
+      (await readCommittedFireApprovals(runId, 'its tool approvals are not restored this boot')) ??
+      'none'
+    );
   }
 
   function restorePendingApprovalOverrides(
@@ -13000,6 +13073,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return reviews;
   }
 
+  /**
+   * A review that was decided, whose session write has landed. A fire's approval ends through
+   * {@link releaseScheduledFireApproval}, its decision's own commit having pruned the session
+   * (`durablyPruned`), so a decision is one more ending through the one release; any other run's
+   * review ends the way it always did.
+   */
+  async function releaseDecidedReview(runId: string, reviewId: string): Promise<void> {
+    if (scheduledFireApprovalRuns.has(runId)) {
+      await releaseScheduledFireApproval(runId, reviewId, 'resolved', { durablyPruned: true });
+      return;
+    }
+    releaseTerminalRunReviewState(runId);
+  }
+
   function releaseTerminalRunReviewState(runId: string): void {
     const runState = store.getRun(runId);
     // COR-1596: a fire's approvals outlive a run that was never on the store, and end only when
@@ -13256,7 +13343,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       input.reason,
     );
     markReviewResolvedLocally(review);
-    releaseTerminalRunReviewState(review.runId);
+    await releaseDecidedReview(review.runId, review.id);
     await recordReviewDecision(review, input.decision, input.principal, input.reason, {
       auditAlreadyAppended: true,
     });
@@ -13314,7 +13401,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cleanupAuditAttachment,
           );
           reviewResolutionCleanupPending.delete(input.id);
-          releaseTerminalRunReviewState(cleanup.runId);
+          await releaseDecidedReview(cleanup.runId, cleanup.review.id);
           if (cleanupAuditAppended) {
             // AB-391: the audit record above was appended in the SAME
             // commit as the resolution just persisted — replay it into the
@@ -13476,6 +13563,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let keepPending = false;
     try {
       if (review.kind === 'tool-approval') {
+        // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
+        // one) still has its approval here until this is read; the engine's status says it was
+        // canceled, so nothing runs and the approval ends, whatever order the bookkeeping landed.
+        if (scheduledFireApprovalRuns.has(review.runId)) {
+          const engineStatus = await readFireEngineStatus(
+            review.runId,
+            'its approval is not decided',
+          );
+          if (engineStatus === 'cancelled') {
+            await releaseScheduledFire(review.runId, 'canceled');
+            throw new BureauError(
+              `Run "${review.runId}" was canceled, so review "${review.id}" is closed`,
+              'CONFLICT',
+            );
+          }
+          if (engineStatus === 'unreadable' && input.decision === 'approve') {
+            throw new BureauError(
+              'Cannot approve: whether the run was canceled cannot be read.',
+              'CONFLICT',
+            );
+          }
+        }
         const approvalToolbox = runToolboxesByRunId.get(review.runId) ?? runtime.baseToolbox;
         if (input.decision === 'approve') {
           const { approval } = review;
@@ -13691,7 +13800,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         resolvingReviewIds.delete(review.id);
         throw error;
       }
-      releaseTerminalRunReviewState(review.runId);
+      await releaseDecidedReview(review.runId, review.id);
       if (auditAlreadyAppended) {
         // AB-391: replay the just-appended audit record promptly, while
         // this bureau is alive, rather than leaving it for a later
@@ -16373,13 +16482,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (typeof runId === 'string' && status === 'running') restoredRunIds.delete(runId);
         for (const restoredRunId of restoredRunIds) {
           const before = pendingApprovalOverrides.size;
-          // COR-1596: a fire's session holds approvals its run may not have committed.
-          const committed = isScheduledFireAuthority(metadata, restoredRunId)
-            ? ((await readCommittedFireApprovals(
-                restoredRunId,
-                'its tool approvals are not restored this boot',
-              )) ?? new Set<string>())
-            : undefined;
+          // COR-1596: a fire's session holds approvals its run may not have committed, and for a
+          // fire the engine canceled, approvals nothing may run.
+          const restorable = await restorableBootApprovals(metadata, restoredRunId, session.id);
+          if (restorable === 'none') continue;
+          const committed = restorable === 'not-a-fire' ? undefined : restorable;
           restorePendingApprovalOverrides(metadata, restoredRunId, committed);
           if (pendingApprovalOverrides.size > before) {
             terminalReviewSessions.set(restoredRunId, {

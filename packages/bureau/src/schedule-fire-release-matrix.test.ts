@@ -9,8 +9,10 @@
  * because the defect that cost the most was an approval a restart brought back.
  */
 import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { BureauError } from './create-bureau';
 import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
 import {
   approvalToolbox,
@@ -23,6 +25,7 @@ import {
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
+import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau } from './types';
 
 const harness = createScheduleFireHarness();
@@ -307,5 +310,275 @@ describe('a fire with several approvals', () => {
     const second = requestedAt[`approval:${fireId}:charge-B`] ?? 0;
 
     expect(second - first).toBeGreaterThanOrEqual(50);
+  });
+});
+
+const decoder = new TextDecoder();
+/** The text a storage call carries, whichever of strings and bytes its keys and values are. */
+function storedText(value: unknown): string {
+  if (value instanceof Uint8Array) return decoder.decode(value);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(storedText).join(' ');
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value).map(storedText).join(' ');
+  }
+  return '';
+}
+
+/** A continuing fire with a committed approval, over storage whose prune can be held for good. */
+async function fireForCrash() {
+  let armed = false;
+  let held = false;
+  const reached = Promise.withResolvers<void>();
+  const raw = new MemoryStorage();
+  const holdingStorage = new Proxy(raw, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (typeof member !== 'function' || typeof property !== 'string') return member;
+      return (...args: unknown[]) => {
+        const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+        if (property !== 'conditionalBatch' || held || !armed) return call();
+        if (storedText(args).includes('pendingApprovalOverrides')) {
+          held = true;
+          reached.resolve();
+          return new Promise(() => {});
+        }
+        return call();
+      };
+    },
+  });
+  const generate: GenerateFunction = async (context) => {
+    if (context.step === 0) {
+      return {
+        content: '',
+        toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+      };
+    }
+    return new Promise((_resolve, reject) => {
+      context.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+  };
+  const options = { generate, stopWhen: stopWhen.noToolCalls() };
+  const first = await harness.open({
+    ...options,
+    toolbox: approvalToolbox([]),
+    storage: holdingStorage,
+  });
+  const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
+  await reviewOf(first, fireId);
+  for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+  return {
+    first,
+    fireId,
+    options,
+    raw,
+    /** The cancel is issued and the first process dies at the prune of the approval. */
+    async cancelAndCrash(cancel: () => void) {
+      armed = true;
+      cancel();
+      await Promise.race([reached.promise, new Promise((resolve) => setTimeout(resolve, 3000))]);
+      expect(held).toBe(true);
+    },
+  };
+}
+
+describe('a crash between a fire’s cancel and the release of its approval', () => {
+  const routes = {
+    'canceled through its task, crashed before the release': (first: Bureau, fireId: string) => {
+      void rpc(handlerOf(first), 'bureau.tasks.cancel', { taskId: fireId }, 'alice-key');
+    },
+    'canceled as a durable run, crashed before the release': (first: Bureau, fireId: string) => {
+      void first.cancelDurableRun(fireId);
+    },
+    'canceled in the engine, crashed before the release': (first: Bureau, fireId: string) => {
+      void first.durableEngine()?.cancel(fireId);
+    },
+  };
+
+  for (const [name, cancel] of Object.entries(routes)) {
+    it(name, async () => {
+      const crash = await fireForCrash();
+      await crash.cancelAndCrash(() => cancel(crash.first, crash.fireId));
+      expect(await durableStatus(crash.first, crash.fireId)).toBe('cancelled');
+
+      // The next process: the engine says the fire was canceled, so the approval is not restored.
+      const charges: number[] = [];
+      const restarted = await harness.open({
+        ...crash.options,
+        toolbox: approvalToolbox(charges),
+        storage: crash.raw,
+      });
+      for (let turn = 0; turn < 50; turn += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+
+      expect(reviewsOf(restarted, crash.fireId)).toEqual([]);
+      await pollUntil(
+        () =>
+          scheduledFireHoldings(scheduledFireReviewStateOf(restarted), crash.fireId).length === 0
+            ? true
+            : undefined,
+        'the restarted Bureau to hold nothing of the fire',
+      );
+      expect(await sessionKeys(restarted)).toEqual({ overrides: [], rounds: [], authorities: [] });
+      expect(charges).toEqual([]);
+    });
+  }
+});
+
+describe('a cancel by a peer, with the holder alive', () => {
+  it('canceled by a peer while this process holds it', async () => {
+    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const holderCharges: number[] = [];
+    const generate: GenerateFunction = async (context) => {
+      if (context.step === 0) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+        };
+      }
+      return new Promise((_resolve, reject) => {
+        context.signal?.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        });
+      });
+    };
+    const options = {
+      generate,
+      stopWhen: stopWhen.noToolCalls(),
+      storage,
+      durableOwnership: { ownership: 'workflow-lease' as const },
+    };
+    const holder = await harness.open({ ...options, toolbox: approvalToolbox(holderCharges) });
+    const { fireId } = await fireOnce(holder, OWNER.alice, SESSION);
+    const review = await reviewOf(holder, fireId);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const peer = await harness.open({ ...options, toolbox: approvalToolbox([]) });
+
+    const outcome = await peer.cancelDurableRun(fireId);
+    expect(outcome.status).toBe('requested');
+    await pollUntil(
+      async () => ((await durableStatus(peer, fireId)) === 'cancelled' ? true : undefined),
+      'the engine to record the cancel',
+    );
+
+    // No restart: the holder still has the approval in memory, and the engine says canceled.
+    const refusal = await rejectionOf(
+      holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+    );
+
+    expect((refusal as BureauError).code).toBe('CONFLICT');
+    expect(holderCharges).toEqual([]);
+    await pollUntil(
+      () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),
+      'the holder to list nothing',
+    );
+    expect(scheduledFireHoldings(scheduledFireReviewStateOf(holder), fireId)).toEqual([]);
+  });
+});
+
+describe('a restart keeps what the engine did not cancel', () => {
+  it('boot keeps a completed fire’s committed approval', async () => {
+    const context = await fireWithApproval('stopped');
+
+    const charges: number[] = [];
+    const restarted = await harness.open({ ...context.options, toolbox: approvalToolbox(charges) });
+    const restored = await reviewOf(restarted, context.fireId);
+    await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
+
+    expect(restored.id).toBe(context.review.id);
+    expect(charges).toEqual([4242]);
+  });
+
+  it('boot keeps a failed fire’s committed approval', async () => {
+    const storage = { type: 'sqlite' as const, path: harness.nextDatabasePath() };
+    const generate: GenerateFunction = async (context) => {
+      if (context.step === 0) {
+        return {
+          content: '',
+          toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+        };
+      }
+      throw new Error('the provider is down after the approval');
+    };
+    const diagnostics: string[] = [];
+    const options = {
+      generate,
+      stopWhen: stopWhen.noToolCalls(),
+      storage,
+      onDiagnostic: (diagnostic: { message: string }) => diagnostics.push(diagnostic.message),
+    };
+    const bureau = await harness.open({ ...options, toolbox: approvalToolbox([]) });
+    const { fireId } = await fireOnce(bureau, OWNER.alice, SESSION);
+    await reviewOf(bureau, fireId);
+    await pollUntil(async () => {
+      const status = await durableStatus(bureau, fireId);
+      return status !== undefined && !['pending', 'running', 'suspended'].includes(status)
+        ? status
+        : undefined;
+    }, 'the fire to end after its approval');
+
+    const charges: number[] = [];
+    const restarted = await harness.open({ ...options, toolbox: approvalToolbox(charges) });
+    const restored = await reviewOf(restarted, fireId);
+    await restarted.resolveReview({ id: restored.id, decision: 'approve', principal: OWNER.alice });
+
+    expect(charges).toEqual([4242]);
+  });
+});
+
+describe('a boot that cannot read the engine’s status', () => {
+  it('restores nothing and prunes nothing, says so once, and a later boot lists the approval', async () => {
+    const raw = new MemoryStorage();
+    const generate: GenerateFunction = async (context) =>
+      context.step === 0
+        ? {
+            content: '',
+            toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+          }
+        : { content: 'done', toolCalls: [] };
+    const options = {
+      generate,
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    };
+    const first = await harness.open({ ...options, toolbox: approvalToolbox([]), storage: raw });
+    const { fireId } = await fireOnce(first, OWNER.alice, SESSION);
+    const review = await reviewOf(first, fireId);
+    await pollUntil(
+      async () => ((await durableStatus(first, fireId)) === 'completed' ? true : undefined),
+      'the fire to end at its approval',
+    );
+
+    // The same storage, with the fire's workflow record failing to read while `unreadable`.
+    let unreadable = true;
+    const diagnostics: string[] = [];
+    const faultyStorage = new Proxy(raw, {
+      get(target, property) {
+        const member = Reflect.get(target, property, target) as unknown;
+        if (typeof member !== 'function' || typeof property !== 'string') return member;
+        return (...args: unknown[]) => {
+          if (property === 'get' && unreadable && args[0] === `wf:${fireId}`) {
+            return Promise.reject(new Error('the engine record is unreadable'));
+          }
+          return (member as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const faulty = await harness.open({
+      ...options,
+      toolbox: approvalToolbox([]),
+      storage: faultyStorage,
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
+    });
+    for (let turn = 0; turn < 50; turn += 1) await new Promise((resolve) => setTimeout(resolve, 2));
+
+    expect(reviewsOf(faulty, fireId)).toEqual([]);
+    expect(await sessionKeys(faulty)).toMatchObject({ overrides: [review.id] });
+    expect(diagnostics.filter((message) => message.includes('engine status'))).toHaveLength(1);
+
+    unreadable = false;
+    const later = await harness.open({ ...options, toolbox: approvalToolbox([]), storage: raw });
+    const restored = await reviewOf(later, fireId);
+    expect(restored.id).toBe(review.id);
   });
 });

@@ -128,6 +128,9 @@ export function releaseScheduledFireReviews(
   for (const id of state.approvalRequestedAt.keys()) {
     if (id.startsWith(prefix)) state.approvalRequestedAt.delete(id);
   }
+  for (const id of state.invalidApprovalReviewIds) {
+    if (id.startsWith(prefix)) state.invalidApprovalReviewIds.delete(id);
+  }
   return true;
 }
 
@@ -162,18 +165,26 @@ export function committedFireApprovalIds(
  */
 export function scheduledFireHoldings(state: ScheduledFireReviewState, runId: string): string[] {
   const prefix = `approval:${runId}:`;
-  const holds = (ids: Iterable<string>) => Array.from(ids).some((id) => id.startsWith(prefix));
-  const held: string[] = [];
-  if (holds(state.pendingApprovalOverrides.keys())) held.push('pendingApprovalOverrides');
-  if (holds(state.pendingApprovalRounds.keys())) held.push('pendingApprovalRounds');
-  if (holds(state.approvalRequestedAt.keys())) held.push('approvalRequestedAt');
-  if (holds(state.resolvedReviewIds)) held.push('resolvedReviewIds');
-  if (state.terminalReviewSessions.has(runId)) held.push('terminalReviewSessions');
-  if (state.runRequestContexts.has(runId)) held.push('runRequestContexts');
-  if (state.runToolboxesByRunId.has(runId)) held.push('runToolboxesByRunId');
-  if (state.scheduledFireApprovalRuns.has(runId)) held.push('scheduledFireApprovalRuns');
-  if (state.continuingScheduledFires.has(runId)) held.push('continuingScheduledFires');
-  return held;
+  const holdsIds = (ids: Iterable<string>) => Array.from(ids).some((id) => id.startsWith(prefix));
+  // One entry per home, typed over the state's own keys, so a home added to the state fails to
+  // compile until it is listed here, and every ending's test then checks it.
+  const holders: {
+    [Home in Exclude<keyof ScheduledFireReviewState, 'now'>]: boolean;
+  } = {
+    pendingApprovalOverrides: holdsIds(state.pendingApprovalOverrides.keys()),
+    pendingApprovalRounds: holdsIds(state.pendingApprovalRounds.keys()),
+    approvalRequestedAt: holdsIds(state.approvalRequestedAt.keys()),
+    resolvedReviewIds: holdsIds(state.resolvedReviewIds),
+    invalidApprovalReviewIds: holdsIds(state.invalidApprovalReviewIds),
+    terminalReviewSessions: state.terminalReviewSessions.has(runId),
+    runRequestContexts: state.runRequestContexts.has(runId),
+    runToolboxesByRunId: state.runToolboxesByRunId.has(runId),
+    scheduledFireApprovalRuns: state.scheduledFireApprovalRuns.has(runId),
+    continuingScheduledFires: state.continuingScheduledFires.has(runId),
+  };
+  return Object.entries(holders)
+    .filter(([, held]) => held)
+    .map(([home]) => home);
 }
 
 const stateOfBureau = new WeakMap<object, ScheduledFireReviewState>();
