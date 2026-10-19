@@ -56,6 +56,18 @@ export const queryKeys = {
     /** The models and tools an agent may name (`bureau.agents.catalog`). */
     catalog: () => ['agents', 'catalog'] as const,
   },
+  /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
+  workflowCatalog: {
+    list: () => ['workflow-catalog', 'list'] as const,
+    /** One type, and what each service says of it. */
+    detail: (type: string) => ['workflow-catalog', 'detail', type] as const,
+    /** One workflow file as `bureau.workflows.get` shows it, for the editor. */
+    file: (type: string) => ['workflow-catalog', 'file', type] as const,
+    /** The schedules that start one type (`weft.schedules.list` with `workflowType`). */
+    schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
+    /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
+    revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,
@@ -137,6 +149,14 @@ export const queryKeys = {
       ['catalog', 'diagnostics', name, revision] as const,
   },
 } as const;
+
+/**
+ * The instance a view frame keys its probe under for one workflow type's route, so the page that
+ * finds the type gone can ask the frame to look again (`queryKeys.view('workflows', instance)`).
+ */
+export function workflowViewInstance(pattern: string, type: string): string {
+  return `${pattern}:${type}`;
+}
 
 /**
  * Query-key prefixes that identify a paginated/filtered list (plan §4:

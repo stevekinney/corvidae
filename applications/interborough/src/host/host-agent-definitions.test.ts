@@ -102,6 +102,12 @@ describe('the host’s /host/paths', () => {
     const paths = await getHostPaths({ fetch: fetcher });
     expect(paths.agentDirectory).toBe(join(home, 'agents'));
   });
+
+  test('names the directory the Bureau reads workflow files from', async () => {
+    const { home, fetcher } = await startConfigured();
+    const paths = await getHostPaths({ fetch: fetcher });
+    expect(paths.workflowDirectory).toBe(join(home, 'workflows'));
+  });
 });
 
 describe('the operations, against the real Bureau', () => {
