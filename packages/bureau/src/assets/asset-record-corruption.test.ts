@@ -57,6 +57,10 @@ const corruptions: ReadonlyArray<
   ['a missing version', ({ version: _version, ...rest }) => JSON.stringify(rest)],
   ['a missing owner', ({ ownerId: _owner, ...rest }) => JSON.stringify(rest)],
   ['a numeric asset id', (record) => JSON.stringify({ ...record, assetId: 7 })],
+  [
+    'an asset id that names another asset',
+    (record) => JSON.stringify({ ...record, assetId: 'another-asset' }),
+  ],
   ['a string revision', (record) => JSON.stringify({ ...record, revision: '1' })],
   ['references that are not an array', (record) => JSON.stringify({ ...record, references: {} })],
   ['a missing readers array', ({ readers: _readers, ...rest }) => JSON.stringify(rest)],

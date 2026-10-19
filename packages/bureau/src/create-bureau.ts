@@ -10692,7 +10692,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           level: 'error',
           scope: 'assets',
           message: isPermanentClaimFailure(error)
-            ? `[bureau] Skipping the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}" for as long as this process runs, because the asset's stored record is corrupt; once it is repaired, the claim is made by a later retain of the asset or after a restart: ${serializeUnknownError(error)}`
+            ? `[bureau] Skipping the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}" for as long as this process runs, because the asset's stored record is corrupt; once it is repaired, the claim is made by a later retain of the asset or by the session's next save after a restart (a restart alone does not replay it): ${serializeUnknownError(error)}`
             : `[bureau] Could not update the retention claim of session "${session.id}" on asset "${assetId}" in row "${rowId}": ${serializeUnknownError(error)}`,
           cause: error,
         }),

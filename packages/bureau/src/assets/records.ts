@@ -175,6 +175,11 @@ function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
       throw new AssetRecordCorruptError(assetId, `${member} is missing or has the wrong type`);
     }
   }
+  // A record stored under one key that names another asset would write its claim under that other
+  // key and fail as a conflict, which the drain reads as transient: it would never stop retrying.
+  if (parsed['assetId'] !== assetId) {
+    throw new AssetRecordCorruptError(assetId, 'assetId does not match the key it is stored under');
+  }
   // Every member the retain and claim paths read, down to the projection a claim returns: a value
   // that passes the checks above but throws there (`computeExpiresAt` on an unparseable date,
   // `modalityOf` on a non-string media type) would read as a transient failure and stall the drain.

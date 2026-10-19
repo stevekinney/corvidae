@@ -240,6 +240,9 @@ const corruptions: ReadonlyArray<readonly [string, (raw: string) => string]> = [
   ],
   ['a retainUntil that is not a date', withMember('retainUntil', 'not-a-date')],
   ['a numeric mediaType', withMember('mediaType', 5)],
+  // Stored under one key but naming another asset: its claim would write under that other key and
+  // fail as a conflict, which reads as transient.
+  ['an asset id that names another asset', withMember('assetId', 'another-asset')],
   [
     'a record missing a field the service reads',
     (raw) => {
