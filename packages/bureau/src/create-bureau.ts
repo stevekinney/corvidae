@@ -133,6 +133,14 @@ import {
 
 import { shutdownThenRethrow } from './composition-failure';
 import { type AgentDefinitions, type AgentNames, createAgentCatalog } from './agent-catalog';
+import { AgentSnapshotError } from './agent-file';
+import {
+  createAgentFileCatalog,
+  type FileAgentBinding,
+  readFileAgentBinding,
+} from './agent-file-catalog';
+import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
+import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
 import { createAssetContentSourceResolver } from './assets/content-source-resolver';
 import type { AssetService } from './assets/types';
@@ -224,6 +232,7 @@ import {
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
   registerTrailingOnStep,
+  SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
   sessionRunMediaOptions,
   wireDurableOptInTools,
@@ -351,7 +360,7 @@ import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
 } from './types';
-import { settledActionTimestamp } from './run-settlement';
+import { isSettlingRunAction, settledActionTimestamp } from './run-settlement';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { streamEventToFrame } from './websocket-frames';
 
@@ -1580,6 +1589,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       'BAD_REQUEST',
     );
   }
+  // COR-1524: a model written in an agent file has to become a `generate` somehow, and only the
+  // host holds the credentials to do it. Refused here rather than leaving every file unusable.
+  const resolveAgentGenerate = options.resolveAgentGenerate;
+  if (options.agentDirectory !== undefined) {
+    if (typeof options.agentDirectory !== 'string' || options.agentDirectory.trim() === '') {
+      toBadRequest('"options.agentDirectory" must be a non-empty path');
+    }
+    if (resolveAgentGenerate === undefined) {
+      toBadRequest(
+        '"options.resolveAgentGenerate" is required with "options.agentDirectory": it turns a model in the model catalog into the generate an agent file runs with',
+      );
+    }
+  }
   const diagnose = resolveDiagnosticSink(options.onDiagnostic);
   const ownsStore = !options.store;
   // AB-260 — resolve the injectable runtime-service seam exactly once,
@@ -1592,6 +1614,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // (not `runtime`) to avoid colliding with the pre-existing local `runtime`
   // below, which names the unrelated `RuntimeComposition` value.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
+  // COR-1524: when this Bureau was built, for telling a reference left by an earlier process apart.
+  const constructedAtMilliseconds = runtimeServices.clock.now();
   // AB-388: ONE resolver shared by `createAuditTrail` and
   // `createDurableEventProducer` below — see `event-timestamp.ts`. Declared
   // this early (well before either subsystem exists) so both constructions
@@ -1858,7 +1882,48 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // now wired, so a `selectable` agent's catalog-read profile reports
   // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
   // transition).
-  const agentCatalog = createAgentCatalog(agentsSnapshot, { selectorAvailable: true });
+  //
+  // COR-1524: with an `agentDirectory`, the Markdown files in it join the catalog. They are
+  // scanned before the catalog is handed out and before boot recovery runs, so the first
+  // `bureau.agents.list()` and a resumed run both see the directory as it is now.
+  const fileAgents: FileAgentRuntime | undefined =
+    options.agentDirectory === undefined || resolveAgentGenerate === undefined
+      ? undefined
+      : createFileAgentRuntime({
+          files: createAgentFileCatalog({
+            directory: options.agentDirectory,
+            reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
+            tools: options.agentTools ?? {},
+            modelCatalog,
+            resolveGenerate: resolveAgentGenerate,
+            runtime: runtimeServices,
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'agent-files',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+          }),
+          snapshots: createAgentSnapshotStore({
+            store: runtime.kv,
+            nowISO: runtimeServices.clock.nowISO,
+          }),
+          diagnose: (message, cause) =>
+            diagnose({
+              level: 'error',
+              scope: 'agent-files',
+              message: `[bureau] ${message}`,
+              cause,
+            }),
+          track: (promise, label) => runtimeServices.deferred.track(promise, label),
+        });
+  await fileAgents?.files.refresh();
+  const agentCatalog = createAgentCatalog(agentsSnapshot, {
+    selectorAvailable: true,
+    files: fileAgents?.files,
+    snapshots: fileAgents?.snapshots,
+  });
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -1866,8 +1931,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // it stores and calls back into. Registered before `recoverDurableRuns()`
   // (called later, once this bureau's construction finishes) so every boot
   // recovery pass sees it.
-  runtime.setCatalogAgentRunOptionsResolver(async (name, input, context, runId) => {
-    const agent = agentCatalog.find(name);
+  runtime.setCatalogAgentRunOptionsResolver(async (name, input, context, runId, recorded) => {
+    // COR-1524: a run being resumed builds a file agent from the snapshot it recorded, never
+    // from the file, which may have changed or be gone. A run that is starting takes the agent
+    // as it is now.
+    let agent: ReturnType<typeof agentCatalog.find>;
+    let agentBinding: FileAgentBinding | undefined;
+    try {
+      if (recorded?.agentDefinitionHash !== undefined) {
+        if (fileAgents === undefined) {
+          throw new AgentSnapshotError(
+            'snapshot-unresolvable',
+            name,
+            recorded.agentDefinitionHash,
+            `Run "${runId}" recorded an agent file definition, but this Bureau has no agent directory.`,
+          );
+        }
+        const rebuilt = await fileAgents.agentForRecordedRun(name, recorded.agentDefinitionHash);
+        agent = rebuilt.agent;
+        agentBinding = rebuilt.binding;
+      } else {
+        agent = agentCatalog.find(name);
+        agentBinding = agent === undefined ? undefined : readFileAgentBinding(agent);
+      }
+    } catch (error) {
+      return { status: 'resolver-failed', error };
+    }
     if (!agent) return { status: 'missing-agent' };
     // AB-240 review finding: distinct from `'missing-agent'` — the name IS
     // still in the catalog, it just no longer (or never did) exposes AB-21's
@@ -1894,6 +1983,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
         recoveredChild: childContext !== undefined,
+        ...(agentBinding === undefined ? {} : { agentBinding }),
       };
       return resolution;
     } catch (error) {
@@ -3450,6 +3540,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // registered, so every consumer of that stream (online evals, the
         // webhook notifier, the audit trail, durable event history) sees
         // exactly the runs it saw before.
+        // COR-1524: a file agent's snapshot is held until its run settles, whichever kind of run.
+        if (fileAgents !== undefined && isSettlingRunAction(storeActionEvent.action.type)) {
+          detachBestEffortPromise(fileAgents.settleRun(storeActionEvent.action.runId));
+        }
         if (catalogRunIds.has(storeActionEvent.action.runId)) break;
         emitter.dispatch(new ActionEvent(storeActionEvent.action));
         emitLiveFrame({
@@ -3514,6 +3608,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           detachBestEffortPromise(
             prunePersistedResolvedReviewIds(removedSessionId, `human-wait:${removedRunId}:`),
           );
+        }
+        // COR-1524: deleting a task releases its hold on the agent snapshot it ran on. A
+        // `bureau.run()` run's leaving the store is a release, not a deletion, so its hold ends
+        // by the retention pass instead (`retainAgentSnapshots`).
+        if (!removedCatalogRun && fileAgents !== undefined) {
+          detachBestEffortPromise(fileAgents.releaseRun(removedRunId));
         }
         if (!removedCatalogRun) emitter.dispatch(new RunRemovedEvent(removedRunId));
         // Prune this run's entries from `resolvedReviewIds` — the review ids
@@ -4381,10 +4481,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     metadata: Record<string, JSONValue>,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
     if (agentName === BUREAU_AGENT_NAME) return undefined;
+    // COR-1524: the definition THIS run started with. A session's metadata names only its latest
+    // run's, and a session's runs may be of different agents, so the run's own reference decides
+    // and the session's hash is what an older record without one falls back to.
+    const reference = await fileAgents?.snapshots.reference(runId);
+    const recordedHash =
+      reference !== undefined && reference.id === agentName
+        ? reference.hash
+        : metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
       resolveSessionOwner(metadata),
+      { agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined },
     );
     if (resolution.status === 'resolved') return resolution.run;
     diagnose({
@@ -4700,6 +4809,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the SAME `runAttribution.delete(runId)` cleanup a genuinely
     // never-registered run needs.
     let registeredForRecovery = false;
+    // COR-1524: whether this run holds a snapshot reference that nothing else will settle if the
+    // run never registers.
+    let heldAgentReference = false;
     let created: RunSummary;
     try {
       if (!session) {
@@ -4739,6 +4851,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
 
+      // COR-1524 — a file agent's definition is stored, and this run tied to it, before the
+      // session names the run, so recovery always finds the snapshot the session's hash points at.
+      if (sessionAgent?.agentBinding !== undefined) {
+        await fileAgents?.recordBoundRun(sessionAgent.agentBinding, runId);
+        heldAgentReference = fileAgents !== undefined;
+      }
       const savedAsRunning = await saveSession(
         sessionId,
         conversation,
@@ -4761,6 +4879,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // COR-1577 — the definition the named agent had when this run started, so recovery can
           // tell when the catalog's has moved on. Null for the default agent, which has none.
           [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
+          // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
+          // snapshot. Null for a code-defined agent, and for the default one.
+          [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
           // Persist the per-request step cap too, so a recovered run honours the
           // caller's maximumSteps instead of falling back to the bureau default
           // (PRRT_kwDORvupsc6MZfl5 — mirror of the maximumTokens recovery fix).
@@ -5395,6 +5516,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // bookkeeping this function itself owns, not to unregistering the
       // run.
       flowController?.settle(runId);
+      // COR-1524: a run that never registered has no terminal action to settle its snapshot
+      // reference, so the reference is released here; a registered one settles through the store.
+      if (heldAgentReference && !registeredForRecovery) {
+        await fileAgents?.releaseRun(runId);
+      }
       runRequestContexts.delete(runId);
       // AB-361 review (codex P2 PRRT_kwDORvupsc6ga0TX): only the
       // never-registered case may delete `runAttribution` — a run that
@@ -6165,10 +6291,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // review again, under the id it had, and the parks it makes from here on are heard.
       await runHumanWaits.restore(info.workflowId, info.input.agentName);
       runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
-      void info.handle.result().then(
-        () => runHumanWaits.forget(info.workflowId),
-        () => runHumanWaits.forget(info.workflowId),
-      );
+      // COR-1524: a recovered run is in no store and has no handle of its own to settle its
+      // snapshot reference, so it settles here, as it ends.
+      const settleRecovered = (): void => {
+        runHumanWaits.forget(info.workflowId);
+        if (fileAgents !== undefined)
+          detachBestEffortPromise(fileAgents.settleRun(info.workflowId));
+      };
+      void info.handle.result().then(settleRecovered, settleRecovered);
       void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
       return;
     }
@@ -8374,6 +8504,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1524 — prunes the agent snapshots whose last run settled before the task retention
+   * window. A snapshot is kept while any run that references it is retained: a session run's
+   * reference goes when its task is deleted (`run.removed`), and any run's goes here once it has
+   * been settled for longer than {@link BureauOptions.taskRetention}, which is also what releases
+   * a `bureau.run()` run, since those leave the run store on settling and are never deleted.
+   * A run that has not settled keeps its snapshot, because it may still be resumed.
+   */
+  async function retainAgentSnapshots(): Promise<void> {
+    if (fileAgents === undefined) return;
+    const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
+    if (retention === 'forever') return;
+    await fileAgents.snapshots.pruneSettledBefore(
+      runtimeServices.clock.now() - retention.olderThan,
+    );
+  }
+
+  /**
+   * COR-1524 — finishes the snapshot references that in-process settlement did not: a run the
+   * durable engine has ended is settled at the time it ended (a crash, a recovered run, or a
+   * handle that never attached), and a reference whose run the engine has no record of, past a
+   * grace period, is a start that failed and is released. A run this process is driving is left
+   * to settle itself. Runs ahead of {@link retainAgentSnapshots}, which prunes what it settles.
+   */
+  async function reconcileAgentSnapshots(): Promise<void> {
+    if (fileAgents === undefined) return;
+    await fileAgents.reconcile({
+      now: runtimeServices.clock.now(),
+      isLive: (runId) => {
+        const status = store.getRun(runId)?.status;
+        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+      },
+      durableState: async (reference) => {
+        // Without a durable engine nothing outlives the process, so a reference from before this
+        // Bureau was built belongs to a run no one can resume.
+        if (!runtime.durable) {
+          return Date.parse(reference.startedAt) < constructedAtMilliseconds
+            ? { kind: 'absent' }
+            : { kind: 'active' };
+        }
+        const record = await runtime.durable.engine.get(reference.runId);
+        if (record === null || record === undefined) return { kind: 'absent' };
+        if (DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(record.status)) return { kind: 'active' };
+        return { kind: 'ended', at: new Date(record.updatedAt).toISOString() };
+      },
+    });
+  }
+
+  /**
    * COR-1477 — removes every terminal task older than {@link BureauOptions.taskRetention}
    * (default 30 days) through {@link deleteRun}, which removes the run from the
    * run store, so the store's `run.removed` event fires and Bureau's own
@@ -9062,6 +9240,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       }
       try {
+        await reconcileAgentSnapshots();
+        await retainAgentSnapshots();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual agent snapshot retention pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+      try {
         await runCreationLedger?.prune();
       } catch (error: unknown) {
         diagnose({
@@ -9284,6 +9473,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic task retention pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        try {
+          await reconcileAgentSnapshots();
+          await retainAgentSnapshots();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic agent snapshot retention pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -12746,6 +12946,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // Awaited last: everything above (admission, runs, toolbox shutdown,
       // owner drains, backend teardown) already ran without waiting on this.
       await modelCatalogRefreshClosedPromise;
+      // COR-1524: stop watching the agent directory and wait for a scan in flight.
+      await fileAgents?.files.close();
       return buildReport();
     })();
 
@@ -13407,6 +13609,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // COR-1367 — handed down to each catalog agent as its inherited policy.
       guardrails: options.guardrails,
       registerCatalogRun,
+      fileAgents,
       // COR-1577 — `requestHumanInput` for a durable `bureau.run()` run.
       humanInput: options.humanInput === true && runtime.durable !== undefined,
       // COR-772 — a durable `bureau.run` parent aborted through its own handle
