@@ -599,8 +599,10 @@ describe('cancel', () => {
     await registry.recordSettled('run-catalog', settlement);
     await registry.recordSettled('run-session', settlement);
 
-    expect((await registry.record('run-catalog'))?.settled?.answer).toBeDefined();
-    expect((await registry.record('run-session'))?.settled?.answer).toBeUndefined();
+    const catalog = await registry.record('run-catalog');
+    const session = await registry.record('run-session');
+    expect(catalog?.settled?.answer).toBeDefined();
+    expect(session?.settled?.answer).toBeUndefined();
   });
 
   it('lets a shutdown wait for the settlement and cleanup writes in flight', async () => {

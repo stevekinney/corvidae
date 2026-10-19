@@ -67,7 +67,7 @@ export function createCatalogRunSettlementHook(diagnose: DiagnosticSink): Catalo
       return () => void listeners.delete(listener);
     },
     async publish(settlement) {
-      for (const listener of [...listeners]) {
+      for (const listener of listeners) {
         try {
           await listener(settlement);
         } catch (error) {

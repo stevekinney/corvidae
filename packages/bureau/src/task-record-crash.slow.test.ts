@@ -110,7 +110,8 @@ const outcomes = {
         });
         await bureau.waitForDurableRun(runId);
         for (let attempt = 0; attempt < 400; attempt += 1) {
-          if ((await bureau.tasks.get(runId))?.status === 'completed') break;
+          const current = await bureau.tasks.get(runId);
+          if (current?.status === 'completed') break;
           await new Promise((resolve) => setTimeout(resolve, 10));
         }
         const settled = await bureau.tasks.get(runId);

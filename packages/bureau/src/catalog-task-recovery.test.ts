@@ -58,10 +58,10 @@ describe('a catalog task across a boot', () => {
     const first = await open(fixture);
     const run = first.run('answerer', 'EXPIRED-QUESTION', { principal: 'api-key:alice' });
     await run.result();
-    await waitForCondition(
-      async () => (await first.tasks.get(run.id))?.status === 'completed',
-      'settled',
-    );
+    await waitForCondition(async () => {
+      const task = await first.tasks.get(run.id);
+      return task?.status === 'completed';
+    }, 'settled');
     await first.tasks.remove(run.id);
     await first.dispose();
     bureaus.splice(bureaus.indexOf(first), 1);
@@ -126,10 +126,10 @@ describe('a catalog task across a boot', () => {
     });
     await restarted.waitForDurableRun(run.id);
 
-    await waitForCondition(
-      async () => (await restarted.tasks.get(run.id))?.status === 'completed',
-      'the task never settled',
-    );
+    await waitForCondition(async () => {
+      const task = await restarted.tasks.get(run.id);
+      return task?.status === 'completed';
+    }, 'the task never settled');
     const record = await restarted.tasks.record(run.id);
     expect(record?.settled).toMatchObject({ status: 'completed' });
     expect(record?.settled?.answer?.text).toBe('thanks');
