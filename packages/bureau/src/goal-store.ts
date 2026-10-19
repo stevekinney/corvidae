@@ -154,6 +154,17 @@ export type GoalControlResult =
   | { readonly status: 'missing' }
   | { readonly status: 'corrupt' };
 
+/**
+ * What {@link GoalStore.requestCancellation} answers: a control result, or, when the caller named
+ * an `expectedRevision`, that the record is at another revision and nothing was written.
+ */
+export type GoalRevisionMismatch = {
+  readonly status: 'revision-mismatch';
+  readonly record: GoalState;
+};
+
+export type GoalCancellationRequestResult = GoalControlResult | GoalRevisionMismatch;
+
 export interface GoalStore {
   /**
    * Create-if-absent. The record must be a fresh `pending` one (revision 1,
@@ -179,12 +190,18 @@ export interface GoalStore {
   /** Whether a record is stored under this id that cannot be decoded. */
   isUnreadable(goalRunId: string): Promise<boolean>;
   applyTransition(request: GoalTransitionRequest): Promise<GoalTransitionResult>;
-  /** First marker wins; later requests are `unchanged`. A terminal goal is `rejected`. */
+  /**
+   * First marker wins; later requests are `unchanged`. A terminal goal is `rejected`. With
+   * `expectedRevision` (COR-1482), the write is a compare-and-swap on the record's `revision`,
+   * decided before anything else: a record at another revision is `revision-mismatch`, whatever
+   * else would have been true of it, and nothing is written.
+   */
   requestCancellation(
     goalRunId: string,
     marker: GoalCancellationMarker,
     now: string,
-  ): Promise<GoalControlResult>;
+    expectedRevision?: number,
+  ): Promise<GoalCancellationRequestResult>;
   /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
    * `expectedCount`, the increment is a compare-and-swap on the count: a record
@@ -268,7 +285,10 @@ type Stored =
 
 type Evaluation =
   | { readonly outcome: 'write'; readonly next: GoalState }
-  | { readonly outcome: 'done'; readonly result: GoalTransitionResult | GoalControlResult };
+  | {
+      readonly outcome: 'done';
+      readonly result: GoalTransitionResult | GoalControlResult | GoalRevisionMismatch;
+    };
 
 export function createGoalStore(
   kv: ConditionalTextValueStore,
@@ -325,7 +345,9 @@ export function createGoalStore(
     };
   }
 
-  async function mutate<Result extends GoalTransitionResult | GoalControlResult>(
+  async function mutate<
+    Result extends GoalTransitionResult | GoalControlResult | GoalRevisionMismatch,
+  >(
     goalRunId: string,
     evaluate: (current: GoalState) => Evaluation,
     stale: (current: GoalState) => Result,
@@ -458,12 +480,23 @@ export function createGoalStore(
       }
       return result;
     },
-    requestCancellation(goalRunId, marker, now) {
-      return control(goalRunId, (current) => {
-        if (current.cancellation !== undefined) return unchanged(current);
-        if (isTerminal(current.status)) return refuse(current, 'terminal');
-        return { outcome: 'write', next: { ...current, cancellation: marker, updatedAt: now } };
-      });
+    requestCancellation(goalRunId, marker, now, expectedRevision) {
+      return mutate<GoalCancellationRequestResult>(
+        goalRunId,
+        (current) => {
+          if (expectedRevision !== undefined && current.revision !== expectedRevision) {
+            return {
+              outcome: 'done',
+              result: { status: 'revision-mismatch', record: current },
+            };
+          }
+          if (current.cancellation !== undefined) return unchanged(current);
+          if (isTerminal(current.status)) return refuse(current, 'terminal');
+          return { outcome: 'write', next: { ...current, cancellation: marker, updatedAt: now } };
+        },
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
     },
     async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>

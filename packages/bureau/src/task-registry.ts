@@ -2,7 +2,8 @@
  * COR-1481 — the task registry: the durable record behind `bureau.tasks.*`.
  *
  * A task is the external face of one top-level Bureau run (`documentation/
- * external-control-plane.md`, "Tasks and contexts"). Its id is the run id. The
+ * external-control-plane.md`, "Tasks and contexts"). Its id is the run id. A schedule's fire is
+ * one too (COR-1482): owned by the schedule's owner, with the scheduler as its `actor`. The
  * run store only holds a run while the process does, so this registry keeps the
  * facts the management plane needs after the run has settled or the process has
  * restarted: the owner, the context and its incarnation, the originating user
@@ -107,6 +108,12 @@ export interface TaskRecord {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  /**
+   * The principal that started the work on the owner's behalf, when that is not the owner: a
+   * schedule's fire is owned by the schedule's owner and started by the scheduler's service
+   * principal, `system:scheduler`. Absent for a task its owner started.
+   */
+  readonly actor?: string | undefined;
   readonly createdAt: string;
   readonly history: readonly TaskMessage[];
   readonly settled?: TaskSettlement | undefined;
@@ -120,6 +127,8 @@ export interface TaskAdmission {
   readonly incarnation: string;
   readonly agentName: string | null;
   readonly owner: string;
+  /** See {@link TaskRecord.actor}. */
+  readonly actor?: string | undefined;
   /** The originating user message's text, when the request had one. */
   readonly message: string | undefined;
   /** When the work began, if that was before this record was written (ISO 8601). */
@@ -146,6 +155,8 @@ export interface TaskView {
   readonly contextId: string;
   readonly agentName: string | null;
   readonly owner: string;
+  /** The service principal that started the task for its owner, or `null` when its owner did. */
+  readonly actor: string | null;
   readonly status: TaskState;
   readonly finishReason: string | null;
   readonly statusMessage: string | null;
@@ -219,6 +230,15 @@ export interface TaskRegistry {
   recordAdmission(admission: TaskAdmission): Promise<void>;
   /** Removes a record whose task never started. */
   discard(taskId: string): Promise<void>;
+  /**
+   * Binds a task to the session incarnation its run turned out to run in (COR-1482). A schedule's
+   * fire is written before the session it runs in exists, and a fresh session gets its
+   * incarnation when the fire first saves it, so the record is written unbound (`''`, a context
+   * that is only a run) and bound here once the incarnation is known. A task already bound
+   * keeps the incarnation it has. Resolves `false`, writing nothing, when the task has no record
+   * or is already bound.
+   */
+  bindIncarnation(taskId: string, incarnation: string): Promise<boolean>;
   /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
@@ -471,6 +491,7 @@ function isTaskRecord(value: unknown): value is TaskRecord {
     typeof value['incarnation'] === 'string' &&
     isStringOrNull(value['agentName']) &&
     typeof value['owner'] === 'string' &&
+    (value['actor'] === undefined || typeof value['actor'] === 'string') &&
     isTimestamp(value['createdAt']) &&
     Array.isArray(value['history']) &&
     value['history'].every(isTaskMessage) &&
@@ -621,6 +642,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       contextId: record.contextId,
       agentName: record.agentName,
       owner: record.owner,
+      actor: record.actor ?? null,
       status,
       finishReason,
       statusMessage,
@@ -707,6 +729,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         incarnation: admission.incarnation,
         agentName: admission.agentName,
         owner: admission.owner,
+        ...(admission.actor === undefined ? {} : { actor: admission.actor }),
         createdAt,
         history,
       };
@@ -727,6 +750,19 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
 
     async discard(taskId) {
       await this.remove(taskId);
+    },
+
+    async bindIncarnation(taskId, incarnation) {
+      if (incarnation === '') return false;
+      let bound = false;
+      await track(
+        update(taskId, (record) => {
+          if (record.incarnation !== '') return undefined;
+          bound = true;
+          return { ...record, incarnation };
+        }),
+      );
+      return bound;
     },
 
     async recordSettled(taskId, settlement) {

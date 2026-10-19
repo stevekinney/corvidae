@@ -981,3 +981,36 @@ describe('idle', () => {
     expect(record?.cleanup).toBeUndefined();
   });
 });
+
+describe('a task started on its owner’s behalf (COR-1482)', () => {
+  it('records the actor beside the owner, and shows a task its owner started with none', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', actor: 'system:scheduler' });
+    await admit(registry, 'own-1');
+
+    expect(await registry.get('fire-1')).toMatchObject({ owner: OWNER, actor: 'system:scheduler' });
+    const awaited16 = await registry.record('fire-1');
+    expect(awaited16?.actor).toBe('system:scheduler');
+    expect(await registry.get('own-1')).toMatchObject({ owner: OWNER, actor: null });
+    const awaited17 = await registry.record('own-1');
+    expect(awaited17?.actor).toBeUndefined();
+  });
+
+  it('binds an unbound task to the incarnation its session turned out to have, once', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', actor: 'system:scheduler' });
+
+    // Unbound, it is a context that is only a run: found while the context has no incarnation.
+    expect(await registry.bindIncarnation('fire-1', '')).toBe(false);
+    expect(await registry.bindIncarnation('fire-1', 'incarnation-1')).toBe(true);
+    const awaited18 = await registry.record('fire-1');
+    expect(awaited18?.incarnation).toBe('incarnation-1');
+    // A task already bound keeps what it has, and a task with no record has nothing to bind.
+    expect(await registry.bindIncarnation('fire-1', 'incarnation-2')).toBe(false);
+    const awaited19 = await registry.record('fire-1');
+    expect(awaited19?.incarnation).toBe('incarnation-1');
+    expect(await registry.bindIncarnation('nobody', 'incarnation-1')).toBe(false);
+    const found = await registry.list({ contextId: 'context-1', limit: 10, offset: 0 });
+    expect(found.tasks.map((task) => task.id)).toEqual(['fire-1']);
+  });
+});

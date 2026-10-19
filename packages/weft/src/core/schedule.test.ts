@@ -312,6 +312,7 @@ function createScheduleState(overrides: Partial<ScheduleState> = {}): ScheduleSt
     revisionPolicy: 'active-at-fire',
     missedFireCount: 0,
     skippedCount: 0,
+    revision: 1,
     queuedRuns: [],
     updatedAt: 1,
     workflowType: 'workflow',

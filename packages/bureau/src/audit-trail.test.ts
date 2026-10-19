@@ -1728,6 +1728,77 @@ describe('createAuditTrail', () => {
       trail.dispose();
     });
 
+    it('query({ after }) returns only the records after a position in its own order, a legacy sequence-less record counting as -1 (COR-1482)', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      await seedRecord(kv, makeRecord(1, { timestampMs: 4000, runId: 'run-early' }));
+      await kv.set(
+        'audit:v1:0000000000005000:legacy:run-X',
+        JSON.stringify({
+          timestamp: new Date(5000).toISOString(),
+          timestampMs: 5000,
+          runId: 'run-X',
+          type: 'tool.started',
+          detail: null,
+        }),
+      );
+      await seedRecord(kv, makeRecord(1, { timestampMs: 5000, runId: 'run-X' }));
+      await seedRecord(kv, makeRecord(2, { timestampMs: 5000, runId: 'run-X' }));
+      await seedRecord(kv, makeRecord(3, { timestampMs: 6000, runId: 'run-late' }));
+      const { bureau } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+      const order = (records: AuditRecord[]) =>
+        records.map((record) => [record.timestampMs, record.sequence]);
+
+      expect(order(await trail.query({ after: { timestampMs: 4000, sequence: 1 } }))).toEqual([
+        [5000, undefined],
+        [5000, 1],
+        [5000, 2],
+        [6000, 3],
+      ]);
+      // The same millisecond: later by sequence, with the legacy record before sequence 0.
+      expect(order(await trail.query({ after: { timestampMs: 5000, sequence: -1 } }))).toEqual([
+        [5000, 1],
+        [5000, 2],
+        [6000, 3],
+      ]);
+      expect(order(await trail.query({ after: { timestampMs: 5000, sequence: 2 } }))).toEqual([
+        [6000, 3],
+      ]);
+      expect(await trail.query({ after: { timestampMs: 6000, sequence: 3 } })).toEqual([]);
+
+      trail.dispose();
+    });
+
+    it('query({ after }) pages one record at a time through every record once (COR-1482)', async () => {
+      const kv = textValueStore(new MemoryStorage());
+      for (const [sequence, timestampMs] of [
+        [4, 3000],
+        [1, 1000],
+        [3, 2000],
+        [2, 2000],
+        [5, 3000],
+      ] as const) {
+        await seedRecord(kv, makeRecord(sequence, { timestampMs, runId: `run-${sequence}` }));
+      }
+      const { bureau } = createStubBureau();
+      const trail = createAuditTrail(bureau, kv);
+
+      const paged: number[] = [];
+      let position: { timestampMs: number; sequence: number } | undefined;
+      for (;;) {
+        const [next] = await trail.query({
+          limit: 1,
+          ...(position === undefined ? {} : { after: position }),
+        });
+        if (next === undefined) break;
+        paged.push(next.sequence!);
+        position = { timestampMs: next.timestampMs, sequence: next.sequence ?? -1 };
+      }
+
+      expect(paged).toEqual([1, 2, 3, 4, 5]);
+      trail.dispose();
+    });
+
     it('computeInitialAuditSequence returns 0 for a store with no persisted records', async () => {
       const kv = textValueStore(new MemoryStorage());
       expect(await computeInitialAuditSequence(kv)).toBe(0);

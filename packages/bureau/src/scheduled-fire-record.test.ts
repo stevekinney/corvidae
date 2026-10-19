@@ -19,6 +19,7 @@ const fireOf = (index: number): ScheduledFireNotice => ({
   sessionId: `sched-schedule-1-fire-${index}`,
   agentName: 'worker',
   owner: 'api-key:alice',
+  message: 'work',
 });
 
 describe('the attribution of a schedule fire (COR-718)', () => {

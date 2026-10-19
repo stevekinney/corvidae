@@ -80,6 +80,29 @@ describe('weft.schedules.get', () => {
     expect(body.workflowType).toBe('echo');
   });
 
+  it('returns the schedule revision, and a pause moves it (COR-1482)', async () => {
+    engine = createEngine();
+    await engine.schedule('echo', {}, '0 * * * *', { id: 'revised-schedule' });
+    const readRevision = async () => {
+      const result = await executeOperation(
+        'weft.schedules.get',
+        { scheduleId: 'revised-schedule' },
+        {
+          principal: principalFromApiKey({ subject: 'svc', scopes: ['schedules:read'] }),
+          host: engine,
+          transport: 'jsonRpcStdio',
+          registry: createLiveOperationRegistry(),
+        },
+      );
+      if (!result.ok) throw new Error('expected success');
+      return (result.value as { revision: number }).revision;
+    };
+
+    expect(await readRevision()).toBe(1);
+    await engine.pauseSchedule('revised-schedule');
+    expect(await readRevision()).toBe(2);
+  });
+
   it('returns 404 when the schedule does not exist', async () => {
     engine = createEngine();
 

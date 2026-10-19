@@ -251,6 +251,7 @@ async function pauseScheduleAfterTimerFailure(
   const pausedState: ScheduleState = {
     ...state,
     status: 'paused',
+    revision: state.revision + 1,
     updatedAt: errorNow,
     nextFireAt: getNextScheduleOccurrence(state, errorNow),
   };

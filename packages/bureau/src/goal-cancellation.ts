@@ -74,6 +74,11 @@ export async function cancelGoal(
   const { store, clock, diagnose, getEngine } = dependencies;
   const { goalRunId } = record;
   const scoped = options.principal !== undefined;
+  // COR-1482: compared first, against the record the caller was authorized on, so a stale
+  // token is refused whatever the goal's status; the marker write compares it again.
+  if (options.expectedRevision !== undefined && record.revision !== options.expectedRevision) {
+    return { outcome: 'stale-revision', goal: record };
+  }
   if (record.status === 'canceled') return settleCanceledGoal(dependencies, record, { scoped });
   if (isTerminalGoalStatus(record.status)) return { outcome: 'already-terminal', goal: record };
 
@@ -86,7 +91,11 @@ export async function cancelGoal(
       ...(options.reason === undefined ? {} : { reason: options.reason }),
     },
     now,
+    options.expectedRevision,
   );
+  if (marked.status === 'revision-mismatch') {
+    return { outcome: 'stale-revision', goal: marked.record };
+  }
   if (marked.status === 'corrupt') {
     // The record decoded a moment ago and no longer does; only a caller who may
     // see every goal is told so.
