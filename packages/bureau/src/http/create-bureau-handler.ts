@@ -40,6 +40,7 @@ import {
   type BureauEventsOperationHost,
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
+import type { AgentDefinitions, BureauAgentCatalog } from '../agent-catalog.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
@@ -59,6 +60,10 @@ import {
   contextsGetOperation,
   contextsListOperation,
 } from './management/contexts-operations.ts';
+import {
+  type BureauAgentDefinitionsOperationHost,
+  bureauAgentDefinitionsOperations,
+} from './management/agent-definitions-operations.ts';
 import {
   agentsListOperation,
   type BureauDeploymentOperationHost,
@@ -125,10 +130,26 @@ export type BureauHandlerSource = Pick<
   | 'locateRunCreationReceipt'
   | 'children'
   | 'getDurableRun'
+  | 'modelCatalog'
+  | 'auditTrail'
   | 'workflows'
   | 'submitSessionInput'
 > & {
-  readonly agents: { has(name: string): boolean; find(name: string): AgentDescription | undefined };
+  readonly agents: {
+    has(name: string): boolean;
+    find(name: string): AgentDescription | undefined;
+  } & Pick<
+    BureauAgentCatalog<AgentDefinitions>,
+    | 'list'
+    | 'detail'
+    | 'tools'
+    | 'revisions'
+    | 'create'
+    | 'update'
+    | 'delete'
+    | 'publish'
+    | 'withdraw'
+  >;
 };
 
 /** The part of a catalog agent the deployment operations describe. */
@@ -145,16 +166,21 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
   BureauContextsInputOperationHost &
+  BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
-   * Names of the agents this handler publishes. Every name must exist in the
-   * Bureau's agent catalog and match {@link PUBLISHED_AGENT_NAME_PATTERN}, because a
-   * published name becomes a URL path segment. Omitted publishes nothing.
+   * Names of the code-defined agents this handler publishes. Every name must exist in the
+   * Bureau's code-defined agents and match {@link PUBLISHED_AGENT_NAME_PATTERN}, because a
+   * published name becomes a URL path segment. Omitted publishes no code-defined agent.
    *
-   * The names are validated and kept here; the adapters that consume them (A2A)
-   * mount later, so no operation served today reads them.
+   * It governs code-defined agents only. A persisted agent (an agent file, COR-1524) is
+   * published by its own `published` frontmatter, which `bureau.agents.definitions.publish`
+   * and `withdraw` set, and is never named here.
+   *
+   * `bureau.agents.list`, `bureau.deployment.get`, and the AG-UI mount read the publication
+   * on every request. The adapters that will serve an Agent Card (A2A) mount later.
    */
   readonly publish?: readonly string[];
   /**
@@ -362,6 +388,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsGetOperation,
   contextsDeleteOperation,
   contextsInputOperation,
+  ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
@@ -429,11 +456,18 @@ async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecove
   return { status: report.outcome, failedRunCount: report.perRunFailures.length };
 }
 
+/**
+ * The agents this deployment lists as published or withdrawn. A code-defined agent is published
+ * by the `publish` allowlist alone and is not listed otherwise. A persisted agent (COR-1526)
+ * is published by its own frontmatter: every agent file that is ready is listed, `published`
+ * when its file says so and `withdrawn` when it does not. An agent file that is invalid is not
+ * an agent, so it is not listed.
+ */
 function publishedAgentsOf(
   bureau: BureauHandlerSource,
   publish: readonly string[],
 ): readonly PublishedAgent[] {
-  return publish.flatMap((name) => {
+  const code = publish.flatMap((name): PublishedAgent[] => {
     const agent = bureau.agents.find(name);
     if (agent === undefined) return [];
     return [
@@ -442,9 +476,45 @@ function publishedAgentsOf(
         displayName: agent.name === '' || agent.name === '(agent)' ? name : agent.name,
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
+        publishState: 'published',
       },
     ];
   });
+  const persisted = bureau.agents.list().flatMap((listing): PublishedAgent[] => {
+    if (listing.source !== 'file' || listing.state !== 'ready') return [];
+    const agent = bureau.agents.find(listing.id);
+    if (agent === undefined) return [];
+    return [
+      {
+        name: listing.id,
+        displayName: listing.name,
+        description: listing.description,
+        definitionRevision: readGenerationProfile(agent as never).revision,
+        publishState: listing.published ? 'published' : 'withdrawn',
+      },
+    ];
+  });
+  return [...code, ...persisted];
+}
+
+/**
+ * Whether an adapter may start `name`: it is in the `publish` allowlist, or it is a persisted
+ * agent whose file publishes it. Read when asked, so publishing or withdrawing takes effect on
+ * the next request without a restart.
+ */
+function createPublication(
+  bureau: BureauHandlerSource,
+  publish: readonly string[],
+): { readonly includes: (agentName: string) => boolean } {
+  return {
+    includes: (agentName) =>
+      publish.includes(agentName) ||
+      bureau.agents
+        .list()
+        .some(
+          (listing) => listing.source === 'file' && listing.id === agentName && listing.published,
+        ),
+  };
 }
 
 /** How often the respond ledger drops its expired bindings, at most. */
@@ -494,6 +564,14 @@ export function buildBureauHandlerHost(
     tasks: bureau.tasks,
     taskHistory: bureau,
     contexts: bureau,
+    agentDefinitions: {
+      agents: bureau.agents,
+      publishesCodeAgent: (id) => publish.includes(id),
+      models: () => bureau.modelCatalog.catalog().descriptors,
+      audit: async (entry) => {
+        await bureau.auditTrail?.record(entry);
+      },
+    },
     workflows: bureau.workflows,
     respondLedger: createRespondLedger(bureau),
     respondInFlight: new Map(),
@@ -562,7 +640,7 @@ export function createBureauHandler(
                 mayAccess: host.ownership.mayAccess,
                 ownerOf: (resource) => bureau.getOwner(resource),
               },
-              options.publish ?? [],
+              createPublication(bureau, options.publish ?? []),
               options.agUi,
             ),
           ]),

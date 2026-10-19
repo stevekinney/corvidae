@@ -176,6 +176,43 @@ describe('update', () => {
     expect(fixture.catalog.list()[0]?.definitionHash).toBe(hash);
   });
 
+  it('keeps comments and the types of unknown keys when a known key holds a block-style list', async () => {
+    const fixture = await start({ watch: false });
+    const block = [
+      '---',
+      '# a comment the line edit keeps',
+      'created: 2026-10-18',
+      `model: ${KNOWN_MODEL}`,
+      'tools:',
+      '  - lookup-order',
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    await fixture.put('researcher.md', block);
+    await fixture.catalog.refresh();
+    const read = await fixture.catalog.read('researcher');
+    // A key whose list starts on the next line is a block of its own: it is replaced in place,
+    // not appended a second time, and the line edit is not abandoned for a re-emit.
+    await fixture.catalog.update(
+      'researcher',
+      { model: KNOWN_MODEL, tools: [], published: true, instructions: 'Body.\n' },
+      { expectedHash: read?.hash ?? '' },
+    );
+    expect(await readFile(join(fixture.directory, 'researcher.md'), 'utf8')).toBe(
+      [
+        '---',
+        '# a comment the line edit keeps',
+        'created: 2026-10-18',
+        `model: ${KNOWN_MODEL}`,
+        'published: true',
+        '---',
+        'Body.',
+        '',
+      ].join('\n'),
+    );
+  });
+
   it('rewrites nothing when nothing changes', async () => {
     const fixture = await start({ watch: false });
     await fixture.put('researcher.md', ORIGINAL);
