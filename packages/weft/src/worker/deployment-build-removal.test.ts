@@ -83,7 +83,7 @@ describe('removing a build that engine runs are bound to', () => {
     ]);
   });
 
-  it('refuses a removal whose build was resumed, routed to and bound to between its checks and its fence', async () => {
+  it('refuses a removal whose build was resumed, routed to and bound to between its reads and its write', async () => {
     const storage = new InterleavingStorage();
     await using fx = await fixture(storage);
     const { engine, catalog } = fx;
