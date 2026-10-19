@@ -51,7 +51,7 @@
     PENDING_ASYNC_ACTIVITY_OPERATION,
   } from './async-activity/async-activity-query.ts';
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
-  import SettledActivityProvenance from './async-activity/settled-activity-provenance.svelte';
+  import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -157,7 +157,10 @@
   let provenanceStep = $state<number | null>(null);
   const readTask = $derived(client.operations['weft.tasks.get']);
 
-  /** The settled `ctx.run()` activity entry behind a mapped step, when it has one. */
+  /**
+   * The settled activity entry behind a mapped step that names the ledger record it ran as. The
+   * identity is Weft's own (`WorkflowTimelineEntry.taskOperationId`), never rebuilt from the step.
+   */
   function settledActivityEntry(stepId: string): WorkflowTimelineEntry | undefined {
     const stepNumber = stepNumberFromRunStepId(stepId);
     if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
@@ -165,7 +168,8 @@
       (candidate) =>
         candidate.step === stepNumber &&
         candidate.operationType === 'activity' &&
-        candidate.status !== 'running',
+        candidate.status !== 'running' &&
+        candidate.taskOperationId !== undefined,
     );
   }
 
@@ -298,7 +302,7 @@
             {/if}
           {/if}
           {@const settled = readTask === undefined ? undefined : settledActivityEntry(step.id)}
-          {#if settled !== undefined && readTask !== undefined}
+          {#if settled?.taskOperationId !== undefined && readTask !== undefined}
             <div class="weft-timeline-tab__step-provenance">
               <Button
                 variant="ghost"
@@ -309,11 +313,7 @@
                   (provenanceStep = provenanceStep === settled.step ? null : settled.step)}
               />
               {#if provenanceStep === settled.step}
-                <SettledActivityProvenance
-                  workflowId={workflow.id}
-                  step={settled.step}
-                  {readTask}
-                />
+                <ActivityWorkerProvenance operationId={settled.taskOperationId} {readTask} />
               {/if}
             </div>
           {/if}

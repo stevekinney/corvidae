@@ -228,6 +228,16 @@ export type WorkflowTimelineEntry = {
   childrenOmitted?: number;
   /** Whether the speculative child context committed or rolled back. */
   speculationOutcome?: 'committed' | 'rolled-back';
+  /**
+   * The task ledger operation id this activity was last enqueued under, for an activity that
+   * ran in remote mode (`activityExecution: { mode: 'remote' }`): read the record with
+   * `weft.tasks.get({ operationId })`. Set by the engine where it dispatches, so a client reads
+   * it and never rebuilds the id: the ledger key follows the activity's own counter, which is
+   * not the entry's `step`. When an activity is retried through the engine, this names the latest
+   * dispatch. Absent for an activity that ran in-process, for every other operation type, and
+   * until the entry has been persisted (a still-running entry may not carry it yet).
+   */
+  taskOperationId?: string;
 };
 
 /**

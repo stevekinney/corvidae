@@ -1,8 +1,3 @@
-<script lang="ts" module>
-  /** How long a read task record stays fresh, so a panel opened right after a probe reuses it. */
-  export const PROVENANCE_STALE_TIME_MS = 10_000;
-</script>
-
 <script lang="ts">
   /**
    * Worker provenance for one remote-mode activity (COR-281): the task
@@ -36,14 +31,11 @@
     readonly operationId: string;
     /** Reads one task ledger record (`weft.tasks.get`). */
     readonly readTask: (input: { operationId: string }) => Promise<unknown>;
-    /** The panel's heading; one run may show several attempts' panels, each named for its attempt. */
-    readonly heading?: string | undefined;
   }
 
   let {
     operationId,
     readTask,
-    heading = 'Worker provenance',
   }: ActivityWorkerProvenanceProps = $props();
   const instanceId = $props.id();
   const headingId = `activity-provenance-heading-${instanceId}`;
@@ -51,7 +43,6 @@
   const taskQuery = createQuery(() => ({
     queryKey: queryKeys.tasks.detail(operationId),
     queryFn: async () => parseTaskLedgerDetail(await readTask({ operationId })),
-    staleTime: PROVENANCE_STALE_TIME_MS,
     retry: false,
   }));
 
@@ -61,7 +52,7 @@
 </script>
 
 <section class="weft-activity-provenance" aria-labelledby={headingId}>
-  <h3 id={headingId} class="weft-activity-provenance__heading">{heading}</h3>
+  <h3 id={headingId} class="weft-activity-provenance__heading">Worker provenance</h3>
   {#if taskQuery.isPending}
     <div role="status" aria-busy="true" aria-label="Loading worker provenance">
       <Skeleton height="6rem" />
@@ -80,7 +71,7 @@
   {:else if notRecorded}
     <EmptyState
       title="No worker task recorded"
-      description="The task ledger holds no record for this activity, so no worker has run it."
+      description="The task ledger holds no record for this activity. It may never have run on a worker, or its record may have aged out of the retention window."
     />
   {:else if error}
     {@const treatment = faultTreatment(error)}

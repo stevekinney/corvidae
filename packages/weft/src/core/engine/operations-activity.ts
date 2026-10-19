@@ -35,6 +35,7 @@ import {
   workflowExecutionTokenForWorkflow,
   type CapturedRejectionReason,
 } from './strategy-helpers.ts';
+import { recordTimelineTaskIdentity } from './timeline-coordinator-detail.ts';
 
 export type ActivityFunctionWithMetadata = ((...arguments_: unknown[]) => unknown) &
   ActivityReconciliationMetadata & {
@@ -210,6 +211,7 @@ function invokeRemoteActivity(
   }
   const activityStateKey = getActivityStateKey(operation);
   const token = deriveAsyncActivityToken(workflowId, activityStateKey, attempt);
+  recordTimelineTaskIdentity(internals, workflowId, token);
   const workflowType = requireWorkflowTypeForRemoteDispatch(internals, workflowId);
   // A per-call `timeout` overrides the broker's own configured default
   // (`EngineOwnedRemoteActivityBroker`'s `defaults.visibilityTimeoutMilliseconds`) —

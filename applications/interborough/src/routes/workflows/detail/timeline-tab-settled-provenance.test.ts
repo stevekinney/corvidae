@@ -1,14 +1,13 @@
 /**
  * Worker provenance for an activity that has settled (COR-281): the run page offers it from the
- * activity's row, not only from the in-flight completion drawer. A remote `ctx.run()` enqueues its
- * task under a token Weft derives from the workflow id, the step, and the attempt; the page reads
- * the ledger by those tokens, attempt by attempt, until the ledger has no record.
+ * activity's row, not only from the in-flight completion drawer. The row carries the ledger task
+ * identity Weft recorded on the timeline entry (`taskOperationId`); the page reads that record and
+ * never rebuilds the id from the step.
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
 import {
-  deriveAsyncActivityToken,
   HttpClientError,
   type WorkflowState,
   type WorkflowTimelineEntry,
@@ -41,6 +40,7 @@ function entry(overrides: Partial<WorkflowTimelineEntry>): WorkflowTimelineEntry
     inputSummary: '{}',
     timestamp: 1_000,
     status: 'completed',
+    taskOperationId: 'task-chargeCard',
     ...overrides,
   };
 }
@@ -96,13 +96,10 @@ function render_(
 }
 
 describe('TimelineTab — worker provenance for a settled activity', () => {
-  test('opens each attempt’s task history from the activity’s row, by Weft’s own tokens', async () => {
+  test('opens the task history of the record the entry names', async () => {
     const reads: string[] = [];
-    const first = deriveAsyncActivityToken(WORKFLOW_ID, 3, 1);
-    const second = deriveAsyncActivityToken(WORKFLOW_ID, 3, 2);
     const view = render_([entry({})], async ({ operationId }) => {
       reads.push(operationId);
-      if (operationId !== first) throw new HttpClientError(404, 'no such task');
       return {
         ...taskLedgerDetailFixture(),
         operationId,
@@ -133,20 +130,41 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
     await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for chargeCard' }));
 
     expect(await view.findByText('Crossed build')).not.toBeNull();
-    expect(reads).toEqual([first, second]);
+    expect(reads).toEqual(['task-chargeCard']);
     expect(view.getByText('Open the full task ledger')).not.toBeNull();
   });
 
-  test('says no worker task is recorded for an activity that ran in-process', async () => {
+  test('each of two activities reads its own record, whatever the steps are', async () => {
+    const reads: string[] = [];
+    const view = render_(
+      [
+        entry({ step: 1, operationLabel: 'first', taskOperationId: 'task-for-first' }),
+        entry({ step: 2, operationLabel: 'second', taskOperationId: 'task-for-second' }),
+      ],
+      async ({ operationId }) => {
+        reads.push(operationId);
+        return { ...taskLedgerDetailFixture(), operationId, attempts: [] };
+      },
+    );
+    await waitFor(() => expect(view.getByText('second')).not.toBeNull());
+    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for second' }));
+    await waitFor(() => expect(reads).toEqual(['task-for-second']));
+    await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for first' }));
+    await waitFor(() => expect(reads).toEqual(['task-for-second', 'task-for-first']));
+  });
+
+  test('says no worker task is recorded when the ledger has no such record', async () => {
     const view = render_([entry({})], async () => {
       throw new HttpClientError(404, 'no such task');
     });
     await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
     await fireEvent.click(view.getByRole('button', { name: 'Worker provenance for chargeCard' }));
     expect(await view.findByText('No worker task recorded')).not.toBeNull();
+    // A record can also have been reaped after the retention window, so the copy claims no more.
+    expect(view.queryByText(/no worker has run it/)?.textContent ?? null).toBeNull();
   });
 
-  test('offers it for a failed activity but not for a running one or another operation type', async () => {
+  test('offers it only for a settled activity that names a ledger record', async () => {
     const view = render_(
       [
         entry({ step: 1, operationLabel: 'failedCharge', status: 'failed' }),
@@ -160,6 +178,15 @@ describe('TimelineTab — worker provenance for a settled activity', () => {
     await waitFor(() => expect(view.getByText('failedCharge')).not.toBeNull());
     expect(view.getAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(1);
     expect(view.getByRole('button', { name: 'Worker provenance for failedCharge' })).not.toBeNull();
+  });
+
+  test('omits it for an in-process activity, whose entry names no record', async () => {
+    const { taskOperationId: _omitted, ...inProcess } = entry({});
+    const view = render_([inProcess], async () => {
+      throw new HttpClientError(404, 'no such task');
+    });
+    await waitFor(() => expect(view.getByText('chargeCard')).not.toBeNull());
+    expect(view.queryAllByRole('button', { name: /^Worker provenance for / })).toHaveLength(0);
   });
 
   test('omits the action when the client cannot read tasks', async () => {

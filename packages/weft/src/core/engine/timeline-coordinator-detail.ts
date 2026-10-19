@@ -123,3 +123,19 @@ export function recordTimelineSpeculation(
   if (bounded.omitted > 0) entry.childrenOmitted = bounded.omitted;
   entry.speculationOutcome = outcome;
 }
+
+/**
+ * Record the task ledger operation id a remote-mode activity was just enqueued under on its
+ * pending timeline entry, so `WorkflowTimelineEntry.taskOperationId` names the real ledger key.
+ * Only an `activity` entry takes it: while a coordinator (`ctx.all`, `ctx.race`) is the pending
+ * entry, its branches' tasks belong to no single entry.
+ */
+export function recordTimelineTaskIdentity(
+  internals: EngineInternals,
+  workflowId: string,
+  taskOperationId: string,
+): void {
+  const entry = internals.pendingTimelineEntries?.get(workflowId)?.entry;
+  if (entry === undefined || entry.operationType !== 'activity') return;
+  entry.taskOperationId = taskOperationId;
+}
