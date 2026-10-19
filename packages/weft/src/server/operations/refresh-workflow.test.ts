@@ -2,8 +2,10 @@
  * `weft.workflows.refresh` operation + REST binding: unit tests.
  */
 
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
+import { WorkflowRevisionTombstonedError } from '../../core/catalog/errors.ts';
+import { WorkflowCatalog } from '../../core/catalog/index.ts';
 import { Engine } from '../../core/engine.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { handleRequest } from '../handler.ts';
@@ -290,6 +292,31 @@ describe('weft.workflows.refresh', () => {
     expect(result.fault.code).toBe('Unavailable');
     expect((result.fault.data as { reason?: string }).reason).toBe('refresh-source');
     expect(JSON.stringify(result.fault)).not.toContain('10.0.0.7');
+  });
+
+  it('faults Conflict, not a masked failure, when the served revision was removed (tombstoned)', async () => {
+    engine = createEngine();
+    const artifact = await refreshArtifact('r1');
+    await engine.workflows.registerRefreshSource(
+      REFRESH_TEST_WORKFLOW,
+      refreshSource(() => artifact),
+    );
+    // The catalog raises this only after losing an install race to a removal; reproducing the race
+    // would test the storage layer, so the catalog's own error is injected.
+    const install = spyOn(WorkflowCatalog.prototype, 'install').mockRejectedValueOnce(
+      new WorkflowRevisionTombstonedError(REFRESH_TEST_WORKFLOW, 'r1'),
+    );
+
+    try {
+      const result = await refresh(engine, { name: REFRESH_TEST_WORKFLOW });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.fault.code).toBe('Conflict');
+    } finally {
+      install.mockRestore();
+    }
+    expect(engine.workflows.refreshDiagnostics(REFRESH_TEST_WORKFLOW)[0]?.reason).toBe('conflict');
   });
 
   it('faults NotFound when no refresh source is registered for the name', async () => {

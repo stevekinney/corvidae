@@ -58,12 +58,7 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
     this.#pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.#maxBackoffMs = options.maxBackoffMs ?? DEFAULT_MAX_BACKOFF_MS;
     this.#now = options.now ?? Date.now;
-    if (!Number.isSafeInteger(this.#maxArtifactBytes) || this.#maxArtifactBytes <= 0) {
-      throw new RangeError('maxArtifactBytes must be a positive safe integer');
-    }
-    if (!Number.isFinite(this.#pollIntervalMs) || this.#pollIntervalMs <= 0) {
-      throw new RangeError('pollIntervalMs must be positive');
-    }
+    assertRefreshLimits(this.#maxArtifactBytes, this.#pollIntervalMs, this.#maxBackoffMs);
     this.#backoffMs = this.#pollIntervalMs;
   }
 
@@ -183,7 +178,15 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
       const response = await this.#fetch(name, source, signal);
       if (response.status === 304) return this.#notModified(name);
       const artifact = await this.#prepare(name, source, response, signal);
-      const activation = await this.#install(name, source, artifact, options, signal);
+      this.#record(name, { state: 'warming' });
+      const activation = await this.#install(
+        name,
+        source,
+        artifact,
+        response.etag ?? artifact.digest,
+        options,
+        signal,
+      );
       const result = this.#result(name, artifact.manifest, activation);
       this.#record(name, {
         state: result.status,
@@ -269,23 +272,32 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
       throw hostFailure('runtime', error, signal);
     }
     this.#assertActive();
-    this.#artifacts.set(digest, artifact);
+    return artifact;
+  }
+
+  /**
+   * Record `artifact` as the candidate. Called only once the catalog has
+   * installed it, so the revision, digest, contract hash, last validated
+   * artifact, and ETag always describe one installed artifact, and a check that
+   * fails before this point leaves the previous installed candidate whole.
+   */
+  #commitCandidate(name: string, artifact: WorkflowRefreshArtifact, etag: string): void {
+    this.#artifacts.set(artifact.digest, artifact);
     this.#lastValidatedArtifact.set(name, artifact);
-    this.#etags.set(name, response.etag ?? digest);
+    this.#etags.set(name, etag);
     this.#record(name, {
-      state: 'warming',
-      etag: response.etag ?? digest,
+      etag,
       revision: artifact.manifest.revision,
-      digest,
+      digest: artifact.digest,
       contractHash: artifact.manifest.contractHash,
     });
-    return artifact;
   }
 
   async #install(
     name: string,
     source: WorkflowRefreshSource,
     artifact: WorkflowRefreshArtifact,
+    etag: string,
     options: WorkflowRefreshOptions | undefined,
     signal: AbortSignal,
   ) {
@@ -297,6 +309,7 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
     }
     this.#assertActive();
     await this.#catalog.install(artifact.manifest, definition);
+    this.#commitCandidate(name, artifact, etag);
     this.#assertActive();
     if (options?.activate !== 'if-compatible') return undefined;
     const activationOptions =
@@ -358,7 +371,6 @@ export class WorkflowRefreshCoordinator implements AsyncDisposable {
         'integrity',
         'Workflow artifact manifest/runtime proof is incomplete',
       );
-    this.#record(name, { digest });
   }
 
   #record(name: string, patch: Partial<WorkflowRefreshDiagnostics>): void {
@@ -430,4 +442,20 @@ function validateArtifactBinding(artifact: WorkflowRefreshArtifact): void {
       'integrity',
       'Workflow artifact runtime proof is not bound to its bytes',
     );
+}
+
+function assertRefreshLimits(
+  maxArtifactBytes: number,
+  pollIntervalMs: number,
+  maxBackoffMs: number,
+): void {
+  if (!Number.isSafeInteger(maxArtifactBytes) || maxArtifactBytes <= 0) {
+    throw new RangeError('maxArtifactBytes must be a positive safe integer');
+  }
+  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+    throw new RangeError('pollIntervalMs must be positive');
+  }
+  if (!Number.isFinite(maxBackoffMs) || maxBackoffMs <= 0) {
+    throw new RangeError('maxBackoffMs must be positive');
+  }
 }

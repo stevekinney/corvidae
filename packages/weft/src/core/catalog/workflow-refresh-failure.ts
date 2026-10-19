@@ -5,7 +5,7 @@
  * @module core/catalog/workflow-refresh-failure
  */
 
-import { WorkflowCatalogConflictError } from './errors.ts';
+import { WorkflowCatalogConflictError, WorkflowRevisionTombstonedError } from './errors.ts';
 
 /**
  * Why a refresh failed, as a bounded vocabulary a caller can branch on without
@@ -86,6 +86,7 @@ export function failureReason(
   if (error instanceof WorkflowRefreshError) return error.reason;
   if (stopped) return 'stopped';
   if (error instanceof WorkflowCatalogConflictError) return 'conflict';
+  if (error instanceof WorkflowRevisionTombstonedError) return 'conflict';
   if (callerSignal?.aborted === true) return 'cancelled';
   return 'internal';
 }

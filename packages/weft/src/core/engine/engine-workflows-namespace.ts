@@ -292,7 +292,19 @@ export function createEngineWorkflowsNamespace(engine: Engine): EngineWorkflowsN
     },
     refresh: async (name, options) => {
       await ensureCatalogReady(engine);
-      return getRefreshCoordinator(engine).refresh(name, options);
+      // Like `install`, translate the catalog's internal tombstone error to the public
+      // `WorkflowRevisionUnavailableError`: `core/catalog/**` must not import `core/engine/**`,
+      // and the operation maps the public error to its declared Conflict.
+      return getRefreshCoordinator(engine)
+        .refresh(name, options)
+        .catch((error: unknown) => {
+          if (!(error instanceof WorkflowRevisionTombstonedError)) throw error;
+          throw new WorkflowRevisionUnavailableError(
+            error.workflowName,
+            error.revision,
+            'not-installed',
+          );
+        });
     },
     refreshDiagnostics: (name) =>
       getInternals(engine).workflowRefreshCoordinator?.diagnostics(name) ?? [],

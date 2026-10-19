@@ -282,6 +282,173 @@ describe('WorkflowRefreshDiagnostics', () => {
   });
 });
 
+describe('a candidate is recorded only once it is installed', () => {
+  async function corrupted(revision: string): Promise<WorkflowRefreshArtifact> {
+    const good = await manifest(revision);
+    const broken = { ...good, contractHash: 'sha256:not-the-contract-hash' };
+    return artifactFor(broken);
+  }
+
+  it('keeps the last installed artifact whole when a later check fails after the digest check', async () => {
+    const first = await artifactFor(await manifest('r1'));
+    let next = first;
+    const coordinator = coordinatorFor(sourceOf(() => next));
+    await coordinator.refresh('checkout');
+
+    next = await corrupted('r2');
+    await rejectionOf(coordinator.refresh('checkout'));
+
+    expect(coordinator.diagnostics('checkout')[0]).toMatchObject({
+      state: 'failed',
+      reason: 'contract',
+      revision: 'r1',
+      digest: first.digest,
+      contractHash: first.manifest.contractHash,
+    });
+  });
+
+  it('keeps the last installed artifact whole when the runtime refuses a later one', async () => {
+    const first = await artifactFor(await manifest('r1'));
+    const second = await artifactFor(await manifest('r2'));
+    let next = first;
+    let refuse = false;
+    const coordinator = coordinatorFor(
+      sourceOf(() => next, {
+        validateRuntime: () => {
+          if (refuse) throw new Error('refused');
+        },
+      }),
+    );
+    await coordinator.refresh('checkout');
+
+    next = second;
+    refuse = true;
+    await rejectionOf(coordinator.refresh('checkout'));
+
+    expect(coordinator.diagnostics('checkout')[0]).toMatchObject({
+      reason: 'runtime',
+      revision: 'r1',
+      digest: first.digest,
+    });
+  });
+
+  it('records no candidate when the first candidate fails before it is installed', async () => {
+    const artifact = await artifactFor(await manifest('r1'));
+    const coordinator = coordinatorFor(
+      sourceOf(() => artifact, {
+        warm: async () => {
+          throw new Error('warm failed');
+        },
+      }),
+    );
+
+    await rejectionOf(coordinator.refresh('checkout'));
+
+    const diagnostics = coordinator.diagnostics('checkout')[0];
+    expect(diagnostics?.state).toBe('failed');
+    expect(diagnostics?.revision).toBeUndefined();
+    expect(diagnostics?.digest).toBeUndefined();
+    expect(diagnostics?.contractHash).toBeUndefined();
+    expect(diagnostics?.etag).toBeUndefined();
+  });
+
+  it('re-fetches, without an ETag, after a warm failure instead of answering 304 for a candidate never installed', async () => {
+    const artifact = await artifactFor(await manifest('r1'));
+    let warmFails = true;
+    const etags: Array<string | undefined> = [];
+    const catalog = new WorkflowCatalog(new MemoryStorage());
+    const coordinator = coordinatorFor(
+      sourceOf(() => artifact, {
+        fetch: async ({ etag }) => {
+          etags.push(etag);
+          return etag === undefined
+            ? { status: 200 as const, etag: 'v1', artifact }
+            : { status: 304 as const, etag };
+        },
+        warm: async () => {
+          if (warmFails) throw new Error('warm failed');
+          return definition;
+        },
+      }),
+      { catalog },
+    );
+    await rejectionOf(coordinator.refresh('checkout'));
+    warmFails = false;
+
+    const result = await coordinator.refresh('checkout');
+
+    expect(etags).toEqual([undefined, undefined]);
+    expect(result.status).toBe('installed');
+    expect(await catalog.listInstalledRevisions('checkout')).toHaveLength(1);
+  });
+
+  it('still answers 304 for a candidate that was installed', async () => {
+    const artifact = await artifactFor(await manifest('r1'));
+    const coordinator = coordinatorFor(
+      sourceOf(() => artifact, {
+        fetch: async ({ etag }) =>
+          etag === undefined
+            ? { status: 200 as const, etag: 'v1', artifact }
+            : { status: 304 as const, etag },
+      }),
+    );
+    await coordinator.refresh('checkout');
+
+    const result = await coordinator.refresh('checkout');
+
+    expect(result.status).toBe('not-modified');
+    expect(coordinator.diagnostics('checkout')[0]).toMatchObject({
+      state: 'not-modified',
+      revision: 'r1',
+      digest: artifact.digest,
+    });
+  });
+
+  it('keeps the ETag of the installed artifact when a later artifact fails to warm', async () => {
+    const first = await artifactFor(await manifest('r1'));
+    const second = await artifactFor(await manifest('r2'));
+    let next = first;
+    let warmFails = false;
+    const etags: Array<string | undefined> = [];
+    const coordinator = coordinatorFor(
+      sourceOf(() => next, {
+        fetch: async ({ etag }) => {
+          etags.push(etag);
+          return { status: 200 as const, etag: `etag-${next.manifest.revision}`, artifact: next };
+        },
+        warm: async () => {
+          if (warmFails) throw new Error('warm failed');
+          return definition;
+        },
+      }),
+    );
+    await coordinator.refresh('checkout');
+    next = second;
+    warmFails = true;
+    await rejectionOf(coordinator.refresh('checkout'));
+
+    await rejectionOf(coordinator.refresh('checkout'));
+
+    expect(etags).toEqual([undefined, 'etag-r1', 'etag-r1']);
+  });
+});
+
+describe('WorkflowRefreshCoordinator options', () => {
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects a maxBackoffMs of %p so a poll cannot spin',
+    (maxBackoffMs) => {
+      expect(
+        () =>
+          new WorkflowRefreshCoordinator({
+            catalog: new WorkflowCatalog(new MemoryStorage()),
+            sources: new Map(),
+            maxBackoffMs,
+          }),
+      ).toThrow(RangeError);
+    },
+  );
+});
+
 describe('WorkflowRefreshCoordinator.status', () => {
   it('lists a registered source that was never checked as idle, while diagnostics() does not', async () => {
     const coordinator = new WorkflowRefreshCoordinator({

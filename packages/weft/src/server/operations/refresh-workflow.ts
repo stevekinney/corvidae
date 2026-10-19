@@ -221,7 +221,8 @@ export const refreshWorkflowOperation = defineOperation({
     '`installed` with the structured refusal in `activation`. Faults NotFound when no source is ' +
     'registered, Unavailable when the source cannot be reached, and Conflict with `reason` ' +
     '`refresh-integrity`, `refresh-identity`, `refresh-contract`, `refresh-runtime`, or ' +
-    '`refresh-warming` when the candidate is refused; a refused candidate is not installed.',
+    '`refresh-warming` when the candidate is refused; a refused candidate is not installed. The ' +
+    '`data.reason` of a fault is disclosed over JSON-RPC only; the REST projection omits it.',
   // Can move the active pointer, like `weft.workflows.revisions.activate`.
   destructive: true,
   tags: ['Workflow Catalog'],
