@@ -9,6 +9,7 @@ import type { Page, Route } from '@playwright/test';
 
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
+import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -43,9 +44,17 @@ function jsonRpcProbe(method: string): ProbeRoute {
   };
 }
 
+/** A Bureau operation's request is a JSON-RPC call to `/bureau/jsonrpc`, answered with `empty` when the view is empty. */
+function bureauProbe(method: string, empty: unknown): ProbeRoute {
+  return {
+    matches: (url, body) => url.pathname === '/bureau/jsonrpc' && body.includes(`"${method}"`),
+    empty,
+  };
+}
+
 const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
-  chat: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
-  agents: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
+  chat: bureauProbe('bureau.contexts.list', { contexts: [], nextOffset: null }),
+  agents: bureauProbe('bureau.agents.list', { agents: [] }),
   audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
   workflows: jsonRpcProbe('weft.workflows.definitions.list'),
   runs: {
@@ -107,9 +116,14 @@ for (const view of VIEW_NAMES) {
     for (const width of WIDTHS) {
       test(`${view} is ${outcome} at ${width} pixels, and passes axe`, async ({
         page,
+        request,
         checkA11y,
       }) => {
         await page.setViewportSize({ width, height: 900 });
+        // The chat list has something to show once the caller has a session.
+        if (view === 'chat' && outcome === 'ready') {
+          await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
+        }
         await drive(page, view, outcome);
         await page.goto(PATHS[view]);
 

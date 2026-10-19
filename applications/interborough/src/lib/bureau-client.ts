@@ -96,3 +96,83 @@ export async function sendContextInput(
     await callBureau('bureau.contexts.input', { contextId, input }, options),
   );
 }
+
+const contextPageSchema = z.object({
+  contexts: z.array(chatContextSchema),
+  nextOffset: z.number().nullable(),
+});
+
+export type ContextPage = z.infer<typeof contextPageSchema>;
+
+/** One page of the caller's sessions, newest update first (`bureau.contexts.list`). */
+export async function listContexts(
+  input: { readonly agentName?: string; readonly limit?: number; readonly offset?: number } = {},
+  options?: { readonly signal?: AbortSignal },
+): Promise<ContextPage> {
+  return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));
+}
+
+/** An agent as `bureau.agents.list` shows it. */
+export const agentSummarySchema = z.object({
+  name: z.string(),
+  displayName: z.string(),
+  description: z.string().nullable(),
+  definitionRevision: z.number(),
+  kind: z.enum(['code', 'file']),
+  publishState: z.enum(['published', 'withdrawn', 'unpublished']),
+});
+
+export type AgentSummary = z.infer<typeof agentSummarySchema>;
+
+/** The agents the caller may see, with whether each is published (`bureau.agents.list`). */
+export async function listAgents(options?: {
+  readonly signal?: AbortSignal;
+}): Promise<readonly AgentSummary[]> {
+  const body = z
+    .object({ agents: z.array(agentSummarySchema) })
+    .parse(await callBureau('bureau.agents.list', {}, options));
+  return body.agents;
+}
+
+/** What an agent file defines (`bureau.agents.definitions.get`); `null` for an agent defined in code. */
+const agentDefinitionSchema = z.object({
+  id: z.string(),
+  source: z.enum(['code', 'file']),
+  definition: z
+    .object({
+      model: z.string(),
+      tools: z.array(z.string()),
+      skills: z.array(z.object({ id: z.string(), name: z.string(), description: z.string() })),
+      instructions: z.string(),
+    })
+    .nullable(),
+});
+
+export type AgentDefinitionDetail = z.infer<typeof agentDefinitionSchema>;
+
+export async function getAgentDefinition(
+  id: string,
+  options?: { readonly signal?: AbortSignal },
+): Promise<AgentDefinitionDetail> {
+  return agentDefinitionSchema.parse(
+    await callBureau('bureau.agents.definitions.get', { id }, options),
+  );
+}
+
+const threadMessagesSchema = z.object({ threadId: z.string(), messages: z.array(z.unknown()) });
+
+/** A thread's conversation as AG-UI messages (`GET /bureau/ag-ui/threads/<id>/messages`), or a not-found fault. */
+export async function getThreadMessages(
+  threadId: string,
+  options: { readonly signal?: AbortSignal; readonly fetch?: Fetcher } = {},
+): Promise<readonly unknown[]> {
+  const send = options.fetch ?? fetch;
+  const response = await send(
+    `${BUREAU_PATH}/ag-ui/threads/${encodeURIComponent(threadId)}/messages`,
+    options.signal === undefined ? {} : { signal: options.signal },
+  );
+  if (!response.ok) {
+    throw new HttpClientError(response.status, `The thread answered ${response.status}.`);
+  }
+  return threadMessagesSchema.parse(await response.json()).messages;
+}

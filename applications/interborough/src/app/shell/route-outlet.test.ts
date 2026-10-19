@@ -39,13 +39,13 @@ function mount() {
 describe('the route outlet', () => {
   test('renders a placeholder view in its frame, empty once the Bureau answers', async () => {
     restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
-    landAt('/chat');
+    landAt('/audit');
     const { container, findByRole } = mount();
     expect(
-      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
+      await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' }),
     ).not.toBeNull();
     const frame = container.querySelector('.weft-view');
-    expect(frame?.getAttribute('data-view')).toBe('chat');
+    expect(frame?.getAttribute('data-view')).toBe('audit');
     expect(frame?.getAttribute('data-state')).toBe('empty');
   });
 
@@ -59,18 +59,18 @@ describe('the route outlet', () => {
 
   test('is the page’s one main landmark, whatever the route renders', async () => {
     restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
-    landAt('/chat');
+    landAt('/audit');
     const { findByRole, getAllByRole, container } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
     expect(getAllByRole('main')).toHaveLength(1);
     expect(container.querySelector('main.weft-shell-outlet')).not.toBeNull();
   });
 
   test('says so when a route’s code cannot be loaded, and drops the page it came from', async () => {
     restore = installFetchImplementation(async () => Response.json({ status: 'ok' }));
-    landAt('/chat');
+    landAt('/audit');
     const { findByRole, container } = mount();
-    await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.audit.empty?.title ?? '' });
 
     const agents = routes.find((route) => route.pattern === '/agents');
     if (agents === undefined) throw new Error('Expected an /agents route.');
@@ -81,8 +81,8 @@ describe('the route outlet', () => {
         await findByRole('heading', { level: 1, name: ROUTE_LOAD_FAILURE_COPY.title }),
       ).not.toBeNull();
       expect(container.querySelector('[data-state="error"]')).not.toBeNull();
-      // Chat's frame is not left on screen under the agents address.
-      expect(container.querySelector('[data-view="chat"]')).toBeNull();
+      // The audit frame is not left on screen under the agents address.
+      expect(container.querySelector('[data-view="audit"]')).toBeNull();
       const reload = spyOn(window.location, 'reload').mockImplementation(() => {});
       try {
         const button = await findByRole('button', { name: ROUTE_LOAD_FAILURE_COPY.action });

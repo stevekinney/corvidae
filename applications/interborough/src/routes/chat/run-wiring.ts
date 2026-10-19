@@ -41,9 +41,10 @@ import {
   type ToolResult,
 } from '@lostgradient/chat';
 import type { ApprovalResolution } from '@lostgradient/cinder';
+import { HttpClientError } from '@lostgradient/weft';
 import { agUiConversationAdapter, mergeAGUIMessages } from 'conversationalist';
 
-import { BUREAU_PATH, type Fetcher } from '../../lib/bureau-client.ts';
+import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
 import { readEvents } from './ag-ui-events.ts';
 
 /** The AG-UI mount's path, under the Bureau's. */
@@ -69,6 +70,11 @@ export type ChatRunWiringOptions = {
   readonly agentName: () => string;
   /** Replaces `fetch`, for tests. */
   readonly fetch?: Fetcher;
+  /**
+   * Told when a run this page started has begun (its `RUN_STARTED` arrived). A run attached to
+   * began elsewhere and does not call it.
+   */
+  readonly onRunStarted?: () => void;
 };
 
 export type ChatRunWiring = {
@@ -84,6 +90,11 @@ export type ChatRunWiring = {
    * nothing to attach to, and then opens nothing.
    */
   attach(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
+  /**
+   * The thread's conversation as the Bureau holds it, run or no run, or `undefined` when the
+   * Bureau has no such thread. It is how a finished session's transcript comes back.
+   */
+  history(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
   /** Drops an attach that was opened and never read. */
   discardAttach(): Promise<void>;
 };
@@ -287,6 +298,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   async function* observe(
     events: AsyncIterable<unknown>,
     signal: AbortSignal,
+    started: boolean,
   ): AsyncGenerator<unknown> {
     let nativeRunId: string | undefined;
     let held: ReadonlySet<string> | undefined;
@@ -296,6 +308,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // after it starts, and the calls this stream streams itself arrive after, never before.
         held ??= heldCalls(options.conversation());
         nativeRunId ??= nativeRunIdOf(event);
+        if (started && isRecord(event) && event['type'] === 'RUN_STARTED') {
+          options.onRunStarted?.();
+        }
         const ended = interruptsOf(event);
         if (ended !== undefined) interrupts = ended;
         // A run that follows an approval shows the call it was waiting on again, for a client that
@@ -345,13 +360,17 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   }
 
   const transport: ChatSessionTransport = (request) => {
-    const events = attached ?? startEvents(request);
+    const attachedStream = attached;
+    const events = attachedStream ?? startEvents(request);
     attached = undefined;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
-    const frames = mapAGUIEventsToChatStream(observe(events, request.signal), {
-      conversation: withoutHiddenRows(request.conversation),
-    });
+    const frames = mapAGUIEventsToChatStream(
+      observe(events, request.signal, attachedStream === undefined),
+      {
+        conversation: withoutHiddenRows(request.conversation),
+      },
+    );
     return parkApprovals(frames, () => interrupts);
   };
 
@@ -393,6 +412,24 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         yield* events;
       })();
       return restored;
+    },
+    async history(threadId, signal) {
+      let messages: readonly unknown[];
+      try {
+        messages = await getThreadMessages(threadId, {
+          fetch: send,
+          ...(signal === undefined ? {} : { signal }),
+        });
+      } catch (error) {
+        // A thread the Bureau has no record of, or that the caller may not read, has no history.
+        if (error instanceof HttpClientError && error.status === 404) return undefined;
+        throw error;
+      }
+      const snapshot = { type: 'MESSAGES_SNAPSHOT', messages };
+      if (!isMessagesSnapshot(snapshot)) {
+        throw new Error('The Bureau answered with messages this page cannot read.');
+      }
+      return mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages);
     },
     async discardAttach() {
       const dropped = attached;

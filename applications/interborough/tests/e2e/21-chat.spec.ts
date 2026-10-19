@@ -189,7 +189,8 @@ test.describe('a follow-up sent while the run is going', () => {
     // The run ended without delivering it, so the next run answers it, in the same conversation.
     await expectWaiting(request, 1);
     await releaseBarrier(request);
-    await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
+    // The seeding turn's reply is restored with the transcript, and each run since adds its own.
+    await expect(page.getByText(FIRST_REPLY)).toHaveCount(3);
     await expect(page.getByText('Also this')).toHaveCount(1);
     const content = (await transcript(page).textContent()) ?? '';
     expect(await indexIn(page, 'Also this')).toBeLessThan(content.lastIndexOf(FIRST_REPLY));
@@ -211,7 +212,7 @@ test.describe('a follow-up sent while the run is going', () => {
     await page.getByRole('button', { name: 'Retry' }).click();
     await expectWaiting(request, 1);
     await releaseBarrier(request);
-    await expect(page.getByText(FIRST_REPLY)).toBeVisible();
+    await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
     await expect(page.getByText('Also this')).toHaveCount(1);
   });
 });

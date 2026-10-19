@@ -22,6 +22,27 @@ afterEach(() => {
   restore = undefined;
 });
 
+const CONTEXT = {
+  id: 'session-1',
+  owner: 'anonymous:local',
+  agentName: 'assistant',
+  title: 'Hello',
+  lastMessagePreview: null,
+  messageCount: 2,
+  createdAt: '2026-10-19T00:00:00.000Z',
+  updatedAt: '2026-10-19T00:00:00.000Z',
+  activity: 'idle',
+};
+
+const AGENT = {
+  name: 'assistant',
+  displayName: 'Assistant',
+  description: null,
+  definitionRevision: 1,
+  kind: 'code',
+  publishState: 'published',
+};
+
 function requestUrl(input: RequestInfo | URL): URL {
   const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   return new URL(text, 'http://localhost');
@@ -43,7 +64,14 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   const url = requestUrl(input);
   const call = operationOf(init?.body);
   if (call !== undefined) {
-    return Response.json({ jsonrpc: '2.0', id: call.id, result: { items: [] } });
+    // The Bureau's list operations answer their own shapes, and an empty one has nothing in it.
+    const result =
+      call.method === 'bureau.contexts.list'
+        ? { contexts: empty ? [] : [{ ...CONTEXT }], nextOffset: null }
+        : call.method === 'bureau.agents.list'
+          ? { agents: empty ? [] : [{ ...AGENT }] }
+          : { items: [] };
+    return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
   if (url.pathname.endsWith('/schedules')) {
@@ -69,7 +97,11 @@ function stub(view: ViewName, outcome: Outcome): { requests: URL[] } {
 
 function mount(
   view: ViewName,
-  options: { scopes?: readonly string[]; parameters?: Record<string, string> } = {},
+  options: {
+    scopes?: readonly string[];
+    parameters?: Record<string, string>;
+    pattern?: string;
+  } = {},
 ) {
   let store: PrincipalStore | undefined;
   const result = render(Harness, {
@@ -78,6 +110,7 @@ function mount(
       scopes: options.scopes ?? AUTHORIZATION_SCOPES,
       view,
       parameters: options.parameters ?? {},
+      ...(options.pattern === undefined ? {} : { pattern: options.pattern }),
       onStore: (created: PrincipalStore) => {
         store = created;
       },
@@ -159,9 +192,9 @@ describe('a view that finds something to show', () => {
   }
 
   test('a placeholder view is empty even when its service answers', async () => {
-    stub('chat', 'content');
-    const { container, findByRole } = mount('chat');
-    const title = VIEW_COPY.chat.empty?.title ?? '';
+    stub('audit', 'content');
+    const { container, findByRole } = mount('audit');
+    const title = VIEW_COPY.audit.empty?.title ?? '';
     expect(await findByRole('heading', { level: 1, name: title })).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
   });
@@ -268,5 +301,93 @@ describe('one chat session’s page', () => {
     const second = mount('chat', { parameters: { sessionId: 'session-2' } });
 
     expect(await second.findByTestId('content')).not.toBeNull();
+  });
+});
+
+describe('the chat list, a new chat, and the agents', () => {
+  const rpc = (method: string, result: unknown) =>
+    Response.json({ jsonrpc: '2.0', id: method, result });
+  const fault = (status: number, code: string) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+
+  /** Answers each Bureau operation the frame's probes ask, by name. */
+  function stubBureau(answers: Record<string, () => Response>): void {
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      const answer = answers[method];
+      if (answer === undefined) throw new Error(`Unexpected request: ${method}`);
+      return answer();
+    });
+  }
+
+  const agents = (...entries: Array<Partial<typeof AGENT>>) =>
+    rpc('bureau.agents.list', { agents: entries.map((entry) => ({ ...AGENT, ...entry })) });
+
+  test('is forbidden when the Bureau refuses the caller the list of sessions', async () => {
+    stubBureau({ 'bureau.contexts.list': () => fault(403, 'Forbidden') });
+    const { container, findByRole } = mount('chat', { pattern: '/chat' });
+
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('is empty, with a New chat action, when the caller has no session', async () => {
+    stubBureau({ 'bureau.contexts.list': () => rpc('x', { contexts: [], nextOffset: null }) });
+    const { container, findByRole } = mount('chat', { pattern: '/chat' });
+
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.chat.empty?.title ?? '' }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('empty');
+    expect(container.querySelector('a[href="/chat/new"]')?.textContent).toBe('New chat');
+  });
+
+  test('a new chat is ready for a published agent', async () => {
+    stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
+    const { container, findByTestId } = mount('chat', { pattern: '/chat/new' });
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('a new chat is not found for an agent that does not exist, or is not published', async () => {
+    for (const entries of [
+      [{ name: 'other' }],
+      [{ name: 'assistant', publishState: 'unpublished' }],
+    ]) {
+      stubBureau({
+        'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
+      });
+      const { container, findByRole, unmount } = mount('chat', { pattern: '/chat/new' });
+
+      expect(
+        await findByRole('heading', { level: 1, name: VIEW_COPY.chat.notFound?.title ?? '' }),
+      ).not.toBeNull();
+      expect(frame(container).dataset['state']).toBe('not-found');
+      unmount();
+      restore?.();
+    }
+  });
+
+  test('an agent’s page is not found for an identifier the Bureau does not list', async () => {
+    stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
+    const missing = mount('agents', { parameters: { id: 'nobody' } });
+    expect(
+      await missing.findByRole('heading', {
+        level: 1,
+        name: VIEW_COPY.agents.notFound?.title ?? '',
+      }),
+    ).not.toBeNull();
+    expect(frame(missing.container).dataset['state']).toBe('not-found');
+    missing.unmount();
+
+    const found = mount('agents', { parameters: { id: 'assistant' } });
+    expect(await found.findByTestId('content')).not.toBeNull();
   });
 });

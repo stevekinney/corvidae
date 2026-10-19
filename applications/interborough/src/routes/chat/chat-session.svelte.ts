@@ -5,8 +5,8 @@
  *
  * The page may open on a session whose run is still going (a reload, a link). `attach()` joins
  * that run: its stream restores the transcript from the mount's snapshot and carries on live. A
- * session with nothing going opens on an empty transcript, because the mount keeps no way to read
- * a finished one back.
+ * session with nothing going has its transcript read from the mount (`wiring.history`), so a
+ * finished session opens on all of it, in order.
  */
 import {
   assertRunInputAccepted,
@@ -28,6 +28,8 @@ export type ChatSessionOptions = {
   readonly agentName: () => string;
   /** Replaces `fetch` for the AG-UI requests, for tests. */
   readonly fetch?: Fetcher;
+  /** Told when a run this page started has begun. */
+  readonly onRunStarted?: () => void;
 };
 
 /** The text a follow-up sends: the Bureau takes text, or a list of parts, as session input. */
@@ -54,6 +56,7 @@ export class ChatSessionState {
     this.conversation = createConversationHistory({ id: options.sessionId });
     this.#wiring = createChatRunWiring({
       conversation: () => this.conversation,
+      ...(options.onRunStarted === undefined ? {} : { onRunStarted: options.onRunStarted }),
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
     });
@@ -101,23 +104,38 @@ export class ChatSessionState {
     this.attaching = true;
     try {
       const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
-      if (restored === undefined) return;
+      if (restored === undefined) {
+        // Nothing is going, so the transcript is what the Bureau holds of the thread.
+        const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
+        if (history !== undefined) this.restore(history);
+        return;
+      }
       // The stream's own events, not this row, are the transcript: the terminal history drops it.
       // Errors are the controller's to report.
       void this.controller.adapter
         .sendMessage({ role: 'user', content: '', hidden: true }, [])
         .catch(() => undefined);
       // The run is going, so the transcript is restored now and the person sees it while the run
-      // carries on, not at its end. It goes ahead of the row the turn is streaming into, and the
-      // terminal history replaces each of these rows with its own.
-      this.conversation = {
-        ...this.conversation,
-        ids: [...restored.ids, ...this.conversation.ids],
-        messages: { ...restored.messages, ...this.conversation.messages },
-      };
+      // carries on, not at its end. The terminal history replaces each of these rows with its own.
+      this.restore(restored);
     } finally {
       this.attaching = false;
     }
+  }
+
+  /**
+   * Puts the rows the Bureau holds ahead of the ones on screen. The person may have started typing
+   * while the transcript was being read, so what is on screen stays, and a row both have is the one
+   * on screen. It goes ahead of the row a turn is streaming into.
+   */
+  private restore(restored: ConversationHistory): void {
+    const current = this.conversation;
+    const known = new Set(current.ids);
+    this.conversation = {
+      ...current,
+      ids: [...restored.ids.filter((id) => !known.has(id)), ...current.ids],
+      messages: { ...restored.messages, ...current.messages },
+    };
   }
 
   dispose(): void {

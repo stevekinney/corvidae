@@ -42,6 +42,12 @@ export const queryKeys = {
   contexts: {
     /** One chat session, as `bureau.contexts.get` shows it. */
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
+    /** The caller's sessions, all of them or one agent's. */
+    list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+  },
+  agents: {
+    list: () => ['agents', 'list'] as const,
+    definition: (id: string) => ['agents', 'definition', id] as const,
   },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,

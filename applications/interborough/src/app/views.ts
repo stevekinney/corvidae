@@ -54,8 +54,8 @@ export type ViewDefinition = {
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
-  chat: { scopes: [], placeholder: true, canBeEmpty: true },
-  agents: { scopes: [], placeholder: true, canBeEmpty: true },
+  chat: { scopes: [], placeholder: false, canBeEmpty: true },
+  agents: { scopes: [], placeholder: false, canBeEmpty: true },
   workflows: { scopes: ['workflows:read'], placeholder: true, canBeEmpty: true },
   runs: {
     scopes: ['workflows:read'],
