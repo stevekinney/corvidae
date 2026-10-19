@@ -111,6 +111,7 @@ import {
   type RecoveredWorkflowInfo,
   textValueStore,
   type WorkflowState,
+  WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
 import {
   type GrantListFilter,
@@ -1878,6 +1879,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ),
       goalWorkflow: goalWorkflowHost.workflow,
       goalAttemptFence: goalAttemptFenceHost.fence,
+      // COR-1586: the resolver is wired below, after the agent file scan, and the engine reclaims
+      // runs meanwhile: a run that needs it waits instead of failing or taking the wrong agent.
+      awaitsCatalogAgentRunOptionsResolver: true,
       isWorkflowFileType: (type) => workflowFileTypes.current?.(type) ?? false,
       onScheduledFire: async (fire) => {
         const handler = await scheduledFireHandler.promise;
@@ -2034,43 +2038,81 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           track: (promise, label) => runtimeServices.deferred.track(promise, label),
         });
   await fileAgents?.files.refresh();
-  const agentCatalog = createAgentCatalog(agentsSnapshot, {
-    selectorAvailable: true,
-    files: fileAgents?.files,
-    snapshots: fileAgents?.snapshots,
-  });
+  // COR-1586: from here until the resolver is wired below, a run the engine reclaimed is waiting
+  // for it. If construction fails in that window nothing will ever wire it, so the waiters are
+  // settled and what construction started is stopped, in this order, before the error is rethrown.
+  const abandonConstruction = async (error: unknown): Promise<never> => {
+    runtime.abandonCatalogAgentRunOptionsResolver(
+      `the bureau failed while building its agent catalog and workflow runtime: ${serializeUnknownError(error)}`,
+    );
+    const failures: unknown[] = [];
+    const attempt = async (stop: () => unknown): Promise<void> => {
+      try {
+        await stop();
+      } catch (stopError) {
+        failures.push(stopError);
+      }
+    };
+    await attempt(() => fileAgents?.files.close());
+    await attempt(() => assetServiceInstance?.shutdown());
+    await attempt(() => runtime.durable?.observability?.dispose());
+    await attempt(() => runtime.durable?.engine.shutdown());
+    await attempt(() => runtime.disposeStorage?.());
+    if (failures.length === 0) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AggregateError(
+      [error, ...failures],
+      `${message} (and shutting down after the failure also failed)`,
+      { cause: failures[0] },
+    );
+  };
+  let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
+  try {
+    agentCatalog = createAgentCatalog(agentsSnapshot, {
+      selectorAvailable: true,
+      files: fileAgents?.files,
+      snapshots: fileAgents?.snapshots,
+    });
+  } catch (error) {
+    return abandonConstruction(error);
+  }
   // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
   // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
   // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
-  const workflowRuntime: WorkflowRuntime | undefined =
-    options.workflowDirectory === undefined || runtime.durable === undefined
-      ? undefined
-      : createWorkflowRuntime({
-          directory: options.workflowDirectory,
-          // The composition's engine type hides `register`; it is the one Weft `Engine`, and
-          // registering documents (`registerSource`) is exactly what it is lent out for here.
-          engine: runtime.durable.engine as Engine,
-          host: createWorkflowDocumentHost({
-            runAgentStep: (request) => runWorkflowAgentStep(request),
-          }),
-          snapshotStore: createWorkflowSnapshotStore({
-            store: runtime.kv,
-            nowISO: runtimeServices.clock.nowISO,
-          }),
-          runtime: runtimeServices,
-          diagnose: (message, cause) =>
-            diagnose({
-              level: 'error',
-              scope: 'workflow-files',
-              message: `[bureau] ${message}`,
-              cause,
+  let workflowRuntime: WorkflowRuntime | undefined;
+  try {
+    workflowRuntime =
+      options.workflowDirectory === undefined || runtime.durable === undefined
+        ? undefined
+        : createWorkflowRuntime({
+            directory: options.workflowDirectory,
+            // The composition's engine type hides `register`; it is the one Weft `Engine`, and
+            // registering documents (`registerSource`) is exactly what it is lent out for here.
+            engine: runtime.durable.engine as Engine,
+            host: createWorkflowDocumentHost({
+              runAgentStep: (request) => runWorkflowAgentStep(request),
             }),
-          createError: (message, code) => new BureauError(message, code),
-          payloadMaximumBytes: payloadMaximumBytesOf(options.durableGuardrails?.payloadSize),
-          track: (promise, label) => runtimeServices.deferred.track(promise, label),
-          // The trail is built later in construction; a write only happens after it exists.
-          audit: async (entry) => auditTrailInstance?.record(entry),
-        });
+            snapshotStore: createWorkflowSnapshotStore({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            runtime: runtimeServices,
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'workflow-files',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+            createError: (message, code) => new BureauError(message, code),
+            payloadMaximumBytes: payloadMaximumBytesOf(options.durableGuardrails?.payloadSize),
+            track: (promise, label) => runtimeServices.deferred.track(promise, label),
+            // The trail is built later in construction; a write only happens after it exists.
+            audit: async (entry) => auditTrailInstance?.record(entry),
+          });
+  } catch (error) {
+    return abandonConstruction(error);
+  }
   workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
@@ -7270,7 +7312,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         message: `[bureau] Left run "${event.workflowId}" of workflow type "${event.workflowType}" as it is: the type is not registered, so it will be recovered by a boot that registers it.`,
       });
     };
-    durable.engine.addEventListener('workflow:recovery-skipped', onRecoverySkipped);
+    durable.engine.addEventListener(WorkflowRecoverySkippedEvent.type, onRecoverySkipped);
     try {
       recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
       const handles = await durable.engine.recoverAll({
@@ -7607,7 +7649,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         );
       }
     } finally {
-      durable.engine.removeEventListener('workflow:recovery-skipped', onRecoverySkipped);
+      durable.engine.removeEventListener(WorkflowRecoverySkippedEvent.type, onRecoverySkipped);
       // AB-241 review finding: the post-recovery loop above is the LAST
       // consumer of `catalogRunRecoveryCache` for this boot pass (the
       // awaited `onRecoveredWorkflow` hook, invoked earlier during
