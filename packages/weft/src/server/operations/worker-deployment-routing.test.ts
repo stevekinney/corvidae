@@ -411,6 +411,31 @@ describe('weft.worker.deployments.remove', () => {
     expect(await stateOf(catalog, 'build-b')).toBe('ready');
   });
 
+  it('answers version-busy, leaving the build draining, when bindings keep landing during its scans', async () => {
+    const storage = new MemoryStorage();
+    const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
+    await catalog.setVersionState('billing', 'build-b', 'draining');
+    // A binding lands before each of the removal's writes, as work arriving continuously would.
+    const original = storage.conditionalBatch.bind(storage);
+    storage.conditionalBatch = async (conditions, operations) => {
+      await storage.put(
+        'worker-deployment-binding:billing:build-b',
+        crypto.getRandomValues(new Uint8Array(16)),
+      );
+      return original(conditions, operations);
+    };
+
+    const fault = await faultOf(
+      invoke(createRemoveWorkerDeploymentVersionOperation({ catalog }), {
+        deploymentName: 'billing',
+        buildId: 'build-b',
+      }),
+    );
+
+    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-busy' } });
+    expect(await stateOf(catalog, 'build-b')).toBe('draining');
+  });
+
   it('faults NotFound for a build that never existed and for one already removed', async () => {
     const catalog = await catalogWithBuilds();
     const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });

@@ -12,7 +12,7 @@ import { normalizeForkStep, selectPersistedWorkflowStartHeaders } from '../state
 import { loadWorkflowState } from '../storage-io.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { launchWorkflowFromCheckpoint } from './checkpoint-launch.ts';
-import { commitForkWrite } from './fork-build-fence.ts';
+import { commitForkWrite } from './fork-build-binding.ts';
 import {
   buildForkBatchOperations,
   buildForkCatalogEntryCondition,

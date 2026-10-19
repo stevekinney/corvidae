@@ -216,10 +216,10 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
       'names the build, under any worker-versioning policy, and every task-ledger entry that is ' +
       'not terminal whose execution requirement names the build; a dead-lettered entry is not ' +
       'terminal and keeps the build until it is cleared. Schedules and revision realms do not pin ' +
-      'a build and do not count. Removal fences the build before it scans, so a run that tries ' +
-      'to bind to it meanwhile (a start, a restart, a fork, a child, an upgrade) fails with ' +
-      'Conflict (`reason: "version-removing"`), and with `"version-removed"` once it is removed. ' +
-      'A refused build is left as it was, and its fence is deleted. The count is ' +
+      'a build and do not count. A run, a task, or a retry that tries to bind to the build once it ' +
+      'is removed fails with Conflict (`reason: "version-removed"`). If bindings keep landing on ' +
+      'the build while the removal scans it, the removal gives up with Conflict ' +
+      '(`reason: "version-busy"`); retry. A refused build is left as it was. The count is ' +
       'computed when the build is removed or listed, it is the `executionReferences` of ' +
       '`weft.worker.deployments.diagnostics`, and it falls to zero as the work finishes.',
     destructive: true,
@@ -459,6 +459,13 @@ function removalRefusal(
       code: 'Conflict',
       message: `${build} is a routing target and cannot be removed; route new traffic to another build first.`,
       data: { reason: WORKER_CONFLICT_REASONS.versionRouted },
+    };
+  }
+  if (refusal.outcome === 'busy') {
+    return {
+      code: 'Conflict',
+      message: `${build} kept receiving new work while it was scanned for removal; retry.`,
+      data: { reason: WORKER_CONFLICT_REASONS.versionBusy },
     };
   }
   return {

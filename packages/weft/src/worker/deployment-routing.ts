@@ -10,7 +10,7 @@ import {
   versionKey,
   WORKER_DEPLOYMENT_VERSION_PREFIX,
 } from './deployment-records.ts';
-import { reconcileRemovalFence, removeWorkerDeploymentVersion } from './deployment-removal.ts';
+import { removeWorkerDeploymentVersion } from './deployment-removal.ts';
 import type { WorkerExecutionRequirement, WorkerManifest } from './manifest/types.ts';
 
 export type WorkerDeploymentVersionState = 'ready' | 'draining' | 'removed';
@@ -39,7 +39,8 @@ export type WorkerDeploymentRemovalOutcome =
   | Readonly<{ outcome: 'not-found' }>
   | Readonly<{ outcome: 'not-draining'; state: WorkerDeploymentVersionState }>
   | Readonly<{ outcome: 'routed' }>
-  | Readonly<{ outcome: 'referenced'; references: number }>;
+  | Readonly<{ outcome: 'referenced'; references: number }>
+  | Readonly<{ outcome: 'busy' }>;
 
 export type WorkerDeploymentRouting = Readonly<{
   deploymentName: string;
@@ -328,8 +329,6 @@ export class WorkerDeploymentCatalog {
     if (currentBytes === null) return null;
     const current = decodeVersion(currentBytes);
     if (current.state === 'removed') return current;
-    // A resume reconciles a fence a crashed removal left on the build (`deployment-removal.ts`).
-    if (state === 'ready') await reconcileRemovalFence(this.#storage, deploymentName, buildId);
     if (current.state === state) return current;
     const next = { ...current, state };
     const applied = await storageConditionalBatch(
@@ -341,8 +340,9 @@ export class WorkerDeploymentCatalog {
   }
 
   /**
-   * Mark a build removed, irreversibly: only a draining build, behind the removal fence
-   * (`deployment-removal.ts`). Reports why it did not, when it did not.
+   * Mark a build removed, irreversibly: only a draining build, by optimistic concurrency against
+   * everything that binds work to it (`deployment-removal.ts`). Reports why it did not, when it
+   * did not, and `busy` when bindings kept landing on the build during its scans.
    */
   removeVersion(deploymentName: string, buildId: string): Promise<WorkerDeploymentRemovalOutcome> {
     return removeWorkerDeploymentVersion(this.#storage, deploymentName, buildId);

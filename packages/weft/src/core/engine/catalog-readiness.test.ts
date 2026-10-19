@@ -40,11 +40,10 @@ describe('ensureWorkflowCatalogReady', () => {
     await Promise.all([ensureWorkflowCatalogReady(engine), ensureWorkflowCatalogReady(engine)]);
 
     // Restoring scans `catalog-tombstone:` (the WFT-17/18 orphan sweep),
-    // `worker-deployment-removal:` (a deployment build's removal fences, COR-1582),
-    // `catalog-entry:`, and `catalog-active:` once each — four scans
-    // total, not eight, proving the concurrent callers shared one drain
+    // `catalog-entry:`, and `catalog-active:` once each — three scans
+    // total, not six, proving the concurrent callers shared one drain
     // rather than each restoring independently.
-    expect(scanCalls).toBe(4);
+    expect(scanCalls).toBe(3);
     expect(getWorkflowCatalog(engine).resolveActive('alpha')?.generation).toBe(1);
   });
 

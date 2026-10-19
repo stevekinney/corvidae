@@ -92,4 +92,8 @@ export const WEFT_RESERVED_KEY_PREFIXES = [
   'wf-teardown-needed:',
   'wf-teardown-succeeded:',
   'wf-terminal:',
+  'worker-deployment-binding:',
+  'worker-deployment-removed:',
+  'worker-deployment-routing:',
+  'worker-deployment-version:',
 ] as const;

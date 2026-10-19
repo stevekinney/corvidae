@@ -294,6 +294,8 @@ export type BulkOperationAuditEvent = {
 export type BulkOperationError = {
   id: WorkflowId;
   error: string;
+  /** A machine-readable cause when one is known; `version-removed` when the run's deployment build has been removed. */
+  reason?: string;
 };
 
 /**

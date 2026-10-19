@@ -528,6 +528,36 @@ describe('DeploymentsPanel — overlapping actions', () => {
 });
 
 describe('DeploymentsPanel — removal refused by the server', () => {
+  test('a removal that gave up because work kept landing on the build says to try again, from the fault code', async () => {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
+    scripted.routeJsonRpcMethodError(
+      'weft.worker.deployments.remove',
+      409,
+      'Deployment build billing/build-a kept receiving new work while it was scanned for removal; retry.',
+      'Conflict',
+      { reason: 'version-busy' },
+    );
+    const view = renderPanel();
+    await view.findByText('build-a');
+    const row = Array.from(view.container.querySelectorAll<HTMLElement>('tbody tr')).find(
+      (candidate) => candidate.textContent?.includes('build-a'),
+    )!;
+    await fireEvent.click(
+      Array.from(row.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Remove',
+      )!,
+    );
+    await fireEvent.input(await view.findByRole('textbox', { name: /Type .*to confirm/i }), {
+      target: { value: 'build-a' },
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Remove build' }));
+
+    expect(
+      await view.findByText(/New work kept landing on that build while it was checked for removal/),
+    ).not.toBeNull();
+  });
+
   test('a build the server finds not draining says to drain it first, from the fault code', async () => {
     scripted = new ScriptedFetch();
     routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);

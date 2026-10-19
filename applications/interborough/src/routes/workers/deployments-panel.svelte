@@ -131,6 +131,9 @@
     if (reason === WORKER_CONFLICT_REASONS.versionReferenced) {
       return 'Work is still bound to that build, so it was not removed. Reload to see its references.';
     }
+    if (reason === WORKER_CONFLICT_REASONS.versionBusy) {
+      return 'New work kept landing on that build while it was checked for removal, so it was not removed. Try again.';
+    }
     if (reason === WORKER_CONFLICT_REASONS.versionRouted) {
       return 'That build is now a routing target, so it was not removed. Route new traffic to another build first.';
     }

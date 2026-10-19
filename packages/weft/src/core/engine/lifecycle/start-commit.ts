@@ -27,11 +27,7 @@ import { buildWorkflowGenerationBumpOperation } from '../workflow-generation-fen
 import { refreshWorkflowVisibilityMaintenance } from '../workflow-visibility-maintenance.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 import { buildStartBatchOperations } from './start-batch.ts';
-import {
-  settleLostWorkerBuildFence,
-  startAttemptLimit,
-  workerBuildFenceStartCondition,
-} from './start-build-fence.ts';
+import { throwIfStartLostToRemoval, workerBuildStartBinding } from './start-build-binding.ts';
 import { StartIdempotencyRaceLostError } from './start-commit-errors.ts';
 import { tagStartConditions, type TaggedStartCondition } from './start-condition-tags.ts';
 import { identityFromStartOperations } from './start-identity.ts';
@@ -357,12 +353,10 @@ export async function buildAndCommitStartBatch(
   // primes the checkpoint-bytes CAS baseline (WFT-21). The create batch writes those same bytes,
   // so the initial checkpoint is serialized once per start rather than once per consumer.
   const serializedCheckpoint = getCommittedCheckpointBytes(internals, workflowId);
-  const maxAttempts = startAttemptLimit(
+  const maxAttempts =
     context.buildWorkflowConcurrencyStartOperations === undefined
       ? 1
-      : WORKFLOW_CONCURRENCY_ADMISSION_MAX_ATTEMPTS,
-    state,
-  );
+      : WORKFLOW_CONCURRENCY_ADMISSION_MAX_ATTEMPTS;
   let lastWorkflowConcurrencyStateKey: string | undefined;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -385,6 +379,8 @@ export async function buildAndCommitStartBatch(
 
     const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
     if (visibilityMaintenance !== undefined) await visibilityMaintenance;
+    // The build this run binds to: its tombstone must be absent, and its stamp moves with the run.
+    const workerBuild = workerBuildStartBinding(state);
     const startOperations = buildStartBatchOperations(
       internals,
       workflowId,
@@ -397,7 +393,7 @@ export async function buildAndCommitStartBatch(
       context.persistedWorkflowStartHeaders,
       mergeAdditionalStartOperations(
         mergeAdditionalStartOperations(
-          context.additionalStartOperations,
+          mergeAdditionalStartOperations(context.additionalStartOperations, workerBuild.operations),
           buildExplicitCreateGenerationOperations(context),
         ),
         mergeAdditionalStartOperations(idempotent?.operations, workflowConcurrency?.operations),
@@ -413,7 +409,7 @@ export async function buildAndCommitStartBatch(
       workflowConcurrency: workflowConcurrency?.conditions,
       workerStartOverride: context.additionalStartConditions,
       catalogEntry: catalogEntryPrecondition,
-      workerBuildFence: workerBuildFenceStartCondition(state),
+      workerBuildTombstone: workerBuild.condition,
     });
     // ADR 0002 row `startWorkflow`/`buildAndCommitStartBatch`: claim-acquiring for
     // an ordinary start, but the delayed `startAt`/`startAfter` create batch is
@@ -479,9 +475,8 @@ export async function buildAndCommitStartBatch(
     if (await hasCatalogEntryConflict(internals, conditions)) {
       throw new WorkflowRevisionUnavailableError(state.type, state.revision, 'not-installed');
     }
-    // The build this run binds to is being removed, or is removed: say so, or try again if the
-    // removal that fenced it was refused and has released it.
-    if (await settleLostWorkerBuildFence(internals.storage, conditions, state)) continue;
+    // The build this run binds to was removed: say so, before the fallback below names a duplicate.
+    await throwIfStartLostToRemoval(internals.storage, state);
     if (outcome === 'claim-lost') {
       return throwWorkflowClaimUnavailable(internals, workflowId);
     }

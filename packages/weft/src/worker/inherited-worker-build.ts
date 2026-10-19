@@ -1,23 +1,18 @@
 import type { Storage } from '../storage/interface.ts';
-import { removalFenceKey } from './deployment-removal-fence.ts';
+import { removedTombstoneKey, type WorkerBuildIdentity } from './deployment-records.ts';
 import { WorkerDeploymentCatalog } from './deployment-routing.ts';
-import {
-  WorkerDeploymentVersionRemovedError,
-  WorkerDeploymentVersionRemovingError,
-} from './deployment-version-removed-error.ts';
-
-type BuildIdentity = Readonly<{ deploymentName: string; buildId: string }>;
+import { WorkerDeploymentVersionRemovedError } from './deployment-version-removed-error.ts';
 
 /**
  * Refuse a run that would inherit a worker binding whose build has been removed. A restart or a
  * fork copies the binding of a terminal run, which the reference scan does not count. This read
- * fails fast, and it also covers a build removed before removal fences existed; the commit itself
- * is fenced by `workerBuildFenceAbsentCondition`. A build the catalog has never heard of is not
- * refused: nothing removed it.
+ * fails fast, and it also covers a build removed before tombstones existed; the commit itself is
+ * guarded by the tombstone condition every binding adds. A build the catalog has never heard of is
+ * not refused: nothing removed it.
  */
 export async function assertInheritedWorkerBuildNotRemoved(
   storage: Storage,
-  binding: BuildIdentity,
+  binding: WorkerBuildIdentity,
 ): Promise<void> {
   const version = await new WorkerDeploymentCatalog(storage).getVersion(
     binding.deploymentName,
@@ -29,16 +24,15 @@ export async function assertInheritedWorkerBuildNotRemoved(
 }
 
 /**
- * After a commit that binds a run to `binding`'s build lost, say why: the build is `removed`, or it
- * is being removed. Returns `false` when the fence is gone, so the loss was to a removal that has
- * since been refused and the commit can be tried again.
+ * After a commit that binds work to `build` lost, say whether it lost to the build's removal: the
+ * tombstone is present. Positive evidence only, so a commit that lost for any other reason keeps
+ * its own error. The tombstone is checked for presence and never decoded.
  */
-export async function throwIfWorkerBuildFenced(
+export async function throwIfWorkerBuildRemoved(
   storage: Storage,
-  binding: BuildIdentity,
-): Promise<boolean> {
-  const fence = await storage.get(removalFenceKey(binding.deploymentName, binding.buildId));
-  if (fence === null) return false;
-  await assertInheritedWorkerBuildNotRemoved(storage, binding);
-  throw new WorkerDeploymentVersionRemovingError(binding.deploymentName, binding.buildId);
+  build: WorkerBuildIdentity,
+): Promise<void> {
+  if ((await storage.get(removedTombstoneKey(build.deploymentName, build.buildId))) !== null) {
+    throw new WorkerDeploymentVersionRemovedError(build.deploymentName, build.buildId);
+  }
 }
