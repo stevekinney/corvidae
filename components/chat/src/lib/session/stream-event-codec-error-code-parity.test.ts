@@ -81,6 +81,7 @@ const codesByKind: Record<ChatAgentRunErrorCode, ChatAgentRunErrorKind> = {
   SUBAGENT_RUN_FAILED: 'tool',
   TRIPWIRE: 'policy',
   UNKNOWN: 'generate',
+  UNSUPPORTED_MEDIA_TYPE: 'policy',
 };
 
 describe('ChatAgentRunErrorCode / Operative AgentRunErrorCode parity (COR-248)', () => {

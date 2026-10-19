@@ -20,6 +20,7 @@ import {
   readFrames,
   subscribeRequest,
 } from './management-fixtures.test-support.ts';
+import { createMemoryAssetStorage } from '../../assets/storage';
 
 const ORIGIN = '2026-10-18T00:00:00.000Z';
 const DAY_MS = 86_400_000;
@@ -30,6 +31,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau',
       agents: {},
       generate: finishes,
@@ -103,6 +105,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau-two',
       agents: {},
       generate: parksThenAnswers,
@@ -178,6 +181,7 @@ describe('bureau.tasks.events below the retention floor', () => {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });
     const fixture = createSqliteStorageFixture({ runtime });
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'retention-bureau-three',
       agents: {},
       generate: chargesOnce,
