@@ -199,11 +199,29 @@ export function incompleteRunReasons(results: SuiteResults): string[] {
 
 export type ApplyDecision = { apply: boolean; reason: string };
 
+/** The spec that holds the terminal scope guard, relative to the tests directory. */
+export const TERMINAL_SCOPE_GUARD_FILE = 'terminal-visual.playwright.ts';
+/** The guard's exact title. It fails whenever `CINDER_TEST_COMPONENTS` leaves the terminal out. */
+export const TERMINAL_SCOPE_GUARD_TITLE =
+  'the screenshot scope includes the terminal, so every cell captures an image';
+
+/** Whether a failure is the terminal scope guard: its file and its exact, top-level title. */
+export function isTerminalScopeGuard(failure: Pick<FailedTest, 'file' | 'title'>): boolean {
+  return (
+    failure.file === TERMINAL_SCOPE_GUARD_FILE &&
+    failure.title === `${TERMINAL_SCOPE_GUARD_FILE} › ${TERMINAL_SCOPE_GUARD_TITLE}`
+  );
+}
+
 /**
  * Whether an update run's baselines may be applied:
  * - a run without a report, or whose report shows it did not complete normally
  *   (`incompleteRunReasons`), is never applied, whatever its exit code or flags;
  * - a passing suite is applied;
+ * - a run scoped by `CINDER_TEST_COMPONENTS` whose only failure is the terminal
+ *   scope guard (`isTerminalScopeGuard`) is applied: that guard fails by design
+ *   whenever the scope leaves the terminal out (COR-1574). On a full run, or next
+ *   to any other failure, it blocks like every other failure;
  * - a suite that completed with failures (exit 1 and a JSON report) is applied
  *   only with `--accept-behavioural-failures`, and never when any failure is a
  *   screenshot failure;
@@ -213,6 +231,7 @@ export function decideApply(
   exitCode: number,
   results: SuiteResults | undefined,
   acceptBehaviouralFailures: boolean,
+  componentScope: 'all' | readonly string[],
 ): ApplyDecision {
   if (results === undefined) {
     return {
@@ -232,6 +251,18 @@ export function decideApply(
     return {
       apply: false,
       reason: `The run exited ${exitCode} without a completed Playwright report; nothing is applied.`,
+    };
+  }
+  const [onlyFailure, ...otherFailures] = results.failures;
+  if (
+    componentScope !== 'all' &&
+    onlyFailure !== undefined &&
+    otherFailures.length === 0 &&
+    isTerminalScopeGuard(onlyFailure)
+  ) {
+    return {
+      apply: true,
+      reason: `The run was scoped to ${componentScope.join(', ')}, and its one failure is the terminal scope guard, which fails by design when the scope leaves the terminal out.`,
     };
   }
   const screenshotFailures = results.failures.filter((failure) => failure.screenshot);

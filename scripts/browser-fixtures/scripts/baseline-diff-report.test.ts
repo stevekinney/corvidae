@@ -147,7 +147,7 @@ describe('buildBaselineDiffReport', () => {
       renamed: 2,
       renamedUnchanged: 1,
       renamedChanged: 1,
-      deletedOrphans: 3,
+      orphans: 3,
       unpairedOrphans: 1,
       restored: 0,
       needsClassification: 3,
@@ -244,6 +244,65 @@ describe('buildBaselineDiffReport', () => {
       'Host 1-minute load: 11.50 on 10 logical CPUs at the start of the run, 42.00 on 10 logical CPUs at the end.',
     );
     expect(markdown).not.toContain('Host 1-minute load');
+  });
+
+  it('reports orphans as kept after a scoped run and as deleted after a full one (COR-1574)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'baseline-diff-report-'));
+    const oldDirectory = join(root, 'old');
+    const newDirectory = join(root, 'new');
+    write(oldDirectory, 'chip/light-desktop-primary.png', png(white));
+    write(newDirectory, 'chip/light-desktop-primary.png', png(twoBlack));
+    write(oldDirectory, 'select/light-desktop-default.png', png(white));
+    write(newDirectory, 'select/light-desktop-assertion.png', png(white));
+    write(oldDirectory, 'button/light-desktop-primary.png', png(white));
+    const build = (scope?: { componentScope: 'all' | string[]; playwrightArguments: string[] }) =>
+      buildBaselineDiffReport({
+        oldDirectory,
+        newDirectory,
+        regenerated: ['chip/light-desktop-primary.png', 'select/light-desktop-assertion.png'],
+        ...(scope === undefined ? {} : { scope }),
+      });
+    const deletionWording = /delet\w*.*orphan|orphan.*delet/i;
+
+    for (const scope of [
+      { componentScope: ['chip', 'select'], playwrightArguments: [] },
+      { componentScope: 'all' as const, playwrightArguments: ['--grep', 'chip'] },
+    ]) {
+      const scoped = await build(scope);
+      expect(scoped.orphanDisposition).toBe('kept');
+      expect(scoped.orphaned).toEqual([
+        'button/light-desktop-primary.png',
+        'select/light-desktop-default.png',
+      ]);
+      expect(filesToDelete(scoped)).toEqual([]);
+      const written = await writeBaselineDiffReport(scoped, join(root, 'scoped-report'), 'Refresh');
+      const markdown = readFileSync(written.markdown, 'utf8');
+      expect(markdown).toContain('| Kept orphans (all) | 2 |');
+      expect(markdown).toContain('| Kept orphans without a rename partner | 1 |');
+      expect(markdown).toContain('## Kept orphans with a rename partner');
+      expect(markdown).toContain('## Kept orphans without a rename partner');
+      expect(markdown).toContain(
+        '- `select/light-desktop-default.png` renamed to `select/light-desktop-assertion.png`',
+      );
+      expect(markdown).toContain('Orphans: kept 2 orphans.');
+      expect(markdown.split('\n').filter((line) => deletionWording.test(line))).toEqual([]);
+    }
+
+    for (const report of [
+      await build(),
+      await build({ componentScope: 'all', playwrightArguments: [] }),
+    ]) {
+      expect(report.orphanDisposition).toBe('deleted');
+      expect(filesToDelete(report)).toEqual([
+        'button/light-desktop-primary.png',
+        'select/light-desktop-default.png',
+      ]);
+      const markdown = renderReportMarkdown(report, 'Refresh');
+      expect(markdown).toContain('| Deleted orphans (all) | 2 |');
+      expect(markdown).toContain('## Deleted orphans with a rename partner');
+      expect(markdown).toContain('## Deleted orphans without a rename partner');
+      expect(markdown).toContain('Orphans: deleted 2 orphans after a full, unfiltered run.');
+    }
   });
 
   it('marks a small change as below the classification threshold', async () => {

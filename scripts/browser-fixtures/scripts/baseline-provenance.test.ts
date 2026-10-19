@@ -7,10 +7,10 @@ import {
   LINUX_BASELINE_DIRECTORY,
   PROVENANCE_FILE_NAME,
   REPOSITORY_ROOT,
-  REQUIRED_BASELINE_ARCHITECTURE,
-  REQUIRED_OS_CODENAME,
+  committedProvenanceProblems,
   createBaselineProvenance,
   dockerImageTagForPlaywrightVersion,
+  mergeScopedProvenance,
   parseBaselineProvenance,
   playwrightBaseImage,
   readLockedPlaywrightVersion,
@@ -118,21 +118,93 @@ describe('repository pins', () => {
   });
 });
 
+describe('scoped component renders (COR-1574)', () => {
+  const full = createBaselineProvenance({
+    ...INPUT,
+    renderedSourceSha: 'f'.repeat(40),
+    componentScope: 'all',
+  });
+  const scoped = createBaselineProvenance({
+    ...INPUT,
+    renderedSourceSha: 'b'.repeat(40),
+    componentScope: 'chat-conversation-list,button',
+  });
+
+  it('keeps the full-run record and adds a render for each scoped component', () => {
+    const merged = mergeScopedProvenance(full, scoped);
+    expect(merged).toEqual({
+      ...full,
+      componentRenders: {
+        button: { renderedSourceSha: 'b'.repeat(40), suiteExitCode: 1 },
+        'chat-conversation-list': { renderedSourceSha: 'b'.repeat(40), suiteExitCode: 1 },
+      },
+    });
+    expect(parseBaselineProvenance(JSON.stringify(merged))).toEqual(merged);
+    expect(committedProvenanceProblems(merged, '1.63.0')).toEqual([]);
+  });
+
+  it('replaces an earlier render of the same component and keeps the others', () => {
+    const later = createBaselineProvenance({
+      ...INPUT,
+      renderedSourceSha: 'c'.repeat(40),
+      suiteExitCode: 0,
+      componentScope: 'button',
+    });
+    expect(
+      mergeScopedProvenance(mergeScopedProvenance(full, scoped), later).componentRenders,
+    ).toEqual({
+      button: { renderedSourceSha: 'c'.repeat(40), suiteExitCode: 0 },
+      'chat-conversation-list': { renderedSourceSha: 'b'.repeat(40), suiteExitCode: 1 },
+    });
+  });
+
+  it('refuses a scoped render under another renderer, or onto a record that is not a full run', () => {
+    expect(() => mergeScopedProvenance(full, { ...scoped, playwrightVersion: '1.64.0' })).toThrow(
+      /playwrightVersion/,
+    );
+    expect(() => mergeScopedProvenance(scoped, scoped)).toThrow(/not a full one/);
+    expect(() => mergeScopedProvenance(full, full)).toThrow(/replaces provenance.json/);
+  });
+
+  it('rejects a malformed component render', () => {
+    expect(() =>
+      parseBaselineProvenance(JSON.stringify({ ...full, componentRenders: { button: {} } })),
+    ).toThrow(/componentRenders.button/);
+    expect(() =>
+      parseBaselineProvenance(JSON.stringify({ ...full, componentRenders: [] })),
+    ).toThrow(/componentRenders/);
+  });
+
+  it('names every way a record differs from the authoritative renderer', () => {
+    expect(
+      committedProvenanceProblems(
+        {
+          ...scoped,
+          architecture: 'x64',
+          componentRenders: { button: { renderedSourceSha: 'HEAD', suiteExitCode: 3 } },
+        },
+        '1.63.0',
+      ),
+    ).toEqual([
+      'architecture is "x64", expected "arm64"',
+      'componentScope is ["button","chat-conversation-list"], expected "all"',
+      'component button renderedSourceSha is not a commit: HEAD',
+      'component button suiteExitCode is 3, expected 0 or 1',
+    ]);
+  });
+});
+
 describe('committed provenance', () => {
-  // Lands with the refreshed baselines (COR-1512). Provenance is written only by
-  // update-snapshots.ts inside the renderer, so it must agree with the lockfile pin and
-  // the arm64 jammy renderer the authenticity guard enforces.
+  // Lands with the refreshed baselines (COR-1512). The full-run record is written only by
+  // update-snapshots.ts inside the renderer, and a scoped refresh only adds component renders
+  // to it (COR-1574), so it must agree with the lockfile pin and the arm64 jammy renderer the
+  // authenticity guard enforces.
   it('records the renderer the lockfile and the authenticity guard require', () => {
     const provenance = parseBaselineProvenance(
       readFileSync(join(REPOSITORY_ROOT, LINUX_BASELINE_DIRECTORY, PROVENANCE_FILE_NAME), 'utf8'),
     );
-    const { playwrightVersion } = readRepositoryPins();
-    expect(provenance.playwrightVersion).toBe(playwrightVersion);
-    expect(provenance.osCodename).toBe(REQUIRED_OS_CODENAME);
-    expect(provenance.architecture).toBe(REQUIRED_BASELINE_ARCHITECTURE);
-    expect(provenance.dockerImageTag).toBe(dockerImageTagForPlaywrightVersion(playwrightVersion));
-    expect(provenance.componentScope).toBe('all');
-    expect(provenance.renderedSourceSha).toMatch(/^[0-9a-f]{40}$/);
-    expect([0, 1]).toContain(provenance.suiteExitCode);
+    expect(committedProvenanceProblems(provenance, readRepositoryPins().playwrightVersion)).toEqual(
+      [],
+    );
   });
 });

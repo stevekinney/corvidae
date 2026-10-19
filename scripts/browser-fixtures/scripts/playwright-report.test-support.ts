@@ -3,22 +3,36 @@
  * for the update tooling's fail-closed tests (COR-1537). No browser runs: each
  * report is the text a container run would leave in `/out/results.json`.
  */
+import { TERMINAL_SCOPE_GUARD_FILE, TERMINAL_SCOPE_GUARD_TITLE } from './suite-results.ts';
 
 type FixtureResult = { status: string; errors?: { message: string }[] };
-type FixtureTest = { title: string; expectedStatus?: string; results: FixtureResult[] };
+type FixtureTest = {
+  title: string;
+  /** The spec file, relative to the tests directory; `components.playwright.ts` by default. */
+  file?: string;
+  expectedStatus?: string;
+  results: FixtureResult[];
+};
 
-/** A report whose single file holds the given tests, with stats derived the way Playwright derives them. */
+/**
+ * A report holding the given tests, one top-level suite per file, with stats derived the way
+ * Playwright derives them.
+ */
 export function playwrightReport(
   tests: readonly FixtureTest[],
   errors: readonly string[] = [],
 ): string {
   const stats = { expected: 0, unexpected: 0, flaky: 0, skipped: 0 };
-  const specs = tests.map((test, index) => {
+  const suites = new Map<string, { title: string; file: string; specs: unknown[] }>();
+  for (const [index, test] of tests.entries()) {
     const status = outcome(test);
     stats[status] += 1;
-    return {
+    const file = test.file ?? 'components.playwright.ts';
+    const suite = suites.get(file) ?? { title: file, file, specs: [] };
+    suites.set(file, suite);
+    suite.specs.push({
       title: test.title,
-      file: 'components.playwright.ts',
+      file,
       line: index + 1,
       tests: [
         {
@@ -27,13 +41,10 @@ export function playwrightReport(
           results: test.results.map((result) => ({ errors: [], ...result })),
         },
       ],
-    };
-  });
+    });
+  }
   return JSON.stringify({
-    suites:
-      specs.length === 0
-        ? []
-        : [{ title: 'components.playwright.ts', file: 'components.playwright.ts', specs }],
+    suites: [...suites.values()],
     errors: errors.map((message) => ({ message })),
     stats: { startTime: '2026-10-15T12:00:00.000Z', duration: 30_500, ...stats },
   });
@@ -63,3 +74,15 @@ export const passed = (title: string): FixtureTest => ({
   title,
   results: [{ status: 'passed' }],
 });
+
+/** The terminal scope guard as a run scoped away from the terminal reports it (COR-1574). */
+export const failedTerminalScopeGuard: FixtureTest = {
+  title: TERMINAL_SCOPE_GUARD_TITLE,
+  file: TERMINAL_SCOPE_GUARD_FILE,
+  results: [
+    {
+      status: 'failed',
+      errors: [{ message: 'Error: expect(received).toBe(expected) // Object.is equality' }],
+    },
+  ],
+};
