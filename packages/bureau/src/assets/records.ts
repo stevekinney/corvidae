@@ -19,7 +19,12 @@
  * previous JSON, so the record and the owner/digest keys it implies change
  * together or not at all.
  */
-import { AssetAccessDeniedError, AssetConflictError, AssetNotFoundError } from './errors';
+import {
+  AssetAccessDeniedError,
+  AssetConflictError,
+  AssetNotFoundError,
+  AssetRecordCorruptError,
+} from './errors';
 import { mimeFamilyOf, modalityOf } from './media-inspection';
 import type { AssetStorage, AssetStorageOperation } from './storage';
 import type {
@@ -98,13 +103,130 @@ export interface LoadedRecord {
   readonly raw: string;
 }
 
+/** The members every record carries, and the top-level type each one must have. */
+const REQUIRED_MEMBERS: ReadonlyArray<
+  readonly [member: keyof AssetRecord, type: 'string' | 'number' | 'array' | 'object']
+> = [
+  ['assetId', 'string'],
+  ['revision', 'number'],
+  ['state', 'string'],
+  ['custody', 'string'],
+  ['ownerId', 'string'],
+  ['readers', 'array'],
+  ['media', 'object'],
+  ['provenance', 'object'],
+  ['createdAt', 'string'],
+  ['updatedAt', 'string'],
+  ['references', 'array'],
+  ['holds', 'array'],
+  ['safety', 'array'],
+  ['providerCopies', 'array'],
+];
+
+/** Optional members the read path treats as strings: each must be a string when it is present. */
+const OPTIONAL_STRING_MEMBERS: ReadonlyArray<keyof AssetRecord> = [
+  'declaredMediaType',
+  'mediaType',
+  'digest',
+  'providerFetchUrl',
+  'retainUntil',
+  'duplicateOf',
+  'expiredAt',
+  'deletedAt',
+  'tombstoneUntil',
+];
+
+/** Whether a string parses as a finite date: `computeExpiresAt` throws a `RangeError` for one that does not. */
+function parsesAsDate(value: unknown): boolean {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function hasType(value: unknown, type: 'string' | 'number' | 'array' | 'object'): boolean {
+  if (type === 'array') return Array.isArray(value);
+  if (type === 'object') return isPlainObject(value);
+  return typeof value === type;
+}
+
+/**
+ * Parses a stored record and checks the shape the service reads (COR-1581): `version` is 1, every
+ * required member is present with the right top-level type, and each `references` entry carries a
+ * string `holderId` and `until`, because `retain` reads both, and every date the claim path parses
+ * (`retainUntil`, each `until`) must be a date. Optional members the read path treats as strings
+ * must be strings when present. The elements of the other arrays are not checked. A stored `null`
+ * is no record at all (`undefined`, reading as not found); anything else that fails throws
+ * {@link AssetRecordCorruptError}.
+ */
+function parseRecord(raw: string, assetId: string): AssetRecord | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AssetRecordCorruptError(assetId, 'the JSON does not parse');
+  }
+  if (parsed === null) return undefined;
+  if (!isPlainObject(parsed)) throw new AssetRecordCorruptError(assetId, 'it is not an object');
+  if (parsed['version'] !== 1) throw new AssetRecordCorruptError(assetId, 'version is not 1');
+  for (const [member, type] of REQUIRED_MEMBERS) {
+    if (!hasType(parsed[member], type)) {
+      throw new AssetRecordCorruptError(assetId, `${member} is missing or has the wrong type`);
+    }
+  }
+  // A record stored under one key that names another asset would write its claim under that other
+  // key and fail as a conflict, which the drain reads as transient: it would never stop retrying.
+  if (parsed['assetId'] !== assetId) {
+    throw new AssetRecordCorruptError(assetId, 'assetId does not match the key it is stored under');
+  }
+  // Every member the retain and claim paths read, down to the projection a claim returns: a value
+  // that passes the checks above but throws there (`computeExpiresAt` on an unparseable date,
+  // `modalityOf` on a non-string media type) would read as a transient failure and stall the drain.
+  for (const member of OPTIONAL_STRING_MEMBERS) {
+    if (parsed[member] !== undefined && typeof parsed[member] !== 'string') {
+      throw new AssetRecordCorruptError(assetId, `${member} is present but is not a string`);
+    }
+  }
+  if (parsed['byteLength'] !== undefined && typeof parsed['byteLength'] !== 'number') {
+    throw new AssetRecordCorruptError(assetId, 'byteLength is present but is not a number');
+  }
+  if (parsed['rejection'] !== undefined && !isPlainObject(parsed['rejection'])) {
+    throw new AssetRecordCorruptError(assetId, 'rejection is present but is not an object');
+  }
+  if (parsed['retainUntil'] !== undefined && !parsesAsDate(parsed['retainUntil'])) {
+    throw new AssetRecordCorruptError(assetId, 'retainUntil is not a date');
+  }
+  if (!isPlainObject(parsed['provenance']) || typeof parsed['provenance']['kind'] !== 'string') {
+    throw new AssetRecordCorruptError(assetId, 'provenance has no string kind');
+  }
+  for (const reference of parsed['references'] as unknown[]) {
+    if (
+      !isPlainObject(reference) ||
+      typeof reference['holderId'] !== 'string' ||
+      typeof reference['until'] !== 'string'
+    ) {
+      throw new AssetRecordCorruptError(assetId, 'a reference lacks a string holderId or until');
+    }
+    if (!parsesAsDate(reference['until'])) {
+      throw new AssetRecordCorruptError(assetId, 'a reference until is not a date');
+    }
+  }
+  return parsed as unknown as AssetRecord;
+}
+
+/**
+ * Loads an asset's record, or `undefined` when it has none. Throws {@link AssetRecordCorruptError}
+ * for a record that is stored but cannot be read as one.
+ */
 export async function loadRecord(
   storage: Pick<AssetStorage, 'get'>,
   assetId: string,
 ): Promise<LoadedRecord | undefined> {
   const raw = await storage.get(KEYS.record(assetId));
   if (raw === null) return undefined;
-  return { record: JSON.parse(raw) as AssetRecord, raw };
+  const record = parseRecord(raw, assetId);
+  return record === undefined ? undefined : { record, raw };
 }
 
 export async function createRecord(

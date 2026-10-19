@@ -29,9 +29,13 @@
  * `onCorrupt`, never trusted as a partial value.
  */
 
-import { type DelegationGrant, isDelegationGrant } from '@lostgradient/operative';
+import {
+  type DelegationGrant,
+  isDelegationGrant,
+  validateStoredResponseParts,
+} from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
-import { type MultiModalContent, multiModalContentSchema } from 'conversationalist';
+import type { MultiModalContent } from 'conversationalist';
 
 // ---------------------------------------------------------------------------
 // Record shapes
@@ -209,22 +213,12 @@ function isWorkflowIdentity(value: unknown): value is BureauChildWorkflowIdentit
   );
 }
 
-/** A child's recorded part is a valid content part and, like a run result's, never carries inline bytes. */
-function isStoredPart(part: unknown): boolean {
-  const parsed = multiModalContentSchema.safeParse(part);
-  if (!parsed.success) return false;
-  const source = (parsed.data as { source?: { kind?: string } }).source;
-  return source?.kind !== 'inline';
-}
-
 function isOutcome(value: unknown): value is BureauChildOutcome {
   return (
     isRecord(value) &&
     isOptional(value['finishReason'], 'string') &&
     isOptional(value['content'], 'string') &&
-    (value['parts'] === undefined ||
-      (Array.isArray(value['parts']) &&
-        (value['parts'] as unknown[]).every((part) => isStoredPart(part)))) &&
+    (value['parts'] === undefined || validateStoredResponseParts(value['parts']).valid) &&
     isOptional(value['reason'], 'string')
   );
 }

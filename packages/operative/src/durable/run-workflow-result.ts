@@ -1,4 +1,4 @@
-import { type MultiModalContent, multiModalContentSchema } from 'conversationalist';
+import type { MultiModalContent } from 'conversationalist';
 
 import type { AgentRunErrorCode, AgentRunErrorKind } from '../errors';
 import { BudgetExceededError, ElicitationDeniedError, GuardrailTripwireError } from '../errors';
@@ -7,6 +7,7 @@ import {
   UnsupportedRunResultLegacyFieldError,
   UnsupportedRunResultVersionError,
 } from '../run-envelope';
+import { validateStoredResponseParts } from '../stored-parts';
 import type { FinishReason } from '../types';
 
 /** Plain, cloneable summary returned when the durable run completes. */
@@ -133,21 +134,11 @@ function assertSummaryShape(summary: Record<string, unknown>): void {
   if (typeof summary['content'] !== 'string') {
     throw new InvalidRunResultError('content must be a string');
   }
-  if (!Array.isArray(summary['parts'])) {
-    throw new InvalidRunResultError('parts must be an array');
-  }
-  // A recovered result is read back as a `RunResult`: each part must be a well-formed content part,
-  // and none may carry inline bytes, which are admitted as managed assets before they are persisted.
-  for (const [index, part] of summary['parts'].entries()) {
-    const parsed = multiModalContentSchema.safeParse(part);
-    if (!parsed.success) {
-      throw new InvalidRunResultError(`parts[${index}] is not a valid content part`);
-    }
-    const source = (parsed.data as { source?: { kind?: string } }).source;
-    if (source?.kind === 'inline') {
-      throw new InvalidRunResultError(`parts[${index}] carries inline bytes`);
-    }
-  }
+  // A recovered result is read back as a `RunResult`: its parts go through the one stored-parts
+  // check, which refuses a malformed part and any inline bytes (admitted as managed assets before
+  // they are persisted).
+  const parts = validateStoredResponseParts(summary['parts']);
+  if (!parts.valid) throw new InvalidRunResultError(parts.reason);
   if (typeof summary['finishReason'] !== 'string' || !FINISH_REASONS.has(summary['finishReason'])) {
     throw new InvalidRunResultError('finishReason must be a valid finish reason');
   }
