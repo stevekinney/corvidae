@@ -10,8 +10,10 @@ import { type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import type { RecoveredRunHandle } from './active-run-event-surface';
 import {
+  announceRunFailure,
   classifyTimeoutMessage,
   finalizeRunResult,
+  isFailureFinishReason,
   loadRunStateFromCheckpoint,
   lostRunToAnotherEngine,
   makeInterruptedRunResult,
@@ -49,11 +51,14 @@ export async function driveReattachedRun(
   abortOutcome: () => Promise<boolean> | undefined,
   reachability: { unreachable: boolean },
   runtime: RuntimeServices,
+  failedBeforeReplayFromCaller?: boolean | undefined,
 ): Promise<RunResult> {
   const runStartTime = runtime.monotonic.now();
-  // Started before anything below awaits, so it reads the state as the recovery hook handed the
-  // run over (see `engineFailedRunBeforeReplay`).
-  const failedBeforeReplay = engineFailedRunBeforeReplay(context, runId);
+  // A caller that knows whether the engine failed this run before replay says so, and that is
+  // used as given. Otherwise the engine's own state is the inference, read before anything below
+  // awaits (see `engineFailedRunBeforeReplay`).
+  const failedBeforeReplay =
+    failedBeforeReplayFromCaller ?? engineFailedRunBeforeReplay(context, runId);
   // A step's own `run.error`, so a rejection that follows it is not announced a second time.
   let terminalErrorFromEvent: AgentRunError | undefined;
   emitter.addEventListener('run.error', (event) => {
@@ -64,6 +69,10 @@ export async function driveReattachedRun(
   try {
     summary = normalizeAgentRunWorkflowResult(await handle.result());
   } catch (error) {
+    // A summary this build cannot read is not the engine failing the run, so it is rethrown. A
+    // current-version summary that breaks its own shape (`InvalidRunResultError`) settles as
+    // `error` below on purpose, with the malformed field named: the run is over, and leaving its
+    // session `running` with no terminal event would hide the corruption.
     if (error instanceof UnsupportedRunResultVersionError) {
       throw error;
     }
@@ -132,15 +141,18 @@ export async function driveReattachedRun(
       return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
     }
 
-    // The engine terminally failed this run before replay because the recovery resolver returned
-    // services-unavailable, and the resolver ALREADY reconciled that session to `error`. Firing a
-    // terminal lifecycle here would write a second terminal save over what the resolver owns, so
-    // only log and resolve quiet. The state read began when this driver started, which is when
-    // the recovery hook handed the run over; a failure after replay began cannot have reached
-    // `failed` before then, except in the few microtasks between that hand-over and the read.
+    // The engine terminally failed this run before replay, because the recovery resolver returned
+    // services-unavailable. The resolver that reconciles a session records it as `error`, and a
+    // terminal lifecycle here would write a second terminal save over that, so only log and
+    // resolve quiet. The fact comes from the caller when it knows it. Without it, it is inferred
+    // from the engine's state, which is read when this driver starts: a run that failed AFTER
+    // replay reads `failed` too when the engine's storage serves the read late (an I/O reordering,
+    // or a caller that reattaches a run that has already failed), and the inference then leaves
+    // it unreported, the same as before this driver reported failures at all. A recovery path that
+    // can tell the two apart should say so.
     if (!timedOut && (await failedBeforeReplay)) {
       console.error(
-        `[operative] Reattached durable run "${runId}" was failed by the engine before replay: ${
+        `[operative] Reattached durable run "${runId}" was failed by the engine before replay, or failed before this process read its state: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -181,6 +193,28 @@ export async function driveReattachedRun(
     conversation: durableConversation,
   } = await reconstructRunResult(context, runId, summary, runtime);
 
+  // A run that ended in failure announces it with `run.error` before `run.completed`, as every
+  // failed run does, because that is what turns the run record to `error` and ends an attached
+  // stream with `RUN_ERROR`. The step's own `run.error` fired in the process that died when the
+  // run failed before the crash, so this one has not seen it: the summary is all that says so.
+  // One this process saw is kept and not repeated.
+  const reportedError = result.error instanceof AgentRunError ? result.error : undefined;
+  const terminalError =
+    terminalErrorFromEvent ??
+    (isFailureFinishReason(result.finishReason)
+      ? announceRunFailure(
+          emitter,
+          runState.steps.length,
+          reportedError ??
+            reconstructTerminalRunError({
+              finishReason: result.finishReason,
+              steps: runState.steps.length,
+              errorMessage: summary.errorMessage,
+              tripwire: summary.tripwire,
+            }),
+        )
+      : reportedError);
+
   // `hooks: undefined` — the recovered run's `onRunComplete`/etc. hooks are
   // non-serializable run behavior; they were rebuilt by the resolver into
   // `ctx.services`, which the bureau never gets back. So reattach fires the
@@ -200,7 +234,7 @@ export async function driveReattachedRun(
     schemaValidation: summary.schemaValidation,
     output: summary.output,
     tripwire: summary.tripwire,
-    terminalError: result.error instanceof AgentRunError ? result.error : undefined,
+    terminalError,
   });
 }
 

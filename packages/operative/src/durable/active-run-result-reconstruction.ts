@@ -290,6 +290,34 @@ export async function classifyTimeoutMessage(
   }
 }
 
+/** The finish reasons a run ends in failure with, which `finalizeRunResult` settles as errors. */
+export function isFailureFinishReason(finishReason: FinishReason): boolean {
+  return (
+    finishReason === 'error' ||
+    finishReason === 'elicitation-denied' ||
+    finishReason === 'budget-exceeded' ||
+    finishReason === 'tripwire'
+  );
+}
+
+/**
+ * Announce a run's failure with `run.error`, the way every other failed run does, at the step it
+ * failed at. Returns the error so a caller can hand the same object to the terminal result.
+ * `run.completed` follows it from `finalizeRunResult`.
+ */
+export function announceRunFailure(
+  emitter: OperativeEventEmitter,
+  step: number,
+  error: AgentRunError | undefined,
+): AgentRunError | undefined {
+  if (error === undefined) return undefined;
+  // The loose dispatcher the run lifecycle's own terminal helpers take.
+  const dispatcher: EventDispatcher = emitter;
+  const event = new RunErrorEvent(step, error, error.kind);
+  dispatcher.dispatch(event);
+  return event.error;
+}
+
 /** Arguments to {@link settleRejectedRun}. */
 type SettleRejectedRunArgs = Omit<
   FinalizeArgs,
@@ -324,18 +352,42 @@ export function settleRejectedRun(args: SettleRejectedRunArgs): RunResult {
       steps: stepCount,
       errorMessage: message,
     })!;
-  if (rest.terminalError === undefined) {
-    // The loose dispatcher the run lifecycle's own terminal helpers take: `run.error` is announced
-    // the way every other failed run announces it.
-    const dispatcher: EventDispatcher = rest.emitter;
-    dispatcher.dispatch(new RunErrorEvent(stepCount, terminalError, terminalError.kind));
-  }
+  if (rest.terminalError === undefined) announceRunFailure(rest.emitter, stepCount, terminalError);
   return finalizeRunResult({
     ...rest,
     finishReason: 'error',
     errorMessage: message,
     terminalError,
   });
+}
+
+/**
+ * The state a failed run settles from: what its checkpoint committed (COR-1587). The checkpoint is
+ * the authoritative transcript on the durable path, because the workflow mutates rehydrated
+ * snapshots per step and never the instance the run was launched with. A settlement from the
+ * launch conversation and an empty state would carry no steps and zero usage, and the terminal
+ * save a host makes from `run.completed` would drop the committed rows, and any follow-up the run
+ * delivered, from the session for good.
+ *
+ * Falls back to the launch conversation and an empty state only when the checkpoint holds neither
+ * a step nor a transcript (the run failed before it committed anything) or cannot be read.
+ */
+export async function loadSettlementState(
+  context: DurableActiveRunContext,
+  runId: string,
+  runtime: RuntimeServices,
+  launchConversation: Conversation,
+): Promise<{ runState: RunState; conversation: Conversation }> {
+  try {
+    const loaded = await loadRunStateFromCheckpoint(context, runId, runtime);
+    if (loaded.runState.steps.length > 0 || loaded.conversation.getMessages().length > 0) {
+      return loaded;
+    }
+  } catch {
+    // An older checkpoint record this build cannot read: settle from the launch state rather than
+    // fail the run's own terminal lifecycle.
+  }
+  return { runState: emptyRunState(), conversation: launchConversation };
 }
 
 /**

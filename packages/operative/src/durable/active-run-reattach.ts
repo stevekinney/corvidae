@@ -47,6 +47,15 @@ export function reattachDurableActiveRun(
      */
     admissions?: AdmissionTracker | undefined;
     abort?: ((reason?: string) => void) | undefined;
+    /**
+     * Whether the engine already failed this run before replay (the recovery resolver reported
+     * its services unavailable), which the resolver recorded as `error` itself. A rejection of
+     * such a run stays write-free; a rejection of any other settles it as `error`. Omitted, the
+     * driver infers it from the engine's state at the moment it starts, which misreads a run that
+     * failed after replay when the engine's storage serves that read late. A recovery path that
+     * knows should say so.
+     */
+    failedBeforeReplay?: boolean | undefined;
     /** Test-only clock seam for this run's watchdogs (AB-214/obs-01). */
     livenessClock?: StallWatchdogClock | undefined;
     /**
@@ -165,7 +174,16 @@ export function reattachDurableActiveRun(
   }
 
   function drive(): Promise<RunResult> {
-    return driveReattachedRun(context, runId, handle, emitter, abortOutcome, reachability, runtime);
+    return driveReattachedRun(
+      context,
+      runId,
+      handle,
+      emitter,
+      abortOutcome,
+      reachability,
+      runtime,
+      reattach.failedBeforeReplay,
+    );
   }
 
   // A reattached run has no abort SIGNAL (the recovered generator runs under the

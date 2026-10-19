@@ -21,6 +21,7 @@ import type { RunOptions, RunResult } from '../types';
 import { createDurableActiveRun } from './active-run-create';
 import { reattachDurableActiveRun } from './active-run-reattach';
 import { createRunEngine, type RegistryAgnosticEngine } from './create-run-engine';
+import { AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION } from './run-workflow-result';
 
 /**
  * COR-1587: a durable run whose `handle.result()` rejects with anything the drivers do not already
@@ -256,6 +257,189 @@ describe('a durable run whose result rejects with a WorkflowTimeoutError', () =>
       expect(unhandledRejections).toEqual([]);
     });
   }
+});
+
+describe('a durable run whose resolved summary is malformed', () => {
+  // A current-version summary that breaks its own shape (`InvalidRunResultError`). It is a
+  // boundary failure, and it settles as `error` on purpose (COR-1587): the run is over, the
+  // message names the malformed field, and a rejection would leave the session `running` with no
+  // terminal event. A summary this build cannot read at all (`UnsupportedRunResultVersionError`)
+  // still rejects.
+  const malformed = {
+    schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+    runId: 'malformed',
+    steps: 'not a number',
+    content: '',
+    parts: [],
+    finishReason: 'stop-condition',
+  };
+
+  it('settles a fresh run as error with the field named', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+    const engine = {
+      start: async () => ({ result: () => Promise.resolve(malformed) }),
+    } as unknown as RegistryAgnosticEngine;
+
+    const result = await createDurableActiveRun(
+      { engine, checkpointStore: emptyCheckpointStore },
+      { runId: 'malformed', sessionId: 'malformed', options: runOptions(), emitter },
+    ).result;
+
+    expect(result.finishReason).toBe('error');
+    expect(messageOf(result.error)).toContain('steps must be a finite number');
+    expect(terminalEvents.map(({ type }) => type)).toEqual([
+      RunErrorEvent.type,
+      RunCompletedEvent.type,
+    ]);
+  });
+
+  it('settles a reattached run as error with the field named', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+
+    const result = await reattachDurableActiveRun(
+      {
+        engine: { get: async () => ({ status: 'running' }) } as never,
+        checkpointStore: emptyCheckpointStore,
+      },
+      {
+        runId: 'malformed',
+        handle: { id: 'malformed', result: () => Promise.resolve(malformed) },
+        emitter,
+      },
+    ).result;
+
+    expect(result.finishReason).toBe('error');
+    expect(messageOf(result.error)).toContain('steps must be a finite number');
+    expect(terminalEvents.map(({ type }) => type)).toEqual([
+      RunErrorEvent.type,
+      RunCompletedEvent.type,
+    ]);
+  });
+});
+
+describe('a reattached run whose summary resolves as an error', () => {
+  it('fires run.error then run.completed, as every failed run does', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+    // The step's own `run.error` fired in the process that died, so the recovering process never
+    // saw it: the summary is all that says the run failed.
+    const summary = {
+      schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      runId: 'resolved-error',
+      steps: 0,
+      content: '',
+      parts: [],
+      finishReason: 'error',
+      errorMessage: 'the model refused',
+    };
+
+    const result = await reattachDurableActiveRun(
+      { engine: {} as RegistryAgnosticEngine, checkpointStore: emptyCheckpointStore },
+      {
+        runId: 'resolved-error',
+        handle: { id: 'resolved-error', result: () => Promise.resolve(summary) },
+        emitter,
+      },
+    ).result;
+
+    expect(result.finishReason).toBe('error');
+    expect(terminalEvents).toEqual([
+      { type: RunErrorEvent.type, error: 'the model refused' },
+      { type: RunCompletedEvent.type, finishReason: 'error', error: 'the model refused' },
+    ]);
+  });
+
+  it('does not repeat a run.error the recovered step fired itself', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+    const stepError = new AgentRunError('the model refused', { kind: 'generate', code: 'UNKNOWN' });
+    const summary = {
+      schemaVersion: AGENT_RUN_WORKFLOW_RESULT_SCHEMA_VERSION,
+      runId: 'step-error-after-replay',
+      steps: 0,
+      content: '',
+      parts: [],
+      finishReason: 'error',
+      errorMessage: 'the model refused',
+    };
+
+    await reattachDurableActiveRun(
+      { engine: {} as RegistryAgnosticEngine, checkpointStore: emptyCheckpointStore },
+      {
+        runId: 'step-error-after-replay',
+        handle: {
+          id: 'step-error-after-replay',
+          result: () => {
+            emitter.dispatch(new RunErrorEvent(0, stepError, 'generate'));
+            return Promise.resolve(summary);
+          },
+        },
+        emitter,
+      },
+    ).result;
+
+    expect(terminalEvents.map(({ type }) => type)).toEqual([
+      RunErrorEvent.type,
+      RunCompletedEvent.type,
+    ]);
+  });
+});
+
+describe('a reattached run whose caller says whether the engine failed it before replay', () => {
+  const rejection = () => new Error('x failed');
+
+  it('settles as error when told it did not, whatever the engine state reads', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+
+    const recoveredRun = reattachDurableActiveRun(
+      {
+        engine: { get: async () => ({ status: 'failed' }) } as never,
+        checkpointStore: emptyCheckpointStore,
+      },
+      {
+        runId: 'told-not-failed',
+        handle: { id: 'told-not-failed', result: () => Promise.reject(rejection()) },
+        emitter,
+        failedBeforeReplay: false,
+      },
+    );
+    const result = await recoveredRun.result;
+
+    expect(result.finishReason).toBe('error');
+    expect(terminalEvents.map(({ type }) => type)).toEqual([
+      RunErrorEvent.type,
+      RunCompletedEvent.type,
+    ]);
+  });
+
+  it('stays write-free when told it did, whatever the engine state reads', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const terminalEvents = observeTerminalLifecycle(emitter);
+    const originalConsoleError = console.error;
+    console.error = () => {};
+    try {
+      const result = await reattachDurableActiveRun(
+        {
+          engine: { get: async () => ({ status: 'running' }) } as never,
+          checkpointStore: emptyCheckpointStore,
+        },
+        {
+          runId: 'told-failed',
+          handle: { id: 'told-failed', result: () => Promise.reject(rejection()) },
+          emitter,
+          failedBeforeReplay: true,
+        },
+      ).result;
+
+      expect(result.finishReason).toBe('aborted');
+      expect(terminalEvents).toEqual([]);
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
 });
 
 describe('a reattached run the recovery resolver already failed before replay', () => {

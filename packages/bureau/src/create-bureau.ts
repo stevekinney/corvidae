@@ -6369,6 +6369,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       {
         runId,
         handle,
+        // COR-1587: only a run whose session is still `running` is reattached here (the hook runs
+        // after the resolver provided its services, and the post-recovery pass classifies a run
+        // whose session the resolver reconciled to `error` as `cancel`). Nothing has recorded an
+        // end for it, so a rejection settles it as `error` instead of being inferred from the
+        // engine's state as a failure before replay, which the engine's late read can misread.
+        failedBeforeReplay: false,
         ...(eventSurface
           ? {
               emitter: eventSurface.emitter,

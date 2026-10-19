@@ -14,6 +14,7 @@ import {
   classifyTimeoutMessage,
   emptyRunState,
   finalizeRunResult,
+  loadSettlementState,
   lostRunToAnotherEngine,
   makeInterruptedRunResult,
   reconstructRunResult,
@@ -356,7 +357,10 @@ export async function driveDurableRun(
     }
     // `normalizeAgentRunWorkflowResult` rejects a RESOLVED result whose schema version this build
     // cannot read. That is not the engine failing the run, so it is not classified here: the
-    // reattach driver rethrows it the same way.
+    // reattach driver rethrows it the same way. A summary of the current version that breaks its
+    // own shape (`InvalidRunResultError`) is different on purpose: the run is over, and a
+    // rejection would leave its session `running` with no terminal event, so it settles as
+    // `error` below with the malformed field named in the message.
     if (error instanceof UnsupportedRunResultVersionError) throw error;
 
     // Anything that reaches here is the run ending in this process, and nothing else reports it
@@ -371,11 +375,13 @@ export async function driveDurableRun(
     // would surface as an unhandled rejection and leave the session stuck `running`). A
     // `run.error` a step already fired keeps its real error.
     const timedOut = isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError';
+    // From the checkpoint, so the terminal record keeps what the run committed before it failed.
+    const settled = await loadSettlementState(context, runId, runtime, conversation);
     return settleRejectedRun({
       rejection: error,
       ...(timedOut ? { message: await classifyTimeoutMessage(context, runId, error) } : {}),
-      runState: emptyRunState(),
-      conversation,
+      runState: settled.runState,
+      conversation: settled.conversation,
       hooks,
       emitter,
       runStartTime,
