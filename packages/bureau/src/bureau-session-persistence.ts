@@ -1,5 +1,5 @@
 import type { AgentSession, JSONValue, SessionStore, Store } from '@lostgradient/operative';
-import { createAgentSession } from '@lostgradient/operative';
+import { createAgentSession, SESSION_OWNER_METADATA_KEY } from '@lostgradient/operative';
 import {
   Conversation,
   type ConversationHistory,
@@ -9,7 +9,6 @@ import {
 import {
   isPlainAuthorityRecord,
   resolveSessionOwner,
-  SESSION_OWNER_METADATA_KEY,
   SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';

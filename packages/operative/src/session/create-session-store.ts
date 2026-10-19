@@ -2,11 +2,13 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices, TypedEventTarget } from '@lostgradient/lifecycle';
 import type { ConditionalTextValueStore } from '@lostgradient/weft';
 import type { JSONValue } from 'armorer/protocol';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory, Message } from 'conversationalist';
+import { messageText } from 'conversationalist';
 
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
 import { SessionOutboxAppendedEvent } from '../events';
+import { sessionOwnerOf } from './session-owner';
 import type {
   SessionCleanupOptions,
   SessionListOptions,
@@ -25,7 +27,12 @@ const SUMMARY_INDEX_KEY = 'agent-session:summary-index';
 const MAXIMUM_SAVE_ATTEMPTS = 5;
 const MAXIMUM_INDEX_CONTENTION_ATTEMPTS = MAXIMUM_SAVE_ATTEMPTS;
 const DEFAULT_SESSION_LIST_LIMIT = 100;
-const SUMMARY_FORMAT_VERSION = 1;
+// Version 2 adds `title`, `lastMessagePreview` and `owner` to every summary. An index
+// of any other version is unparseable, so it is rebuilt from the bodies once, by the
+// same path that repairs a corrupt one: no migration step exists or is needed.
+const SUMMARY_FORMAT_VERSION = 2;
+const TITLE_LIMIT = 80;
+const PREVIEW_LIMIT = 120;
 // AB-389 — the commit outbox. Disjoint from `KEY_PREFIX`/`BODY_PREFIX`
 // (neither is a string prefix of the other) so `listDataKeys()`'s
 // `store.list(KEY_PREFIX)`/`store.list(BODY_PREFIX)` calls never see these
@@ -249,22 +256,82 @@ function mergeSessions(current: AgentSession, candidate: AgentSession): AgentSes
   };
 }
 
+/** `text` trimmed and cut to `limit` characters (code points, so a pair is never split). */
+function clipText(text: string, limit: number): string {
+  const trimmed = text.trim();
+  let count = 0;
+  let end = 0;
+  for (const character of trimmed) {
+    if (count === limit) return trimmed.slice(0, end);
+    count += 1;
+    end += character.length;
+  }
+  return trimmed;
+}
+
+/** The text of a visible message of `roles`, or `undefined` for a hidden or text-free one. */
+function visibleText(
+  message: Message | undefined,
+  roles: readonly Message['role'][],
+): string | undefined {
+  if (message === undefined || message.hidden || !roles.includes(message.role)) return undefined;
+  const text = messageText(message).trim();
+  return text === '' ? undefined : text;
+}
+
+/**
+ * The first visible user message's text for the title, and the latest visible user
+ * or assistant message's for the preview. The title scan walks from the front only
+ * until the first user message, and the preview scan from the back only until the
+ * first row with text, so a long history is not walked.
+ */
+function describeConversation(history: ConversationHistory): {
+  title: string | null;
+  lastMessagePreview: string | null;
+} {
+  const ids = Array.isArray(history.ids) ? history.ids : [];
+  const messages = history.messages ?? {};
+  let title: string | null = null;
+  for (const id of ids) {
+    const text = visibleText(messages[id], ['user']);
+    if (text !== undefined) {
+      title = clipText(text, TITLE_LIMIT);
+      break;
+    }
+  }
+  let lastMessagePreview: string | null = null;
+  for (let index = ids.length - 1; index >= 0; index -= 1) {
+    const text = visibleText(messages[ids[index]!], ['user', 'assistant']);
+    if (text !== undefined) {
+      lastMessagePreview = clipText(text, PREVIEW_LIMIT);
+      break;
+    }
+  }
+  return { title, lastMessagePreview };
+}
+
 /**
  * Extracts a lightweight summary from a full session, avoiding the need
  * to expose the entire conversation history in list responses.
  */
-function toSummary(session: AgentSession): SessionSummary {
+export function summarizeSession(session: AgentSession): SessionSummary {
   const history = session.conversationHistory;
   const messageCount = Array.isArray(history.ids) ? history.ids.length : 0;
 
   return {
     id: session.id,
     agentName: session.agentName,
+    ...describeConversation(history),
+    owner: sessionOwnerOf(session.metadata),
     messageCount,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     metadata: session.metadata,
   };
+}
+
+function isTextOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
 }
 
 function parseSummaryRecord(
@@ -276,6 +343,9 @@ function parseSummaryRecord(
     typeof record['id'] !== 'string' ||
     (expectedId !== undefined && record['id'] !== expectedId) ||
     typeof record['agentName'] !== 'string' ||
+    !isTextOrNull(record['title']) ||
+    !isTextOrNull(record['lastMessagePreview']) ||
+    !isTextOrNull(record['owner']) ||
     typeof record['messageCount'] !== 'number' ||
     !isValidDate(record['createdAt']) ||
     !isValidDate(record['updatedAt'])
@@ -284,6 +354,9 @@ function parseSummaryRecord(
   return {
     id: record['id'],
     agentName: record['agentName'],
+    title: record['title'],
+    lastMessagePreview: record['lastMessagePreview'],
+    owner: record['owner'],
     messageCount: record['messageCount'],
     createdAt: record['createdAt'] as string,
     updatedAt: record['updatedAt'] as string,
@@ -557,7 +630,7 @@ async function summarizeBodies(
       const key = keys.v2 ?? keys.legacy;
       if (key === undefined) return;
       const session = parseSession(await store.get(key));
-      if (session && session.id === id) summaries.set(id, toSummary(session));
+      if (session && session.id === id) summaries.set(id, summarizeSession(session));
     }),
   );
 }
@@ -645,7 +718,7 @@ export function createSessionStore(
         const legacySession = parseSession(legacyRaw);
         if (legacySession?.id !== id) return { raw: null, key };
         const migratedSummaries = await summariesForMutation(legacyRaw);
-        migratedSummaries.set(id, toSummary(legacySession));
+        migratedSummaries.set(id, summarizeSession(legacySession));
         const migrated = await store.conditionalBatch(
           [
             { key: legacyKey, expectedValue: legacyRaw },
@@ -781,7 +854,9 @@ export function createSessionStore(
         {
           type: 'set',
           key: SUMMARY_INDEX_KEY,
-          value: serializeSummaryIndex(new Map(currentSummaries).set(next.id, toSummary(next))),
+          value: serializeSummaryIndex(
+            new Map(currentSummaries).set(next.id, summarizeSession(next)),
+          ),
         },
         { type: 'set', key: OUTBOX_ORDINAL_KEY, value: String(finalOrdinal) },
         { type: 'set', key: outboxEntryKey(nextOrdinal), value: JSON.stringify(outboxEntry) },
@@ -820,11 +895,12 @@ export function createSessionStore(
   function deleteSession(id: string): Promise<boolean>;
   function deleteSession(
     id: string,
-    options: { returnIncarnation: true },
+    options: { returnIncarnation: true; expectedIncarnation?: string | undefined },
   ): Promise<{ removed: boolean; incarnation: string | undefined }>;
+  function deleteSession(id: string, options: { expectedIncarnation: string }): Promise<boolean>;
   function deleteSession(
     id: string,
-    deleteOptions?: { returnIncarnation?: boolean },
+    deleteOptions?: { returnIncarnation?: boolean; expectedIncarnation?: string | undefined },
   ): Promise<boolean | { removed: boolean; incarnation: string | undefined }> {
     return runMutation(async () => {
       await readBody('summary-index');
@@ -865,6 +941,15 @@ export function createSessionStore(
           ? ((currentRaw !== null ? parseSession(currentRaw)?.incarnation : undefined) ??
             (legacyRaw !== null ? parseSession(legacyRaw)?.incarnation : undefined))
           : undefined;
+        // Another incarnation holds the id now: it is not what the caller meant to delete.
+        if (
+          deleteOptions?.expectedIncarnation !== undefined &&
+          (!willRemove || (removedIncarnation ?? '') !== deleteOptions.expectedIncarnation)
+        ) {
+          return deleteOptions.returnIncarnation
+            ? { removed: false, incarnation: removedIncarnation }
+            : false;
+        }
         const nextOrdinal = parseOutboxOrdinal(ordinalRaw) + 1;
         const outboxEntry: SessionOutboxEntry = {
           ordinal: nextOrdinal,
@@ -1103,7 +1188,7 @@ export function createSessionStore(
           const legacyIndexSession = parseSession(summaryRaw);
           const migratesLegacyIndexSession = legacyIndexSession?.id === 'summary-index';
           if (migratesLegacyIndexSession) {
-            rebuiltSummaries.set(legacyIndexSession.id, toSummary(legacyIndexSession));
+            rebuiltSummaries.set(legacyIndexSession.id, summarizeSession(legacyIndexSession));
           }
           await summarizeBodies(store, dataKeys, rebuiltSummaries);
           const rebuilt = await store.conditionalBatch(
@@ -1146,9 +1231,13 @@ export function createSessionStore(
         }
 
         // Filter by agentName when requested
-        const filtered = listOptions?.agentName
-          ? [...summaries.values()].filter((s) => s.agentName === listOptions.agentName)
-          : [...summaries.values()];
+        // The owner filter is applied here, to the index, before `offset` and `limit`,
+        // so every page is full of the owner's own sessions.
+        const filtered = [...summaries.values()].filter(
+          (s) =>
+            (!listOptions?.agentName || s.agentName === listOptions.agentName) &&
+            (listOptions?.owner === undefined || s.owner === listOptions.owner),
+        );
 
         // Sort
         const sortBy = listOptions?.sortBy ?? 'updatedAt';

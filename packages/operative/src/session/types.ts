@@ -9,6 +9,12 @@ import type { OperativeEventMap } from '../events';
  */
 export interface SessionListOptions {
   agentName?: string | undefined;
+  /**
+   * Only the sessions this owner created (`SessionSummary.owner`). Applied to the
+   * summary index before `offset` and `limit`, so a page is full of this owner's
+   * sessions and another owner's cost it no slot.
+   */
+  owner?: string | undefined;
   limit?: number | undefined;
   offset?: number | undefined;
   sortBy?: ('createdAt' | 'updatedAt') | undefined;
@@ -22,6 +28,25 @@ export interface SessionListOptions {
 export interface SessionSummary {
   id: string;
   agentName: string;
+  /**
+   * The first visible user message's text, trimmed and cut to 80 characters, or
+   * `null` before one exists. Computed when the session is saved and kept in the
+   * summary index, so a listing reads it without opening a body.
+   */
+  title: string | null;
+  /**
+   * The latest visible user or assistant message that has text, trimmed and cut to
+   * 120 characters, or `null` before one exists. Kept in the summary index like
+   * `title`.
+   */
+  lastMessagePreview: string | null;
+  /**
+   * The owner of record, read from the session's metadata when it is saved (see
+   * `SESSION_OWNER_METADATA_KEY`): the stored owner, the local owner for a
+   * session that records none, or `null` for a malformed record, which no owner
+   * filter matches.
+   */
+  owner: string | null;
   messageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -245,8 +270,16 @@ export interface SessionStore {
    */
   delete(
     id: string,
-    options: { returnIncarnation: true },
+    options: { returnIncarnation: true; expectedIncarnation?: string | undefined },
   ): Promise<{ removed: boolean; incarnation: string | undefined }>;
+  /**
+   * The same atomic delete as `delete(id)`, but only of the body whose
+   * `AgentSession.incarnation` is `expectedIncarnation`. An id reused since the caller
+   * read the session (deleted and created again) holds another incarnation, and that one
+   * is left untouched: the call removes nothing and resolves `false`. The incarnation is
+   * compared with the value the same compare-and-swap verifies is still current.
+   */
+  delete(id: string, options: { expectedIncarnation: string }): Promise<boolean>;
 
   /** List sessions with optional filtering, pagination, and sorting. */
   list(options?: SessionListOptions): Promise<SessionSummary[]>;

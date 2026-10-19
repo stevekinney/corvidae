@@ -6652,6 +6652,36 @@ describe('monitorRecoveredCatalogRun (AB-240)', () => {
     expect(messages[0]).toContain('engine.recoverAll rejected this handle');
   });
 
+  it('publishes only a terminal state the durable run reached when the handle rejects (a disposed engine is not an end)', async () => {
+    const reject = async (): Promise<never> => {
+      throw new Error('Engine was disposed before the workflow completed');
+    };
+    const cases: Array<['in-flight' | 'failed' | 'canceled', string | undefined]> = [
+      ['in-flight', undefined],
+      ['failed', 'failed'],
+      ['canceled', 'canceled'],
+    ];
+    for (const [end, expected] of cases) {
+      const published: string[] = [];
+      const messages: string[] = [];
+
+      await monitorRecoveredCatalogRun(
+        { id: 'agent-run-catalog-6', result: reject },
+        'echo',
+        (diagnostic) => {
+          messages.push(diagnostic.message);
+        },
+        async (settlement) => {
+          published.push(settlement.status);
+        },
+        async () => end,
+      );
+
+      expect(published).toEqual(expected === undefined ? [] : [expected]);
+      expect(messages).toHaveLength(1);
+    }
+  });
+
   it('defaults to the shared diagnostic sink when none is supplied', async () => {
     const originalError = console.error;
     const messages: string[] = [];

@@ -18,24 +18,29 @@
  * @module create-bureau-handler
  */
 
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   type AuthConfig,
   AUTHORIZATION_SCOPES,
   type AuthorizationScope,
   createOperationHandler,
   createOperationHandlerAuthenticator,
+  getPrincipalOperation,
+  MemoryStorage,
   type OperationHandler,
   type OperationHandlerAuthenticate,
   type OperationHandlerMount,
   type AuthenticatedPrincipal,
+  textValueStore,
   unauthenticatedLocalAuthContext,
 } from '@lostgradient/weft';
-import type { RunEventsOperationHost } from '@lostgradient/operative';
+import { readGenerationProfile, type RunEventsOperationHost } from '@lostgradient/operative';
 
 import {
   type BureauEventsOperationHost,
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
+import { createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import type { Bureau } from '../types.ts';
@@ -44,6 +49,38 @@ import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operat
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
+import {
+  type BureauContextsOperationHost,
+  contextsDeleteOperation,
+  contextsGetOperation,
+  contextsListOperation,
+} from './management/contexts-operations.ts';
+import {
+  agentsListOperation,
+  type BureauDeploymentOperationHost,
+  deploymentGetOperation,
+  type DeploymentRecovery,
+  describeOperations,
+  type PublishedAgent,
+} from './management/deployment-operations.ts';
+import {
+  type BureauTaskEventsOperationHost,
+  tasksEventsOperation,
+} from './management/tasks-events-operation.ts';
+import {
+  type BureauTasksOperationHost,
+  tasksCancelOperation,
+  tasksGetOperation,
+  tasksListOperation,
+} from './management/tasks-operations.ts';
+import {
+  type BureauTasksRespondOperationHost,
+  TASKS_RESPOND_LEDGER_KEY_PREFIX,
+  tasksRespondOperation,
+  type TasksRespondClaim,
+  type TasksRespondLedger,
+  type TasksRespondResult,
+} from './management/tasks-respond-operation.ts';
 
 /**
  * The part of a {@link Bureau} the handler reads. A structural type rather than
@@ -61,25 +98,42 @@ export type BureauHandlerSource = Pick<
   | 'getReview'
   | 'resolveReview'
   | 'getOwner'
+  | 'tasks'
+  | 'lifecycle'
+  | 'eventHistory'
+  | 'subscribeEventHistory'
+  | 'getSession'
+  | 'deleteSession'
+  | 'listSessions'
+  | 'sessionStore'
+  | 'waitForRecovery'
   | 'createRun'
   | 'getRun'
   | 'abortRun'
   | 'listRuns'
-  | 'getSession'
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
-  | 'eventHistory'
   | 'hasDurableEngine'
   | 'locateRunCreationReceipt'
   | 'children'
   | 'getDurableRun'
-> & { readonly agents: { has(name: string): boolean } };
+> & {
+  readonly agents: { has(name: string): boolean; find(name: string): AgentDescription | undefined };
+};
+
+/** The part of a catalog agent the deployment operations describe. */
+type AgentDescription = { readonly name: string; readonly description?: string | undefined };
 
 /** What every operation `createBureauHandler` serves reads from `host`. */
 export type BureauHandlerHost = BureauEventsOperationHost &
   RunEventsOperationHost &
   BureauReviewsOperationHost &
-  BureauOwnershipHost;
+  BureauOwnershipHost &
+  BureauDeploymentOperationHost &
+  BureauTasksOperationHost &
+  BureauTaskEventsOperationHost &
+  BureauTasksRespondOperationHost &
+  BureauContextsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -284,6 +338,17 @@ function assertPersistence(bureau: BureauHandlerSource): void {
  * owner-scoped (see their modules).
  */
 export const BUREAU_HANDLER_OPERATIONS = [
+  getPrincipalOperation,
+  deploymentGetOperation,
+  agentsListOperation,
+  tasksListOperation,
+  tasksGetOperation,
+  tasksCancelOperation,
+  tasksEventsOperation,
+  tasksRespondOperation,
+  contextsListOperation,
+  contextsGetOperation,
+  contextsDeleteOperation,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
@@ -341,6 +406,92 @@ function createApiKeyAuthenticate(authentication: AuthConfig): OperationHandlerA
   );
 }
 
+/** How long a recovery that has not finished is waited for before it reads as pending. */
+async function recoveryOf(bureau: BureauHandlerSource): Promise<DeploymentRecovery> {
+  if (bureau.waitForRecovery === undefined) return { status: 'not-applicable', failedRunCount: 0 };
+  const pending = Symbol('pending');
+  const report = await Promise.race([bureau.waitForRecovery(), Promise.resolve(pending)]);
+  if (report === pending) return { status: 'pending', failedRunCount: 0 };
+  return { status: report.outcome, failedRunCount: report.perRunFailures.length };
+}
+
+function publishedAgentsOf(
+  bureau: BureauHandlerSource,
+  publish: readonly string[],
+): readonly PublishedAgent[] {
+  return publish.flatMap((name) => {
+    const agent = bureau.agents.find(name);
+    if (agent === undefined) return [];
+    return [
+      {
+        name,
+        displayName: agent.name === '' || agent.name === '(agent)' ? name : agent.name,
+        description: agent.description ?? null,
+        definitionRevision: readGenerationProfile(agent as never).revision,
+      },
+    ];
+  });
+}
+
+/** How often the respond ledger drops its expired bindings, at most. */
+const RESPOND_LEDGER_PRUNE_INTERVAL_MS = 3_600_000;
+
+function createRespondLedger(bureau: BureauHandlerSource): TasksRespondLedger {
+  const runtime = createDefaultRuntimeServices();
+  const ledger = createCommandLedger<TasksRespondClaim, TasksRespondResult>({
+    // An ephemeral Bureau keeps the ledger in memory: a receipt then lives as long as the process does.
+    kv: bureau.kv ?? textValueStore(new MemoryStorage()),
+    keyPrefix: TASKS_RESPOND_LEDGER_KEY_PREFIX,
+    clock: runtime.clock,
+    nextConflictId: () => runtime.identifiers.next('respond-conflict'),
+  });
+  let prunedAt = runtime.clock.now();
+  return {
+    ...ledger,
+    async claim(identity, digest, claim) {
+      const now = runtime.clock.now();
+      if (now - prunedAt >= RESPOND_LEDGER_PRUNE_INTERVAL_MS) {
+        prunedAt = now;
+        await ledger.prune().catch(() => undefined);
+      }
+      return ledger.claim(identity, digest, claim);
+    },
+  };
+}
+
+/**
+ * The `host` every served operation reads. Exported so a test can serve the same
+ * operations with one part replaced, such as an instrumented owner predicate.
+ */
+export function buildBureauHandlerHost(
+  bureau: BureauHandlerSource,
+  publish: readonly string[],
+): BureauHandlerHost {
+  const operations = describeOperations(BUREAU_HANDLER_OPERATIONS);
+  return {
+    // A Bureau owns exactly one feed, so the registry answers for its id alone.
+    bureauFeeds: { get: (bureauId) => (bureauId === bureau.id ? bureau.eventFeed : undefined) },
+    runFeeds: bureau.runEventFeeds,
+    reviews: bureau,
+    ownership: {
+      runOwner: (runId) => bureau.getOwner({ kind: 'run', id: runId }),
+      mayAccess: mayAccessOwnedResource,
+    },
+    tasks: bureau.tasks,
+    taskHistory: bureau,
+    contexts: bureau,
+    respondLedger: createRespondLedger(bureau),
+    respondInFlight: new Map(),
+    deployment: {
+      id: bureau.id,
+      state: () => bureau.lifecycle,
+      publishedAgents: () => publishedAgentsOf(bureau, publish),
+      operations: () => operations,
+      recovery: () => recoveryOf(bureau),
+    },
+  };
+}
+
 /**
  * Create a fetch handler that serves `bureau`'s native operations: the
  * `bureau.events` and `operative.runs.events` feeds as Server-Sent Events with
@@ -377,16 +528,7 @@ export function createBureauHandler(
   assertBureauId(bureau);
   assertPersistence(bureau);
 
-  const host: BureauHandlerHost = {
-    // A Bureau owns exactly one feed, so the registry answers for its id alone.
-    bureauFeeds: { get: (bureauId) => (bureauId === bureau.id ? bureau.eventFeed : undefined) },
-    runFeeds: bureau.runEventFeeds,
-    reviews: bureau,
-    ownership: {
-      runOwner: (runId) => bureau.getOwner({ kind: 'run', id: runId }),
-      mayAccess: mayAccessOwnedResource,
-    },
-  };
+  const host = buildBureauHandlerHost(bureau, options.publish ?? []);
 
   return createOperationHandler({
     operations: BUREAU_HANDLER_OPERATIONS,

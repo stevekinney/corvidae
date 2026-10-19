@@ -15,6 +15,7 @@ import type {
   BackendDescriptor,
   CacheOptions,
   ChildSignalContract,
+  CleanupAcknowledgement as RunCleanupAcknowledgement,
   CreateRunEngineOptions,
   DurableEventEnvelope,
   DurableEventGap,
@@ -46,6 +47,7 @@ import type {
   Validator,
 } from '@lostgradient/operative';
 import type { SkillActivationRecord, SkillCatalogRevision } from './skills';
+import type { TaskRegistry } from './task-registry';
 import type { ToolPolicy } from 'armorer/protocol';
 import type {
   ConditionalTextValueStore,
@@ -1657,7 +1659,24 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   listSessions(options?: SessionListOptions): Promise<SessionSummary[]>;
   getSession(id: string): Promise<AgentSession | undefined>;
-  deleteSession(id: string): Promise<void>;
+  /**
+   * Deletes a session (a context), and resolves a {@link ContextDeletionReport} of
+   * what the deletion did to the tasks that were live in it (COR-1481). A caller
+   * that ignores the report is unaffected.
+   *
+   * The deletion fences the session first: while it is in flight, a new run on the
+   * id, session input to it, and a signal to it read as a session that does not
+   * exist. It cancels every live run in the session, not only the latest, then
+   * deletes the session, and empties the originating message history of each of
+   * its tasks. With `options.incarnation` it deletes only that incarnation of the
+   * session: an id reused since the caller read the session is left untouched and the
+   * report says nothing was deleted. It resolves when every run it cancelled has ended; each task's
+   * `closed` acknowledgement may settle later.
+   */
+  deleteSession(
+    id: string,
+    options?: { readonly incarnation?: string | undefined },
+  ): Promise<ContextDeletionReport>;
 
   /**
    * Deliver a fire-and-forget signal to a session's current in-flight durable run.
@@ -1839,7 +1858,9 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * `undefined` when no audit trail is configured (ephemeral bureau) or when
    * `id` matches nothing at all.
    */
-  getReview(id: string): Promise<(PendingReview & { status: ReviewStatus }) | undefined>;
+  getReview(
+    id: string,
+  ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
 
   /**
    * Approve, deny, or reject a pending review (AB-46). Approve resumes the
@@ -2084,6 +2105,18 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   readonly sessionStore: SessionStore | undefined;
   readonly kv: ConditionalTextValueStore | undefined;
+  /**
+   * COR-1481 — the task registry behind `bureau.tasks.*`: the durable record of
+   * each top-level run (its owner, context, originating message, and how it ended),
+   * and the reads and cancellation the management plane serves over it. See
+   * `task-registry.ts`.
+   */
+  readonly tasks: TaskRegistry;
+  /**
+   * COR-1481 — where the Bureau is in its life: `ready`, `draining` once
+   * `shutdown()` has closed admission, `stopped` once it has completed.
+   */
+  readonly lifecycle: 'ready' | 'draining' | 'stopped';
 
   /**
    * The durable audit trail (Layer B glass-box).
@@ -2268,6 +2301,20 @@ export type OwnedResource =
       /** The audit entry's `detail`. A `session.deleted` entry's owner is `detail.owner`. */
       readonly detail?: unknown;
     };
+
+/** What {@link Bureau.deleteSession} did (COR-1481). */
+export interface ContextDeletionReport {
+  /** Whether a session existed and was deleted. */
+  readonly deleted: boolean;
+  /**
+   * The tasks that were live when the deletion began, each with the cleanup
+   * acknowledgement of its run, which settles when the run's cleanup does.
+   */
+  readonly tasks: readonly {
+    readonly taskId: string;
+    readonly closed: Promise<RunCleanupAcknowledgement>;
+  }[];
+}
 
 export interface RunSummary {
   id: string;

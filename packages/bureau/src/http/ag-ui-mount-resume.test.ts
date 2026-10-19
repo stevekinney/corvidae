@@ -1949,6 +1949,23 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
           (frame.event as unknown as { role?: string }).role === 'user',
       )
       .map((frame) => (frame.event as unknown as { messageId: string }).messageId);
+  /**
+   * The user rows a stream shows the client: the ones it streams and, when the run had
+   * already committed its answer before the stream opened, the ones its snapshot holds.
+   * Which of the two happens depends on how far the run got first, which is not the
+   * numbering this test is about. A row is never shown twice, so the two are concatenated,
+   * not de-duplicated: an answer both snapshotted and streamed fails the assertion.
+   */
+  const shownUserRows = (frames: ReadonlyArray<{ event: Event }>) => [
+    ...userRows(frames),
+    ...frames.flatMap((frame) =>
+      frame.event.type === EventType.MESSAGES_SNAPSHOT
+        ? (frame.event as unknown as { messages: Array<{ id: string; role: string }> }).messages
+            .filter((message) => message.role === 'user' && message.id.includes(':signal:'))
+            .map((message) => message.id)
+        : [],
+    ),
+  ];
   const interruptOf = (frames: ReadonlyArray<{ event: unknown }>) =>
     (frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } }).outcome
       .interrupts[0]!.id;
@@ -1981,7 +1998,7 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         generate.release('after-second');
         await third.rest();
 
-        expect(userRows(second)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+        expect(shownUserRows(second)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
         expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:1`]);
       },
     );
