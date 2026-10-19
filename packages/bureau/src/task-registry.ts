@@ -35,6 +35,7 @@ import {
   encodeStorageKeyComponent,
   MemoryStorage,
   textValueStore,
+  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 
 import { isRunFailureFinishReason } from './runtime-composition';
@@ -45,6 +46,9 @@ export const TASK_RECORD_KEY_PREFIX = 'bureau-task:v1:';
 
 /** The key prefix of the index from a context to its tasks. */
 export const TASK_CONTEXT_INDEX_KEY_PREFIX = 'bureau-task-context:v1:';
+
+/** How many event-loop turns {@link TaskRegistry.idle} waits for acknowledgements that have not arrived. */
+const IDLE_MAXIMUM_TURNS = 50;
 
 /** How many times a record update retries a lost compare-and-swap. */
 const MAX_UPDATE_ATTEMPTS = 10;
@@ -217,9 +221,10 @@ export interface TaskRegistry {
    */
   recordSettled(taskId: string, settlement: TaskSettlement): Promise<boolean>;
   /**
-   * Resolves once every cleanup acknowledgement the registry is following has arrived and
-   * every write it started has landed. A shutdown awaits it after the runs have been ended, so
-   * the cleanup of a run that ended as the engine was disposed is recorded before storage closes.
+   * Resolves once every cleanup acknowledgement the registry is following has arrived (or has
+   * been waited for through a bounded number of event-loop turns) and every write it started has
+   * landed. A shutdown awaits it after the runs have been ended, so the cleanup of a run that
+   * ended as the engine was disposed is recorded before storage closes.
    */
   idle(): Promise<void>;
   /**
@@ -656,14 +661,14 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     },
 
     async idle() {
-      // Following a cleanup can start another write, and a write can follow another cleanup, so
-      // wait until a pass finds nothing new.
-      for (;;) {
-        const following = [...watchers.values()];
-        await Promise.allSettled(following);
-        await this.flush();
-        if (watchers.size === following.length && inFlight.size === 0) return;
+      // Wait, by event-loop turn rather than by clock, for every cleanup acknowledgement being
+      // followed to arrive. One that never does is abandoned after IDLE_MAXIMUM_TURNS, as a
+      // shutdown abandons any other cleanup that is stuck, and the task keeps `cleanup-pending`.
+      for (let turn = 0; turn < IDLE_MAXIMUM_TURNS; turn += 1) {
+        if ([...watchers.keys()].every((taskId) => observed.has(taskId))) break;
+        await yieldToPortableEventLoop();
       }
+      await this.flush();
     },
 
     async flush() {
