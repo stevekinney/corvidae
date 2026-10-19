@@ -415,13 +415,15 @@ export async function runStep(
         abortStep,
         elicit,
       });
-      if (validated !== undefined && validated !== response) {
-        // COR-713: the response the validation hooks leave is authoritative; settle it before the
-        // event or the commit below can see parts the hook did not mean to keep.
-        const settled = await settleResponse(validated, 'validateResponse', { step, admitter });
+      // COR-713: the response the validation hooks leave is authoritative, whether a hook returned
+      // a replacement or edited the one it was handed in place. Settle it either way, before the
+      // event or the commit below can see parts the hook did not mean to keep.
+      const effective = validated ?? response;
+      const settled = await settleResponse(effective, 'validateResponse', { step, admitter });
+      if (settled !== response) {
         emitter?.dispatch(new ResponseValidatedEvent(step, originalResponse, settled));
-        response = settled;
       }
+      response = settled;
     } catch (error) {
       // See the comment on the validateResponseHooks catch above — the
       // response has already been billed by the provider.

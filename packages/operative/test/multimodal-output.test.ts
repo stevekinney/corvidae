@@ -1725,3 +1725,70 @@ describe('a read-only output hook cannot reach the admitted parts (correction)',
     expect(safeStringify(result)).not.toContain('UNIQUEBYTES');
   });
 });
+
+describe('a validateResponse hook that mutates the response in place (correction 3)', () => {
+  it('has inline media it adds admitted exactly as a returned replacement would be', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response) => {
+      (response.parts as MultiModalContent[]).push(inlineImage);
+      return response;
+    });
+
+    const result = await run(
+      baseOptions(
+        createMockGenerate([
+          { content: 'Hi', parts: [{ type: 'text', text: 'Hi' }], toolCalls: [] },
+        ]),
+        { hooks, generatedMediaAdmitter: admitter.port },
+      ),
+    );
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(result.parts).toMatchObject([
+      { type: 'text', text: 'Hi' },
+      { type: 'image', source: { kind: 'managed-asset' } },
+    ]);
+    expect(safeStringify(result)).not.toContain('UNIQUEBYTES');
+  });
+
+  it('refuses inline media it adds when there is no admitter, as a replacement would be', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response) => {
+      (response.parts as MultiModalContent[]).push(inlineImage);
+      return response;
+    });
+
+    const result = await run(
+      baseOptions(
+        createMockGenerate([
+          { content: 'Hi', parts: [{ type: 'text', text: 'Hi' }], toolCalls: [] },
+        ]),
+        { hooks },
+      ),
+    );
+
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
+  });
+
+  it('fails the step when it changes the text in place and leaves stale parts', async () => {
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async (response) => {
+      (response as { content: string }).content = 'changed';
+      return response;
+    });
+
+    const result = await run(
+      baseOptions(
+        createMockGenerate([
+          { content: 'Hi', parts: [{ type: 'text', text: 'Hi' }], toolCalls: [] },
+        ]),
+        { hooks },
+      ),
+    );
+
+    expect(result.finishReason).toBe('error');
+    expect(result.error).toBeInstanceOf(ResponsePartsMismatchError);
+  });
+});
