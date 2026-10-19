@@ -229,7 +229,9 @@ describe('what became of a decision', () => {
     const other = rows(container)[1]?.querySelector('button');
     if (other === null || other === undefined) throw new Error('Expected a second row.');
     await fireEvent.click(other);
-    await waitFor(() => expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull());
+    await waitFor(() =>
+      expect(queryByText(REVIEWS_COPY.decisionFailed)?.textContent ?? null).toBeNull(),
+    );
 
     // Back on the first review, what became of it is still told.
     const again = rows(container)[0]?.querySelector('button');
