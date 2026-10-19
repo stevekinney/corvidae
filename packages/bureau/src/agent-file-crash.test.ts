@@ -131,12 +131,22 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
     expect(report.outcome).toBe('clean');
 
     for (const run of marker.runs) {
-      await scope.phase(`durable run ${run.kind} ${run.name} ${run.runId}`, async () => {
-        scope.observe(
-          async () =>
-            `durable status ${JSON.stringify((await recovering.getDurableRun(run.runId))?.status)}`,
-        );
-        return recovering.waitForDurableRun(run.runId);
+      const ended = await scope.phase(
+        `durable run ${run.kind} ${run.name} ${run.runId}`,
+        async () => {
+          scope.observe(
+            async () =>
+              `durable status ${JSON.stringify((await recovering.getDurableRun(run.runId))?.status)}`,
+          );
+          return recovering.waitForDurableRun(run.runId);
+        },
+      );
+      // `waitForDurableRun` resolves for a run that failed too, so a run the engine ended before
+      // the Bureau could resume it (COR-1592) is named here, with the engine's own error, rather
+      // than surfacing as a wait that never ends.
+      expect({ status: ended?.status, error: ended?.error }).toEqual({
+        status: 'completed',
+        error: undefined,
       });
     }
     await scope.phase('run status', () =>
@@ -149,11 +159,20 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
         {
           scope,
           label: 'every session run is completed in the bureau',
-          describe: () =>
-            marker.runs
+          describe: async () => {
+            const sessions = marker.runs
               .filter((run) => run.kind === 'session')
-              .map((run) => `${run.name} ${run.runId}: ${recovering.getRun(run.runId)?.status}`)
-              .join(', '),
+              .map((run) => `${run.name} ${run.runId}: ${recovering.getRun(run.runId)?.status}`);
+            const durable = await Promise.all(
+              marker.runs.map(async (run) => {
+                const state = await recovering.getDurableRun(run.runId);
+                return `${run.kind} ${run.name} ${run.runId}: ${state?.status}${
+                  state?.error === undefined ? '' : ` (${state.error})`
+                }`;
+              }),
+            );
+            return `bureau ${sessions.join(', ')}; durable ${durable.join(', ')}`;
+          },
         },
       ),
     );

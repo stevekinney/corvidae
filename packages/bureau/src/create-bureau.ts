@@ -1834,9 +1834,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * they never touched. Cleared with `runAttribution` in `deleteRun`.
    */
   const runSessionIncarnations = new Map<string, string>();
+  // COR-1592: the engine reclaims a run with a lapsed claim on its own interval, so one can reach
+  // the services resolver as soon as the composition is built. The resolver reads the catalog
+  // resolver and the workflow file types, which this function binds only after it has scanned the
+  // agent directory, so it holds such a run until `servicesResolverGate` settles (see below).
+  const servicesResolverGate = Promise.withResolvers<void>();
+  servicesResolverGate.promise.catch(() => {});
   const runtime = await createRuntimeComposition(
     { ...options, runtime: runtimeServices },
     {
+      servicesResolverGate: servicesResolverGate.promise,
       contentSourceResolverFor: (principalId) =>
         assetServiceHolder.current === undefined
           ? undefined
@@ -2013,7 +2020,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             }),
           track: (promise, label) => runtimeServices.deferred.track(promise, label),
         });
-  await fileAgents?.files.refresh();
+  try {
+    await fileAgents?.files.refresh();
+  } catch (error) {
+    // The construction fails here with the engine already reclaiming runs, so a run the resolver
+    // holds is answered as a failed composition rather than held for ever.
+    servicesResolverGate.reject(error);
+    throw error;
+  }
   const agentCatalog = createAgentCatalog(agentsSnapshot, {
     selectorAvailable: true,
     files: fileAgents?.files,
@@ -2118,6 +2132,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { status: 'resolver-failed', error };
     }
   });
+  // COR-1592: everything the services resolver reads that this function binds after the
+  // composition is bound now (the catalog resolver just above, and `workflowFileTypes` earlier), so
+  // a run the engine reclaimed in the meantime and the resolver held can proceed.
+  servicesResolverGate.resolve();
   // AB-64/AB-250 — Bureau's selection-planning surface: `bureau.planSelection`
   // and the `SelectionGate` factory `RunOptions.selection` is built from.
   // Side-effect-free — see `model-policy.ts`'s module doc comment.

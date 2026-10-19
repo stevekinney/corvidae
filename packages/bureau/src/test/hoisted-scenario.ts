@@ -196,7 +196,7 @@ export interface WaitForBureauStateOptions {
   /** What the wait is for, in the hang report. Defaults to `check`. */
   readonly label?: string;
   /** The state the check last read, for the hang report. */
-  readonly describe?: () => string;
+  readonly describe?: () => string | Promise<string>;
 }
 
 /**
@@ -244,8 +244,8 @@ export async function waitForBureauState(
 
   const stopCustom = options.onChange?.(notify);
   let checks = 0;
-  options.scope?.observe(() => {
-    const state = options.describe?.();
+  options.scope?.observe(async () => {
+    const state = await options.describe?.();
     return `waiting for "${options.label ?? 'check'}"; checked ${checks} times${
       state === undefined ? '' : `; last read: ${state}`
     }`;

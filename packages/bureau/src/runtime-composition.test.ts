@@ -5617,6 +5617,82 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  it('holds a run that reaches the services resolver before the host has wired what it reads (COR-1592)', async () => {
+    // The engine reclaims and resumes a lapsed claim on its own interval, so a run can reach the
+    // resolver after the composition is built but before `createBureau` has wired the catalog
+    // resolver (it scans the agent directory in between). Answering "unavailable" there fails the
+    // run for good; the resolver must hold it until the host says everything is wired.
+    const wired = Promise.withResolvers<void>();
+    const runtime = await createRuntimeComposition(
+      { storage: { type: 'memory' }, durableExecution: true },
+      { servicesResolverGate: wired.promise },
+    );
+
+    try {
+      await runtime.persistCatalogRunRecoveryRecord('catalog-run-early', {
+        agentName: 'echo',
+        definitionRevision: 1,
+        input: 'hello',
+      });
+      let settled = false;
+      const resolution = runtime
+        .resolveRunServices({
+          workflowId: 'catalog-run-early',
+          workflowType: 'agentRun',
+          input: {
+            runId: 'catalog-run-early',
+            sessionId: 'catalog-run-early',
+            agentName: 'echo',
+          },
+        })
+        .finally(() => {
+          settled = true;
+        });
+      // The record read and the engine's own storage reads are all I/O that follows the gate, so a
+      // resolver that ignored the gate would have answered by now; yield through the I/O it needs.
+      for (let turn = 0; turn < 50; turn += 1)
+        await new Promise<void>((done) => setImmediate(done));
+      expect(settled).toBe(false);
+
+      runtime.setCatalogAgentRunOptionsResolver(async () => ({
+        status: 'resolved',
+        options: fakeRunOptions(),
+        definitionRevision: 1,
+      }));
+      wired.resolve();
+
+      expect(await resolution).toMatchObject({ status: 'available' });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
+  it('answers unavailable once the services gate rejects, instead of holding the run for ever (COR-1592)', async () => {
+    const wired = Promise.withResolvers<void>();
+    wired.promise.catch(() => {});
+    const runtime = await createRuntimeComposition(
+      { storage: { type: 'memory' }, durableExecution: true },
+      { servicesResolverGate: wired.promise },
+    );
+
+    try {
+      wired.reject(new Error('construction failed'));
+      const result = await runtime.resolveRunServices({
+        workflowId: 'catalog-run-failed-gate',
+        workflowType: 'agentRun',
+        input: {
+          runId: 'catalog-run-failed-gate',
+          sessionId: 'catalog-run-failed-gate',
+          agentName: 'echo',
+        },
+      });
+      expect(result).toMatchObject({ status: 'unavailable' });
+      expect((result as { reason: string }).reason).toContain('composition failed');
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
   it('treats an unreadable catalog recovery record (a genuine decode failure, not merely absent) as unavailable', async () => {
     const runtime = await createRuntimeComposition({
       storage: { type: 'memory' },

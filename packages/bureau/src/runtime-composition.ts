@@ -1434,6 +1434,17 @@ export type RuntimeCompositionDependencies = {
    */
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
   /**
+   * COR-1592 — settles once the host has wired everything the services resolver reads that it
+   * binds after this composition is built (`createBureau` binds the catalog resolver, and the
+   * workflow file types, once it has scanned its agent directory). The composition is complete
+   * earlier than that, and the engine reclaims a lapsed claim on its own interval, so a run can
+   * reach the resolver in between and would be answered "unavailable", which fails it for good.
+   * The resolver holds the run until this resolves, as it does until the composition itself is
+   * built. A rejection answers "unavailable" with a composition failure, as a failed composition
+   * does. A composition with none (a direct caller) has nothing late-bound to wait for.
+   */
+  servicesResolverGate?: Promise<void>;
+  /**
    * COR-718 — called when a schedule fire's services are built, with the fire's
    * run, its schedule, and the schedule's owner. `createBureau` records the
    * fire's owner and its `schedule.fired` audit entry here. A fire is rebuilt on
@@ -2258,6 +2269,14 @@ async function buildRuntimeComposition(
   // binding. Manual mode has no background poller, but shares the same gate for consistency.
   // Only so the resolver can say, once, that it had to wait; the gate itself is `readiness`.
   let compositionOpen = false;
+  // COR-1592: whether the host's own late-bound inputs are wired too, for the same one-time note.
+  let servicesResolverGateOpen = dependencies.servicesResolverGate === undefined;
+  dependencies.servicesResolverGate?.then(
+    () => {
+      servicesResolverGateOpen = true;
+    },
+    () => {},
+  );
   let requestAuthorityValidator = options.requestAuthorityValidator;
   // AB-240: wired by `createBureau` once its agent catalog exists (this
   // function's own contract deliberately excludes `agents` — see
@@ -4161,7 +4180,7 @@ async function buildRuntimeComposition(
     // reaches this resolver mid-construction waits for the composition instead of being answered
     // "unavailable", which the engine would turn into a terminal failure of the run. (Reading a
     // not-yet-initialized `const` below would otherwise throw a TDZ error.)
-    if (!compositionOpen) {
+    if (!compositionOpen || !servicesResolverGateOpen) {
       diagnose({
         level: 'warn',
         scope: 'recovery',
@@ -4172,6 +4191,7 @@ async function buildRuntimeComposition(
     }
     try {
       await readiness.promise;
+      await dependencies.servicesResolverGate;
     } catch {
       return {
         status: 'unavailable',

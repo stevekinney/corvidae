@@ -119,3 +119,22 @@ it('names the check and what it last read when a state wait is the stalled phase
     await bureau.shutdown();
   }
 });
+
+it('reads an asynchronous description of the wait when it reports the hang', async () => {
+  const bureau = await createBureau({ agents: {} });
+  try {
+    const outcome = await settleScenario(async (scope) => {
+      await scope.phase('run status', () =>
+        waitForBureauState([bureau], () => false, {
+          scope,
+          label: 'a state',
+          describe: async () => 'read from the store',
+        }),
+      );
+    }, 10);
+
+    expect((outcome.error as Error).message).toContain('last read: read from the store');
+  } finally {
+    await bureau.shutdown();
+  }
+});
