@@ -220,6 +220,30 @@ describe('admission API', () => {
     await harness.close();
   });
 
+  it('assembles more than ten chunks in the order they were appended', async () => {
+    // Chunk keys carry a zero-padded sequence, so the storage's lexicographic listing is also
+    // the append order; an unpadded index would list 10 and 11 before 2.
+    const fixture = memoryFixture();
+    const { assets, harness } = await open({ storage: fixture.storage });
+    const bytes = textBytes('abcdefghijkl');
+    const session = await assets.beginUpload(alice, {
+      declaredMediaType: 'text/plain',
+      declaredByteLength: bytes.byteLength,
+    });
+    for (let index = 0; index < bytes.byteLength; index += 1) {
+      await assets.appendUpload(session.uploadId, alice, bytes.subarray(index, index + 1));
+    }
+
+    const admission = await assets.admit(
+      { source: { kind: 'upload', uploadId: session.uploadId } },
+      alice,
+    );
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
+    const resolved = await assets.resolve(admission.source, alice);
+    expect(resolved.content).toEqual({ kind: 'bytes', bytes });
+    await harness.close();
+  });
+
   it('inspects an open upload for its owner only, and not once it is completed or aborted', async () => {
     const { assets, harness } = await open({ storage: memoryFixture().storage });
     const bytes = textBytes('inspect me');
