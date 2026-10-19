@@ -105,3 +105,95 @@ describe('TaskAttemptHistory — large histories', () => {
     expect(queryByText(/Showing the newest/)).toBeNull();
   });
 });
+
+const IDENTITY = {
+  workerId: 'worker-a',
+  manifestDigest: 'sha256:manifest',
+  sdkVersion: '1.0.0',
+  runtimeName: 'bun',
+  runtimeVersion: '1.3.0',
+  deploymentName: 'payments',
+  buildId: 'build-1',
+  artifactDigest: 'sha256:artifact-1',
+  workflowType: 'orders',
+  workflowRevision: 'rev-7',
+  activityName: 'charge',
+  activityContractHash: 'sha256:contract-1',
+  protocolVersion: 1,
+} as const;
+
+function crossBuildTask(state: TaskLedgerDetail['state'], last: TaskAttemptRecord['disposition']) {
+  const base = task(2);
+  return {
+    ...base,
+    state,
+    attempts: [
+      {
+        attempt: 1,
+        attemptTokenDigest: 'sha256:token-1',
+        claimedAt: NOW - 60_000,
+        disposition: 'requeued',
+        dispositionAt: NOW - 50_000,
+        executionIdentity: IDENTITY,
+        executionRequirement: { deploymentName: 'payments', buildId: 'build-1' },
+      },
+      {
+        attempt: 2,
+        attemptTokenDigest: 'sha256:token-2',
+        claimedAt: NOW - 40_000,
+        disposition: last,
+        dispositionAt: NOW - 30_000,
+        executionIdentity: {
+          ...IDENTITY,
+          workerId: 'worker-b',
+          buildId: 'build-2',
+          artifactDigest: 'sha256:artifact-2',
+        },
+        executionRequirement: { deploymentName: 'payments' },
+      },
+    ],
+  } satisfies TaskLedgerDetail;
+}
+
+describe('TaskAttemptHistory — worker provenance', () => {
+  test.each([
+    ['terminal', 'resolved'],
+    ['deadLettered', 'deadLettered'],
+    ['leased', 'leased'],
+  ] as const)(
+    'a %s task shows the routing requirement apart from the worker that ran each attempt',
+    (state, last) => {
+      const { container } = render(TaskAttemptHistory, {
+        props: { task: crossBuildTask(state, last) },
+      });
+      const second = container.querySelector<HTMLElement>('[data-attempt="2"]');
+      if (!second) throw new Error('missing attempt 2');
+      expect(within(second).getByText('Routing requirement')).not.toBeNull();
+      expect(within(second).getByText('deploymentName: payments')).not.toBeNull();
+      expect(within(second).getByText('worker-b')).not.toBeNull();
+      expect(within(second).getByText('build-2')).not.toBeNull();
+      expect(within(second).getByText('sha256:contract-1')).not.toBeNull();
+    },
+  );
+
+  test('flags a cross-build retry in text, naming the changed fields', () => {
+    const { container } = render(TaskAttemptHistory, {
+      props: { task: crossBuildTask('terminal', 'resolved') },
+    });
+    const first = container.querySelector<HTMLElement>('[data-attempt="1"]');
+    const second = container.querySelector<HTMLElement>('[data-attempt="2"]');
+    if (!first || !second) throw new Error('missing attempts');
+    expect(within(first).queryByText('Crossed build')).toBeNull();
+    expect(within(second).getByText('Crossed build')).not.toBeNull();
+    expect(
+      within(second).getByText(
+        'Ran on a different worker artifact than attempt 1: build build-1 → build-2; artifact digest sha256:artifact-1 → sha256:artifact-2.',
+      ),
+    ).not.toBeNull();
+  });
+
+  test('says no constraint was recorded when an attempt has no routing requirement', () => {
+    const { getAllByText } = render(TaskAttemptHistory, { props: { task: task(2) } });
+    expect(getAllByText('No constraint recorded')).toHaveLength(2);
+  });
+});

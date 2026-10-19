@@ -22,6 +22,7 @@
    * banner's own Retry button, on explicit user action — calling `reset()`
    * from `onerror` would just re-run the same failing subtree synchronously.
    */
+  import { keyedByOccurrence } from '../lib/list-keys.ts';
   import type { Snippet } from 'svelte';
 
   import { Badge, Button, Collapsible } from '@lostgradient/cinder';
@@ -119,7 +120,7 @@
 
       {#if treatment.kind === 'invalid' && treatment.fieldErrors.length > 0}
         <ul class="weft-fault-boundary__field-errors">
-          {#each treatment.fieldErrors as fieldError (fieldError.path)}
+          {#each keyedByOccurrence(treatment.fieldErrors, (candidate) => candidate.path) as { key, item: fieldError } (key)}
             <li><code>{fieldError.path}</code> — {fieldError.message}</li>
           {/each}
         </ul>

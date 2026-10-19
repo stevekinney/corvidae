@@ -11,6 +11,7 @@ import {
   type WorkerDeploymentVersion,
 } from './deployment-routing.ts';
 import type { WorkerExecutionRequirement } from './manifest/types.ts';
+import { NoRoutedWorkerDeploymentError } from './no-routed-deployment-error.ts';
 
 export const DEFAULT_WORKFLOW_WORKER_VERSIONING_POLICY = {
   mode: 'pinned',
@@ -70,9 +71,7 @@ export async function resolveWorkflowWorkerStartBinding(
     if (selection.candidate === undefined) continue;
     return bindingFromDeploymentSelection(selection, versions, options);
   }
-  throw new Error(
-    `No accepted routed worker deployment provides workflow "${options.workflowType}" revision "${options.workflowRevision}".`,
-  );
+  throw new NoRoutedWorkerDeploymentError(options.workflowType, options.workflowRevision);
 }
 
 function matchingDeploymentNames(

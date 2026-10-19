@@ -134,6 +134,7 @@ describe('RegistryTab', () => {
           instance: {
             workerId: 'worker-a',
             queue: 'default',
+            transport: 'websocket',
             health: 'active',
             connectedAt: 1,
             startedAt: 1,

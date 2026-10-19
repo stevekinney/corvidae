@@ -27,6 +27,14 @@ describe('ReviewStep', () => {
     expect(getByRole('button', { name: 'Start workflow' })).not.toBeNull();
   });
 
+  test('states how a new start is bound to a worker build (COR-164)', async () => {
+    const { getByText } = render(ReviewStep, {
+      props: { ...BASE_PROPS, submitState: { status: 'idle' } },
+    });
+
+    expect(getByText('Worker binding at start')).not.toBeNull();
+  });
+
   test('disables the submit button while pending', async () => {
     const { getByRole } = render(ReviewStep, {
       props: { ...BASE_PROPS, submitState: { status: 'pending' } },

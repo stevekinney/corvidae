@@ -3,9 +3,11 @@ import { describe, expect, test } from 'bun:test';
 import type { WorkerDeploymentSummary, WorkerSummary } from './worker-catalog-types.ts';
 import {
   asDisplayString,
+  countByTransport,
   deploymentHealthPresentation,
   formatDeploymentIdentity,
   formatDeploymentName,
+  formatTransports,
   HEARTBEAT_ELEVATED_AFTER_MS,
   HEARTBEAT_STALE_AFTER_MS,
   heartbeatSeverity,
@@ -14,6 +16,7 @@ import {
   presentationStatusDotStatus,
   queueBacklogVariant,
   summarizeFleet,
+  TRANSPORT_LABEL,
   workerHealthPresentation,
 } from './worker-presentation.ts';
 
@@ -228,5 +231,22 @@ describe('formatDeploymentIdentity / formatDeploymentName', () => {
   test('deployment name falls back to a labeled placeholder, not an em dash', () => {
     expect(formatDeploymentName(deployment())).toBe('api-prod');
     expect(formatDeploymentName(deployment({ deploymentName: null }))).toBe('(no deployment)');
+  });
+});
+
+describe('transport presentation (COR-160)', () => {
+  test('counts workers per transport and spells each transport out', () => {
+    expect(
+      countByTransport([
+        worker({ transport: 'websocket' }),
+        worker({ transport: 'long-poll' }),
+        worker({ transport: 'long-poll' }),
+      ]),
+    ).toEqual({ websocket: 1, 'long-poll': 2 });
+    expect(countByTransport([])).toEqual({ websocket: 0, 'long-poll': 0 });
+    expect(formatTransports(['websocket', 'long-poll'])).toBe('WebSocket, HTTP long-poll');
+    expect(formatTransports(['long-poll'])).toBe('HTTP long-poll');
+    expect(formatTransports([])).toBe('No transport');
+    expect(TRANSPORT_LABEL['long-poll']).toBe('HTTP long-poll');
   });
 });

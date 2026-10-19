@@ -30,7 +30,7 @@
    * `weft.workers.list` snapshot; nothing here ever synthesizes a
    * client-side "disconnected" row).
    */
-  import { EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
+  import { Button, EmptyState, Skeleton, Tab, TabList, TabPanel, Tabs } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
 
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -48,12 +48,26 @@
   import type { DrainTarget } from './drain-dialog.svelte';
   import DrainDialog from './drain-dialog.svelte';
   import ClearDeadLetterDialog from './clear-dead-letter-dialog.svelte';
+  import ConformancePanel from './conformance-panel.svelte';
+  import DeploymentsPanel from './deployments-panel.svelte';
+  import DiagnosticsFilterBar from './diagnostics-filter-bar.svelte';
   import FleetView from './fleet-view.svelte';
+  import TaskDeadLetterPanel from './task-dead-letter-panel.svelte';
+  import TaskDeliveryHistory from './task-delivery-history.svelte';
   import QueueListView from './queue-list-view.svelte';
   import WorkerDetailView from './worker-detail-view.svelte';
   import WorkerListView from './worker-list-view.svelte';
+  import { countByTransport } from './worker-presentation.ts';
   import WorkersLiveStatus from './workers-live-status.svelte';
-  import { TASK_HEARTBEAT_STALE_AFTER_MS } from './worker-catalog-types.ts';
+  import {
+    hasProvenanceFilters,
+    readProvenanceFilters,
+    writeProvenanceFilters,
+  } from './provenance-filters.ts';
+  import {
+    TASK_HEARTBEAT_STALE_AFTER_MS,
+    type TaskProvenanceFilters,
+  } from './worker-catalog-types.ts';
   import {
     clearDeadLetterMutation,
     drainDeploymentMutation,
@@ -102,6 +116,10 @@
   const workersQuery = workersListQuery(client);
   const queuesQuery = taskQueuesListQuery(client);
   const diagnosticsQuery = taskDiagnosticsQuery(client);
+  // The Diagnostics tab alone honors the URL's provenance filters; the queue and dead-letter
+  // views keep reading the unfiltered fleet-wide report. With no filter both share one cache entry.
+  const provenanceFilters = $derived(readProvenanceFilters(router.search));
+  const diagnosticsTabQuery = taskDiagnosticsQuery(client, () => provenanceFilters);
   const selectedTaskId = $derived(router.search.get('task') ?? '');
   const taskDetailQuery = taskLedgerDetailQuery(client, () => selectedTaskId);
   const workerIds = $derived(
@@ -132,6 +150,7 @@
       isForbidden(workersQuery.error) ||
       isForbidden(queuesQuery.error) ||
       isForbidden(diagnosticsQuery.error) ||
+      isForbidden(diagnosticsTabQuery.error) ||
       isForbidden(manifestQuery.error) ||
       isForbidden(rejectionsQuery.error)
     ) {
@@ -139,13 +158,22 @@
     }
   });
 
-  type TabId = 'fleet' | 'list' | 'queues' | 'diagnostics';
-  const TAB_IDS: readonly TabId[] = ['fleet', 'list', 'queues', 'diagnostics'];
+  type TabId = 'fleet' | 'list' | 'queues' | 'deployments' | 'diagnostics' | 'conformance';
+  const TAB_IDS: readonly TabId[] = [
+    'fleet',
+    'list',
+    'queues',
+    'deployments',
+    'diagnostics',
+    'conformance',
+  ];
   const TAB_LABELS: Readonly<Record<TabId, string>> = {
     fleet: 'Fleet overview',
     list: 'Workers',
     queues: 'Task queues',
+    deployments: 'Deployments',
     diagnostics: 'Diagnostics',
+    conformance: 'Conformance',
   };
 
   function isTabId(value: string | null): value is TabId {
@@ -161,6 +189,11 @@
   function selectTab(next: string): void {
     const params = new URLSearchParams();
     params.set('tab', next);
+    router.navigate(`/workers?${params.toString()}`);
+  }
+
+  function applyProvenanceFilters(filters: TaskProvenanceFilters): void {
+    const params = writeProvenanceFilters(new URLSearchParams({ tab: 'diagnostics' }), filters);
     router.navigate(`/workers?${params.toString()}`);
   }
 
@@ -202,7 +235,7 @@
         workerId: drainTarget.id,
         ...(reason !== undefined ? { reason } : {}),
       });
-    } else {
+    } else if (drainTarget.kind === 'deployment') {
       drainDeployment.mutate({
         deploymentName: drainTarget.name,
         ...(reason !== undefined ? { reason } : {}),
@@ -237,6 +270,9 @@
   // ---------------------------------------------------------------------
   // Derived view slices
   // ---------------------------------------------------------------------
+  const longPollWorkerCount = $derived(
+    countByTransport(workersQuery.data?.items ?? [])['long-poll'],
+  );
   const selectedWorker = $derived(
     selectedWorkerId
       ? ((workersQuery.data?.items ?? []).find((worker) => worker.id === selectedWorkerId) ?? null)
@@ -280,14 +316,14 @@
   const fleetError = $derived(workersQuery.error ?? null);
   const queuesLoading = $derived(queuesQuery.isPending);
   const queuesError = $derived(queuesQuery.error ?? null);
-  const diagnosticsLoading = $derived(diagnosticsQuery.isPending);
-  const diagnosticsErrorValue = $derived(diagnosticsQuery.error ?? null);
+  const diagnosticsLoading = $derived(diagnosticsTabQuery.isPending);
+  const diagnosticsErrorValue = $derived(diagnosticsTabQuery.error ?? null);
 </script>
 
 <div class="weft-workers-route">
   <div class="weft-workers-route__header">
     <h1 class="weft-workers-route__title">Workers</h1>
-    <WorkersLiveStatus {locked} />
+    <WorkersLiveStatus {locked} longPollWorkers={longPollWorkerCount} />
   </div>
 
   {#if locked}
@@ -368,6 +404,20 @@
             registryRefreshing={registryQuery.isFetching && registryQuery.data !== undefined}
             registryError={registryQuery.error ?? null}
           />
+        {:else if selectedWorkerId}
+          <EmptyState
+            title="Worker closed"
+            description={`No worker with the id ${selectedWorkerId} is registered with the server. It has closed, or it never connected here.`}
+          >
+            {#snippet action()}
+              <Button
+                variant="secondary"
+                size="sm"
+                label="Back to all workers"
+                onclick={() => selectTab('list')}
+              />
+            {/snippet}
+          </EmptyState>
         {:else}
           <WorkerListView workers={workersQuery.data?.items ?? []} />
         {/if}
@@ -415,6 +465,13 @@
       </TabPanel>
 
       <TabPanel value="diagnostics">
+        {#if !selectedTaskId}
+          <DiagnosticsFilterBar
+            filters={provenanceFilters}
+            onApply={applyProvenanceFilters}
+            onClear={() => applyProvenanceFilters({})}
+          />
+        {/if}
         {#if diagnosticsLoading}
           <div
             class="weft-workers-route__skeleton"
@@ -445,6 +502,12 @@
               staleHeartbeatAfterMs={TASK_HEARTBEAT_STALE_AFTER_MS}
             />
           {/await}
+          {#if taskDetailQuery.data}
+            <TaskDeliveryHistory operationId={selectedTaskId} />
+            {#if taskDetailQuery.data.state === 'deadLettered'}
+              <TaskDeadLetterPanel task={taskDetailQuery.data} />
+            {/if}
+          {/if}
         {:else}
           {#await loadDiagnosticsView()}
             <div role="status" aria-busy="true" aria-label="Loading diagnostics view">
@@ -452,8 +515,9 @@
             </div>
           {:then { default: DiagnosticsView }}
             <DiagnosticsView
-              items={diagnosticsQuery.data?.items ?? []}
-              summary={diagnosticsQuery.data?.summary ?? {
+              filtered={hasProvenanceFilters(provenanceFilters)}
+              items={diagnosticsTabQuery.data?.items ?? []}
+              summary={diagnosticsTabQuery.data?.summary ?? {
                 stuckQueued: 0,
                 staleInflight: 0,
                 retryStorms: 0,
@@ -467,6 +531,14 @@
             />
           {/await}
         {/if}
+      </TabPanel>
+
+      <TabPanel value="deployments">
+        <DeploymentsPanel workers={workersQuery.data?.items ?? []} />
+      </TabPanel>
+
+      <TabPanel value="conformance">
+        <ConformancePanel />
       </TabPanel>
     </Tabs>
   {/if}

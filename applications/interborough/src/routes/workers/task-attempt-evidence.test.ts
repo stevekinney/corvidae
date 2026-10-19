@@ -5,6 +5,7 @@ import {
   buildAttemptHistory,
   buildLeaseClocks,
   describeCancellation,
+  describeIdentityChange,
   exactTimestamp,
   GRACE_PERIOD_SETTLEMENT_REASON,
   isTaskAttemptList,
@@ -263,5 +264,84 @@ describe('lease clocks', () => {
       NOW,
     );
     expect(clocks.every((clock) => clock.state === 'settled')).toBe(true);
+  });
+});
+
+describe('attempt routing requirement validation', () => {
+  test('accepts a per-attempt routing requirement and rejects a malformed one', () => {
+    expect(
+      isTaskAttemptRecord({
+        ...attempt(),
+        executionRequirement: { deploymentName: 'payments', buildId: 'build-42' },
+      }),
+    ).toBe(true);
+    expect(isTaskAttemptRecord({ ...attempt(), executionRequirement: 'payments' })).toBe(false);
+    expect(isTaskAttemptRecord({ ...attempt(), executionRequirement: { buildId: 7 } })).toBe(false);
+  });
+});
+
+describe('cross-build retry detection', () => {
+  const first = attempt({ attempt: 1, executionIdentity: EXECUTION_IDENTITY });
+
+  test('flags a retry that moved to another deployment, build, or artifact digest', () => {
+    const moved = attempt({
+      attempt: 2,
+      claimedAt: NOW - 30_000,
+      executionIdentity: {
+        ...EXECUTION_IDENTITY,
+        deploymentName: 'payments-eu',
+        buildId: 'build-43',
+        artifactDigest: 'sha256:artifact-2',
+      },
+    });
+    const change = describeIdentityChange(first, moved);
+    expect(change?.fields).toEqual(['deploymentName', 'buildId', 'artifactDigest']);
+    expect(change?.previousAttempt).toBe(1);
+    expect(change?.summary).toBe(
+      'deployment payments → payments-eu; build build-42 → build-43; artifact digest sha256:artifact → sha256:artifact-2',
+    );
+  });
+
+  test.each(['deploymentName', 'buildId', 'artifactDigest'] as const)(
+    'flags a change in %s alone',
+    (field) => {
+      const next = attempt({
+        attempt: 2,
+        executionIdentity: { ...EXECUTION_IDENTITY, [field]: 'changed' },
+      });
+      expect(describeIdentityChange(first, next)?.fields).toEqual([field]);
+    },
+  );
+
+  test('does not flag a different worker on the same build', () => {
+    const next = attempt({
+      attempt: 2,
+      executionIdentity: { ...EXECUTION_IDENTITY, workerId: 'worker-b' },
+    });
+    expect(describeIdentityChange(first, next)).toBeUndefined();
+  });
+
+  test('does not flag when either attempt recorded no identity', () => {
+    expect(describeIdentityChange(first, attempt({ attempt: 2 }))).toBeUndefined();
+    expect(describeIdentityChange(attempt({ attempt: 1 }), first)).toBeUndefined();
+  });
+
+  test('buildAttemptHistory compares each attempt with the nearest earlier recorded identity', () => {
+    const history = buildAttemptHistory(
+      [
+        first,
+        attempt({ attempt: 2, claimedAt: NOW - 50_000 }),
+        attempt({
+          attempt: 3,
+          claimedAt: NOW - 40_000,
+          executionIdentity: { ...EXECUTION_IDENTITY, buildId: 'build-43' },
+        }),
+      ],
+      3,
+    );
+    expect(history[0]?.identityChange).toBeUndefined();
+    expect(history[1]?.identityChange).toBeUndefined();
+    expect(history[2]?.identityChange?.previousAttempt).toBe(1);
+    expect(history[2]?.identityChange?.fields).toEqual(['buildId']);
   });
 });

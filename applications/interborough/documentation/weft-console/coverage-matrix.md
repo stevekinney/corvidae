@@ -22,7 +22,7 @@ When an issue lands that exposes a `tracked` row, change that row's `Status` to 
 
 ## Gaps without a catalog row
 
-Four dashboard issues own work that no `tracked` row can carry today. COR-166 (conditional workflow refresh) adds `weft.workflows.refresh` operations that do not exist yet, so the test will demand their rows when that issue lands. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 and COR-281 (remote activity execution and execution provenance) extend what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
+Three dashboard issues own work that no `tracked` row can carry today. COR-166 (conditional workflow refresh) adds `weft.workflows.refresh` operations that do not exist yet, so the test will demand their rows when that issue lands. COR-162 (contract verification) computes manifest drift in the browser from `weft.system.registry` and `weft.workers.diagnostics`, and COR-274 (remote activity execution) extends what the dashboard shows from `weft.tasks.get` and `weft.tasks.diagnostics`, which it already reaches; those issues are named in the `Issue` column of those `exposed` rows.
 
 ## Matrix
 
@@ -33,8 +33,8 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.alerts.list` | exposed | `src/routes/system/alerts-tab.svelte` |  | `src/routes/system/alerts-tab.test.ts` |  |  |
 | `weft.catalog.diagnostics` | exposed | `src/routes/system/source-load-diagnostics.svelte` |  | `src/routes/system/source-load-diagnostics.test.ts` |  |  |
 | `weft.catalog.sources.list` | exposed | `src/routes/system/dynamic-source-list.svelte` |  | `src/routes/system/dynamic-source-list.test.ts` |  |  |
-| `weft.conformance.report` | tracked |  |  |  | COR-160 |  |
-| `weft.conformance.targets` | tracked |  |  |  | COR-160 |  |
+| `weft.conformance.report` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
+| `weft.conformance.targets` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/conformance-panel.test.ts` | COR-160 |  |
 | `weft.realms.diagnostics` | exposed | `src/routes/system/realms-tab.svelte` |  | `src/routes/system/realms-tab.test.ts` |  |  |
 | `weft.recover.all` | exposed | `src/routes/system/health-tab.svelte` |  | `src/routes/system/health-tab.test.ts` |  |  |
 | `weft.retention.get` | exposed | `src/routes/system/health-tab.svelte` | `getRetentionOverview` | `src/routes/system/health-tab.test.ts` |  |  |
@@ -54,20 +54,21 @@ Four dashboard issues own work that no `tracked` row can carry today. COR-166 (c
 | `weft.system.principal` | exposed | `src/lib/scopes.svelte.ts` |  | `src/lib/scopes.svelte.test.ts` |  |  |
 | `weft.system.registry` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-registry-data.test.ts` | COR-162 |  |
 | `weft.task.queues.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |
-| `weft.tasks.deadletters.get` | tracked |  |  |  | COR-284 |  |
-| `weft.tasks.deliveries` | tracked |  |  |  | COR-284 |  |
+| `weft.tasks.deadletters.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-dead-letter-panel.test.ts` | COR-284 |  |
+| `weft.tasks.deliveries` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-delivery-history.test.ts` | COR-284 |  |
 | `weft.tasks.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` | COR-274, COR-281 |  |
 | `weft.tasks.diagnostics.deadletters.clear` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/clear-dead-letter-dialog.test.ts` |  |  |
 | `weft.tasks.get` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/task-ledger-detail.test.ts` | COR-124, COR-274, COR-281, COR-284 |  |
 | `weft.updates.result.get` | tracked |  |  |  | COR-1463 |  |
-| `weft.worker.deployments.diagnostics` | tracked |  |  |  | COR-277 |  |
+| `weft.worker.deployments.diagnostics` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/deployments-panel.test.ts` | COR-277 |  |
 | `weft.worker.deployments.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-277 |  |
-| `weft.worker.deployments.preview` | tracked |  |  |  | COR-277 |  |
-| `weft.worker.deployments.promote` | tracked |  |  |  | COR-277 |  |
+| `weft.worker.deployments.preview` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/routing-dialog.test.ts` | COR-277 |  |
+| `weft.worker.deployments.promote` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/deployments-panel.test.ts` | COR-277 |  |
+| `weft.worker.deployments.remove` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/deployments-panel.test.ts` | COR-277 |  |
 | `weft.worker.deployments.resume` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-277 |  |
-| `weft.worker.deployments.rollback` | tracked |  |  |  | COR-277 |  |
-| `weft.worker.deployments.setrouting` | tracked |  |  |  | COR-277 |  |
-| `weft.worker.startoverrides.preview` | tracked |  |  |  | COR-164 |  |
+| `weft.worker.deployments.rollback` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/routing-dialog.test.ts` | COR-277 |  |
+| `weft.worker.deployments.setrouting` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/routing-dialog.test.ts` | COR-277 |  |
+| `weft.worker.startoverrides.preview` | exposed | `src/routes/workflows/detail/restart-worker-override.svelte` |  | `src/routes/workflows/detail/restart-dialog-worker-override.test.ts` | COR-164 |  |
 | `weft.workers.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-manifest-data.test.ts` | COR-124, COR-162 |  |
 | `weft.workers.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
 | `weft.workers.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |

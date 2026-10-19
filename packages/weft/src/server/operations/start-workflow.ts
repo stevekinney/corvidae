@@ -6,12 +6,15 @@ import {
   WorkflowNotRegisteredError,
 } from '../../core/engine/errors.ts';
 import { runtimeWorkflowEngine } from '../../core/runtime-workflow-engine.ts';
-import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
+import {
+  StartWorkflowValidationError,
+  WorkerStartOverrideRejectedError,
+} from '../../core/start-workflow-validation.ts';
 import type { SearchAttributeSchema, StartOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { invalidParamsFault } from './operation-helpers.ts';
+import { invalidParamsFault, workerStartOverrideRejectedFault } from './operation-helpers.ts';
 import { buildSharedStartWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,
@@ -83,8 +86,9 @@ function validateStartWorkflowInput(
  *   1. WorkflowNotRegisteredError   → InvalidParams
  *   2. WorkflowAlreadyExistsError   → Conflict
  *   3. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
- *   4. StartWorkflowValidationError → InvalidParams
- *   5. otherwise                    → EngineFailure
+ *   4. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
+ *   5. StartWorkflowValidationError → InvalidParams
+ *   6. otherwise                    → EngineFailure
  */
 function resolveStartWorkflowAccess(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -103,6 +107,9 @@ function resolveStartWorkflowAccess(error: unknown): never {
       data: { reason: message, weftCode: error.code },
     };
     throw fault;
+  }
+  if (error instanceof WorkerStartOverrideRejectedError) {
+    throw workerStartOverrideRejectedFault(message);
   }
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);

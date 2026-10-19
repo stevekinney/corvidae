@@ -54,13 +54,26 @@ export const queryKeys = {
     manifests: (workerIds: readonly string[]) => ['workers', 'manifests', workerIds] as const,
     manifest: (workerId: string) => ['workers', 'manifest', workerId] as const,
     rejections: () => ['workers', 'rejections'] as const,
+    /** Deployment versions and routing pointers (COR-277). */
+    deployments: () => ['workers', 'deployments'] as const,
   },
   queues: {
     list: () => ['queues', 'list'] as const,
   },
   diagnostics: () => ['diagnostics'] as const,
+  conformance: {
+    /** `weft.conformance.targets` (COR-160): the worker commands the server can run. */
+    targets: () => ['conformance', 'targets'] as const,
+  },
+  /** Diagnostics narrowed by provenance filters; extends `diagnostics()` so one prefix invalidates both. */
+  diagnosticsFiltered: (filters: Readonly<Record<string, string | undefined>>) =>
+    ['diagnostics', 'filtered', filters] as const,
   tasks: {
     detail: (operationId: string) => ['tasks', 'detail', operationId] as const,
+    /** `weft.tasks.deliveries` (COR-284): the server's answers to one task's result submissions. */
+    deliveries: (operationId: string) => ['tasks', 'deliveries', operationId] as const,
+    /** `weft.tasks.deadletters.get` (COR-284): a dead-lettered attempt's retained result. */
+    deadLetter: (operationId: string) => ['tasks', 'dead-letter', operationId] as const,
   },
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,

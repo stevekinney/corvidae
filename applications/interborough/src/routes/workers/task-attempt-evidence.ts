@@ -79,6 +79,11 @@ function isExecutionIdentity(value: unknown): boolean {
   );
 }
 
+/** The routing requirement an attempt was dispatched under: every field is an optional string. */
+function isExecutionRequirement(value: unknown): boolean {
+  return isRecord(value) && Object.values(value).every(isOptionalString);
+}
+
 /** Validates one attempt record at the dashboard's trust boundary. */
 export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord {
   return (
@@ -92,6 +97,8 @@ export function isTaskAttemptRecord(value: unknown): value is TaskAttemptRecord 
     isOptionalString(value['dispositionReason']) &&
     isOptionalNumber(value['lastHeartbeatAt']) &&
     isOptionalNumber(value['sessionGeneration']) &&
+    (value['executionRequirement'] === undefined ||
+      isExecutionRequirement(value['executionRequirement'])) &&
     (value['executionIdentity'] === undefined || isExecutionIdentity(value['executionIdentity']))
   );
 }
@@ -138,6 +145,47 @@ const DISPOSITION_VARIANT: Readonly<Record<TaskAttemptDisposition, AttemptBadgeV
   deadLettered: 'danger',
 };
 
+/** The execution-identity fields whose change marks a retry as having crossed a build boundary. */
+export const IDENTITY_BOUNDARY_FIELDS = ['deploymentName', 'buildId', 'artifactDigest'] as const;
+export type IdentityBoundaryField = (typeof IDENTITY_BOUNDARY_FIELDS)[number];
+
+const IDENTITY_BOUNDARY_FIELD_LABEL: Readonly<Record<IdentityBoundaryField, string>> = {
+  deploymentName: 'deployment',
+  buildId: 'build',
+  artifactDigest: 'artifact digest',
+};
+
+/** How an attempt's observed worker identity differs from the previous recorded identity. */
+export interface IdentityChange {
+  /** The boundary fields that differ, in `IDENTITY_BOUNDARY_FIELDS` order. */
+  readonly fields: readonly IdentityBoundaryField[];
+  /** The attempt whose identity this one is compared with. */
+  readonly previousAttempt: number;
+  /** Plain-language summary, e.g. `build build-1 → build-2`. */
+  readonly summary: string;
+}
+
+/**
+ * Compares two attempts' observed identities on deployment, build, and
+ * artifact digest. `undefined` when either has no recorded identity (a
+ * pre-COR-205 attempt) or none of the three differ; a differing worker id
+ * alone is the same build and is not a boundary crossing.
+ */
+export function describeIdentityChange(
+  previous: TaskAttemptRecord,
+  next: TaskAttemptRecord,
+): IdentityChange | undefined {
+  const before = previous.executionIdentity;
+  const after = next.executionIdentity;
+  if (before === undefined || after === undefined) return undefined;
+  const fields = IDENTITY_BOUNDARY_FIELDS.filter((field) => before[field] !== after[field]);
+  if (fields.length === 0) return undefined;
+  const summary = fields
+    .map((field) => `${IDENTITY_BOUNDARY_FIELD_LABEL[field]} ${before[field]} → ${after[field]}`)
+    .join('; ');
+  return { fields, previousAttempt: previous.attempt, summary };
+}
+
 export interface AttemptHistoryEntry {
   readonly key: string;
   readonly record: TaskAttemptRecord;
@@ -152,6 +200,11 @@ export interface AttemptHistoryEntry {
   readonly supersededBy: TaskAttemptRecord | undefined;
   /** `true` when this attempt's disposition was recorded after a newer attempt claimed the task. */
   readonly dispositionFenced: boolean;
+  /**
+   * Set when this attempt ran on a different deployment, build, or artifact
+   * than the nearest earlier attempt that recorded an identity.
+   */
+  readonly identityChange: IdentityChange | undefined;
 }
 
 function attemptWindowEnd(
@@ -178,6 +231,7 @@ export function buildAttemptHistory(
   const ordered = orderAttempts(attempts);
   return ordered.map((record, index) => {
     const next = ordered[index + 1];
+    const earlier = ordered.slice(0, index).findLast((candidate) => candidate.executionIdentity);
     return {
       key: `${record.attempt}:${record.claimedAt}:${record.attemptTokenDigest}`,
       record,
@@ -191,6 +245,7 @@ export function buildAttemptHistory(
         next !== undefined &&
         record.disposition !== 'leased' &&
         record.dispositionAt > next.claimedAt,
+      identityChange: earlier === undefined ? undefined : describeIdentityChange(earlier, record),
     };
   });
 }

@@ -70,4 +70,57 @@ describe('DrainDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Cancel' }));
     expect(cancelled).toBe(true);
   });
+
+  test('build target: names the deployment and build and drains with that title', async () => {
+    const drained: (string | undefined)[] = [];
+    const { getByText, getByRole } = render(DrainDialog, {
+      props: {
+        open: true,
+        target: { kind: 'build', deploymentName: 'billing', buildId: 'build-7' },
+        submitting: false,
+        onDrain: (reason) => drained.push(reason),
+        onCancel: () => {},
+      },
+    });
+
+    expect(getByText('billing/build-7')).not.toBeNull();
+    await fireEvent.click(getByRole('button', { name: 'Drain build' }));
+    expect(drained).toEqual([undefined]);
+  });
+
+  test.each(['current', 'ramping'] as const)(
+    'a %s build warns that new policy-bearing starts will be refused while it drains',
+    (routingRole) => {
+      const { getByRole } = render(DrainDialog, {
+        props: {
+          open: true,
+          target: { kind: 'build', deploymentName: 'api-prod', buildId: 'build-b' },
+          routingRole,
+          submitting: false,
+          onDrain: () => {},
+          onCancel: () => {},
+        },
+      });
+      const warning = getByRole('note');
+      expect(warning.textContent).toContain(`This is the ${routingRole} build`);
+      expect(warning.textContent).toContain('refuses new starts');
+      // The ramping build refuses only what lands in its share; the copy must not say "all".
+      if (routingRole === 'ramping') expect(warning.textContent).toContain('ramp share');
+      else expect(warning.textContent).toContain('except the share it ramps');
+    },
+  );
+
+  test('a build that routing does not name shows no such warning', () => {
+    const { queryByRole } = render(DrainDialog, {
+      props: {
+        open: true,
+        target: { kind: 'build', deploymentName: 'api-prod', buildId: 'build-a' },
+        routingRole: 'none',
+        submitting: false,
+        onDrain: () => {},
+        onCancel: () => {},
+      },
+    });
+    expect(queryByRole('note')?.textContent ?? null).toBeNull();
+  });
 });

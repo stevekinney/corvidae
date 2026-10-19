@@ -9,6 +9,7 @@ function diagnostics(workerId: string, artifactDigest: string): WorkerManifestDi
     instance: {
       workerId,
       queue: 'default',
+      transport: 'websocket',
       health: 'active',
       connectedAt: 1,
       startedAt: 1,
