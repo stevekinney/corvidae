@@ -27,6 +27,8 @@ export const BUREAU_SCOPES = [
   'bureau.goals:write',
   'bureau.contexts:read',
   'bureau.contexts:write',
+  'bureau.agents:read',
+  'bureau.agents:write',
   'bureau.workflows:read',
   'bureau.workflows:write',
   'bureau.events:observe-all',

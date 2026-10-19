@@ -25,7 +25,12 @@ export {
   AgentFileError,
   AgentSnapshotError,
 } from './agent-file';
-export type { AgentCatalogChange, AgentListing } from './agent-file-catalog';
+export type {
+  AgentCatalogChange,
+  AgentFileDetail,
+  AgentListing,
+  AgentToolDescription,
+} from './agent-file-catalog';
 export type { AgentFileWriteResult } from './agent-file-writer';
 export type { AgentRevision } from './agent-snapshot-store';
 export type {

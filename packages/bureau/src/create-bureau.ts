@@ -153,6 +153,7 @@ import {
 } from './assets/row-asset-claims';
 import type { AssetService } from './assets/types';
 import {
+  AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_WORKFLOW_OWNER_PREFIX,
@@ -7715,6 +7716,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const { runId, detail } = resource;
         if (runId.startsWith(AUDIT_SCHEDULE_OWNER_PREFIX)) {
           return scheduleOwner(runId.slice(AUDIT_SCHEDULE_OWNER_PREFIX.length));
+        }
+        if (runId.startsWith(AUDIT_AGENT_OWNER_PREFIX)) {
+          // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
+          return ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_WORKFLOW_OWNER_PREFIX)) {
           // COR-1529 — a workflow file has no owner field: it belongs to the deployment's owner.

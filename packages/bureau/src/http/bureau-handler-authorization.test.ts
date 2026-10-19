@@ -4,7 +4,7 @@
  * by a real Bureau. Two principals hold the same scopes and disjoint resources.
  */
 import { EventType } from '@ag-ui/core';
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
   type AuthConfig,
   createOperationHandler,
@@ -15,6 +15,7 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types.ts';
@@ -110,6 +111,23 @@ const WORKFLOW_PARAMETERS = {
 } as const;
 
 /**
+ * What the agent definition operations need beside an identifier: a hash to write against, and a
+ * definition whose model the catalog lacks, so a probe can never create or change a file. Both
+ * kinds of operation name their definition `definition`, and each rejects the other's shape.
+ */
+const AGENT_DEFINITION_PARAMETERS = {
+  expectedHash: 'x',
+  definition: { model: 'nobody/none', instructions: '' },
+} as const;
+
+/** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
+function definitionParameters(operation: CatalogOperation) {
+  return operation.name.startsWith('bureau.agents.')
+    ? AGENT_DEFINITION_PARAMETERS
+    : WORKFLOW_PARAMETERS;
+}
+
+/**
  * The parameters to send an operation: only the keys its own schema declares,
  * taken from `candidates`. Every operation rejects an undeclared key as
  * `InvalidParams` before it runs, so an extra key would make a request pass or
@@ -195,9 +213,10 @@ function parkingGenerate(): GenerateFunction {
 }
 
 async function openBureau(id = 'authorization-bureau') {
-  return createBureau({
+  return createBureau<AgentDefinitions>({
     id,
-    agents: {},
+    // One code-defined agent, so an agent operation has a real identifier to be probed with.
+    agents: { support: createAgent({ name: 'support', generate: parkingGenerate() }) },
     generate: parkingGenerate(),
     toolbox: createToolbox([]),
     storage: { type: 'memory' },
@@ -558,7 +577,7 @@ describe('credentials', () => {
           messageId: 'x',
           bureauId: bureau.id,
           decision: 'approve',
-          ...WORKFLOW_PARAMETERS,
+          ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
           ? await handler(rpc(operation.name, params))
@@ -680,7 +699,7 @@ describe('identifiers grant nothing', () => {
               messageId: 'message-1',
               [parameter]: requested,
               decision: 'approve',
-              ...WORKFLOW_PARAMETERS,
+              ...definitionParameters(operation),
             });
             const request = operation.transports.jsonRpcHttp
               ? rpc(operation.name, params, as('alice-key'))
@@ -691,7 +710,11 @@ describe('identifiers grant nothing', () => {
             return { status, text };
           };
 
-          const real = await send(realIds[parameter] ?? 'unmapped');
+          // An agent operation's identifier names an agent, not a review: the one this Bureau has.
+          const realId = operation.name.startsWith('bureau.agents.definitions.')
+            ? 'support'
+            : (realIds[parameter] ?? 'unmapped');
+          const real = await send(realId);
           const random = await send(`random-${crypto.randomUUID()}`);
 
           expect([operation.name, parameter, real]).toEqual([operation.name, parameter, random]);
@@ -813,7 +836,7 @@ describe('transcripts stay inside the Bureau', () => {
 
       for (const operation of BUREAU_HANDLER_OPERATIONS) {
         const params = paramsFor(operation, {
-          id: alice.reviewId,
+          id: operation.name.startsWith('bureau.agents.definitions.') ? 'support' : alice.reviewId,
           runId: alice.run.id,
           taskId: alice.run.id,
           // Not alice's own context for the one operation that would remove what the rest reads.
@@ -822,7 +845,7 @@ describe('transcripts stay inside the Bureau', () => {
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
-          ...WORKFLOW_PARAMETERS,
+          ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
           ? await handler(rpc(operation.name, params, as('k')))

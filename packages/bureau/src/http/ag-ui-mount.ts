@@ -179,7 +179,7 @@ function decodeSegment(segment: string): string | undefined {
 export function createAgUiMount(
   bureau: AgUiBureau,
   authorization: AgUiAuthorization,
-  publish: ReadonlyArray<string>,
+  publish: { readonly includes: (agentName: string) => boolean },
   options: AgUiOptions,
 ): OperationHandlerMount {
   const pathPrefix = (options.pathPrefix ?? DEFAULT_AG_UI_PATH_PREFIX).replace(/\/+$/, '');
@@ -409,9 +409,9 @@ export function createAgUiMount(
         'This mount runs the Bureau’s own tools; frontend tools in `tools` are not supported',
       );
     }
-    if (!publish.includes(agentName)) {
-      return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
-    }
+    // A resume continues a run that exists, so publication does not gate it: an agent that is
+    // withdrawn or deleted while its run waits for an answer must not strand that run. It is
+    // authorized by the thread's owner, the review's owner, and the write scope, as ever.
     if (input.resume !== undefined && input.resume.length > 0) {
       resumeRun ??= createResume({
         bureau,
@@ -439,6 +439,10 @@ export function createAgUiMount(
         owner,
         mayRead,
       });
+    }
+    // Publication gates a new run only.
+    if (!publish.includes(agentName)) {
+      return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
     }
     // Only the thread's owner starts a run on a thread that exists: a start adds to
     // the conversation, which a write scope alone does not grant. The refusal is the
