@@ -12,8 +12,8 @@ export {
   type WorkflowRefreshPollingStatus,
   type WorkflowRefreshResponse,
   type WorkflowRefreshResult,
-  type WorkflowRefreshStatus,
   type WorkflowRefreshSource,
+  type WorkflowRefreshStatus,
 } from './catalog/index.ts';
 export type {
   WorkflowCatalogActivationResult,
