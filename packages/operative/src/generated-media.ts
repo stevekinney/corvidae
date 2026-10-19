@@ -225,6 +225,36 @@ export async function admitMediaPart(
 }
 
 /**
+ * Waits for a set of admissions that run together and observes their failures as they happen,
+ * not in list order: the first one to fail (in time) calls `abortAll`, so an earlier admission
+ * that is still pending cannot hold the response hostage, then every task is awaited to
+ * settlement and that first failure is rethrown. Siblings it aborted only echo it. Returns the
+ * results in task order when none failed. The one rule for a non-streamed response's batch and for
+ * a streaming row's per-part admissions alike.
+ */
+export async function settleAdmissionsFirstFailure<T>(
+  tasks: readonly Promise<T>[],
+  abortAll: (reason: string) => void,
+): Promise<T[]> {
+  let failed = false;
+  let firstFailure: unknown;
+  const settled = await Promise.allSettled(
+    tasks.map((task) =>
+      task.catch((error: unknown) => {
+        if (!failed) {
+          failed = true;
+          firstFailure = error;
+          abortAll('A sibling admission was refused');
+        }
+        throw error;
+      }),
+    ),
+  );
+  if (failed) throw firstFailure;
+  return settled.map((result) => (result as PromiseFulfilledResult<T>).value);
+}
+
+/**
  * Admits every part that still carries inline bytes, as one batch, and returns the parts with
  * each replaced by its managed-asset form. A part already managed is left alone, so settling a
  * response twice never admits twice. When one admission is refused, the others are aborted and
@@ -260,29 +290,21 @@ export async function admitInlineMedia(
       messageId: context.messageId,
     })),
   );
-  let firstFailure: unknown;
-  let refused = false;
-  const settled = await Promise.allSettled(
+  const settled = await settleAdmissionsFirstFailure(
     admissions.map((admission, position) =>
       settleMediaAdmission(
         admission,
         pending[position]!.part,
         settleContext(pending[position]!.index),
-      ).catch((error: unknown) => {
-        if (!refused) {
-          refused = true;
-          firstFailure = error;
-          for (const sibling of admissions) sibling.abort('A sibling admission was refused');
-        }
-        throw error;
-      }),
+      ),
     ),
+    (reason) => {
+      for (const sibling of admissions) sibling.abort(reason);
+    },
   );
-  // The first refusal in time is the cause; siblings it aborted only echo it.
-  if (refused) throw firstFailure;
   const next = [...parts];
   for (const [position, { index }] of pending.entries()) {
-    next[index] = (settled[position] as PromiseFulfilledResult<MediaContent>).value;
+    next[index] = settled[position]!;
   }
   return next;
 }

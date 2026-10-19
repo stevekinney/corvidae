@@ -1865,3 +1865,35 @@ describe('a truncated Anthropic stream fails typed (correction 3)', () => {
     expect(events.at(-1)?.type).toBe('stream:complete');
   });
 });
+
+describe('streamed sibling admissions (correction 3)', () => {
+  const secondImage = { ...inlineImage, mimeType: 'image/jpeg' } as MultiModalContent;
+  const wrappers = [
+    ['withStreaming', withStreaming],
+    ['withEnhancedStreaming', withEnhancedStreaming],
+  ] as const;
+
+  it.each(wrappers)(
+    'fails promptly and aborts the earlier admission when a later one is rejected (%s)',
+    async (_name, wrapper) => {
+      const admitter = createScriptedMediaAdmitter({
+        modeAt: (position) => (position === 0 ? 'manual' : 'reject'),
+      });
+      const images = [inlineImage, secondImage];
+      const generate = wrapper(async ({ streaming }) => {
+        for (const [partIndex, part] of images.entries()) {
+          streaming.reportPart?.({ type: 'start', partIndex, kind: 'image' });
+          streaming.reportPart?.({ type: 'complete', partIndex, part });
+        }
+        return { content: '', parts: images, toolCalls: [] };
+      });
+
+      const result = await run(baseOptions(generate, { generatedMediaAdmitter: admitter.port }));
+
+      expect(result.finishReason).toBe('error');
+      expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
+      expect(admitter.admissions[0]?.aborted).toBe(true);
+      expect(admitter.admissions[1]?.settlement?.outcome).toBe('rejected');
+    },
+  );
+});

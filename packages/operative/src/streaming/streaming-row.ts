@@ -3,6 +3,7 @@ import type { Conversation, MediaContent, MultiModalContent } from 'conversation
 import { GeneratedMediaNotAdmittedError } from '../errors';
 import {
   type GeneratedMediaAdmission,
+  settleAdmissionsFirstFailure,
   settleMediaAdmission,
   type StepGeneratedMediaAdmitter,
 } from '../generated-media';
@@ -386,15 +387,30 @@ export function createStreamingRow(options: {
         for (const tracked of admissions.values())
           tracked.admission?.abort('The run was cancelled');
       }
-      const outcomes = new Map<number, AdmissionOutcome>();
-      for (const [index, tracked] of admissions) outcomes.set(index, await tracked.outcome);
-      const failure = [...outcomes.values()].find((outcome) => !outcome.ok);
-      if (failure && !failure.ok) {
-        await settleOpenAdmissions('A sibling admission failed');
+      // The same first-failure rule as a non-streamed batch: an admission that is still pending
+      // cannot hold the response while a later one has already been refused.
+      const indexes = [...admissions.keys()];
+      let settled: AdmissionOutcome[];
+      try {
+        settled = await settleAdmissionsFirstFailure(
+          [...admissions.values()].map((tracked) =>
+            tracked.outcome.then((outcome) => {
+              if (!outcome.ok) throw outcome.error;
+              return outcome;
+            }),
+          ),
+          (reason) => {
+            for (const tracked of admissions.values()) tracked.admission?.abort(reason);
+          },
+        );
+      } catch (error) {
         cancelStreamingIfActive(conversation, messageId);
-        failure.error.usage = response.usage;
-        throw failure.error;
+        if (error instanceof GeneratedMediaNotAdmittedError) error.usage = response.usage;
+        throw error;
       }
+      const outcomes = new Map<number, AdmissionOutcome>(
+        indexes.map((index, position) => [index, settled[position]!]),
+      );
 
       const parts = finalParts.map((part, index) => {
         const outcome = outcomes.get(index);
