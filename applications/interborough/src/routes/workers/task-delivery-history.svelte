@@ -10,6 +10,7 @@
   import { Badge, DescriptionList, EmptyState, Skeleton } from '@lostgradient/cinder';
   import Lock from '@lucide/svelte/icons/lock';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { getClient } from '../../lib/client.ts';
   import { FAULT_TREATMENT_TITLE, faultTreatment } from '../../lib/faults.ts';
   import { truncateId } from '../../lib/format/index.ts';
@@ -58,6 +59,15 @@
 
   const error = $derived(deliveriesQuery.error);
   const history = $derived(deliveriesQuery.data);
+
+  /** Server deliveries carry no id; two alike in one millisecond are still two submissions. */
+  function deliveryKey(delivery: {
+    receivedAt: number;
+    attemptTokenDigest: string;
+    outcome: string;
+  }): string {
+    return `${delivery.receivedAt}:${delivery.attemptTokenDigest}:${delivery.outcome}`;
+  }
 </script>
 
 <section class="weft-workers-panel weft-task-deliveries" aria-labelledby="task-deliveries-heading">
@@ -96,7 +106,7 @@
         />
       {:else}
         <ol class="weft-task-deliveries__list" aria-labelledby="task-deliveries-heading">
-          {#each history.deliveries as delivery (`${delivery.receivedAt}:${delivery.attemptTokenDigest}:${delivery.outcome}`)}
+          {#each keyedByOccurrence(history.deliveries, deliveryKey) as { key, item: delivery } (key)}
             {@const presentation = presentDelivery(delivery)}
             <li class="weft-task-deliveries__entry">
               <Badge variant={presentation.variant}>{presentation.label}</Badge>

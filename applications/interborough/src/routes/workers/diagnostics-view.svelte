@@ -5,6 +5,7 @@
    */
   import { Badge, Button, EmptyState } from '@lostgradient/cinder';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
@@ -95,7 +96,7 @@
           {guidance.guidance}
         </p>
         <ul class="weft-diagnostic-card__evidence">
-          {#each filtered ? group.items : group.items.slice(0, 3) as item (item.operationId ?? item.workflowId ?? item.queue)}
+          {#each keyedByOccurrence(filtered ? group.items : group.items.slice(0, 3), (candidate) => candidate.operationId ?? candidate.workflowId ?? candidate.queue ?? '') as { key, item } (key)}
             {@const workerId = workerIdOf(item)}
             <li>
               {#if item.workflowId}

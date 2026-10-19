@@ -8,6 +8,7 @@
    */
   import { Callout } from '@lostgradient/cinder';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { compatibilityReasonLabel } from '../system/compatibility-verdict.ts';
   import type { ContractFailure } from './contract-verification.ts';
 
@@ -41,7 +42,7 @@
   <Callout variant="danger" semantic="note" title="Contract mismatch">
     <p>The payload contract differs from the active registry revision:</p>
     <ul>
-      {#each failure.reasons as reason (reason)}
+      {#each keyedByOccurrence( failure.reasons, (candidate) => String(candidate) ) as { key, item: reason } (key)}
         <li>{compatibilityReasonLabel(reason)}</li>
       {/each}
     </ul>

@@ -11,6 +11,7 @@
    */
   import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
@@ -115,7 +116,7 @@
       <p class="weft-queue-detail__no-workers">No recovery diagnostics on this queue.</p>
     {:else}
       <ul class="weft-dead-letter-panel__list">
-        {#each diagnosticItems as item (item.kind + (item.operationId ?? item.queue))}
+        {#each keyedByOccurrence(diagnosticItems, (candidate) => candidate.kind + (candidate.operationId ?? candidate.queue)) as { key, item } (key)}
           {@const guidance = DIAGNOSTIC_GUIDANCE[item.kind]}
           <li class="weft-dead-letter-panel__item">
             <Badge variant={guidance.variant} size="sm">{guidance.title}</Badge>

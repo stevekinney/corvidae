@@ -132,3 +132,28 @@ describe('TaskDeliveryHistory', () => {
     expect(await fault.findByText('Not authorized')).not.toBeNull();
   });
 });
+
+describe('TaskDeliveryHistory — alike submissions', () => {
+  const rejected = {
+    outcome: 'rejected',
+    rejectionCode: 'stale-attempt',
+    reason: 'attempt 2 owns this task',
+    attemptTokenDigest: 'sha256:stale-token',
+    transport: 'webSocket',
+    submittedStatus: 'failed',
+    receivedAt: NOW,
+  };
+
+  test('two identical submissions in one millisecond both render', async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.tasks.deliveries', {
+      operationId: 'op_1',
+      historyLimit: 20,
+      droppedCount: 0,
+      deliveries: [rejected, { ...rejected }],
+    });
+    const view = renderHistory();
+    const rendered = await view.findAllByText('Rejected · stale-attempt');
+    expect(rendered).toHaveLength(2);
+  });
+});
