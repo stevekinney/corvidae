@@ -29,6 +29,13 @@ import { seed, workflows } from '../../fixtures/workflows.ts';
 import { buildApplication } from '../../scripts/build.ts';
 import { startHost } from '../../src/host/host.ts';
 import {
+  BARRIER_AGENT_NAME,
+  BARRIER_SHORT_AGENT_NAME,
+  createBarrier,
+  createBarrierAgents,
+} from './barrier-agent.ts';
+import {
+  E2E_BARRIER_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
   E2E_LONG_POLL_BUILD_ID,
@@ -54,7 +61,14 @@ function createFixtureEngine() {
 
 // The host takes any engine; the fixtures want the typed one, so it is kept as it is created.
 let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
+// Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), published
+// beside the seeded ones. Every chat case that needs a run still in progress uses them.
+const barrier = createBarrier();
 const host = await startHost({
+  extraAgents: {
+    agents: createBarrierAgents(barrier),
+    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME],
+  },
   environment: { INTERBOROUGH_HOME: join(scratch, 'home') },
   port: E2E_PORT,
   buildDirectory,
@@ -167,6 +181,22 @@ const ledgerWorkers = await seedLedgerEvidence(server);
 // finished run of each. See `versioned-run-seed.ts`.
 const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 
+// The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
+// go. It binds loopback only and exists in this process alone, never in the host.
+const barrierControl = Bun.serve({
+  hostname: '127.0.0.1',
+  port: E2E_BARRIER_PORT,
+  routes: {
+    '/waiting': { GET: () => Response.json({ waiting: barrier.waiting() }) },
+    '/release': {
+      POST: () => {
+        barrier.release();
+        return Response.json({ released: true });
+      },
+    },
+  },
+});
+
 process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
@@ -180,6 +210,7 @@ process.stdout.write(
 );
 
 async function shutDown(): Promise<void> {
+  await barrierControl.stop(true);
   for (const ledgerWorker of ledgerWorkers) ledgerWorker[Symbol.dispose]();
   for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();

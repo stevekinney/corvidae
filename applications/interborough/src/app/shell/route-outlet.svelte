@@ -23,9 +23,17 @@
   /** Set when the matched route's code could not be fetched. */
   let loadFailed = $state(false);
 
+  // The key the mounted component was loaded for. A navigation that leaves it as it was (a change
+  // to the query string, or a page that asked to be kept, `router.navigate`'s `keep`) is not a
+  // new page: it must not unmount what is on screen.
+  let loadedKey: string | undefined;
+
   $effect(() => {
     const match = router.current;
     const definition = match.route;
+    const key = router.viewKey;
+    if (definition !== null && definition.redirect === undefined && key === loadedKey) return;
+    loadedKey = undefined;
 
     if (!definition) {
       activeComponent = null;
@@ -39,11 +47,29 @@
     loadFailed = false;
     loading = true;
     let cancelled = false;
+    if (definition.redirect !== undefined) {
+      // The route renders nothing: it names where to go, and a failure to say lands on the
+      // chat list, which shows what is wrong in its own words.
+      definition.redirect().then(
+        (path) => {
+          if (!cancelled) router.navigate(path, { replace: true });
+          return undefined;
+        },
+        () => {
+          if (!cancelled) router.navigate('/chat', { replace: true });
+          return undefined;
+        },
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
     definition
       .load()
       .then((loadedModule) => {
         if (cancelled) return undefined;
         activeComponent = loadedModule.default;
+        loadedKey = key;
         loading = false;
         return undefined;
       })
@@ -91,11 +117,15 @@
         <Skeleton height="10rem" />
       </div>
     {:else}
-      {#key router.pathname}
+      {#key router.viewKey}
         {@const ActiveComponent = activeComponent}
         {@const view = router.current.route?.view}
         {#if view}
-          <ViewFrame {view} parameters={router.current.params}>
+          <ViewFrame
+            {view}
+            parameters={router.current.params}
+            pattern={router.current.route?.pattern}
+          >
             <ActiveComponent />
           </ViewFrame>
         {:else}

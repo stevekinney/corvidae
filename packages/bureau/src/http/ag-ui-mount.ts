@@ -10,6 +10,7 @@
  * | `POST <p>/agents/<name>/run`    | `RunAgentInput` | An event stream. `resume` absent or empty starts a run; `resume` present resumes one. |
  * | `GET <p>/threads/<threadId>/run`| none            | A stream attached to the thread's most recent root run, while it is live, parked on a human wait, or settled with a tool approval pending. Otherwise a one-event `RUN_NOT_FOUND` stream. |
  * | `GET <p>/runs/<runId>`          | none            | The same, for that run by native id, or a child run's stream by its own id. |
+ * | `GET <p>/threads/<threadId>/messages` | none      | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages, whether or not a run is going. A thread the caller may not read is a `NotFound` fault, as a missing one is. |
  * | `POST <p>/runs/<runId>/cancel`  | none            | JSON `{ runId, status }`; a `NotFound` fault otherwise. |
  *
  * Every route is authenticated by the handler before the mount sees it, and
@@ -66,7 +67,7 @@ import { createConversationHistory } from 'conversationalist';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau, OwnedResource } from '../types.ts';
-import { rowsAddedBy } from './ag-ui-messages.ts';
+import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
@@ -296,6 +297,22 @@ export function createAgUiMount(
     if (!live && !pending.some((review) => review.kind === 'tool-approval')) return undefined;
     const sessionId = detail?.sessionId ?? pending[0]?.sessionId;
     return sessionId === undefined ? undefined : { sessionId, runId };
+  }
+
+  /**
+   * The thread's conversation as the messages of a `MESSAGES_SNAPSHOT` (the mapping the attach
+   * stream uses), for a client that opens a thread with no run to attach to, such as a finished
+   * session. The attach route's own predicate decides: the thread's owner, or `bureau.tasks:read`.
+   */
+  async function readThreadMessages(threadId: string, principal: Principal): Promise<Response> {
+    const owner = await authorization.ownerOf({ kind: 'session', id: threadId });
+    if (owner === undefined || !may(principal, owner, 'bureau.tasks:read')) {
+      return notFound('thread', threadId);
+    }
+    const session = await bureau.getSession(threadId);
+    // Read after the owner of record: a session deleted between the two reads is a missing one.
+    if (session === undefined) return notFound('thread', threadId);
+    return json({ threadId, messages: snapshotMessages(session.conversationHistory) }, 200);
   }
 
   async function attachByThread(threadId: string, principal: Principal): Promise<Response> {
@@ -595,6 +612,10 @@ export function createAgUiMount(
         );
       }
       return startRun(parsed.data as RunAgentInput, second!, principal);
+    }
+    if (segments.length === 3 && first === 'threads' && third === 'messages') {
+      if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);
+      return readThreadMessages(second!, principal);
     }
     if (segments.length === 3 && first === 'threads' && third === 'run') {
       if (method !== 'GET') return json({ code: 'MethodNotAllowed', message: 'Use GET' }, 405);

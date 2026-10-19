@@ -36,8 +36,11 @@
     "applications/interborough": {
       "name": "@lostgradient/interborough",
       "dependencies": {
+        "@ag-ui/client": "catalog:",
+        "@ag-ui/core": "catalog:",
         "@lostgradient/bungalow": "workspace:*",
         "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
         "@lostgradient/operative": "workspace:*",
@@ -48,6 +51,7 @@
         "@shikijs/themes": "catalog:",
         "@tanstack/svelte-query": "catalog:",
         "armorer": "workspace:*",
+        "conversationalist": "workspace:*",
         "cron-parser": "catalog:",
         "svelte": "catalog:",
         "zod": "catalog:",

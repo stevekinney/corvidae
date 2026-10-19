@@ -23,11 +23,13 @@
     scopes: readonly AuthorizationScope[];
     view: ViewName;
     parameters?: Readonly<Record<string, string>>;
+    /** The matched route's pattern, for a view whose routes ask different questions. */
+    pattern?: string;
     /** Receives the principal store the frame reads, so a test can watch a scope being revoked. */
     onStore?: (store: PrincipalStore) => void;
   }
 
-  let { client, scopes, view, parameters = {}, onStore }: ViewFrameHarnessProps = $props();
+  let { client, scopes, view, parameters = {}, pattern, onStore }: ViewFrameHarnessProps = $props();
 
   provideClient(untrack(() => client));
   const store = providePrincipalStore();
@@ -41,7 +43,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <ViewFrame {view} {parameters}>
+  <ViewFrame {view} {parameters} {pattern}>
     <p data-testid="content">The {view} view’s content.</p>
   </ViewFrame>
 </QueryClientProvider>

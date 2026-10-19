@@ -28,8 +28,8 @@
  *
  * - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents: Weft's engine
  *   operations, relayed to its server.
- * - `/bureau/*`: Bureau's operations, served by `createBureauHandler` with the `/bureau` prefix
- *   removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+ * - `/bureau/*`: Bureau's operations and its AG-UI mount (`/bureau/ag-ui`, which Chat talks to),
+ *   served by `createBureauHandler` with the `/bureau` prefix removed. They do not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
  * - `/assets/*` and the client routes: the built application, with `index.html` for every route
  *   the client router owns.
  *
@@ -115,6 +115,12 @@ export const DEFAULT_BUILD_DIRECTORY = join(
   'build',
 );
 
+/** Agents a host serves beside the seeded ones, and which of them it publishes. */
+export type ExtraAgents = {
+  readonly agents: Readonly<Record<string, SeededAgents['assistant']>>;
+  readonly published: readonly string[];
+};
+
 export type HostOptions = {
   /** The environment to read `INTERBOROUGH_HOME` and `INTERBOROUGH_PORT` from. Defaults to the process's. */
   readonly environment?: BungalowEnvironment;
@@ -140,6 +146,11 @@ export type HostOptions = {
     ServeOptions,
     'cancellationGracePeriodMs' | 'workerReconnectGracePeriodMs'
   >;
+  /**
+   * Agents to define and publish beside the seeded ones, for tests that need an agent of their own
+   * without changing the seed. `published` names the ones the Bureau handler serves.
+   */
+  readonly extraAgents?: ExtraAgents;
   /** Whether to create the seeded schedule and goal. Agents are always defined. Defaults to `true`. */
   readonly seed?: boolean;
   /**
@@ -281,7 +292,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       });
     const bureau = await createBureau({
       id: bungalow.deploymentId,
-      agents: createSeededAgents(approvalSecret(bungalow)),
+      agents: {
+        ...options.extraAgents?.agents,
+        ...createSeededAgents(approvalSecret(bungalow)),
+      },
       generate: options.generate ?? createSeededGenerate(),
       // A run that makes no tool call is finished. Without this the Bureau's own runs, such as a
       // schedule's fire, keep asking the model until the step limit.
@@ -326,7 +340,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
 
     const bureauHandler = createBureauHandler(bureau, {
       unauthenticatedAccess: 'allow',
-      publish: PUBLISHED_AGENT_NAMES,
+      publish: [...PUBLISHED_AGENT_NAMES, ...(options.extraAgents?.published ?? [])],
+      // Chat runs over AG-UI: the mount starts, attaches to, and resumes a run, and takes the
+      // `RunAgentInput` Chat's transport sends.
+      agUi: {},
     });
     let engineUpstream: ((upstream: EngineUpstream) => void) | undefined;
     const upstream = new Promise<EngineUpstream>((resolve) => {

@@ -1,5 +1,6 @@
 import type { Component } from 'svelte';
 
+import { chatHomePath } from '../routes/chat/chat-home.ts';
 import type { ViewName } from './views.ts';
 
 /**
@@ -17,16 +18,33 @@ export interface RouteDefinition {
   view?: ViewName;
   /** Lazily imports the route's default-exported Svelte component. */
   load: () => Promise<{ default: Component }>;
+  /**
+   * Where the route goes instead of rendering, decided when it is opened. The outlet replaces the
+   * history entry with the path this resolves, so Back does not return to the redirecting address.
+   */
+  redirect?: () => Promise<string>;
 }
 
 const placeholder = () => import('../routes/placeholder/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
-  { pattern: '/', view: 'chat', load: placeholder },
-  { pattern: '/chat', view: 'chat', load: placeholder },
-  { pattern: '/chat/:sessionId', view: 'chat', load: placeholder },
-  { pattern: '/agents', view: 'agents', load: placeholder },
+  // `/` opens the most recently updated session, or `/chat` when there is none.
+  { pattern: '/', view: 'chat', load: placeholder, redirect: chatHomePath },
+  { pattern: '/chat', view: 'chat', load: () => import('../routes/chat/session-list.svelte') },
+  // `/chat/new` is registered before `/chat/:sessionId`: the first match wins.
+  { pattern: '/chat/new', view: 'chat', load: () => import('../routes/chat/index.svelte') },
+  {
+    pattern: '/chat/:sessionId',
+    view: 'chat',
+    load: () => import('../routes/chat/index.svelte'),
+  },
+  { pattern: '/agents', view: 'agents', load: () => import('../routes/agents/agent-list.svelte') },
+  {
+    pattern: '/agents/:id',
+    view: 'agents',
+    load: () => import('../routes/agents/agent-detail.svelte'),
+  },
   // `/workflows` is the catalog of workflow definitions. A run of one lives under `/runs`.
   { pattern: '/workflows', view: 'workflows', load: placeholder },
   { pattern: '/workflows/:type', view: 'workflows', load: placeholder },

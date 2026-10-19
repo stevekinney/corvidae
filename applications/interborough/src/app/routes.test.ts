@@ -31,6 +31,33 @@ describe('the route table', () => {
     for (const route of routes) expect(VIEW_NAMES).toContain(route.view as never);
   });
 
+  test('loads a component for every route that renders, and names a path for the one that redirects', async () => {
+    for (const route of routes) {
+      if (route.redirect !== undefined) continue;
+      const loaded = await route.load();
+      expect(loaded.default, route.pattern).toBeDefined();
+    }
+    expect(
+      routes.filter((route) => route.redirect !== undefined).map((route) => route.pattern),
+    ).toEqual(['/']);
+  });
+
+  test('registers /chat/new before /chat/:sessionId, because the first match wins', () => {
+    const patterns = routes.map((route) => route.pattern);
+
+    expect(patterns.indexOf('/chat/new')).toBeLessThan(patterns.indexOf('/chat/:sessionId'));
+    expect(matchRoute('/chat/new')?.pattern).toBe('/chat/new');
+    expect(matchRoute('/chat/abc')?.pattern).toBe('/chat/:sessionId');
+  });
+
+  test('serves the agents list and one agent', () => {
+    expect(matchRoute('/agents')?.pattern).toBe('/agents');
+    expect(matchRoute('/agents/assistant')).toEqual({
+      pattern: '/agents/:id',
+      params: { id: 'assistant' },
+    });
+  });
+
   test('has no two routes with one pattern', () => {
     const patterns = routes.map((route) => route.pattern);
     expect(new Set(patterns).size).toBe(patterns.length);

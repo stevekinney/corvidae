@@ -49,6 +49,8 @@ export type AgUiStreamBureau = Pick<
   | 'eventHistory'
   | 'children'
   | 'getDurableRun'
+  | 'whenRunRecorded'
+  | 'sessionInputsDeliveredBy'
 >;
 
 export type AgUiStreamEnvironment = {
@@ -105,6 +107,13 @@ export function errorEvent(
 ): Event {
   return stamp({ type: EventType.RUN_ERROR, message, code }, context, label);
 }
+
+/**
+ * What a stream says when its run took session input and the thread could not be read back: the
+ * run itself is over, and what it delivered is in the thread.
+ */
+const SNAPSHOT_UNAVAILABLE_MESSAGE =
+  'The run ended, but the thread could not be read to tell which of your messages it took, so the end of the run cannot be reported. Reload to see the thread as it is.';
 
 type ReadHistory = {
   readonly fence: string | undefined;
@@ -409,6 +418,48 @@ export function openRunStream(
       interruptibleReviews(bureau, request.nativeRunId).map((review) => review.id),
     ]);
 
+  /**
+   * A run that itself took input the client sent while it was going ends with the thread as a
+   * `MESSAGES_SNAPSHOT`, before its terminal event, whichever way it ended. The input never
+   * streams as an event of its own, so the snapshot is how a client that holds the input's row
+   * (under the id it sent the input with) learns the run delivered it, and where in the thread the
+   * run put it. Which inputs a run delivered is the durable delivery record's answer
+   * (`Bureau.sessionInputsDeliveredBy`), and the thread is read once the session has recorded the
+   * run's end (`Bureau.whenRunRecorded`), however long that takes: no count of turns decides
+   * whether the snapshot is sent.
+   *
+   * Resolves `false` when the run delivered input and the snapshot could not be produced, because
+   * the delivery record or the session could not be read, or the session does not hold what the
+   * run delivered. The stream then ends with an error and never with a success that leaves the
+   * snapshot out: a client that is told success and given no snapshot resends an input the run
+   * already took.
+   */
+  const writeDeliveredInputs = async (): Promise<boolean> => {
+    try {
+      const delivered = await bureau.sessionInputsDeliveredBy(
+        request.nativeRunId,
+        request.threadId,
+      );
+      if (delivered.length === 0) return true;
+      await bureau.whenRunRecorded(request.nativeRunId);
+      const session = await bureau.getSession(request.threadId);
+      const history = session?.conversationHistory;
+      if (history === undefined || !delivered.every((id) => history.ids.includes(id))) {
+        return false;
+      }
+      writeEvents([
+        stamp(
+          { type: EventType.MESSAGES_SNAPSHOT, messages: snapshotMessages(history) },
+          stampContext,
+          { durable: false },
+        ),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const finishAs = async (terminal: NativeTerminal): Promise<void> => {
     const closing = projector.closeOpen();
     const history = await readRunHistory(bureau, request.nativeRunId).catch(() => undefined);
@@ -428,10 +479,14 @@ export function openRunStream(
     writeEvents(closing);
     if (ended) return;
     const { threadId, runId } = request;
+    const snapshotWritten = await writeDeliveredInputs();
+    if (ended) return;
     let last: Event;
     if (terminal.outcome === 'error') {
       const { code, message } = errorOf(terminal.detail);
       last = errorEvent(code, message, stampContext, label);
+    } else if (!snapshotWritten) {
+      last = errorEvent('RUN_FAILED', SNAPSHOT_UNAVAILABLE_MESSAGE, stampContext, label);
     } else if (terminal.outcome === 'aborted') {
       last = stamp(
         {

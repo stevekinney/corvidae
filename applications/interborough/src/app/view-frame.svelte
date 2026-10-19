@@ -18,8 +18,8 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import { Button, EmptyState, Skeleton } from '@lostgradient/cinder';
-  import { CircleAlert, Inbox, Lock } from '@lucide/svelte';
+  import { EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Inbox, Lock, SearchX } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
@@ -33,22 +33,30 @@
 
   interface ViewFrameProps {
     view: ViewName;
+    /** The matched route's pattern, for a view whose routes ask different questions. */
+    pattern?: string | undefined;
     /** The matched route's parameters, such as the run `id`. */
     parameters?: Readonly<Record<string, string>>;
     children: Snippet;
   }
 
-  let { view, parameters = {}, children }: ViewFrameProps = $props();
+  let { view, parameters = {}, pattern, children }: ViewFrameProps = $props();
 
   const client = getClient();
   const principalStore = getPrincipalStore();
 
   // A frame belongs to one route: the outlet mounts a new one when the path changes, so the
   // view and its parameters are read once.
-  const initial = untrack(() => ({ view, parameters }));
+  const initial = untrack(() => ({
+    view,
+    parameters,
+    pattern,
+    search: new URLSearchParams(router.current.search),
+  }));
   const copy = VIEW_COPY[initial.view];
+  const notFoundCopy = copy.notFoundByPattern?.[initial.pattern ?? ''] ?? copy.notFound;
   const definition = VIEWS[initial.view];
-  const probe = probeFor(initial.view, initial.parameters);
+  const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
   const scopeDenied = $derived(!principalStore.hasScope(...definition.scopes));
 
@@ -57,7 +65,12 @@
 
   const probeQuery = createQuery(
     () => ({
-      queryKey: queryKeys.view(initial.view, initial.parameters['id'] ?? null),
+      queryKey: queryKeys.view(
+        initial.view,
+        initial.parameters['id'] ??
+          initial.parameters['sessionId'] ??
+          (initial.pattern === '/chat/new' ? `new:${initial.search.get('agent') ?? ''}` : null),
+      ),
       queryFn: () => (probe ? probe(client) : Promise.resolve({ empty: false })),
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
@@ -75,13 +88,25 @@
     return treatment?.kind === 'unauthorized' && treatment.mode === 'forbidden';
   }
 
-  const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'ready'>(() => {
-    if (scopeDenied) return 'forbidden';
-    if (probe === undefined || creating) return 'ready';
-    if (probeQuery.isError) return isForbiddenFault(probeQuery.error) ? 'forbidden' : 'error';
-    if (probeQuery.isPending) return 'loading';
-    return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
-  });
+  function isNotFoundFault(error: unknown): boolean {
+    if (error instanceof ViewProbeFault) return error.status === 404;
+    return classifyFault(error)?.kind === 'not-found';
+  }
+
+  const state = $derived.by<'loading' | 'empty' | 'error' | 'forbidden' | 'not-found' | 'ready'>(
+    () => {
+      if (scopeDenied) return 'forbidden';
+      if (probe === undefined || creating) return 'ready';
+      if (probeQuery.isError) {
+        if (isForbiddenFault(probeQuery.error)) return 'forbidden';
+        return notFoundCopy !== undefined && isNotFoundFault(probeQuery.error)
+          ? 'not-found'
+          : 'error';
+      }
+      if (probeQuery.isPending) return 'loading';
+      return probeQuery.data.empty && copy.empty !== undefined ? 'empty' : 'ready';
+    },
+  );
 
   $effect(() => {
     if (!probeQuery.isError || !isForbiddenFault(probeQuery.error)) return;
@@ -141,13 +166,18 @@
         {/if}
       {/snippet}
     </EmptyState>
-  {:else if state === 'error'}
-    <EmptyState title={copy.error.title} description={copy.error.description} headingLevel={1}>
-      {#snippet icon()}<CircleAlert size={28} aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        <Button variant="secondary" onclick={() => void probeQuery.refetch()}>{RETRY_LABEL}</Button>
-      {/snippet}
+  {:else if state === 'not-found' && notFoundCopy}
+    <EmptyState title={notFoundCopy.title} description={notFoundCopy.description} headingLevel={1}>
+      {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
+  {:else if state === 'error'}
+    <ErrorState
+      title={copy.error.title}
+      description={copy.error.description}
+      headingLevel={1}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void probeQuery.refetch()}
+    />
   {:else}
     <EmptyState title={copy.forbidden.title} description={forbiddenDescription} headingLevel={1}>
       {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}

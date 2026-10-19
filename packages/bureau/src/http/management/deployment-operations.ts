@@ -31,8 +31,13 @@ export type PublishedAgent = {
   readonly displayName: string;
   readonly description: string | null;
   readonly definitionRevision: number;
-  /** `withdrawn` for a persisted agent whose file does not publish it; a code-defined agent is only ever `published`. */
-  readonly publishState: 'published' | 'withdrawn';
+  /** `code` for a code-defined agent, `file` for a persisted one. */
+  readonly kind: 'code' | 'file';
+  /**
+   * `withdrawn` for a persisted agent whose file does not publish it, and `unpublished` for a
+   * code-defined agent the `publish` allowlist does not name.
+   */
+  readonly publishState: 'published' | 'withdrawn' | 'unpublished';
 };
 
 /**
@@ -140,7 +145,8 @@ const agentsListOutput = z.object({
       displayName: z.string(),
       description: z.string().nullable(),
       definitionRevision: z.number().int().nonnegative(),
-      publishState: z.enum(['published', 'withdrawn']),
+      kind: z.enum(['code', 'file']),
+      publishState: z.enum(['published', 'withdrawn', 'unpublished']),
     }),
   ),
 });
@@ -154,7 +160,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. A code-defined agent is listed, as `published`, only when the `publish` allowlist names it. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), and `publishState`. A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -177,6 +183,7 @@ export const agentsListOperation = defineOperation<
         displayName: agent.displayName,
         description: agent.description,
         definitionRevision: agent.definitionRevision,
+        kind: agent.kind,
         publishState: agent.publishState,
       })),
   }),

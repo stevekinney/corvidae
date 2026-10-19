@@ -1,5 +1,7 @@
 import type { HttpClient } from '@lostgradient/weft';
 
+import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
+import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import type { ViewName } from './views.ts';
 
 /** What a view's probe learned: whether the thing the view lists has nothing in it. */
@@ -28,6 +30,11 @@ export type ViewProbe = (client: HttpClient) => Promise<ViewProbeResult>;
 /** The Bureau's health route, mounted beside the engine API (`src/host/host.ts`). */
 const BUREAU_HEALTH_PATH = '/bureau/v1/health';
 
+/** A fault a probe raises itself for something the Bureau answered, with the status the Bureau would have. */
+function notFound(what: string): ViewProbeFault {
+  return new ViewProbeFault(`No ${what} was found.`, 404);
+}
+
 /** Ask the Bureau whether it is up. A view that has nothing built yet is empty when it is. */
 async function probeBureau(): Promise<ViewProbeResult> {
   const response = await fetch(BUREAU_HEALTH_PATH);
@@ -41,10 +48,45 @@ async function probeBureau(): Promise<ViewProbeResult> {
  * The probe for a view, or `undefined` when the view needs none because the route itself says
  * what it is showing: one run's detail page handles a run that is missing in its own words.
  */
-export function probeFor(view: ViewName, parameters: ViewProbeParameters): ViewProbe | undefined {
+export function probeFor(
+  view: ViewName,
+  parameters: ViewProbeParameters,
+  pattern?: string,
+  search: URLSearchParams = new URLSearchParams(),
+): ViewProbe | undefined {
   switch (view) {
     case 'chat':
+      // One session's page asks for that session, which settles whether it exists and may be seen.
+      if (parameters['sessionId'] !== undefined) {
+        const sessionId = parameters['sessionId'];
+        return async () => {
+          // Only whether it exists and may be seen matters here; the page reads what it shows.
+          await callBureau('bureau.contexts.get', { contextId: sessionId });
+          return { empty: false };
+        };
+      }
+      // A new chat needs an agent that is published: an unknown or unpublished one is not found.
+      if (pattern === '/chat/new') {
+        const agent = search.get('agent') ?? DEFAULT_AGENT;
+        return async () => {
+          const agents = await listAgents();
+          const found = agents.find((entry) => entry.name === agent);
+          if (found === undefined || found.publishState !== 'published') throw notFound('agent');
+          return { empty: false };
+        };
+      }
+      // The list is empty when the caller has no session.
+      return async () => {
+        const page = await listContexts({ limit: 1 });
+        return { empty: page.contexts.length === 0 };
+      };
     case 'agents':
+      return async () => {
+        const agents = await listAgents();
+        if (parameters['id'] === undefined) return { empty: agents.length === 0 };
+        if (!agents.some((entry) => entry.name === parameters['id'])) throw notFound('agent');
+        return { empty: false };
+      };
     case 'audit':
       return probeBureau;
     case 'workflows':

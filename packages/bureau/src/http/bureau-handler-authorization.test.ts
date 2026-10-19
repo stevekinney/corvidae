@@ -577,6 +577,7 @@ describe('credentials', () => {
           messageId: 'x',
           bureauId: bureau.id,
           decision: 'approve',
+          input: { id: 'input-1', payload: 'hello' },
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
@@ -699,6 +700,7 @@ describe('identifiers grant nothing', () => {
               messageId: 'message-1',
               [parameter]: requested,
               decision: 'approve',
+              input: { id: 'input-1', payload: 'hello' },
               ...definitionParameters(operation),
             });
             const request = operation.transports.jsonRpcHttp
@@ -845,6 +847,7 @@ describe('transcripts stay inside the Bureau', () => {
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
+          input: { id: 'input-1', payload: 'hello' },
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp

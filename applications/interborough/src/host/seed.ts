@@ -64,16 +64,20 @@ export const SEEDED_GOAL_RUN_IDENTIFIER = 'seeded-goal';
 /** The validator the seeded goal names. */
 export const SEEDED_VALIDATOR = { name: 'accepts-any-answer', version: '1' } as const;
 
-function reply(content: string): ScriptedGenerateStep {
-  return { kind: 'respond', response: { content, toolCalls: [] } };
+function replyResponse(content: string): GenerateResponse {
+  return { content, toolCalls: [] };
 }
 
-function call(name: string, argumentsObject: Record<string, unknown>): ScriptedGenerateStep {
-  const response: GenerateResponse = {
-    content: '',
-    toolCalls: [{ id: `seeded-${name}`, name, arguments: argumentsObject }],
-  };
-  return { kind: 'respond', response };
+function callResponse(
+  name: string,
+  argumentsObject: Record<string, unknown>,
+  id = `seeded-${name}`,
+): GenerateResponse {
+  return { content: '', toolCalls: [{ id, name, arguments: argumentsObject }] };
+}
+
+function reply(content: string): ScriptedGenerateStep {
+  return { kind: 'respond', response: replyResponse(content) };
 }
 
 /** The signal the seeded `request-human-input` agent parks on, and the question it asks. */
@@ -81,17 +85,62 @@ export const HUMAN_INPUT_SIGNAL = 'environment';
 export const HUMAN_INPUT_PROMPT = 'Which environment should the release go to?';
 
 /**
- * A script that picks its response by the run's step number, so every run starts from its first
- * response however many runs came before, and a run that parks resumes at the next one. The last
- * response repeats if a run goes past the end.
+ * The script of `request-human-input`: it asks its question, and once the person's answer is the
+ * last thing in the conversation (the user row a delivered signal appends) it thanks them. It
+ * answers from where the conversation has got to, not from the run's step number, and gives each
+ * question's call the number of the calls before it, because a tool call identifier names one call
+ * in a session: a second question on a session that already holds the first one's call would
+ * otherwise fail without ever ending the run's stream.
  */
-function byStep(steps: readonly ScriptedGenerateStep[]): GenerateFunction {
-  return async ({ step }) => {
-    const chosen = steps[Math.min(step, steps.length - 1)];
-    if (chosen === undefined || chosen.kind !== 'respond') {
-      throw new Error('A seeded script needs at least one response.');
+function humanInputGenerate(): GenerateFunction {
+  return async ({ conversation }) => {
+    const messages = conversation.getMessages();
+    const answer = messages.at(-1);
+    if (answer?.role === 'user' && typeof answer.content === 'string') {
+      if (answer.content.startsWith(`[signal:${HUMAN_INPUT_SIGNAL}]`)) {
+        return replyResponse('Thanks, the release will go to the environment you named.');
+      }
     }
-    return chosen.response;
+    const asked = messages.filter((message) => message.toolCall !== undefined).length;
+    return callResponse(
+      'requestHumanInput',
+      { signalName: HUMAN_INPUT_SIGNAL, prompt: HUMAN_INPUT_PROMPT },
+      `seeded-requestHumanInput-${asked + 1}`,
+    );
+  };
+}
+
+/**
+ * The script of `tool-runner`: it answers from where the turn has got to, not from the run's step
+ * number, because the run that follows an approval is a new run on the same session and starts at
+ * step 0. It looks the order up, then asks to refund it; once the refund's result is in the turn
+ * (the operator approved it, or denied it) it reports what became of it. A later turn of the same
+ * session starts from the lookup again.
+ */
+function toolRunnerGenerate(): GenerateFunction {
+  return async ({ conversation }) => {
+    const messages = conversation.getMessages();
+    const lastUser = messages.findLastIndex((message) => message.role === 'user');
+    const turn = messages.slice(lastUser + 1);
+    // A tool call identifier names one call in a conversation, so each turn's calls carry the
+    // number of the turn that makes them.
+    const turnNumber = messages.filter((message) => message.role === 'user').length;
+    const lookupId = `seeded-lookup-order-${turnNumber}`;
+    const refundId = `seeded-issue-refund-${turnNumber}`;
+    const resultOf = (callId: string) =>
+      turn.find((message) => message.toolResult?.callId === callId)?.toolResult;
+    const refund = resultOf(refundId);
+    if (refund !== undefined && refund.outcome !== 'action_required') {
+      return replyResponse(
+        refund.outcome === 'success'
+          ? 'Order order-1001 was refunded.'
+          : 'The refund of order order-1001 was not issued.',
+      );
+    }
+    if (resultOf(lookupId) !== undefined) {
+      return callResponse('issue-refund', { orderId: 'order-1001', cents: 4200 }, refundId);
+    }
+    return callResponse('lookup-order', { orderId: 'order-1001' }, lookupId);
   };
 }
 
@@ -173,11 +222,7 @@ export function createSeededAgents(approvalSecret: string) {
     'tool-runner': createAgent({
       name: 'tool-runner',
       description: 'Looks an order up, then asks for approval to refund it.',
-      generate: byStep([
-        call('lookup-order', { orderId: 'order-1001' }),
-        call('issue-refund', { orderId: 'order-1001', cents: 4200 }),
-        reply('Order order-1001 was refunded.'),
-      ]),
+      generate: toolRunnerGenerate(),
       toolbox: createToolRunnerToolbox(approvalSecret),
       executeOptions: { requestContext: LOCAL_REQUEST_CONTEXT },
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
@@ -185,13 +230,7 @@ export function createSeededAgents(approvalSecret: string) {
     'request-human-input': createAgent({
       name: 'request-human-input',
       description: 'Asks a human which environment the release should go to.',
-      generate: byStep([
-        call('requestHumanInput', {
-          signalName: HUMAN_INPUT_SIGNAL,
-          prompt: HUMAN_INPUT_PROMPT,
-        }),
-        reply('Thanks, the release will go to the environment you named.'),
-      ]),
+      generate: humanInputGenerate(),
       // The run ends on the request so it parks; once an operator answers it continues to the
       // reply, which has no tool call.
       stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],

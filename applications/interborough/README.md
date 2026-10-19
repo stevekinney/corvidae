@@ -22,7 +22,7 @@ bun run --filter=@lostgradient/interborough typecheck
 - `dev` builds the browser application into `build/`, starts the host on `http://127.0.0.1:7234`, and rebuilds when the source changes. `INTERBOROUGH_PORT` picks another port, and `0` asks for a free one.
 - `build` writes the production build into `build/`: `index.html` and content-hashed JavaScript, CSS, and WebAssembly under `build/assets/`. The host serves that directory. A build replaces `build/` only once it succeeds.
 - `test` runs the host's suite under `bunfig.toml`, then the browser application's under `bunfig.ui.toml`, whose preload installs happy-dom, the Svelte compile plugin from `@lostgradient/testing`, and the jest-dom matchers. The browser suite stays serial: under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml` preload on top of the one `--config` names. The tests in a `*.slow.test.ts` file bundle for seconds, so `test:slow` runs them.
-- `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered.
+- `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered. The barrier's control listens on the next port. Set `INTERBOROUGH_E2E_PORT` to run the suite beside another checkout's, which holds 7399.
 - `test:coverage` runs the browser suite under coverage and compares each area with the floor in `scripts/coverage-baseline.ts`.
 
 ## The host
@@ -33,11 +33,11 @@ bun run --filter=@lostgradient/interborough typecheck
 - **One caller.** There is no sign-in, and the host binds `127.0.0.1` only. Every request acts as `anonymous:local`, which holds every Weft scope and every Bureau scope. `weft.system.principal` reports that subject, and the shell names it in its top bar.
 - **Routes** on the public origin:
   - `/api/*`, `/v1/*`, `/jsonrpc`, `/mcp`, and Weft's discovery documents are Weft's engine operations.
-  - `/bureau/*` is `createBureauHandler` with the prefix removed. It does not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
+  - `/bureau/*` is `createBureauHandler` with the prefix removed, and `agUi: {}` mounts its AG-UI adapter at `/bureau/ag-ui`, which Chat talks to. It does not share Weft's root because both catalogs claim `/jsonrpc` and `/v1/…`.
   - `/assets/*` and every route in `src/app/routes.ts` serve the build.
 - **Why there are two listeners.** Weft's server reports its own shared `unauthenticated-local` caller for a request with no credential. To make both halves of the application name `anonymous:local`, Weft's server listens on a private loopback port that answers only a per-process key, and the public listener relays to it (`src/host/engine-proxy.ts`), attaching the key and dropping any credential the caller sent.
 - **One engine.** The Engine console serves the Bureau's own durable engine (`bureau.durableEngine()`), so a cancel from the console is fenced by the engine that owns the run and the live feed sees the Bureau's runs. Only the end-to-end fixtures replace it, through `createConsoleEngine`, because they register workflows of their own.
-- **Seeded agents call no model.** Every seeded agent answers from `createScriptedGenerate`, whatever providers are configured. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), and `internal`, which the host does not publish, plus one schedule and one goal. Seeding creates the schedule and the goal once. The Bureau's own default generate is scripted too. Real models come in through the catalog below.
+- **Seeded agents call no model.** Every seeded agent answers from `createScriptedGenerate`, whatever providers are configured. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), and `internal`, which the host does not publish, plus one schedule and one goal. `tool-runner` answers from where the turn has got to, so the run that follows an approval reports what the refund came to, and each turn's calls carry the turn's number. Seeding creates the schedule and the goal once. `HostOptions.extraAgents` adds agents and their published names without changing the seed, which is how the end-to-end suite brings an agent that waits on a barrier. The Bureau's own default generate is scripted too. Real models come in through the catalog below.
 
 The only module that reads the environment is `src/host/environment-configuration.ts`.
 
@@ -96,9 +96,23 @@ Workflows are JSON files in `workflows/` under the same directory, `~/.interboro
 
 ## The shell
 
-The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as do `/chat`, `/agents`, and `/audit`. `/engine` is the engine overview the sidebar's status pill opens.
+The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as does `/audit`.
 
-Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing, forbidden, or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
+Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
+
+## Chat and agents
+
+- `/` opens the session updated most recently (`src/routes/chat/chat-home.ts`), or `/chat` when there is none. The route's `redirect` replaces its own history entry.
+- `/chat` lists the caller's sessions with `ChatConversationList`, newest first, with Load more paging and a New chat action. `src/routes/chat/session-summary.ts` maps a Bureau context to a row.
+- `/chat/new?agent=:id` starts a session. The agent is a searchable `Combobox` above the composer, starting from `?agent=` or the default agent (`src/lib/default-agent.ts`, `assistant`); changing it replaces `?agent=`. The client names the thread, the first message starts the run, and when it has started the address becomes `/chat/:sessionId` by replacing the history entry, with the page kept mounted (`router.navigate`'s `keep`). `/chat/new` is registered before `/chat/:sessionId`. A first run that is refused stays on `/chat/new` with the row failed and a retry.
+- `/agents` lists the agents the Bureau tells the caller of (`bureau.agents.list`: `kind`, publish state), with New chat for a published one. `/agents/:id` shows one agent's details (a file agent's model, tools and skills from `bureau.agents.definitions.get`), a New chat action when it is published, and the chats had with it.
+- A session or agent the caller cannot see, or an unknown or unpublished agent for a new chat, is `not-found`.
+
+### The conversation
+
+`/chat/:sessionId` (`src/routes/chat/`) is `@lostgradient/chat` over the Bureau's AG-UI mount. A session is a Bureau context, and its conversation id is the AG-UI thread id. `chat-session.svelte.ts` holds one session's state and its `createChatSessionController`; `run-wiring.ts` is the transport. A turn is a start (`POST /bureau/ag-ui/agents/<agent>/run`, read through `@ag-ui/client`), a resume that carries the user's decision on a tool approval together with the turn that opened the run (never a follow-up row), or an attach (`GET /bureau/ag-ui/threads/<thread>/run`) to a run the page did not start, which restores the transcript from the stream's snapshot. A message typed while the run is going is a follow-up: the controller sends it through `bureau.contexts.input` under the id of its own row. Pending tool approvals are one warning alert above the transcript with Deny and Approve. A session the caller cannot see is `not-found`.
+
+A finished session's transcript is read back from the mount (`GET /bureau/ag-ui/threads/<thread>/messages`, owner-scoped like the attach route), so reopening a session, by reload or by returning to it from the list, shows every turn in order.
 
 ## Runtime configuration
 
