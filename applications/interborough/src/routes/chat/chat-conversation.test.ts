@@ -198,6 +198,42 @@ describe('an existing session', () => {
     expect(reads).toBeLessThanOrEqual(2);
   });
 
+  test('lists the tasks of the session, each linking to its page, and asks for those of this session alone', async () => {
+    const stub = bureau({
+      'bureau.contexts.get': () => CONTEXT,
+      'bureau.tasks.list': () => ({
+        tasks: [
+          {
+            id: 'run-7',
+            contextId: 'session-1',
+            agentName: 'assistant',
+            owner: 'anonymous:local',
+            actor: null,
+            status: 'completed',
+            finishReason: null,
+            statusMessage: null,
+            createdAt: '2026-10-19T08:00:00.000Z',
+            updatedAt: '2026-10-19T08:00:01.000Z',
+            cleanup: null,
+            openWaits: [],
+          },
+        ],
+        nextOffset: null,
+      }),
+    });
+    restore = stub.restore;
+    landAt('/chat/session-1');
+    const { container } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await waitFor(() => expect(container.querySelector('a[href="/tasks/run-7"]')).not.toBeNull());
+    expect(stub.calls.find((call) => call.method === 'bureau.tasks.list')?.params).toEqual({
+      contextId: 'session-1',
+    });
+  });
+
   test('restores a finished session’s transcript when it opens', async () => {
     restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
       if (url.endsWith('/messages')) {

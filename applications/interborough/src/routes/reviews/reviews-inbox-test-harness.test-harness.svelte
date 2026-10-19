@@ -12,9 +12,11 @@
 
   import type { ReviewListEntry, HttpClient } from '@lostgradient/weft';
 
+
   import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import type { BureauReview } from '../../lib/bureau-reviews.ts';
   import { provideClient } from '../../lib/client.ts';
   import { FleetEventSource } from '../../lib/live-source/index.ts';
   import { providePrincipalStore, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
@@ -25,8 +27,10 @@
   interface ReviewsInboxTestHarnessProps {
     client: HttpClient;
     scopes?: readonly AuthorizationScope[];
+    bureauQuery?: ReviewQuery<readonly BureauReview[]>;
     pendingQuery: ReviewQuery<ReviewListEntry[]>;
     completedQuery: ReviewQuery<ReviewListEntry[]>;
+    weftEnabled?: boolean;
     submitting?: boolean;
     onSubmit?: (reviewId: string, submission: ReviewDecisionSubmission) => void;
   }
@@ -34,8 +38,10 @@
   let {
     client,
     scopes = ['reviews:read', 'reviews:write', 'events:read'],
+    bureauQuery = { data: [], isPending: false, isError: false, error: undefined, refetch: () => {} },
     pendingQuery,
     completedQuery,
+    weftEnabled = true,
     submitting = false,
     onSubmit = () => {},
   }: ReviewsInboxTestHarnessProps = $props();
@@ -57,5 +63,16 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <ReviewsInbox {pendingQuery} {completedQuery} {submitting} {onSubmit} />
+  <ReviewsInbox
+    {bureauQuery}
+    {pendingQuery}
+    {completedQuery}
+    {weftEnabled}
+    {submitting}
+    {onSubmit}
+    resolving={false}
+    outcome={undefined}
+    onResolve={() => {}}
+    onAnswer={() => {}}
+  />
 </QueryClientProvider>

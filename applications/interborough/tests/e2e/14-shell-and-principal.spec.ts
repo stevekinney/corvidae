@@ -6,7 +6,7 @@
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import { expect, test } from './fixtures.ts';
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Inbox'];
+const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
 const ENGINE = ['Workers', 'Storage', 'System', 'Audit'];
 
 test('the shell shows the principal weft.system.principal reports', async ({ page, request }) => {

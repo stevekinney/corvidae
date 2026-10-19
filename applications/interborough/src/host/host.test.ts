@@ -205,7 +205,7 @@ describe('the relay to Weft’s server', () => {
 describe('the built application', () => {
   test('serves index.html at every client route', async () => {
     const host = await start(await createBuild());
-    for (const path of ['/', '/chat', '/runs/abc', '/inbox']) {
+    for (const path of ['/', '/chat', '/runs/abc', '/reviews']) {
       const response = await fetch(new URL(path, host.url));
       expect(response.status, path).toBe(200);
       expect(response.headers.get('content-type'), path).toBe('text/html; charset=utf-8');

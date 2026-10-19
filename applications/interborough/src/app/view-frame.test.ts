@@ -8,6 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
@@ -92,12 +93,16 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
           : call.method === 'bureau.agents.catalog'
             ? // The agent editor's probe parses the catalog, so it answers one.
               { models: [], tools: [] }
-            : call.method === 'weft.workflows.definitions.list'
-              ? // The Workflows list joins the engine's definitions with the Bureau's files.
-                { definitions: empty ? [] : [codeSummary()] }
-              : call.method === 'bureau.workflows.list'
-                ? { workflows: [], nextOffset: null }
-                : { items: [] };
+            : call.method === 'bureau.tasks.list'
+              ? { tasks: empty ? [] : [taskFixture()], nextOffset: null }
+              : call.method === 'bureau.reviews.list'
+                ? { reviews: empty ? [] : [toolApprovalFixture()] }
+                : call.method === 'weft.workflows.definitions.list'
+                  ? // The Workflows list joins the engine's definitions with the Bureau's files.
+                    { definitions: empty ? [] : [codeSummary()] }
+                  : call.method === 'bureau.workflows.list'
+                    ? { workflows: [], nextOffset: null }
+                    : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
   if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
@@ -237,10 +242,10 @@ describe('a view that finds something to show', () => {
 
 describe('a refused probe', () => {
   test('tells the principal store the scope is gone', async () => {
-    stub('inbox', 'forbidden');
-    const { store, findByRole } = mount('inbox');
-    await findByRole('heading', { level: 1, name: VIEW_COPY.inbox.forbidden.title });
-    await waitFor(() => expect(store()?.hasScope('reviews:read')).toBe(false));
+    stub('schedules', 'forbidden');
+    const { store, findByRole } = mount('schedules');
+    await findByRole('heading', { level: 1, name: VIEW_COPY.schedules.forbidden.title });
+    await waitFor(() => expect(store()?.hasScope('schedules:read')).toBe(false));
   });
 
   test('is not retried automatically, and retrying asks again', async () => {
@@ -601,5 +606,149 @@ describe('the Workflows area', () => {
     expect(await some.findByTestId('content')).not.toBeNull();
     // The probe asks for this type's runs, and only the first.
     expect(stub.callsTo('GET /workflows')[0]?.params).toMatchObject({ type: 'order-processing' });
+  });
+});
+
+describe('the Tasks view', () => {
+  const rpc = (method: string, result: unknown) =>
+    Response.json({ jsonrpc: '2.0', id: method, result });
+  const fault = (status: number, code: string) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+
+  function stubBureau(answers: Record<string, () => Response>): { methods: string[] } {
+    const methods: string[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      methods.push(method);
+      const answer = answers[method];
+      if (answer === undefined) throw new Error(`Unexpected request: ${method}`);
+      return answer();
+    });
+    return { methods };
+  }
+
+  test('holds no console scope, because the Bureau shows each caller its own tasks', () => {
+    expect(VIEWS.tasks.scopes).toEqual([]);
+  });
+
+  test('the list is forbidden when the Bureau refuses the caller its tasks', async () => {
+    stubBureau({ 'bureau.tasks.list': () => fault(403, 'Forbidden') });
+    const { container, findByRole } = mount('tasks', { pattern: '/tasks' });
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('the list is empty, in the words copy.ts holds, when the caller has no task', async () => {
+    const { methods } = stubBureau({
+      'bureau.tasks.list': () => rpc('bureau.tasks.list', { tasks: [], nextOffset: null }),
+    });
+    const { container, findByRole } = mount('tasks', { pattern: '/tasks' });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.empty?.title ?? '' });
+    expect(frame(container).dataset['state']).toBe('empty');
+    expect(methods).toEqual(['bureau.tasks.list']);
+  });
+
+  test('one task’s page is not found when the Bureau answers NotFound for it', async () => {
+    const { methods } = stubBureau({ 'bureau.tasks.get': () => fault(404, 'NotFound') });
+    const { container, findByRole } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-9' },
+    });
+    const notFound = VIEW_COPY.tasks.notFound;
+    expect(await findByRole('heading', { level: 1, name: notFound?.title ?? '' })).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
+    expect(container.textContent).toContain(notFound?.description ?? '');
+    expect(methods).toEqual(['bureau.tasks.get']);
+  });
+
+  test('one task’s page is ready when the Bureau has the task, and asks for that task alone', async () => {
+    const requests: unknown[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      requests.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+      return rpc('bureau.tasks.get', taskFixture({ id: 'run-1' }));
+    });
+    const { container, findByTestId } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-1' },
+    });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toMatchObject([{ method: 'bureau.tasks.get', params: { taskId: 'run-1' } }]);
+  });
+
+  test('one task’s page is failing, not not-found, when the Bureau breaks', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({ error: 'The server broke.' }, { status: 500 }),
+    );
+    const { container, findByRole } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-1' },
+    });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.error.title });
+    expect(frame(container).dataset['state']).toBe('error');
+  });
+
+  test('two tasks do not share one answer', async () => {
+    stubBureau({ 'bureau.tasks.get': () => fault(404, 'NotFound') });
+    const first = mount('tasks', { pattern: '/tasks/:id', parameters: { id: 'run-1' } });
+    await first.findByRole('heading', { level: 1, name: VIEW_COPY.tasks.notFound?.title ?? '' });
+    first.unmount();
+    restore?.();
+
+    stubBureau({ 'bureau.tasks.get': () => rpc('bureau.tasks.get', taskFixture({ id: 'run-2' })) });
+    const second = mount('tasks', { pattern: '/tasks/:id', parameters: { id: 'run-2' } });
+    expect(await second.findByTestId('content')).not.toBeNull();
+  });
+});
+
+describe('the Reviews view', () => {
+  test('holds no console scope, because the console drops the Bureau’s and the Bureau gates its own list', () => {
+    expect(VIEWS.reviews.scopes).toEqual([]);
+  });
+
+  test('is forbidden when the Bureau refuses the caller the list of reviews, with data-state forbidden', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32000,
+          message: 'No',
+          data: { weftCode: 'Forbidden', httpStatus: 403 },
+        },
+      }),
+    );
+    const { container, findByRole } = mount('reviews', { pattern: '/reviews' });
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.reviews.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('asks the Bureau for its list and nothing of the engine, because the page reads the engine itself', async () => {
+    const methods: string[] = [];
+    const paths: string[] = [];
+    restore = installFetchImplementation(async (input, init) => {
+      paths.push(requestUrl(input).pathname);
+      methods.push(operationOf(init?.body)?.method ?? '');
+      return Response.json({ jsonrpc: '2.0', id: 1, result: { reviews: [] } });
+    });
+    const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
+    // The page shows its own empty state, so the frame is ready even when nothing is waiting.
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(methods).toEqual(['bureau.reviews.list']);
+    expect(paths).toEqual(['/bureau/jsonrpc']);
+  });
+
+  test('has no empty state of its own, so a page with nothing waiting says so itself', () => {
+    expect(VIEWS.reviews.canBeEmpty).toBe(false);
+    expect(VIEW_COPY.reviews.empty).toBeUndefined();
   });
 });

@@ -84,15 +84,15 @@ describe('Reviews dashboard card', () => {
     expect(getByText('—')).not.toBeNull();
   });
 
-  test('links to /inbox', async () => {
+  test('links to /reviews', async () => {
     const { container } = render(DashboardCardHarness, {
       props: { client: clientReturning([]) },
     });
 
-    expect(container.querySelector('a')?.getAttribute('href')).toBe('/inbox');
+    expect(container.querySelector('a')?.getAttribute('href')).toBe('/reviews');
   });
 
-  test('a plain click routes to /inbox in place; a modified click is left to the browser', async () => {
+  test('a plain click routes to /reviews in place; a modified click is left to the browser', async () => {
     landAt('/');
     const { container } = render(DashboardCardHarness, {
       props: { client: clientReturning([]) },
@@ -104,6 +104,6 @@ describe('Reviews dashboard card', () => {
     expect(router.pathname).toBe('/');
 
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
-    expect(router.pathname).toBe('/inbox');
+    expect(router.pathname).toBe('/reviews');
   });
 });

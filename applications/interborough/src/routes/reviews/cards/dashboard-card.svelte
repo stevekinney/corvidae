@@ -41,12 +41,12 @@
       return;
     }
     event.preventDefault();
-    router.navigate('/inbox');
+    router.navigate('/reviews');
   }
 </script>
 
 <a
-  href={router.href('/inbox')}
+  href={router.href('/reviews')}
   onclick={onCardClick}
   class="weft-reviews-card-link"
   aria-label="Reviews"

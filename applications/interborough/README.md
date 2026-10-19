@@ -124,9 +124,30 @@ Every write names the `hash` of the file the page read. A file that changed on d
 
 The Playwright host serves its console from the fixtures' engine, not the Bureau's (see "One engine" above), so a Bureau file has no engine definition, schedule, or run there. The list, a file's page, its actions, its signal, and its editor run against the real Bureau through three seeded files (`tests/e2e/seeded-workflow-files.ts`); the definition, schedules, revisions, and runs of a type run against a fixture type, `inventory-sync-sweep`.
 
+## Tasks
+
+`/tasks` lists the caller's tasks (`bureau.tasks.list`), newest first, fifty to a page with Load more, and `/tasks/:id` shows one. `/tasks` is not in the navigation: a task is reached from the chat session it belongs to (the session lists its tasks, `bureau.tasks.list` with the session's `contextId`), from a run's page (which links to `/tasks/:id` only when `bureau.tasks.get` answers for the run's identifier), and from a review. The list filters by agent, status, and session through `?agent=`, `?status=`, and `?session=`. Its code is in `src/routes/tasks/` and its wire shapes in `src/lib/bureau-tasks.ts`.
+
+- **A task's page** shows its status and status message from `bureau.tasks.get`. It shows no message history, because the management plane's task view carries no message text. Its answer comes from `bureau.tasks.events`, which is a subscription and so reaches the browser as Server-Sent Events at `/bureau/v1/subscriptions/bureau.tasks.events`: the answer is the artifact of its `task.snapshot` and `task.status` elements. The page reads the task again whenever the stream reports a change.
+- **Following** (`task-follower.svelte.ts`) keeps the last position the Bureau gave. A stream that drops, fails to open, or ends while the task is still going is opened again with that position in `Last-Event-ID`, after the shared reconnect backoff and at once when the browser reports it is back online. A position and the answer are kept in `sessionStorage` under the task, so a reloaded page resumes from there instead of starting over: a stream resumed from a position sends no snapshot, so the answer a finished task gave must be kept with it. A snapshot's position (`-1`) names nothing to resume from and is never kept.
+- **A wait** is read from the review it names (`bureau.reviews.get`). A question shows its prompt and one text field, whose answer goes through `bureau.tasks.respond` under a new message identifier; a tool approval shows its reason and message, and is decided in Reviews.
+- **Cancelling** calls `bureau.tasks.cancel`. Each of the eight receipts has its own words (`TASK_COPY.cancel`). A cancel is often an asking, so while the task's `cleanup` is `cancel-requested` or `cleanup-pending` the page reads the task every second, and says where the cleanup stands until it reads `cleaned-up`, `cleanup-failed`, `cleanup-unresolved`, or another state that is final.
+- **The view** is `tasks` with no console scope, as for every view the Bureau serves. A refused list is forbidden, and a task the Bureau does not have (or the caller may not see, which it answers the same way) is not found.
+
+## Reviews
+
+`/reviews` is everything waiting on the caller. It replaced `/inbox`, with no alias. Its list merges two sources into one list and one count, the longest-waiting first:
+
+- the Bureau's pending reviews (`bureau.reviews.list`): the tool approvals and the questions of the agents' runs; and
+- the engine's pending human reviews (`client.listReviews`), read only when the principal holds `reviews:read`. The Decided and Timed out states are the engine's.
+
+There is no Archive, because no operation lists the Bureau's resolved reviews. A Bureau row links once, to the chat when the review names a session, otherwise to its task when `bureau.tasks.get` answers for the run, otherwise to the run. A Bureau tool approval is approved, denied, or rejected through `bureau.reviews.resolve` with the reason a rejection cannot be sent without; a Bureau question is answered with one text field through `bureau.tasks.respond`. The engine's reviews keep their own decision form.
+
+The list, and the count in the navigation, ask again every five seconds and at once after each decision this application makes (`src/lib/review-queries.ts`), including a decision on an approval inline in a chat. A chat that is already open does not update live; one opened afterwards reads the conversation the decision wrote into. The view is `reviews` with no console scope: the console drops the Bureau's scopes, and a refused list is the frame's forbidden state.
+
 ## The shell
 
-The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions (see "The Workflows area" above), and `/audit` renders a placeholder.
+The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Reviews) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions (see "The Workflows area" above), and `/audit` renders a placeholder.
 
 Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
 

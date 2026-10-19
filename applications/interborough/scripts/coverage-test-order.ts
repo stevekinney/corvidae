@@ -97,7 +97,6 @@ export const LINUX_BASELINE_COVERAGE_TEST_ORDER = [
   'src/routes/reviews/reviews.integration.test.ts',
   'src/routes/reviews/reviews-inbox.test.ts',
   'src/routes/reviews/artifact-view.test.ts',
-  'src/routes/reviews/reviews-archive.test.ts',
   'src/routes/reviews/index.test.ts',
   'src/routes/reviews/pending-review-row.test.ts',
   'src/routes/workers/dead-letter-request.test.ts',

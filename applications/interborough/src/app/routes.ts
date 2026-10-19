@@ -63,7 +63,11 @@ export const routes: readonly RouteDefinition[] = [
     view: 'schedules',
     load: () => import('../routes/schedules/index.svelte'),
   },
-  { pattern: '/inbox', view: 'inbox', load: () => import('../routes/reviews/index.svelte') },
+  // A task is reached from a chat session, from a run's page, and from a review, so the list is
+  // not in the navigation.
+  { pattern: '/tasks', view: 'tasks', load: () => import('../routes/tasks/index.svelte') },
+  { pattern: '/tasks/:id', view: 'tasks', load: () => import('../routes/tasks/index.svelte') },
+  { pattern: '/reviews', view: 'reviews', load: () => import('../routes/reviews/index.svelte') },
   { pattern: '/workers', view: 'workers', load: () => import('../routes/workers/index.svelte') },
   { pattern: '/storage', view: 'storage', load: () => import('../routes/storage/index.svelte') },
   { pattern: '/system', view: 'system', load: () => import('../routes/system/index.svelte') },
