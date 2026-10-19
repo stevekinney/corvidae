@@ -324,6 +324,7 @@ import {
   getComposedWorkflowInterceptor,
   swallowPromiseRejection,
 } from './strategy-helpers.ts';
+import { isEventFromSupersededGeneration } from './superseded-generation.ts';
 import {
   cancelWorkflow as cancelWorkflowFromTermination,
   cleanupWaiters as cleanupWaitersFromTermination,
@@ -1039,10 +1040,18 @@ export class Engine<
    * engine listeners and the fleet feed see, in dispatch order. Terminal and
    * `workflow:suspended` events are forwarded by termination itself; events
    * without a `workflowId` stay on the engine.
+   *
+   * An event its emitter tagged with a run's execution token is dropped
+   * before any of that when a `start-new` replacement has since taken over
+   * the id (COR-1608): neither engine listeners, the replacement's handle,
+   * nor the server watch channel built on engine listeners observe a
+   * superseded generation's late events. A dropped event reports `true`, as
+   * an uncancelled dispatch does.
    */
   override dispatchEvent(event: Event): boolean {
-    const result = super.dispatchEvent(event);
     const internals = peekInternals(this);
+    if (internals && isEventFromSupersededGeneration(internals, event)) return true;
+    const result = super.dispatchEvent(event);
     if (internals) forwardWorkflowEventToHandle(internals, event);
     return result;
   }
