@@ -425,9 +425,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
    * the revisions that are not any file's current one, to register as `retained`, and the
    * instances Bureau cannot register a revision for at all.
    *
-   * An instance whose type has no registration makes the engine's `recoverAll()` refuse the whole
-   * batch, so one such instance would strand every durable run in the store on every boot. Each is
-   * therefore cancelled (see {@link cancelUnrecoverable}) before the engine recovers.
+   * An instance whose type has no registration makes the engine's default `recoverAll()` refuse
+   * the whole batch, so one such instance would strand every durable run in the store on every
+   * boot. Each is therefore cancelled (see {@link cancelUnrecoverable}) before the engine
+   * recovers, with a reason an operator can read. This is the first line of defence: Bureau also
+   * recovers with `acknowledgeUnknownWorkflowTypes`, which skips and reports what has no trace
+   * here at all (COR-1583).
    */
   async function planRecovery(): Promise<{
     retained: { id: string; version: string; document: WorkflowDocument }[];
@@ -1001,6 +1004,10 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
             if (catalog.find(snapshot.id)?.version === snapshot.workflowVersion) return true;
             const pinned = await versionsOf(snapshot.id);
             return pinned.has(snapshot.workflowVersion);
+          },
+          hasInFlight: async (id) => {
+            const pinned = await versionsOf(id);
+            return pinned.size > 0;
           },
           lastActivityAt: async (snapshot) => {
             let latest: number | undefined;
