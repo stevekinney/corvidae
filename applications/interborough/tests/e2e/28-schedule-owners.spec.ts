@@ -301,7 +301,10 @@ test.describe('creating a schedule', () => {
     await expect(drawer.getByRole('combobox', { name: 'Workflow type' })).toHaveCount(0);
     for (const reserved of [...RUN_ENGINE_WORKFLOW_TYPES, 'e2e-digest']) {
       await type.fill(reserved);
-      await expect(drawer.getByRole('button', { name: 'Create schedule' }), reserved).toBeDisabled();
+      await expect(
+        drawer.getByRole('button', { name: 'Create schedule' }),
+        reserved,
+      ).toBeDisabled();
     }
   });
 
