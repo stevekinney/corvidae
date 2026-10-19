@@ -308,8 +308,9 @@ describe('every listener and timer registered before a top-level await (COR-1585
       unlistedFired.push('guard.unlisted-type');
     });
     fireAll();
-    expect(unlistedFired).toEqual(['guard.unlisted-type']);
+    // Released before the assertion, so a red run does not leave this Bureau held.
     scan.release();
+    expect(unlistedFired).toEqual(['guard.unlisted-type']);
 
     // During the audit sequence seed: the same listeners again, a store event for the store's
     // subscriber, and the maintenance timer, advanced past its interval.

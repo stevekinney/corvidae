@@ -68,6 +68,14 @@ describe('a composition that was not told a resolver is coming (COR-1586)', () =
         status: 'resolver-failed',
       });
       expect(diagnostics.filter((entry) => entry.level === 'warn')).toEqual([]);
+
+      // Without the flag, abandoning is a no-op: the answer still names the missing resolver, not
+      // an abandonment reason.
+      runtime.abandonCatalogAgentRunOptionsResolver('construction failed');
+      expect(await runtime.resolveRunServices(catalogRunInfo)).toMatchObject({
+        status: 'unavailable',
+        reason: expect.stringContaining('no catalog agent recovery resolver is configured'),
+      });
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }

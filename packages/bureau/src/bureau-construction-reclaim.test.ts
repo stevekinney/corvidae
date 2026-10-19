@@ -479,17 +479,28 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
     // at once; settled last, nothing has happened to the run and the wait falls through.
     const observability = captured?.durable?.observability;
     if (observability === undefined) throw new Error('Expected durable observability.');
+    const composition = captured;
+    if (composition === undefined) throw new Error('Expected a composition.');
+    const realAbandon = composition.abandonCatalogAgentRunOptionsResolver.bind(composition);
+    let settled = false;
+    spyOn(composition, 'abandonCatalogAgentRunOptionsResolver').mockImplementation((reason) => {
+      settled = true;
+      realAbandon(reason);
+    });
     const realDispose = observability.dispose.bind(observability);
     let failedBeforeDispose: boolean | undefined;
-    spyOn(observability, 'dispose').mockImplementation(() =>
-      pollUntil(async () => {
-        const durableRun = await owner.getDurableRun(runId);
-        return durableRun?.status === 'failed';
-      }).then((failed) => {
-        failedBeforeDispose = failed;
-        realDispose();
-      }),
-    );
+    spyOn(observability, 'dispose').mockImplementation(async () => {
+      // Nothing has settled the parked reader yet, so nothing can have failed the run: go on at
+      // once. Settled first (the old order), the live engine commits `failed` within milliseconds
+      // and the bounded poll sees it.
+      failedBeforeDispose = settled
+        ? await pollUntil(async () => {
+            const durableRun = await owner.getDurableRun(runId);
+            return durableRun?.status === 'failed';
+          })
+        : false;
+      realDispose();
+    });
 
     // The reclaimed run is parked in a reader.
     expect(
