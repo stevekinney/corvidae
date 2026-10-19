@@ -7,7 +7,7 @@
 
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
   import { workerDeepLink } from './provenance-filters.ts';
   import type { TaskDiagnosticItem, TaskDiagnosticsSummary } from './worker-catalog-types.ts';
@@ -100,7 +100,16 @@
             {@const workerId = workerIdOf(item)}
             <li>
               {#if item.workflowId}
-                <span class="weft-workers-id">{truncateId(item.workflowId)}</span>
+                {@const workflowPath = workflowDetailPath(item.workflowId)}
+                <a
+                  class="weft-workers-id weft-workers-id-link"
+                  href={router.href(workflowPath)}
+                  aria-label={`${truncateId(item.workflowId)}, open workflow ${item.workflowId}`}
+                  onclick={(event) => {
+                    event.preventDefault();
+                    router.navigate(workflowPath);
+                  }}>{truncateId(item.workflowId)}</a
+                >
               {:else if item.operationId}
                 <span class="weft-workers-id">{truncateId(item.operationId)}</span>
               {/if}

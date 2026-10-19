@@ -9,6 +9,8 @@ import { installFetchImplementation } from '../../lib/live-source/fetch.test-sup
 export interface StubbedFetchCall {
   readonly url: string;
   readonly method: string;
+  /** The request body when it was a string (a JSON-RPC envelope, for example). */
+  readonly body?: string;
 }
 
 export function stubStorageFetch(
@@ -20,6 +22,7 @@ export function stubStorageFetch(
     const call: StubbedFetchCall = {
       url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
       method: init?.method ?? 'GET',
+      ...(typeof init?.body === 'string' ? { body: init.body } : {}),
     };
     calls.push(call);
     return handler(call);

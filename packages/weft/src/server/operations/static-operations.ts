@@ -21,6 +21,7 @@ import { getCatalogDiagnosticsOperation } from './get-catalog-diagnostics.ts';
 import { getCheckpointAtOperation } from './get-checkpoint-at.ts';
 import { getPrincipalOperation } from './get-principal.ts';
 import { getRealmDiagnosticsOperation } from './get-realm-diagnostics.ts';
+import { getRefreshDiagnosticsOperation } from './get-refresh-diagnostics.ts';
 import { getRegistryOperation } from './get-registry.ts';
 import { getRetentionOverviewOperation } from './get-retention-overview.ts';
 import { getReviewOperation } from './get-review.ts';
@@ -55,6 +56,7 @@ import { preloadWorkflowRevisionOperation } from './preload-workflow-revision.ts
 import { purgeWorkflowsOperation } from './purge-workflows.ts';
 import { queryWorkflowOperation } from './query-workflow.ts';
 import { recoverAllOperation } from './recover-all.ts';
+import { refreshWorkflowOperation } from './refresh-workflow.ts';
 import { removeWorkflowTagsOperation } from './remove-workflow-tags.ts';
 import { replayWorkflowOperation } from './replay-workflow.ts';
 import { resumeScheduleOperation } from './resume-schedule.ts';
@@ -129,6 +131,8 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   installWorkflowRevisionOperation,
   activateWorkflowRevisionOperation,
   preloadWorkflowRevisionOperation,
+  refreshWorkflowOperation,
+  getRefreshDiagnosticsOperation,
   getWorkflowRevisionOperation,
   listWorkflowRevisionsOperation,
   getActiveWorkflowRevisionOperation,

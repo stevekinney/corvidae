@@ -181,6 +181,19 @@ describe('RestartDialog worker binding', () => {
     expect(fakes.previewCalls).toHaveLength(0);
   });
 
+  test('a preview issued for another workflow is never shown or spendable here', async () => {
+    const { client, fakes } = fakeClient({
+      previews: [async () => ({ preview: preview({ workflowId: 'some-other-workflow' }) })],
+    });
+    const view = renderDialog(autoUpgradeRun(), client);
+
+    await fireEvent.click(view.getByRole('button', { name: 'Preview worker upgrade' }));
+    await waitFor(() => expect(fakes.previewCalls).toHaveLength(1));
+
+    expect(view.queryByText('3 → 4')).toBeNull();
+    expect(view.queryByLabelText('Restart on the build routing selects now')).toBeNull();
+  });
+
   test('previewing shows what changes, and an unconfirmed preview restarts on the inherited build without the token', async () => {
     const { client, fakes } = fakeClient();
     let restarted = 0;

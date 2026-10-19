@@ -13,7 +13,9 @@
  * Shared fixtures live in `workflow-revisions-panel-fixtures.test-support.ts`.
  */
 import { fireEvent, waitFor, within } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 
 import { ScriptedFetch } from './system-test-support.test-support.ts';
 import {
@@ -63,6 +65,34 @@ describe('WorkflowRevisionsPanel activation', () => {
     await waitFor(() => {
       expect(scripted?.calls.length).toBeGreaterThan(callsBeforeActivation + 1);
     });
+  });
+
+  test("a successful activation also invalidates the workflow's refresh diagnostics", async () => {
+    scripted = new ScriptedFetch();
+    scripted.routeJsonRpcMethod('weft.workflows.revisions.list', [
+      revisionRecord('order-processing-rev-1'),
+      revisionRecord('order-processing-rev-2'),
+    ]);
+    scripted.routeJsonRpcMethod(
+      'weft.workflows.active.get',
+      activePointer('order-processing-rev-1'),
+    );
+    scripted.routeJsonRpcMethod('weft.workflows.revisions.activate', {
+      applied: true,
+      pointer: activePointer('order-processing-rev-2', 2),
+    });
+    const queryClient = createQueryClient();
+    const invalidate = spyOn(queryClient, 'invalidateQueries');
+
+    const { getByRole, findByText } = await renderPanel(undefined, queryClient);
+    const activateButton = await waitFor(() => getByRole('button', { name: 'Activate' }));
+    await fireEvent.click(activateButton);
+    const dialog = await waitFor(() => getByRole('dialog'));
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Activate' }));
+    await findByText('Compatible');
+
+    const keys = invalidate.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
+    expect(keys).toContain(JSON.stringify(queryKeys.catalog.refresh('order-processing')));
   });
 
   test('a refusal carrying compatibilityReasons renders every reason as explicit text, never color alone', async () => {

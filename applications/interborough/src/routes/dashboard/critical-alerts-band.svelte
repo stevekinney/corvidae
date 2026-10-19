@@ -116,7 +116,10 @@
 
   const chips = $derived.by((): AlertChip[] => {
     const list: AlertChip[] = [];
-    if (diagnosticsQuery.data) list.push(...buildDiagnosticChips(diagnosticsQuery.data.summary));
+    if (diagnosticsQuery.data)
+      list.push(
+        ...buildDiagnosticChips(diagnosticsQuery.data.summary, diagnosticsQuery.data.items),
+      );
     if (reviewsQuery.data) {
       const pending = reviewsQuery.data.filter(isPendingReview);
       const reviewsChip = buildReviewsNearTimeoutChip(pending, Date.now());
@@ -176,6 +179,21 @@
       >
         <span class="weft-alert-chip__label">{chip.label}</span>
       </a>
+      {#if chip.workflow}
+        {@const workflowHref = chip.workflow.href}
+        <a
+          href={router.href(workflowHref)}
+          class="weft-alert-chip weft-alert-chip--workflow"
+          data-tone={chip.tone}
+          aria-label={`Open workflow ${chip.workflow.id}`}
+          onclick={(event) => {
+            event.preventDefault();
+            router.navigate(workflowHref);
+          }}
+        >
+          <span class="weft-alert-chip__label">Open workflow</span>
+        </a>
+      {/if}
     {/each}
     {#if deniedScope}
       <span class="weft-critical-alerts-band__partial-lock">

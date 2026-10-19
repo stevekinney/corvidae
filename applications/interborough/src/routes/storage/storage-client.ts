@@ -116,9 +116,8 @@ function encodeCondition(condition: StorageConditionInput): unknown {
  * case. So `faultCode` is realistically always `undefined` here in
  * practice; the structured-body branch below is kept only for
  * forward-compatibility should that change upstream. Callers that need to
- * distinguish fault codes for storage errors (e.g.
- * `probeConditionalBatchSupported`) key off `HttpClientError.status`
- * instead — `classifyFault` (`../../lib/faults.ts`) already does the same
+ * distinguish fault codes for storage errors key off
+ * `HttpClientError.status` instead — `classifyFault` (`../../lib/faults.ts`) already does the same
  * status-based fallback for any error with no `faultCode`.
  */
 function fallbackErrorMessage(response: Response): string {
@@ -308,36 +307,4 @@ export async function storageConditionalBatch(
     throw new Error('Malformed conditional storage batch response');
   }
   return { applied: result['applied'] };
-}
-
-/**
- * Probes whether the connected backend supports `conditionalBatch` by
- * issuing a genuinely no-op conditional batch: empty conditions AND empty
- * operations. The operation checks `storage.capabilities().conditionalBatch`
- * before touching any key (`storageConditionalBatchOperation.invoke`), and
- * `storageConditionalBatch(storage, [], [])` vacuously satisfies every
- * (zero) condition and applies zero writes even when the check passes — so
- * this call is side-effect-free either way. This mirrors the
- * probe-and-infer pattern `src/lib/scopes.svelte.ts` already uses for
- * principal resolution, necessary because weft has no operation exposing
- * `Storage.capabilities()` over the wire at all. Filed upstream:
- * https://github.com/stevekinney/weft/issues/727.
- *
- * Detects the "not supported" outcome by HTTP status (501, `NotImplemented`'s
- * documented REST status — `FAULT_CODE_TO_HTTP_STATUS` in
- * `weft/src/server/operation-fault.ts`), not `HttpClientError.faultCode`:
- * `shapeRestFault` never puts a `code` field on the wire (see
- * `parseStorageErrorBody`'s doc comment above), so `faultCode` is always
- * `undefined` for a storage fault in practice.
- */
-export async function probeConditionalBatchSupported(
-  connection: StorageConnection,
-): Promise<boolean> {
-  try {
-    await storageConditionalBatch(connection, [], []);
-    return true;
-  } catch (error) {
-    if (error instanceof HttpClientError && error.status === 501) return false;
-    throw error;
-  }
 }

@@ -2,6 +2,7 @@
   import { Alert, Badge, DescriptionList } from '@lostgradient/cinder';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import TaskAttemptHistory from './task-attempt-history.svelte';
   import TaskLeasePanel from './task-lease-panel.svelte';
   import ContractFailureNotice from './contract-failure-notice.svelte';
@@ -57,7 +58,10 @@
   const identityItems = $derived([
     { term: 'Operation', definition: task.operationId },
     { term: 'Attempt', definition: String(task.attempt) },
-    { term: 'Workflow', definition: task.workflowId ?? 'No workflow identifier' },
+    {
+      term: 'Workflow',
+      definition: task.workflowId === undefined ? 'No workflow identifier' : workflowLink,
+    },
     { term: 'Execution token', definition: task.workflowExecutionToken ?? 'Not supplied' },
     { term: 'Activity', definition: activityLabel },
   ]);
@@ -128,6 +132,20 @@
     },
   ]);
 </script>
+
+{#snippet workflowLink()}
+  {#if task.workflowId !== undefined}
+    {@const workflowPath = workflowDetailPath(task.workflowId)}
+    <a
+      href={router.href(workflowPath)}
+      aria-label={`Open workflow ${task.workflowId}`}
+      onclick={(event) => {
+        event.preventDefault();
+        router.navigate(workflowPath);
+      }}>{task.workflowId}</a
+    >
+  {/if}
+{/snippet}
 
 <article class="weft-task-ledger-detail" aria-labelledby="task-ledger-title">
   <header class="weft-task-ledger-detail__header">
