@@ -9432,29 +9432,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return acknowledge();
   }
 
-  /** Takes a committed session's asset claims, or releases an expired session's; never rejects. */
-  async function updateSessionAssetClaims(
-    entry: SessionOutboxEntry,
-    outboxSessionStore: SessionStore,
-  ): Promise<void> {
+  /** Releases an expired session's asset claims once its `session.deleted` entry drains; never rejects. */
+  async function releaseExpiredSessionAssetClaims(entry: SessionOutboxEntry): Promise<void> {
+    const key = `${entry.sessionId}\u0000${entry.incarnation}`;
+    const expired = expiringSessions.get(key);
+    if (expired === undefined) return;
+    expiringSessions.delete(key);
     try {
-      if (entry.kind === 'session.deleted') {
-        const key = `${entry.sessionId}\u0000${entry.incarnation}`;
-        const expired = expiringSessions.get(key);
-        if (expired === undefined) return;
-        expiringSessions.delete(key);
-        await releaseSessionGeneratedAssets(expired);
-        return;
-      }
-      const committed = await outboxSessionStore.load(entry.sessionId);
-      if (committed !== undefined && committed.incarnation === entry.incarnation) {
-        await claimSessionAssets(committed);
-      }
+      await releaseSessionGeneratedAssets(expired);
     } catch (error) {
       diagnose({
         level: 'error',
         scope: 'assets',
-        message: `[bureau] Could not update the asset claims of session "${entry.sessionId}" while replaying its outbox entry ${entry.ordinal}: ${serializeUnknownError(error)}`,
+        message: `[bureau] Could not release the asset claims of expired session "${entry.sessionId}": ${serializeUnknownError(error)}`,
         cause: error,
       });
     }
@@ -9478,16 +9468,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return 'stop';
     }
     // COR-713: every row that enters a session's history arrived in a commit this drain replays,
-    // so this is where the rows' claims on the assets they reference are taken (and where an
-    // expired session's are released, once the store has removed it). The work runs beside the
-    // drain, not in it, so it never delays an acknowledgement or stalls the drain; it is tracked,
-    // so shutdown lets it land before it tears the stores down.
-    if (
-      entry.kind === 'session.created' ||
-      entry.kind === 'session.saved' ||
-      entry.kind === 'session.deleted'
-    ) {
-      trackSessionInputSettlement(updateSessionAssetClaims(entry, outboxSessionStore));
+    // so this is where the rows' claims on the assets they reference are taken, and they are
+    // taken BEFORE the entry is dispatched and acknowledged: the entry is the only cue that the
+    // commit still needs its claims, so a claim that fails (or a process that exits first) leaves
+    // it pending for the next pass. An expired session's claims are released here too once the
+    // store has removed it; that only shortens an asset's life, so it runs beside the drain.
+    if (entry.kind === 'session.created' || entry.kind === 'session.saved') {
+      try {
+        const committed = await outboxSessionStore.load(entry.sessionId);
+        if (committed !== undefined && committed.incarnation === entry.incarnation) {
+          await claimSessionAssets(committed);
+        }
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'assets',
+          message: `[bureau] Could not claim the assets of session "${entry.sessionId}" for its outbox entry ${entry.ordinal}; leaving it pending for a later drain to retry: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+        return 'stop';
+      }
+    } else if (entry.kind === 'session.deleted') {
+      trackSessionInputSettlement(releaseExpiredSessionAssetClaims(entry));
     }
     // AB-389 (Codex P2 review finding, PR #598, "Isolate subscriber
     // exceptions while draining the outbox"): `emitter.dispatch()`
@@ -10316,17 +10318,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
+  /**
+   * Takes the claims of every row in a committed session. A claim that fails is reported and then
+   * thrown once every row has been tried, so the outbox drain leaves the commit's entry
+   * unacknowledged and replays it: the entry is the only cue that a committed row still needs its
+   * claim.
+   */
   async function claimSessionAssets(session: AgentSession): Promise<void> {
     const context = rowClaimContext(session);
     if (context === undefined) return;
+    let failure: { error: unknown } | undefined;
     await claimRowAssets(
       context.service,
       context.principalId,
       context.holderOf,
       context.rows,
-      context.onFailure,
+      (assetId, error) => {
+        context.onFailure(assetId, error);
+        failure ??= { error };
+      },
       claimedRowAssets,
     );
+    if (failure !== undefined) throw failure.error;
   }
 
   async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {

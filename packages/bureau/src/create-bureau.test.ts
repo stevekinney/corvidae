@@ -4914,7 +4914,19 @@ describe('createBureau', () => {
     // succeeds), so this total is legitimately higher than it was before
     // the outbox existed — was 4 pre-AB-389, 6 after AB-389's ack-only
     // drain, and 8 now that AB-390's drain claims before it acknowledges.
-    expect(deletionPersistenceAttempts).toBe(8);
+    //
+    // COR-713 — that 8 was read the instant `deleteRun` returned, while the drain was still
+    // working, so it counted however many of the drain's batches had landed by then (it drifted
+    // with any await added to the drain). The count that does not drift is the settled one: the
+    // injected failure (1), plus the three session commits `deleteRun` retries (3), plus the claim
+    // and the acknowledgement of each of those three outbox entries (6). So the assertion waits
+    // for the outbox to empty and then counts every batch.
+    for (let turn = 0; turn < 200; turn++) {
+      if ((await bureau.sessionStore!.outbox.pending()).length === 0) break;
+      await yieldToPortableEventLoop();
+    }
+    expect(await bureau.sessionStore!.outbox.pending()).toEqual([]);
+    expect(deletionPersistenceAttempts).toBe(10);
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toEqual({});
     expect(persistedSession?.metadata['approvalResolutionStartedIds']).toEqual([]);

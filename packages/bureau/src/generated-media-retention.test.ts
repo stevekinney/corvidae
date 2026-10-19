@@ -14,7 +14,7 @@ import {
   withBackendDescriptors,
 } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import {
   appendMessages,
   createConversationHistory,
@@ -297,5 +297,55 @@ describe('a session saved with a copied history (a goal retry, a session fork)',
     await collect(opened);
 
     expect(await resolves(opened, assetId!)).toBe(true);
+  });
+});
+
+describe('a claim that fails when its commit is replayed', () => {
+  async function suppliedImageRows(opened: Opened) {
+    const admission = await opened.bureau.assets!.admit(
+      { source: { kind: 'inline', bytes: png } },
+      alice,
+    );
+    await admission.work.result();
+    const rows = builtRows({
+      id: 'supplied-row',
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'managed-asset', assetId: admission.assetId },
+        },
+      ],
+    });
+    return { assetId: admission.assetId, rows };
+  }
+
+  it('leaves the outbox entry unacknowledged, and a later drain claims it', async () => {
+    const opened = await openBureau();
+    const { assetId, rows } = await suppliedImageRows(opened);
+    const retain = opened.bureau.assets!.retain.bind(opened.bureau.assets);
+    let failing = true;
+    spyOn(opened.bureau.assets!, 'retain').mockImplementation(async (...args) => {
+      if (failing && args[0] === assetId) {
+        throw new Error('retention unavailable');
+      }
+      return retain(...args);
+    });
+
+    await paint(opened, 'supplied', { appendMessages: rows });
+
+    // The claim failed, so the commit's entry is still there for a later drain to retry.
+    const pending = await opened.bureau.sessionStore!.outbox.pending();
+    expect(pending.some((entry) => entry.sessionId === 'supplied')).toBe(true);
+
+    // The service recovers, and a later commit wakes the drain, which now claims the first commit's rows.
+    failing = false;
+    await paint(opened, 'other');
+    expect(await opened.bureau.sessionStore!.outbox.pending()).toEqual([]);
+    await opened.runtime.advance(5_000);
+    const report = await collect(opened);
+    expect(report.expired).not.toContain(assetId);
+    expect(await resolves(opened, assetId)).toBe(true);
   });
 });
