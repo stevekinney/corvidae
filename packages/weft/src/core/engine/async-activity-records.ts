@@ -19,6 +19,7 @@
 import { KEYS, encodeStorageKeyComponent, type BatchOperation } from '../../storage/interface.ts';
 import { decode, encode } from '../codec.ts';
 import { ActivityAsyncPendingEvent } from '../events.ts';
+import { tagWorkflowEventGeneration } from '../events/workflow-event-generation.ts';
 import type {
   OperationOutcome,
   PendingAsyncActivityInfo,
@@ -422,12 +423,15 @@ export async function registerPendingAsyncActivity(
   );
   if (!alreadyRegistered) {
     internals.engine.dispatchEvent(
-      new ActivityAsyncPendingEvent(
-        pending.token,
-        pending.operationId,
-        pending.workflowId,
-        pending.activityName,
-        pending.attempt,
+      tagWorkflowEventGeneration(
+        new ActivityAsyncPendingEvent(
+          pending.token,
+          pending.operationId,
+          pending.workflowId,
+          pending.activityName,
+          pending.attempt,
+        ),
+        pending.workflowExecutionToken,
       ),
     );
   }
