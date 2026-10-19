@@ -7,14 +7,23 @@
  * does, with a real snapshot store and a real file-agent catalog.
  */
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
-import { createCheckpointStore, createRunEngine, createRunWorkflow } from '@lostgradient/operative';
+import {
+  createCheckpointStore,
+  createRunEngine,
+  createRunWorkflow,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+} from '@lostgradient/operative';
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { readFileAgentBinding } from './agent-file-catalog';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore, type AgentSnapshotStore } from './agent-snapshot-store';
-import { createCatalogDispatcher, GoalAttemptTombstonedError } from './bureau-catalog-dispatch';
+import {
+  createCatalogDispatcher,
+  GoalAttemptInvalidCostEstimationError,
+  GoalAttemptTombstonedError,
+} from './bureau-catalog-dispatch';
 import type { CatalogRunRecoveryLoad, RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import {
@@ -40,6 +49,8 @@ interface Harness {
   readonly currentHash: string;
   /** A snapshot another run holds, as the winner of a claim would have recorded it. */
   holdElsewhere(runId: string, instructions: string): Promise<string>;
+  /** A snapshot stored and held by no run, as a winner that died before it held one left it. */
+  storeWithoutReference(instructions: string): Promise<string>;
   dispatcher(runtime: RuntimeComposition): ReturnType<typeof createCatalogDispatcher>;
 }
 
@@ -72,6 +83,12 @@ async function harness(): Promise<Harness> {
       const definition = { ...binding.definition, instructions };
       const hash = `held-${runId}`;
       await snapshots.recordRun({ id: 'worker', hash, definition }, runId);
+      return hash;
+    },
+    async storeWithoutReference(instructions) {
+      const definition = { ...binding.definition, instructions };
+      const hash = `stored-${instructions.length}`;
+      await snapshots.begin({ id: 'worker', hash, definition });
       return hash;
     },
     dispatcher: (runtime) =>
@@ -282,6 +299,41 @@ describe('a claim this execution loses', () => {
     expect(hashes).not.toContain(h.currentHash);
   });
 
+  it('ties the winner’s snapshot to the run when the winner claimed and died before it held one', async () => {
+    const h = await harness();
+    const winnerHash = await h.storeWithoutReference('Winner’s instructions.\n');
+    expect(await h.snapshots.reference(attempt.runId)).toBeUndefined();
+    const runtime = await engineRuntime({
+      claimCatalogRunRecoveryRecord: async () => false,
+      loadCatalogRunRecoveryRecord: async () => ({
+        status: 'found',
+        record: {
+          schemaVersion: 1,
+          agentName: 'worker',
+          definitionRevision: 1,
+          input: 'work',
+          agentDefinitionHash: winnerHash,
+          goalAttempt: { goalRunId: attempt.goalRunId, attemptIndex: attempt.attemptIndex },
+          costEstimation: null,
+        },
+      }),
+    });
+
+    const started = h.dispatcher(runtime).startGoalAttemptRun(attempt);
+    await started.durablyStarted;
+    // The continuation holds the winner's snapshot from the moment it starts, so a pass that
+    // prunes snapshots nothing holds cannot take it from under the run.
+    const tied = await h.snapshots.reference(attempt.runId);
+    expect(tied?.hash).toBe(winnerHash);
+    await started.run.result();
+    await settled(h);
+
+    const { reference, hashes } = await stored(h.snapshots, attempt.runId);
+    expect(reference?.hash).toBe(winnerHash);
+    expect(reference?.settledAt).toBeDefined();
+    expect(hashes).toEqual([winnerHash]);
+  });
+
   it('keeps nothing when the winner’s snapshot cannot be rebuilt', async () => {
     const h = await harness();
     const runtime = await engineRuntime({
@@ -342,6 +394,30 @@ describe('a start that fails before the run exists', () => {
     expect(await h.snapshots.unsettledReferences()).toEqual([]);
     const revisions = await h.snapshots.revisions('worker');
     expect(revisions.length).toBe(0);
+  });
+});
+
+describe('a goal attempt whose agent cannot be persisted as a recovery record', () => {
+  it('keeps no snapshot when its cost estimation is refused before the start is recorded', async () => {
+    const h = await harness();
+    const agent = h.fixture.catalog.find('worker') as unknown as Record<symbol, unknown>;
+    const resolve = agent[OPERATIVE_RESOLVE_RUN_OPTIONS] as (
+      input: unknown,
+      context: unknown,
+    ) => Promise<Record<string, unknown>>;
+    // An estimation with a field the recovery record refuses: the attempt ends permanently.
+    Object.defineProperty(agent, OPERATIVE_RESOLVE_RUN_OPTIONS, {
+      value: (input: unknown, context: unknown) =>
+        resolve
+          .call(agent, input, context)
+          .then((options) => ({ ...options, costEstimation: { model: 'm', extra: true } })),
+    });
+    const dispatcher = h.dispatcher(claimRuntime({ claim: async () => true }));
+
+    const reason = await settleOutcome(dispatcher.startGoalAttemptRun(attempt));
+
+    expect(reason).toBeInstanceOf(GoalAttemptInvalidCostEstimationError);
+    expect(await stored(h.snapshots, attempt.runId)).toEqual({ reference: undefined, hashes: [] });
   });
 });
 

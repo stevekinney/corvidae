@@ -34,6 +34,9 @@ import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 /** What an agent's identifier must look like: it doubles as a path segment later. */
 export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
+/** The longest an agent's identifier may be, in characters: the same cap workflow identifiers have. */
+export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
+
 /** The extension an agent file carries. Matched exactly: `x.MD` is another kind of file. */
 export const AGENT_FILE_EXTENSION = '.md';
 
@@ -403,10 +406,12 @@ export function serializeUpdatedAgentFile(
 
 /** The identifier a filename stem names, or the reason it cannot be one. */
 export function checkAgentIdentifier(stem: string): AgentFileProblem | undefined {
-  if (AGENT_IDENTIFIER_PATTERN.test(stem)) return undefined;
+  if (AGENT_IDENTIFIER_PATTERN.test(stem) && stem.length <= AGENT_IDENTIFIER_MAX_LENGTH) {
+    return undefined;
+  }
   return {
     code: 'invalid-identifier',
-    message: `"${stem}" is not a valid agent identifier. Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit.`,
+    message: `"${stem.length > 80 ? `${stem.slice(0, 80)}…` : stem}" is not a valid agent identifier. Use at most ${AGENT_IDENTIFIER_MAX_LENGTH} lowercase letters, digits, and hyphens, starting and ending with a letter or digit.`,
   };
 }
 

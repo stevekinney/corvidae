@@ -14,6 +14,8 @@
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
+import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
 /** One operation the handler serves. */
@@ -29,6 +31,8 @@ export type PublishedAgent = {
   readonly displayName: string;
   readonly description: string | null;
   readonly definitionRevision: number;
+  /** `withdrawn` for a persisted agent whose file does not publish it; a code-defined agent is only ever `published`. */
+  readonly publishState: 'published' | 'withdrawn';
 };
 
 /**
@@ -119,7 +123,10 @@ export const deploymentGetOperation = defineOperation<
   invoke: async ({ host }) => ({
     id: host.deployment.id,
     state: host.deployment.state(),
-    publishedAgents: host.deployment.publishedAgents().map((agent) => agent.name),
+    publishedAgents: host.deployment
+      .publishedAgents()
+      .filter((agent) => agent.publishState === 'published')
+      .map((agent) => agent.name),
     operations: host.deployment.operations().map((operation) => ({ ...operation })),
     recovery: { ...(await host.deployment.recovery()) },
   }),
@@ -133,7 +140,7 @@ const agentsListOutput = z.object({
       displayName: z.string(),
       description: z.string().nullable(),
       definitionRevision: z.number().int().nonnegative(),
-      publishState: z.literal('published'),
+      publishState: z.enum(['published', 'withdrawn']),
     }),
   ),
 });
@@ -141,13 +148,13 @@ const agentsListOutput = z.object({
 export const agentsListOperation = defineOperation<
   typeof agentsListInput,
   typeof agentsListOutput,
-  BureauDeploymentOperationHost
+  BureauDeploymentOperationHost & BureauOwnershipHost
 >({
   name: 'bureau.agents.list',
   mcpExposable: false,
-  summary: 'List the published agents',
+  summary: 'List the agents the caller may see',
   description:
-    'Returns each published agent in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. An agent the deployment does not publish is not listed. Any authenticated principal may read it.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. A code-defined agent is listed, as `published`, only when the `publish` allowlist names it. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -157,13 +164,20 @@ export const agentsListOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host }) => ({
-    agents: host.deployment.publishedAgents().map((agent) => ({
-      name: agent.name,
-      displayName: agent.displayName,
-      description: agent.description,
-      definitionRevision: agent.definitionRevision,
-      publishState: 'published' as const,
-    })),
+  invoke: async ({ host, principal }) => ({
+    agents: host.deployment
+      .publishedAgents()
+      .filter(
+        (agent) =>
+          agent.publishState === 'published' ||
+          mayDiscloseUnpublishedAgents(host.ownership, principal),
+      )
+      .map((agent) => ({
+        name: agent.name,
+        displayName: agent.displayName,
+        description: agent.description,
+        definitionRevision: agent.definitionRevision,
+        publishState: agent.publishState,
+      })),
   }),
 });
