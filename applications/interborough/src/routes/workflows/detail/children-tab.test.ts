@@ -52,6 +52,32 @@ describe('ChildrenTab', () => {
     });
   });
 
+  test('states the child worker-binding inheritance rule with and without children (COR-164)', async () => {
+    const empty = render(ChildrenTabHarness, {
+      props: {
+        client: { list: async () => page([]), operations: inertOperations },
+        workflow: workflowState(),
+      },
+    });
+    await waitFor(() => expect(empty.getByText('No child workflows')).not.toBeNull());
+    expect(empty.getByText('Worker binding for child workflows')).not.toBeNull();
+    empty.unmount();
+
+    const populated = render(ChildrenTabHarness, {
+      props: {
+        client: {
+          list: async () => page([summary({ id: 'child-1' })]),
+          operations: inertOperations,
+        },
+        workflow: workflowState(),
+      },
+    });
+    await waitFor(() =>
+      expect(populated.getByText('Worker binding for child workflows')).not.toBeNull(),
+    );
+    expect(populated.getByText(/same workflow type and the same revision/)).not.toBeNull();
+  });
+
   test('renders real child ids as clickable rows, including a detached (non-awaited) child', async () => {
     const client = {
       operations: inertOperations,

@@ -1,0 +1,76 @@
+/**
+ * The worker-binding inheritance rules the console states (COR-164), each tied
+ * to the Weft source or test that proves it. A surface may only say what one of
+ * these entries says; `worker-inheritance-rules.test.ts` pins each `source`
+ * path to a file that exists, so a moved or renamed rule fails here instead of
+ * leaving the console asserting a rule nothing backs.
+ *
+ * The statements restate behavior; they do not implement it. Weft decides every
+ * binding.
+ *
+ * @module
+ */
+export type WorkerInheritanceSurface =
+  'start' | 'schedule' | 'child' | 'fork' | 'restart' | 'activity';
+
+export interface WorkerInheritanceRule {
+  readonly surface: WorkerInheritanceSurface;
+  readonly heading: string;
+  readonly text: string;
+  /** Repository-relative paths of the Weft files that prove the rule. */
+  readonly sources: readonly string[];
+}
+
+export const WORKER_INHERITANCE_RULES: Readonly<
+  Record<WorkerInheritanceSurface, WorkerInheritanceRule>
+> = {
+  start: {
+    surface: 'start',
+    heading: 'Worker binding at start',
+    text: 'A workflow that declares a worker versioning policy is bound when it starts: Weft picks the routed deployment build that carries the run’s revision and records it. A workflow that declares no policy gets no binding.',
+    sources: ['packages/weft/src/core/engine/lifecycle/start-state.ts'],
+  },
+  schedule: {
+    surface: 'schedule',
+    heading: 'Worker binding for scheduled runs',
+    text: 'A scheduled occurrence is an ordinary workflow start. It follows the workflow’s own worker versioning policy and is bound like any other start; a schedule carries no worker-versioning rule of its own.',
+    sources: ['packages/weft/src/core/engine/lifecycle/start-state.ts'],
+  },
+  child: {
+    surface: 'child',
+    heading: 'Worker binding for child workflows',
+    text: 'A child started with ctx.startChild inherits its parent’s worker binding when the child has the same workflow type and the same revision as the binding. Otherwise it is bound from routing like any other start.',
+    sources: [
+      'packages/weft/src/core/engine/lifecycle/start-state.ts',
+      'packages/weft/src/core/engine/worker-versioning-child-inheritance.test.ts',
+    ],
+  },
+  fork: {
+    surface: 'fork',
+    heading: 'Worker binding for a fork',
+    text: 'A fork inherits the source run’s worker policy, binding, and binding history unless it names an explicit revision that differs from the bound revision; in that case it inherits nothing.',
+    sources: [
+      'packages/weft/src/core/engine/lifecycle/fork-helpers.ts',
+      'packages/weft/src/core/engine/worker-versioning-policy.test.ts',
+    ],
+  },
+  restart: {
+    surface: 'restart',
+    heading: 'Worker binding for a restart or retry',
+    text: 'Restarting a terminal run under the same id (a start-new retry) inherits that run’s current binding, even when routing has moved on. Only a server-issued override preview, spent on that restart, binds the replacement from current routing instead.',
+    sources: [
+      'packages/weft/src/core/engine/lifecycle/start-state.ts',
+      'packages/weft/src/core/engine/lifecycle/start-worker-override.ts',
+      'packages/weft/src/core/engine/worker-versioning-policy.test.ts',
+    ],
+  },
+  activity: {
+    surface: 'activity',
+    heading: 'Workflow-bound and standalone activities',
+    text: 'A remote activity dispatched by a bound workflow is routed to the bound deployment, build, artifact digest, and workflow revision, and carries that requirement into its attempt history. A standalone activity task, dispatched outside any workflow run, has no workflow binding and so no requirement derived from one.',
+    sources: [
+      'packages/weft/src/core/engine/remote-activity-broker.ts',
+      'packages/weft/src/core/task-ledger/task-ledger-types.ts',
+    ],
+  },
+};

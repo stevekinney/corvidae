@@ -12,6 +12,7 @@
 
   import { truncateId } from '../../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import WorkerInheritanceNote from '../../../lib/worker-inheritance-note.svelte';
   import { FRESH_START_REVISION_HEDGE } from '../../../lib/workflow-revision.ts';
   import QueryFaultBanner from '../list/query-fault-banner.svelte';
   import type { AdvancedStartOptionsInput } from './start-wizard-state.ts';
@@ -73,6 +74,8 @@
       <code>{type}</code> when they run. {FRESH_START_REVISION_HEDGE}
     {/if}
   </p>
+
+  <WorkerInheritanceNote surface="start" />
 
   <div class="weft-start-review__payload">
     <span class="weft-start-review__payload-label">Payload</span>

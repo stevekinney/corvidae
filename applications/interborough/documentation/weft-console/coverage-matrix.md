@@ -68,7 +68,7 @@ Three dashboard issues own work that no `tracked` row can carry today. COR-166 (
 | `weft.worker.deployments.resume` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` | COR-277 |  |
 | `weft.worker.deployments.rollback` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/routing-dialog.test.ts` | COR-277 |  |
 | `weft.worker.deployments.setrouting` | exposed | `src/routes/workers/deployments-data.ts` |  | `src/routes/workers/routing-dialog.test.ts` | COR-277 |  |
-| `weft.worker.startoverrides.preview` | tracked |  |  |  | COR-164 |  |
+| `weft.worker.startoverrides.preview` | exposed | `src/routes/workflows/detail/restart-worker-override.svelte` |  | `src/routes/workflows/detail/restart-dialog-worker-override.test.ts` | COR-164 |  |
 | `weft.workers.diagnostics` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/workers-manifest-data.test.ts` | COR-124, COR-162 |  |
 | `weft.workers.drain` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index-actions.test.ts` |  |  |
 | `weft.workers.list` | exposed | `src/routes/workers/workers-data.ts` |  | `src/routes/workers/index.test.ts` |  |  |

@@ -30,7 +30,7 @@
  * @module host
  */
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { dirname, join, resolve as resolvePath, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -292,6 +292,10 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       hostname: LOOPBACK,
       port: 0,
       auth: createLocalAuthentication(key),
+      // Signs the worker start-override previews an operator spends on a terminal run's restart.
+      // Derived from this process's key, so a restart of the host invalidates every outstanding
+      // token, which is the safe direction, and nothing secret is written to disk.
+      workerStartOverrideSigningSecret: deriveStartOverrideSigningSecret(key),
       // Discovery documents name absolute URLs, and they must name the origin a browser used, not
       // the private listener the relay forwards to.
       publicOrigin: `http://${LOOPBACK}:${publicPort}`,
@@ -314,6 +318,11 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
     await teardown(held).catch(() => undefined);
     throw error;
   }
+}
+
+/** The signing secret for worker start-override previews, derived from the per-process key. */
+export function deriveStartOverrideSigningSecret(key: string): string {
+  return createHash('sha256').update(`interborough:worker-start-override:${key}`).digest('hex');
 }
 
 /** What the host holds while it starts and runs, so a failure at any step can release the rest. */

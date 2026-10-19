@@ -91,6 +91,9 @@ describe('ScheduleDetail', () => {
       expect(getByText('inventory-sync-sweep · Every day at 02:00')).not.toBeNull();
       expect(getByText('Overlap policy: Queue')).not.toBeNull();
       expect(getByText(/Queue can grow unbounded during outages/)).not.toBeNull();
+      // COR-164: the scheduled-run worker rule, worded once in worker-inheritance-rules.ts.
+      expect(getByText('Worker binding for scheduled runs')).not.toBeNull();
+      expect(getByText(/a schedule carries no worker-versioning rule of its own/)).not.toBeNull();
     } finally {
       await server.stop();
     }
