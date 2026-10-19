@@ -886,7 +886,8 @@ describe('whether a thread is busy, decided from what the store holds', () => {
     await withHarness({ script: [say('A done.'), say('B done.')] }, async (harness) => {
       await readAgUiStream(await harness.handler(startRequest(runAgentInput())));
       const getSession = harness.bureau.getSession.bind(harness.bureau);
-      // The start's own read of the session succeeds; the busy decision's does not.
+      // The read that checks the thread’s owner before the lease succeeds; the read under the
+      // lease, which the busy decision is made from, does not.
       let reads = 0;
       spyOn(harness.bureau, 'getSession').mockImplementation(async (...args) => {
         reads += 1;

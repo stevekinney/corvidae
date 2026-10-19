@@ -27,6 +27,10 @@
  * refuses is answered exactly as a missing resource is, so an identifier grants
  * nothing.
  *
+ * A thread is authorized from the owner its own session names, and every later read of the thread
+ * or of a run answers only for that owner (`ag-ui-session-owner.ts`): a thread deleted and created
+ * again by another owner between two reads is a missing one, never that owner's conversation.
+ *
  * Starting is one decision per thread: whether the thread is busy and the creation
  * of the run that makes it busy cannot be separated, or two starts would both be
  * admitted. Bureau's default ownership posture lets several processes share one
@@ -59,6 +63,7 @@
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import type { AgentSession } from '@lostgradient/operative';
 import { type RunAgentInput } from '@ag-ui/core';
 import { RunAgentInputSchema } from '@ag-ui/core/schemas';
 import type { OperationHandlerMount } from '@lostgradient/weft';
@@ -66,10 +71,11 @@ import { createConversationHistory } from 'conversationalist';
 
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
-import type { Bureau, OwnedResource } from '../types.ts';
+import type { Bureau } from '../types.ts';
 import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
+import { type OwnedSession, ownedSession, runIsOwnedBy } from './ag-ui-session-owner.ts';
 import { singleEventResponse } from './ag-ui-sink.ts';
 import {
   type AgUiStreamBureau,
@@ -130,7 +136,6 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'abortRun'
     | 'createRun'
     | 'listRuns'
-    | 'getOwner'
     | 'hasDurableEngine'
     | 'locateRunCreationReceipt'
     | 'getReview'
@@ -138,10 +143,17 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'kv'
   >;
 
-/** The owner predicate the mount decides with, and where an owner of record comes from. */
+/**
+ * The owner predicate the mount decides with, and where an owner of record comes from. A session's
+ * owner is not looked up apart: the mount decides from the owner of the session it then uses
+ * (`ag-ui-session-owner.ts`), so the lookup takes only the records that are not read in hand.
+ */
 export type AgUiAuthorization = {
   readonly mayAccess: OwnerAccessPredicate;
-  readonly ownerOf: (resource: OwnedResource) => Promise<string | undefined>;
+  readonly ownerOf: (resource: {
+    readonly kind: 'run' | 'review';
+    readonly id: string;
+  }) => Promise<string | undefined>;
 };
 
 type Principal = Parameters<OwnerAccessPredicate>[0]['principal'];
@@ -159,6 +171,11 @@ function notFound(resource: string, identifier: string): Response {
     },
     404,
   );
+}
+
+/** Whether the session's own owner of record is `owner`. An unreadable owner is nobody's. */
+function ownsSession(session: AgentSession, owner: string): boolean {
+  return ownedSession(session)?.owner === owner;
 }
 
 function acceptsEventStream(accept: string | null): boolean {
@@ -214,18 +231,38 @@ export function createAgUiMount(
     leaseMs: options.leaseDurationMs,
   });
 
-  /** The thread's most recent root run when it is one a client can attach to. */
-  async function attachableRunOfThread(threadId: string): Promise<string | undefined> {
+  /**
+   * The thread's session, with the owner it names itself, when `principal` may use it with
+   * `operatorScope`. The caller then serves this very session: no later read decides who owns it.
+   */
+  async function authorizeThread(
+    threadId: string,
+    principal: Principal,
+    operatorScope: 'bureau.tasks:read' | 'bureau.tasks:write',
+  ): Promise<OwnedSession | undefined> {
+    const loaded = ownedSession(await bureau.getSession(threadId));
+    return loaded !== undefined && may(principal, loaded.owner, operatorScope) ? loaded : undefined;
+  }
+
+  /**
+   * The thread's most recent root run when it is one a client can attach to. A run created under
+   * another owner's name is not the thread's run, whatever session id it carries.
+   */
+  async function attachableRunOfThread(
+    threadId: string,
+    authorized: OwnedSession,
+  ): Promise<string | undefined> {
     const live = bureau
       .listRuns()
       .filter(
         (run) =>
-          run.sessionId === threadId && (run.status === 'running' || run.status === 'aborting'),
+          run.sessionId === threadId &&
+          (run.status === 'running' || run.status === 'aborting') &&
+          runIsOwnedBy(run, authorized.owner),
       );
     const latest = live.at(-1);
     if (latest !== undefined) return latest.id;
-    const session = await bureau.getSession(threadId);
-    const lastRunId = session?.metadata['lastRunId'];
+    const lastRunId = authorized.session.metadata['lastRunId'];
     if (typeof lastRunId !== 'string') return undefined;
     const pending = bureau
       .listPendingReviews()
@@ -256,9 +293,8 @@ export function createAgUiMount(
    *   hold the run, and the conversation's `action_required` row is not rewritten by
    *   an expiry, so neither can stand for this.)
    */
-  async function threadBusy(threadId: string): Promise<boolean> {
+  async function threadBusy(session: AgentSession | undefined): Promise<boolean> {
     try {
-      const session = await bureau.getSession(threadId);
       const metadata = session?.metadata;
       const lastRunId = metadata?.['lastRunId'];
       if (metadata === undefined || typeof lastRunId !== 'string') return false;
@@ -305,21 +341,19 @@ export function createAgUiMount(
    * session. The attach route's own predicate decides: the thread's owner, or `bureau.tasks:read`.
    */
   async function readThreadMessages(threadId: string, principal: Principal): Promise<Response> {
-    const owner = await authorization.ownerOf({ kind: 'session', id: threadId });
-    if (owner === undefined || !may(principal, owner, 'bureau.tasks:read')) {
-      return notFound('thread', threadId);
-    }
-    const session = await bureau.getSession(threadId);
-    // Read after the owner of record: a session deleted between the two reads is a missing one.
-    if (session === undefined) return notFound('thread', threadId);
-    return json({ threadId, messages: snapshotMessages(session.conversationHistory) }, 200);
+    const authorized = await authorizeThread(threadId, principal, 'bureau.tasks:read');
+    if (authorized === undefined) return notFound('thread', threadId);
+    return json(
+      { threadId, messages: snapshotMessages(authorized.session.conversationHistory) },
+      200,
+    );
   }
 
   async function attachByThread(threadId: string, principal: Principal): Promise<Response> {
     const missing = refuse('THREAD_NOT_FOUND', `Thread "${threadId}" was not found`);
-    const owner = await authorization.ownerOf({ kind: 'session', id: threadId });
-    if (owner === undefined || !may(principal, owner, 'bureau.tasks:read')) return missing;
-    const runId = await attachableRunOfThread(threadId);
+    const authorized = await authorizeThread(threadId, principal, 'bureau.tasks:read');
+    if (authorized === undefined) return missing;
+    const runId = await attachableRunOfThread(threadId, authorized);
     if (runId === undefined) {
       return refuse('RUN_NOT_FOUND', `Thread "${threadId}" has no run to attach to`);
     }
@@ -327,6 +361,7 @@ export function createAgUiMount(
       threadId,
       runId,
       nativeRunId: runId,
+      owner: authorized.owner,
       replay: 'open-step',
       messagesSnapshot: true,
     });
@@ -363,6 +398,7 @@ export function createAgUiMount(
         threadId: sessionId,
         runId,
         nativeRunId: runId,
+        owner,
         parentRunId: child.parentRunId,
         child,
         replay: 'open-step',
@@ -373,6 +409,7 @@ export function createAgUiMount(
       threadId: target.sessionId,
       runId,
       nativeRunId: runId,
+      owner,
       replay: 'open-step',
       messagesSnapshot: true,
     });
@@ -441,12 +478,16 @@ export function createAgUiMount(
       });
       // The attach route's own predicate: a write scope alone answers, and reads nothing.
       // Read alongside the resume rather than ahead of it, and a read that fails reads as no
-      // access, so the caller is told no more than it was.
-      const mayRead = authorization.ownerOf({ kind: 'session', id: input.threadId }).then(
-        (sessionOwner) =>
-          sessionOwner !== undefined && may(principal, sessionOwner, 'bureau.tasks:read'),
-        () => false,
-      );
+      // access, so the caller is told no more than it was. The predicate runs when the resume asks,
+      // after it has decided on the interrupts, and resolves to the owner of the session it
+      // decided on, which is the owner the stream reads the thread as.
+      const thread = bureau.getSession(input.threadId).then(ownedSession, () => undefined);
+      const readableAs = async (): Promise<string | undefined> => {
+        const loaded = await thread;
+        return loaded !== undefined && may(principal, loaded.owner, 'bureau.tasks:read')
+          ? loaded.owner
+          : undefined;
+      };
       return resumeRun({
         threadId: input.threadId,
         runId: input.runId,
@@ -454,7 +495,7 @@ export function createAgUiMount(
         entries: input.resume,
         principal,
         owner,
-        mayRead,
+        readableAs,
       });
     }
     // Publication gates a new run only.
@@ -464,8 +505,8 @@ export function createAgUiMount(
     // Only the thread's owner starts a run on a thread that exists: a start adds to
     // the conversation, which a write scope alone does not grant. The refusal is the
     // one a missing thread gets, and comes before anything else is learned about it.
-    const threadOwner = await authorization.ownerOf({ kind: 'session', id: input.threadId });
-    if (threadOwner !== undefined && threadOwner !== owner) {
+    const existing = await bureau.getSession(input.threadId);
+    if (existing !== undefined && !ownsSession(existing, owner)) {
       return refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`);
     }
     // Whether the thread is busy and the creation of the run that makes it busy are
@@ -481,7 +522,24 @@ export function createAgUiMount(
       admitted = await (async (): Promise<
         { readonly response: Response } | { readonly runId: string }
       > => {
-        const session = await bureau.getSession(input.threadId);
+        // The session the start appends to and decides busyness from is read again under the
+        // lease, and is the caller's own or a missing one: another owner may have created the
+        // thread since the check above, and the same refusal answers it.
+        let session: AgentSession | undefined;
+        try {
+          session = await bureau.getSession(input.threadId);
+        } catch {
+          // The busy decision below is made from this record, and a start admitted on a guess
+          // forks the thread: a read that fails is a thread that is busy.
+          return {
+            response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
+          };
+        }
+        if (session !== undefined && !ownsSession(session, owner)) {
+          return {
+            response: refuse('THREAD_NOT_FOUND', `Thread "${input.threadId}" was not found`),
+          };
+        }
         let appendMessages;
         try {
           appendMessages = rowsAddedBy(
@@ -524,6 +582,7 @@ export function createAgUiMount(
                 threadId: input.threadId,
                 runId: input.runId,
                 nativeRunId: earlier.receipt.runId,
+                owner,
                 replay: 'beginning',
                 messagesSnapshot: false,
               }),
@@ -538,7 +597,7 @@ export function createAgUiMount(
             ),
           };
         }
-        if (await threadBusy(input.threadId)) {
+        if (await threadBusy(session)) {
           return {
             response: refuse('THREAD_BUSY', `Thread "${input.threadId}" has a run in progress`),
           };
@@ -571,6 +630,7 @@ export function createAgUiMount(
       threadId: input.threadId,
       runId: input.runId,
       nativeRunId: admitted.runId,
+      owner,
       replay: 'beginning',
       messagesSnapshot: false,
     });
