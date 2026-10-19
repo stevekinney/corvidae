@@ -19,6 +19,10 @@ export type ViewCopy = {
   readonly empty?: ViewEmptyCopy;
   readonly error: ViewStateCopy;
   readonly forbidden: Pick<ViewStateCopy, 'title'>;
+  /** Present only for a view that opens one item by its address. */
+  readonly notFound?: ViewStateCopy;
+  /** The words for a route of the view whose missing thing is not the one `notFound` names. */
+  readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
 };
 
 /** The label on the control that asks a view to try again. */
@@ -35,8 +39,41 @@ export const ROUTE_LOAD_FAILURE_COPY = {
   action: 'Reload the page',
 } as const;
 
+/** The words the chat view uses outside its states. */
+export const CHAT_COPY = {
+  /** What a session with no title is called, in the header and in lists. */
+  untitled: 'New chat',
+  newChat: 'New chat',
+  agentLabel: 'Agent',
+  agentPlaceholder: 'Search agents',
+  sessionsTitle: 'Chats',
+  loadMore: 'Load more',
+  noSessions: 'No chats yet',
+  loadingSessions: 'Loading chats',
+  agentKind: { code: 'Defined in code', file: 'Defined in a file' },
+  agentNotPublished: 'Not published',
+  agentPublished: 'Published',
+  agentModel: 'Model',
+  agentTools: 'Tools',
+  agentSkills: 'Skills',
+  agentRevision: 'Revision',
+  noneListed: 'None',
+  agentsTitle: 'Agents',
+  agentSessions: 'Chats with this agent',
+  approvalTitle: 'Needs your approval',
+  humanRequestTitle: 'The agent is asking',
+  humanRequestFallback: 'The agent is waiting for your answer.',
+  humanRequestHint: 'Your next message answers it.',
+  approve: 'Approve',
+  deny: 'Deny',
+  failureTitle: 'The agent did not answer',
+  dismiss: 'Dismiss',
+  /** The accessible name of the transcript and composer region. */
+  regionLabel: 'Conversation',
+} as const;
+
 /**
- * The words every view's four states use. A view's state title and description live here and
+ * The words every view's states use. A view's state title and description live here and
  * nowhere else, so a change to the voice of the product is one edit and a test can name every
  * string a state can show.
  *
@@ -52,14 +89,27 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     empty: {
       title: 'No conversations yet',
-      description: 'Conversations with your agents will appear here once chat is available.',
-      action: { label: 'See the agents', href: '/agents' },
+      description: 'Start one with an agent, and it will be listed here.',
+      action: { label: 'New chat', href: '/chat/new' },
     },
     error: {
       title: 'Chat is unavailable',
       description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Chat is locked' },
+    notFound: {
+      title: 'This conversation was not found',
+      description:
+        'It may have been deleted, or it may belong to someone else. Open a conversation from the list.',
+    },
+    // A new chat is for an agent, and it is the agent that is missing.
+    notFoundByPattern: {
+      '/chat/new': {
+        title: 'This agent was not found',
+        description:
+          'It may have been deleted, or it may not be published. Choose an agent from the list to start a chat.',
+      },
+    },
   },
   agents: {
     label: 'Agents',
@@ -68,14 +118,19 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'Asking the Bureau which agents it publishes.',
     },
     empty: {
-      title: 'No agents to show yet',
-      description: 'The agents the Bureau publishes will be listed here once this view is built.',
+      title: 'No agents to show',
+      description:
+        'The Bureau lists no agents. Add one as a Markdown file in the agents directory.',
     },
     error: {
       title: 'Agents are unavailable',
       description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: 'Agents are locked' },
+    notFound: {
+      title: 'This agent was not found',
+      description: 'It may have been deleted, or it may not be published. Open one from the list.',
+    },
   },
   workflows: {
     label: 'Workflows',

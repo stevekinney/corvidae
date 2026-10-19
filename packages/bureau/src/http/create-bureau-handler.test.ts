@@ -446,6 +446,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.audit.query',
         'bureau.contexts.delete',
         'bureau.contexts.get',
+        'bureau.contexts.input',
         'bureau.contexts.list',
         'bureau.deployment.get',
         'bureau.goals.cancel',

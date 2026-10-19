@@ -1789,6 +1789,29 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   ): Promise<SessionInputAdmissionOutcome>;
 
   /**
+   * COR-1490 — resolves once the session has recorded the end of the run `runId`, however long
+   * its save takes (it waits on the save itself, never on a count of turns), and at once for a run
+   * whose end is already recorded or that this process does not hold (so a reader in another
+   * process can read a session that does not yet hold the run's final rows).
+   *
+   * Rejects when the run ended without this process saving its end: the engine lost a checkpoint
+   * compare-and-swap or was disposed and abandoned the run to whoever owns it, or the Bureau shut
+   * down first. The rejection comes when the run's own result settles, never at a deadline. A save
+   * that starts and keeps failing does not reject: it is diagnosed after its last attempt and this
+   * resolves, so a reader should check that the session holds what it needs. A reader that needs
+   * the thread as the run left it, such as the AG-UI mount's end-of-run snapshot, waits here before
+   * it reads the session.
+   */
+  whenRunRecorded(runId: string): Promise<void>;
+
+  /**
+   * COR-1490 — the identifiers of the conversation rows `runId` itself took session input into,
+   * in delivery order, from the durable delivery record (which commits with the transcript the
+   * run saved). Empty for a run that delivered none, and for a Bureau with no session mailbox.
+   */
+  sessionInputsDeliveredBy(runId: string, sessionId: string): Promise<readonly string[]>;
+
+  /**
    * AB-67/AB-199/AB-200 — admit a steering command as a sixth session verb,
    * for in-memory and durable sessions alike. Reads
    * authority and terminal status through the same pre-admission decision

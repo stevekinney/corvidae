@@ -1,0 +1,69 @@
+/**
+ * What the route component tests share: a Bureau that answers each JSON-RPC operation from a
+ * table, and a happy-dom window with a real origin to navigate in.
+ */
+import { Window } from 'happy-dom';
+
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import { router } from '../../lib/router.svelte.ts';
+
+export const CONTEXT = {
+  id: 'session-1',
+  owner: 'anonymous:local',
+  agentName: 'assistant',
+  title: 'Plan the week',
+  lastMessagePreview: 'Sounds good.',
+  messageCount: 2,
+  createdAt: '2026-10-19T08:00:00.000Z',
+  updatedAt: '2026-10-19T09:00:00.000Z',
+  activity: 'idle',
+};
+
+export const AGENT = {
+  name: 'assistant',
+  displayName: 'Assistant',
+  description: 'Answers every message.',
+  definitionRevision: 3,
+  kind: 'code',
+  publishState: 'published',
+};
+
+export type Call = { method: string; params: Record<string, unknown> };
+
+/** Answers each Bureau operation by name, records the calls, and says no to anything else. */
+export function bureau(
+  answers: Record<string, (params: Record<string, unknown>) => unknown>,
+  other: (url: string, init?: RequestInit) => Response | undefined = () => undefined,
+): { calls: Call[]; restore: () => void } {
+  const calls: Call[] = [];
+  const restore = installFetchImplementation(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    const own = other(url, init);
+    if (own !== undefined) return own;
+    const body: unknown = JSON.parse(typeof init?.body === 'string' ? init.body : '{}');
+    const method = typeof body === 'object' && body !== null ? Reflect.get(body, 'method') : '';
+    const params: unknown =
+      typeof body === 'object' && body !== null ? Reflect.get(body, 'params') : {};
+    const record: Record<string, unknown> =
+      typeof params === 'object' && params !== null
+        ? Object.fromEntries(Object.entries(params))
+        : {};
+    calls.push({ method: String(method), params: record });
+    const answer = answers[String(method)];
+    if (answer === undefined)
+      return Response.json({ error: `unexpected ${String(method)}` }, { status: 500 });
+    return Response.json({
+      jsonrpc: '2.0',
+      id: method,
+      result: answer(record),
+    });
+  });
+  return { calls, restore };
+}
+
+/** Gives happy-dom's `about:blank` window a real origin, so `pushState` takes effect, at `path`. */
+export function landAt(path: string): void {
+  if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
+  window.happyDOM.setURL('http://localhost/');
+  router.navigate(path, { replace: true });
+}
