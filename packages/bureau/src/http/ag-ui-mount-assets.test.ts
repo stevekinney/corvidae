@@ -215,7 +215,8 @@ describe('an asset that is not available', () => {
     );
     await admission.work.result();
     if (state === 'deleted') await assets.delete(admission.assetId, { id: LOCAL }).result();
-    expect((await assets.inspect(admission.assetId, { id: LOCAL })).state).toBe(state);
+    const descriptor = await assets.inspect(admission.assetId, { id: LOCAL });
+    expect(descriptor.state).toBe(state);
     return admission.assetId;
   }
 
