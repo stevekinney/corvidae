@@ -380,3 +380,44 @@ describe('createA2AHandler: transport guards', () => {
     expect(await statusOf(handler(request))).toBe(400);
   });
 });
+
+describe('createA2AHandler: numeric limits', () => {
+  const invalidValues: ReadonlyArray<readonly [string, number]> = [
+    ['negative', -1],
+    ['zero', 0],
+    ['NaN', Number.NaN],
+    ['infinite', Number.POSITIVE_INFINITY],
+    ['non-integer', 1.5],
+  ];
+
+  for (const [label, value] of invalidValues) {
+    test(`rejects a ${label} maxStreamDurationMs`, () => {
+      expect(() => capturingHandler({ maxStreamDurationMs: value })).toThrow(RangeError);
+    });
+    test(`rejects a ${label} maxRequestBodyBytes`, () => {
+      expect(() => capturingHandler({ maxRequestBodyBytes: value })).toThrow(RangeError);
+    });
+  }
+
+  test('rejects a maxStreamDurationMs above the timer maximum', () => {
+    expect(() => capturingHandler({ maxStreamDurationMs: 2_147_483_648 })).toThrow(RangeError);
+  });
+
+  test('rejects a maxRequestBodyBytes above the safe integer range', () => {
+    expect(() => capturingHandler({ maxRequestBodyBytes: Number.MAX_SAFE_INTEGER + 1 })).toThrow(
+      RangeError,
+    );
+  });
+
+  test('accepts the boundary values', () => {
+    expect(() =>
+      capturingHandler({ maxStreamDurationMs: 1, maxRequestBodyBytes: 1 }),
+    ).not.toThrow();
+    expect(() =>
+      capturingHandler({
+        maxStreamDurationMs: 2_147_483_647,
+        maxRequestBodyBytes: Number.MAX_SAFE_INTEGER,
+      }),
+    ).not.toThrow();
+  });
+});
