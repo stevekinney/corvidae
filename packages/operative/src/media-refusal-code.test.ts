@@ -3,10 +3,10 @@ import { describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 
-import type { MediaCostEstimator, MediaCostOutcome } from '../src/context/types';
-import { createActiveRun } from '../src/create-run';
-import { agentRunErrorToJSON, MediaAdmissionError } from '../src/errors';
-import type { GenerateContext } from '../src/types';
+import type { MediaCostEstimator, MediaCostOutcome } from './context/types';
+import { createActiveRun } from './create-run';
+import { agentRunErrorToJSON, MediaAdmissionError } from './errors';
+import type { GenerateContext } from './types';
 
 /**
  * COR-1547 — a message whose every media part is refused as `unsupported` fails with its own
