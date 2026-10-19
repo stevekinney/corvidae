@@ -101,6 +101,26 @@ describe('WorkerBindingPanel', () => {
     expect(getByTestId('worker-binding-override-note').textContent).toContain('terminal');
   });
 
+  test('lists the binding history oldest first, though Weft stores it newest first', () => {
+    // Weft prepends each replaced binding, so the stored array is newest first.
+    const newest = { ...BINDING, buildId: 'build-2', routingGeneration: 2, boundAt: 2_000 };
+    const oldest = { ...BINDING, buildId: 'build-0', routingGeneration: 1, boundAt: 1_000 };
+    const { container } = render(WorkerBindingPanel, {
+      props: {
+        workflow: workflow({
+          workerVersioningPolicy: { mode: 'auto-upgrade', compatibility: COMPATIBILITY },
+          workerBinding: { current: BINDING, history: [newest, oldest] },
+        }),
+      },
+    });
+    const history = container.querySelector('ol');
+    expect(history?.getAttribute('aria-label')).toContain('oldest first');
+    const entries = [...(history?.querySelectorAll('li') ?? [])].map((item) => item.textContent);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toContain('build-0');
+    expect(entries[1]).toContain('build-2');
+  });
+
   test('a terminal auto-upgrade run says a restart can offer an override', () => {
     const { getByTestId } = render(WorkerBindingPanel, {
       props: {

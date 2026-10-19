@@ -33,6 +33,10 @@
 
   const reading = $derived(readWorkflowWorkerState(workflow));
   const eligibility = $derived(overrideEligibility(reading, workflow.status));
+  // Weft prepends each replaced binding, so the stored history is newest first; the list reads in time order.
+  const historyOldestFirst = $derived(
+    reading.kind === 'bound' ? reading.record.history.toReversed() : [],
+  );
 
   const policyItems = $derived.by(() => {
     if (reading.kind !== 'bound') return [];
@@ -155,7 +159,7 @@
       </p>
     {:else}
       <ol class="weft-worker-binding__history" aria-label="Earlier worker bindings, oldest first">
-        {#each reading.record.history as entry, index (`${index}-${entry.boundAt}`)}
+        {#each historyOldestFirst as entry, index (`${index}-${entry.boundAt}`)}
           <li>
             <span class="weft-worker-binding__history-build">
               build <code title={entry.buildId}>{truncateId(entry.buildId)}</code>

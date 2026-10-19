@@ -10,7 +10,12 @@
  *
  * @module
  */
-import { HttpClientError, type WorkerStartOverridePreview } from '@lostgradient/weft';
+import {
+  HttpClientError,
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+  type WorkerStartOverridePreview,
+} from '@lostgradient/weft';
 
 import { faultTreatment } from '../../../lib/faults.ts';
 
@@ -40,22 +45,20 @@ function conflictReason(error: unknown): string | undefined {
   return typeof reason === 'string' ? reason : undefined;
 }
 
-export const OVERRIDE_TOKEN_REJECTED_REASON = 'override-token-rejected';
-
 /** Whether a start was refused because its override preview cannot authorize it. */
 export function isOverrideTokenRejected(error: unknown): boolean {
-  return conflictReason(error) === OVERRIDE_TOKEN_REJECTED_REASON;
+  return conflictReason(error) === WORKER_CONFLICT_REASONS.overrideTokenRejected;
 }
 
 const PREVIEW_REASONS: Readonly<Record<string, string>> = {
-  'workflow-not-terminal':
+  [WORKER_CONFLICT_REASONS.workflowNotTerminal]:
     'This run is not terminal, so it cannot be restarted with a worker override.',
-  'no-worker-binding': 'This run has no durable worker binding to override.',
-  'policy-not-auto-upgrade':
+  [WORKER_CONFLICT_REASONS.noWorkerBinding]: 'This run has no durable worker binding to override.',
+  [WORKER_CONFLICT_REASONS.policyNotAutoUpgrade]:
     'This run is pinned to its build, so its worker binding cannot be overridden.',
-  'no-routed-deployment':
+  [WORKER_CONFLICT_REASONS.noRoutedDeployment]:
     'No ready, routed deployment build provides this run’s revision, so there is no build to move it to.',
-  [OVERRIDE_TOKEN_REJECTED_REASON]:
+  [WORKER_CONFLICT_REASONS.overrideTokenRejected]:
     'The override preview was expired, already used, issued for another run, or no longer matches this run’s binding. Request a new preview.',
 };
 
@@ -65,8 +68,8 @@ export function describeOverrideFault(error: unknown): string {
   if (reason !== undefined) {
     const known = PREVIEW_REASONS[reason];
     if (known !== undefined) return known;
-    if (reason.startsWith('upgrade-')) {
-      return `The build routing selects now cannot take this run (${reason.slice('upgrade-'.length)}), so no preview was issued.`;
+    if (reason.startsWith(UPGRADE_REFUSAL_REASON_PREFIX)) {
+      return `The build routing selects now cannot take this run (${reason.slice(UPGRADE_REFUSAL_REASON_PREFIX.length)}), so no preview was issued.`;
     }
   }
   if (error instanceof HttpClientError && error.faultCode === 'NotFound') {
