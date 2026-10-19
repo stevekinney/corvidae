@@ -197,6 +197,13 @@ export function createWorkflowAgentMessaging(options: {
   const { engine, workflowType, inputMode, inputModes, log, runtime, pushStore, now } = options;
   const { toInput, respond } = options;
 
+  /**
+   * Save the message's inline push configuration for its task, under the store's
+   * create rules: a configuration it repeats is returned rather than stored again, and
+   * one naming a deleted or different configuration's `id` is refused. Every message
+   * that reaches a task does this, whether it created the task, retried the message
+   * that did, or continued it, as the SDK's `DefaultRequestHandler` does.
+   */
   async function installPushConfiguration(
     params: SendMessageRequest,
     taskId: string,
@@ -224,8 +231,11 @@ export function createWorkflowAgentMessaging(options: {
     // The engine's idempotency keys span every workflow type and caller scope, so a key
     // another agent or tenant used first names a run that is not this caller's task.
     if (workflowState?.type !== workflowType) throw foreignMessage(message);
+    // Before the task is created, so its first status reaches the configuration; a
+    // retried message returns the caller's existing task, and its configuration applies
+    // to that task like any other.
+    await installPushConfiguration(params, taskId, context);
     if ((await log.read(scope, taskId)) === undefined) {
-      await installPushConfiguration(params, taskId, context);
       const contextId = message.contextId === '' ? taskId : message.contextId;
       const submitted: Task = {
         id: taskId,
@@ -256,6 +266,7 @@ export function createWorkflowAgentMessaging(options: {
   /** Check a continuation and deliver it to the signal the workflow waits for. */
   async function continueTask(
     message: Message,
+    params: SendMessageRequest,
     context: ServerCallContext,
   ): Promise<StoredWorkflowTask> {
     const taskId = message.taskId;
@@ -275,6 +286,9 @@ export function createWorkflowAgentMessaging(options: {
     const state = await engine.get(taskId);
     const signalName = signalFor(message, state === null ? [] : runtime.liveWaits(state));
     const payload = toInput(payloadOf(message, inputMode), message);
+    // Saved once the continuation is accepted, and before its signal, so the status
+    // changes the signal causes reach the configuration too.
+    await installPushConfiguration(params, taskId, context);
 
     const generation = runtime.beginDelivery(taskId);
     try {
@@ -305,7 +319,7 @@ export function createWorkflowAgentMessaging(options: {
   async function accept(params: SendMessageRequest, context: ServerCallContext): Promise<Accepted> {
     const message = requireMessage(params, inputModes);
     if (message.taskId !== '')
-      return { kind: 'task', stored: await continueTask(message, context) };
+      return { kind: 'task', stored: await continueTask(message, params, context) };
     const parts = await respond?.(message, context);
     if (parts !== undefined) return { kind: 'reply', message: replyTo(message, parts) };
     return { kind: 'task', stored: await start(message, params, context) };
