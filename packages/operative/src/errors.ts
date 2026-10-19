@@ -289,25 +289,41 @@ export class AgentContractError extends AgentRunError {
   }
 }
 
+/** Whether `outcome` refuses its part because the model does not take that kind of media. */
+function isNotAccepted(outcome: UnadmittedMediaCost): boolean {
+  return (
+    outcome.outcome === 'unsupported' &&
+    (outcome.reason === 'modality-not-accepted' || outcome.reason === 'mime-family-not-accepted')
+  );
+}
+
 /**
  * Raised before generation when a step's conversation holds a media part that
  * cannot be admitted to the context window: the backend does not accept it, or
  * its cost cannot be bounded. Carries one typed outcome per refused part. The
  * run fails here rather than sending the part as free or dropping it.
  *
- * Its code is `UNSUPPORTED_MEDIA_TYPE` when every refused part is `unsupported`
- * (the model does not take that kind of media, which a client can act on by
- * sending something else), and `MEDIA_NOT_ADMITTED` for any other mix, such as
- * an `unsupported` part beside an `unbounded` one.
+ * Its code is `UNSUPPORTED_MEDIA_TYPE` only when the model does not take the media: every media
+ * part of the message is refused, and each refusal is `modality-not-accepted` or
+ * `mime-family-not-accepted`. A client can act on that by sending something else. Any other
+ * refusal (a flagged or unverified asset, a count or budget limit, a source form, an unbounded
+ * cost), any mix of them, and any message with an admitted part keeps `MEDIA_NOT_ADMITTED`.
  */
 export class MediaAdmissionError extends AgentRunError {
   readonly outcomes: readonly UnadmittedMediaCost[];
 
-  constructor(outcomes: readonly UnadmittedMediaCost[]) {
+  /**
+   * @param outcomes One outcome for each refused part.
+   * @param options `admittedParts` is how many media parts were admitted beside the refused ones.
+   */
+  constructor(
+    outcomes: readonly UnadmittedMediaCost[],
+    options: { readonly admittedParts?: number } = {},
+  ) {
     super(`${outcomes.length} media part(s) cannot be admitted to the context window`, {
       kind: 'policy',
       code:
-        outcomes.length > 0 && outcomes.every((outcome) => outcome.outcome === 'unsupported')
+        (options.admittedParts ?? 0) === 0 && outcomes.length > 0 && outcomes.every(isNotAccepted)
           ? 'UNSUPPORTED_MEDIA_TYPE'
           : 'MEDIA_NOT_ADMITTED',
     });

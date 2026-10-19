@@ -7,6 +7,7 @@ import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradien
 import {
   type BackendDescriptor,
   createAgent,
+  type MediaCostEstimator,
   createScriptedGenerate,
   type ScriptedGenerate,
   type ScriptedGenerateStep,
@@ -84,6 +85,8 @@ export type HarnessOptions = {
    * produces. Omitted, it carries no descriptors and so admits no media.
    */
   readonly backends?: readonly BackendDescriptor[];
+  /** Costs each media part of a run, in place of the backends' own rows: an agent may supply one. */
+  readonly mediaCostEstimator?: MediaCostEstimator;
 };
 
 /** Keys the suites present, by name, with the scopes each holds. */
@@ -137,6 +140,9 @@ async function build(
           generate,
           name,
           ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
+          ...(options.mediaCostEstimator === undefined
+            ? {}
+            : { mediaCostEstimator: options.mediaCostEstimator }),
           stopWhen:
             options.stopWhen ?? stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
         }),

@@ -558,17 +558,17 @@ export function createAgUiMount(
           };
         }
 
-        // An asset the start names is the caller's to use, or the start is refused as one that names
-        // an asset that does not exist: nothing is added to the thread and no run is created.
-        let unreadable: string | undefined;
+        // An asset the start names is the caller's to use and `available`, or the start is refused
+        // before anything is added to the thread or any run is created.
+        let unusable: string | undefined;
         try {
-          unreadable = await firstUnreadableAsset(bureau, owner, appendMessages);
+          unusable = await firstUnusableAsset(bureau, owner, appendMessages);
         } catch {
           return { response: refuse('RUN_FAILED', 'The run could not be started') };
         }
-        if (unreadable !== undefined) {
+        if (unusable !== undefined) {
           return {
-            response: refuse('INVALID_INPUT', `Asset "${unreadable}" was not found`),
+            response: refuse('INVALID_INPUT', unusable),
           };
         }
 
@@ -728,10 +728,14 @@ export function createAgUiMount(
 }
 
 /**
- * The first managed asset `rows` name that `owner` cannot read, or `undefined` when every one is
- * theirs. An asset another owner holds and one that does not exist read alike: not found.
+ * Why the first managed asset `rows` name cannot be used by `owner`, as the message the start is
+ * refused with, or `undefined` when every one can. An asset another owner holds and one that does
+ * not exist read alike, as `was not found`, so no caller learns whether another owner's asset
+ * exists. An asset the owner holds that is not `available` (pending, rejected, quarantined,
+ * expired or deleted) is named by its state: a run resolves every asset in the thread on every
+ * turn, so a row that names one is committed only to fail the thread's every later turn.
  */
-async function firstUnreadableAsset(
+async function firstUnusableAsset(
   bureau: Pick<AgUiBureau, 'assets'>,
   owner: string,
   rows: Parameters<typeof managedAssetIdsOf>[0],
@@ -740,9 +744,10 @@ async function firstUnreadableAsset(
   if (assets === undefined) return undefined;
   for (const assetId of managedAssetIdsOf(rows)) {
     try {
-      await assets.inspect(assetId, { id: owner });
+      const { state } = await assets.inspect(assetId, { id: owner });
+      if (state !== 'available') return `Asset "${assetId}" is ${state}`;
     } catch (error) {
-      if (error instanceof AssetNotFoundError) return assetId;
+      if (error instanceof AssetNotFoundError) return `Asset "${assetId}" was not found`;
       throw error;
     }
   }

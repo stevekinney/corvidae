@@ -84,7 +84,7 @@ function assetPrincipalOf(
 /**
  * The fault an asset error is answered with. A missing asset or session, and one the caller may
  * not see, are the same `NotFound`; a refused admission is `Unprocessable` with the asset's
- * rejection code in `data.code`. Anything else is not the caller's doing and is rethrown.
+ * rejection code in `data.reason`. Anything else is not the caller's doing and is rethrown.
  */
 function faultOf(error: unknown, resource: 'asset' | 'upload', identifier: string): unknown {
   if (error instanceof AssetNotFoundError) return resourceNotFound(resource, identifier);

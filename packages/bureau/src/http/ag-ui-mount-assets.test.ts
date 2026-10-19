@@ -201,6 +201,86 @@ describe('a user message carrying a managed asset', () => {
   });
 });
 
+describe('an asset that is not available', () => {
+  /** An owned asset in `state`, as the owner's own start sees it. */
+  async function assetIn(harness: Harness, state: 'deleted' | 'rejected'): Promise<string> {
+    const assets = harness.bureau.assets!;
+    const admission = await assets.admit(
+      {
+        source: { kind: 'inline', bytes: pngBytes(4, 3, 64) },
+        // The bytes are a PNG, so a declared PDF is refused at admission.
+        ...(state === 'rejected' ? { declaredMediaType: 'application/pdf' } : {}),
+      },
+      { id: LOCAL },
+    );
+    await admission.work.result();
+    if (state === 'deleted') await assets.delete(admission.assetId, { id: LOCAL }).result();
+    expect((await assets.inspect(admission.assetId, { id: LOCAL })).state).toBe(state);
+    return admission.assetId;
+  }
+
+  it.each(['deleted', 'rejected'] as const)(
+    'is refused at the door when %s, commits no row, and leaves the thread usable',
+    async (state) => {
+      await withHarness(
+        { script: [say('Fine.')], backends: anthropic.slice(0, 1) },
+        async (harness) => {
+          const assetId = await assetIn(harness, state);
+
+          const refused = await readAgUiStream(
+            await harness.handler(
+              startRequest(userInput([{ type: 'text', text: 'Look.' }, attachment(assetId)])),
+            ),
+          );
+
+          expect(typesOf(refused)).toEqual([EventType.RUN_ERROR]);
+          expect(refused[0]!.event).toMatchObject({
+            code: 'INVALID_INPUT',
+            message: `Asset "${assetId}" is ${state}`,
+          });
+          // Nothing was committed: no run, no thread, no row for a later turn to trip over.
+          expect(harness.generate.callCount).toBe(0);
+          expect(await harness.bureau.getSession('thread-1')).toBeUndefined();
+
+          // A later turn on the same thread, with text only, runs.
+          const later = await readAgUiStream(
+            await harness.handler(
+              startRequest(
+                runAgentInput({
+                  runId: 'client-run-2',
+                  messages: [{ id: 'user-2', role: 'user', content: 'Just text.' }],
+                }),
+              ),
+            ),
+          );
+          expect(later.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+          expect(harness.generate.callCount).toBe(1);
+        },
+      );
+    },
+  );
+
+  it('names a missing asset and another owner’s asset alike, and as missing rather than by state', async () => {
+    await withHarness(
+      { script: [say('Fine.')], backends: anthropic.slice(0, 1), authentication },
+      async (harness) => {
+        const assetId = await admit(harness, pngBytes(4, 3, 64), 'api-key:alice');
+        await harness.bureau.assets!.delete(assetId, { id: 'api-key:alice' }).result();
+
+        const stranger = await readAgUiStream(
+          await harness.handler(startRequest(userInput([attachment(assetId)]), as('bob-key'))),
+        );
+
+        // Bob learns nothing of the state of an asset he cannot read.
+        expect(stranger[0]!.event).toMatchObject({
+          code: 'INVALID_INPUT',
+          message: `Asset "${assetId}" was not found`,
+        });
+      },
+    );
+  });
+});
+
 describe('the assets an agent generates', () => {
   const twoImages = {
     kind: 'respond' as const,
@@ -353,5 +433,62 @@ describe('media the model does not take', () => {
         expect(events.map((event) => event.event)).not.toContain('generate.started');
       },
     );
+  });
+});
+
+describe('the code of a media refusal on the wire', () => {
+  type Reason = 'modality-not-accepted' | 'asset-flagged';
+
+  /** A start with two images, each costed as `reasons[position]` by the agent's own estimator. */
+  async function refusal(reasons: readonly (Reason | 'estimated')[]) {
+    return withHarness(
+      {
+        script: [say('Seen.')],
+        backends: anthropic.slice(0, 1),
+        mediaCostEstimator: (part, position) => {
+          const reason = reasons[position.partIndex]!;
+          return reason === 'estimated'
+            ? {
+                ...position,
+                modality: part.type,
+                outcome: 'estimated',
+                tokens: 10,
+                basis: 'catalog-estimate',
+              }
+            : { ...position, modality: part.type, outcome: 'unsupported', reason };
+        },
+      },
+      async (harness) => {
+        const ids = [
+          await admit(harness, pngBytes(4, 3, 16)),
+          await admit(harness, pngBytes(4, 3, 32)),
+        ];
+        const frames = await readAgUiStream(
+          await harness.handler(startRequest(userInput(ids.map((id) => attachment(id))))),
+        );
+        const errors = frames.filter((frame) => frame.event.type === EventType.RUN_ERROR);
+        expect(errors).toHaveLength(1);
+        expect(harness.generate.callCount).toBe(0);
+        return errors[0]!.event as { code: string };
+      },
+    );
+  }
+
+  it('is UNSUPPORTED_MEDIA_TYPE when an agent’s estimator says the model takes none of the parts', async () => {
+    expect(await refusal(['modality-not-accepted', 'modality-not-accepted'])).toMatchObject({
+      code: 'UNSUPPORTED_MEDIA_TYPE',
+    });
+  });
+
+  it('is MEDIA_NOT_ADMITTED when a part is refused for another reason', async () => {
+    expect(await refusal(['asset-flagged', 'asset-flagged'])).toMatchObject({
+      code: 'MEDIA_NOT_ADMITTED',
+    });
+  });
+
+  it('is MEDIA_NOT_ADMITTED when one part is admitted and another is not accepted', async () => {
+    expect(await refusal(['estimated', 'modality-not-accepted'])).toMatchObject({
+      code: 'MEDIA_NOT_ADMITTED',
+    });
   });
 });

@@ -9,9 +9,10 @@ import { agentRunErrorToJSON, MediaAdmissionError } from './errors';
 import type { GenerateContext } from './types';
 
 /**
- * COR-1547 — a message whose every media part is refused as `unsupported` fails with its own
- * native code, `UNSUPPORTED_MEDIA_TYPE`, so a client can tell "this model does not take that kind
- * of media" from every other admission refusal. Any other mix keeps `MEDIA_NOT_ADMITTED`.
+ * COR-1547 — a message whose every media part is refused because the model does not take that kind
+ * of media (`modality-not-accepted` or `mime-family-not-accepted`) fails with its own native code,
+ * `UNSUPPORTED_MEDIA_TYPE`, so a client can tell that from every other admission refusal. A message
+ * with any admitted part, any other refusal reason, or any other mix keeps `MEDIA_NOT_ADMITTED`.
  */
 const parts: MediaContent[] = [
   {
@@ -26,29 +27,25 @@ const parts: MediaContent[] = [
   },
 ];
 
-type Verdict = 'unsupported' | 'unbounded' | 'estimated';
+type Unsupported = Extract<MediaCostOutcome, { outcome: 'unsupported' }>['reason'];
+type Verdict = Unsupported | 'unbounded' | 'estimated';
 
 function estimating(verdicts: readonly Verdict[]): MediaCostEstimator {
   return (part, position): MediaCostOutcome => {
     const verdict = verdicts[position.partIndex]!;
-    if (verdict === 'unsupported') {
-      return {
-        ...position,
-        modality: part.type,
-        outcome: 'unsupported',
-        reason: 'modality-not-accepted',
-      };
-    }
     if (verdict === 'unbounded') {
       return { ...position, modality: part.type, outcome: 'unbounded', reason: 'size-unknown' };
     }
-    return {
-      ...position,
-      modality: part.type,
-      outcome: 'estimated',
-      tokens: 10,
-      basis: 'catalog-estimate',
-    };
+    if (verdict === 'estimated') {
+      return {
+        ...position,
+        modality: part.type,
+        outcome: 'estimated',
+        tokens: 10,
+        basis: 'catalog-estimate',
+      };
+    }
+    return { ...position, modality: part.type, outcome: 'unsupported', reason: verdict };
   };
 }
 
@@ -69,47 +66,77 @@ async function refusedWith(verdicts: readonly Verdict[], media: readonly MediaCo
   return { result, seen };
 }
 
+const codeOf = (result: { error?: unknown }): string => (result.error as MediaAdmissionError).code;
+
 describe('the code of a media admission refusal (COR-1547)', () => {
-  it('is UNSUPPORTED_MEDIA_TYPE when every part is unsupported, before any generation', async () => {
-    const { result, seen } = await refusedWith(['unsupported', 'unsupported']);
+  it.each(['modality-not-accepted', 'mime-family-not-accepted'] as const)(
+    'is UNSUPPORTED_MEDIA_TYPE when every part is refused as %s, before any generation',
+    async (reason) => {
+      const { result, seen } = await refusedWith([reason, reason]);
 
-    expect(seen).toHaveLength(0);
-    expect(result.finishReason).toBe('error');
-    expect(result.error).toBeInstanceOf(MediaAdmissionError);
-    const error = result.error as MediaAdmissionError;
-    expect(error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
-    expect(error.kind).toBe('policy');
-    expect(error.outcomes).toHaveLength(2);
-    expect(agentRunErrorToJSON(error)).toMatchObject({
-      code: 'UNSUPPORTED_MEDIA_TYPE',
-      kind: 'policy',
-    });
+      expect(seen).toHaveLength(0);
+      expect(result.finishReason).toBe('error');
+      expect(result.error).toBeInstanceOf(MediaAdmissionError);
+      const error = result.error as MediaAdmissionError;
+      expect(error.code).toBe('UNSUPPORTED_MEDIA_TYPE');
+      expect(error.kind).toBe('policy');
+      expect(error.outcomes).toHaveLength(2);
+      expect(agentRunErrorToJSON(error)).toMatchObject({
+        code: 'UNSUPPORTED_MEDIA_TYPE',
+        kind: 'policy',
+      });
+    },
+  );
+
+  it('is UNSUPPORTED_MEDIA_TYPE for a message with a single part the model does not take', async () => {
+    const { result } = await refusedWith(['modality-not-accepted'], [parts[0]!]);
+
+    expect(codeOf(result)).toBe('UNSUPPORTED_MEDIA_TYPE');
   });
 
-  it('is UNSUPPORTED_MEDIA_TYPE for a message with a single unsupported part', async () => {
-    const { result } = await refusedWith(['unsupported'], [parts[0]!]);
-
-    expect((result.error as MediaAdmissionError).code).toBe('UNSUPPORTED_MEDIA_TYPE');
-  });
-
-  it('stays MEDIA_NOT_ADMITTED when an unsupported part is mixed with an unbounded one', async () => {
-    const { result, seen } = await refusedWith(['unsupported', 'unbounded']);
+  // The code says the model does not take that media. A refusal for any other reason is not that,
+  // however the part was refused.
+  it.each([
+    'asset-flagged',
+    'asset-unverified',
+    'media-over-budget',
+    'media-count-exceeded',
+    'mime-type-mismatch',
+    'source-form-not-accepted',
+    'no-backend-admits-media',
+    'no-route-admits-media',
+  ] as const)('stays MEDIA_NOT_ADMITTED when every part is refused as %s', async (reason) => {
+    const { result, seen } = await refusedWith([reason, reason]);
 
     expect(seen).toHaveLength(0);
     expect(result.error).toBeInstanceOf(MediaAdmissionError);
-    expect((result.error as MediaAdmissionError).code).toBe('MEDIA_NOT_ADMITTED');
+    expect(codeOf(result)).toBe('MEDIA_NOT_ADMITTED');
+  });
+
+  it('stays MEDIA_NOT_ADMITTED when one part is admitted and another is not accepted', async () => {
+    const { result, seen } = await refusedWith(['estimated', 'modality-not-accepted']);
+
+    expect(seen).toHaveLength(0);
+    expect(codeOf(result)).toBe('MEDIA_NOT_ADMITTED');
+    expect((result.error as MediaAdmissionError).outcomes).toHaveLength(1);
+  });
+
+  it('stays MEDIA_NOT_ADMITTED when a part the model does not take is mixed with an unbounded one', async () => {
+    const { result, seen } = await refusedWith(['modality-not-accepted', 'unbounded']);
+
+    expect(seen).toHaveLength(0);
+    expect(codeOf(result)).toBe('MEDIA_NOT_ADMITTED');
+  });
+
+  it('stays MEDIA_NOT_ADMITTED when a part the model does not take is mixed with a flagged one', async () => {
+    const { result } = await refusedWith(['modality-not-accepted', 'asset-flagged']);
+
+    expect(codeOf(result)).toBe('MEDIA_NOT_ADMITTED');
   });
 
   it('stays MEDIA_NOT_ADMITTED when the only refused part is unbounded', async () => {
     const { result } = await refusedWith(['estimated', 'unbounded']);
 
-    expect((result.error as MediaAdmissionError).code).toBe('MEDIA_NOT_ADMITTED');
-  });
-
-  it('is UNSUPPORTED_MEDIA_TYPE when the parts that are refused are all unsupported, whatever else was admitted', async () => {
-    const { result } = await refusedWith(['estimated', 'unsupported']);
-
-    expect((result.error as MediaAdmissionError).code).toBe('UNSUPPORTED_MEDIA_TYPE');
-    expect((result.error as MediaAdmissionError).outcomes).toHaveLength(1);
+    expect(codeOf(result)).toBe('MEDIA_NOT_ADMITTED');
   });
 });

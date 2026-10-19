@@ -304,7 +304,8 @@ describe('a chunk larger than maxRequestBodyBytes', () => {
 
 describe('two principals', () => {
   it('answer another owner’s upload and asset exactly as a missing one, even holding the scopes', async () => {
-    await withBureau({}, async (opened) => {
+    const assetStorage = createMemoryAssetStorage();
+    await withBureau({ assetStorage }, async (opened) => {
       const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
       const assetId = completed.result!['assetId'] as string;
       const openUpload = await create(opened, 'alice-assets-key', {
@@ -320,9 +321,14 @@ describe('two principals', () => {
       const mask = (bodies: RpcBody[], ids: string[]) =>
         JSON.stringify(bodies, null, 1).replaceAll(ids[0]!, '<id>').replaceAll(ids[1]!, '<id>');
 
+      const recordsBefore = await assetStorage.list(KEYS.recordPrefix);
+
       const bob = await probes('bob-assets-key', openUploadId, assetId);
       const missing = await probes('bob-assets-key', 'upload-missing', 'asset-missing');
 
+      // A completion refused for a session the caller does not hold starts no admission, so it
+      // leaves no rejected asset behind under the caller.
+      expect(await assetStorage.list(KEYS.recordPrefix)).toEqual(recordsBefore);
       for (const body of bob) expect(httpStatusOf(body)).toBe(404);
       expect(mask(bob, [openUploadId, assetId])).toBe(
         mask(missing, ['upload-missing', 'asset-missing']),
