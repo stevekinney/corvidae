@@ -51,6 +51,8 @@ export type BureauWorldStub = {
   on(method: string, handler: BureauHandler): void;
   /** Every request made to the engine's reviews, so a test can say the page never asked. */
   readonly weftRequests: URL[];
+  /** Every decision submitted on one of the engine's reviews, by review identifier. */
+  readonly weftDecisions: Array<{ reviewId: string; body: unknown }>;
   /** Every subscription the page has opened, in order. */
   readonly streams: StreamControl[];
   /** Makes the next subscriptions refuse with this status, or fail to connect when `'offline'`. */
@@ -126,6 +128,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
   const calls: BureauCall[] = [];
   const streams: StreamControl[] = [];
   const weftRequests: URL[] = [];
+  const weftDecisions: Array<{ reviewId: string; body: unknown }> = [];
   let refusal: number | 'offline' | undefined;
   const encoder = new TextEncoder();
 
@@ -179,6 +182,18 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
       streams.push(stream);
       return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
     }
+    const decision = /\/v1\/reviews\/([^/]+)\/decision$/.exec(url.pathname);
+    if (decision !== null && init?.method === 'POST') {
+      const reviewId = decodeURIComponent(decision[1] ?? '');
+      weftDecisions.push({
+        reviewId,
+        body: JSON.parse(typeof init.body === 'string' ? init.body : '{}'),
+      });
+      world.weftReviews = world.weftReviews.filter(
+        (entry) => !(entry.status === 'pending' && entry.reviewId === reviewId),
+      );
+      return new Response(null, { status: 204 });
+    }
     if (url.pathname.endsWith('/v1/reviews') && init?.method !== 'POST') {
       weftRequests.push(url);
       const status = url.searchParams.get('status');
@@ -222,6 +237,7 @@ export function installBureauWorld(world: BureauWorld): BureauWorldStub {
     },
     streams,
     weftRequests,
+    weftDecisions,
     refuseStreams: (status) => {
       refusal = status;
     },

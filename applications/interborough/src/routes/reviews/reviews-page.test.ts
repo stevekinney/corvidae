@@ -239,7 +239,34 @@ describe('what became of a decision', () => {
   });
 });
 
+describe('a decision the Bureau gated again', () => {
+  test('says the approval is still waiting and the tool did not run', async () => {
+    const { container, findByRole, findByText } = open({ reviews: [APPROVAL] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    stub?.on('bureau.reviews.resolve', () => ({
+      id: APPROVAL.id,
+      kind: 'tool-approval',
+      decision: 'approve',
+      receipt: 'superseded',
+    }));
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+    await findByText(REVIEWS_COPY.superseded);
+  });
+});
+
 describe('answering a Bureau question', () => {
+  test('says the answer was not sent when the Bureau refuses it', async () => {
+    const { container, findByLabelText, findByText, getByRole } = open({ reviews: [QUESTION] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    stub?.on('bureau.tasks.respond', () => {
+      throw new Error('The Bureau broke.');
+    });
+    await fireEvent.input(await findByLabelText('Your answer'), { target: { value: 'staging' } });
+    await fireEvent.click(getByRole('button', { name: 'Send answer' }));
+    await findByText(REVIEWS_COPY.answerFailed);
+    expect(rows(container).length).toBe(1);
+  });
+
   test('is one text field, sent through bureau.tasks.respond to the run that asked', async () => {
     const { container, findByLabelText, getByRole } = open({ reviews: [QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(1));
@@ -264,6 +291,23 @@ describe('answering a Bureau question', () => {
 });
 
 describe('an engine review', () => {
+  test('is decided through its own form, and goes from the list', async () => {
+    const { container, findByRole, getByLabelText } = open({
+      weftReviews: [weftPending()],
+    });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await fireEvent.click(await findByRole('radio', { name: 'Approve' }));
+    await fireEvent.input(getByLabelText(/Reviewer/), { target: { value: 'ops@example.com' } });
+    await fireEvent.click(await findByRole('button', { name: 'Submit decision' }));
+    await waitFor(() => expect(stub?.weftDecisions.length).toBe(1));
+    expect(stub?.weftDecisions[0]).toMatchObject({
+      reviewId: 'weft-review-1',
+      body: { decision: 'approved', reviewer: 'ops@example.com' },
+    });
+    await waitFor(() => expect(rows(container).length).toBe(0));
+    expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
+  });
+
   test('keeps its own decision form, with the reviewer’s name and the sections', async () => {
     const { container, findByRole, getByLabelText } = open({
       weftReviews: [weftPending()],
