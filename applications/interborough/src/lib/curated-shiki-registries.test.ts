@@ -16,6 +16,17 @@ describe('the curated language registry', () => {
     expect(grammar.default.length).toBeGreaterThan(0);
   });
 
+  test('gives Shiki a grammar for every language it names', async () => {
+    const loaded = await Promise.all(
+      Object.entries(bundledLanguages).map(async ([name, load]) => [name, await load()] as const),
+    );
+
+    for (const [name, grammar] of loaded) {
+      expect(Array.isArray(grammar.default), name).toBe(true);
+      expect(grammar.default.length, name).toBeGreaterThan(0);
+    }
+  });
+
   test('holds the languages Markdown highlights', () => {
     for (const language of [
       'typescript',
@@ -45,8 +56,11 @@ describe('the curated language registry', () => {
 describe('the curated theme registry', () => {
   test('holds the light and dark themes the console highlights with', async () => {
     expect(Object.keys(bundledThemes).toSorted()).toEqual(['github-dark', 'github-light']);
-    const theme = await bundledThemes['github-light']();
+    const themes = await Promise.all(Object.values(bundledThemes).map((load) => load()));
 
-    expect(theme.default.name).toBe('github-light');
+    expect(themes.map((theme) => theme.default.name).toSorted()).toEqual([
+      'github-dark',
+      'github-light',
+    ]);
   });
 });
