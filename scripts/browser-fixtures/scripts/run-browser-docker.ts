@@ -5,7 +5,8 @@
  * (native linux/arm64, Playwright jammy) against an exact commit. Ported from
  * cinder's `run-browser-docker.ts` (COR-1512).
  *
- * It exits with the suite's status and writes `suite-results.json` (every
+ * It exits with the suite's status (except a scoped run whose only failure is the
+ * terminal scope guard, which exits 0; see `decideVisualExit`) and writes `suite-results.json` (every
  * failing test, screenshot or behavioural) into the run directory. The
  * stability rule compares that with an `origin/main` control run the same way:
  * `bun scripts/browser-fixtures/scripts/suite-results.ts compare <run> <control>`.
@@ -14,13 +15,13 @@
 import { join } from 'node:path';
 
 import { describeHostLoad } from './docker-baseline-runner.ts';
-import { incompleteRunReasons } from './suite-results.ts';
+import { decideVisualExit } from './suite-results.ts';
 import { startRendererRun } from './update-snapshots-docker.ts';
 
 export const SUITE_RESULTS_FILE_NAME = 'suite-results.json';
 
 async function main(): Promise<number> {
-  const { exitCode, sha, runDirectory, hostLoad, results } = await startRendererRun(
+  const { exitCode, sha, runDirectory, hostLoad, results, componentScope } = await startRendererRun(
     'visual',
     process.argv.slice(2),
   );
@@ -36,15 +37,15 @@ async function main(): Promise<number> {
     );
   }
   // A run that never reached its tests has no failures to list; say so rather than read as clean.
-  const incomplete =
-    results === undefined ? ['Playwright wrote no JSON report.'] : incompleteRunReasons(results);
-  if (incomplete.length > 0) {
-    process.stderr.write(`The visual run did not complete normally. ${incomplete.join(' ')}\n`);
+  // A scoped run whose only failure is the terminal scope guard passes (COR-1575).
+  const decision = decideVisualExit(exitCode, results, componentScope);
+  if (decision.reason !== undefined) {
+    (decision.exitCode === 0 ? process.stdout : process.stderr).write(`${decision.reason}\n`);
   }
   process.stdout.write(
-    `Visual run against ${sha} exited ${exitCode} with ${failures.length} failing test(s). Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}. Results: ${resultsPath}\n`,
+    `Visual run against ${sha} exited ${exitCode} with ${failures.length} failing test(s); exiting ${decision.exitCode}. Host load: start ${describeHostLoad(hostLoad.start)}; end ${describeHostLoad(hostLoad.end)}. Results: ${resultsPath}\n`,
   );
-  return incomplete.length > 0 && exitCode === 0 ? 1 : exitCode;
+  return decision.exitCode;
 }
 
 if (import.meta.main) {
