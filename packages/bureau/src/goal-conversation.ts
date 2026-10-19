@@ -70,6 +70,7 @@ import {
   reconcileTerminalRunRef,
   type RunRef,
   type SessionStore,
+  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
   Conversation,
@@ -79,7 +80,7 @@ import {
 
 import { attemptSessionId, goalAttemptRunId, goalSessionId, type GoalState } from './goal-state';
 import { ownerOrLocal } from './owner-of-record';
-import { resolveSessionOwner, SESSION_OWNER_METADATA_KEY } from './session-authority';
+import { resolveSessionOwner } from './session-authority';
 
 /** A session the goal depends on is not in the state its own earlier writes left it in. */
 export class GoalConversationError extends Error {

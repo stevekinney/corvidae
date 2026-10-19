@@ -1,0 +1,620 @@
+import {
+  type CleanupAcknowledgement,
+  createAgent,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { describe, expect, it } from 'bun:test';
+
+import { BureauError } from '../../create-bureau.ts';
+import { createMemoryStorageFixture } from '../../test/storage-fixtures';
+import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { waitForCondition } from '../../test';
+import type { ContextDeletionReport } from '../../types.ts';
+import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
+import {
+  answering,
+  authentication,
+  createStorageGate,
+  createStorageInterleaver,
+  openBureau,
+  type OpenedBureau,
+  OWNER,
+  parkingUntilAborted,
+  rpc,
+} from './management-fixtures.test-support.ts';
+
+async function withBureau<T>(
+  options: Parameters<typeof openBureau>[0],
+  body: (opened: OpenedBureau) => Promise<T>,
+): Promise<T> {
+  const opened = await openBureau(options);
+  try {
+    return await body(opened);
+  } finally {
+    await opened.dispose();
+  }
+}
+
+async function startRun(
+  opened: OpenedBureau,
+  options: { principal?: string; sessionId?: string; message?: string } = {},
+) {
+  const run = await opened.bureau.createRun({
+    message: options.message ?? 'work',
+    principal: options.principal ?? OWNER.alice,
+    ...(options.sessionId === undefined ? {} : { sessionId: options.sessionId }),
+  });
+  await waitForCondition(
+    () => opened.bureau.getRun(run.id)?.status === 'running',
+    `run ${run.id} never started`,
+  );
+  return run;
+}
+
+const deleteContext = (opened: OpenedBureau, contextId: string, key: string, wait?: number) =>
+  rpc(
+    opened.handler,
+    'bureau.contexts.delete',
+    { contextId, ...(wait === undefined ? {} : { waitMilliseconds: wait }) },
+    key,
+  );
+
+describe('bureau.contexts.delete access', () => {
+  it('deletes a context the caller owns, and any context for bureau.contexts:write', async () => {
+    await withBureau({ generate: answering() }, async (opened) => {
+      const mine = await opened.bureau.createRun({ message: 'mine', principal: OWNER.alice });
+      const theirs = await opened.bureau.createRun({ message: 'theirs', principal: OWNER.bob });
+      await waitForCondition(() => opened.bureau.getRun(mine.id)?.status === 'completed', 'mine');
+      await waitForCondition(
+        () => opened.bureau.getRun(theirs.id)?.status === 'completed',
+        'theirs',
+      );
+
+      const own = await deleteContext(opened, mine.sessionId, 'alice-key');
+      const operator = await deleteContext(opened, theirs.sessionId, 'contexts-writer-key');
+
+      expect(own.result).toMatchObject({
+        contextId: mine.sessionId,
+        receipt: 'applied',
+        tasks: [],
+      });
+      expect(operator.result).toMatchObject({ contextId: theirs.sessionId, receipt: 'applied' });
+      expect(await opened.bureau.getSession(mine.sessionId)).toBeUndefined();
+      expect(await opened.bureau.getSession(theirs.sessionId)).toBeUndefined();
+    });
+  });
+
+  it('tells a caller that can only write the receipt, and no task, and tells the owner which tasks it cancelled', async () => {
+    await withBureau({}, async (opened) => {
+      const mine = await startRun(opened);
+      const theirs = await startRun(opened);
+
+      const writerOnly = await deleteContext(opened, mine.sessionId, 'contexts-writer-key', 2_000);
+      const owner = await deleteContext(opened, theirs.sessionId, 'alice-key', 2_000);
+
+      expect(Object.keys(writerOnly.result ?? {}).toSorted()).toEqual(['contextId', 'receipt']);
+      expect(JSON.stringify(writerOnly)).not.toContain(mine.id);
+      expect(writerOnly.result?.['receipt']).toBe('cleaned-up');
+      expect(owner.result?.['tasks']).toEqual([{ taskId: theirs.id, cleanup: 'cleaned-up' }]);
+    });
+  });
+
+  it('answers a context the caller may not delete exactly as it answers one that does not exist', async () => {
+    await withBureau({ generate: answering() }, async (opened) => {
+      const run = await opened.bureau.createRun({ message: 'mine', principal: OWNER.alice });
+      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+
+      const stranger = await deleteContext(opened, run.sessionId, 'bob-key');
+      const tasksScope = await deleteContext(opened, run.sessionId, 'tasks-writer-key');
+      const missing = await deleteContext(opened, 'no-such-context', 'bob-key');
+
+      expect(stranger.error?.data?.httpStatus).toBe(404);
+      expect(tasksScope.error?.data?.httpStatus).toBe(404);
+      expect(JSON.stringify(stranger).replaceAll(run.sessionId, '<id>')).toBe(
+        JSON.stringify(missing).replaceAll('no-such-context', '<id>'),
+      );
+      expect(await opened.bureau.getSession(run.sessionId)).toBeDefined();
+    });
+  });
+
+  it('answers the id of a bureau.run dispatch, which owns no session, as a missing context', async () => {
+    const worker = createAgent({ name: 'worker', generate: parkingUntilAborted });
+    await withBureau({ agents: { worker } }, async (opened) => {
+      const run = opened.bureau.run('worker', 'catalog work', { principal: OWNER.alice });
+      try {
+        await waitForCondition(
+          () => opened.bureau.getRun(run.id)?.status === 'running',
+          'the dispatch never started',
+        );
+
+        const body = await deleteContext(opened, run.id, 'operator-key');
+
+        expect(body.error?.data?.httpStatus).toBe(404);
+        // It is a task, even though it is not a context.
+        const task = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
+        expect(task.result).toMatchObject({ id: run.id, contextId: run.id, agentName: 'worker' });
+      } finally {
+        run.abort('test over');
+        await run.closed();
+      }
+    });
+  });
+});
+
+describe('bureau.contexts.delete receipts', () => {
+  it('answers cleaned-up for a context with a live run once that run’s cleanup is acknowledged', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened);
+
+      const body = await deleteContext(opened, run.sessionId, 'alice-key', 2_000);
+
+      expect(body.result).toMatchObject({
+        receipt: 'cleaned-up',
+        tasks: [{ taskId: run.id, cleanup: 'cleaned-up' }],
+      });
+      expect(opened.bureau.getRun(run.id)?.status).toBe('aborted');
+      expect(await opened.bureau.getSession(run.sessionId)).toBeUndefined();
+    });
+  });
+
+  it('rejects, applying nothing, once shutdown has closed admission', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened);
+      const shutdown = opened.bureau.shutdown({ policy: 'drain' });
+      try {
+        await waitForCondition(() => opened.bureau.lifecycle !== 'ready', 'admission never closed');
+
+        const body = await deleteContext(opened, run.sessionId, 'alice-key');
+
+        expect(body.result).toEqual({
+          contextId: run.sessionId,
+          receipt: 'rejected',
+          reason: 'shutting-down',
+          tasks: [],
+        });
+        expect(await opened.bureau.getSession(run.sessionId)).toBeDefined();
+      } finally {
+        opened.bureau.abortRun(run.id);
+        await shutdown;
+      }
+    });
+  });
+
+  it('cancels and awaits every live task of a context, not only the latest, and neither persists session state afterwards', async () => {
+    await withBureau({}, async (opened) => {
+      const first = await startRun(opened, { message: 'first turn' });
+      const second = await startRun(opened, { sessionId: first.sessionId, message: 'second turn' });
+      expect(second.sessionId).toBe(first.sessionId);
+
+      const body = await deleteContext(opened, first.sessionId, 'alice-key', 2_000);
+
+      expect(body.result).toMatchObject({ receipt: 'cleaned-up' });
+      const cancelled = (body.result?.['tasks'] ?? []) as Array<{
+        taskId: string;
+        cleanup: string;
+      }>;
+      const reported = cancelled.map((task) => task.taskId).toSorted();
+      expect(reported).toEqual([first.id, second.id].toSorted());
+      expect(opened.bureau.getRun(first.id)?.status).toBe('aborted');
+      expect(opened.bureau.getRun(second.id)?.status).toBe('aborted');
+      // Neither run saves the session it was cancelled in, then or later.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(await opened.bureau.getSession(first.sessionId)).toBeUndefined();
+    });
+  });
+
+  it('empties the originating messages of the deleted context’s tasks and keeps their status and cleanup', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened, { message: 'REMEMBER-ME-NOT' });
+      const before = await opened.bureau.tasks.history(run.id);
+      expect(before?.map((message) => message.text)).toEqual(['REMEMBER-ME-NOT']);
+
+      await deleteContext(opened, run.sessionId, 'alice-key', 2_000);
+
+      expect(await opened.bureau.tasks.history(run.id)).toEqual([]);
+      expect(JSON.stringify(await opened.bureau.tasks.record(run.id))).not.toContain(
+        'REMEMBER-ME-NOT',
+      );
+      const task = await rpc(opened.handler, 'bureau.tasks.get', { taskId: run.id }, 'alice-key');
+      expect(task.result).toMatchObject({ status: 'canceled', cleanup: 'cleaned-up' });
+    });
+  });
+});
+
+/**
+ * Receipts that depend on how a run's cleanup ended, driven through the real handler
+ * and the real registry over a Bureau whose deletion reports the acknowledgements a
+ * test chooses.
+ */
+describe('bureau.contexts.delete receipts that depend on the cleanup acknowledgement', () => {
+  async function withScriptedDeletion<T>(
+    acknowledgements: readonly (CleanupAcknowledgement | 'never')[],
+    body: (call: (wait?: number) => ReturnType<typeof rpc>) => Promise<T>,
+  ): Promise<T> {
+    const opened = await openBureau({});
+    try {
+      const report: ContextDeletionReport = {
+        deleted: true,
+        tasks: acknowledgements.map((acknowledgement, index) => ({
+          taskId: `run-scripted-${index}`,
+          closed:
+            acknowledgement === 'never'
+              ? new Promise<CleanupAcknowledgement>(() => undefined)
+              : Promise.resolve(acknowledgement),
+        })),
+      };
+      const source = Object.create(opened.bureau, {
+        getSession: {
+          value: async () => ({
+            id: 'context-1',
+            incarnation: 'incarnation-1',
+            metadata: { sessionOwner: OWNER.alice },
+          }),
+        },
+        deleteSession: { value: async () => report },
+      }) as BureauHandlerSource;
+      const handler = createBureauHandler(source, { authentication });
+      return await body((wait) =>
+        rpc(
+          handler,
+          'bureau.contexts.delete',
+          { contextId: 'context-1', ...(wait === undefined ? {} : { waitMilliseconds: wait }) },
+          'alice-key',
+        ),
+      );
+    } finally {
+      await opened.dispose();
+    }
+  }
+
+  const settledCases: Array<[string, CleanupAcknowledgement]> = [
+    ['cleaned-up', { status: 'completed' }],
+    ['cleanup-failed', { status: 'failed', error: new Error('boom') }],
+    ['cleanup-unresolved', { status: 'unresolved', reason: 'timed-out' }],
+    ['cleanup-unresolved', { status: 'unresolved', reason: 'unreachable' }],
+    ['cleanup-unresolved', { status: 'unresolved', reason: 'persistence-failed' }],
+    ['unknown-outcome', { status: 'unresolved', reason: 'unknown-effect' }],
+  ];
+
+  it.each(settledCases)(
+    'answers %s for an acknowledgement of %j',
+    async (receipt, acknowledgement) => {
+      await withScriptedDeletion([acknowledgement], async (call) => {
+        const body = await call(1_000);
+        expect(body.result).toMatchObject({ receipt });
+      });
+    },
+  );
+
+  it('answers cleanup-pending for a live run whose cleanup is still running', async () => {
+    await withScriptedDeletion(['never'], async (call) => {
+      const body = await call(20);
+      expect(body.result).toMatchObject({
+        receipt: 'cleanup-pending',
+        tasks: [{ taskId: 'run-scripted-0', cleanup: 'cleanup-pending' }],
+      });
+    });
+  });
+
+  it('answers cleanup-pending without waiting when no acknowledgement has arrived', async () => {
+    await withScriptedDeletion(['never'], async (call) => {
+      const body = await call();
+      expect(body.result).toMatchObject({ receipt: 'cleanup-pending' });
+    });
+  });
+
+  it('lets a pending cleanup on either of two tasks decide the receipt, the least settled winning', async () => {
+    await withScriptedDeletion([{ status: 'completed' }, 'never'], async (call) => {
+      const body = await call(20);
+      expect(body.result).toMatchObject({ receipt: 'cleanup-pending' });
+      expect(body.result?.['tasks']).toEqual([
+        { taskId: 'run-scripted-0', cleanup: 'cleaned-up' },
+        { taskId: 'run-scripted-1', cleanup: 'cleanup-pending' },
+      ]);
+    });
+    await withScriptedDeletion(['never', { status: 'completed' }], async (call) => {
+      const body = await call(20);
+      expect(body.result).toMatchObject({ receipt: 'cleanup-pending' });
+    });
+  });
+
+  it('orders the settled states unresolved, unknown, failed, cleaned-up', async () => {
+    const unresolved: CleanupAcknowledgement = { status: 'unresolved', reason: 'timed-out' };
+    const unknown: CleanupAcknowledgement = { status: 'unresolved', reason: 'unknown-effect' };
+    const failed: CleanupAcknowledgement = { status: 'failed', error: new Error('boom') };
+    const completed: CleanupAcknowledgement = { status: 'completed' };
+    const cases: Array<[CleanupAcknowledgement[], string]> = [
+      [[completed, failed, unknown, unresolved], 'cleanup-unresolved'],
+      [[completed, failed, unknown], 'unknown-outcome'],
+      [[completed, failed], 'cleanup-failed'],
+      [[completed, completed], 'cleaned-up'],
+    ];
+    for (const [acknowledgements, receipt] of cases) {
+      await withScriptedDeletion(acknowledgements, async (call) => {
+        const body = await call(1_000);
+        expect(body.result).toMatchObject({ receipt });
+      });
+    }
+  });
+});
+
+describe('the fence around a context being deleted', () => {
+  it('refuses a new run on the context while its deletion is in flight, then allows the id as a new context', async () => {
+    await withBureau({}, async (opened) => {
+      const run = await startRun(opened);
+
+      const deletion = opened.bureau.deleteSession(run.sessionId);
+      const refused = await opened.bureau
+        .createRun({ message: 'late', principal: OWNER.alice, sessionId: run.sessionId })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      await deletion;
+
+      expect(refused).toBeInstanceOf(BureauError);
+      expect((refused as BureauError).code).toBe('NOT_FOUND');
+      const again = await opened.bureau.createRun({
+        message: 'fresh start',
+        principal: OWNER.alice,
+        sessionId: run.sessionId,
+      });
+      expect(again.sessionId).toBe(run.sessionId);
+      // The new context holds only its own task: the old incarnation's are not its own.
+      const listed = await rpc(
+        opened.handler,
+        'bureau.tasks.list',
+        { contextId: run.sessionId },
+        'alice-key',
+      );
+      const listedTasks = (listed.result?.['tasks'] ?? []) as Array<{ id: string }>;
+      expect(listedTasks.map((task) => task.id)).toEqual([again.id]);
+    });
+  });
+
+  /**
+   * A Bureau whose deletion of a session is held at its first read of a session body: the
+   * session and its run are still live, nothing is cancelled, and the fence is the only
+   * thing standing between a continuation and the context.
+   */
+  async function withDeletionHeldAtTheFirstRead<T>(
+    body: (context: {
+      opened: OpenedBureau;
+      run: Awaited<ReturnType<typeof startRun>>;
+      deletion: Promise<unknown>;
+    }) => Promise<T>,
+  ): Promise<T> {
+    const gate = createStorageGate(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+    );
+    const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => gate.wrap(raw) });
+    const opened = await openBureau({ storage: fixture.configuration });
+    try {
+      const run = await startRun(opened);
+      gate.arm();
+      const deletion = opened.bureau.deleteSession(run.sessionId);
+      await gate.reached;
+      try {
+        return await body({ opened, run, deletion });
+      } finally {
+        gate.release();
+        await deletion;
+      }
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  }
+
+  it('answers session input for the context as input to one that does not exist, and admits none', async () => {
+    await withDeletionHeldAtTheFirstRead(async ({ opened, run }) => {
+      const outcome = await opened.bureau.submitSessionInput(run.sessionId, {
+        id: 'input-late',
+        principal: OWNER.alice,
+        deliveryMode: 'steer',
+        payload: 'too late',
+      });
+
+      expect(outcome.outcome).toBe('not-found');
+    });
+  });
+
+  it('refuses a signal to the context as a session that does not exist', async () => {
+    await withDeletionHeldAtTheFirstRead(async ({ opened, run }) => {
+      const refused = await rejectionOf(opened.bureau.signalSession(run.sessionId, 'wake', {}));
+
+      expect(refused).toBeInstanceOf(BureauError);
+      expect((refused as BureauError).code).toBe('NOT_FOUND');
+      expect((refused as BureauError).message).toContain('Session not found');
+    });
+  });
+
+  it('refuses a run whose admission a deletion overtakes between the session save and the run registering', async () => {
+    // The task record is written after the session is saved as running and before the run
+    // registers: hold it there, start the deletion in the gap, and hold the deletion too, so
+    // it is in flight when the run reaches its registration.
+    const admission = createStorageGate((_verb, args) =>
+      JSON.stringify(args).includes('bureau-task:v1:'),
+    );
+    const deleting = createStorageGate(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+    );
+    const fixture = createMemoryStorageFixture({
+      wrapStorage: (raw) => admission.wrap(deleting.wrap(raw)),
+    });
+    const opened = await openBureau({ storage: fixture.configuration });
+    try {
+      admission.arm();
+      const creating = rejectionOf(
+        opened.bureau.createRun({
+          message: 'overtaken',
+          principal: OWNER.alice,
+          sessionId: 'overtaken',
+        }),
+      );
+      await admission.reached;
+      deleting.arm();
+      const deletion = opened.bureau.deleteSession('overtaken');
+      await deleting.reached;
+      admission.release();
+
+      const refused = await creating;
+      deleting.release();
+      await deletion;
+
+      expect(refused).toBeInstanceOf(BureauError);
+      expect((refused as BureauError).code).toBe('NOT_FOUND');
+      expect(opened.bureau.listRuns()).toEqual([]);
+      expect(await opened.bureau.getSession('overtaken')).toBeUndefined();
+      const tasks = await opened.bureau.tasks.list({ limit: 50, offset: 0 });
+      expect(tasks.tasks).toEqual([]);
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  });
+});
+
+describe('erasing the originating messages of a deleted context', () => {
+  it('fails the deletion, leaving the context, when the history cannot be cleared, and a retry finishes it', async () => {
+    let failing = false;
+    const fixture = createMemoryStorageFixture({
+      wrapStorage: (raw) =>
+        new Proxy(raw, {
+          get(target, property) {
+            const member = Reflect.get(target, property, target) as unknown;
+            if (typeof member !== 'function') return member;
+            return (...args: unknown[]) =>
+              failing && JSON.stringify(args).includes('bureau-task:v1:')
+                ? Promise.reject(new Error('injected: task record write failed'))
+                : (member as (...a: unknown[]) => unknown).apply(target, args);
+          },
+        }),
+    });
+    const opened = await openBureau({ storage: fixture.configuration, generate: answering() });
+    try {
+      const run = await opened.bureau.createRun({
+        message: 'ERASE-ME',
+        principal: OWNER.alice,
+      });
+      await waitForCondition(() => opened.bureau.getRun(run.id)?.status === 'completed', 'finish');
+      await waitForCondition(async () => {
+        const task = await opened.bureau.tasks.get(run.id);
+        return task?.status === 'completed';
+      }, 'the task never settled');
+
+      failing = true;
+      const failed = await deleteContext(opened, run.sessionId, 'alice-key');
+      failing = false;
+
+      expect(failed.result).toBeUndefined();
+      expect(await opened.bureau.getSession(run.sessionId)).toBeDefined();
+      const retried = await deleteContext(opened, run.sessionId, 'alice-key');
+      expect(retried.result).toMatchObject({ receipt: 'applied' });
+      expect(await opened.bureau.getSession(run.sessionId)).toBeUndefined();
+      expect(await opened.bureau.tasks.history(run.id)).toEqual([]);
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  });
+});
+
+describe('a context id that is reused while a request for it is in flight', () => {
+  /**
+   * A Bureau where the first read of a session body completes and then, before its reader
+   * goes on, alice's context is deleted and created again for bob under the same id.
+   */
+  async function withContextReusedAfterTheFirstRead<T>(
+    body: (context: {
+      opened: OpenedBureau;
+      contextId: string;
+      recreate: () => void;
+      bobsRun: () => { id: string };
+    }) => Promise<T>,
+  ): Promise<T> {
+    // Alice's opening is answered at once; bob's run, which takes the id over, stays running.
+    const generate: GenerateFunction = (context) =>
+      JSON.stringify(context.conversation).includes('BOB-PRIVATE-OPENING')
+        ? parkingUntilAborted(context)
+        : answering()(context);
+    const contextId = 'reused-context';
+    let bureau: OpenedBureau['bureau'] | undefined;
+    let bobsRun: { id: string } | undefined;
+    const interleaver = createStorageInterleaver(
+      (verb, args) => verb === 'get' && String(args[0]).startsWith('agent-session'),
+      async () => {
+        await bureau!.deleteSession(contextId);
+        bobsRun = await bureau!.createRun({
+          message: 'BOB-PRIVATE-OPENING',
+          principal: OWNER.bob,
+          sessionId: contextId,
+        });
+      },
+    );
+    const fixture = createMemoryStorageFixture({ wrapStorage: (raw) => interleaver.wrap(raw) });
+    const opened = await openBureau({ storage: fixture.configuration, generate });
+    bureau = opened.bureau;
+    try {
+      await opened.bureau.createRun({
+        message: 'alice opening',
+        principal: OWNER.alice,
+        sessionId: contextId,
+      });
+      return await body({
+        opened,
+        contextId,
+        recreate: () => interleaver.arm(),
+        bobsRun: () => bobsRun!,
+      });
+    } finally {
+      await opened.dispose();
+      await fixture.dispose();
+    }
+  }
+
+  it('does not hand bob’s new context to a read alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate }) => {
+      recreate();
+
+      const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+
+      expect(JSON.stringify(body)).not.toContain('BOB-PRIVATE-OPENING');
+      expect(JSON.stringify(body)).not.toContain(OWNER.bob);
+    });
+  });
+
+  it('does not report bob’s running task as the activity of the context alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
+      await waitForCondition(async () => {
+        const opening = await opened.bureau.tasks.get(opened.bureau.listRuns()[0]!.id);
+        return opening?.status !== 'working';
+      }, 'alice’s opening has finished');
+      recreate();
+
+      const body = await rpc(opened.handler, 'bureau.contexts.get', { contextId }, 'alice-key');
+
+      // Bob's run is live under the same id, in another incarnation.
+      expect(opened.bureau.getRun(bobsRun().id)?.status).toBe('running');
+      expect((body.result as { activity?: string }).activity).toBe('idle');
+    });
+  });
+
+  it('does not delete bob’s new context, abort his run or erase his task history on a request alice was authorized for', async () => {
+    await withContextReusedAfterTheFirstRead(async ({ opened, contextId, recreate, bobsRun }) => {
+      recreate();
+
+      const body = await deleteContext(opened, contextId, 'alice-key');
+
+      expect(body.error?.data?.httpStatus).toBe(404);
+      const survivor = await opened.bureau.getSession(contextId);
+      expect(survivor).toBeDefined();
+      expect(survivor?.metadata['sessionOwner']).toBe(OWNER.bob);
+      // The incarnation check in the Bureau comes before anything is cancelled or erased.
+      const bob = bobsRun();
+      expect(opened.bureau.getRun(bob.id)?.status).toBe('running');
+      const history = await opened.bureau.tasks.history(bob.id);
+      expect(history?.map((message) => message.text)).toEqual(['BOB-PRIVATE-OPENING']);
+    });
+  });
+});

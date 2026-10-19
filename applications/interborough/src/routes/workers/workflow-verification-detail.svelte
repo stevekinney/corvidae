@@ -4,6 +4,7 @@
    * is written out as text next to its badge color, so no state is conveyed
    * by color alone.
    */
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { Badge, Table } from '@lostgradient/cinder';
 
   import {
@@ -57,7 +58,7 @@
 
   {#if verification.identityDrift.length > 0}
     <ul class="weft-workflow-verification__drift" aria-label="Workflow identity drift">
-      {#each verification.identityDrift as drift (drift.reason)}
+      {#each keyedByOccurrence(verification.identityDrift, (candidate) => candidate.reason) as { key, item: drift } (key)}
         <li>
           <span>{WORKFLOW_IDENTITY_REASON_LABELS[drift.reason]}</span>
           <span class="weft-workers-mono">worker {drift.worker}</span>

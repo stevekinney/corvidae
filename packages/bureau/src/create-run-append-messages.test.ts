@@ -145,6 +145,42 @@ describe('createRun appendMessages', () => {
   });
 });
 
+describe('createRun appendMessages and the task it admits', () => {
+  it('records the text of the appended user row as the task’s originating message, across a restart', async () => {
+    const runtime = createManualRuntimeServices({ origin: ORIGIN });
+    const fixture = createSqliteStorageFixture({ runtime });
+    const open = () =>
+      createBureau({
+        agents: {},
+        generate: async () => ({ content: 'Done.', toolCalls: [] }),
+        toolbox: createToolbox<readonly Tool[]>([]),
+        runtime,
+        storage: fixture.configuration,
+        durableExecution: true,
+        durableOwnership: { ownership: 'none' },
+      });
+    try {
+      const first = await open();
+      const run = await first.createRun({
+        principal: 'alice',
+        appendMessages: builtRows(ORIGIN, userRow('client-row-1', 'plan ', 'my trip')),
+      });
+      await settle(first, run.id);
+      await first.dispose();
+
+      const second = await open();
+      try {
+        const history = await second.tasks.history(run.id);
+        expect(history?.map((message) => message.text)).toEqual(['plan my trip']);
+      } finally {
+        await second.dispose();
+      }
+    } finally {
+      await fixture.dispose();
+    }
+  });
+});
+
 describe('createRun appendMessages under a run-creation request id', () => {
   async function withDurableBureau(body: (bureau: Bureau) => Promise<void>): Promise<void> {
     const runtime = createManualRuntimeServices({ origin: ORIGIN });

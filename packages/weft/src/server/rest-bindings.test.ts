@@ -70,5 +70,7 @@ describe('createLiveOperationRegistry', () => {
     const registry = createLiveOperationRegistry({ workerStartOverrideSigningSecret: 'secret' });
 
     expect(registry.get('weft.workflows.start')).toBeDefined();
+    expect(registry.get('weft.workflows.startorsignal')).toBeDefined();
+    expect(createLiveOperationRegistry().get('weft.workflows.startorsignal')).toBeDefined();
   });
 });

@@ -72,6 +72,21 @@ describe('engine validation helpers', () => {
     ).toBe(true);
   });
 
+  it('accepts a string taskOperationId on a timeline entry and refuses any other type', () => {
+    const entry = {
+      step: 1,
+      operationType: 'activity',
+      operationLabel: 'demo',
+      inputSummary: 'input',
+      timestamp: 1,
+      status: 'completed',
+    };
+    expect(isWorkflowTimelineEntry({ ...entry, taskOperationId: 'async-act:v1:wf:0:1' })).toBe(
+      true,
+    );
+    expect(isWorkflowTimelineEntry({ ...entry, taskOperationId: 7 })).toBe(false);
+  });
+
   it('validates workflow timeline entries', () => {
     expect(isWorkflowTimelineEntry(null)).toBe(false);
     expect(

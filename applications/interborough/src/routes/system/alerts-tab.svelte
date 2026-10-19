@@ -34,6 +34,7 @@
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { BellOff, Info } from '@lucide/svelte';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { getFleetEventSource } from '../../app/engine-status.svelte.ts';
   import { getClient } from '../../lib/client.ts';
   import type { FleetEventFrame } from '../../lib/live-source/fleet-event-source.svelte.ts';
@@ -188,7 +189,7 @@
     </EmptyState>
   {:else}
     <ul class="weft-alerts-tab__list">
-      {#each activeAlertsQuery.data.items as alert (alert.metric)}
+      {#each keyedByOccurrence(activeAlertsQuery.data.items, (candidate) => candidate.metric) as { key, item: alert } (key)}
         <li class="weft-alerts-tab__row" style={`border-left-color:${EDGE_COLOR.firing}`}>
           <div class="weft-alerts-tab__row-body">
             <div class="weft-alerts-tab__row-title">{metricLabel(alert)}</div>

@@ -13,11 +13,12 @@
   import { formatDuration, formatRelativeTime } from '../../lib/format/index.ts';
   import { isForbidden, scopeReason } from '../../lib/scopes.svelte.ts';
   import { exactTimestamp } from './task-attempt-evidence.ts';
+  import { describeSessionLifecycle } from './worker-session-lifecycle.ts';
   import {
     MalformedWorkerDiagnosticsError,
     type WorkerManifestDiagnostics,
   } from './worker-manifest-diagnostics.ts';
-  import { HEARTBEAT_STALE_AFTER_MS } from './worker-presentation.ts';
+  import { HEARTBEAT_STALE_AFTER_MS, TRANSPORT_LABEL } from './worker-presentation.ts';
 
   interface WorkerSessionPanelProps {
     readonly diagnostics: WorkerManifestDiagnostics | null | undefined;
@@ -42,9 +43,17 @@
   const instance = $derived(diagnostics?.instance);
   const stale = $derived(instance !== undefined && instance.heartbeatAgeMs >= staleAfterMs);
 
+  const lifecycle = $derived(instance ? describeSessionLifecycle(instance, now) : undefined);
+
   const sessionItems = $derived(
-    instance
+    instance && lifecycle
       ? [
+          { term: 'Lifecycle', definition: lifecycle.label },
+          { term: 'Registration', definition: lifecycle.registration },
+          { term: 'Transport', definition: TRANSPORT_LABEL[instance.transport] },
+          { term: 'Connection', definition: lifecycle.connection },
+          { term: 'Session deadline', definition: lifecycle.deadline },
+          { term: 'Authoritative queue', definition: instance.queue },
           { term: 'Session generation', definition: String(instance.sessionGeneration) },
           { term: 'Health', definition: HEALTH_LABEL[instance.health] },
           {
@@ -64,7 +73,8 @@
 <section class="weft-workers-panel weft-worker-session" aria-labelledby="worker-session-heading">
   <div class="weft-workers-panel__header weft-worker-session__header">
     <h2 id="worker-session-heading">Session</h2>
-    {#if instance}
+    {#if instance && lifecycle}
+      <Badge variant={lifecycle.variant}>{lifecycle.label}</Badge>
       <Badge variant={HEALTH_VARIANT[instance.health]}>{HEALTH_LABEL[instance.health]}</Badge>
       <Badge variant={stale ? 'danger' : 'success'}
         >{stale ? 'Heartbeat stale' : 'Heartbeat fresh'}</Badge
@@ -89,8 +99,8 @@
       <EmptyState title={FAULT_TREATMENT_TITLE[treatment.kind]} description={treatment.message} />
     {:else if diagnostics === null}
       <EmptyState
-        title="No live session"
-        description="The server reports no connected session for this worker id."
+        title="Session closed"
+        description="The server reports no registered session for this worker id: the worker has closed, or it was removed."
       />
     {:else if instance}
       {#if stale}

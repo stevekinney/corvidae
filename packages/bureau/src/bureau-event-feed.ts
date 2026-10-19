@@ -34,6 +34,7 @@ import {
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
   ReviewApprovedEvent,
+  ReviewRequestedEvent,
   ReviewCanceledEvent,
   ReviewDeniedEvent,
   ReviewExpiredEvent,
@@ -136,6 +137,7 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
     // not reshaped here; a subscriber that needs it reads the run.
     runId: event.runId,
   })),
+  projection(ReviewRequestedEvent.type, isInstance(ReviewRequestedEvent), projectReview),
   projection(ReviewApprovedEvent.type, isInstance(ReviewApprovedEvent), projectReview),
   projection(ReviewDeniedEvent.type, isInstance(ReviewDeniedEvent), projectReview),
   projection(ReviewRejectedEvent.type, isInstance(ReviewRejectedEvent), projectReview),
@@ -160,6 +162,7 @@ export const PUBLISHED_BUREAU_EVENT_KINDS = [
   RecoveryAttemptedEvent.type,
   RecoveryRejectedEvent.type,
   RecoveryLeaseReleasedEvent.type,
+  ReviewRequestedEvent.type,
   ReviewApprovedEvent.type,
   ReviewDeniedEvent.type,
   ReviewRejectedEvent.type,

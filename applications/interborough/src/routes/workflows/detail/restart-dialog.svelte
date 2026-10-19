@@ -41,11 +41,23 @@
    * catalog says, not a guarantee. A pointer that cannot be resolved
    * (denied, never activated, or a failed lookup) degrades to an explicit
    * "could not be resolved" line and does not block the restart.
+   *
+   * ## Worker binding and the override (COR-164)
+   *
+   * A restart inherits the terminal run's current worker binding. For a
+   * terminal auto-upgrade run, `restart-worker-override.svelte` offers a
+   * preview-then-spend override (`system:admin`): once the operator confirms a
+   * server-issued preview, this dialog spends its token on the restart through
+   * `weft.workflows.startorsignal`, the JSON-RPC operation, because only that
+   * transport carries the typed `override-token-rejected` reason back. A plain
+   * restart keeps using `client.startOrSignal`. A refused token drops the
+   * preview and asks for a new one; it never retries on its own.
    */
   import { Button, Input, Modal, Skeleton, Tooltip } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import type {
     ClientStartOrSignalOptions,
+    WorkerStartOverridePreview,
     StartOrSignalOutcome,
     StartOrSignalSignal,
     WorkflowState,
@@ -61,6 +73,12 @@
     FRESH_START_REVISION_HEDGE,
     type WorkflowActiveRevisionClient,
   } from '../../../lib/workflow-revision.ts';
+  import RestartWorkerOverride from './restart-worker-override.svelte';
+  import {
+    describeOverrideFault,
+    isOverrideTokenRejected,
+    type WorkerOverrideClient,
+  } from './worker-override.ts';
 
   interface RestartDialogProps {
     /**
@@ -76,7 +94,8 @@
         signal: StartOrSignalSignal,
         options?: ClientStartOrSignalOptions,
       ): Promise<{ readonly id: string; readonly outcome?: StartOrSignalOutcome | undefined }>;
-    } & WorkflowActiveRevisionClient;
+    } & WorkflowActiveRevisionClient &
+      WorkerOverrideClient;
     /** The terminal run being restarted. */
     readonly workflow: WorkflowState;
     readonly onClose: () => void;
@@ -97,6 +116,12 @@
   let payloadText = $state('{}');
   /** True once a call resolved `'signalled'`: no restart happened. */
   let signalledToLiveRun = $state(false);
+  /** The confirmed override preview to spend on this restart; `undefined` for a plain restart. */
+  let overridePreview = $state<WorkerStartOverridePreview | undefined>();
+  /** Whether the last attempt carried an override token, which decides how a fault reads. */
+  let attemptedOverride = $state(false);
+  /** The last attempt's fault, held here so a new override preview can clear it at once. */
+  let failure = $state<unknown>();
 
   // One id per dialog open — see the module doc on retry convergence.
   const signalId = `console-restart-${crypto.randomUUID()}`;
@@ -131,6 +156,27 @@
   const restartMutation = createMutation(() => ({
     mutationFn: () => {
       const trimmedPayload = payloadText.trim();
+      const override = overridePreview;
+      attemptedOverride = override !== undefined;
+      failure = undefined;
+      const spend = client.operations['weft.workflows.startorsignal'];
+      if (override !== undefined && spend !== undefined) {
+        return spend({
+          type: workflow.type,
+          input: workflow.input,
+          id: workflow.id,
+          onTerminalConflict: 'start-new',
+          ...(workflow.tags !== undefined && workflow.tags.length > 0
+            ? { tags: [...workflow.tags] }
+            : {}),
+          signalName: signalName.trim(),
+          signalId,
+          ...(trimmedPayload.length > 0
+            ? { signalPayload: JSON.parse(trimmedPayload) as unknown }
+            : {}),
+          workerStartOverridePreview: override,
+        });
+      }
       return client.startOrSignal(
         workflow.type,
         workflow.input,
@@ -147,6 +193,9 @@
             : {}),
         },
       );
+    },
+    onError: (error) => {
+      failure = error;
     },
     onSuccess: async (result) => {
       // The engine purges the prior run, so every per-run cache for this id
@@ -166,6 +215,8 @@
       onClose();
     },
   }));
+
+  const tokenRejected = $derived(failure !== undefined && isOverrideTokenRejected(failure));
 
   function submit(): void {
     if (!canSubmit || restartMutation.isPending) return;
@@ -211,6 +262,14 @@
         <p class="weft-restart-dialog__hedge">{FRESH_START_REVISION_HEDGE}</p>
       </div>
 
+      <RestartWorkerOverride
+        {client}
+        {workflow}
+        bind:confirmed={overridePreview}
+        {tokenRejected}
+        onRequested={() => (failure = undefined)}
+      />
+
       <Input
         id="weft-restart-signal-name"
         label="Signal name"
@@ -234,9 +293,9 @@
         </p>
       {/if}
 
-      {#if restartMutation.isError}
+      {#if failure !== undefined && !tokenRejected}
         <p class="weft-restart-dialog__error" role="alert">
-          {faultTreatment(restartMutation.error).message}
+          {attemptedOverride ? describeOverrideFault(failure) : faultTreatment(failure).message}
         </p>
       {/if}
     </div>

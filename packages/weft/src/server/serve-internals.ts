@@ -39,7 +39,11 @@ import {
   deriveSupportedOpenApiSecuritySchemes,
   handleServerFetchRequest,
 } from './runtime/authentication-bridge.ts';
-import type { ServerContext } from './runtime/context.ts';
+import type {
+  LongPollWorkerSession,
+  PendingWorkerRequeue,
+  ServerContext,
+} from './runtime/context.ts';
 import { resolveCorsPolicy, validateCorsOptions } from './runtime/cors.ts';
 import {
   registerWorkflowEventLifecycle,
@@ -55,6 +59,7 @@ import {
 } from './runtime/task-reconciliation.ts';
 import { DEFAULT_MAX_STREAM_CONNECTIONS_PER_WORKFLOW } from './runtime/websocket-stream.ts';
 import { endWorkerReconnectGracePeriods } from './runtime/worker-disconnect-requeue.ts';
+import { createWorkerSessionTiming } from './runtime/worker-session-timing.ts';
 import { TaskQueue } from './task-queue.ts';
 import { createWorkflowEventFeed } from './workflow-event-feed.ts';
 
@@ -341,9 +346,18 @@ export function buildServerContext(
   // observes the rejection independently.
   taskLedgerRecoveryReady.catch(() => {});
 
+  // Built ahead of the context so the diagnostics operation, constructed inside the context
+  // literal, can read the same maps the transports write.
+  const longPollWorkerSessions = new Map<string, LongPollWorkerSession>();
+  const pendingWorkerRequeues = new Map<string, PendingWorkerRequeue>();
+  const workerSessionTiming = createWorkerSessionTiming({
+    longPollWorkerSessions,
+    pendingWorkerRequeues,
+  });
+
   const context: ServerContext = {
     registry: workerRegistry,
-    longPollWorkerSessions: new Map(),
+    longPollWorkerSessions,
     taskQueue,
     workerSockets: new Map(),
     streamSockets: new Map(),
@@ -361,6 +375,7 @@ export function buildServerContext(
       taskQueue,
       metricsCollector: serverMetricsCollector,
       workerDeploymentCatalog,
+      workerSessionTiming,
       storage: options.engine.storage,
       ...(options.workerStartOverrideSigningSecret === undefined
         ? {}
@@ -390,7 +405,8 @@ export function buildServerContext(
     ),
     cancellationGracePeriodMs: clampCancellationGracePeriod(options.cancellationGracePeriodMs),
     payloadSizeMaxBytes: getEnginePayloadSizeMaxBytes(engine),
-    pendingWorkerRequeues: new Map(),
+    pendingWorkerRequeues,
+    workerDeploymentCatalog,
     scanRunning: false,
     processingOperations: new Set(),
     reconciliationRunning: false,

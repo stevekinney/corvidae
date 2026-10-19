@@ -25,11 +25,19 @@
   interface Props {
     client: HttpClient;
     queryClient: QueryClient;
-    component: Component;
+    component: Component<any>;
+    /** Props forwarded to the wrapped component, for one that takes some. */
+    componentProps?: Record<string, unknown>;
     principalScopes?: readonly AuthorizationScope[];
   }
 
-  let { client, queryClient, component: RouteComponent, principalScopes }: Props = $props();
+  let {
+    client,
+    queryClient,
+    component: RouteComponent,
+    componentProps = {},
+    principalScopes,
+  }: Props = $props();
 
   provideClient(untrack(() => client));
 
@@ -53,5 +61,5 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <RouteComponent />
+  <RouteComponent {...componentProps} />
 </QueryClientProvider>

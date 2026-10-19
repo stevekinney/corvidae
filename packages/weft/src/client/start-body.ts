@@ -49,6 +49,7 @@ function applyStartOptionsToBody(
   setIfDefined(body, 'tags', options?.tags);
   setIfDefined(body, 'idempotencyKey', options?.idempotencyKey);
   setIfDefined(body, 'searchAttributes', options?.searchAttributes);
+  setIfDefined(body, 'workerStartOverridePreview', options?.workerStartOverridePreview);
 }
 
 export function buildStartBody(

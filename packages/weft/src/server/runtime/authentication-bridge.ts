@@ -443,7 +443,7 @@ export function createServerWebSocketHandlers(
         // any earlier than the timer firing (or the proof succeeding) would
         // silently make every reconnect look unproven.
         const existing = context.pendingWorkerRequeues.get(workerId);
-        if (existing !== undefined) clearTimeout(existing);
+        if (existing !== undefined) clearTimeout(existing.timer);
 
         const timer = setTimeout(() => {
           context.pendingWorkerRequeues.delete(workerId);
@@ -453,7 +453,10 @@ export function createServerWebSocketHandlers(
           if (context.workerSockets.get(workerId) !== ws) return;
           void runWorkerDisconnectRequeue(context, options, workerId, cleanupWorkflowIndex);
         }, context.workerReconnectGracePeriodMs);
-        context.pendingWorkerRequeues.set(workerId, timer);
+        context.pendingWorkerRequeues.set(workerId, {
+          timer,
+          endsAt: Date.now() + context.workerReconnectGracePeriodMs,
+        });
       }
     },
   };

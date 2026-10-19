@@ -11,6 +11,7 @@
    */
   import { Badge, Button, DescriptionList, Tooltip } from '@lostgradient/cinder';
 
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { DIAGNOSTIC_GUIDANCE } from './diagnostics-guidance.ts';
@@ -20,7 +21,7 @@
     TaskQueueHealth,
     WorkerSummary,
   } from './worker-catalog-types.ts';
-  import { workerHealthPresentation } from './worker-presentation.ts';
+  import { TRANSPORT_LABEL, workerHealthPresentation } from './worker-presentation.ts';
 
   interface QueueDetailViewProps {
     readonly queue: TaskQueueHealth;
@@ -115,7 +116,7 @@
       <p class="weft-queue-detail__no-workers">No recovery diagnostics on this queue.</p>
     {:else}
       <ul class="weft-dead-letter-panel__list">
-        {#each diagnosticItems as item (item.kind + (item.operationId ?? item.queue))}
+        {#each keyedByOccurrence(diagnosticItems, (candidate) => candidate.kind + (candidate.operationId ?? candidate.queue)) as { key, item } (key)}
           {@const guidance = DIAGNOSTIC_GUIDANCE[item.kind]}
           <li class="weft-dead-letter-panel__item">
             <Badge variant={guidance.variant} size="sm">{guidance.title}</Badge>
@@ -145,6 +146,9 @@
           <li class="weft-queue-workers-list__row">
             <span class="weft-workers-id">{truncateId(worker.id)}</span>
             <Badge variant={presentation.variant} size="sm">{presentation.label}</Badge>
+            <span class="weft-queue-workers-list__transport"
+              >{TRANSPORT_LABEL[worker.transport]}</span
+            >
             <span class="weft-workers-mono weft-queue-workers-list__inflight"
               >{worker.inFlight}/{worker.concurrency}</span
             >

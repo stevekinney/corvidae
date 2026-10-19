@@ -34,6 +34,7 @@
   import { createActiveRevisionComparisons } from '../../../lib/active-revision-comparisons.svelte.ts';
   import { formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import WorkerInheritanceNote from '../../../lib/worker-inheritance-note.svelte';
   import type { WorkflowActiveRevisionClient } from '../../../lib/workflow-revision.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { workflowStatusBadge } from '../list/workflow-status-badge.ts';
@@ -137,7 +138,15 @@
   </div>
 {/if}
 
+<div class="weft-children-tab__note">
+  <WorkerInheritanceNote surface="child" />
+</div>
+
 <style>
+  .weft-children-tab__note {
+    padding: 12px 0 0;
+  }
+
   /* Adds an id column and makes rows real links — see module doc. Scoped
      here rather than growing the shared `workflow-detail.css` (already at
      this repo's ≤500-line implementation-file guidance — `events-tab.svelte`

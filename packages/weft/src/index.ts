@@ -131,6 +131,13 @@ export type {
   UnarySchemaOperationDefinition,
 } from './server/operation-registry.ts';
 /*
+ * `weft.system.principal`, as a definition a package handler registers beside its
+ * own operations. It reads only the request's principal, so it needs no engine; a
+ * handler built with `createOperationHandler` serves Weft's own operation instead of
+ * copying its wire contract.
+ */
+export { getPrincipalOperation } from './server/operations/get-principal.ts';
+/*
  * The replay-plus-live feed and its subscription plumbing, as public
  * contracts.
  *
@@ -245,6 +252,11 @@ export * from './worker/index.ts';
 // calls `Bun.spawn` and belongs under `@lostgradient/weft/testing` alone. Re-exporting the whole
 // barrel put `Bun.spawn` into the root's browser bundle, which the published package's
 // portability gate refused at the 0.26.0 release (COR-1192).
+export {
+  UPGRADE_REFUSAL_REASON_PREFIX,
+  WORKER_CONFLICT_REASONS,
+} from './server/operations/worker-conflict-reasons.ts';
+export type { WorkerConflictReason } from './server/operations/worker-conflict-reasons.ts';
 export {
   ChaosNonRetryableError,
   ChaosTimeoutError,
