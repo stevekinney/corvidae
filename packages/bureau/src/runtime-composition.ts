@@ -1529,8 +1529,6 @@ export type ScheduledFireServicesNotice = {
   readonly runId: string;
   readonly sessionId: string;
   readonly agentName: string;
-  /** The schedule's owner of record, which owns the fire's run. */
-  readonly owner: string;
   /** The request context the fire runs under, which a later approval of its tool resumes under. */
   readonly requestContext: ReturnType<typeof createSchedulerServiceRequestContext>;
 };
@@ -2266,69 +2264,6 @@ const TRAILING_HOOK_PRIORITY = BUREAU_PINNED_LAST_PRIORITY;
  * other Bureau entry had already been offset, which is precisely the renumbering
  * this function used to avoid by refusing to merge at all.
  */
-/**
- * COR-1596 — what a schedule fire's session records for a tool call its step left awaiting
- * approval: the pending approval under its review id, its supersession round (0, or the round
- * already recorded), and the request authority the fire ran under. These are the keys a session
- * run's approvals are recorded under, so the boot restore of a terminal run's approvals finds a
- * fire's too. Idempotent by key: a replayed step writes the same entries.
- */
-export const SCHEDULED_FIRE_AUTHORITY_MARKER = 'scheduledFire';
-
-/**
- * Whether the authority a session recorded for `runId` is a schedule fire's. A fire runs on the
- * Bureau-wide runtime and its agent name is a label, not a catalog entry, so what resumes its
- * approval after a restart must not look the name up in the catalog the way a session run's does.
- */
-export function isScheduledFireAuthority(
-  metadata: Record<string, JSONValue>,
-  runId: string,
-): boolean {
-  const authorities = metadata['lastRequestAuthorities'];
-  if (!isPlainAuthorityRecord(authorities)) return false;
-  const authority = authorities[runId];
-  return isPlainAuthorityRecord(authority) && authority[SCHEDULED_FIRE_AUTHORITY_MARKER] === true;
-}
-
-export function scheduledFireApprovalMetadata(
-  metadata: Record<string, JSONValue>,
-  runId: string,
-  results: readonly { readonly outcome: string; readonly pendingApproval?: unknown }[],
-  requestContext: ToolRequestContext,
-): Record<string, JSONValue> {
-  const approvals: Array<[string, JSONValue]> = [];
-  for (const result of results) {
-    if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
-    const approval = JSON.parse(JSON.stringify(result.pendingApproval)) as JSONValue;
-    const callId = isPlainAuthorityRecord(approval) ? approval['callId'] : undefined;
-    if (typeof callId !== 'string') continue;
-    approvals.push([`approval:${runId}:${callId}`, approval]);
-  }
-  if (approvals.length === 0) return {};
-  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
-    isPlainAuthorityRecord(value) ? value : {};
-  const rounds = recordOf(metadata['pendingApprovalRounds']);
-  const authority = JSON.parse(
-    JSON.stringify({
-      ...requestContext.authority,
-      ...(requestContext.audience === undefined ? {} : { audience: requestContext.audience }),
-      ...(requestContext.agentId === undefined ? {} : { agentId: requestContext.agentId }),
-      [SCHEDULED_FIRE_AUTHORITY_MARKER]: true,
-    }),
-  ) as JSONValue;
-  return {
-    pendingApprovalOverrides: {
-      ...recordOf(metadata['pendingApprovalOverrides']),
-      ...Object.fromEntries(approvals),
-    },
-    pendingApprovalRounds: {
-      ...rounds,
-      ...Object.fromEntries(approvals.map(([id]) => [id, rounds[id] ?? 0])),
-    },
-    lastRequestAuthorities: { ...recordOf(metadata['lastRequestAuthorities']), [runId]: authority },
-  };
-}
-
 export function registerTrailingOnStep(
   hooks: HookRegistry<OperativeHookMap>,
   id: string,
@@ -2341,6 +2276,96 @@ export function registerTrailingOnStep(
     replay: 'effectful',
   });
   return hooks;
+}
+
+/**
+ * COR-1596 — the field of a persisted request authority that says it is a schedule fire's.
+ */
+export const SCHEDULED_FIRE_AUTHORITY_MARKER = 'scheduledFire';
+
+/**
+ * COR-1596 — whether the authority a session recorded for `runId` is a schedule fire's. A fire
+ * runs on the Bureau-wide runtime and its agent name is a label, not a catalog entry, so what
+ * resumes its approval after a restart must not look the name up in the catalog the way a session
+ * run's does.
+ */
+export function isScheduledFireAuthority(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+): boolean {
+  const authorities = metadata['lastRequestAuthorities'];
+  if (!isPlainAuthorityRecord(authorities)) return false;
+  const authority = authorities[runId];
+  return isPlainAuthorityRecord(authority) && authority[SCHEDULED_FIRE_AUTHORITY_MARKER] === true;
+}
+
+/**
+ * COR-1596 — what a schedule fire's session records for a tool call its step left awaiting
+ * approval: the pending approval under its review id, its supersession round (0, or the round
+ * already recorded), and the request authority the fire ran under. These are the keys a session
+ * run's approvals are recorded under, so the boot restore of a terminal run's approvals finds a
+ * fire's too. Idempotent by key: a replayed step writes the same entries.
+ *
+ * `committed`, given for a fire that is replaying after a crash, names the review ids of the
+ * approvals the run's checkpoint holds. A fire writes its session as each step completes and
+ * commits the step after, so a crash between the two leaves an approval in the session that the
+ * run never committed; the replay may not make that call again. Every approval of this run that
+ * is neither committed nor this step's is dropped from the write, and the authority with the last
+ * of them.
+ */
+export function scheduledFireApprovalMetadata(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+  results: readonly { readonly outcome: string; readonly pendingApproval?: unknown }[],
+  requestContext: ToolRequestContext,
+  committed?: ReadonlySet<string>,
+): Record<string, JSONValue> {
+  const prefix = `approval:${runId}:`;
+  const approvals: Array<[string, JSONValue]> = [];
+  for (const result of results) {
+    if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
+    const approval = JSON.parse(JSON.stringify(result.pendingApproval)) as JSONValue;
+    const callId = isPlainAuthorityRecord(approval) ? approval['callId'] : undefined;
+    if (typeof callId !== 'string') continue;
+    approvals.push([`${prefix}${callId}`, approval]);
+  }
+  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
+    isPlainAuthorityRecord(value) ? value : {};
+  const stepIds = new Set(approvals.map(([id]) => id));
+  const existingOverrides = recordOf(metadata['pendingApprovalOverrides']);
+  const abandoned = new Set(
+    committed === undefined
+      ? []
+      : Object.keys(existingOverrides).filter(
+          (id) => id.startsWith(prefix) && !committed.has(id) && !stepIds.has(id),
+        ),
+  );
+  if (approvals.length === 0 && abandoned.size === 0) return {};
+  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => !abandoned.has(id)));
+  const overrides = { ...without(existingOverrides), ...Object.fromEntries(approvals) };
+  const rounds = recordOf(metadata['pendingApprovalRounds']);
+  const authorities = recordOf(metadata['lastRequestAuthorities']);
+  const authority = JSON.parse(
+    JSON.stringify({
+      ...requestContext.authority,
+      ...(requestContext.audience === undefined ? {} : { audience: requestContext.audience }),
+      ...(requestContext.agentId === undefined ? {} : { agentId: requestContext.agentId }),
+      [SCHEDULED_FIRE_AUTHORITY_MARKER]: true,
+    }),
+  ) as JSONValue;
+  const { [runId]: _ended, ...otherAuthorities } = authorities;
+  const holdsApproval = Object.keys(overrides).some((id) => id.startsWith(prefix));
+  return {
+    pendingApprovalOverrides: overrides,
+    pendingApprovalRounds: {
+      ...without(rounds),
+      ...Object.fromEntries(approvals.map(([id]) => [id, rounds[id] ?? 0])),
+    },
+    lastRequestAuthorities: holdsApproval
+      ? { ...authorities, [runId]: authority }
+      : otherAuthorities,
+  };
 }
 
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
@@ -3681,6 +3706,22 @@ async function buildRuntimeComposition(
    * rather than the bureau's interactive session ownership path, so a `running`
    * marker would only race any interactive run sharing the session.
    */
+  /**
+   * COR-1596 — the review ids of the tool approvals a fire's checkpoint holds: the steps the run
+   * committed before the one it is replaying.
+   */
+  async function committedScheduledFireApprovals(runId: string): Promise<ReadonlySet<string>> {
+    const committed = new Set<string>();
+    if (durable === undefined) return committed;
+    for (const step of await durable.checkpointStore.loadSteps(runId)) {
+      for (const result of step.results) {
+        if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
+        committed.add(`approval:${runId}:${result.pendingApproval.callId}`);
+      }
+    }
+    return committed;
+  }
+
   function createScheduledSessionPersistHook(
     store: SessionStore,
     sessionId: string,
@@ -3694,6 +3735,12 @@ async function buildRuntimeComposition(
   ): OnStepHook {
     let bound = false;
     return async (context) => {
+      // COR-1596: a fire replaying after a crash may have left an approval in its session that
+      // its checkpoint never held; only a replay can find one, so only a replay reads the
+      // checkpoint, and reads it before the atomic update, which cannot wait on a read.
+      const committedApprovals = replaceCurrentFireTranscript
+        ? await committedScheduledFireApprovals(runId)
+        : undefined;
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
@@ -3737,7 +3784,13 @@ async function buildRuntimeComposition(
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
             // COR-1596 — a tool call this step left awaiting approval is recorded with the
             // conversation, so a restart can list it again.
-            ...scheduledFireApprovalMetadata(next.metadata, runId, context.results, requestContext),
+            ...scheduledFireApprovalMetadata(
+              next.metadata,
+              runId,
+              context.results,
+              requestContext,
+              committedApprovals,
+            ),
           },
           conversationHistory: existingConversationHistory
             ? appendConversationMessages(
@@ -4463,7 +4516,7 @@ async function buildRuntimeComposition(
     humanInputServices.current = services;
     // Scheduled fires have no interactive ActiveRun surface. The recovery hook
     // monitors them without attaching live event forwarding.
-    await reportScheduledServices({ runId, sessionId, agentName, owner, requestContext }, services);
+    await reportScheduledServices({ runId, sessionId, agentName, requestContext }, services);
     return { status: 'available', services };
   }
 

@@ -8,183 +8,32 @@
  * answer. These tests drive the fire the way the crash test does, with the engine's timers in
  * manual mode, so nothing waits on the clock.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
-import {
-  createAgent,
-  type GenerateContext,
-  type GenerateFunction,
-  type StepResult,
-  stopWhen,
-  type Toolbox,
-} from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import {
-  createTool,
-  createToolbox,
-  type PendingToolApproval,
-  type ToolExecutionResult,
-} from 'armorer';
+import { createAgent, type StepResult, stopWhen } from '@lostgradient/operative';
+import { type PendingToolApproval, type ToolExecutionResult } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
-import { z } from 'zod';
 
-import { createBureau, createScheduledFireApprovalHook } from './create-bureau';
-import { createBureauHandler } from './http/create-bureau-handler.ts';
-import { authentication, OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
+import { createScheduledFireApprovalHook } from './create-bureau';
+import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
 import { isScheduledFireAuthority, scheduledFireApprovalMetadata } from './runtime-composition';
-import type { Bureau, BureauOptions, PendingReview } from './types';
+import {
+  approvalToolbox,
+  askingGenerate,
+  chargesOnce,
+  createScheduleFireHarness,
+  durableStatus,
+  fireOnce,
+  handlerOf,
+  pollUntil,
+  reviewOf,
+} from './schedule-fire-fixtures.test-support';
 
-const bureaus: Bureau[] = [];
-const databasePaths: string[] = [];
-let databaseCounter = 0;
+const harness = createScheduleFireHarness();
+const { open, nextDatabasePath } = harness;
 
 afterEach(async () => {
-  for (const bureau of bureaus.splice(0)) await bureau.dispose();
-  for (const path of databasePaths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
-  }
+  await harness.dispose();
 });
-
-async function pollUntil<T>(
-  check: () => T | undefined | Promise<T | undefined>,
-  what: string,
-  attempts = 600,
-): Promise<T> {
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const value = await check();
-    if (value !== undefined) return value;
-    await yieldToPortableEventLoop();
-  }
-  throw new Error(`Condition was not met: ${what}`);
-}
-
-function nextDatabasePath(): string {
-  const path = join(
-    tmpdir(),
-    `bureau-schedule-fire-reviews-${process.pid}-${databaseCounter++}.sqlite`,
-  );
-  databasePaths.push(path);
-  return path;
-}
-
-/** A model that asks for a human answer on step 0 and thanks the operator once resumed. */
-function askingGenerate(signalName = 'answer', seen: string[] = []): GenerateFunction {
-  return async (context: GenerateContext) => {
-    if (context.step === 0) {
-      return {
-        content: '',
-        toolCalls: [
-          {
-            id: 'call-1',
-            name: 'requestHumanInput',
-            arguments: { signalName, prompt: 'Which environment?' },
-          },
-        ],
-      };
-    }
-    seen.push(JSON.stringify(context.conversation.current));
-    return { content: 'thanks', toolCalls: [] };
-  };
-}
-
-/** A tool whose every call parks on operator approval, and which records each execution. */
-function approvalToolbox(charges: number[]): Toolbox {
-  return createToolbox(
-    [
-      createTool({
-        name: 'charge-card',
-        version: '1.0.0',
-        description: 'Charge a payment card',
-        input: z.object({ cents: z.number() }),
-        async execute({ cents }) {
-          charges.push(cents);
-          return { charged: cents };
-        },
-      }),
-    ],
-    {
-      approvalSecret: 'schedule-fire-reviews-secret',
-      policy: {
-        beforeExecute: () => ({
-          allow: false,
-          status: 'needs_approval',
-          reason: 'Operator approval required',
-          action: { message: 'Approve charge' },
-        }),
-      },
-    },
-  ) as unknown as Toolbox;
-}
-
-const chargesOnce: GenerateFunction = async (context) =>
-  context.step === 0
-    ? {
-        content: '',
-        toolCalls: [{ id: 'charge-1', name: 'charge-card', arguments: { cents: 4242 } }],
-      }
-    : { content: 'charged', toolCalls: [] };
-
-async function open(options: Partial<BureauOptions> = {}): Promise<Bureau> {
-  const bureau = await createBureau({
-    id: 'schedule-fire-reviews-bureau',
-    agents: {},
-    storage: { type: 'memory' },
-    durableExecution: true,
-    durableBackgroundTasks: 'manual',
-    durableOwnership: { ownership: 'none' },
-    toolbox: createToolbox([]),
-    stopWhen: stopWhen.noToolCalls(),
-    ...options,
-  });
-  bureaus.push(bureau);
-  return bureau;
-}
-
-/** Registers a schedule owned by `principal` and ticks it once; the fire is its current run. */
-async function fireOnce(
-  bureau: Bureau,
-  principal: string = OWNER.alice,
-  sessionId?: string,
-): Promise<{ readonly scheduleId: string; readonly fireId: string }> {
-  const created = await bureau.createSchedule({
-    agentName: 'researcher',
-    input: 'check in',
-    spec: '1m',
-    principal,
-    ...(sessionId === undefined ? {} : { sessionId }),
-  });
-  const occurrence = created?.nextFireAt;
-  if (created === undefined || occurrence === null || occurrence === undefined) {
-    throw new Error('The schedule has no first occurrence.');
-  }
-  await bureau.runDurableMaintenance(occurrence);
-  const fireId = await pollUntil(async () => {
-    const schedule = await bureau.getSchedule(created.id);
-    return schedule?.currentWorkflowId;
-  }, 'the tick to launch a fire');
-  return { scheduleId: created.id, fireId };
-}
-
-const reviewsOf = (bureau: Bureau, runId: string): PendingReview[] =>
-  bureau.listPendingReviews().filter((review) => review.runId === runId);
-
-async function reviewOf(bureau: Bureau, runId: string): Promise<PendingReview> {
-  return pollUntil(() => reviewsOf(bureau, runId)[0], `a pending review of run ${runId}`);
-}
-
-async function durableStatus(bureau: Bureau, runId: string): Promise<string | undefined> {
-  const run = await bureau.getDurableRun(runId);
-  return run?.status;
-}
-
-function handlerOf(bureau: Bureau) {
-  return createBureauHandler(bureau, { authentication });
-}
 
 describe('a schedule fire’s human wait', () => {
   it('is a pending review of the fire, answerable through bureau.tasks.respond', async () => {
@@ -291,6 +140,14 @@ describe('a schedule fire’s tool approval', () => {
       receipt: 'applied',
     });
     expect(charges).toEqual([4242]);
+
+    // The conversation shows the executed result, not the approval as pending.
+    const session = await bureau.getSession(review.sessionId ?? '');
+    const history = session?.conversationHistory;
+    const row = history?.ids
+      .map((id) => history.messages[id])
+      .find((message) => message?.toolResult?.callId === 'charge-1');
+    expect(row?.toolResult?.outcome).toBe('success');
 
     expect(bureau.listPendingReviews()).toEqual([]);
     const released = await rpc(handler, 'bureau.tasks.get', { taskId: fireId }, 'alice-key');
@@ -427,6 +284,10 @@ describe('a schedule fire’s tool approval after a restart', () => {
     expect(after).toEqual([4242]);
     expect(before).toEqual([]);
     expect(restarted.listPendingReviews()).toEqual([]);
+    // Decided after the restart, the fire's authority and round leave its session as they do live.
+    const session = await restarted.getSession(restored.sessionId ?? '');
+    expect(Object.keys(session?.metadata['lastRequestAuthorities'] ?? {})).toEqual([]);
+    expect(Object.keys(session?.metadata['pendingApprovalRounds'] ?? {})).toEqual([]);
   });
 });
 

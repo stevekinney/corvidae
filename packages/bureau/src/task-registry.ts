@@ -305,9 +305,15 @@ export interface TaskRegistry {
    * this process no longer holds, except the ids in `keep` and the tasks with a review
    * still pending. A run the Bureau still
    * holds is deleted through `deleteRun`, which removes its record. Resolves how
-   * many records it removed.
+   * many records it removed. `onRemoved` hears each record it removed, once it is gone, so
+   * state kept for a task past its settling can end with it; a listener that throws is its own
+   * failure, never the removal's.
    */
-  expire(cutoffMs: number, keep: ReadonlySet<string>): Promise<number>;
+  expire(
+    cutoffMs: number,
+    keep: ReadonlySet<string>,
+    onRemoved?: (record: TaskRecord) => Promise<void> | void,
+  ): Promise<number>;
   /**
    * Empties the history of every task of one incarnation of a context, keeping
    * its status and cleanup. Resolves how many records it changed.
@@ -906,7 +912,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       );
     },
 
-    async expire(cutoffMs, keep) {
+    async expire(cutoffMs, keep, onRemoved) {
       let removed = 0;
       // A review still open holds its task: it is waiting on its requester, and removing the
       // record would make `get` and `respond` not-found while the review holds the context open.
@@ -918,6 +924,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         if (host.liveTask(record.taskId) !== undefined) continue;
         await this.remove(record.taskId);
         removed += 1;
+        try {
+          await onRemoved?.(record);
+        } catch (error) {
+          diagnose(`A listener of the removal of task "${record.taskId}" failed`, error);
+        }
       }
       return removed;
     },

@@ -110,6 +110,8 @@ export type RunHumanWaitTarget = {
   readonly agentName: string | undefined;
   /** Set for a schedule fire (COR-1596), whose reviews name the session it runs in. */
   readonly sessionId?: string | undefined;
+  /** Told of each park the run makes after it is attached, so the host can announce it (COR-1596). */
+  readonly announce?: ((reviewId: string, signalName: string) => void) | undefined;
 };
 
 /** Statuses a workflow can still be parked in; anything else has settled. */
@@ -284,6 +286,10 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
         agentName: target.agentName,
         sessionId: target.sessionId,
       });
+      target.announce?.(
+        `human-wait:${runId}:${event.signalName}:${humanWaitParkOrdinal(actions, baselines.get(runId) ?? 0)}`,
+        event.signalName,
+      );
     });
     services.emitter = emitter;
   }
