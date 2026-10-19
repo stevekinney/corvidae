@@ -96,15 +96,23 @@ Workflows are JSON files in `workflows/` under the same directory, `~/.interboro
 
 ## The shell
 
-The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as do `/chat`, `/agents`, and `/audit`.
+The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Inbox) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions, which a later issue builds, so it renders a placeholder, as does `/audit`.
 
-## Chat
+Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
+
+## Chat and agents
+
+- `/` opens the session updated most recently (`src/routes/chat/chat-home.ts`), or `/chat` when there is none. The route's `redirect` replaces its own history entry.
+- `/chat` lists the caller's sessions with `ChatConversationList`, newest first, with Load more paging and a New chat action. `src/routes/chat/session-summary.ts` maps a Bureau context to a row.
+- `/chat/new?agent=:id` starts a session. The agent is a searchable `Combobox` above the composer, starting from `?agent=` or the default agent (`src/lib/default-agent.ts`, `assistant`); changing it replaces `?agent=`. The client names the thread, the first message starts the run, and when it has started the address becomes `/chat/:sessionId` by replacing the history entry, with the page kept mounted (`router.navigate`'s `keep`). `/chat/new` is registered before `/chat/:sessionId`. A first run that is refused stays on `/chat/new` with the row failed and a retry.
+- `/agents` lists the agents the Bureau tells the caller of (`bureau.agents.list`: `kind`, publish state), with New chat for a published one. `/agents/:id` shows one agent's details (a file agent's model, tools and skills from `bureau.agents.definitions.get`), a New chat action when it is published, and the chats had with it.
+- A session or agent the caller cannot see, or an unknown or unpublished agent for a new chat, is `not-found`.
+
+### The conversation
 
 `/chat/:sessionId` (`src/routes/chat/`) is `@lostgradient/chat` over the Bureau's AG-UI mount. A session is a Bureau context, and its conversation id is the AG-UI thread id. `chat-session.svelte.ts` holds one session's state and its `createChatSessionController`; `run-wiring.ts` is the transport. A turn is a start (`POST /bureau/ag-ui/agents/<agent>/run`, read through `@ag-ui/client`), a resume that carries the user's decision on a tool approval together with the turn that opened the run (never a follow-up row), or an attach (`GET /bureau/ag-ui/threads/<thread>/run`) to a run the page did not start, which restores the transcript from the stream's snapshot. A message typed while the run is going is a follow-up: the controller sends it through `bureau.contexts.input` under the id of its own row. Pending tool approvals are one warning alert above the transcript with Deny and Approve. A session the caller cannot see is `not-found`.
 
-The mount keeps no way to read a finished session's transcript back, so a session with no run going opens on an empty transcript and shows the rows of the turns sent from then on. `/engine` is the engine overview the sidebar's status pill opens.
-
-Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing, forbidden, or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
+A finished session's transcript is read back from the mount (`GET /bureau/ag-ui/threads/<thread>/messages`, owner-scoped like the attach route), so reopening a session, by reload or by returning to it from the list, shows every turn in order.
 
 ## Runtime configuration
 
