@@ -9,8 +9,10 @@ import type {
 import type { GovernedMemory, MemoryCapability } from '@lostgradient/memory';
 import type {
   AgentInput,
+  AgentRun,
   AgentRunEventRegistry,
   AgentSession,
+  BackendDescriptor,
   CacheOptions,
   ChildSignalContract,
   CleanupAcknowledgement as RunCleanupAcknowledgement,
@@ -71,6 +73,7 @@ import type {
   ReusableApprovalGrant,
   ReusableApprovalGrantInput,
   SignedPendingToolApproval,
+  Tool,
   ToolRequestContext,
 } from 'armorer';
 import type { ConversationHistory, Message } from 'conversationalist';
@@ -361,6 +364,31 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * refused with `BureauError` (`BAD_REQUEST`).
    */
   agents: D;
+  /**
+   * COR-1524 — a directory of Markdown agent files. Every `*.md` file in it is an agent whose
+   * identifier is the filename without the extension, listed in {@link Bureau.agents} beside
+   * the code-defined ones and run by name through {@link Bureau.run} or a session run. See
+   * `documentation/agent-files.md`.
+   *
+   * A host names a directory and Bureau reads, watches, and writes it; Bureau does not depend on
+   * where that directory lives. A directory that does not exist is an empty one. Requires
+   * {@link BureauOptions.resolveAgentGenerate}: a model name that nothing can turn into a
+   * `generate` would be silently ignored, so `createBureau` refuses the combination with
+   * `BureauError` (`BAD_REQUEST`).
+   */
+  agentDirectory?: string;
+  /**
+   * COR-1524 — the deployment's tool catalog: the tools an agent file may name in `tools`, by
+   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none.
+   */
+  agentTools?: Readonly<Record<string, Tool>>;
+  /**
+   * COR-1524 — how a model in the model catalog becomes the `generate` an agent file runs with.
+   * The host supplies it because the host holds the credentials; Bureau passes the catalog row
+   * (provider and model) a file's `model: <provider>/<model>` resolved to. It may throw to say the
+   * model cannot be set up, which leaves that file `invalid` with `unknown-model`.
+   */
+  resolveAgentGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /**
    * COR-772 — configuration for {@link Bureau.children}, Bureau's durable
    * parent-child topology. Omit it and children still dispatch, persist, and
@@ -1336,6 +1364,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
     input: AgentInput,
     options?: BureauRunOptions,
   ): AgentRunForName<D, TName>;
+  /**
+   * COR-1524 — dispatch an agent by a name only known at run time: a file-based agent's
+   * identifier (see {@link BureauOptions.agentDirectory}). The handle is untyped, as the agent's
+   * output is. A name that matches neither a code-defined agent nor a file agent whose state is
+   * `ready` throws `BureauError` (`NOT_FOUND`), exactly as the typed overload does.
+   */
+  run(name: string, input: AgentInput, options?: BureauRunOptions): AgentRun<unknown, boolean>;
 
   /**
    * COR-772 — Bureau's durable parent-child topology: dispatch a catalog

@@ -28,3 +28,8 @@ export function settledActionTimestamp(
 ): number | undefined {
   return actions.findLast((action) => SETTLING_RUN_ACTION_TYPES.has(action.type))?.timestamp;
 }
+
+/** Whether an action of this type closes a run for good. */
+export function isSettlingRunAction(type: string): boolean {
+  return SETTLING_RUN_ACTION_TYPES.has(type);
+}
