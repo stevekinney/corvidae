@@ -25,7 +25,7 @@
  * @module ag-ui-projection
  */
 
-import { type Event, EventType } from '@ag-ui/core';
+import { type Event, EventType, type TokenUsage } from '@ag-ui/core';
 import { materializeToolResult, toAGUIToolMessage } from 'conversationalist';
 import { assistantMessageIdentifier, toolResultMessageIdentifier } from '@lostgradient/operative';
 
@@ -389,4 +389,51 @@ export class RunProjector {
 
 export function stepName(step: number): string {
   return `step-${step}`;
+}
+
+export function usageOf(detail: unknown): TokenUsage[] {
+  const usage = (detail as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
+  const count = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  const prompt = count(usage['prompt']);
+  const completion = count(usage['completion']);
+  const total = count(usage['total']);
+  const entry: TokenUsage = {
+    ...(prompt === undefined ? {} : { inputTokens: prompt }),
+    ...(completion === undefined ? {} : { outputTokens: completion }),
+    ...(total === undefined ? {} : { totalTokens: total }),
+  };
+  return [entry];
+}
+
+/**
+ * The code and message a failed run's terminal record carries. The record holds
+ * the error serialized to a string (name, message, kind, code, and a cause that
+ * can hold a provider's response); only the code and message are read, so
+ * nothing else reaches the wire.
+ */
+export function errorOf(detail: unknown): { code: string; message: string } {
+  let error = (detail as { error?: unknown } | undefined)?.error;
+  if (typeof error === 'string') {
+    try {
+      error = JSON.parse(error) as unknown;
+    } catch {
+      // Not JSON: the string is the message.
+    }
+  }
+  const fields =
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  const message =
+    typeof fields['message'] === 'string'
+      ? fields['message']
+      : typeof error === 'string'
+        ? error
+        : 'The run failed';
+  return {
+    code:
+      typeof fields['code'] === 'string' && fields['code'].length > 0
+        ? fields['code']
+        : 'RUN_FAILED',
+    message,
+  };
 }

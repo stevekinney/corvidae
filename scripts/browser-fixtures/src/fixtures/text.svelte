@@ -4,7 +4,7 @@
 
 <div
   data-testid="text-container"
-  style="padding: 16px; color: rgb(200, 30, 90); background: var(--cinder-surface-raised);"
+  style="padding: 16px; color: var(--cinder-accent-text); background: var(--cinder-surface-raised);"
 >
   <Text variant="h1">Heading 1</Text>
   <Text variant="h2">Heading 2</Text>
