@@ -265,7 +265,7 @@ describe('a run that waits on a person’s answer', () => {
 
     expect(await findByText(WAIT.message)).not.toBeNull();
     await sendMessage(container, 'staging');
-    await waitFor(() => expect(queryByText(WAIT.message)).toBeNull());
+    await waitFor(() => expect(queryByText(WAIT.message)?.textContent ?? null).toBeNull());
     expect(bodies[1]?.resume).toEqual([
       {
         interruptId: WAIT.id,
@@ -300,7 +300,7 @@ describe('what went wrong', () => {
     await sendMessage(container, 'Hello');
     expect(await findByText('The thread is busy.')).not.toBeNull();
     await fireEvent.click(await findByRole('button', { name: 'Dismiss alert' }));
-    await waitFor(() => expect(queryByText('The thread is busy.')).toBeNull());
+    await waitFor(() => expect(queryByText('The thread is busy.')?.textContent ?? null).toBeNull());
 
     await sendMessage(container, 'Hello again');
     expect(await findByText('The thread is busy.')).not.toBeNull();
