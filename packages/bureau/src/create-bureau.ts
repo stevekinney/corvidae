@@ -3811,18 +3811,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * Resolves once `activeRun` reaches ITS OWN terminal event — mirrors the
-   * exact `run.completed` / `run.aborted` / `run.error` contract gateway
-   * already wires (`run-lifecycle.ts`'s module doc), so a fourth listener
-   * here observes the same terminal moment as every other terminal-run
-   * consumer in this file. Only safe to call for an `activeRun` known NOT
-   * to have already settled (callers check `activeRuns.has(...)` or
-   * `runState.status === 'running'` first) — `once()` ties the listener to
-   * `activeRun`'s own completion signal, which an already-terminal run has
-   * already aborted, silently dropping a listener registered after the
-   * fact per DOM `addEventListener` semantics.
-   */
-  /**
    * Resolves when a run that reported `run.error` dispatches the `run.completed` (or `run.aborted`)
    * that ends it, or its result settles without one (an abandoned durable run).
    */
@@ -3839,6 +3827,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     ]);
   }
 
+  /**
+   * Resolves once `activeRun` reaches ITS OWN terminal event — mirrors the
+   * exact `run.completed` / `run.aborted` / `run.error` contract gateway
+   * already wires (`run-lifecycle.ts`'s module doc), so a fourth listener
+   * here observes the same terminal moment as every other terminal-run
+   * consumer in this file. Only safe to call for an `activeRun` known NOT
+   * to have already settled (callers check `activeRuns.has(...)` or
+   * `runState.status === 'running'` first) — `once()` ties the listener to
+   * `activeRun`'s own completion signal, which an already-terminal run has
+   * already aborted, silently dropping a listener registered after the
+   * fact per DOM `addEventListener` semantics.
+   */
   function whenActiveRunTerminal(activeRun: ActiveRun): Promise<void> {
     return new Promise<void>((resolve) => {
       const settle = () => resolve();
