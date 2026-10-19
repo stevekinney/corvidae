@@ -195,7 +195,8 @@ export type ChatAgentRunErrorCode =
   | 'SELECTION_REVALIDATION_FAILED'
   | 'SUBAGENT_RUN_FAILED'
   | 'TRIPWIRE'
-  | 'UNKNOWN';
+  | 'UNKNOWN'
+  | 'UNSUPPORTED_MEDIA_TYPE';
 
 /**
  * Local equivalent of Operative's `SerializedAgentRunError`, with `cause`

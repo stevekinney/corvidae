@@ -45,6 +45,7 @@ import {
   createBureauHandler,
 } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, type OwnerAccessPredicate } from './owner-predicate.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 type Handler = (request: Request) => Promise<Response>;
 type Credential = { subject: string; scopes: readonly AuthorizationScope[] };
@@ -149,8 +150,20 @@ const MEMORY_PARAMETERS = {
   content: 'x',
 } as const;
 
+/**
+ * What the asset operations need to reach their own check: identifiers nothing holds, a chunk that
+ * is base64, and a length.
+ */
+const ASSET_PARAMETERS = {
+  uploadId: 'x',
+  assetId: 'x',
+  chunk: 'AAAA',
+  declaredByteLength: 1,
+} as const;
+
 /** The parameters beside an identifier that `operation` declares and needs to reach its own check. */
 function definitionParameters(operation: CatalogOperation) {
+  if (operation.name.startsWith('bureau.assets.')) return ASSET_PARAMETERS;
   if (operation.name.startsWith('bureau.schedules.')) return SCHEDULE_PARAMETERS;
   if (operation.name.startsWith('bureau.goals.')) return GOAL_PARAMETERS;
   return operation.name.startsWith('bureau.agents.')
@@ -245,6 +258,7 @@ function parkingGenerate(): GenerateFunction {
 
 async function openBureau(id = 'authorization-bureau') {
   return createBureau<AgentDefinitions>({
+    assets: { storage: createMemoryAssetStorage() },
     id,
     // One code-defined agent, so an agent operation has a real identifier to be probed with.
     agents: {

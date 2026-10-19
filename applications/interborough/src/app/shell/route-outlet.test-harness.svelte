@@ -8,6 +8,7 @@
   import { untrack } from 'svelte';
 
   import { provideClient } from '../../lib/client.ts';
+  import ToastHost, { provideToastHost } from '../toast-host.svelte';
   import { createQueryClient } from '../../lib/query.ts';
   import { providePrincipalStore, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
   import RouteOutlet from './route-outlet.svelte';
@@ -18,6 +19,9 @@
   }
 
   let { client, scopes }: RouteOutletHarnessProps = $props();
+
+  // The shell mounts the toast host, so a write that fails has somewhere to say so.
+  provideToastHost();
 
   provideClient(untrack(() => client));
   providePrincipalStore().setPrincipal({
@@ -30,4 +34,5 @@
 
 <QueryClientProvider client={queryClient}>
   <RouteOutlet />
+  <ToastHost />
 </QueryClientProvider>

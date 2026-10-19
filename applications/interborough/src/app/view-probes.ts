@@ -2,7 +2,9 @@ import type { HttpClient } from '@lostgradient/weft';
 import type { QueryClient } from '@tanstack/svelte-query';
 
 import { getAgentCatalog, getAgentDefinition } from '../lib/agent-definitions.ts';
+import { queryAudit } from '../lib/bureau-audit.ts';
 import { callBureau, listAgents, listContexts } from '../lib/bureau-client.ts';
+import { listGoals } from '../lib/bureau-goals.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
 import { listMemories } from '../lib/memory-client.ts';
 import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
@@ -38,21 +40,21 @@ export type ViewProbeParameters = Readonly<Record<string, string>>;
  */
 export type ViewProbe = (client: HttpClient, queryClient: QueryClient) => Promise<ViewProbeResult>;
 
-/** The Bureau's health route, mounted beside the engine API (`src/host/host.ts`). */
-const BUREAU_HEALTH_PATH = '/bureau/v1/health';
-
 /** A fault a probe raises itself for something the Bureau answered, with the status the Bureau would have. */
 function notFound(what: string): ViewProbeFault {
   return new ViewProbeFault(`No ${what} was found.`, 404);
 }
 
-/** Ask the Bureau whether it is up. A view that has nothing built yet is empty when it is. */
-async function probeBureau(): Promise<ViewProbeResult> {
-  const response = await fetch(BUREAU_HEALTH_PATH);
-  if (!response.ok) {
-    throw new ViewProbeFault(`The Bureau answered ${response.status}.`, response.status);
-  }
-  return { empty: true };
+/** The audit trail: empty when the caller may see no record, which the Bureau answers for any caller. */
+async function probeAudit(): Promise<ViewProbeResult> {
+  const page = await queryAudit({}, undefined, { limit: 1 });
+  return { empty: page.records.length === 0 };
+}
+
+/** The goals: empty when the caller has none. The Bureau answers any caller with the goals it owns. */
+async function probeGoals(): Promise<ViewProbeResult> {
+  const page = await listGoals({ limit: 1 });
+  return { empty: page.goals.length === 0 };
 }
 
 /** The editor for a new agent needs the models and tools it may offer, so it asks for them. */
@@ -164,7 +166,9 @@ export function probeFor(
         return { empty: false };
       };
     case 'audit':
-      return probeBureau;
+      return probeAudit;
+    case 'goals':
+      return probeGoals;
     case 'agent-editor': {
       const id = parameters['id'];
       return id === undefined ? probeAgentCatalog : () => probeEditableAgent(id);
@@ -182,6 +186,8 @@ export function probeFor(
         return { empty: page.items.length === 0 };
       };
     case 'schedules':
+      // One schedule's page asks for that schedule, and says in its own words when it is not there.
+      if (parameters['id'] !== undefined) return undefined;
       return async (client) => {
         const page = await client.listSchedules({});
         return { empty: page.items.length === 0 };

@@ -31,7 +31,7 @@
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
   import {
     availableActions,
     awaitedSignals,
@@ -403,9 +403,8 @@
           {#each schedules.data as schedule (schedule.id)}
             <li data-schedule={schedule.id} data-status={schedule.status}>
               <a
-                href={router.href(`/schedules?id=${encodeURIComponent(schedule.id)}`)}
-                onclick={(event) => go(event, `/schedules?id=${encodeURIComponent(schedule.id)}`)}
-                >{schedule.id}</a
+                href={router.href(scheduleDetailPath(schedule.id))}
+                onclick={(event) => go(event, scheduleDetailPath(schedule.id))}>{schedule.id}</a
               >
               <span>{scheduleLabel(schedule)}</span>
               <Badge variant={schedule.status === 'active' ? 'success' : 'neutral'} size="sm"

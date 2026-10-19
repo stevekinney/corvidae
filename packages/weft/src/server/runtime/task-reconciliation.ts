@@ -1,4 +1,5 @@
 import { ActivityFailedEvent } from '../../core/events.ts';
+import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import {
   buildAttemptDispositionWriteForToken,
   buildCurrentAttemptDispositionWrites,
@@ -160,12 +161,15 @@ export async function reassignOrExpireTask(
 
   if (result.record.state === 'terminal') {
     options.engine.dispatchEvent(
-      new ActivityFailedEvent(
-        operationId,
-        record.workflowId ?? '',
-        record.activityName,
-        new Error(result.record.error),
-        record.attempt,
+      tagWorkflowEventGeneration(
+        new ActivityFailedEvent(
+          operationId,
+          record.workflowId ?? '',
+          record.activityName,
+          new Error(result.record.error),
+          record.attempt,
+        ),
+        record.workflowExecutionToken,
       ),
     );
     return;

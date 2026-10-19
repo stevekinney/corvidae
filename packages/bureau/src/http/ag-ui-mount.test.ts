@@ -4,6 +4,7 @@ import { describe, expect, it } from 'bun:test';
 import { createBureau } from '../create-bureau.ts';
 import type { AgUiOptions } from './ag-ui-mount.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 const AGENT_NAME = 'assistant';
 const THREAD_ID = 'thread-named-option';
@@ -13,6 +14,7 @@ const generate: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [
 /** A Bureau with one published-able agent, with or without a durable engine. */
 async function buildBureau(options: { durable: boolean }) {
   return createBureau({
+    assets: { storage: createMemoryAssetStorage() },
     id: 'ag-ui-mount-test',
     agents: { [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }) },
     generate,
@@ -72,6 +74,7 @@ describe('the agUi option on createBureauHandler', () => {
       release = resolve;
     });
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'ag-ui-mount-test',
       agents: { [AGENT_NAME]: createAgent({ generate, name: AGENT_NAME }) },
       generate: async () => {

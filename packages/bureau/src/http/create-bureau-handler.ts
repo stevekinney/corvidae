@@ -5,7 +5,9 @@
  * transports (JSON-RPC over HTTP, and Server-Sent Events for subscriptions) and
  * generates its own OpenAPI, OpenRPC, and AsyncAPI documents from the operations
  * below and nothing else. It serves Bureau's two event feeds and the review
- * queue. It does not serve `bureau.run`, `getRun`, or `abortRun`: those reach
+ * queue, and Bureau's managed assets: the upload operations, `bureau.assets.get`,
+ * and `GET /assets/{assetId}/content` (a mount, `assets-mount.ts`), which is why
+ * it needs a Bureau with an asset service. It does not serve `bureau.run`, `getRun`, or `abortRun`: those reach
  * outside callers through protocol adapters mounted with `mounts`.
  *
  * Access follows the decision document's owner of record plus operator scopes
@@ -47,6 +49,7 @@ import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import type { Bureau } from '../types.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';
 import { bureauRunEventsSubscriptionOperation } from './bureau-run-events-operation.ts';
+import { createAssetsMount } from './assets-mount.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
@@ -80,6 +83,10 @@ import {
   auditQueryOperation,
   type BureauAuditOperationHost,
 } from './management/audit-operations.ts';
+import {
+  type BureauAssetsOperationHost,
+  bureauAssetsOperations,
+} from './management/assets-operations.ts';
 import {
   type BureauGoalsOperationHost,
   bureauGoalsOperations,
@@ -129,6 +136,7 @@ export type BureauHandlerSource = Pick<
   | 'pendingHumanWaitsOfRun'
   | 'durableEngine'
   | 'getOwner'
+  | 'getScheduleAgentName'
   | 'tasks'
   | 'lifecycle'
   | 'eventHistory'
@@ -163,6 +171,7 @@ export type BureauHandlerSource = Pick<
   | 'submitSessionInput'
   | 'whenRunRecorded'
   | 'sessionInputsDeliveredBy'
+  | 'assets'
 > & {
   readonly agents: {
     has(name: string): boolean;
@@ -200,7 +209,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauSchedulesOperationHost &
   BureauGoalsOperationHost &
   BureauMemoryOperationHost &
-  BureauAuditOperationHost;
+  BureauAuditOperationHost &
+  BureauAssetsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -255,6 +265,12 @@ export type BureauHandlerOptions = {
    * prefix that overlaps a catalog route or another mount.
    */
   readonly agUi?: AgUiOptions;
+  /**
+   * The most bytes a JSON-RPC request body may hold, a positive integer. Weft refuses a larger one
+   * with 413 before any operation runs, so an oversized `bureau.assets.uploads.append` chunk writes
+   * nothing. Omitted, Weft's own default (1 MB) applies.
+   */
+  readonly maxRequestBodyBytes?: number;
 };
 
 /** A published agent name is a URL path segment, so it needs no encoding. */
@@ -282,6 +298,7 @@ const OPTION_NAMES: ReadonlySet<string> = new Set([
   'unauthenticatedAccess',
   'mounts',
   'agUi',
+  'maxRequestBodyBytes',
 ]);
 
 function fail(message: string): never {
@@ -381,6 +398,22 @@ function assertAgUi(bureau: BureauHandlerSource, options: BureauHandlerOptions):
   }
 }
 
+function assertAssets(bureau: BureauHandlerSource): void {
+  if (bureau.assets === undefined) {
+    fail(
+      'the handler serves the asset operations and the asset content route, so it needs a Bureau ' +
+        'with an asset service. Pass `assets` (an `AssetStorage` and an optional policy) to createBureau',
+    );
+  }
+}
+
+function assertMaxRequestBodyBytes(value: number | undefined): void {
+  if (value === undefined) return;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    fail(`maxRequestBodyBytes must be a positive integer (got ${String(value)})`);
+  }
+}
+
 function assertBureauId(bureau: BureauHandlerSource): void {
   // `bureau.events` takes a non-empty `bureauId`, so an empty id would leave the
   // Bureau's own feed unreachable.
@@ -430,6 +463,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   ...bureauGoalsOperations,
   ...bureauMemoryOperations,
   auditQueryOperation,
+  ...bureauAssetsOperations,
 ] as const;
 
 /**
@@ -624,6 +658,7 @@ export function buildBureauHandlerHost(
       cancelSchedule: bureau.cancelSchedule,
       updateSchedule: bureau.updateSchedule,
       owner: (scheduleId) => bureau.getOwner({ kind: 'schedule', id: scheduleId }),
+      agentName: (scheduleId) => bureau.getScheduleAgentName(scheduleId),
       hasAgent: (name) => bureau.agents.has(name),
     },
     goals: bureau.goals,
@@ -634,6 +669,7 @@ export function buildBureauHandlerHost(
       },
       ownerOf: ({ runId, detail }) => bureau.getOwner({ kind: 'audit', runId, detail }),
     },
+    assets: bureau.assets,
     respondLedger: createRespondLedger(bureau),
     respondInFlight: new Map(),
     deployment: {
@@ -679,6 +715,8 @@ export function createBureauHandler(
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
   assertAgUi(bureau, options);
+  assertAssets(bureau);
+  assertMaxRequestBodyBytes(options.maxRequestBodyBytes);
   assertBureauId(bureau);
   assertPersistence(bureau);
 
@@ -691,7 +729,11 @@ export function createBureauHandler(
       options.authentication === undefined
         ? authenticateLocalCaller
         : createApiKeyAuthenticate(options.authentication),
+    ...(options.maxRequestBodyBytes === undefined
+      ? {}
+      : { maxRequestBodyBytes: options.maxRequestBodyBytes }),
     mounts: [
+      createAssetsMount(bureau.assets!),
       ...(options.agUi === undefined
         ? []
         : [

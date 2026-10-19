@@ -28,6 +28,7 @@ export interface RouteDefinition {
 const placeholder = () => import('../routes/placeholder/index.svelte');
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
 const workflowArea = () => import('../routes/workflow-definitions/index.svelte');
+const schedulesArea = () => import('../routes/schedules/index.svelte');
 
 export const routes: readonly RouteDefinition[] = [
   // Chat is the home screen. Sessions live under `/chat/:sessionId`.
@@ -64,15 +65,15 @@ export const routes: readonly RouteDefinition[] = [
   { pattern: '/workflows/:type/edit', view: 'workflows', load: workflowArea },
   { pattern: '/runs', view: 'runs', load: () => import('../routes/workflows/index.svelte') },
   { pattern: '/runs/:id', view: 'runs', load: () => import('../routes/workflows/index.svelte') },
-  {
-    pattern: '/schedules',
-    view: 'schedules',
-    load: () => import('../routes/schedules/index.svelte'),
-  },
+  // The list, and one schedule's page: one component dispatches on whether the path names one.
+  { pattern: '/schedules', view: 'schedules', load: schedulesArea },
+  { pattern: '/schedules/:id', view: 'schedules', load: schedulesArea },
   { pattern: '/inbox', view: 'inbox', load: () => import('../routes/reviews/index.svelte') },
   { pattern: '/workers', view: 'workers', load: () => import('../routes/workers/index.svelte') },
   { pattern: '/storage', view: 'storage', load: () => import('../routes/storage/index.svelte') },
   { pattern: '/system', view: 'system', load: () => import('../routes/system/index.svelte') },
-  { pattern: '/audit', view: 'audit', load: placeholder },
+  { pattern: '/audit', view: 'audit', load: () => import('../routes/audit/index.svelte') },
+  // Not in the sidebar: a goal is made and cancelled here, and linked to from where it is mentioned.
+  { pattern: '/goals', view: 'goals', load: () => import('../routes/goals/index.svelte') },
   { pattern: '/engine', view: 'engine', load: () => import('../routes/dashboard/index.svelte') },
 ];

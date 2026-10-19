@@ -13,6 +13,7 @@
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_EDITOR_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import { agentEditPath } from '../../lib/agent-paths.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -57,7 +58,7 @@
       .map((context) => sessionSummary(context, agentsByName(agents.data ?? []))),
   );
 
-  const editPath = `/agents/${encodeURIComponent(id)}/edit`;
+  const editPath = agentEditPath(id);
   const memoryPath = `/agents/${encodeURIComponent(id)}/memory`;
 
   function goTo(event: MouseEvent, path: string): void {

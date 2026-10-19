@@ -6,6 +6,7 @@ import {
 } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
+import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
 import { RunRegisteredEvent, RunRemovedEvent } from '../events.ts';
 import { waitForCondition } from '../test';
@@ -27,7 +28,9 @@ const allScopes = {
   resolveApiKeyPrincipal: resolveKey(['events:read', ...BUREAU_SCOPES]),
 };
 
-async function buildBureau(options: { id?: string; agents?: string[]; persist?: boolean } = {}) {
+async function buildBureau(
+  options: { id?: string; agents?: string[]; persist?: boolean; assets?: boolean } = {},
+) {
   const agents = Object.fromEntries(
     (options.agents ?? []).map((name) => [
       name,
@@ -39,6 +42,8 @@ async function buildBureau(options: { id?: string; agents?: string[]; persist?: 
     agents,
     generate,
     ...(options.persist === true ? { storage: { type: 'memory' as const } } : {}),
+    // The handler serves the asset operations, so it needs the service behind them.
+    ...(options.assets === false ? {} : { assets: { storage: createMemoryAssetStorage() } }),
   });
 }
 
@@ -104,6 +109,43 @@ describe('createBureauHandler options', () => {
       expect(() =>
         createBureauHandler(bureau, { unauthenticatedAccess: 'maybe' } as never),
       ).toThrow(/unauthenticatedAccess must be/);
+    });
+  });
+
+  it('throws at construction when the Bureau has no asset service', async () => {
+    await withBureau({ assets: false }, (bureau) => {
+      expect(() => createBureauHandler(bureau, { unauthenticatedAccess: 'allow' })).toThrow(
+        /assets/,
+      );
+    });
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, '1024'])(
+    'rejects a maxRequestBodyBytes that is not a positive integer (%p)',
+    async (value) => {
+      await withBureau({}, (bureau) => {
+        expect(() =>
+          createBureauHandler(bureau, {
+            unauthenticatedAccess: 'allow',
+            maxRequestBodyBytes: value,
+          } as never),
+        ).toThrow(/maxRequestBodyBytes must be a positive integer/);
+      });
+    },
+  );
+
+  it('answers 413 to a JSON-RPC body over maxRequestBodyBytes', async () => {
+    await withBureau({}, async (bureau) => {
+      const handler = createBureauHandler(bureau, {
+        unauthenticatedAccess: 'allow',
+        maxRequestBodyBytes: 100,
+      });
+
+      const small = await handler(jsonRpc('bureau.reviews.list', {}));
+      const large = await handler(jsonRpc('bureau.reviews.list', { padding: 'x'.repeat(200) }));
+
+      expect(small.status).toBe(200);
+      expect(large.status).toBe(413);
     });
   });
 
@@ -443,6 +485,10 @@ describe('createBureauHandler catalog', () => {
         'bureau.agents.definitions.update',
         'bureau.agents.definitions.withdraw',
         'bureau.agents.list',
+        'bureau.assets.get',
+        'bureau.assets.uploads.append',
+        'bureau.assets.uploads.complete',
+        'bureau.assets.uploads.create',
         'bureau.audit.query',
         'bureau.contexts.delete',
         'bureau.contexts.get',
@@ -560,7 +606,11 @@ describe('createBureauHandler catalog', () => {
   });
 
   it('streams operative.runs.events for a run the Bureau owns', async () => {
-    const bureau = await createBureau({ agents: {}, generate });
+    const bureau = await createBureau({
+      agents: {},
+      generate,
+      assets: { storage: createMemoryAssetStorage() },
+    });
     try {
       const run = await bureau.createRun({ message: 'hello' });
       await waitForCondition(
@@ -642,6 +692,8 @@ describe('the Bureau scope list', () => {
       'bureau.workflows:write',
       'bureau.memory:read',
       'bureau.memory:write',
+      'bureau.assets:read',
+      'bureau.assets:write',
       'bureau.events:observe-all',
     ]);
   });

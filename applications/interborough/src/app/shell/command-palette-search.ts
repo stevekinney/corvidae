@@ -15,6 +15,7 @@ import type {
   WorkflowSummary,
 } from '@lostgradient/weft';
 
+import { scheduleDetailPath } from '../../lib/router.svelte.ts';
 import type { ScopeGate } from '../../lib/scopes.svelte.ts';
 
 export interface ConsoleSearchResults {
@@ -29,9 +30,9 @@ export interface ConsoleSearchOptions {
   readonly scheduleReadGate: ScopeGate;
 }
 
-/** Where a schedule's own page is: the schedules view, with the schedule selected. */
+/** Where a schedule's own page is. */
 export function schedulePath(scheduleId: string): string {
-  return `/schedules?id=${encodeURIComponent(scheduleId)}`;
+  return scheduleDetailPath(scheduleId);
 }
 
 /** Where a worker's own page is: the workers view, on its list, with the worker selected. */
