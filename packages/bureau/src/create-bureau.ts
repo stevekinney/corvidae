@@ -3656,6 +3656,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * any other.
    */
   const catalogRunSettlements = createCatalogRunSettlementHook(diagnose);
+  // COR-1524 — a recovered run's snapshot reference is settled when the run ends, through the same
+  // hook as its task. A fresh dispatch settles its own reference where it is dispatched.
+  catalogRunSettlements.subscribe(async (settlement) => {
+    if (settlement.recovered && fileAgents !== undefined) {
+      await fileAgents.settleRun(settlement.runId);
+    }
+  });
   catalogRunSettlements.subscribe(
     createCatalogTaskSettler({
       tasks,
@@ -6573,14 +6580,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // review again, under the id it had, and the parks it makes from here on are heard.
       await runHumanWaits.restore(info.workflowId, info.input.agentName);
       runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
-      // COR-1524: a recovered run is in no store and has no handle of its own to settle its
-      // snapshot reference, so it settles here, as it ends.
-      const settleRecovered = (): void => {
-        runHumanWaits.forget(info.workflowId);
-        if (fileAgents !== undefined)
-          detachBestEffortPromise(fileAgents.settleRun(info.workflowId));
-      };
-      void info.handle.result().then(settleRecovered, settleRecovered);
+      // COR-1524: a recovered run is in no store and has no handle of its own, so its snapshot
+      // reference settles from the catalog settlement hook, as it ends (see the subscription
+      // beside the hook's creation).
+      void info.handle.result().then(
+        () => runHumanWaits.forget(info.workflowId),
+        () => runHumanWaits.forget(info.workflowId),
+      );
       void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose, (settlement) =>
         catalogRunSettlements.publish(settlement),
       );
