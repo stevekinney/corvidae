@@ -14,6 +14,7 @@ import {
   type ActivityOperationRequest,
 } from '../context/run-operation.ts';
 import { AsyncActivityDeferral } from './async-activity-completion.ts';
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   executeActivityOperationResult,
@@ -245,6 +246,8 @@ class MemoDurableActivityScope implements DurableActivityScope {
   }
 
   async #executeDurableRetrySleepOperation(operation: SleepOperation): Promise<void> {
+    // The run this sleep belongs to, captured before its first await (COR-1604).
+    const run = currentExecutionAttempt(this.#internals, this.#workflowId);
     const finishCheckpointWrite = this.#beginNonCancellableWrite();
     try {
       await this.#persistCheckpoint(this.#workflowId, operation);
@@ -277,6 +280,7 @@ class MemoDurableActivityScope implements DurableActivityScope {
       resolve,
       operation.scheduledFireAt,
       workflowExecutionTokenForWorkflow(this.#internals, this.#workflowId),
+      run,
     );
     await promise;
   }
