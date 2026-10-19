@@ -424,6 +424,32 @@ describe('a signal whose delivery cannot be made', () => {
     expect(await startedStarters(harness)).toBe(0);
   });
 
+  it('refuses a payload that is not a JSON value before it delivers or starts anything', async () => {
+    // An agent step renders the trigger with JSON.stringify, so a Map would reach it as {} and a
+    // bigint would make it throw after the signal reported success.
+    const harness = await start();
+    await waiting(harness, ['waiting-run']);
+    const payloads: ReadonlyArray<readonly [string, unknown]> = [
+      ['a Map', new Map([['a', 1]])],
+      ['a Set', new Set([1])],
+      ['a bigint', 1n],
+      ['a nested Map', { nested: new Map() }],
+      ['NaN', Number.NaN],
+    ];
+    for (const [label, payload] of payloads) {
+      const error = await harness.bureau.workflows!.signal('go', payload).then(
+        () => undefined,
+        (failure: unknown) => failure,
+      );
+      expect(error, label).toBeInstanceOf(BureauError);
+      expect((error as BureauError).code).toBe('BAD_REQUEST');
+    }
+    expect(await startedStarters(harness)).toBe(0);
+    expect(await statusOf(harness, 'waiting-run')).toBe('running');
+    const ok = await harness.bureau.workflows!.signal('go', { list: [1, 'two', null] });
+    expect(ok.delivered).toEqual(['waiting-run']);
+  });
+
   it('refuses a payload over the engine’s payload limit before it delivers or starts anything', async () => {
     const harness = await startWorkflowBureau({
       overrides: { durableGuardrails: { payloadSize: { maxBytes: 256 } } },

@@ -35,6 +35,7 @@ import {
   type WorkflowState,
   type WorkflowStatus,
 } from '@lostgradient/weft';
+import { z } from 'zod';
 
 import type { AgentFileOperations } from './agent-file-operations';
 import { auditTrailWorkflowOwnerId } from './audit-trail';
@@ -745,9 +746,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
 
   /**
    * Refuse, before any effect, what the engine would refuse: an empty name, a `signalId` that is
-   * empty or over Weft's 128 bytes (counted in UTF-8 bytes, not characters), and a payload that
-   * cannot be encoded or is over the engine's payload limit, which also bounds the trigger an
-   * instance it starts is given.
+   * empty or over Weft's 128 bytes (counted in UTF-8 bytes, not characters), a payload that is not
+   * a JSON value, and a payload that cannot be encoded or is over the engine's payload limit, which
+   * also bounds the trigger an instance it starts is given.
    */
   function validateSignal(name: string, payload: unknown, signalId: string | undefined): void {
     const refuse = (message: string): never => {
@@ -759,6 +760,12 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       if (new TextEncoder().encode(signalId).byteLength > SIGNAL_ID_MAXIMUM_BYTES) {
         refuse(`"signalId" must be at most ${String(SIGNAL_ID_MAXIMUM_BYTES)} bytes.`);
       }
+    }
+    // An agent step renders the trigger with JSON.stringify, so a value the engine can encode but
+    // JSON cannot (a Map, a Set, a bigint, NaN) would reach it altered or make it throw after this
+    // call reported success.
+    if (payload !== undefined && !z.json().safeParse(payload).success) {
+      refuse("The signal's payload must be a JSON value.");
     }
     const limit = options.payloadMaximumBytes ?? null;
     for (const value of [payload, { kind: 'signal', name, payload }]) {
