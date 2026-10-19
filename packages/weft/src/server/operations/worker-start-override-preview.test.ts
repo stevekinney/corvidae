@@ -18,6 +18,14 @@ const WORKFLOW_ID = 'preview-workflow';
 const WORKFLOW_TYPE = 'preview-workflow-type';
 const WORKFLOW_REVISION = 'revision-1';
 
+class ScanFailingStorage extends MemoryStorage {
+  failScans = false;
+  override scan(...args: Parameters<MemoryStorage['scan']>): ReturnType<MemoryStorage['scan']> {
+    if (this.failScans) throw new Error('catalog scan failed');
+    return super.scan(...args);
+  }
+}
+
 describe('weft.worker.startoverrides.preview operation', () => {
   it('requires server signing configuration', async () => {
     const registry = createOperationRegistry([createWorkerStartOverridePreviewOperation()]);
@@ -274,6 +282,28 @@ describe('weft.worker.startoverrides.preview operation', () => {
     });
   });
 
+  it('does not turn a catalog read failure into a no-routed-deployment Conflict', async () => {
+    const storage = new ScanFailingStorage();
+    const currentBinding = await seedPreviewCatalogAndBinding(storage);
+    await seedWorkflowState(storage, {
+      status: 'completed',
+      revision: WORKFLOW_REVISION,
+      workerVersioningPolicy: {
+        mode: 'auto-upgrade',
+        compatibility: compatibilityFromBinding(currentBinding),
+      },
+      workerBinding: { current: currentBinding, history: [] },
+    });
+    storage.failScans = true;
+
+    const result = await executePreview(storage);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected a failure.');
+    // Only the "nothing is routed" refusal is a Conflict; a storage fault stays an engine failure.
+    expect(result.fault.code).toBe('EngineFailure');
+  });
+
   it('extracts preview requests from the HTTP JSON body', async () => {
     const request = new Request('http://example.test/v1/worker-start-overrides/preview', {
       method: 'POST',
@@ -308,8 +338,7 @@ async function executePreview(storage: MemoryStorage) {
   );
 }
 
-async function seedPreviewCatalogAndBinding() {
-  const storage = new MemoryStorage();
+async function seedPreviewCatalogAndBinding(storage: MemoryStorage = new MemoryStorage()) {
   const catalog = new WorkerDeploymentCatalog(storage);
   await registerManifest(catalog, 'build-1', 'sha256:workflow');
   await catalog.setRouting({

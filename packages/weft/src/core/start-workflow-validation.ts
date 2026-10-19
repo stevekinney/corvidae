@@ -31,7 +31,15 @@ export class StartWorkflowValidationError extends WeftError<'StartWorkflowValida
  * `InvalidParams`. It keeps the parent's `code`, so `isWeftFault` and the
  * error-code table are unchanged.
  */
-export class WorkerStartOverrideRejectedError extends StartWorkflowValidationError {}
+export class WorkerStartOverrideRejectedError extends StartWorkflowValidationError {
+  // Explicit, with a default message: an implicit derived constructor is a function the coverage
+  // report never sees called.
+  constructor(
+    message = 'The worker start override preview cannot authorize this start (it is expired, used, for another workflow, stale, or unverifiable).',
+  ) {
+    super(message);
+  }
+}
 
 export const assertExclusiveStartWorkflowOptions = (
   startAt: unknown,
