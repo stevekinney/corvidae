@@ -223,6 +223,8 @@ export {
   memoryAuthorityFromToolRequestContext,
   requestPrincipal,
 } from './governance/authority';
+// The deterministic embedder that needs no model, and the dimension it produces.
+export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 // Capability, operation, principal-kind, and projection vocabularies are public constants.
 export {
   MEMORY_ADMINISTRATIVE_CAPABILITIES,
@@ -295,7 +297,6 @@ export {
 } from './identity';
 export { CHUNK_INDEX_KEY, ingest } from './ingest';
 // The source-document key is public for ingestion metadata.
-export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 export { SOURCE_DOCUMENT_KEY } from './ingest';
 export { applyMaximalMarginalRelevance } from './maximal-marginal-relevance';
 export { MemoryRecordVersionConflictError } from './memory-record-storage';

@@ -5,7 +5,12 @@ import {
   mergeHookRegistries,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
-import type { GovernedMemory, MemoryAuthority, MemoryCapability } from '@lostgradient/memory';
+import type {
+  GovernedMemory,
+  MemoryAuthority,
+  MemoryCapability,
+  MemoryWriteReceipt,
+} from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
 import type {
   AgentInput,
@@ -1255,6 +1260,12 @@ export function createMemoryPersistHook(
   authority: MemoryAuthority,
   target: RunMemoryTarget,
   runId?: string,
+  /**
+   * Told of a write governed memory rejected (a quota, a content rule, a missing capability), which
+   * stores no record and so leaves nothing else to say the answer was not remembered (COR-1546).
+   * Receives the receipt, which names a reason and never the content.
+   */
+  onRejected?: (receipt: MemoryWriteReceipt) => void,
 ): OnStepHook {
   return async (context) => {
     if (!context.final || !context.content.trim()) {
@@ -1266,7 +1277,7 @@ export function createMemoryPersistHook(
     // produce a second record.
     const dedupeKey = runId === undefined ? undefined : `${runId}:${context.step}`;
 
-    await memory.write(authority, context.content, {
+    const receipt = await memory.write(authority, context.content, {
       collection: target.collection,
       source: 'conversation',
       memoryClass: 'episodic',
@@ -1282,6 +1293,7 @@ export function createMemoryPersistHook(
       },
       ...(dedupeKey === undefined ? {} : { dedupeKey }),
     });
+    if (receipt.status === 'rejected') onRejected?.(receipt);
   };
 }
 
@@ -3137,7 +3149,15 @@ async function buildRuntimeComposition(
       });
       hooks.on(
         'onStep',
-        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId),
+        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
+          diagnose({
+            level: 'warn',
+            scope: 'memory',
+            message:
+              `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
+              `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
+          }),
+        ),
         {
           id: 'bureau:memory-persist',
           // Writes to the memory store, so a replayed step writes again. The

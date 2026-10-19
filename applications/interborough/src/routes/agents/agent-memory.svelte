@@ -12,20 +12,18 @@
   import { untrack } from 'svelte';
 
   import { Alert, Badge, Button, SearchField, Skeleton } from '@lostgradient/cinder';
-  import { createInfiniteQuery, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { listMemories, searchMemories, type Memory } from '../../lib/memory-client.ts';
-  import { agentMemoryViewInstance, queryKeys } from '../../lib/query.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import MemoryDetail from './memory-detail.svelte';
   import { formatMemoryTime, labelFor } from './memory-presentation.ts';
 
   const PAGE_SIZE = 20;
   const agentId = untrack(() => router.current.params['id'] ?? '');
-
-  const queryClient = useQueryClient();
 
   /** What is typed, and what the last search applied. A blank applied search lists. */
   let typed = $state('');
@@ -78,14 +76,16 @@
     applied = '';
   }
 
-  /** A change landed: the list is read again, and the frame looks again at whether anything is left. */
+  /**
+   * A change landed. The lists were already read again by the change. The frame's probe is not
+   * asked again: forgetting the agent's last memory would make it answer "empty" and replace this
+   * page, taking the deletion's receipt off the screen before it could be read. The page says
+   * there is nothing left, and the frame looks again the next time the page is opened.
+   */
   function changed(change: {
     readonly kind: 'forgotten' | 'corrected';
     readonly id: string;
   }): void {
-    void queryClient.invalidateQueries({
-      queryKey: queryKeys.view('agents', agentMemoryViewInstance(agentId)),
-    });
     if (change.kind === 'corrected') {
       notice = 'corrected';
       selectedId = change.id;
@@ -163,6 +163,11 @@
           >
         </Alert>
       {:else}
+        {#if rows.length === 0}
+          <p class="weft-memory__nothing" data-testid="memory-nothing-left">
+            {MEMORY_COPY.nothingLeft}
+          </p>
+        {/if}
         <ul class="weft-memory__list" aria-label={MEMORY_COPY.listLabel}>
           {#each rows as row (row.memory.id)}
             <li
@@ -302,6 +307,11 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
+  }
+
+  .weft-memory__nothing {
+    margin: 0;
+    color: var(--cinder-text-muted);
   }
 
   .weft-memory__alert-title {

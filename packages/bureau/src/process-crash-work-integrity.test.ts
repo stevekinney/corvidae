@@ -38,6 +38,7 @@ import {
   createHarnessBureau,
   firstUserMessage,
   inspector,
+  inspectorFor,
   openGovernedMemory,
   openIdempotencyCache,
   readEffects,
@@ -306,6 +307,11 @@ async function governedMemoryScenario(backend: Backend, scope: ScenarioScope): P
     const records = await governed.memory.list(inspector, { collection: 'bureau' });
     expect(records).toHaveLength(1);
     expect(records[0]?.metadata['dedupeKey']).toBe(`${marker.runId}:0`);
+    // The recovered run kept writing as its owner of record (COR-1546): had it written as another
+    // owner, the replayed step would not have found its own record and stored a second one there.
+    expect(
+      await governed.memory.list(inspectorFor('anonymous:local'), { collection: 'bureau' }),
+    ).toEqual([]);
 
     await expectShutdownReleased(shutdown);
     closeGoverned();

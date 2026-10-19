@@ -3,7 +3,13 @@
  * embedder that needs no model provider. Every test starts the real host on an installation that
  * has configured no provider at all, and talks to it over its own HTTP surface.
  */
+import {
+  collectionNamespace,
+  createHashingEmbedder,
+  createWeftMemoryRecordStorage,
+} from '@lostgradient/memory';
 import { createAgent, stopWhen } from '@lostgradient/operative';
+import { BunSQLiteStorage } from '@lostgradient/weft';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -121,6 +127,50 @@ describe('the host’s governed memory', () => {
     ]);
     const beta = await memoriesOf(host, 'beta');
     expect(beta.map((memory) => memory.sessionId)).toEqual(['thread-3']);
+  });
+
+  test('embeds with the hashing embedder, and makes no network call to do it', async () => {
+    const { host } = await start();
+    const origin = host.url.origin;
+    const external: string[] = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.startsWith(origin)) {
+        external.push(url);
+        throw new Error(`Unexpected network call to ${url}`);
+      }
+      return realFetch(input, init);
+    }) as typeof fetch;
+    try {
+      await chat(host, 'alpha', 'thread-1');
+      const found = await call(host, 'bureau.memory.search', {
+        agentId: 'alpha',
+        query: 'aisle seats',
+      });
+      expect(found.result?.['hits']).toHaveLength(1);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    expect(external).toEqual([]);
+
+    // The vector that was stored is the hashing embedder's, not another 256-dimension embedder's.
+    const { deploymentId, databasePath } = host;
+    await host.close();
+    const storage = new BunSQLiteStorage(databasePath);
+    try {
+      const [record] = await createWeftMemoryRecordStorage(storage).list({
+        tenantId: deploymentId,
+        namespace: collectionNamespace('private', 'anonymous:local', 'alpha'),
+      });
+      const [expected] = await createHashingEmbedder()([record?.content ?? '']);
+      expect(record?.vector).toHaveLength(256);
+      expect(Array.from(record?.vector ?? [])).toEqual(
+        (expected ?? []).map((entry) => Math.fround(entry)),
+      );
+    } finally {
+      storage[Symbol.dispose]();
+    }
   });
 
   test('keeps the seeded agents’ memory too, owned by the one local caller', async () => {

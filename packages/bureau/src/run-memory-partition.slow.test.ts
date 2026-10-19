@@ -17,7 +17,10 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 
+/** The test's own timeout, which is the same as the other scheduled-fire tests'. */
 const FIRE_TIMEOUT_MS = 20_000;
+/** How long the test waits for the fire. Shorter than the test's timeout, so a fire that never writes fails `expect(written)` rather than the clock. */
+const FIRE_WAIT_MS = 15_000;
 
 async function waitForReal(condition: () => Promise<boolean>, timeoutMs: number): Promise<boolean> {
   const start = performance.now();
@@ -70,7 +73,7 @@ describe('a scheduled fire’s memory (COR-1546)', () => {
           const listed = await memory.list(as('api-key:alice'), { collection: 'researcher' });
           return listed.length > 0;
         };
-        const written = await waitForReal(hasWritten, FIRE_TIMEOUT_MS);
+        const written = await waitForReal(hasWritten, FIRE_WAIT_MS);
         await bureau.cancelSchedule(schedule!.id);
 
         expect(written).toBe(true);

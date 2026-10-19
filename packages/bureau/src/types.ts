@@ -348,6 +348,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Defaults to a runtime-generated identifier, which is fine for a single
    * in-process bureau. A host serving several needs ids it can hand a client,
    * so it supplies them.
+   *
+   * It is also the tenant of the memory every run writes (COR-1546), so a Bureau with
+   * persistent {@link BureauOptions.memory} needs a stable `id`: the generated default changes
+   * on every restart, and a restarted Bureau would then read and write a partition that holds
+   * none of what it remembered before. Nothing refuses or warns; the memory is simply not
+   * found.
    */
   id?: string;
   /**

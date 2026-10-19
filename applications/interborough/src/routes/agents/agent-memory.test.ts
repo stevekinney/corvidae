@@ -19,6 +19,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AGENT, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import AgentDetail from './agent-detail.svelte';
+import FramedMemory from './agent-memory-frame.test-harness.svelte';
 import AgentMemory from './agent-memory.svelte';
 
 let stub: BureauStub | undefined;
@@ -437,6 +438,34 @@ describe('forgetting a memory', () => {
     expect(served.callsTo('bureau.memory.get')).toHaveLength(1);
     expect(within(detail).queryByText(MEMORY_COPY.detail.notFound.title)).toBeNull();
     expect(within(detail).getByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
+  });
+
+  test('keeps the receipt on screen when the last memory is forgotten, inside the Agents view', async () => {
+    let gone = false;
+    bureau({
+      'bureau.memory.list': () => ({ memories: gone ? [] : [AISLE], nextOffset: null }),
+      'bureau.memory.get': () => ({ memory: AISLE, lineage: NO_LINEAGE }),
+      'bureau.memory.forget': () => {
+        gone = true;
+        return { id: AISLE.id, deletion: 'completed', receipt: RECEIPT };
+      },
+    });
+    landAt('/agents/assistant/memory');
+    const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
+    await view.findByText(AISLE.content);
+    const detail = await openDetails(view as never, AISLE.content);
+    await fireEvent.click(within(detail).getByRole('button', { name: MEMORY_COPY.forget.action }));
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+
+    // The receipt is readable, the page says nothing is left, and the frame has not swapped the
+    // page for its empty state under it.
+    expect(await view.findByText(MEMORY_COPY.forget.outcome.completed.title)).not.toBeNull();
+    expect(await view.findByText(MEMORY_COPY.nothingLeft)).not.toBeNull();
+    expect(view.container.querySelector('.weft-view')?.getAttribute('data-state')).toBe('ready');
+    expect(textOf(detail)).toContain(MEMORY_COPY.forget.targets['source-evidence']);
   });
 
   test('says so when the Bureau refuses the forget', async () => {

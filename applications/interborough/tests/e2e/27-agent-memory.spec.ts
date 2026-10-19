@@ -11,7 +11,7 @@ import type { Page } from '@playwright/test';
 
 import { MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
-import { ECHO_AGENT_NAME } from './echo-agent.ts';
+import { ECHO_AGENT_NAME, ECHO_SOLO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -96,6 +96,30 @@ test.describe('the memory page', () => {
       page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
     ).toBeVisible();
     await expect(rowOf(page, label)).toHaveCount(0);
+  });
+
+  test('keeps the deletion’s receipt on screen when the agent’s only memory is forgotten', async ({
+    page,
+    request,
+  }) => {
+    const label = uniqueLabel('Only memory');
+    await runToEnd(request, ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
+    await page.goto(`/agents/${ECHO_SOLO_AGENT_NAME}/memory`);
+    await openDetails(page, label);
+
+    await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.action }).click();
+    const dialog = page.getByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await dialog.getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }).click();
+
+    // The page says nothing is left, and the receipt is still there to read.
+    await expect(page.getByText(MEMORY_COPY.nothingLeft)).toBeVisible();
+    await expect(
+      page.getByText(MEMORY_COPY.forget.outcome.completed.title, { exact: true }),
+    ).toBeVisible();
+    await expect(frame(page)).toHaveAttribute('data-state', 'ready');
+    // Opening the page again asks the Bureau again, and the agent is empty.
+    await page.goto(`/agents/${ECHO_SOLO_AGENT_NAME}/memory`);
+    await expect(frame(page)).toHaveAttribute('data-state', 'empty');
   });
 
   test('is empty for an agent that has remembered nothing', async ({ page }) => {

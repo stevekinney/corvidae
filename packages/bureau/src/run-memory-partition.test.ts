@@ -32,13 +32,16 @@ afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
 });
 
-function governedMemory(): GovernedMemory {
+function governedMemory(maxRecordsPerCollection?: number): GovernedMemory {
   const runtime = createManualRuntimeServices({ identifierSeed: 'run-memory-partition' });
   return createGovernedMemory({
     storage: createInMemoryMemoryRecordStorage({ now: () => runtime.clock.now() }),
     ledger: createMemoryGovernanceLedger(new MemoryStorage()),
     embedder: createMockEmbedder(64),
-    policy: createMemoryGovernancePolicy({ revision: 'governance:run-memory-partition' }),
+    policy: createMemoryGovernancePolicy({
+      revision: 'governance:run-memory-partition',
+      ...(maxRecordsPerCollection === undefined ? {} : { admission: { maxRecordsPerCollection } }),
+    }),
     runtime,
   });
 }
@@ -71,9 +74,14 @@ function remembering(reply: string, recalled: string[][]) {
   return createAgent({ generate });
 }
 
-async function start(memory: GovernedMemory, agents: AgentDefinitions) {
+async function start(
+  memory: GovernedMemory,
+  agents: AgentDefinitions,
+  onDiagnostic?: (diagnostic: { scope: string; message: string }) => void,
+) {
   const bureau = await createBureau<AgentDefinitions>({
     id: BUREAU_ID,
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
     agents,
     memory,
     persistence: textValueStore(new MemoryStorage()),
@@ -162,5 +170,40 @@ describe('a Bureau run’s memory (COR-1546)', () => {
 
     const owned = await memory.list(ownerAuthority('anonymous:local'), { collection: 'alpha' });
     expect(owned.map((record) => record.content)).toEqual(['Local fact.']);
+  });
+});
+
+describe('an answer governed memory rejects (COR-1546)', () => {
+  it('is reported through the Bureau’s diagnostics, by reason and never by content', async () => {
+    const diagnostics: Array<{ scope: string; message: string }> = [];
+    const memory = governedMemory(1);
+    const bureau = await start(
+      memory,
+      { alpha: remembering('A secret answer one.', []) },
+      (diagnostic) => diagnostics.push(diagnostic),
+    );
+
+    await chat(bureau, {
+      agentName: 'alpha',
+      sessionId: 'chat-1',
+      principal: 'api-key:alice',
+      message: 'First.',
+    });
+    expect(diagnostics.filter((diagnostic) => diagnostic.scope === 'memory')).toEqual([]);
+    await chat(bureau, {
+      agentName: 'alpha',
+      sessionId: 'chat-2',
+      principal: 'api-key:alice',
+      message: 'Second.',
+    });
+
+    const reported = diagnostics.filter((diagnostic) => diagnostic.scope === 'memory');
+    expect(reported).toHaveLength(1);
+    expect(reported[0]?.message).toContain('quota-exceeded');
+    expect(reported[0]?.message).toContain('"alpha"');
+    expect(reported[0]?.message).not.toContain('secret');
+    // Only the first answer was stored.
+    const stored = await memory.list(ownerAuthority('api-key:alice'), { collection: 'alpha' });
+    expect(stored).toHaveLength(1);
   });
 });

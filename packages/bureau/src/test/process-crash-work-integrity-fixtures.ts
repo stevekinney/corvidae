@@ -68,15 +68,19 @@ export function requestContext(): ToolRequestContext {
  * the Bureau's identifier (`TENANT_ID`, the `id` every process of the harness shares) and the run's
  * owner of record, which is the `principal` its scenario names (COR-1546).
  */
-export const inspector = createMemoryAuthority({
-  principal: { kind: 'governance', id: 'governance:auditor' },
-  tenantId: TENANT_ID,
-  ownerId: 'alice',
-  purpose: 'audit',
-  capabilities: ['memory:get', 'memory:list', 'memory:inspect'],
-  policyRevision: 'gateway:1',
-  projection: 'audit',
-});
+export function inspectorFor(ownerId: string) {
+  return createMemoryAuthority({
+    principal: { kind: 'governance', id: 'governance:auditor' },
+    tenantId: TENANT_ID,
+    ownerId,
+    purpose: 'audit',
+    capabilities: ['memory:get', 'memory:list', 'memory:inspect'],
+    policyRevision: 'gateway:1',
+    projection: 'audit',
+  });
+}
+
+export const inspector = inspectorFor('alice');
 
 export function effectsLogPath(directory: string): string {
   return join(directory, 'effects.log');

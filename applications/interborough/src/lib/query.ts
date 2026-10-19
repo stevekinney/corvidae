@@ -189,9 +189,7 @@ export const AGENT_MEMORY_PATTERN = '/agents/:id/memory';
 
 /**
  * The instance the Agents view's frame keys the memory page's probe under, apart from the agent's
- * own page's: the two ask different questions about the same `:id`, and the memory page asks the
- * frame to look again (`queryKeys.view('agents', instance)`) when forgetting the last memory
- * leaves it empty.
+ * own page's: the two ask different questions about the same `:id`.
  */
 export function agentMemoryViewInstance(agentId: string): string {
   return `memory:${agentId}`;

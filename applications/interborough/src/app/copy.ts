@@ -501,6 +501,8 @@ export const MEMORY_COPY = {
   clearSearch: 'Clear search',
   loadMore: 'Load more',
   loading: 'Loading memories',
+  /** Shown when forgetting leaves the agent with nothing, while the receipt is still on the screen. */
+  nothingLeft: 'This agent remembers nothing now.',
   listFailed: 'The memories could not be loaded.',
   /** The label on a row's action that opens one memory's details. */
   openDetails: 'Details',
@@ -573,7 +575,7 @@ export const MEMORY_COPY = {
       completed: {
         title: 'Memory forgotten',
         description:
-          'It no longer appears in this list, in search, or in what the agent recalls. Other copies are removed in the background.',
+          'It no longer appears in this list, in search, or in what the agent recalls. A copy of it that a chat already saved is not scrubbed.',
       },
       exempt: {
         title: 'This memory is under a legal hold',

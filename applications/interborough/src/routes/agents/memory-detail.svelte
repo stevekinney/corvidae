@@ -19,9 +19,11 @@
     Badge,
     Button,
     ConfirmDialog,
+    DescriptionList,
     Modal,
     Skeleton,
     Textarea,
+    type DescriptionListItem,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -184,6 +186,35 @@
     {@const memory = detail.data.memory}
     {@const lineage = detail.data.lineage}
     {@const fields = lineageFields(memory, lineage, legalHold)}
+    {@const items = fields.map((field): DescriptionListItem => ({
+      id: field.id,
+      term: field.term,
+      definition:
+        field.link === undefined
+          ? field.value
+          : field.id === 'session'
+            ? chatLink
+            : field.id === 'corrects'
+              ? correctsLink
+              : correctedByLink,
+    }))}
+    {#snippet chatLink()}
+      {@const chatPath = `/chat/${encodeURIComponent(memory.sessionId ?? '')}`}
+      <a href={router.href(chatPath)} onclick={(event) => goTo(event, chatPath)}
+        >{MEMORY_COPY.detail.openChat}</a
+      >
+    {/snippet}
+    {#snippet correctsLink()}
+      {@render memoryLink(lineage.corrects ?? '')}
+    {/snippet}
+    {#snippet correctedByLink()}
+      {@render memoryLink(lineage.correctedBy ?? '')}
+    {/snippet}
+    {#snippet memoryLink(target: string)}
+      <button type="button" class="weft-memory-detail__link" onclick={() => onOpen(target)}>
+        {MEMORY_COPY.detail.openMemory}
+      </button>
+    {/snippet}
 
     <blockquote class="weft-memory-detail__content" aria-label={MEMORY_COPY.detail.content}>
       {memory.content}
@@ -195,28 +226,7 @@
     </div>
 
     <h3 class="weft-memory-detail__subheading">{MEMORY_COPY.detail.lineage}</h3>
-    <dl class="weft-memory-detail__fields">
-      {#each fields as field (field.id)}
-        <div class="weft-memory-detail__field" data-field={field.id}>
-          <dt>{field.term}</dt>
-          <dd>
-            {#if field.link?.kind === 'chat'}
-              {@const chatPath = `/chat/${encodeURIComponent(field.link.sessionId)}`}
-              <a href={router.href(chatPath)} onclick={(event) => goTo(event, chatPath)}
-                >{field.value}</a
-              >
-            {:else if field.link?.kind === 'memory'}
-              {@const target = field.link.id}
-              <button type="button" class="weft-memory-detail__link" onclick={() => onOpen(target)}>
-                {field.value}
-              </button>
-            {:else}
-              {field.value}
-            {/if}
-          </dd>
-        </div>
-      {/each}
-    </dl>
+    <DescriptionList {items} variant="two-column" />
 
     {#if outcomeWords !== undefined && outcome !== undefined}
       <Alert variant={outcome.deletion === 'completed' ? 'success' : 'warning'}>
@@ -363,29 +373,6 @@
   .weft-memory-detail__targets {
     margin: 0;
     padding-inline-start: var(--cinder-space-5);
-  }
-
-  .weft-memory-detail__fields {
-    display: grid;
-    gap: var(--cinder-space-2);
-    margin: 0;
-  }
-
-  .weft-memory-detail__field {
-    display: grid;
-    grid-template-columns: minmax(6rem, 10rem) minmax(0, 1fr);
-    gap: var(--cinder-space-2);
-    align-items: baseline;
-  }
-
-  .weft-memory-detail__field dt {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
-  .weft-memory-detail__field dd {
-    margin: 0;
-    overflow-wrap: anywhere;
   }
 
   .weft-memory-detail__link {
