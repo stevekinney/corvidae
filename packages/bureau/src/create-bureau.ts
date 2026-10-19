@@ -255,6 +255,7 @@ import {
   type CatalogRunSettlement,
   type DurableEnd,
   type DurableEndReader,
+  createCatalogSettlementTracker,
   publishFreshCatalogRun,
   settlementForRejection,
 } from './catalog-run-settlement';
@@ -3665,6 +3666,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const catalogRunSettlements = createCatalogRunSettlementHook(diagnose);
   /**
+   * The settlements being published: a fresh dispatch following its handle, and a recovered run
+   * being monitored. Each starts the writes that settle a task and a snapshot reference only
+   * after its run's result is known, which for a run ended by disposing the engine is after
+   * `shutdown()` has moved on. `shutdown()` waits for them (a bound of event-loop turns, not a
+   * barrier) before it closes storage.
+   */
+  const catalogSettlements = createCatalogSettlementTracker();
+  /**
    * Where a catalog run stands in the durable engine, read when its handle rejects: disposing the
    * engine rejects the handle of a run that is still running, and that is not an end. A read that
    * fails rejects, and the caller treats it as a run that is not over.
@@ -6620,12 +6629,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         () => runHumanWaits.forget(info.workflowId),
         () => runHumanWaits.forget(info.workflowId),
       );
-      void monitorRecoveredCatalogRun(
-        info.handle,
-        info.input.agentName,
-        diagnose,
-        (settlement) => catalogRunSettlements.publish(settlement),
-        catalogDurableEnd,
+      catalogSettlements.follow(
+        monitorRecoveredCatalogRun(
+          info.handle,
+          info.input.agentName,
+          diagnose,
+          (settlement) => catalogRunSettlements.publish(settlement),
+          catalogDurableEnd,
+        ),
       );
       return;
     }
@@ -13400,6 +13411,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // COR-1481 — disposing the engine is what ends a durable run that was still in flight,
           // and each run's `closed()` acknowledgement lands as it does. The cleanup the registry
           // follows is awaited, with the writes it starts, before the backend closes under them.
+          await catalogSettlements.settled();
           await tasks.idle();
         } finally {
           try {
@@ -14092,7 +14104,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // `bureau.run` returns synchronously), and its end is recorded from its result.
       onCatalogRunAdmitted: ({ handle, agentName, owner, contextId, input }) => {
         const taskId = handle.id;
-        detachBestEffortPromise(
+        catalogSettlements.follow(
           publishFreshCatalogRun({
             handle,
             agentName,

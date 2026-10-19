@@ -64,6 +64,8 @@
  *
  * @module catalog-run-settlement
  */
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
+
 import { serializeUnknownError } from './serialization';
 import { settledTaskState } from './task-registry';
 import type { DiagnosticSink } from './types';
@@ -91,6 +93,43 @@ export interface CatalogRunSettlementHook {
   subscribe(listener: CatalogRunSettlementListener): () => void;
   /** Tells every subscriber that a catalog run settled. Never rejects. */
   publish(settlement: CatalogRunSettlement): Promise<void>;
+}
+
+/** How many event-loop turns a shutdown waits, by default, for the settlements still being published. */
+export const SETTLEMENT_TRACKER_MAXIMUM_TURNS = 50;
+
+/** The settlements being published, so a shutdown can wait for the writes they start. */
+export interface CatalogSettlementTracker {
+  /** Follows a publish (a promise that never rejects, or whose rejection is ignored) until it ends. */
+  follow(publishing: Promise<void>): void;
+  /**
+   * A bound, not a barrier: waits up to `maximumTurns` event-loop turns for every followed
+   * publish to end, then stops waiting. A publish still running after that is not waited for.
+   */
+  settled(maximumTurns?: number): Promise<void>;
+}
+
+/**
+ * A fresh dispatch publishes after its handle's result is known, and a recovered run after its
+ * monitor's: for a run that disposing the engine ended, that is after `shutdown()` has moved on,
+ * and the writes the publish starts would find storage closed. A shutdown waits on this tracker
+ * before it closes storage.
+ */
+export function createCatalogSettlementTracker(): CatalogSettlementTracker {
+  const inFlight = new Set<Promise<void>>();
+  return {
+    follow(publishing) {
+      const followed: Promise<void> = publishing
+        .catch(() => undefined)
+        .finally(() => void inFlight.delete(followed));
+      inFlight.add(followed);
+    },
+    async settled(maximumTurns = SETTLEMENT_TRACKER_MAXIMUM_TURNS) {
+      for (let turn = 0; turn < maximumTurns && inFlight.size > 0; turn += 1) {
+        await yieldToPortableEventLoop();
+      }
+    },
+  };
 }
 
 /** Creates the hook. `diagnose` receives the failure of a listener that throws. */

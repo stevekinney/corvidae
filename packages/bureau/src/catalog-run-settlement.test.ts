@@ -1,8 +1,10 @@
+import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import {
   type CatalogRunSettlement,
   createCatalogRunSettlementHook,
+  createCatalogSettlementTracker,
   type DurableEnd,
   type FreshCatalogRunHandle,
   publishFreshCatalogRun,
@@ -175,5 +177,42 @@ describe('publishing a fresh catalog dispatch', () => {
 
     expect(followed).toHaveLength(1);
     expect(published[0]?.status).toBe('canceled');
+  });
+});
+
+describe('the settlement tracker a shutdown waits on', () => {
+  /** A publish that ends after `turns` event-loop turns. */
+  async function endsAfter(turns: number, ended: string[]): Promise<void> {
+    for (let turn = 0; turn < turns; turn += 1) await yieldToPortableEventLoop();
+    ended.push(`after ${String(turns)}`);
+  }
+
+  it('waits for a publish that ends within its turn limit', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const ended: string[] = [];
+    tracker.follow(endsAfter(5, ended));
+
+    await tracker.settled();
+
+    expect(ended).toEqual(['after 5']);
+  });
+
+  it('is a bound, not a barrier: a limit of zero waits for nothing, and a publish that outlasts the limit is left', async () => {
+    const tracker = createCatalogSettlementTracker();
+    const ended: string[] = [];
+    tracker.follow(endsAfter(5, ended));
+    tracker.follow(endsAfter(500, ended));
+
+    await tracker.settled(0);
+    expect(ended).toEqual([]);
+    await tracker.settled(20);
+    expect(ended).toEqual(['after 5']);
+  });
+
+  it('ignores a publish that rejects', async () => {
+    const tracker = createCatalogSettlementTracker();
+    tracker.follow(Promise.reject(new Error('never published')));
+
+    await tracker.settled();
   });
 });
