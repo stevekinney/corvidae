@@ -10,6 +10,8 @@ import {
   type GenerateContext,
   type GenerateResponse,
   withBackendDescriptors,
+  withEnhancedStreaming,
+  withStreaming,
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
@@ -315,5 +317,82 @@ describe('the admission abort listener (correction)', () => {
     expect(added).toBe(1);
     expect(removed).toBe(1);
     expect(listeners.size).toBe(0);
+  });
+});
+
+describe('streamed generated media under an aggregate limit (correction 2)', () => {
+  /** A streamed backend that reports two completed images and returns them. */
+  function streamedPainter(wrapper: typeof withStreaming | typeof withEnhancedStreaming) {
+    const images = [inlineImage, { ...inlineImage }];
+    return createAgent({
+      generate: withBackendDescriptors(
+        wrapper(async ({ streaming }) => {
+          for (const [partIndex, part] of images.entries()) {
+            streaming.reportPart?.({ type: 'start', partIndex, kind: 'image' });
+            streaming.reportPart?.({ type: 'complete', partIndex, part });
+          }
+          return { content: '', parts: images, toolCalls: [] };
+        }),
+        imageOutputDescriptors,
+      ),
+    });
+  }
+
+  const wrappers = [
+    ['withStreaming', withStreaming],
+    ['withEnhancedStreaming', withEnhancedStreaming],
+  ] as const;
+
+  it.each(wrappers)(
+    'refuses a streamed image when its type has an aggregate limit (%s)',
+    async (_name, wrapper) => {
+      // Two images of 0.6 of the limit each: valid alone, over the limit together.
+      const limit = Math.floor(generatedPng.byteLength / 0.6);
+      const bureau = await openBureau(
+        { policy: { limits: [{ scope: 'aggregate', modality: 'image', maxBytes: limit }] } },
+        streamedPainter(wrapper),
+      );
+
+      const run = bureau.run('painter', 'Draw', { principal: alice.id });
+      const result = await run.result();
+
+      expect(result.finishReason).toBe('error');
+      expect(result.error).toBeInstanceOf(GeneratedMediaNotAdmittedError);
+      const error = result.error as GeneratedMediaNotAdmittedError;
+      expect(error.reason).toBe('admission-failed');
+      expect(error.message).toContain('aggregate image limit');
+      // The part was refused before any asset record was written, so nothing was left to wait for.
+      expect(await run.closed()).toEqual({ status: 'not-required' });
+      expect(bureau.assets!.activeWork()).toEqual([]);
+    },
+  );
+
+  it.each(wrappers)(
+    'admits a streamed image when no aggregate limit is set (%s)',
+    async (_name, wrapper) => {
+      const bureau = await openBureau({}, streamedPainter(wrapper));
+
+      const run = bureau.run('painter', 'Draw', { principal: alice.id });
+      const result = await run.result();
+
+      expect(result.finishReason).not.toBe('error');
+      expect(result.parts.filter((part) => part.type === 'image')).toHaveLength(2);
+      expect(await run.closed()).toEqual({ status: 'completed' });
+    },
+  );
+
+  it('a per-part limit alone does not stop a streamed image', async () => {
+    const bureau = await openBureau(
+      {
+        policy: {
+          limits: [{ scope: 'per-part', modality: 'image', maxBytes: generatedPng.byteLength * 2 }],
+        },
+      },
+      streamedPainter(withStreaming),
+    );
+
+    const result = await bureau.run('painter', 'Draw', { principal: alice.id }).result();
+
+    expect(result.finishReason).not.toBe('error');
   });
 });

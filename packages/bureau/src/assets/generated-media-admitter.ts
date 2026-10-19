@@ -3,9 +3,12 @@ import type {
   GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
   GeneratedMediaSettlement,
+  InlineMediaContent,
 } from '@lostgradient/operative';
 
 import { decodeBase64 } from './base64';
+import { AssetAdmissionError } from './errors';
+import { modalityOf } from './media-inspection';
 import type {
   AssetAdmission,
   AssetAdmissionRequest,
@@ -37,6 +40,10 @@ export function createAssetGeneratedMediaAdmitter(
   const principal = { id: principalId };
   return {
     async admit(request): Promise<GeneratedMediaAdmission> {
+      // The single-part call reaches here from a streaming wrapper, which admits each part as it
+      // completes and so cannot share one aggregate budget across the response. Rather than leave
+      // a configured aggregate ceiling silently off, it refuses the part.
+      refuseUnderAggregateLimit(assets, request.part);
       const admission = await assets.admit(assetRequest(request), principal);
       return wrap(admission, request);
     },
@@ -47,6 +54,21 @@ export function createAssetGeneratedMediaAdmitter(
       return admissions.map((admission, index) => wrap(admission, requests[index]!));
     },
   };
+}
+
+function refuseUnderAggregateLimit(assets: AssetService, part: InlineMediaContent): void {
+  const modalities = new Set<string>([part.type]);
+  if (part.mimeType !== undefined) modalities.add(modalityOf(part.mimeType));
+  if (
+    assets.policy.limits.some(
+      (limit) => limit.scope === 'aggregate' && modalities.has(limit.modality),
+    )
+  ) {
+    throw new AssetAdmissionError(
+      'aggregate-limit-exceeded',
+      `An aggregate ${part.type} limit applies, and a part admitted on its own (a streamed response) cannot be counted against it.`,
+    );
+  }
 }
 
 function assetRequest(request: GeneratedMediaAdmissionRequest): AssetAdmissionRequest {
