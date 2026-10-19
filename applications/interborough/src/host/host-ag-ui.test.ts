@@ -86,7 +86,7 @@ describe('extra agents', () => {
     expect(seeded.at(-1)).toBe('RUN_FINISHED');
   });
 
-  test('an extra agent is listed with the published ones', async () => {
+  test('an extra agent is listed with the published ones, and the unpublished one is listed as such', async () => {
     const host = await start({
       extraAgents: { agents: { extra: extraAgent }, published: ['extra'] },
     });
@@ -95,12 +95,18 @@ describe('extra agents', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'bureau.agents.list', params: {} }),
     });
-    const body = (await response.json()) as { result: { agents: Array<{ name: string }> } };
-    expect(body.result.agents.map((agent) => agent.name).toSorted()).toEqual([
-      'assistant',
-      'extra',
-      'request-human-input',
-      'tool-runner',
+    const body = (await response.json()) as {
+      result: { agents: Array<{ name: string; kind: string; publishState: string }> };
+    };
+    const listed = body.result.agents
+      .map((agent) => [agent.name, agent.kind, agent.publishState] as const)
+      .toSorted(([left], [right]) => left.localeCompare(right));
+    expect(listed).toEqual([
+      ['assistant', 'code', 'published'],
+      ['extra', 'code', 'published'],
+      ['internal', 'code', 'unpublished'],
+      ['request-human-input', 'code', 'published'],
+      ['tool-runner', 'code', 'published'],
     ]);
   });
 });

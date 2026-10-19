@@ -114,7 +114,9 @@ async function operation(host: Host, method: string, params: unknown) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
-  return (await response.json()) as { result?: Record<string, unknown> };
+  const body = (await response.json()) as { result?: Record<string, unknown> };
+  if (body.result === undefined) throw new Error(`${method} answered no result.`);
+  return body.result;
 }
 
 describe('chatting with a published file agent whose model is a configured provider’s', () => {
@@ -132,9 +134,9 @@ describe('chatting with a published file agent whose model is a configured provi
     expect(JSON.stringify(handed)).toContain(FIXTURE_KEY);
     // The session is the agent's, so the chat views list it under that agent.
     const sessions = await operation(host, 'bureau.contexts.list', { agentName: 'researcher' });
-    expect(
-      (sessions.result?.['contexts'] as Array<{ id: string }>).map((entry) => entry.id),
-    ).toEqual(['thread-file-agent']);
+    expect((sessions['contexts'] as Array<{ id: string }>).map((entry) => entry.id)).toEqual([
+      'thread-file-agent',
+    ]);
   });
 
   test('is listed as a published file agent, and its model is what the agent’s page shows', async () => {
@@ -143,11 +145,11 @@ describe('chatting with a published file agent whose model is a configured provi
     const agents = await operation(host, 'bureau.agents.list', {});
     const detail = await operation(host, 'bureau.agents.definitions.get', { id: 'researcher' });
 
-    const researcher = (agents.result?.['agents'] as Array<Record<string, unknown>>).find(
+    const researcher = (agents['agents'] as Array<Record<string, unknown>>).find(
       (agent) => agent['name'] === 'researcher',
     );
     expect(researcher).toMatchObject({ kind: 'file', publishState: 'published' });
-    expect(detail.result?.['definition']).toMatchObject({ model: 'anthropic/sonnet' });
+    expect(detail['definition']).toMatchObject({ model: 'anthropic/sonnet' });
   });
 
   test('is refused over AG-UI while its file withdraws it, and is listed as withdrawn', async () => {
@@ -158,7 +160,7 @@ describe('chatting with a published file agent whose model is a configured provi
 
     expect(stream).toContain('"type":"RUN_ERROR"');
     expect(stream).not.toContain('Answered by the provider.');
-    const quiet = (agents.result?.['agents'] as Array<Record<string, unknown>>).find(
+    const quiet = (agents['agents'] as Array<Record<string, unknown>>).find(
       (agent) => agent['name'] === 'quiet',
     );
     expect(quiet).toMatchObject({ kind: 'file', publishState: 'withdrawn' });
