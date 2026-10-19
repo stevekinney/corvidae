@@ -7,8 +7,10 @@ import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
+import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../lib/scopes.svelte.ts';
 import Harness from './sidebar.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -24,17 +26,33 @@ function landAt(path: string): void {
   router.navigate(path, { replace: true });
 }
 
-function stubEngine(options: { pendingReviews?: number; unhealthyWorkers?: number } = {}): void {
+function stubEngine(
+  options: { pendingReviews?: number; bureauReviews?: number; unhealthyWorkers?: number } = {},
+): void {
   restore = installFetchImplementation(async (input, init) => {
     const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(text, 'http://localhost');
     if (url.pathname.endsWith('/reviews')) {
       const items = Array.from({ length: options.pendingReviews ?? 0 }, (_, index) => ({
-        id: `review-${index}`,
+        status: 'pending',
+        reviewId: `review-${index}`,
+        workflowId: `wf-${index}`,
+        artifact: {},
+        reviewType: 'content',
+        reviewers: [],
+        allowPartial: false,
+        createdAt: Date.now(),
       }));
       return Response.json({ items });
     }
     const body = typeof init?.body === 'string' ? (JSON.parse(init.body) as { id?: unknown }) : {};
+    if (url.pathname === '/bureau/jsonrpc') {
+      // The Bureau's own pending reviews, which the count adds to the engine's.
+      const reviews = Array.from({ length: options.bureauReviews ?? 0 }, (_, index) => ({
+        ...toolApprovalFixture({ id: `bureau-review-${index}`, runId: `run-${index}` }),
+      }));
+      return Response.json({ jsonrpc: '2.0', id: body.id, result: { reviews } });
+    }
     const items = Array.from({ length: options.unhealthyWorkers ?? 0 }, (_, index) => ({
       id: `worker-${index}`,
       health: 'drained',
@@ -44,13 +62,16 @@ function stubEngine(options: { pendingReviews?: number; unhealthyWorkers?: numbe
   });
 }
 
-function mount() {
+function mount(scopes?: readonly AuthorizationScope[]) {
   return render(Harness, {
-    props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }) },
+    props: {
+      client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+      ...(scopes === undefined ? {} : { scopes }),
+    },
   });
 }
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Inbox'];
+const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
 const ENGINE = ['Workers', 'Storage', 'System', 'Audit'];
 
 describe('the sidebar', () => {
@@ -88,7 +109,7 @@ describe('the sidebar', () => {
       Workflows: '/workflows',
       Runs: '/runs',
       Schedules: '/schedules',
-      Inbox: '/inbox',
+      Reviews: '/reviews',
       Workers: '/workers',
       Storage: '/storage',
       System: '/system',
@@ -123,12 +144,26 @@ describe('the sidebar', () => {
     expect(router.pathname).toBe('/runs');
   });
 
-  test('shows the pending reviews on Inbox and the unhealthy workers on Workers', async () => {
+  test('shows the pending reviews on Reviews and the unhealthy workers on Workers', async () => {
     stubEngine({ pendingReviews: 3, unhealthyWorkers: 2 });
     landAt('/chat');
     const { getByRole } = mount();
-    await waitFor(() => expect(getByRole('link', { name: /^Inbox\s*3$/ })).not.toBeNull());
+    await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*3$/ })).not.toBeNull());
     await waitFor(() => expect(getByRole('link', { name: /^Workers\s*2$/ })).not.toBeNull());
+  });
+
+  test('counts the Bureau’s pending reviews and the engine’s as one number', async () => {
+    stubEngine({ bureauReviews: 2, pendingReviews: 3 });
+    landAt('/chat');
+    const { getByRole } = mount();
+    await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*5$/ })).not.toBeNull());
+  });
+
+  test('counts the Bureau’s alone when the principal does not hold reviews:read', async () => {
+    stubEngine({ bureauReviews: 2, pendingReviews: 3 });
+    landAt('/chat');
+    const { getByRole } = mount(AUTHORIZATION_SCOPES.filter((scope) => scope !== 'reviews:read'));
+    await waitFor(() => expect(getByRole('link', { name: /^Reviews\s*2$/ })).not.toBeNull());
   });
 
   test('points the engine status pill at the engine overview', () => {

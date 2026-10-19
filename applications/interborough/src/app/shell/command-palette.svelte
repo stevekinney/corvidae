@@ -2,7 +2,7 @@
   /**
    * ⌘K search skeleton (plan §13 T1.6): ID-prefix search across workflows /
    * schedules / workers / reviews via each domain's list operation,
-   * navigating to the selected record (a run, a schedule, a worker) on select; a review has no page of its own, so it opens the inbox. "Skeleton" per the task
+   * navigating to the selected record (a run, a schedule, a worker) on select; a review has no page of its own, so it opens the reviews page. "Skeleton" per the task
    * brief — this is a jump-to-record finder, not the full command surface
    * (actions, recent items) a later pass may add.
    *
@@ -141,7 +141,7 @@
             <CommandItem
               value={`review-${review.reviewId}`}
               description={review.reviewType}
-              onSelect={() => goTo('/inbox')}
+              onSelect={() => goTo('/reviews')}
             >
               {review.reviewId}
             </CommandItem>

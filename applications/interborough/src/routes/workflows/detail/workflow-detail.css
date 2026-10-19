@@ -507,3 +507,8 @@
   background: var(--cinder-surface-inset);
   border-bottom: 1px solid var(--cinder-border-muted);
 }
+
+.weft-workflow-detail__task-link {
+  align-self: flex-start;
+  color: inherit;
+}
