@@ -33,7 +33,7 @@ export async function commitForkWrite(
       onLostRace,
     );
   }
-  const { condition, operation } = workerBuildBinding(binding);
+  const { condition, operation } = workerBuildBinding(binding, forkState.id);
   let lostRace = false;
   try {
     await commitFencedEngineWrite(

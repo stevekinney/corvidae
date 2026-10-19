@@ -6,12 +6,19 @@
  *   `WorkerDeploymentVersion`. Its `state` is `ready`, `draining` or `removed`.
  * - **Routing pointer**, at `worker-deployment-routing:<deployment>`: the MessagePack encoding of a
  *   `WorkerDeploymentRouting`.
- * - **Binding stamp**, at `worker-deployment-binding:<deployment>:<build>`: sixteen random bytes,
- *   written blind by every commit that binds durable work to the build (a run's worker binding, or
- *   a task-ledger entry whose requirement names the build), in the same batch as that work. Absent
- *   means nothing has ever bound to the build. Only `remove` reads it, to condition its write on
- *   the stamp it read before it scanned, so any binding that commits after the scan began changes
- *   the stamp and makes the removal rescan. It is compared and never decoded.
+ * - **Binding stamp**, 64 shards per build, at
+ *   `worker-deployment-binding:<deployment>:<build>:<k>`, where `<k>` is two lowercase hex digits,
+ *   `00` to `3f`. A shard holds sixteen random bytes. Every commit that binds durable work to the
+ *   build (a run's worker binding, or a task-ledger entry whose requirement names the build) writes
+ *   a fresh value to exactly one shard, blind, in the same batch as that work. The shard is the
+ *   32-bit FNV-1a hash of the binding's own key (the run id, or the ledger entry's operation id),
+ *   taken over its UTF-8 bytes, modulo 64: concurrent bindings land on different shards, so on a
+ *   backend that serializes writes to one row (Postgres and Neon run each conditional batch at
+ *   `SERIALIZABLE`) they do not abort one another the way one shared row would. An absent shard
+ *   means no binding has used it. Only `remove` reads the shards: all 64, before it scans, and it
+ *   conditions its write on every one, so any binding that commits after the scan began changes a
+ *   shard in the removal's read set and makes it rescan. Shards are compared and never decoded.
+ *   **64 is persisted format.** It cannot change without reading the old shards too.
  * - **Removal tombstone**, at `worker-deployment-removed:<deployment>:<build>`: one opaque byte,
  *   written once, in the same batch as the version record's `removed` state, and never deleted.
  *   Every commit that binds durable work to the build requires it to be absent, so a binding that
@@ -32,8 +39,27 @@ export const WORKER_DEPLOYMENT_REMOVED_PREFIX = 'worker-deployment-removed:';
 /** A build, named the way the catalog names it. */
 export type WorkerBuildIdentity = Readonly<{ deploymentName: string; buildId: string }>;
 
-export function bindingStampKey(deploymentName: string, buildId: string): string {
-  return `${WORKER_DEPLOYMENT_BINDING_PREFIX}${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}`;
+/** How many stamp shards every build has. Persisted format: see the module header. */
+export const WORKER_BINDING_STAMP_SHARDS = 64;
+
+/** The shard a binding with this key (a run id, or a ledger entry's operation id) stamps, `0` to `63`. */
+export function bindingStampShard(bindingKey: string): number {
+  let hash = 0x811c9dc5;
+  for (const byte of new TextEncoder().encode(bindingKey)) {
+    hash = Math.imul(hash ^ byte, 0x01000193) >>> 0;
+  }
+  return hash % WORKER_BINDING_STAMP_SHARDS;
+}
+
+export function bindingStampKey(deploymentName: string, buildId: string, shard: number): string {
+  return `${WORKER_DEPLOYMENT_BINDING_PREFIX}${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}:${shard.toString(16).padStart(2, '0')}`;
+}
+
+/** Every stamp shard key of a build, in shard order. */
+export function bindingStampKeys(deploymentName: string, buildId: string): string[] {
+  return Array.from({ length: WORKER_BINDING_STAMP_SHARDS }, (_, shard) =>
+    bindingStampKey(deploymentName, buildId, shard),
+  );
 }
 
 export function removedTombstoneKey(deploymentName: string, buildId: string): string {
@@ -47,10 +73,15 @@ export function newBindingStamp(): Uint8Array {
 
 /**
  * What every commit that binds durable work to `build` adds to its own batch: the condition that
- * the build's tombstone is absent, and a blind put of a fresh stamp. Neither reads the other's
- * key, so concurrent bindings to one build never conflict with each other.
+ * the build's tombstone is absent, and a blind put of a fresh value to the one stamp shard that
+ * `bindingKey` (the run id, or the ledger entry's operation id) selects. Neither reads the other's
+ * key, and bindings with different keys write different shards, so concurrent bindings to one
+ * build do not conflict with each other.
  */
-export function workerBuildBinding(build: WorkerBuildIdentity): {
+export function workerBuildBinding(
+  build: WorkerBuildIdentity,
+  bindingKey: string,
+): {
   condition: ConditionalBatchCondition;
   operation: BatchOperation;
 } {
@@ -61,7 +92,7 @@ export function workerBuildBinding(build: WorkerBuildIdentity): {
     },
     operation: {
       type: 'put',
-      key: bindingStampKey(build.deploymentName, build.buildId),
+      key: bindingStampKey(build.deploymentName, build.buildId, bindingStampShard(bindingKey)),
       value: newBindingStamp(),
     },
   };

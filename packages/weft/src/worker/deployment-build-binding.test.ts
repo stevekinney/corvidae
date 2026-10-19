@@ -25,6 +25,8 @@ import {
   finishedRunOnDrainedBuild,
   fixture,
   InterleavingStorage,
+  ownShardOf,
+  ownStampKeyOf,
   putsKeyWithPrefix,
   runOf,
   runs,
@@ -170,7 +172,7 @@ describe('each removal write condition is pinned on its own', () => {
     const { storage, catalog } = fx;
     storage.arm(async () => {
       // A binding that finished: only the stamp moved.
-      await storage.put(stampKeyOf('build-2'), new Uint8Array([7, 7, 7]));
+      await storage.put(stampKeyOf('build-2', 5), new Uint8Array([7, 7, 7]));
     }, atRemovalWrite);
 
     expect(await catalog.removeVersion(DEPLOYMENT, 'build-2')).toEqual({ outcome: 'removed' });
@@ -367,7 +369,8 @@ describe('the tombstone is permanent and opaque', () => {
     await drainBuildOne(fx.catalog);
     // Bytes that are not MessagePack, as a stamp of the build being removed and a tombstone of
     // another build: a decode anywhere on the start path or the scan would throw here.
-    await storage.put(stampKeyOf('build-1'), new Uint8Array([0xc1]));
+    await storage.put(stampKeyOf('build-1', 0), new Uint8Array([0xc1]));
+    await storage.put(stampKeyOf('build-1', 63), new Uint8Array([0xc1]));
     await storage.put(tombstoneKeyOf('build-3'), new Uint8Array([0xc1, 0xc1]));
 
     expect(await fx.catalog.removeVersion(DEPLOYMENT, 'build-1')).toEqual({ outcome: 'removed' });
@@ -492,7 +495,7 @@ describe('the class guard', () => {
         [],
         [
           { type: 'put', key: 'wf:guarded', value: boundRun('build-1') },
-          { type: 'put', key: stampKeyOf('build-1'), value: new Uint8Array([1]) },
+          { type: 'put', key: ownStampKeyOf('build-1', 'guarded'), value: new Uint8Array([1]) },
         ],
       ),
     );
@@ -508,7 +511,11 @@ describe('the class guard', () => {
 
   it('passes a stamped batch, and a rewrite of a run that is already live on the same build', async () => {
     const storage = new InterleavingStorage();
-    const stamp = { type: 'put' as const, key: stampKeyOf('build-1'), value: new Uint8Array([1]) };
+    const stamp = {
+      type: 'put' as const,
+      key: ownStampKeyOf('build-1', 'guarded'),
+      value: new Uint8Array([1]),
+    };
     const condition = { key: tombstoneKeyOf('build-1'), expectedValue: null };
 
     expect(
@@ -568,5 +575,90 @@ describe('the class guard', () => {
     });
 
     expect(await runOf(storage, 'guarded')).toEqual({ status: 'running', buildId: 'build-1' });
+  });
+});
+
+describe('the stamp is 64 shards, and a binding writes only its own', () => {
+  it('chooses a shard by the FNV-1a hash of the binding key, modulo 64, and spells shard keys as two hex digits', () => {
+    // Persisted format: these values must never change.
+    expect(
+      ['run-1', 'checkout-1', 'fresh-1', 'op-1', 'boom-1', 'tree-child', '', 'é'].map((key) =>
+        ownShardOf(key),
+      ),
+    ).toEqual([60, 55, 53, 28, 28, 30, 5, 1]);
+    const keys = Array.from({ length: 64 }, (_, shard) => stampKeyOf('build-1', shard));
+    expect(new Set(keys).size).toBe(64);
+    expect(keys[0]).toBe('worker-deployment-binding:test-deployment:build-1:00');
+    expect(keys[63]).toBe('worker-deployment-binding:test-deployment:build-1:3f');
+    expect(
+      Array.from({ length: 1000 }, (_, index) => ownShardOf(`run-${index}`)).every(
+        (shard) => shard >= 0 && shard < 64,
+      ),
+    ).toBe(true);
+  });
+
+  it('fails the removal write whichever single shard a binding moves, so every shard is conditioned', async () => {
+    // Dropping any one shard's condition at the removal write lets exactly that shard's binding
+    // through; this runs all 64.
+    for (let shard = 0; shard < 64; shard += 1) {
+      const storage = new InterleavingStorage();
+      await using fx = await fixture(storage);
+      await fx.catalog.setVersionState(DEPLOYMENT, 'build-2', 'draining');
+      const results: boolean[] = [];
+      const original = storage.conditionalBatch.bind(storage);
+      storage.conditionalBatch = async (conditions, operations) => {
+        const applied = await original(conditions, operations);
+        if (writesVersionState(operations, 'removed')) results.push(applied);
+        return applied;
+      };
+      storage.arm(async () => {
+        await storage.put(stampKeyOf('build-2', shard), new Uint8Array([shard]));
+      }, atRemovalWrite);
+
+      expect(await fx.catalog.removeVersion(DEPLOYMENT, 'build-2')).toEqual({ outcome: 'removed' });
+
+      // The first write lost on the moved shard; the rescan's write held.
+      expect(results, `shard ${shard}`).toEqual([false, true]);
+    }
+  });
+
+  it("fails a committed batch that puts a shard that is not the binding's own", async () => {
+    const storage = new InterleavingStorage();
+    const wrong = (ownShardOf('guarded') + 1) % 64;
+    const message = await rejectionOf(
+      storage.conditionalBatch(
+        [{ key: tombstoneKeyOf('build-1'), expectedValue: null }],
+        [
+          {
+            type: 'put',
+            key: 'wf:guarded',
+            value: encode({
+              id: 'guarded',
+              status: 'running',
+              workerBinding: { current: { deploymentName: DEPLOYMENT, buildId: 'build-1' } },
+            }),
+          },
+          { type: 'put', key: stampKeyOf('build-1', wrong), value: new Uint8Array([1]) },
+        ],
+      ),
+    );
+
+    expect((message as Error).message).toContain('that is not its own');
+  });
+});
+
+describe('only top-level run records are scanned', () => {
+  it('ignores a checkpoint-shaped wf: key even when it carries a running binding', async () => {
+    await using fx = await fixture();
+    await drainBuildOne(fx.catalog);
+    await fx.storage.put(
+      'wf:run-1:ckpt',
+      encode({
+        status: 'running',
+        workerBinding: { current: { deploymentName: DEPLOYMENT, buildId: 'build-1' } },
+      }),
+    );
+
+    expect(await fx.catalog.removeVersion(DEPLOYMENT, 'build-1')).toEqual({ outcome: 'removed' });
   });
 });

@@ -32,7 +32,7 @@ export async function bindReactivation<
   const build = state.workerBinding?.current;
   if (build === undefined) return { ...commit, binding: { build } };
   await assertInheritedWorkerBuildNotRemoved(internals.storage, build);
-  const { condition, operation } = workerBuildBinding(build);
+  const { condition, operation } = workerBuildBinding(build, state.id);
   return {
     ...commit,
     operations: [...commit.operations, operation],

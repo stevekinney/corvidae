@@ -69,7 +69,7 @@ function createdEntryBinding(
     return { build: undefined, conditions: [], operations: [] };
   }
   const build = { deploymentName, buildId };
-  const { condition, operation } = workerBuildBinding(build);
+  const { condition, operation } = workerBuildBinding(build, next.operationId);
   return { build, conditions: [condition], operations: [operation] };
 }
 

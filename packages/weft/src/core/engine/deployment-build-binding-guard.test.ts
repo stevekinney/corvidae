@@ -13,8 +13,8 @@ import {
   buildManifest,
   DEPLOYMENT,
   InterleavingStorage,
+  ownStampKeyOf,
   runOf,
-  stampKeyOf,
 } from '../../worker/deployment-build-fixture.test-support.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import { taskLedgerKey } from '../task-ledger/task-ledger-keys.ts';
@@ -85,7 +85,7 @@ describe('every binding commit an engine makes is stamped and guarded', () => {
       expect(restarted.id).toBe('run-1');
       expect(await runOf(storage, forked.id)).toMatchObject({ buildId: 'build-1' });
       expect(await storage.get(taskLedgerKey('op-1'))).not.toBeNull();
-      expect(await storage.get(stampKeyOf('build-1'))).not.toBeNull();
+      expect(await storage.get(ownStampKeyOf('build-1', 'run-1'))).not.toBeNull();
     } finally {
       engine[Symbol.dispose]();
     }

@@ -2,10 +2,10 @@
  * Removing a deployment build by optimistic concurrency (COR-1582).
  *
  * `remove` reads the build's version (which must be `draining`), the routing pointer, and the
- * build's binding stamp, in that order and before it scans; scans the run records and the
+ * build's 64 binding stamp shards, in that order and before it scans; scans the run records and the
  * non-terminal task-ledger entries for work bound to the build; and, if there is none, writes
  * `removed` and the build's tombstone in one batch conditioned on the exact bytes of the version,
- * the routing pointer and the stamp it read (an absent stamp is conditioned as absent). Every
+ * the routing pointer and every stamp shard it read (an absent shard is conditioned as absent). Every
  * commit that binds work to a build puts a fresh stamp and requires the tombstone absent
  * (`deployment-records.ts`), so any binding that commits after the stamp was read changes it and
  * fails the removal's write, and any that commits after the removal meets the tombstone.
@@ -19,7 +19,7 @@ import { encode } from '../core/codec/index.ts';
 import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
 import { countBuildReference } from './deployment-build-references.ts';
 import {
-  bindingStampKey,
+  bindingStampKeys,
   decodeRouting,
   decodeVersion,
   removedTombstoneKey,
@@ -52,7 +52,9 @@ export async function removeWorkerDeploymentVersion(
     const routingBytes = await storage.get(routingKey(deploymentName));
     const refusal = refusalBeforeScan(version, routingBytes);
     if (refusal !== undefined) return refusal;
-    const stampBytes = await storage.get(bindingStampKey(deploymentName, buildId));
+    // Every shard, read in full before the scan: a binding that commits after this changes one.
+    const stampKeys = bindingStampKeys(deploymentName, buildId);
+    const stamps = await Promise.all(stampKeys.map((stampKey) => storage.get(stampKey)));
     const references = await countBuildReference(storage, { deploymentName, buildId });
     if (references > 0) return { outcome: 'referenced', references };
     const removed = await storageConditionalBatch(
@@ -60,7 +62,10 @@ export async function removeWorkerDeploymentVersion(
       [
         { key, expectedValue: versionBytes },
         { key: routingKey(deploymentName), expectedValue: routingBytes },
-        { key: bindingStampKey(deploymentName, buildId), expectedValue: stampBytes },
+        ...stampKeys.map((stampKey, shard) => ({
+          key: stampKey,
+          expectedValue: stamps[shard] ?? null,
+        })),
       ],
       [
         { type: 'put', key, value: encode({ ...version, state: 'removed' as const }) },

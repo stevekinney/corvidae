@@ -22,7 +22,7 @@ export function workerBuildStartBinding(state: WorkflowState): {
 } {
   const binding = state.workerBinding?.current;
   if (binding === undefined) return { condition: undefined, operations: undefined };
-  const { condition, operation } = workerBuildBinding(binding);
+  const { condition, operation } = workerBuildBinding(binding, state.id);
   return {
     condition: { source: 'worker-build-tombstone', condition },
     operations: [operation],

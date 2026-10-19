@@ -11,6 +11,7 @@ import type { WorkflowState } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
 import type { OperationFault } from '../server/operation-fault.ts';
 import { MemoryStorage } from '../storage/memory.ts';
+import { bindingStampShard } from './deployment-records.ts';
 import { WorkerDeploymentCatalog } from './deployment-routing.ts';
 import type { WorkerManifest } from './manifest/types.ts';
 
@@ -136,17 +137,24 @@ export function putsKeyWithPrefix(operations: BatchOperations, prefix: string): 
   );
 }
 
-/** The binding stamp and tombstone keys of a build, spelled out so a test does not share the code under test. */
-export const stampKeyOf = (buildId: string, deploymentName = DEPLOYMENT) =>
-  `worker-deployment-binding:${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}`;
+/** The stamp shard key of a build, spelled out so a test does not share the code under test. */
+export const stampKeyOf = (buildId: string, shard = 0, deploymentName = DEPLOYMENT) =>
+  `worker-deployment-binding:${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}:${shard.toString(16).padStart(2, '0')}`;
+/** The shard a binding with this key (a run id, or a ledger operation id) must stamp. */
+export const ownShardOf = (bindingKey: string) => bindingStampShard(bindingKey);
+/** The stamp key a binding with this key must put for the build. */
+export const ownStampKeyOf = (buildId: string, bindingKey: string, deploymentName = DEPLOYMENT) =>
+  stampKeyOf(buildId, ownShardOf(bindingKey), deploymentName);
 export const tombstoneKeyOf = (buildId: string, deploymentName = DEPLOYMENT) =>
   `worker-deployment-removed:${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}`;
 
 type BatchCondition = Parameters<MemoryStorage['conditionalBatch']>[0][number];
 
-/** The build a stored record binds work to, or `undefined` when it binds none. */
-function boundBuildOfRecord(key: string, bytes: Uint8Array): [string, string] | undefined {
+/** The build a stored record binds work to and the record's own binding key, or `undefined` when it binds none. */
+function boundBuildOfRecord(key: string, bytes: Uint8Array): [string, string, string] | undefined {
   const record = decode(bytes) as {
+    id?: string;
+    operationId?: string;
     status?: string;
     state?: string;
     workerBinding?: { current?: { deploymentName?: string; buildId?: string } };
@@ -156,7 +164,7 @@ function boundBuildOfRecord(key: string, bytes: Uint8Array): [string, string] | 
     ? record.executionRequirement
     : record.workerBinding?.current;
   return typeof named?.deploymentName === 'string' && typeof named.buildId === 'string'
-    ? [named.deploymentName, named.buildId]
+    ? [named.deploymentName, named.buildId, (record.operationId ?? record.id) as string]
     : undefined;
 }
 
@@ -198,9 +206,18 @@ async function assertBindingCommitsAreStamped(
       !terminal.has(previousState?.status ?? '') &&
       previousState?.state !== 'terminal';
     if (alreadyLive) continue;
-    const stamped = operations.some(
-      (candidate) => candidate.type === 'put' && candidate.key === stampKeyOf(bound[1], bound[0]),
+    const ownStamp = ownStampKeyOf(bound[1], bound[2], bound[0]);
+    const shardPuts = operations.filter(
+      (candidate) =>
+        candidate.type === 'put' &&
+        candidate.key.startsWith(stampKeyOf(bound[1], 0, bound[0]).slice(0, -2)),
     );
+    if (shardPuts.some((candidate) => candidate.key !== ownStamp)) {
+      throw new Error(
+        `Binding commit for ${operation.key} puts a stamp shard of ${bound[0]}/${bound[1]} that is not its own.`,
+      );
+    }
+    const stamped = shardPuts.length > 0;
     const guarded = conditions.some(
       (condition) =>
         condition.key === tombstoneKeyOf(bound[1], bound[0]) && condition.expectedValue === null,

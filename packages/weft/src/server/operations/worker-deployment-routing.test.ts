@@ -419,7 +419,7 @@ describe('weft.worker.deployments.remove', () => {
     const original = storage.conditionalBatch.bind(storage);
     storage.conditionalBatch = async (conditions, operations) => {
       await storage.put(
-        'worker-deployment-binding:billing:build-b',
+        'worker-deployment-binding:billing:build-b:00',
         crypto.getRandomValues(new Uint8Array(16)),
       );
       return original(conditions, operations);

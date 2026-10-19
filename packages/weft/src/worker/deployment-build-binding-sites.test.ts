@@ -19,6 +19,7 @@ import { commitTaskLedgerTransition } from '../core/task-ledger/task-ledger-runt
 import { createQueued } from '../core/task-ledger/task-ledger-transitions.ts';
 import { workflow } from '../core/types.ts';
 import { forkWorkflowOperation } from '../server/operations/fork-workflow.ts';
+import { startWorkflowOperation } from '../server/operations/start-workflow.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
@@ -30,6 +31,7 @@ import {
   fixture,
   InterleavingStorage,
   invoke,
+  ownShardOf,
   runOf,
   runs,
   stampKeyOf,
@@ -47,7 +49,29 @@ const TOMBSTONE = new Uint8Array([1]);
 const REMOVED = { name: 'WorkerDeploymentVersionRemovedError' };
 
 /** The bytes of a build's stamp, or `null` when nothing has ever bound to it. */
-const stampOf = (storage: MemoryStorage, buildId: string) => storage.get(stampKeyOf(buildId));
+/** All 64 stamp shards of a build, in shard order. */
+const shardsOf = (storage: MemoryStorage, buildId: string) =>
+  Promise.all(Array.from({ length: 64 }, (_, shard) => storage.get(stampKeyOf(buildId, shard))));
+
+/** Nothing has ever stamped the build: every shard is absent. */
+async function expectNoStamp(storage: MemoryStorage, buildId: string): Promise<void> {
+  const shards = await shardsOf(storage, buildId);
+  expect(shards.every((shard) => shard === null)).toBe(true);
+}
+
+/** The binding with this key put a fresh value to its own shard of the build, and to no other. */
+async function expectOnlyOwnShardMoved(
+  storage: MemoryStorage,
+  buildId: string,
+  bindingKey: string,
+  before: readonly (Uint8Array | null)[],
+): Promise<void> {
+  const after = await shardsOf(storage, buildId);
+  const moved = after.flatMap((value, shard) =>
+    Bun.deepEquals(value, before[shard]) ? [] : [shard],
+  );
+  expect(moved).toEqual([ownShardOf(bindingKey)]);
+}
 
 describe('a fresh start', () => {
   it('fails as removed, and binds nothing, when the build it chose has a tombstone', async () => {
@@ -59,28 +83,39 @@ describe('a fresh start', () => {
     );
 
     expect(await runOf(fx.storage, 'fresh-1')).toBeUndefined();
-    expect(await stampOf(fx.storage, 'build-1')).toBeNull();
+    await expectNoStamp(fx.storage, 'build-1');
+  });
+
+  it('answers Conflict version-removed over weft.workflows.start, not an engine failure', async () => {
+    await using fx = await fixture();
+    await putTombstone(fx.storage, tombstoneKeyOf('build-1'));
+
+    expect(
+      await faultOf(
+        invoke(startWorkflowOperation, { type: 'checkout', id: 'fresh-op' }, fx.engine),
+      ),
+    ).toMatchObject({ code: 'Conflict', data: { reason: 'version-removed' } });
   });
 
   it('puts a fresh stamp for the build in the same batch as the run', async () => {
     await using fx = await fixture();
+    const before = await shardsOf(fx.storage, 'build-1');
     await fx.engine.start('checkout', null, { id: 'fresh-1' });
-    const first = await stampOf(fx.storage, 'build-1');
+    await expectOnlyOwnShardMoved(fx.storage, 'build-1', 'fresh-1', before);
+    const between = await shardsOf(fx.storage, 'build-1');
     await fx.engine.start('checkout', null, { id: 'fresh-2' });
-    const second = await stampOf(fx.storage, 'build-1');
 
-    expect(first).not.toBeNull();
-    expect(second).not.toBeNull();
-    expect(second).not.toEqual(first);
-    expect(await stampOf(fx.storage, 'build-2')).toBeNull();
+    await expectOnlyOwnShardMoved(fx.storage, 'build-1', 'fresh-2', between);
+    await expectNoStamp(fx.storage, 'build-2');
   });
 
   it('stamps the build a prepared run binds to, too', async () => {
     await using fx = await fixture();
 
+    const before = await shardsOf(fx.storage, 'build-1');
     await fx.engine.prepare('checkout', null, { id: 'prepared-1' });
 
-    expect(await stampOf(fx.storage, 'build-1')).not.toBeNull();
+    await expectOnlyOwnShardMoved(fx.storage, 'build-1', 'prepared-1', before);
   });
 });
 
@@ -103,11 +138,11 @@ describe('a restart', () => {
 
   it('puts a fresh stamp for the build it inherits', async () => {
     await using fx = await finishedRunOnDrainedBuild();
-    const before = await stampOf(fx.storage, 'build-1');
+    const before = await shardsOf(fx.storage, 'build-1');
 
     await fx.engine.start('checkout', null, { id: 'checkout-1', onTerminalConflict: 'start-new' });
 
-    expect(await stampOf(fx.storage, 'build-1')).not.toEqual(before);
+    await expectOnlyOwnShardMoved(fx.storage, 'build-1', 'checkout-1', before);
   });
 });
 
@@ -163,12 +198,12 @@ describe('a child start', () => {
   it('puts a fresh stamp for the build it inherits', async () => {
     const { storage, engine, parent } = await treeFixture();
     try {
-      const before = await stampOf(storage, 'build-1');
+      const before = await shardsOf(storage, 'build-1');
 
       await parent.signal('spawn');
       expect(await parent.result()).toBe('child-done');
 
-      expect(await stampOf(storage, 'build-1')).not.toEqual(before);
+      await expectOnlyOwnShardMoved(storage, 'build-1', 'tree-child', before);
     } finally {
       engine[Symbol.dispose]();
     }
@@ -190,11 +225,11 @@ describe('a fork', () => {
 
   it('puts a fresh stamp for the build it inherits', async () => {
     await using fx = await finishedRunOnDrainedBuild();
-    const before = await stampOf(fx.storage, 'build-1');
+    const before = await shardsOf(fx.storage, 'build-1');
 
-    await fx.engine.fork('checkout-1');
+    const forked = await fx.engine.fork('checkout-1');
 
-    expect(await stampOf(fx.storage, 'build-1')).not.toEqual(before);
+    await expectOnlyOwnShardMoved(fx.storage, 'build-1', forked.id, before);
   });
 
   it('keeps its own error when it loses for another reason', async () => {
@@ -269,17 +304,18 @@ describe('an automatic worker upgrade', () => {
     ).toMatchObject(REMOVED);
 
     expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: 'build-1' });
-    expect(await stampOf(storage, 'build-2')).toBeNull();
+    await expectNoStamp(storage, 'build-2');
   });
 
   it('puts a fresh stamp for the build it moves to', async () => {
     const storage = await upgradingRun();
+    const before = await shardsOf(storage, 'build-2');
 
     await recordWorkflowWorkerUpgrade(storage, policy, binding('build-1'), binding('build-2'));
 
     expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: 'build-2' });
-    expect(await stampOf(storage, 'build-2')).not.toBeNull();
-    expect(await stampOf(storage, 'build-1')).toBeNull();
+    await expectOnlyOwnShardMoved(storage, 'build-2', 'run-1', before);
+    await expectNoStamp(storage, 'build-1');
   });
 });
 
@@ -317,13 +353,40 @@ describe('bindWorkflowWorkerAtStart', () => {
     expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: undefined });
   });
 
+  it('fails as removed when the build was removed before tombstones existed: a removed version record and no tombstone', async () => {
+    const storage = await unboundRun();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    await catalog.registerVersion({
+      deploymentName: DEPLOYMENT,
+      buildId: 'build-1',
+      artifactDigest: 'sha256:build-1',
+      manifestDigest: 'sha256:manifest-build-1',
+      manifest: buildManifest('revision-a', 'build-1'),
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+    const version = await catalog.getVersion(DEPLOYMENT, 'build-1');
+    await storage.put(
+      `worker-deployment-version:${DEPLOYMENT}:build-1`,
+      encode({ ...version, state: 'removed' }),
+    );
+
+    expect(await rejectionOf(bindWorkflowWorkerAtStart(storage, binding('build-1')))).toMatchObject(
+      REMOVED,
+    );
+
+    expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: undefined });
+    await expectNoStamp(storage, 'build-1');
+  });
+
   it('puts a fresh stamp for the build it binds', async () => {
     const storage = await unboundRun();
+    const before = await shardsOf(storage, 'build-1');
 
     await bindWorkflowWorkerAtStart(storage, binding('build-1'));
 
     expect(await runOf(storage, 'run-1')).toEqual({ status: 'running', buildId: 'build-1' });
-    expect(await stampOf(storage, 'build-1')).not.toBeNull();
+    await expectOnlyOwnShardMoved(storage, 'build-1', 'run-1', before);
   });
 });
 
@@ -331,11 +394,14 @@ describe('the retry of a failed run', () => {
   async function failedRun() {
     const storage = new InterleavingStorage();
     const engine = new Engine({ storage });
+    // The run fails on its first launch; after `armRelaunchWait` a relaunch waits for a signal, so
+    // a retry that reactivates it leaves it running.
+    let waitOnRelaunch = false;
     engine.register(
       workflow({ name: 'boom', workerVersioningPolicy: { mode: 'pinned' } }).execute(
-        async function* () {
-          yield* [];
-          throw new Error('boom');
+        async function* (ctx) {
+          if (!waitOnRelaunch) throw new Error('boom');
+          return yield* ctx.waitForSignal<string>('go');
         },
       ),
     );
@@ -362,7 +428,14 @@ describe('the retry of a failed run', () => {
     const handle = await engine.start('boom', null, { id: 'boom-1' });
     await rejectionOf(handle.result());
     await drainBuildOne(catalog);
-    return { storage, engine, catalog };
+    return {
+      storage,
+      engine,
+      catalog,
+      armRelaunchWait: () => {
+        waitOnRelaunch = true;
+      },
+    };
   }
 
   it('reports a run whose build is removed as version-removed and does not reactivate it', async () => {
@@ -400,6 +473,29 @@ describe('the retry of a failed run', () => {
     }
   });
 
+  it("lands between the removal's stamp reads and its write: the removal rescans, sees the reactivated run, and refuses", async () => {
+    // The door review's probe 2. The retry commits while the removal holds the stamp shard the
+    // run stamps, so the removal's write fails on that shard and the rescan counts the run.
+    const { storage, engine, catalog, armRelaunchWait } = await failedRun();
+    try {
+      let retry: unknown;
+      storage.armGet(stampKeyOf('build-1', ownShardOf('boom-1')), async () => {
+        armRelaunchWait();
+        retry = await engine.retryFailedAll({ status: 'failed' });
+      });
+
+      const outcome = await catalog.removeVersion(DEPLOYMENT, 'build-1');
+
+      expect(storage.fired).toBe(true);
+      expect(retry).toMatchObject({ retried: 1, failed: 0 });
+      expect(outcome).toEqual({ outcome: 'referenced', references: 1 });
+      expect(await runOf(storage, 'boom-1')).toEqual({ status: 'running', buildId: 'build-1' });
+      expect(await storage.get(tombstoneKeyOf('build-1'))).toBeNull();
+    } finally {
+      engine[Symbol.dispose]();
+    }
+  });
+
   it('answers a removal that lands after the retry looked at the build the same way', async () => {
     const { storage, engine } = await failedRun();
     try {
@@ -419,13 +515,13 @@ describe('the retry of a failed run', () => {
   it('puts a fresh stamp for the build it reactivates the run on', async () => {
     const { storage, engine } = await failedRun();
     try {
-      const before = await stampOf(storage, 'build-1');
+      const before = await shardsOf(storage, 'build-1');
 
       await engine.retryFailedAll({ status: 'failed' });
 
       const reactivated = await runOf(storage, 'boom-1');
       expect(reactivated?.buildId).toBe('build-1');
-      expect(await stampOf(storage, 'build-1')).not.toEqual(before);
+      await expectOnlyOwnShardMoved(storage, 'build-1', 'boom-1', before);
     } finally {
       engine[Symbol.dispose]();
     }
@@ -462,12 +558,12 @@ describe('a ledger entry that requires a build', () => {
 
   it("the broker's enqueue puts a fresh stamp for the build", async () => {
     const { storage, broker } = await enqueuedBy();
-    const before = await stampOf(storage, 'build-1');
+    const before = await shardsOf(storage, 'build-1');
 
     await broker.enqueue(request);
 
     expect(await storage.get(taskLedgerKey('op-1'))).not.toBeNull();
-    expect(await stampOf(storage, 'build-1')).not.toEqual(before);
+    await expectOnlyOwnShardMoved(storage, 'build-1', 'op-1', before);
   });
 
   const createInput = {
@@ -504,16 +600,17 @@ describe('a ledger entry that requires a build', () => {
   it('a create through the shared ledger commit puts a fresh stamp, and a record that names no build puts none', async () => {
     const storage = new InterleavingStorage();
 
+    const before = await shardsOf(storage, 'build-1');
     await commitTaskLedgerTransition(storage, 'op-2', (current, now) =>
       createQueued(current, createInput, now),
     );
-    expect(await stampOf(storage, 'build-1')).not.toBeNull();
+    await expectOnlyOwnShardMoved(storage, 'build-1', 'op-2', before);
 
     const { executionRequirement: _none, ...unbound } = createInput;
     await commitTaskLedgerTransition(storage, 'op-3', (current, now) =>
       createQueued(current, { ...unbound, operationId: 'op-3' }, now),
     );
-    expect(await stampOf(storage, 'build-2')).toBeNull();
+    await expectNoStamp(storage, 'build-2');
   });
 
   it('an update of an entry that already exists binds nothing and puts no stamp', async () => {
@@ -521,14 +618,14 @@ describe('a ledger entry that requires a build', () => {
     await commitTaskLedgerTransition(storage, 'op-2', (current, now) =>
       createQueued(current, createInput, now),
     );
-    const before = await stampOf(storage, 'build-1');
+    const before = await shardsOf(storage, 'build-1');
 
     const result = await commitTaskLedgerTransition(storage, 'op-2', (current, now) =>
       createQueued(current, createInput, now),
     );
 
     expect(result.ok).toBe(false);
-    expect(await stampOf(storage, 'build-1')).toEqual(before);
+    expect(await shardsOf(storage, 'build-1')).toEqual(before);
   });
 });
 
