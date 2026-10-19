@@ -16,6 +16,12 @@
  * `Last-Event-ID`, and end a subscription to a task waiting for input at once. Its
  * streams end where the SDK's do, at a terminal state or `INPUT_REQUIRED`.
  *
+ * Under an ownership lease another process can advance a task's workflow and commit
+ * its events, which only reach this process through storage. So when the engine runs
+ * under `ownership: 'lease'` or `'workflow-lease'`, a stream or a blocking
+ * `SendMessage` waiting on a task re-reads its record every `livePollIntervalMs`
+ * (one second by default) and replays what another process appended.
+ *
  * @module a2a/workflow-agent-executor
  */
 
@@ -47,8 +53,14 @@ import {
 import type { Engine } from '../core/engine.ts';
 import type { Storage } from '../storage/interface.ts';
 import type { OutboxPushNotificationSender } from './push-notification-sender.ts';
-import { createTaskEventLog, type StoredWorkflowTask } from './task-event-log.ts';
+import { type A2AStreamTimerScheduler, scheduleWithTimeout } from './sse-response.ts';
+import {
+  createTaskEventLog,
+  type StoredWorkflowTask,
+  type TaskEventRecheck,
+} from './task-event-log.ts';
 import { createWeftA2ATaskStore, type WeftA2ATaskStore } from './task-store.ts';
+import { requireTimerDelayMs } from './timer-delay.ts';
 import {
   createWorkflowAgentCard,
   type WorkflowAgentCardOptions,
@@ -114,6 +126,14 @@ export type WorkflowAgentExecutorOptions = {
   readonly terminalRetentionMs?: number;
   /** The clock, in epoch milliseconds. Defaults to `Date.now`. */
   readonly now?: () => number;
+  /**
+   * How often, in milliseconds, a stream or a blocking `SendMessage` waiting on a task
+   * checks storage for events another process committed. Defaults to `1000` when the
+   * engine runs under an ownership lease, where another process can advance the
+   * workflow; otherwise every event is committed in this process and delivered at
+   * once, and storage is not re-read unless this is set.
+   */
+  readonly livePollIntervalMs?: number;
   /**
    * Receives an error no request is waiting on: a failed push enqueue, or a failed
    * reconciliation after an engine event. Defaults to `console.error`.
@@ -327,8 +347,34 @@ class WorkflowAgentRequestHandler extends DefaultRequestHandler {
  *
  * @throws {Error} When `workflowType` is not registered, or has no description and
  *   `card.description` is unset.
+ * @throws {RangeError} When `livePollIntervalMs` is not an integer from 1 to 2147483647.
  */
 export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOptions): WorkflowAgent {
+  return createWorkflowAgentExecutorWithScheduler(options, scheduleWithTimeout);
+}
+
+/** The live poll interval under an ownership lease, when the caller sets none. */
+export const DEFAULT_LIVE_POLL_INTERVAL_MS = 1_000;
+
+function livePollOf(
+  options: WorkflowAgentExecutorOptions,
+  schedule: A2AStreamTimerScheduler,
+): TaskEventRecheck | undefined {
+  const intervalMs =
+    options.livePollIntervalMs ??
+    (options.engine.getLeaseHealth().mode === 'none' ? undefined : DEFAULT_LIVE_POLL_INTERVAL_MS);
+  if (intervalMs === undefined) return undefined;
+  return { intervalMs: requireTimerDelayMs('livePollIntervalMs', intervalMs), schedule };
+}
+
+/**
+ * {@link createWorkflowAgentExecutor} with the live poll's timer injected. Tests drive
+ * it with a manual clock; the public entry point uses `setTimeout`.
+ */
+export function createWorkflowAgentExecutorWithScheduler(
+  options: WorkflowAgentExecutorOptions,
+  schedule: A2AStreamTimerScheduler,
+): WorkflowAgent {
   const { engine, workflowType, inputMode, pushNotificationSender: sender } = options;
   const definition = engine.getWorkflowDefinition(workflowType);
   if (definition === undefined) {
@@ -346,7 +392,13 @@ export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOption
       ? {}
       : { terminalRetentionMs: options.terminalRetentionMs }),
   });
-  const log = createTaskEventLog({ storage, namespace, now });
+  const recheck = livePollOf(options, schedule);
+  const log = createTaskEventLog({
+    storage,
+    namespace,
+    now,
+    ...(recheck === undefined ? {} : { recheck }),
+  });
   const runtime = createWorkflowTaskRuntime({
     engine,
     namespace,
