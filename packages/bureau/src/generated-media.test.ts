@@ -432,6 +432,57 @@ describe('a streamed part whose bytes are a type with an aggregate limit (correc
     expect(bureau.assets!.activeWork()).toEqual([]);
   });
 
+  // The refusal counts the type the service counts, which reconciles the declaration with the
+  // bytes, so a part the service would count as another type is not refused under this one's limit.
+  const zipBytes = new Uint8Array([
+    0x50,
+    0x4b,
+    0x03,
+    0x04,
+    ...Array.from({ length: 60 }, () => 0x20),
+  ]);
+  const docxPart = {
+    type: 'document' as const,
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    source: { kind: 'inline' as const, data: base64Of(zipBytes), encoding: 'base64' as const },
+  };
+  const svgPart = {
+    type: 'image' as const,
+    mimeType: 'image/svg+xml',
+    source: {
+      kind: 'inline' as const,
+      data: base64Of(
+        new TextEncoder().encode(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="4" height="3"><rect width="4" height="3"/></svg>',
+        ),
+      ),
+      encoding: 'base64' as const,
+    },
+  };
+
+  it.each([
+    ['an OOXML document over ZIP bytes under a file-only aggregate limit', docxPart, 'file'],
+    ['an SVG image over UTF-8 bytes under a text-only aggregate limit', svgPart, 'text'],
+  ] as const)('admits %s', async (_name, part, modality) => {
+    const bureau = await openBureau({
+      policy: { limits: [{ scope: 'aggregate', modality, maxBytes: 1 }] },
+    });
+    const admitter = createAssetGeneratedMediaAdmitter(bureau.assets!, alice.id);
+
+    const admission = await admitter.admit({
+      part,
+      runId: 'run-1',
+      step: 0,
+      partIndex: 0,
+      messageId: undefined,
+      signal: neverAborted,
+    });
+    const settlement = await admission.settled();
+
+    expect(settlement.outcome).toBe('available');
+    await admission.closed();
+  });
+
   it('admits the same untyped part when only a different type has an aggregate limit', async () => {
     const bureau = await openBureau({
       policy: { limits: [{ scope: 'aggregate', modality: 'audio', maxBytes: 1 }] },

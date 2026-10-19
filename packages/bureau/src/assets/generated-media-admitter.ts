@@ -3,12 +3,16 @@ import type {
   GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
   GeneratedMediaSettlement,
-  InlineMediaContent,
 } from '@lostgradient/operative';
 
 import { decodeBase64 } from './base64';
 import { AssetAdmissionError } from './errors';
-import { detectMediaType, modalityOf } from './media-inspection';
+import {
+  detectMediaType,
+  modalityOf,
+  normalizeMediaType,
+  reconcileMediaType,
+} from './media-inspection';
 import type {
   AssetAdmission,
   AssetAdmissionRequest,
@@ -44,7 +48,7 @@ export function createAssetGeneratedMediaAdmitter(
       // completes and so cannot share one aggregate budget across the response. Rather than leave
       // a configured aggregate ceiling silently off, it refuses the part.
       const assetRequestForPart = assetRequest(request);
-      refuseUnderAggregateLimit(assets, request.part, assetRequestForPart);
+      refuseUnderAggregateLimit(assets, assetRequestForPart);
       const admission = await assets.admit(assetRequestForPart, principal);
       return wrap(admission, request);
     },
@@ -58,29 +62,29 @@ export function createAssetGeneratedMediaAdmitter(
 }
 
 /**
- * Refuses a part admitted on its own when any media type it could be counted as has an aggregate
- * limit: its declared `type`, its declared `mimeType`, and the type the service detects from its
- * bytes, which is the one the aggregate budget actually counts. A missing or misleading
- * declaration therefore cannot route a part around the limit.
+ * Refuses a part admitted on its own when the media type the service will count it as has an
+ * aggregate limit. That type is the service's own reconciliation of the declared type with the
+ * type detected from the bytes, so neither a missing or misleading declaration nor a container's
+ * detected type can make this check disagree with the budget. A declaration the bytes contradict
+ * is left to the service, which refuses it as a media-type mismatch.
  */
-function refuseUnderAggregateLimit(
-  assets: AssetService,
-  part: InlineMediaContent,
-  request: AssetAdmissionRequest,
-): void {
-  const modalities = new Set<string>([part.type]);
-  if (part.mimeType !== undefined) modalities.add(modalityOf(part.mimeType));
-  if (request.source.kind === 'inline') {
-    modalities.add(modalityOf(detectMediaType(request.source.bytes) ?? 'application/octet-stream'));
-  }
-  if (
-    assets.policy.limits.some(
-      (limit) => limit.scope === 'aggregate' && modalities.has(limit.modality),
-    )
-  ) {
+function refuseUnderAggregateLimit(assets: AssetService, request: AssetAdmissionRequest): void {
+  if (request.source.kind !== 'inline') return;
+  const counted = reconcileMediaType(
+    request.declaredMediaType === undefined
+      ? undefined
+      : normalizeMediaType(request.declaredMediaType),
+    detectMediaType(request.source.bytes),
+  );
+  if (counted === undefined) return;
+  const modality = modalityOf(counted);
+  const limit = assets.policy.limits.find(
+    (candidate) => candidate.scope === 'aggregate' && candidate.modality === modality,
+  );
+  if (limit !== undefined) {
     throw new AssetAdmissionError(
       'aggregate-limit-exceeded',
-      `An aggregate ${part.type} limit applies, and a part admitted on its own (a streamed response) cannot be counted against it.`,
+      `An aggregate ${limit.modality} limit applies, and a part admitted on its own (a streamed response) cannot be counted against it.`,
     );
   }
 }
