@@ -1816,9 +1816,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                   const runState = runId === undefined ? undefined : store.getRun(runId);
                   if (runId === undefined || runState === undefined) return undefined;
                   const sessionId = runSessionIdentifiers.get(runState.activeRun) ?? '';
-                  return sessionId === ''
-                    ? (rowId) => runRowHolderId(runId, rowId)
-                    : (rowId) => sessionRowHolderId(sessionId, rowId);
+                  if (sessionId === '') return (rowId) => runRowHolderId(runId, rowId);
+                  // The session's incarnation is recorded by the run's first save; before that
+                  // nothing is claimed here, and the session's own commit claims the row.
+                  const incarnation = runSessionIncarnations.get(runId);
+                  return incarnation === undefined
+                    ? undefined
+                    : (rowId) => sessionRowHolderId(sessionId, incarnation, rowId);
                 },
               },
             ),
@@ -10306,7 +10310,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return {
       service,
       principalId: ownerOrLocal(resolveSessionOwner(session.metadata)),
-      holderOf: (rowId: string) => sessionRowHolderId(session.id, rowId),
+      holderOf: (rowId: string) => sessionRowHolderId(session.id, session.incarnation, rowId),
       rows: Object.values(session.conversationHistory.messages),
       onFailure: (assetId: string, error: unknown) =>
         diagnose({

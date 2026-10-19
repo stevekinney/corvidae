@@ -22,6 +22,7 @@ import {
   type MessageInput,
 } from 'conversationalist';
 
+import { sessionRowHolderId } from './assets/row-asset-claims';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, pngBytes } from './testing/asset-fixtures.test-support';
@@ -347,5 +348,44 @@ describe('a claim that fails when its commit is replayed', () => {
     const report = await collect(opened);
     expect(report.expired).not.toContain(assetId);
     expect(await resolves(opened, assetId)).toBe(true);
+  });
+});
+
+describe('a session recreated under the id of a deleted one', () => {
+  it('is not affected when the old incarnation releases its claims after the new one claimed', async () => {
+    const opened = await openBureau();
+    const admission = await opened.bureau.assets!.admit(
+      { source: { kind: 'inline', bytes: png } },
+      alice,
+    );
+    await admission.work.result();
+    const rows = builtRows({
+      id: 'supplied-row',
+      role: 'user',
+      content: [
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'managed-asset', assetId: admission.assetId },
+        },
+      ],
+    });
+    await paint(opened, 'same-id', { appendMessages: rows });
+    const oldSession = await opened.bureau.getSession('same-id');
+    const oldIncarnation = oldSession!.incarnation;
+    // The old incarnation is deleted, and a new session takes the id with the same row id and asset.
+    await opened.bureau.deleteSession('same-id');
+    await paint(opened, 'same-id', { appendMessages: rows });
+
+    // The old incarnation's release lands late, after the new session claimed.
+    await opened.bureau.assets!.release(
+      admission.assetId,
+      alice,
+      sessionRowHolderId('same-id', oldIncarnation, 'supplied-row'),
+    );
+    await opened.runtime.advance(5_000);
+    await collect(opened);
+
+    expect(await resolves(opened, admission.assetId)).toBe(true);
   });
 });

@@ -4922,10 +4922,12 @@ describe('createBureau', () => {
     // and the acknowledgement of each of those three outbox entries (6). So the assertion waits
     // for the outbox to empty and then counts every batch.
     for (let turn = 0; turn < 200; turn++) {
-      if ((await bureau.sessionStore!.outbox.pending()).length === 0) break;
+      const pending = await bureau.sessionStore!.outbox.pending();
+      if (pending.length === 0) break;
       await yieldToPortableEventLoop();
     }
-    expect(await bureau.sessionStore!.outbox.pending()).toEqual([]);
+    const stillPending = await bureau.sessionStore!.outbox.pending();
+    expect(stillPending).toEqual([]);
     expect(deletionPersistenceAttempts).toBe(10);
     const persistedSession = await bureau.getSession(run.sessionId);
     expect(persistedSession?.metadata['pendingApprovalOverrides']).toEqual({});

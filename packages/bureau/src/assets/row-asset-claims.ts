@@ -4,7 +4,7 @@
  * The asset policy's retention floor expires an asset on its own schedule, so an asset a persisted
  * row still points at needs a reference of its own, or a later replay fails to resolve it. The
  * reference is the asset service's `retain`, and it belongs to the session that holds the row:
- * the holder is keyed by session and row, so a row copied into another session (a goal's
+ * the holder is keyed by session incarnation and row, so a row copied into another session (a goal's
  * fork-from-baseline retry, `appendMessages`, a session fork) is claimed there under that
  * session's own holder, and deleting either session leaves the other's claim alone. A run with no
  * session keys its claims by run id.
@@ -22,9 +22,13 @@ import type { AssetService } from './types';
  */
 const ROW_CLAIM_UNTIL = '9999-12-31T23:59:59.999Z';
 
-/** The holder under which a session's row keeps the assets it references. */
-export function sessionRowHolderId(sessionId: string, rowId: string): string {
-  return `session-row:${encodeURIComponent(sessionId)}:${encodeURIComponent(rowId)}`;
+/**
+ * The holder under which a session's row keeps the assets it references. It names the session's
+ * incarnation as well as its id: a session deleted and recreated under the same id holds the same
+ * row ids, and a late cleanup of the old incarnation must never release the new one's claims.
+ */
+export function sessionRowHolderId(sessionId: string, incarnation: string, rowId: string): string {
+  return `session-row:${encodeURIComponent(sessionId)}:${encodeURIComponent(incarnation)}:${encodeURIComponent(rowId)}`;
 }
 
 /** The holder under which a row of a run with no session keeps the assets it references. */
