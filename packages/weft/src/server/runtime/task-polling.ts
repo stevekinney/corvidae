@@ -1,3 +1,4 @@
+import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import type { JSONValue } from '../../core/json.ts';
 import {
   buildClaimAttemptRecordWrite,
@@ -126,16 +127,19 @@ export async function markTaskClaimedByLongPollWorker(
   );
   // COR-198: attempt-by-attempt worker transition.
   options.engine.dispatchEvent(
-    await buildTaskAttemptTransitionEvent(options.engine.storage, {
-      operationId: task.operationId,
-      workflowId: task.workflowId,
-      activityName: task.activityName,
-      attempt: result.record.attempt,
-      attemptTokenDigest,
-      workerSessionId,
-      executionIdentity: undefined,
-      executionRequirement: result.record.executionRequirement,
-    }),
+    tagWorkflowEventGeneration(
+      await buildTaskAttemptTransitionEvent(options.engine.storage, {
+        operationId: task.operationId,
+        workflowId: task.workflowId,
+        activityName: task.activityName,
+        attempt: result.record.attempt,
+        attemptTokenDigest,
+        workerSessionId,
+        executionIdentity: undefined,
+        executionRequirement: result.record.executionRequirement,
+      }),
+      result.record.workflowExecutionToken,
+    ),
   );
 
   return {
