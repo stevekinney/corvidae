@@ -158,6 +158,10 @@ describe('Storage route', () => {
     await fireEvent.click(unsupported.getByText('Capabilities'));
     await unsupported.findByText('Conditional batch');
     await fireEvent.click(unsupported.getByText('KV browser'));
+    // Returning to the KV browser remounts it on its default operation, so Batch is chosen again:
+    // without this the assertion below would hold whatever the backend reported.
+    await fireEvent.click(unsupported.getByText('Batch'));
+    await unsupported.findByText('Apply batch · confirm');
     expect(
       unsupported.queryByRole('switch', { name: 'Conditional (compare-and-swap)' }),
     ).toBeNull();
