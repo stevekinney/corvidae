@@ -39,6 +39,7 @@ import {
   AgentSnapshotError,
   checkAgentIdentifier,
   decodeAgentFile,
+  hashAgentFileBytes,
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
@@ -51,6 +52,20 @@ import type { AgentSnapshot } from './agent-snapshot-store';
 import type { ModelCatalogService } from './model-catalog-refresh';
 import { ownerOrLocal } from './owner-of-record';
 import { createWatchedDirectory } from './watched-directory';
+
+/** One agent as an editor needs it: the listing, the file's exact text, and what it parses to. */
+export interface AgentFileDetail extends AgentListing {
+  /** The file's exact text, or `null` when its bytes could not be read as UTF-8. */
+  readonly text: string | null;
+  /** What the frontmatter and body parse to, or `null` when the file does not parse. */
+  readonly definition: AgentFileDefinition | null;
+}
+
+/** One tool of the deployment's tool catalog, by the name an agent file uses. */
+export interface AgentToolDescription {
+  readonly name: string;
+  readonly description: string;
+}
 
 /** The default agent every `createRun` without `agentName` runs. No file may take its name. */
 export const RESERVED_DEFAULT_AGENT_IDENTIFIER = 'bureau';
@@ -119,6 +134,22 @@ export interface AgentFileCatalogOptions {
 export interface AgentFileCatalog extends AgentFileWriter {
   /** Every file in the directory that is an agent file, ready or invalid, by identifier. */
   list(): readonly AgentListing[];
+  /**
+   * One file agent as it is on disk now: its state and problem, its hash, its exact text, and
+   * its parsed definition. `undefined` when the catalog lists no file with that identifier. The
+   * hash, the text, and the state all describe the same bytes.
+   */
+  detail(id: string): Promise<AgentFileDetail | undefined>;
+  /** The deployment's tool catalog, by name, as an agent file may name its tools. */
+  tools(): readonly AgentToolDescription[];
+  /**
+   * Set `published: true` in the file's frontmatter, if it still hashes to `expectedHash`, and
+   * nothing else: every other key, the comments, and the body stay as they are. Writes nothing
+   * for a file that is already published.
+   */
+  publish(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
+  /** Set `published: false`, as {@link publish} sets `true`. */
+  withdraw(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
   /** The agent for a file whose state is `ready`. */
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
@@ -180,6 +211,21 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory } = options;
   const owner = ownerOrLocal(undefined);
+
+  function toListing(entry: FileEntry): AgentListing {
+    const ready = entry.problem === undefined;
+    return {
+      id: entry.id,
+      source: 'file',
+      state: ready ? 'ready' : 'invalid',
+      name: entry.definition?.name ?? entry.id,
+      description: entry.definition?.description ?? null,
+      published: ready && entry.definition?.published === true,
+      owner,
+      ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
+      ...(entry.problem === undefined ? {} : { problem: entry.problem }),
+    };
+  }
 
   function missingTools(names: readonly string[]): string[] {
     return names.filter((name) => !Object.hasOwn(options.tools, name));
@@ -285,6 +331,25 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
   }
 
+  const tooLarge = (id: string, size: number, revision: number): FileEntry => ({
+    id,
+    hash: undefined,
+    revision,
+    problem: {
+      code: 'file-too-large',
+      message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
+    },
+  });
+  const unreadable = (id: string, error: unknown, revision: number): FileEntry => ({
+    id,
+    hash: undefined,
+    revision,
+    problem: {
+      code: 'unreadable',
+      message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    },
+  });
+
   const directoryWatcher = createWatchedDirectory<FileEntry>({
     directory,
     label: 'agent directory',
@@ -297,24 +362,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     revision: () => options.modelCatalog.catalog().revision,
     evaluate,
-    tooLarge: (id, size, revision) => ({
-      id,
-      hash: undefined,
-      revision,
-      problem: {
-        code: 'file-too-large',
-        message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
-      },
-    }),
-    unreadable: (id, error, revision) => ({
-      id,
-      hash: undefined,
-      revision,
-      problem: {
-        code: 'unreadable',
-        message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
-      },
-    }),
+    tooLarge,
+    unreadable,
     sameSignature,
   });
   const { refresh } = directoryWatcher;
@@ -341,23 +390,48 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   return {
     ...writer,
 
+    publish: (id, publishOptions) => writer.setPublished(id, true, publishOptions),
+
+    withdraw: (id, publishOptions) => writer.setPublished(id, false, publishOptions),
+
     list() {
       return [...directoryWatcher.entries().values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-        .map((entry): AgentListing => {
-          const ready = entry.problem === undefined;
-          return {
-            id: entry.id,
-            source: 'file',
-            state: ready ? 'ready' : 'invalid',
-            name: entry.definition?.name ?? entry.id,
-            description: entry.definition?.description ?? null,
-            published: ready && entry.definition?.published === true,
-            owner,
-            ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
-            ...(entry.problem === undefined ? {} : { problem: entry.problem }),
-          };
-        });
+        .map(toListing);
+    },
+
+    async detail(id) {
+      const known = directoryWatcher.entries().get(id);
+      if (known === undefined) return undefined;
+      const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
+      const revision = options.modelCatalog.catalog().revision;
+      let entry: FileEntry;
+      let text: string | undefined;
+      try {
+        const size = await operations.size(path);
+        if (size === undefined) return undefined;
+        if (size > AGENT_FILE_SIZE_LIMIT) {
+          entry = tooLarge(id, size, revision);
+        } else {
+          const bytes = await operations.read(path);
+          if (bytes === undefined) return undefined;
+          const hash = hashAgentFileBytes(bytes);
+          entry =
+            known.hash === hash && known.revision === revision
+              ? known
+              : evaluate(id, bytes, hash, revision);
+          text = decodeAgentFile(bytes);
+        }
+      } catch (error) {
+        entry = unreadable(id, error, revision);
+      }
+      return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
+    },
+
+    tools() {
+      return Object.entries(options.tools)
+        .map(([name, tool]) => ({ name, description: tool.description }))
+        .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },
 
     find(id) {

@@ -915,6 +915,42 @@ export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
 /** The `runId` prefix of a session's synthetic audit owner, `session:<id>`. */
 export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
 
+/** The `runId` prefix of an agent definition's synthetic audit owner, `agent:<id>` (COR-1526). */
+export const AUDIT_AGENT_OWNER_PREFIX = 'agent:';
+
+/** The `runId` prefix of a workflow file's synthetic audit owner, `workflow:<id>` (COR-1529). */
+export const AUDIT_WORKFLOW_OWNER_PREFIX = 'workflow:';
+
+/**
+ * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
+ * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
+ * caller chooses; `reserved-identifiers.test.ts` fails when an `AUDIT_*_OWNER_PREFIX` is missing.
+ */
+export const AUDIT_SYNTHETIC_OWNER_PREFIXES: readonly string[] = [
+  AUDIT_SCHEDULE_OWNER_PREFIX,
+  AUDIT_SESSION_OWNER_PREFIX,
+  AUDIT_AGENT_OWNER_PREFIX,
+  AUDIT_WORKFLOW_OWNER_PREFIX,
+];
+
+/**
+ * The synthetic `runId` a write to an agent definition is filed under, `agent:<id>`: a write to
+ * an agent file belongs to no run, and the file's owner is the deployment's. `query({ runId })`
+ * with it retrieves one agent's writes, in order.
+ */
+export function auditTrailAgentOwnerId(agentId: string): string {
+  return `${AUDIT_AGENT_OWNER_PREFIX}${agentId}`;
+}
+
+/**
+ * The synthetic `runId` a write to a workflow file is filed under, `workflow:<id>`: a write to a
+ * workflow file belongs to no run, and the file's owner is the deployment's.
+ * `query({ runId })` with it retrieves one workflow's writes, in order.
+ */
+export function auditTrailWorkflowOwnerId(workflowId: string): string {
+  return `${AUDIT_WORKFLOW_OWNER_PREFIX}${workflowId}`;
+}
+
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
 function ownerDetail(owner: string | undefined): { owner?: string } {
   return owner === undefined ? {} : { owner };

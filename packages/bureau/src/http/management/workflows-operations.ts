@@ -18,6 +18,10 @@
  * but whose effect on the engine or the schedule failed is `Unavailable` (`data.reason` is
  * `workflow-apply-failed`): the file holds the change and the next rescan applies it again.
  *
+ * `bureau.workflows.signal` (COR-1528) is the one operation that names no workflow: it delivers a
+ * signal to the running instances waiting for it and starts the workflows whose signal trigger
+ * has that name, and a caller who may not write is answered as if nothing matched.
+ *
  * @module workflows-operations
  */
 
@@ -25,10 +29,17 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
+import { SIGNAL_NAME_MAXIMUM_LENGTH } from '../../workflow-host.ts';
+import { BureauError } from '../../create-bureau.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
-import { type BureauWorkflows, WorkflowApplyError } from '../../workflow-runtime.ts';
+import {
+  type BureauWorkflows,
+  SIGNAL_ID_MAXIMUM_BYTES,
+  WorkflowApplyError,
+  WorkflowSignalFailure,
+} from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
-import type { BureauOwnershipHost } from '../owner-predicate.ts';
+import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
   pageFields,
@@ -129,7 +140,7 @@ function workflowsOf(host: BureauWorkflowsOperationHost): BureauWorkflows {
 /** Every workflow file belongs to the deployment's owner of record, whether or not a directory is configured. */
 const DEPLOYMENT_OWNER = ownerOrLocal(undefined);
 
-function mayAccess(
+function mayAccessWorkflows(
   host: BureauWorkflowsOperationHost,
   principal: Principal,
   operatorScope: BureauScope,
@@ -149,7 +160,8 @@ function workflowsFor(
   resource: 'workflow' | 'run',
   identifier: string,
 ): BureauWorkflows {
-  if (!mayAccess(host, principal, operatorScope)) throw resourceNotFound(resource, identifier);
+  if (!mayAccessWorkflows(host, principal, operatorScope))
+    throw resourceNotFound(resource, identifier);
   return workflowsOf(host);
 }
 
@@ -253,7 +265,7 @@ export const workflowsCreateOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    if (!mayAccess(host, principal, 'bureau.workflows:write')) {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:write')) {
       throw {
         code: 'Forbidden',
         message: 'Creating a workflow requires bureau.workflows:write',
@@ -262,7 +274,9 @@ export const workflowsCreateOperation = defineOperation<
     }
     const workflows = workflowsOf(host);
     try {
-      return await workflows.create(input.id, input.definition);
+      return await workflows.create(input.id, input.definition, {
+        actor: ownerOfPrincipal(principal),
+      });
     } catch (error) {
       return faultOf(error, input.id);
     }
@@ -306,6 +320,7 @@ export const workflowsUpdateOperation = defineOperation<
     try {
       return await workflows.update(input.id, input.definition, {
         expectedHash: input.expectedHash,
+        actor: ownerOfPrincipal(principal),
       });
     } catch (error) {
       return faultOf(error, input.id, input.expectedHash);
@@ -322,7 +337,7 @@ function defineGuardedWrite(
   run: (
     workflows: BureauWorkflows,
     id: string,
-    expectedHash: string,
+    guard: { readonly expectedHash: string; readonly actor: string | undefined },
   ) => Promise<z.infer<typeof writeResultSchema>>,
 ) {
   return defineOperation<
@@ -359,7 +374,10 @@ function defineGuardedWrite(
         input.id,
       );
       try {
-        return await run(workflows, input.id, input.expectedHash);
+        return await run(workflows, input.id, {
+          expectedHash: input.expectedHash,
+          actor: ownerOfPrincipal(principal),
+        });
       } catch (error) {
         return faultOf(error, input.id, input.expectedHash);
       }
@@ -371,21 +389,21 @@ export const workflowsPauseOperation = defineGuardedWrite(
   'bureau.workflows.pause',
   'Pause a workflow',
   'Sets `paused: true` in the workflow’s file, if it still hashes to `expectedHash`, and pauses its schedule before the call returns. A paused workflow starts no new instance from its schedule; instances already running finish. Pausing adds no revision. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows.',
-  (workflows, id, expectedHash) => workflows.pause(id, { expectedHash }),
+  (workflows, id, guard) => workflows.pause(id, guard),
 );
 
 export const workflowsResumeOperation = defineGuardedWrite(
   'bureau.workflows.resume',
   'Resume a workflow',
   'Sets `paused: false` in the workflow’s file, if it still hashes to `expectedHash`, and resumes its schedule before the call returns. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows.',
-  (workflows, id, expectedHash) => workflows.resume(id, { expectedHash }),
+  (workflows, id, guard) => workflows.resume(id, guard),
 );
 
 export const workflowsDeleteOperation = defineGuardedWrite(
   'bureau.workflows.delete',
   'Delete a workflow file',
   'Deletes the workflow’s file, if it still hashes to `expectedHash`, and cancels its schedule before the call returns. Instances already running finish on the revision they began on, including after a restart; nothing new starts from the schedule. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows.',
-  (workflows, id, expectedHash) => workflows.delete(id, { expectedHash }),
+  (workflows, id, guard) => workflows.delete(id, guard),
 );
 
 const getInput = z.object({ id: workflowIdentifier });
@@ -443,7 +461,7 @@ export const workflowsListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    if (!mayAccess(host, principal, 'bureau.workflows:read')) {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
       return { workflows: [], nextOffset: null };
     }
     const workflows = workflowsOf(host);
@@ -536,7 +554,7 @@ export const workflowsRunsListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    if (!mayAccess(host, principal, 'bureau.workflows:read')) {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:read')) {
       return { runs: [], nextOffset: null };
     }
     const workflows = workflowsOf(host);
@@ -589,6 +607,78 @@ export const workflowsRunsGetOperation = defineOperation<
   },
 });
 
+const signalInput = z.object({
+  /** The signal's name: the `name` of a signal trigger and of an `await-signal` step. */
+  name: z.string().min(1).max(SIGNAL_NAME_MAXIMUM_LENGTH),
+  /** What the signal carries; `null` when omitted. */
+  payload: z.json().optional(),
+  /** Makes a retried delivery apply once; starts are never deduplicated. */
+  signalId: z
+    .string()
+    .min(1)
+    .refine(
+      (signalId) => new TextEncoder().encode(signalId).byteLength <= SIGNAL_ID_MAXIMUM_BYTES,
+      `signalId must be at most ${String(SIGNAL_ID_MAXIMUM_BYTES)} bytes`,
+    )
+    .optional(),
+});
+
+const signalOutput = z.object({
+  started: z.array(z.string()),
+  delivered: z.array(z.string()),
+});
+
+export const workflowsSignalOperation = defineOperation<
+  typeof signalInput,
+  typeof signalOutput,
+  BureauWorkflowsOperationHost
+>({
+  name: 'bureau.workflows.signal',
+  mcpExposable: false,
+  summary: 'Signal workflows',
+  description:
+    'Delivers `payload` to every running workflow instance that waits at an `await-signal` step named `name`, then starts one instance of every ready, unpaused workflow whose trigger is `{ kind: "signal", name }`, with `{ kind: "signal", name, payload }` as its `trigger`. Returns the `delivered` instance identifiers and the `started` ones. Delivery happens first, so an instance this call starts is never satisfied by this call. A paused or deleted workflow starts nothing, and its running instances still receive the signal. `signalId` (at most 128 bytes) makes a retried delivery apply once; starts are not deduplicated. A payload the engine would refuse is `InvalidParams`, and nothing is delivered. An engine error during delivery, or an earlier file change the engine has not followed, is `Unavailable` (`data.reason` is `signal-delivery-failed` or `workflow-apply-failed`) and starts nothing; its message names the instances already reached. Requires `bureau.workflows:write` unless the caller owns the deployment’s workflows; anyone else gets `{ started: [], delivered: [] }`.',
+  destructive: true,
+  tags: ['Workflows'],
+  inputSchema: signalInput,
+  outputSchema: signalOutput,
+  producibleFaults: ['InvalidParams', 'Unavailable', 'UnsupportedCapability'],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    if (!mayAccessWorkflows(host, principal, 'bureau.workflows:write')) {
+      return { started: [], delivered: [] };
+    }
+    const workflows = workflowsOf(host);
+    try {
+      return await workflows.signal(input.name, input.payload ?? null, {
+        signalId: input.signalId,
+      });
+    } catch (error) {
+      if (error instanceof WorkflowSignalFailure) {
+        // Weft's `Unavailable` carries only `reason` and `retryAfterSeconds` on the wire, so the
+        // instances already reached are named in the message; `error.delivered` holds them for an
+        // in-process caller.
+        throw {
+          code: 'Unavailable',
+          message: error.message,
+          data: { reason: error.code },
+        } satisfies OperationFault;
+      }
+      if (error instanceof BureauError && error.code === 'BAD_REQUEST') {
+        throw {
+          code: 'InvalidParams',
+          message: error.message,
+          data: { issues: [{ path: ['payload'], message: error.message, code: 'custom' }] },
+        } satisfies OperationFault;
+      }
+      throw error;
+    }
+  },
+});
+
 /** The workflow operations, in the order the handler serves them. */
 export const bureauWorkflowsOperations = [
   workflowsCreateOperation,
@@ -601,4 +691,5 @@ export const bureauWorkflowsOperations = [
   workflowsRevisionsOperation,
   workflowsRunsListOperation,
   workflowsRunsGetOperation,
+  workflowsSignalOperation,
 ] as const;
