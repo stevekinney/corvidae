@@ -939,6 +939,53 @@ describe('processSleepOperation', () => {
     expect(firedWithoutResolver.size).toBe(0);
   });
 
+  it('resolves a token-bearing run via its in-memory marker (COR-1604)', async () => {
+    // The same Window A race for a run with an execution token: the tick that
+    // found no resolver recorded this run's token with the marker, and the
+    // replayed fire must carry it too, or the token-bound resolver rejects it and
+    // the sleep never wakes (the durable timer is already collected).
+    const storage = new MemoryStorage();
+    const workflowId = 'sleep-race-token-bearing';
+    const operationId = 'op-token';
+    const token = 'run-token';
+    const firedWithoutResolver = new Map<string, Map<string, number>>();
+    const tokensFiredWithoutResolver = new Map<string, Map<string, string | undefined>>();
+    const scheduler = {
+      schedule: async (entry: TimerEntry) => {
+        await storage.batch(buildTimerBatchOperations(entry));
+        firedWithoutResolver.set(workflowId, new Map([[operationId, entry.fireAt]]));
+        tokensFiredWithoutResolver.set(
+          workflowId,
+          new Map([[operationId, entry.workflowExecutionToken]]),
+        );
+      },
+    };
+    const internals = {
+      checkpoints: new Map([[workflowId, { workflowExecutionToken: token }]]),
+      durableInlineOperations: new Map([
+        [workflowId, { operationId, type: 'sleep', workflowExecutionToken: token }],
+      ]),
+      options: { getNow: () => 0 },
+      scheduler,
+      sleepResolvers: new Map(),
+      sleepResolversByWorkflow: new Map(),
+      sleepTimersFiredWithoutResolver: firedWithoutResolver,
+      sleepTimerTokensFiredWithoutResolver: tokensFiredWithoutResolver,
+      storage,
+    } as never;
+
+    const { completeOperation, loadWorkflowState } = createSleepCallbacks(workflowId);
+    await processSleepOperation(
+      internals,
+      workflowId,
+      { type: 'sleep', operationId, duration: 3_600_000, scheduledFireAt: 3_600_000 },
+      { completeOperation, loadWorkflowState },
+    );
+
+    expect(completeOperation).toHaveBeenCalledWith(workflowId, undefined, operationId, token);
+    expect(firedWithoutResolver.size).toBe(0);
+  });
+
   it('parks instead of self-resolving when a stale earlier-run marker has a fireAt below this run deadline', async () => {
     // Regression for the start-new restart race: a terminated run left a marker
     // for the shared deterministic operationId with an EARLIER fireAt, and its

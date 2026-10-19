@@ -7,6 +7,7 @@ import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../schedul
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
@@ -54,31 +55,30 @@ export function createDelayedStartTimerEntry(
   };
 }
 
-/** Returns true when the scheduler fired this run's sleep before resolver registration. */
+/** Whether the scheduler fired `timer`, this run's sleep, before its resolver registered. */
 function sleepTimerFiredEarly(
   internals: EngineInternals,
-  workflowId: string,
-  operation: Pick<SleepOperation, 'operationId' | 'scheduledFireAt'> & {
-    workflowExecutionToken?: string;
-  },
+  timer: TimerEntry,
+  operationId: string,
 ): boolean {
+  const { workflowId, fireAt: scheduledFireAt } = timer;
   const workflowMarkers = internals.sleepTimersFiredWithoutResolver.get(workflowId);
   if (!workflowMarkers) return false;
-  const markedFireAt = workflowMarkers.get(operation.operationId);
+  const markedFireAt = workflowMarkers.get(operationId);
   if (markedFireAt === undefined) return false;
   const markerToken = internals.sleepTimerTokensFiredWithoutResolver
     ?.get(workflowId)
-    ?.get(operation.operationId);
-  if (markerToken !== operation.workflowExecutionToken) return false;
-  workflowMarkers.delete(operation.operationId);
-  internals.sleepTimerTokensFiredWithoutResolver?.get(workflowId)?.delete(operation.operationId);
+    ?.get(operationId);
+  if (markerToken !== timer.workflowExecutionToken) return false;
+  workflowMarkers.delete(operationId);
+  internals.sleepTimerTokensFiredWithoutResolver?.get(workflowId)?.delete(operationId);
   if (workflowMarkers.size === 0) {
     internals.sleepTimersFiredWithoutResolver.delete(workflowId);
   }
-  if (markedFireAt < operation.scheduledFireAt) {
-    acknowledgeSupersededSleepTimers(internals, workflowId, operation.scheduledFireAt);
+  if (markedFireAt < scheduledFireAt) {
+    acknowledgeSupersededSleepTimers(internals, workflowId, scheduledFireAt);
   }
-  return markedFireAt >= operation.scheduledFireAt;
+  return markedFireAt >= scheduledFireAt;
 }
 
 export async function processSleepOperation(
@@ -89,6 +89,8 @@ export async function processSleepOperation(
 ): Promise<void> {
   const workflowExecutionToken =
     internals.durableInlineOperations?.get(workflowId)?.workflowExecutionToken;
+  // The run this sleep belongs to, captured before the timer write's await (COR-1604).
+  const run = currentExecutionAttempt(internals, workflowId);
   if (operation.scheduledFireAt <= internals.options.getNow()) {
     callbacks.completeOperation(
       workflowId,
@@ -100,13 +102,14 @@ export async function processSleepOperation(
   }
 
   const { promise, resolve } = Promise.withResolvers<void>();
-  await internals.scheduler.schedule({
+  const timer: TimerEntry = {
     id: `sleep:${operation.operationId}`,
     workflowId,
     fireAt: operation.scheduledFireAt,
     kind: 'sleep',
     ...(workflowExecutionToken === undefined ? {} : { workflowExecutionToken }),
-  });
+  };
+  await internals.scheduler.schedule(timer);
   const registered = registerSleepResolver(
     internals,
     workflowId,
@@ -114,23 +117,21 @@ export async function processSleepOperation(
     resolve,
     operation.scheduledFireAt,
     workflowExecutionToken,
+    run,
   );
   if (!registered) return;
 
   // Guard against the race where the scheduler tick fires the timer in the window
   // between the schedule() write and registerSleepResolver(). The resolver guard
   // prevents a spurious resolveSleepTimer call once the tick already settled it.
+  // The replayed fire is the scheduled entry itself, token included: a resolver
+  // bound to a token only accepts an entry carrying the same one (COR-1604).
   const resolverKey = `${workflowId}:${operation.operationId}`;
   if (
-    sleepTimerFiredEarly(internals, workflowId, operation) &&
+    sleepTimerFiredEarly(internals, timer, operation.operationId) &&
     internals.sleepResolvers.has(resolverKey)
   ) {
-    resolveSleepTimer(internals, {
-      id: `sleep:${operation.operationId}`,
-      workflowId,
-      fireAt: operation.scheduledFireAt,
-      kind: 'sleep',
-    });
+    resolveSleepTimer(internals, timer);
   }
 
   await promise;
