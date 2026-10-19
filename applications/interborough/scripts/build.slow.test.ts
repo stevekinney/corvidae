@@ -1,10 +1,12 @@
 /**
  * The real production build (`scripts/build.ts`): bundling takes seconds, so it runs in the slow
  * lane (`test:slow`). Every test here shares one build, written into a scratch directory so it
- * races nothing that builds `build/`. Nothing asserts on how long the build takes.
+ * races nothing that builds `build/`, and the retention tests seed their "previous build" by
+ * copying it, so the file makes at most {@link MAXIMUM_BUNDLES} real bundles. Nothing asserts on
+ * how long the build takes.
  */
 import { afterAll, describe, expect, it } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -14,13 +16,27 @@ const scratch = mkdtempSync(join(tmpdir(), 'interborough-build-slow-'));
 const outdir = join(scratch, 'build');
 let build: Promise<ApplicationBuild> | undefined;
 
+/**
+ * The most real bundles this file may make: the shared production build, and one rebuild for each
+ * of the two retention tests.
+ */
+const MAXIMUM_BUNDLES = 3;
+let bundles = 0;
+
+/** `Bun.build`, counted, so that no test quietly adds a bundle and pushes the file toward Bun's limit. */
+function counted(configuration: Bun.BuildConfig): Promise<Bun.BuildOutput> {
+  bundles += 1;
+  return Bun.build(configuration);
+}
+
 function builtApplication(): Promise<ApplicationBuild> {
-  build ??= buildApplication({ outdir });
+  build ??= buildApplication({ outdir, bundle: counted });
   return build;
 }
 
 afterAll(() => {
   rmSync(scratch, { recursive: true, force: true });
+  expect(bundles).toBeLessThanOrEqual(MAXIMUM_BUNDLES);
 });
 
 const GRAMMAR_MODULE = /@shikijs\/langs\/dist\/([^/]+)\.mjs$/;
@@ -107,12 +123,16 @@ describe('buildApplication Chat highlighting', () => {
 });
 
 describe('buildApplication asset retention', () => {
-  /** A finished build in a scratch directory, with a file from "the build before" planted in it. */
+  /**
+   * A rebuild over a copy of the shared build, with a file from "the build before" planted in the
+   * copy. The copy stands in for the previous build, so only the rebuild is a real bundle.
+   */
   async function replacedBuild(development: boolean): Promise<string> {
     const outdir = join(mkdtempSync(join(scratch, 'retention-')), 'build');
-    await buildApplication({ outdir, development: true });
+    const shared = await builtApplication();
+    cpSync(shared.directory, outdir, { recursive: true });
     writeFileSync(join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js'), '');
-    await buildApplication({ outdir, development });
+    await buildApplication({ outdir, development, bundle: counted });
     return join(outdir, BUILD_ASSET_DIRECTORY, 'previous-generation-aaaaaaaa.js');
   }
 
