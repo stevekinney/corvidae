@@ -17,11 +17,29 @@ import {
   makeInterruptedRunResult,
   reconstructRunResult,
   reconstructTerminalRunError,
+  settleRejectedRun,
 } from './active-run-result-reconstruction';
 import {
   type AgentRunWorkflowResult,
   normalizeAgentRunWorkflowResult,
 } from './run-workflow-result';
+
+/**
+ * Whether the engine had already failed this run when the driver started. Reads the engine's own
+ * state, tolerating a missing or throwing `get` the way {@link classifyTimeoutMessage} does: a
+ * state that cannot be read is not evidence the run failed before replay.
+ */
+async function engineFailedRunBeforeReplay(
+  context: DurableActiveRunContext,
+  runId: string,
+): Promise<boolean> {
+  try {
+    const state = await context.engine.get(runId);
+    return state?.status === 'failed';
+  } catch {
+    return false;
+  }
+}
 
 export async function driveReattachedRun(
   context: DurableActiveRunContext,
@@ -33,6 +51,9 @@ export async function driveReattachedRun(
   runtime: RuntimeServices,
 ): Promise<RunResult> {
   const runStartTime = runtime.monotonic.now();
+  // Started before anything below awaits, so it reads the state as the recovery hook handed the
+  // run over (see `engineFailedRunBeforeReplay`).
+  const failedBeforeReplay = engineFailedRunBeforeReplay(context, runId);
 
   let summary: AgentRunWorkflowResult;
   try {
@@ -90,12 +111,45 @@ export async function driveReattachedRun(
     // fire the terminal lifecycle here; otherwise the session is left stuck
     // `running` for a run that is actually terminal (Bugbot #38). `hooks: undefined`
     // per the reattach contract; the conversation comes from the checkpoint.
-    if (isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError') {
-      const message = await classifyTimeoutMessage(context, runId, error);
-      // Same checkpointed-usage reconstruction as the abort branch above — a
-      // circuit-breaker/deadline timeout after prior checkpointed steps must not
-      // under-report the run's accumulated usage.
-      const { runState, conversation } = await loadRunStateFromCheckpoint(context, runId, runtime);
+    const timedOut = isWeftErrorLike(error) && error.code === 'WorkflowTimeoutError';
+
+    // EngineDisposedError = bureau teardown mid-resume (leave running for a later boot).
+    // WorkflowCheckpointConflictError = another engine over the same store won a checkpoint
+    // compare-and-swap for this run and owns its durable state, so this engine stopped driving it
+    // and must not write a terminal over it.
+    if (
+      isWeftErrorLike(error) &&
+      (error.code === 'EngineDisposedError' || error.code === 'WorkflowCheckpointConflictError')
+    ) {
+      // AB-204 AC8: closed() classifies this as unresolved/unreachable,
+      // never failed — see `reachability`'s doc comment above.
+      reachability.unreachable = true;
+      return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+    }
+
+    // The engine terminally failed this run before replay because the recovery resolver returned
+    // services-unavailable, and the resolver ALREADY reconciled that session to `error`. Firing a
+    // terminal lifecycle here would write a second terminal save over what the resolver owns, so
+    // only log and resolve quiet. The state read began when this driver started, which is when
+    // the recovery hook handed the run over; a failure after replay began cannot have reached
+    // `failed` before then, except in the few microtasks between that hand-over and the read.
+    if (!timedOut && (await failedBeforeReplay)) {
+      console.error(
+        `[operative] Reattached durable run "${runId}" was failed by the engine before replay: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+    }
+
+    // Any other rejection is the run ending after replay in this process, and nothing else owns
+    // reporting it (COR-1587): an activity or workflow-body failure, such as a refused
+    // `durable-run:` write, rejects with a plain `Error` that carries no code. Settle it as `error`
+    // so the session, the run record, and attached streams end, rather than leaving them
+    // `running` until the next boot. Same checkpointed-usage reconstruction as the abort branch
+    // above, so a failure after prior checkpointed steps does not under-report accumulated usage.
+    const { runState, conversation } = await loadRunStateFromCheckpoint(context, runId, runtime);
+    if (timedOut) {
       return finalizeRunResult({
         finishReason: 'error',
         runState,
@@ -104,33 +158,18 @@ export async function driveReattachedRun(
         emitter,
         runStartTime,
         runtime,
-        errorMessage: message,
+        errorMessage: await classifyTimeoutMessage(context, runId, error),
       });
     }
-    // Otherwise write-free. EngineDisposedError = bureau teardown mid-resume
-    // (leave running for a later boot). Any other rejection = the engine
-    // terminally failed this run pre-replay because the resolver returned
-    // services-unavailable, and the resolver ALREADY reconciled that session to
-    // `error`. Firing a terminal lifecycle here would clobber what the
-    // resolver/teardown owns, so we only log and resolve quiet.
-    // WorkflowCheckpointConflictError = another engine over the same store won
-    // a checkpoint compare-and-swap for this run and owns its durable state, so
-    // this engine stopped driving it and must not write a terminal over it.
-    if (
-      isWeftErrorLike(error) &&
-      (error.code === 'EngineDisposedError' || error.code === 'WorkflowCheckpointConflictError')
-    ) {
-      // AB-204 AC8: closed() classifies this as unresolved/unreachable,
-      // never failed — see `reachability`'s doc comment above.
-      reachability.unreachable = true;
-    } else {
-      console.error(
-        `[operative] Reattached durable run "${runId}" did not settle cleanly: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-    return makeInterruptedRunResult(new Conversation(undefined, { runtime }));
+    return settleRejectedRun({
+      rejection: error,
+      runState,
+      conversation,
+      hooks: undefined,
+      emitter,
+      runStartTime,
+      runtime,
+    });
   }
 
   // COR-1390: `handle.result()` also settles when another engine reclaimed

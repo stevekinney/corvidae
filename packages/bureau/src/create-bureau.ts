@@ -6452,7 +6452,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // conversation behavior. A run the engine failed pre-replay (services
     // unavailable) or one interrupted by teardown fires NO terminal event — the
     // adapter stays write-free for those and the resolver/teardown owns the
-    // session status; so these listeners only run for a genuinely settled run.
+    // session status. A run that fails after replay (an activity or workflow-body
+    // failure, COR-1587) settles as `error`, with `run.error` then `run.completed`,
+    // so these listeners run for it too.
     // COR-625: a reattached run whose `result` REJECTS — a recovered
     // workflow whose stored result fails its schema-version check
     // (`UnsupportedRunResultVersionError`, rethrown by

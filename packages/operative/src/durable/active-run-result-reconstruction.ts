@@ -11,10 +11,10 @@ import {
   GuardrailTripwireError,
   MaximumStepsExceededError,
 } from '../errors';
-import type { OperativeEventEmitter } from '../events';
+import { type OperativeEventEmitter, RunErrorEvent } from '../events';
 import { createRunState } from '../loop';
 import { makeAbortResult, makeCompletedResult, makeErrorResult } from '../run-lifecycle';
-import type { RunState } from '../run-step';
+import type { EventDispatcher, RunState } from '../run-step';
 import { type FinishReason, type RunOptions, type RunResult } from '../types';
 import type { DurableActiveRunContext } from './active-run-adapter';
 import { UnsupportedCheckpointRecordVersionError } from './checkpoint-version';
@@ -288,6 +288,51 @@ export async function classifyTimeoutMessage(
   } catch {
     return fallback;
   }
+}
+
+/** Arguments to {@link settleRejectedRun}. */
+type SettleRejectedRunArgs = Omit<
+  FinalizeArgs,
+  'finishReason' | 'errorMessage' | 'abortReason' | 'schemaValidation' | 'output' | 'tripwire'
+> & {
+  /** What `handle.result()` rejected with, which no branch of the driver classified. */
+  rejection: unknown;
+};
+
+/**
+ * Settle a durable run whose `handle.result()` rejected with something its driver does not
+ * classify (COR-1587): an activity or workflow-body failure, such as a refused `durable-run:`
+ * write, which Weft reports as a plain `Error` that carries no code. The run is genuinely
+ * terminal and nothing else reports it, so it ends as `error` here, with the rejection's message.
+ *
+ * Fires `run.error` and then `run.completed`, the pair every other failed run fires. A listener
+ * that tells an ended run from a failed one reads `run.error` (the run store's `error` status,
+ * the AG-UI stream's `RUN_ERROR`); `run.completed` alone reads as a run that finished. A
+ * `run.error` a step already fired is not repeated, and its error is the one reported.
+ */
+export function settleRejectedRun(args: SettleRejectedRunArgs): RunResult {
+  const { rejection, ...rest } = args;
+  const message = rejection instanceof Error ? rejection.message : String(rejection);
+  const stepCount = rest.runState.steps.length;
+  const terminalError =
+    rest.terminalError ??
+    reconstructTerminalRunError({
+      finishReason: 'error',
+      steps: stepCount,
+      errorMessage: message,
+    })!;
+  if (rest.terminalError === undefined) {
+    // The loose dispatcher the run lifecycle's own terminal helpers take: `run.error` is announced
+    // the way every other failed run announces it.
+    const dispatcher: EventDispatcher = rest.emitter;
+    dispatcher.dispatch(new RunErrorEvent(stepCount, terminalError, terminalError.kind));
+  }
+  return finalizeRunResult({
+    ...rest,
+    finishReason: 'error',
+    errorMessage: message,
+    terminalError,
+  });
 }
 
 /**

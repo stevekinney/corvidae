@@ -110,6 +110,10 @@ afterEach(async () => {
   await yieldToPortableEventLoop();
 });
 
+/** The message of a reported error, whatever type the result or event declares it as. */
+const messageOf = (error: unknown): string | undefined =>
+  error instanceof Error ? error.message : undefined;
+
 async function buildContext() {
   const storage = new MemoryStorage();
   const checkpointStore = createCheckpointStore(
@@ -863,7 +867,7 @@ describe('createRun with durable routing', () => {
     expect((result.error as Error).message).toContain('execution deadline');
   });
 
-  it('propagates unexpected durable handle result rejections', async () => {
+  it('settles an unexpected durable handle result rejection as an error (COR-1587)', async () => {
     const unexpectedError = new Error('unexpected durable rejection');
     const engine = {
       start: async () => ({
@@ -878,21 +882,33 @@ describe('createRun with durable routing', () => {
         },
       },
     } as never;
-
-    const activeRun = createDurableActiveRun(context, {
-      runId: 'durable-unexpected-rejection',
-      sessionId: 'durable-unexpected-rejection',
-      options: runOptions(async () => ({ content: 'unused', toolCalls: [] })),
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const completions: Array<{ finishReason: string; message: string | undefined }> = [];
+    emitter.addEventListener(RunCompletedEvent.type, (event) => {
+      completions.push({ finishReason: event.finishReason, message: messageOf(event.error) });
     });
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
 
-    await activeRun.result.then(
-      () => {
-        throw new Error('Expected durable run to reject');
-      },
-      (error) => {
-        expect(error).toBe(unexpectedError);
-      },
-    );
+    try {
+      const activeRun = createDurableActiveRun(context, {
+        runId: 'durable-unexpected-rejection',
+        sessionId: 'durable-unexpected-rejection',
+        options: runOptions(async () => ({ content: 'unused', toolCalls: [] })),
+        emitter,
+      });
+
+      const result = await activeRun.result;
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(result.finishReason).toBe('error');
+      expect(messageOf(result.error)).toContain('unexpected durable rejection');
+      expect(completions).toEqual([{ finishReason: 'error', message: messageOf(result.error) }]);
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
   });
 
   it('classifies a BudgetExceededError as finishReason budget-exceeded (durable parity)', async () => {
@@ -3606,6 +3622,8 @@ describe('reattachDurableActiveRun', () => {
         result: () => new Promise<unknown>((_resolve, reject) => (rejectResult = reject)),
       };
       const engine = {
+        // The resolver failed the run before replay, so the engine already reads it as failed.
+        get: async () => ({ status: 'failed' }),
         cancel: async () => {
           rejectResult?.(new Error('resolver-owned failure'));
           throw new Error('cancel failed');
@@ -3737,34 +3755,36 @@ describe('reattachDurableActiveRun', () => {
     expect((result.error as Error).message).toContain('history circuit breaker');
   });
 
-  it('returns an interrupted result and logs when a recovered run rejects without engine disposal', async () => {
+  it('settles a recovered run that rejects after replay as an error (COR-1587)', async () => {
     const context = await buildContext();
-    const originalConsoleError = console.error;
-    const logs: unknown[] = [];
-    console.error = (...args: unknown[]) => {
-      logs.push(args);
-    };
     try {
       const handle = {
         id: 'reattach-unexpected',
         result: () => Promise.reject(new Error('resolver failed')),
       };
       const engine = {
+        // The engine reports the run still live when the adapter takes it over, so the failure
+        // happened after replay began and nothing else has recorded it.
+        get: async () => ({ status: 'running' }),
         cancel: async () => {},
       } as unknown as RegistryAgnosticEngine;
+      const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+      const completions: Array<{ finishReason: string; message: string | undefined }> = [];
+      emitter.addEventListener(RunCompletedEvent.type, (event) => {
+        completions.push({ finishReason: event.finishReason, message: messageOf(event.error) });
+      });
 
       const recoveredRun = reattachDurableActiveRun(
         { engine, checkpointStore: context.checkpointStore },
-        { runId: 'reattach-unexpected', handle },
+        { runId: 'reattach-unexpected', handle, emitter },
       );
 
       const result = await recoveredRun.result;
 
-      expect(result.finishReason).toBe('aborted');
-      expect(logs.length).toBe(1);
-      expect(String((logs[0] as unknown[])[0])).toContain('did not settle cleanly');
+      expect(result.finishReason).toBe('error');
+      expect(messageOf(result.error)).toContain('resolver failed');
+      expect(completions).toEqual([{ finishReason: 'error', message: messageOf(result.error) }]);
     } finally {
-      console.error = originalConsoleError;
       context.engine[Symbol.dispose]();
     }
   });

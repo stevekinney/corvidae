@@ -323,7 +323,7 @@ export function reattachDurableActiveRun(
 /**
  * Resume a SUSPENDED durable run and return a `RunResult` promise that settles
  * when the resumed run completes. Unlike {@link reattachDurableActiveRun} — which
- * is write-free and swallows a rejecting handle into an interrupted result because
+ * is write-free and swallows a rejecting handle into an interrupted result when
  * a recovered run's terminal status is owned by the resolver/teardown — this
  * PROPAGATES failure: if `engine.resume(runId)` rejects (the run is already
  * terminal) or the resumed handle's `result()` rejects, the returned promise
