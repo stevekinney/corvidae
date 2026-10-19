@@ -8,7 +8,7 @@ import type {
 
 import { decodeBase64 } from './base64';
 import { AssetAdmissionError } from './errors';
-import { modalityOf } from './media-inspection';
+import { detectMediaType, modalityOf } from './media-inspection';
 import type {
   AssetAdmission,
   AssetAdmissionRequest,
@@ -43,8 +43,9 @@ export function createAssetGeneratedMediaAdmitter(
       // The single-part call reaches here from a streaming wrapper, which admits each part as it
       // completes and so cannot share one aggregate budget across the response. Rather than leave
       // a configured aggregate ceiling silently off, it refuses the part.
-      refuseUnderAggregateLimit(assets, request.part);
-      const admission = await assets.admit(assetRequest(request), principal);
+      const assetRequestForPart = assetRequest(request);
+      refuseUnderAggregateLimit(assets, request.part, assetRequestForPart);
+      const admission = await assets.admit(assetRequestForPart, principal);
       return wrap(admission, request);
     },
     // One response's parts share the policy's aggregate ceilings, so they go through the
@@ -56,9 +57,22 @@ export function createAssetGeneratedMediaAdmitter(
   };
 }
 
-function refuseUnderAggregateLimit(assets: AssetService, part: InlineMediaContent): void {
+/**
+ * Refuses a part admitted on its own when any media type it could be counted as has an aggregate
+ * limit: its declared `type`, its declared `mimeType`, and the type the service detects from its
+ * bytes, which is the one the aggregate budget actually counts. A missing or misleading
+ * declaration therefore cannot route a part around the limit.
+ */
+function refuseUnderAggregateLimit(
+  assets: AssetService,
+  part: InlineMediaContent,
+  request: AssetAdmissionRequest,
+): void {
   const modalities = new Set<string>([part.type]);
   if (part.mimeType !== undefined) modalities.add(modalityOf(part.mimeType));
+  if (request.source.kind === 'inline') {
+    modalities.add(modalityOf(detectMediaType(request.source.bytes) ?? 'application/octet-stream'));
+  }
   if (
     assets.policy.limits.some(
       (limit) => limit.scope === 'aggregate' && modalities.has(limit.modality),

@@ -396,3 +396,59 @@ describe('streamed generated media under an aggregate limit (correction 2)', () 
     expect(result.finishReason).not.toBe('error');
   });
 });
+
+describe('a streamed part whose bytes are a type with an aggregate limit (correction 3)', () => {
+  // The service counts a part against the aggregate budget of the media type it detects from the
+  // bytes, so the refusal must too: a declared `type` or a missing `mimeType` cannot route around it.
+  const untypedPng = {
+    type: 'file' as const,
+    source: { kind: 'inline' as const, data: base64Of(generatedPng), encoding: 'base64' as const },
+  };
+  const neverAborted = new AbortController().signal;
+
+  it('refuses a PNG declared as an untyped file part under an aggregate image limit', async () => {
+    const bureau = await openBureau({
+      policy: {
+        limits: [{ scope: 'aggregate', modality: 'image', maxBytes: generatedPng.byteLength * 10 }],
+      },
+    });
+    const admitter = createAssetGeneratedMediaAdmitter(bureau.assets!, alice.id);
+
+    let refusal: unknown;
+    try {
+      await admitter.admit({
+        part: untypedPng,
+        runId: 'run-1',
+        step: 0,
+        partIndex: 0,
+        messageId: undefined,
+        signal: neverAborted,
+      });
+    } catch (error) {
+      refusal = error;
+    }
+
+    expect((refusal as { code?: string } | undefined)?.code).toBe('aggregate-limit-exceeded');
+    expect(bureau.assets!.activeWork()).toEqual([]);
+  });
+
+  it('admits the same untyped part when only a different type has an aggregate limit', async () => {
+    const bureau = await openBureau({
+      policy: { limits: [{ scope: 'aggregate', modality: 'audio', maxBytes: 1 }] },
+    });
+    const admitter = createAssetGeneratedMediaAdmitter(bureau.assets!, alice.id);
+
+    const admission = await admitter.admit({
+      part: untypedPng,
+      runId: 'run-1',
+      step: 0,
+      partIndex: 0,
+      messageId: undefined,
+      signal: neverAborted,
+    });
+
+    const settlement = await admission.settled();
+    expect(settlement.outcome).toBe('available');
+    await admission.closed();
+  });
+});
