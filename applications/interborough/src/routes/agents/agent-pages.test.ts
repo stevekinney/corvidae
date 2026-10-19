@@ -123,9 +123,17 @@ describe('one agent’s page', () => {
     const served = serve(AGENT);
     landAt('/agents/assistant');
 
-    const { findByRole } = mount(AgentDetail);
+    const { container, findByRole } = mount(AgentDetail);
 
     const action = await findByRole('link', { name: 'New chat' });
+    // What the agent list carries is shown, and no model, tools or skills section is: an agent
+    // defined in code has no file to read them from, and a blank section would say none.
+    const shown = container.textContent ?? '';
+    for (const present of ['Assistant', 'Answers every message.', 'Defined in code', 'Revision']) {
+      expect(shown).toContain(present);
+    }
+    expect(shown).toContain('Published');
+    for (const absent of ['Model', 'Tools', 'Skills', 'None']) expect(shown).not.toContain(absent);
     action.click();
     expect(router.current.search.get('agent')).toBe('assistant');
     expect(served.calls.some((call) => call.method === 'bureau.agents.definitions.get')).toBe(

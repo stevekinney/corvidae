@@ -1,8 +1,10 @@
 <script lang="ts">
   /**
    * `/agents/:id`: one agent's details, a New chat action when it is published, and the chats the
-   * caller has had with it. A file agent's model, tools and skills come from its definition; an
-   * agent defined in code has no file, so it shows what the agent list says of it.
+   * caller has had with it. A file agent's model, tools and skills come from its definition. An
+   * agent defined in code has no file and no route exposes its catalog entry, so it shows what
+   * `bureau.agents.list` says of it (name, description, kind, revision, publish state) and has no
+   * model, tools or skills section at all, not an empty one.
    */
   import { untrack } from 'svelte';
 
