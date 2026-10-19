@@ -20,9 +20,11 @@
   import { CHAT_COPY } from '../../app/copy.ts';
   import { getContext, listAgents, type AgentSummary } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ApprovalAlert from './approval-alert.svelte';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
     sessionId: string;
@@ -123,6 +125,9 @@
       // The controller reported it, and the approval is still pending for another try.
     } finally {
       deciding = false;
+      // Whether it took effect or not, the approval is not what `/reviews` last listed, so the
+      // inbox and the count in the navigation read again at once and do not wait for their poll.
+      void invalidateReviewQueries(queryClient);
     }
   }
 
@@ -140,6 +145,10 @@
       <p class="weft-chat-header__agent">{agent}</p>
     {/if}
   </header>
+
+  {#if !choosing}
+    <SessionTasks {sessionId} streaming={session.streaming} />
+  {/if}
 
   <!-- A decision continues the run, which the controller refuses while another turn is going. -->
   <ApprovalAlert {approvals} deciding={deciding || session.streaming} onDecide={decide} />

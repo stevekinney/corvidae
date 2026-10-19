@@ -6,7 +6,7 @@
 import { VIEW_COPY } from '../../src/app/copy.ts';
 import { expect, test } from './fixtures.ts';
 
-const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Inbox'];
+const PRIMARY = ['Chat', 'Agents', 'Workflows', 'Runs', 'Schedules', 'Reviews'];
 const ENGINE = ['Workers', 'Storage', 'System', 'Audit'];
 
 test('the shell shows the principal weft.system.principal reports', async ({ page, request }) => {
@@ -82,9 +82,12 @@ test('runs live at /runs and /runs/:id, and /workflows is the catalog of definit
   await expect(page.locator('[data-view="runs"]')).toHaveCount(0);
 });
 
-test('the old paths are gone', async ({ request }) => {
+test('the old paths are gone, and /reviews took the inbox’s place', async ({ request }) => {
+  // The route was renamed with no alias: the retired path is not served, and the new one is.
+  const retired = await request.get(['', 'inbox'].join('/'));
+  expect(retired.status()).toBe(404);
   const reviews = await request.get('/reviews');
-  expect(reviews.status()).toBe(404);
+  expect(reviews.status()).toBe(200);
 });
 
 test('the System view loads its Discovery documents through the relay', async ({ page }) => {

@@ -97,7 +97,7 @@ function toastRegions(container: HTMLElement): number {
 const views: readonly (readonly [string, Component, string])[] = [
   ['DashboardView', DashboardView, 'Operations overview'],
   ['WorkflowsView', WorkflowsView, 'Runs'],
-  ['ReviewsView', ReviewsView, 'Inbox'],
+  ['ReviewsView', ReviewsView, 'Reviews'],
   ['WorkersView', WorkersView, 'Workers'],
   ['SchedulesView', SchedulesView, 'Schedules'],
   ['StorageView', StorageView, 'Storage'],
