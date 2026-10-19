@@ -9,6 +9,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
+import { FIRE_QUESTION_INPUT, FIRE_QUESTION_PROMPT } from './fire-question.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession, threadMessages } from './task-support.ts';
 
@@ -142,7 +143,88 @@ test.describe('a question a run asks', () => {
       .poll(
         async () =>
           (
-            (await bureauCall(request, 'bureau.tasks.get', { taskId: task.id })) as {
+            (await bureauCall(request, 'bureau.tasks.get', {
+              taskId: task.id,
+            })) as {
+              status: string;
+            }
+          ).status,
+      )
+      .toBe('completed');
+  });
+});
+
+test.describe('a scheduled run’s human wait', () => {
+  test('answered in the inbox lets that run continue', async ({ page, request }) => {
+    // A schedule whose agent asks a question. A fire that is still going is not fired over
+    // (`overlap: 'skip'`), so the first fire is the only one while its question is open.
+    const schedule = (await bureauCall(request, 'bureau.schedules.create', {
+      agentName: 'request-human-input',
+      spec: '1s',
+      input: FIRE_QUESTION_INPUT,
+      description: `Asks which environment (${crypto.randomUUID()})`,
+      overlap: 'skip',
+    })) as { id: string };
+    type Review = {
+      id: string;
+      runId: string;
+      sessionId?: string;
+      kind: string;
+      prompt?: string;
+    };
+    let fire: Review | undefined;
+    try {
+      // The one fire's question is the one that carries this prompt, which only the fire's model
+      // asks, so no question another case left open can be taken for it.
+      await expect
+        .poll(async () => {
+          const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+            reviews: Review[];
+          };
+          fire = listed.reviews.find(
+            (candidate) =>
+              candidate.kind === 'human-wait' && candidate.prompt === FIRE_QUESTION_PROMPT,
+          );
+          return fire?.id;
+        })
+        .toBeTruthy();
+    } finally {
+      // Whatever came of the poll, the schedule's cadence is moved out of reach, so no later fire
+      // parks a second question for the cases that follow.
+      const current = (await bureauCall(request, 'bureau.schedules.get', {
+        scheduleId: schedule.id,
+      })) as { revision: number };
+      await bureauCall(request, 'bureau.schedules.update', {
+        scheduleId: schedule.id,
+        expectedRevision: current.revision,
+        spec: '365d',
+      });
+    }
+    if (fire === undefined) throw new Error('No fire parked on its question.');
+    const question = fire;
+
+    await page.goto('/reviews');
+    const row = page.locator('.weft-reviews-inbox__list > li').filter({
+      has: page.locator(
+        question.sessionId === undefined
+          ? `a[href="/tasks/${question.runId}"]`
+          : `a[href="/chat/${question.sessionId}"]`,
+      ),
+    });
+    await expect(row).toContainText(FIRE_QUESTION_PROMPT);
+    await row.getByRole('button').click();
+    await page.getByLabel('Your answer').fill('staging');
+    await page.getByRole('button', { name: 'Send answer' }).click();
+
+    await expect(row).toHaveCount(0);
+    // The run the wait belongs to goes on and finishes.
+    await expect
+      .poll(
+        async () =>
+          (
+            (await bureauCall(request, 'bureau.tasks.get', {
+              taskId: question.runId,
+            })) as {
               status: string;
             }
           ).status,
