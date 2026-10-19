@@ -385,7 +385,7 @@ async function tail(
     context.interruptNow(ending.waits.map(toInterrupt));
     return;
   }
-  await finishPeer(context, ending.terminal, sessionSaves, settled);
+  await finishPeer(context, ending.terminal, sessionSaves);
 }
 
 /** Whether the session has recorded the run's end. */
@@ -438,55 +438,50 @@ async function settledSession(
   }
 }
 
-/** The run's last terminal record and whether a tripwire preceded it, from its durable history. */
+/**
+ * How the run ended, from its durable history: its first terminal record, labelled with a
+ * tripwire when the history holds one. The first terminal decides, as on the live tail: a run that
+ * fails records `run.error`, then (for a guardrail) `run.tripwire`, then the `run.completed` that
+ * carries its finish reason, and the error is how it ended.
+ */
 async function historyTerminal(
   bureau: PeerStreamBureau,
   runId: string,
 ): Promise<PeerTerminal | undefined> {
   let since: string | undefined;
   let tripwire = false;
-  let terminal: PeerTerminal | undefined;
+  let first: Omit<PeerTerminal, 'tripwire'> | undefined;
   for (;;) {
     const page = await bureau.eventHistory(
       { kind: 'run', id: runId },
       since === undefined ? {} : { since },
     );
-    if (!('events' in page)) return terminal;
+    if (!('events' in page)) break;
     for (const event of page.events) {
       if (event.kind === RECORDED.runTripwire) tripwire = true;
       const outcome = HISTORY_TERMINAL[event.kind];
-      if (outcome !== undefined) {
-        terminal = { outcome, detail: event.payload, tripwire, cursor: event.cursor };
+      if (outcome !== undefined && first === undefined) {
+        first = { outcome, detail: event.payload, cursor: event.cursor };
       }
     }
-    if (!page.hasMore || page.nextCursor === undefined) return terminal;
+    if (!page.hasMore || page.nextCursor === undefined) break;
     since = page.nextCursor;
   }
+  return first === undefined ? undefined : { ...first, tripwire };
 }
 
 /**
  * Ends the stream with the run's outcome: the session as it stands once it shows the run settled
  * (or the grace is over), then the terminal event. A terminal the run's history recorded is
  * preferred to one read from its status, because it carries the record's cursor and its tripwire.
- *
- * The wait is for a holder that is ending the run while the stream follows it. A run that had
- * already settled when the stream opened has had its holder's terminal save, or never will: a
- * session that still says `running` for it is the marker a process that stopped before its save
- * leaves behind (the one `threadBusy` reads as not busy), and nothing will change it. Its session
- * is read once, as it stands.
  */
 async function finishPeer(
   context: PeerStreamContext,
   learned: PeerTerminal,
   sessionSaves: Changes,
-  settledAtOpen: boolean,
 ): Promise<void> {
   const { stampContext } = context;
-  const session = settledAtOpen
-    ? await readSessionOwnedBy(context.bureau, context.threadId, context.owner).catch(
-        () => undefined,
-      )
-    : await settledSession(context, sessionSaves);
+  const session = await settledSession(context, sessionSaves);
   if (context.isEnded()) return;
   const recorded = await historyTerminal(context.bureau, context.nativeRunId).catch(
     () => undefined,

@@ -436,8 +436,68 @@ describe('attach and stream on a peer', () => {
   });
 });
 
-describe('a replay of a run that settled before the stream opened', () => {
-  it('ends without waiting out the settle grace when the session was left saying running', async () => {
+describe('a peer stream of a run that settled before it opened', () => {
+  it('waits for the holder’s terminal session save still in flight, and ends once it lands', async () => {
+    const clock = createManualRuntimeServices();
+    await withPeers(
+      { script: [hold('a-generating'), say('A replied.')], seamStorage: true },
+      async (harness) => {
+        await withPeer(
+          harness,
+          async (peer) => {
+            const started = await startOn(harness.handler);
+            await harness.generate.reached('a-generating');
+            // The holder's terminal session save is held: its durable run settles first.
+            const save = harness.seam!.holdWrite(savesSessionAs('completed'));
+            harness.generate.release('a-generating');
+            await save.reached;
+            await pollUntil(
+              async () => (await durableStatus(peer, started.nativeRunId)) === 'completed',
+            );
+
+            // The same start, retried on the peer, streams the settled run.
+            const retried = new FrameReader(
+              await peer.handler(
+                startRequest(
+                  runAgentInput({
+                    threadId: THREAD,
+                    runId: 'client-run-1',
+                    messages: [{ id: 'user-client-run-1', role: 'user', content: 'hello' }],
+                  }),
+                ),
+              ),
+            );
+            let ended = false;
+            const rest = retried.rest().then((frames) => {
+              ended = true;
+              return frames;
+            });
+            const graceDue = clock.monotonic.now() + PEER_SESSION_SETTLE_GRACE_MS;
+            await pollUntil(() => clock.pendingTimers().some((timer) => timer.dueAt === graceDue));
+            expect(ended).toBe(false);
+
+            save.release();
+            const frames = await rest;
+            await started.reader.rest();
+
+            const snapshots = frames.filter(
+              (frame) => frame.event.type === EventType.MESSAGES_SNAPSHOT,
+            );
+            expect(messageTexts(snapshots.at(-1))).toContain('A replied.');
+            expect(frames.at(-1)!.event).toMatchObject({
+              type: EventType.RUN_FINISHED,
+              outcome: { type: 'success' },
+            });
+            // It ended on the save, not on the grace: the mount's clock never moved.
+            expect(clock.monotonic.now()).toBe(graceDue - PEER_SESSION_SETTLE_GRACE_MS);
+          },
+          { runtime: clock },
+        );
+      },
+    );
+  });
+
+  it('waits out the settle grace for a session a stopped process left saying running', async () => {
     const clock = createManualRuntimeServices();
     await withPeers(
       { script: [{ kind: 'fail', error: new Error('provider said no') }] },
@@ -446,8 +506,9 @@ describe('a replay of a run that settled before the stream opened', () => {
         await readAgUiStream(await harness.handler(start()));
         const restarted = await harness.restart([], { runtime: clock });
         try {
-          // A process that stopped before its terminal save leaves the session saying `running`
-          // for a run whose durable record has settled; nothing will ever save it again.
+          // A process that crashed before its terminal save leaves the session saying `running`
+          // for a run whose durable record has settled, and no durable state tells that apart
+          // from a holder whose save is still on its way.
           await restarted.bureau.sessionStore!.update(THREAD, (session) =>
             session === undefined
               ? undefined
@@ -459,13 +520,12 @@ describe('a replay of a run that settled before the stream opened', () => {
             replay = frames;
           });
           const graceDue = clock.monotonic.now() + PEER_SESSION_SETTLE_GRACE_MS;
-          await pollUntil(
-            () =>
-              replay !== undefined ||
-              clock.pendingTimers().some((timer) => timer.dueAt === graceDue),
-          );
+          await pollUntil(() => clock.pendingTimers().some((timer) => timer.dueAt === graceDue));
+          expect(replay).toBeUndefined();
 
-          expect(replay).toBeDefined();
+          await clock.advance(PEER_SESSION_SETTLE_GRACE_MS);
+          await pollUntil(() => replay !== undefined);
+
           expect(replay!.at(-1)!.event).toMatchObject({
             type: EventType.RUN_ERROR,
             message: expect.stringContaining('provider said no'),
