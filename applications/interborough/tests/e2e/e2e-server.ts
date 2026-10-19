@@ -156,7 +156,7 @@ const ledgerWorkers = await seedLedgerEvidence(server);
 
 // COR-164: two real builds of one deployment, a pinned and an auto-upgrade workflow, and one
 // finished run of each. See `versioned-run-seed.ts`.
-const versionedWorkers = await seedVersionedRuns(engine, host.url);
+const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 
 process.stdout.write(
   [

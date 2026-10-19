@@ -248,9 +248,7 @@ describe('RestartDialog worker binding', () => {
 
     await fireEvent.click(view.getByRole('button', { name: 'Preview worker upgrade' }));
     await waitFor(() => expect(view.getByText('3 → 5')).not.toBeNull());
-    await waitFor(() =>
-      expect(view.queryByText(/The start refused the override preview/)).toBeNull(),
-    );
+    expect(view.queryByText(/The start refused the override preview/)).toBeNull();
     expect(fakes.previewCalls).toHaveLength(2);
   });
 
