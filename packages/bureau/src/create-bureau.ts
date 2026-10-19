@@ -222,7 +222,7 @@ import { humanWaitDenialPayload } from './human-wait-signal';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
 import { leaseEvidenceFromLostHealth } from './liveness-projection';
-import { createModelCatalogService } from './model-catalog-refresh';
+import { createModelCatalogService, type ModelCatalogService } from './model-catalog-refresh';
 import { createModelPolicyPlanner } from './model-policy';
 import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
 import {
@@ -1932,119 +1932,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // composition's target, and this bureau's emitter is the surface consumers
   // actually subscribe to. Fresh instances again, for the WHATWG
   // already-being-dispatched constraint documented above.
-  runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
-    emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
-  });
-  runtime.skillEvents.addEventListener(SkillActivatedEvent.type, (event) => {
-    emitter.dispatch(new SkillActivatedEvent(event.skillName, event.correlation));
-  });
-  runtime.skillEvents.addEventListener(SkillDeactivatedEvent.type, (event) => {
-    emitter.dispatch(new SkillDeactivatedEvent(event.skillName, event.correlation));
-  });
-  runtime.skillEvents.addEventListener(SkillRejectedEvent.type, (event) => {
-    emitter.dispatch(
-      new SkillRejectedEvent(event.skillName, event.reason, event.correlation, event.rule),
-    );
-  });
-  runtime.skillEvents.addEventListener(SkillFailedEvent.type, (event) => {
-    emitter.dispatch(new SkillFailedEvent(event.skillName, event.correlation));
-  });
-  runtime.scheduleFireEvents.addEventListener(ScheduleAttemptedEvent.type, (event) => {
-    emitter.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
-  });
-  runtime.scheduleFireEvents.addEventListener(ScheduleSkippedEvent.type, (event) => {
-    emitter.dispatch(
-      new ScheduleSkippedEvent(
-        event.scheduleId,
-        event.policy,
-        event.occurrence,
-        event.blockingRunId,
-      ),
-    );
-  });
-  // AB-246 — the model-catalog refresh service. Independent of `runtime`.
-  // When the caller doesn't supply one, the default `descriptorSource`
-  // re-derives `@lostgradient/operative`'s static seed — this is
-  // the seam a future live provider probe attaches to (out of scope here).
-  //
-  // Constructed BEFORE `agentCatalog` below: `selectorAvailable: true`
-  // (AB-250/mod-03c) needs no catalog dependency itself, but ordering the
-  // catalog first keeps every model-policy-related construction together.
-  const modelCatalog =
-    options.modelCatalog ??
-    createModelCatalogService({
-      seed: createModelCatalog(),
-      descriptorSource: () => Promise.resolve(createModelCatalog().descriptors),
-      now: runtimeServices.clock.nowISO,
-      newRefreshId: () => runtimeServices.identifiers.next('catalog-refresh'),
-    });
-  // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
-  // the bureau's lifetime, dispatched by name through `bureau.run`.
-  // Independent of `runtime` (bureau-level generate/toolbox/provider
-  // composition, still used by `createRun`).
-  // `selectorAvailable: true` (AB-250/mod-03c) — `planSelection` below is
-  // now wired, so a `selectable` agent's catalog-read profile reports
-  // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
-  // transition).
-  //
-  // COR-1524: with an `agentDirectory`, the Markdown files in it join the catalog. They are
-  // scanned before the catalog is handed out and before boot recovery runs, so the first
-  // `bureau.agents.list()` and a resumed run both see the directory as it is now.
-  // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
-  // workflow runtime and the run's identity when called, which is after construction has finished.
-  const agentToolCatalog: Readonly<Record<string, Tool>> =
-    options.workflowDirectory === undefined
-      ? (options.agentTools ?? {})
-      : {
-          ...options.agentTools,
-          ...createWorkflowTools({
-            workflows: () => workflowRuntime?.workflows,
-            runIdentity: async (runId) => ({
-              agent: runAttribution.get(runId)?.agentName,
-              owner: await getOwner({ kind: 'run', id: runId }),
-            }),
-          }),
-        };
-  const fileAgents: FileAgentRuntime | undefined =
-    options.agentDirectory === undefined || resolveAgentGenerate === undefined
-      ? undefined
-      : createFileAgentRuntime({
-          files: createAgentFileCatalog({
-            directory: options.agentDirectory,
-            reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
-            tools: agentToolCatalog,
-            modelCatalog,
-            resolveGenerate: resolveAgentGenerate,
-            runtime: runtimeServices,
-            diagnose: (message, cause) =>
-              diagnose({
-                level: 'error',
-                scope: 'agent-files',
-                message: `[bureau] ${message}`,
-                cause,
-              }),
-          }),
-          snapshots: createAgentSnapshotStore({
-            store: runtime.kv,
-            nowISO: runtimeServices.clock.nowISO,
-          }),
-          diagnose: (message, cause) =>
-            diagnose({
-              level: 'error',
-              scope: 'agent-files',
-              message: `[bureau] ${message}`,
-              cause,
-            }),
-          track: (promise, label) => runtimeServices.deferred.track(promise, label),
-        });
-  await fileAgents?.files.refresh();
-  // COR-1586: from here until the resolver is wired below, a run the engine reclaimed is waiting
-  // for it. If construction fails in that window nothing will ever wire it, so the waiters are
-  // settled and what construction started is stopped, in this order, before the error is rethrown.
+  // COR-1586: the engine is live from here, and reclaims runs on its own interval, so a run that
+  // needs the agent run options resolver waits for it (`awaitsCatalogAgentRunOptionsResolver`).
+  // If any step of construction fails before the resolver is wired, nothing will ever wire it. The
+  // work construction started is stopped, in this order, and the waiting readers are settled
+  // LAST, as `unavailable`, before the error is rethrown. Weft treats `unavailable` as a terminal
+  // failure when the engine can commit it, so settling first fails a reclaimed run for good;
+  // settling after the engine and the store are closed (or fenced off) leaves the run in its
+  // persisted state for a correctly configured boot to resume.
+  let modelCatalog: ModelCatalogService;
+  let agentToolCatalog: Readonly<Record<string, Tool>>;
+  let fileAgents: FileAgentRuntime | undefined;
+  let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
+  let workflowRuntime: WorkflowRuntime | undefined;
   const abandonConstruction = async (error: unknown): Promise<never> => {
-    runtime.abandonCatalogAgentRunOptionsResolver(
-      `the bureau failed while building its agent catalog and workflow runtime: ${serializeUnknownError(error)}`,
-    );
     const failures: unknown[] = [];
     const attempt = async (stop: () => unknown): Promise<void> => {
       try {
@@ -2058,6 +1959,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     await attempt(() => runtime.durable?.observability?.dispose());
     await attempt(() => runtime.durable?.engine.shutdown());
     await attempt(() => runtime.disposeStorage?.());
+    runtime.abandonCatalogAgentRunOptionsResolver(
+      `the bureau failed while it was being constructed: ${serializeUnknownError(error)}`,
+    );
     if (failures.length === 0) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new AggregateError(
@@ -2066,21 +1970,121 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       { cause: failures[0] },
     );
   };
-  let agentCatalog: ReturnType<typeof createAgentCatalog<D>>;
   try {
+    runtime.skillEvents.addEventListener(SkillLoadedEvent.type, (event) => {
+      emitter.dispatch(new SkillLoadedEvent(event.skillName, event.correlation));
+    });
+    runtime.skillEvents.addEventListener(SkillActivatedEvent.type, (event) => {
+      emitter.dispatch(new SkillActivatedEvent(event.skillName, event.correlation));
+    });
+    runtime.skillEvents.addEventListener(SkillDeactivatedEvent.type, (event) => {
+      emitter.dispatch(new SkillDeactivatedEvent(event.skillName, event.correlation));
+    });
+    runtime.skillEvents.addEventListener(SkillRejectedEvent.type, (event) => {
+      emitter.dispatch(
+        new SkillRejectedEvent(event.skillName, event.reason, event.correlation, event.rule),
+      );
+    });
+    runtime.skillEvents.addEventListener(SkillFailedEvent.type, (event) => {
+      emitter.dispatch(new SkillFailedEvent(event.skillName, event.correlation));
+    });
+    runtime.scheduleFireEvents.addEventListener(ScheduleAttemptedEvent.type, (event) => {
+      emitter.dispatch(new ScheduleAttemptedEvent(event.scheduleId, event.occurrence));
+    });
+    runtime.scheduleFireEvents.addEventListener(ScheduleSkippedEvent.type, (event) => {
+      emitter.dispatch(
+        new ScheduleSkippedEvent(
+          event.scheduleId,
+          event.policy,
+          event.occurrence,
+          event.blockingRunId,
+        ),
+      );
+    });
+    // AB-246 — the model-catalog refresh service. Independent of `runtime`.
+    // When the caller doesn't supply one, the default `descriptorSource`
+    // re-derives `@lostgradient/operative`'s static seed — this is
+    // the seam a future live provider probe attaches to (out of scope here).
+    //
+    // Constructed BEFORE `agentCatalog` below: `selectorAvailable: true`
+    // (AB-250/mod-03c) needs no catalog dependency itself, but ordering the
+    // catalog first keeps every model-policy-related construction together.
+    modelCatalog =
+      options.modelCatalog ??
+      createModelCatalogService({
+        seed: createModelCatalog(),
+        descriptorSource: () => Promise.resolve(createModelCatalog().descriptors),
+        now: runtimeServices.clock.nowISO,
+        newRefreshId: () => runtimeServices.identifiers.next('catalog-refresh'),
+      });
+    // AB-15/AB-22: the typed agent catalog — a plain literal map, fixed for
+    // the bureau's lifetime, dispatched by name through `bureau.run`.
+    // Independent of `runtime` (bureau-level generate/toolbox/provider
+    // composition, still used by `createRun`).
+    // `selectorAvailable: true` (AB-250/mod-03c) — `planSelection` below is
+    // now wired, so a `selectable` agent's catalog-read profile reports
+    // `selector: 'available'` (AB-247/mod-02e's one named mechanism for this
+    // transition).
+    //
+    // COR-1524: with an `agentDirectory`, the Markdown files in it join the catalog. They are
+    // scanned before the catalog is handed out and before boot recovery runs, so the first
+    // `bureau.agents.list()` and a resumed run both see the directory as it is now.
+    // COR-1529: with a workflow directory the catalog also holds the workflow tools. They read the
+    // workflow runtime and the run's identity when called, which is after construction has finished.
+    agentToolCatalog =
+      options.workflowDirectory === undefined
+        ? (options.agentTools ?? {})
+        : {
+            ...options.agentTools,
+            ...createWorkflowTools({
+              workflows: () => workflowRuntime?.workflows,
+              runIdentity: async (runId) => ({
+                agent: runAttribution.get(runId)?.agentName,
+                owner: await getOwner({ kind: 'run', id: runId }),
+              }),
+            }),
+          };
+    fileAgents =
+      options.agentDirectory === undefined || resolveAgentGenerate === undefined
+        ? undefined
+        : createFileAgentRuntime({
+            files: createAgentFileCatalog({
+              directory: options.agentDirectory,
+              reservedIdentifiers: new Set(Object.keys(agentsSnapshot)),
+              tools: agentToolCatalog,
+              modelCatalog,
+              resolveGenerate: resolveAgentGenerate,
+              runtime: runtimeServices,
+              diagnose: (message, cause) =>
+                diagnose({
+                  level: 'error',
+                  scope: 'agent-files',
+                  message: `[bureau] ${message}`,
+                  cause,
+                }),
+            }),
+            snapshots: createAgentSnapshotStore({
+              store: runtime.kv,
+              nowISO: runtimeServices.clock.nowISO,
+            }),
+            diagnose: (message, cause) =>
+              diagnose({
+                level: 'error',
+                scope: 'agent-files',
+                message: `[bureau] ${message}`,
+                cause,
+              }),
+            track: (promise, label) => runtimeServices.deferred.track(promise, label),
+          });
+    await fileAgents?.files.refresh();
     agentCatalog = createAgentCatalog(agentsSnapshot, {
       selectorAvailable: true,
       files: fileAgents?.files,
       snapshots: fileAgents?.snapshots,
     });
-  } catch (error) {
-    return abandonConstruction(error);
-  }
-  // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
-  // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
-  // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
-  let workflowRuntime: WorkflowRuntime | undefined;
-  try {
+    // COR-1527: the workflow files. The directory is scanned and the engine told about the documents
+    // in `start()`, at the end of construction and before the engine recovers; the `agent` step runs
+    // through `runWorkflowAgentStep`, defined below with the rest of the run machinery.
     workflowRuntime =
       options.workflowDirectory === undefined || runtime.durable === undefined
         ? undefined
@@ -2110,10 +2114,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // The trail is built later in construction; a write only happens after it exists.
             audit: async (entry) => auditTrailInstance?.record(entry),
           });
+    workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   } catch (error) {
     return abandonConstruction(error);
   }
-  workflowFileTypes.current = workflowRuntime?.isRegisteredType;
   // AB-240: wire boot recovery's catalog branch NOW that the catalog exists —
   // `runtime` (built above, before this catalog) deliberately knows nothing
   // about it (see `RuntimeCompositionOptions`'s doc comment), so this is the
@@ -2121,6 +2125,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // it stores and calls back into. Registered before `recoverDurableRuns()`
   // (called later, once this bureau's construction finishes) so every boot
   // recovery pass sees it.
+  //
+  // COR-1586 — LINE ORDER MATTERS HERE. Runs parked for this resolver resume at the first
+  // top-level `await` after it is wired, and the closure below reads `childTopology`, a `const`
+  // declared much further down. A top-level `await` placed between this call and
+  // `const childTopology` would resume those runs while it is still in its temporal dead zone,
+  // and the resulting `ReferenceError` durably fails them. The catalog reclaim test in
+  // `bureau-construction-reclaim.test.ts` catches it.
   runtime.setCatalogAgentRunOptionsResolver(async (name, input, context, runId, recorded) => {
     // COR-1524: a run being resumed builds a file agent from the snapshot it recorded, never
     // from the file, which may have changed or be gone. A run that is starting takes the agent

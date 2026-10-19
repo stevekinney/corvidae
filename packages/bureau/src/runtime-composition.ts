@@ -3269,6 +3269,11 @@ async function buildRuntimeComposition(
     | { status: 'absent' }
     | { status: 'abandoned'; reason: string }
   > {
+    // Abandonment is terminal: a composition whose Bureau failed to build answers every reader
+    // with the failure, even if a resolver was wired before it failed.
+    if (catalogResolverAbandonedReason !== undefined) {
+      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
+    }
     if (catalogAgentRunOptionsResolver) {
       return { status: 'wired', resolver: catalogAgentRunOptionsResolver };
     }
@@ -3284,13 +3289,13 @@ async function buildRuntimeComposition(
       });
       await catalogResolverGate.promise;
     }
-    // Re-read after the wait: a gate that opened because the resolver was wired is answered by it.
-    if (catalogAgentRunOptionsResolver) {
-      return { status: 'wired', resolver: catalogAgentRunOptionsResolver };
+    // Re-read after the wait: the gate opened because the resolver was wired or abandoned.
+    if (catalogResolverAbandonedReason !== undefined) {
+      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
     }
-    return catalogResolverAbandonedReason === undefined
-      ? { status: 'absent' }
-      : { status: 'abandoned', reason: catalogResolverAbandonedReason };
+    return catalogAgentRunOptionsResolver
+      ? { status: 'wired', resolver: catalogAgentRunOptionsResolver }
+      : { status: 'absent' };
   }
 
   /**
@@ -4622,6 +4627,7 @@ async function buildRuntimeComposition(
       if (resolver !== undefined) openCatalogResolverGate();
     },
     abandonCatalogAgentRunOptionsResolver(reason) {
+      if (dependencies.awaitsCatalogAgentRunOptionsResolver !== true) return;
       catalogResolverAbandonedReason ??= reason;
       openCatalogResolverGate();
     },

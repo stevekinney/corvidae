@@ -136,24 +136,30 @@ function recordListeners(target: TypedEventTarget<never>): () => CapturedListene
  * Out of scope, because they are not event targets: the `catalogRunSettlements` subscriptions and
  * `store.toObservable()`.
  */
-function captureCompositionListeners(): () => CapturedListener[] {
+function captureCompositionListeners(): {
+  readonly read: () => CapturedListener[];
+  readonly targets: () => TypedEventTarget<never>[];
+} {
   const create = runtimeCompositionModule.createRuntimeComposition;
   const readers: Array<() => CapturedListener[]> = [];
+  const captured: TypedEventTarget<never>[] = [];
   const spy = spyOn(runtimeCompositionModule, 'createRuntimeComposition').mockImplementation(
     async (...args) => {
       const composition = await create(...args);
-      readers.push(
-        recordListeners(composition.skillEvents as TypedEventTarget<never>),
-        recordListeners(composition.scheduleFireEvents as TypedEventTarget<never>),
+      const targets = [
+        composition.skillEvents as TypedEventTarget<never>,
+        composition.scheduleFireEvents as TypedEventTarget<never>,
         ...(composition.sessionStore === undefined
           ? []
-          : [recordListeners(composition.sessionStore.events as TypedEventTarget<never>)]),
-      );
+          : [composition.sessionStore.events as TypedEventTarget<never>]),
+      ];
+      captured.push(...targets);
+      readers.push(...targets.map((target) => recordListeners(target)));
       return composition;
     },
   );
   fixtures.restoreOnDispose(() => spy.mockRestore());
-  return () => readers.flatMap((read) => read());
+  return { read: () => readers.flatMap((read) => read()), targets: () => [...captured] };
 }
 
 /** The fields the forwarding listeners read, on an event of the given type. */
@@ -189,7 +195,52 @@ function fireCaptured(captured: readonly CapturedListener[], failures: string[])
   }
 }
 
+/** Whether `value`, or anything down its `cause` chain, is a `ReferenceError` read before init. */
+function readsBeforeInitialization(value: unknown, seen = new Set<unknown>()): boolean {
+  if (typeof value !== 'object' || value === null || seen.has(value)) return false;
+  seen.add(value);
+  if (value instanceof ReferenceError && value.message.includes('before initialization')) {
+    return true;
+  }
+  const { cause, errors } = value as { cause?: unknown; errors?: unknown };
+  return (
+    readsBeforeInitialization(cause, seen) ||
+    (Array.isArray(errors) && errors.some((entry) => readsBeforeInitialization(entry, seen)))
+  );
+}
+
+/** Whether a diagnostic reports a read before initialization, in its message or down its causes. */
+function reportsReadBeforeInitialization(diagnostic: BureauDiagnostic): boolean {
+  return (
+    diagnostic.message.includes('before initialization') ||
+    readsBeforeInitialization(diagnostic.cause)
+  );
+}
+
 describe('the construction-window guard', () => {
+  it('finds a read before initialization however deep in a diagnostic’s cause chain it is', () => {
+    const reference = new ReferenceError("Cannot access 'later' before initialization");
+    const wrapped = new Error('probe wrapper', { cause: reference });
+    const diagnostic = (cause: unknown): BureauDiagnostic => ({
+      level: 'error',
+      scope: 'durable-maintenance',
+      message: '[bureau] a listener failed',
+      cause,
+    });
+
+    expect(reportsReadBeforeInitialization(diagnostic(reference))).toBe(true);
+    expect(reportsReadBeforeInitialization(diagnostic(wrapped))).toBe(true);
+    expect(
+      reportsReadBeforeInitialization(
+        diagnostic(new AggregateError([new TypeError('other'), wrapped])),
+      ),
+    ).toBe(true);
+    expect(reportsReadBeforeInitialization(diagnostic(new Error('unrelated', { cause: 1 })))).toBe(
+      false,
+    );
+    expect(reportsReadBeforeInitialization(diagnostic(undefined))).toBe(false);
+  });
+
   it('fires a listener of a type that is not on any list, and reports a read before initialization', () => {
     const target = new TypedEventTarget<never>();
     const read = recordListeners(target);
@@ -209,7 +260,8 @@ describe('the construction-window guard', () => {
 
 describe('every listener and timer registered before a top-level await (COR-1585)', () => {
   it('can fire during the agent file scan and the audit sequence seed without reading uninitialised state', async () => {
-    const readCaptured = captureCompositionListeners();
+    const captured = captureCompositionListeners();
+    const readCaptured = captured.read;
     const failures: string[] = [];
     const fireAll = (): void => fireCaptured(readCaptured(), failures);
 
@@ -247,7 +299,16 @@ describe('every listener and timer registered before a top-level await (COR-1585
 
     // During the agent file scan: every listener registered so far, fired.
     await scan.entered;
+    // A listener of a type on no list, registered on a captured target: the guard must fire it, or
+    // a filter on the types it captures would pass unnoticed.
+    const unlistedFired: string[] = [];
+    const [skillTarget] = captured.targets();
+    if (skillTarget === undefined) throw new Error('Expected a captured composition target.');
+    (skillTarget as unknown as EventTarget).addEventListener('guard.unlisted-type', () => {
+      unlistedFired.push('guard.unlisted-type');
+    });
     fireAll();
+    expect(unlistedFired).toEqual(['guard.unlisted-type']);
     scan.release();
 
     // During the audit sequence seed: the same listeners again, a store event for the store's
@@ -269,12 +330,6 @@ describe('every listener and timer registered before a top-level await (COR-1585
     // Skill events, schedule events, and the session outbox: three targets, at least ten listeners.
     expect(new Set(readCaptured().map((entry) => entry.type)).size).toBeGreaterThanOrEqual(10);
     expect(failures).toEqual([]);
-    expect(
-      diagnostics.filter((entry) =>
-        `${entry.message} ${entry.cause instanceof Error ? entry.cause.message : ''}`.includes(
-          'before initialization',
-        ),
-      ),
-    ).toEqual([]);
+    expect(diagnostics.filter(reportsReadBeforeInitialization)).toEqual([]);
   });
 });

@@ -22,6 +22,8 @@ import * as agentFileCatalogModule from './agent-file-catalog';
 import * as assetServiceModule from './assets/asset-service';
 import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
+import type { RuntimeComposition } from './runtime-composition';
+import * as workflowToolsModule from './workflow-tools';
 import {
   createConstructionWindowFixtures,
   resolveAgentGenerate,
@@ -33,7 +35,37 @@ import type { Bureau, BureauDiagnostic } from './types';
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures = createConstructionWindowFixtures();
 
+/**
+ * A Bureau under construction, with the hold that is keeping it there. A test that fails before it
+ * releases the hold would otherwise leave that Bureau's engine running against a directory
+ * `afterEach` deletes, so every one is released and, once built, shut down.
+ */
+const successors: Array<{
+  readonly release: () => void;
+  readonly settled: Promise<Bureau<AgentDefinitions> | undefined>;
+}> = [];
+
+/** Register `successor`, which is held by `hold`, so that `afterEach` always settles it. */
+function track(
+  hold: { release: () => void },
+  successor: Promise<Bureau<AgentDefinitions>>,
+): Promise<Bureau<AgentDefinitions>> {
+  successors.push({
+    release: hold.release,
+    settled: successor.then(
+      (built) => built,
+      () => undefined,
+    ),
+  });
+  return successor;
+}
+
 afterEach(async () => {
+  for (const { release, settled } of successors.splice(0)) {
+    release();
+    const built = await settled;
+    if (built !== undefined) bureaus.push(built);
+  }
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
   await fixtures.dispose();
 });
@@ -62,56 +94,68 @@ function isParkedDiagnostic(entry: BureauDiagnostic, runId: string): boolean {
   );
 }
 
+/**
+ * An owner Bureau that starts a catalog run of `writer` and never finishes it. Its background
+ * tasks are manual, so its claim is never renewed: it lapses, and a Bureau over the same storage
+ * can reclaim the run.
+ */
+async function startLapsedCatalogRun(
+  storagePath: string,
+): Promise<{ readonly owner: Bureau<AgentDefinitions>; readonly runId: string }> {
+  const started = Promise.withResolvers<void>();
+  const owner = await createBureau<AgentDefinitions>({
+    agents: {
+      writer: createAgent({
+        name: 'writer',
+        generate: async () => {
+          started.resolve();
+          return new Promise<never>(() => {});
+        },
+      }),
+    },
+    toolbox: createToolbox([]),
+    storage: { type: 'sqlite', path: storagePath },
+    durableExecution: true,
+    stopWhen: stopWhen.noToolCalls(),
+    durableBackgroundTasks: 'manual',
+    durableOwnership: leaseOptions,
+  });
+  bureaus.push(owner);
+  const run = owner.run('writer', 'go');
+  await started.promise;
+  return { owner, runId: run.id };
+}
+
+/** A `writer` agent that answers `content`, for a Bureau that resumes the lapsed run. */
+function writerAnswering(content: string) {
+  return createAgent({ name: 'writer', generate: async () => ({ content, toolCalls: [] }) });
+}
+
 describe('a catalog agent run reclaimed while the Bureau scans its agent files (COR-1586)', () => {
   it('resumes under its own agent once the resolver is wired, and records no error', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-catalog-');
     const storagePath = join(root, 'bureau.sqlite');
 
-    // The owner starts the run and never finishes it. Its background tasks are manual, so its
-    // claim is never renewed: it lapses, and a Bureau over the same storage can reclaim the run.
-    const started = Promise.withResolvers<void>();
-    const owner = await createBureau<AgentDefinitions>({
-      agents: {
-        writer: createAgent({
-          name: 'writer',
-          generate: async () => {
-            started.resolve();
-            return new Promise<never>(() => {});
-          },
-        }),
-      },
-      toolbox: createToolbox([]),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
-      durableBackgroundTasks: 'manual',
-      durableOwnership: leaseOptions,
-    });
-    bureaus.push(owner);
-    const run = owner.run('writer', 'go');
-    await started.promise;
-    const runId = run.id;
+    const { owner, runId } = await startLapsedCatalogRun(storagePath);
 
     // The successor builds with the agent file scan held, so its engine reclaims the run before
     // `createBureau` has wired the resolver.
     const hold = fixtures.holdAgentFileScan();
     const diagnostics: BureauDiagnostic[] = [];
-    const successor = createBureau<AgentDefinitions>({
-      agents: {
-        writer: createAgent({
-          name: 'writer',
-          generate: async () => ({ content: 'recovered', toolCalls: [] }),
-        }),
-      },
-      agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      resolveAgentGenerate,
-      toolbox: createToolbox([]),
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
-      durableOwnership: leaseOptions,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
+    const successor = track(
+      hold,
+      createBureau<AgentDefinitions>({
+        agents: { writer: writerAnswering('recovered') },
+        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
+        resolveAgentGenerate,
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+        durableOwnership: leaseOptions,
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
+    );
     await hold.entered;
 
     // Release the scan only once the reclaim has reached the run: either the run is held for the
@@ -126,7 +170,6 @@ describe('a catalog agent run reclaimed while the Bureau scans its agent files (
     expect(diagnostics.filter((entry) => isParkedDiagnostic(entry, runId))).toHaveLength(1);
     hold.release();
     const built = await successor;
-    bureaus.push(built);
 
     const state = await built.waitForDurableRun(runId);
     expect(state?.error).toBeUndefined();
@@ -173,27 +216,30 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     const wideToolbox = createToolbox([next]);
     const wideExtend = spyOn(wideToolbox, 'extend');
     fixtures.restoreOnDispose(() => wideExtend.mockRestore());
-    const successor = createBureau<AgentDefinitions>({
-      agents: {
-        scribe: createAgent({
-          generate: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
-          toolbox: createToolbox([next]),
-          stopWhen: stopWhen.noToolCalls(),
-        }),
-      },
-      generate: async ({ step }) => {
-        wideSteps.push(step);
-        return { content: 'wide answered', toolCalls: [] };
-      },
-      toolbox: wideToolbox,
-      agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      resolveAgentGenerate,
-      storage: { type: 'sqlite', path: storagePath },
-      durableExecution: true,
-      stopWhen: stopWhen.noToolCalls(),
-      durableOwnership: leaseOptions,
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
+    const successor = track(
+      hold,
+      createBureau<AgentDefinitions>({
+        agents: {
+          scribe: createAgent({
+            generate: async ({ step }) => ({ content: `scribe resumed at ${step}`, toolCalls: [] }),
+            toolbox: createToolbox([next]),
+            stopWhen: stopWhen.noToolCalls(),
+          }),
+        },
+        generate: async ({ step }) => {
+          wideSteps.push(step);
+          return { content: 'wide answered', toolCalls: [] };
+        },
+        toolbox: wideToolbox,
+        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
+        resolveAgentGenerate,
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+        durableOwnership: leaseOptions,
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
+    );
     await hold.entered;
     const baseline = wideExtend.mock.calls.length;
 
@@ -210,7 +256,6 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
     expect(diagnostics.filter((entry) => isParkedDiagnostic(entry, run.id))).toHaveLength(1);
     hold.release();
     const built = await successor;
-    bureaus.push(built);
 
     const completed = await pollUntil(async () => {
       const session = await built.getSession(run.sessionId);
@@ -228,7 +273,7 @@ describe('a named-agent session run reclaimed while the Bureau scans its agent f
 });
 
 describe('a construction that fails while a run is parked for the resolver (COR-1586)', () => {
-  it('settles the run as unavailable, then shuts the Bureau down in order, and rethrows', async () => {
+  it('shuts the Bureau down in order, then settles the parked run as unavailable, and rethrows', async () => {
     const root = await fixtures.scratchDirectory('bureau-reclaim-failure-');
     const order: string[] = [];
 
@@ -282,20 +327,23 @@ describe('a construction that fails while a run is parked for the resolver (COR-
     const hold = fixtures.holdAgentFileScan();
     const runtime = createManualRuntimeServices({ origin: '2026-10-19T00:00:00.000Z' });
     const diagnostics: BureauDiagnostic[] = [];
-    const building = createBureau({
-      agents: {},
-      agentDirectory: await fixtures.agentDirectoryWithOneFile(),
-      resolveAgentGenerate,
-      toolbox: createToolbox([]),
-      storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
-      durableExecution: true,
-      durableBackgroundTasks: 'manual',
-      observability: true,
-      stopWhen: stopWhen.noToolCalls(),
-      runtime,
-      assets: { storage: assetStorage.storage, garbageCollectionIntervalMilliseconds: 1_000 },
-      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
-    });
+    const building = track(
+      hold,
+      createBureau<AgentDefinitions>({
+        agents: {},
+        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
+        resolveAgentGenerate,
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+        durableExecution: true,
+        durableBackgroundTasks: 'manual',
+        observability: true,
+        stopWhen: stopWhen.noToolCalls(),
+        runtime,
+        assets: { storage: assetStorage.storage, garbageCollectionIntervalMilliseconds: 1_000 },
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
+    );
     const outcome = building.then(
       () => 'built' as const,
       (error: unknown) => error,
@@ -362,14 +410,173 @@ describe('a construction that fails while a run is parked for the resolver (COR-
     expect(runtime.pendingTimers()).toHaveLength(0);
     expect(engineShutdown).toHaveBeenCalledTimes(1);
     expect(await engineShutdown.mock.results[0]?.value).toBe(true);
+    // The waiting readers settle last: settled earlier, a live engine commits `unavailable`, which
+    // Weft treats as a terminal failure of the run (see the survival test below).
     expect(order).toEqual([
-      'waiters settled',
       'agent files closed',
       'asset service shut down',
       'observability disposed',
       'engine shut down',
       'storage disposed',
+      'waiters settled',
     ]);
+  }, 20_000);
+});
+
+describe('a Bureau whose construction fails leaves a reclaimed run resumable (COR-1586)', () => {
+  it('leaves the run running under workflow-lease, and a correctly configured boot completes it', async () => {
+    const root = await fixtures.scratchDirectory('bureau-reclaim-survival-');
+    const storagePath = join(root, 'bureau.sqlite');
+    const { owner, runId } = await startLapsedCatalogRun(storagePath);
+
+    // The composition is taken from the export `createBureau` imports, so the observability handle
+    // can be wrapped.
+    let captured:
+      Awaited<ReturnType<typeof runtimeCompositionModule.createRuntimeComposition>> | undefined;
+    const createComposition = runtimeCompositionModule.createRuntimeComposition;
+    const compositionSpy = spyOn(
+      runtimeCompositionModule,
+      'createRuntimeComposition',
+    ).mockImplementation(async (...args) => {
+      captured = await createComposition(...args);
+      return captured;
+    });
+    fixtures.restoreOnDispose(() => compositionSpy.mockRestore());
+    const catalogSpy = spyOn(agentCatalogModule, 'createAgentCatalog').mockImplementation(() => {
+      throw new Error('catalog exploded');
+    });
+    fixtures.restoreOnDispose(() => catalogSpy.mockRestore());
+    const assetStorage = createMemoryAssetStorageFixture({});
+    fixtures.restoreOnDispose(() => void assetStorage.dispose());
+
+    const hold = fixtures.holdAgentFileScan();
+    const diagnostics: BureauDiagnostic[] = [];
+    const failing = track(
+      hold,
+      createBureau<AgentDefinitions>({
+        agents: { writer: writerAnswering('never runs') },
+        agentDirectory: await fixtures.agentDirectoryWithOneFile(),
+        resolveAgentGenerate,
+        toolbox: createToolbox([]),
+        storage: { type: 'sqlite', path: storagePath },
+        durableExecution: true,
+        stopWhen: stopWhen.noToolCalls(),
+        durableOwnership: leaseOptions,
+        observability: true,
+        assets: { storage: assetStorage.storage, garbageCollectionIntervalMilliseconds: 1_000 },
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }),
+    );
+    const outcome = failing.then(
+      () => 'built' as const,
+      (error: unknown) => error,
+    );
+    await hold.entered;
+
+    // Observability is disposed after the asset service and before the engine. It waits there until
+    // the run is durably `failed`, or until `pollUntil` runs out of attempts. Were the waiting
+    // readers already settled, the live engine would commit `unavailable` and the wait would end
+    // at once; settled last, nothing has happened to the run and the wait falls through.
+    const observability = captured?.durable?.observability;
+    if (observability === undefined) throw new Error('Expected durable observability.');
+    const realDispose = observability.dispose.bind(observability);
+    let failedBeforeDispose: boolean | undefined;
+    spyOn(observability, 'dispose').mockImplementation(() =>
+      pollUntil(async () => {
+        const durableRun = await owner.getDurableRun(runId);
+        return durableRun?.status === 'failed';
+      }).then((failed) => {
+        failedBeforeDispose = failed;
+        realDispose();
+      }),
+    );
+
+    // The reclaimed run is parked in a reader.
+    expect(
+      await pollUntil(() => diagnostics.some((entry) => isParkedDiagnostic(entry, runId))),
+    ).toBe(true);
+    hold.release();
+    const error = await outcome;
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('catalog exploded');
+    expect(failedBeforeDispose).toBe(false);
+    const afterFailure = await owner.getDurableRun(runId);
+    expect(afterFailure?.status).toBe('running');
+
+    // A correctly configured boot over the same storage resumes the run under its own agent.
+    catalogSpy.mockRestore();
+    const second = await createBureau<AgentDefinitions>({
+      agents: { writer: writerAnswering('recovered') },
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path: storagePath },
+      durableExecution: true,
+      stopWhen: stopWhen.noToolCalls(),
+      durableOwnership: leaseOptions,
+    });
+    try {
+      const state = await second.waitForDurableRun(runId);
+      expect(state?.status).toBe('completed');
+      expect(state?.error).toBeUndefined();
+    } finally {
+      await second.shutdown();
+    }
+  }, 30_000);
+
+  it('settles a parked run when a step between the composition and the agent file scan throws', async () => {
+    const root = await fixtures.scratchDirectory('bureau-reclaim-early-failure-');
+    const diagnostics: BureauDiagnostic[] = [];
+    let parked: ReturnType<RuntimeComposition['resolveRunServices']> | undefined;
+
+    // A run is parked in a reader as soon as the composition exists, which is before any step that
+    // can throw: `createWorkflowTools` runs ahead of the agent file scan.
+    const createComposition = runtimeCompositionModule.createRuntimeComposition;
+    const compositionSpy = spyOn(
+      runtimeCompositionModule,
+      'createRuntimeComposition',
+    ).mockImplementation(async (...args) => {
+      const composition = await createComposition(...args);
+      await composition.persistCatalogRunRecoveryRecord('parked-run', {
+        agentName: 'writer',
+        definitionRevision: 1,
+        input: 'go',
+      });
+      parked = composition.resolveRunServices({
+        workflowId: 'parked-run',
+        workflowType: 'agentRun',
+        input: { runId: 'parked-run', sessionId: 'parked-run', agentName: 'writer' },
+      });
+      await pollUntil(() => diagnostics.some((entry) => isParkedDiagnostic(entry, 'parked-run')));
+      return composition;
+    });
+    fixtures.restoreOnDispose(() => compositionSpy.mockRestore());
+    const toolsSpy = spyOn(workflowToolsModule, 'createWorkflowTools').mockImplementation(() => {
+      throw new Error('workflow tools exploded');
+    });
+    fixtures.restoreOnDispose(() => toolsSpy.mockRestore());
+
+    const outcome = await createBureau<AgentDefinitions>({
+      agents: {},
+      workflowDirectory: await fixtures.scratchDirectory('bureau-reclaim-workflows-'),
+      toolbox: createToolbox([]),
+      storage: { type: 'sqlite', path: join(root, 'bureau.sqlite') },
+      durableExecution: true,
+      durableBackgroundTasks: 'manual',
+      stopWhen: stopWhen.noToolCalls(),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    }).then(
+      () => 'built' as const,
+      (error: unknown) => error,
+    );
+
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toBe('workflow tools exploded');
+    if (parked === undefined) throw new Error('Expected a parked reader.');
+    const resolution = await parked;
+    expect(resolution.status).toBe('unavailable');
+    expect(resolution.status === 'unavailable' ? resolution.reason : '').toContain(
+      'workflow tools exploded',
+    );
   }, 20_000);
 });
 

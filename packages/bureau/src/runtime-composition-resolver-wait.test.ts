@@ -124,6 +124,17 @@ describe('a composition that was told a resolver is coming (COR-1586)', () => {
         status: 'unavailable',
         reason: expect.stringContaining('the bureau failed to build its catalog'),
       });
+
+      // Terminal: a resolver wired after the abandonment does not revive the composition.
+      runtime.setCatalogAgentRunOptionsResolver(async () => ({
+        status: 'resolved',
+        options: fakeRunOptions(),
+        definitionRevision: 1,
+      }));
+      expect(await runtime.resolveRunServices(catalogRunInfo)).toMatchObject({
+        status: 'unavailable',
+        reason: expect.stringContaining('the bureau failed to build its catalog'),
+      });
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
