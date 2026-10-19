@@ -71,7 +71,7 @@ import type {
   SignedPendingToolApproval,
   ToolRequestContext,
 } from 'armorer';
-import type { ConversationHistory } from 'conversationalist';
+import type { ConversationHistory, Message } from 'conversationalist';
 
 import type {
   AgentDefinitions,
@@ -962,6 +962,13 @@ export interface PendingToolApprovalReview {
   ageMilliseconds: number;
   /** The review's current lifecycle status (AB-46). See {@link ReviewStatus}. */
   status: ReviewStatus;
+  /**
+   * The supersession round (COR-855): 0 for an approval never superseded,
+   * incremented each time `resolveReview` approves it and the policy gates the
+   * resumed call again, which replaces the approval under the same id. It
+   * separates one supersession's resolution from the next.
+   */
+  round: number;
 }
 
 /**
@@ -1044,6 +1051,12 @@ export interface ResolveReviewResult {
    * splice it into the tool's `ToolExecutionResult`.
    */
   feedback?: string;
+  /**
+   * `tool-approval` approve only: `true` when the policy gated the resumed call
+   * again, so the tool did not run and the review stays pending under the same
+   * id with its {@link PendingToolApprovalReview.round} incremented.
+   */
+  superseded?: true;
 }
 
 /**
@@ -1221,6 +1234,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * would orphan whatever that storage holds.
    */
   readonly hasExplicitId: boolean;
+  /**
+   * Whether this bureau has storage and a durable engine. Only such a bureau
+   * keeps run-creation receipts and human-wait parks across a restart, so an
+   * adapter that promises either (the AG-UI mount of `createBureauHandler`)
+   * refuses a bureau without one.
+   */
+  readonly hasDurableEngine: boolean;
   /**
    * This bureau's own events, as a replay-plus-live feed.
    *
@@ -1802,6 +1822,13 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * Every resolution is recorded in the audit trail attributed to
    * `input.principal`.
    *
+   * A `tool-approval` resolution also writes its outcome into the session's
+   * conversation (COR-855): the executed result on approve, an error result
+   * carrying the reason on deny and reject, each replacing the pending
+   * `action_required` tool-result row in place, so the next run started on the
+   * session answers an up-to-date conversation. A resolution the policy gates
+   * again (`superseded`) writes nothing.
+   *
    * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
    * currently pending review (including an already-resolved one).
    */
@@ -2304,7 +2331,23 @@ export interface RunDetail extends RunSummary {
 }
 
 export interface CreateRunRequest {
-  message: string;
+  /**
+   * A user message to append to the session's conversation. Optional when
+   * {@link CreateRunRequest.appendMessages} supplies the rows, or when the
+   * conversation already ends in a user or tool-result row (the run answers
+   * it). The conversation the run starts from must end in such a row; else
+   * `BAD_REQUEST`.
+   */
+  message?: string | undefined;
+  /**
+   * Rows to append to the session's conversation, after the conversation and
+   * the system prompt and after `message` when both are given. They are
+   * appended verbatim, with their ids and content parts; an id the session
+   * already holds is `BAD_REQUEST`. The request digest covers them (by
+   * everything but the `createdAt` and `position` the append re-stamps), so an
+   * exact retry digests the same.
+   */
+  appendMessages?: ReadonlyArray<Message> | undefined;
   sessionId?: string;
   systemPrompt?: string | undefined;
   maximumSteps?: number | undefined;

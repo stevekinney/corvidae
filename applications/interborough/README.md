@@ -37,9 +37,36 @@ bun run --filter=@lostgradient/interborough typecheck
   - `/assets/*` and every route in `src/app/routes.ts` serve the build.
 - **Why there are two listeners.** Weft's server reports its own shared `unauthenticated-local` caller for a request with no credential. To make both halves of the application name `anonymous:local`, Weft's server listens on a private loopback port that answers only a per-process key, and the public listener relays to it (`src/host/engine-proxy.ts`), attaching the key and dropping any credential the caller sent.
 - **One engine.** The Engine console serves the Bureau's own durable engine (`bureau.durableEngine()`), so a cancel from the console is fenced by the engine that owns the run and the live feed sees the Bureau's runs. Only the end-to-end fixtures replace it, through `createConsoleEngine`, because they register workflows of their own.
-- **No model.** Every seeded agent answers from `createScriptedGenerate`, and the host reads no provider key. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), and `internal`, which the host does not publish, plus one schedule and one goal. Seeding creates the schedule and the goal once.
+- **Seeded agents call no model.** Every seeded agent answers from `createScriptedGenerate`, whatever providers are configured. See `src/host/seed.ts`: `assistant`, `tool-runner` (a read-only tool and a mutating tool held for approval), `request-human-input` (free text, no schema), and `internal`, which the host does not publish, plus one schedule and one goal. Seeding creates the schedule and the goal once. The Bureau's own default generate is scripted too. Real models come in through the catalog below.
 
 The only module that reads the environment is `src/host/environment-configuration.ts`.
+
+## Model providers
+
+The Bureau's model catalog holds the models of the providers you configure, and only those. With nothing configured the host starts, the catalog is empty, and the seeded agents run as always. The host reads no environment variable for a key.
+
+Configure providers in `configuration.json` in the state directory, `~/.interborough/configuration.json` or `$INTERBOROUGH_HOME/configuration.json`. A missing file means no providers.
+
+```json
+{
+  "providers": {
+    "anthropic": {},
+    "openai": { "models": ["gpt-4.1", "o3"] }
+  }
+}
+```
+
+- The provider keys are exactly `anthropic`, `openai`, and `gemini`. Any other key under `providers` fails startup with an error that names the file and the field, for example `providers.voyage`. Embedding-only providers (`voyage`, `ollama`) are not generative backends. Keys outside `providers` are ignored, and a field other than `models` inside a provider fails startup.
+- `models` is an optional allowlist. Each entry names a model or one of its aliases, such as `claude-sonnet-5` or `sonnet`. Leave it out to offer every current model of the provider. An empty list, or an entry that matches no current model of that provider, fails startup and names the field, for example `providers.openai.models[1]`. Retired models are never offered.
+- Each provider's API key is a Bungalow secret: `anthropic-api-key`, `openai-api-key`, and `gemini-api-key`, one file each in `secrets/` (mode `0600`). Surrounding whitespace is trimmed. A configured provider with no key is left out of the catalog, and the host logs one warning that names the provider and the secret it expects, never a value.
+
+```bash
+mkdir -p ~/.interborough/secrets
+printf '%s' "$YOUR_KEY" > ~/.interborough/secrets/anthropic-api-key
+chmod 600 ~/.interborough/secrets/anthropic-api-key
+```
+
+The host installs the catalog rows through `replaceCatalog` before it creates the Bureau, and the Bureau's refresh source returns the same rows, so `bureau.modelCatalog.refresh()` cannot bring an unconfigured provider back. `host.generateFor({ provider, model })` is the generate for an agent assigned a catalog model: it resolves through Bureau's `resolveProviderGenerate` with the provider's key, and refuses a model the catalog does not hold. A change to the configuration or a secret takes effect when the host restarts.
 
 ## The shell
 

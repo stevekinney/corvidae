@@ -1,5 +1,6 @@
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
 
+import { assistantRowIdentifierForAttempt } from '../message-identifiers';
 import {
   readBackendDescriptors,
   withBackendDescriptors,
@@ -60,7 +61,12 @@ export function withEnhancedStreaming(
     const { conversation } = context;
     const stateMachine = createStreamStateMachine();
 
-    const messageId = conversation.appendStreamingMessage('assistant');
+    const assistantId = assistantRowIdentifierForAttempt(conversation, context.assistantMessageId);
+    const messageId = conversation.appendStreamingMessage(
+      'assistant',
+      undefined,
+      assistantId === undefined ? undefined : { id: assistantId },
+    );
     const textBlockId = `text-${messageId}`;
 
     let previousContent = '';

@@ -4,6 +4,7 @@ import { Conversation, isConversation } from 'conversationalist';
 
 import { MaximumStepsExceededError } from './errors';
 import { RunErrorEvent } from './events';
+import { appendFinalAssistantMessage } from './message-identifiers';
 import {
   makeAbortResult,
   makeCompletedResult,
@@ -270,7 +271,8 @@ async function executeLoopBody(
       });
       if (typeof finalContent === 'string') {
         runState.lastContent = finalContent;
-        conversation.appendAssistantMessage(finalContent);
+        // The loop ran steps 0..maximumSteps-1, so the next index is free.
+        appendFinalAssistantMessage(conversation, finalContent, options.runId, maximumSteps);
       }
     } catch (error) {
       emitter?.dispatch(new RunErrorEvent(runState.steps.length, error, 'policy'));

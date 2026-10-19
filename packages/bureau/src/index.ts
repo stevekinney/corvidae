@@ -163,6 +163,7 @@ export type {
   SessionLoadOutcome,
 } from './create-bureau';
 export {
+  ApprovalOutcomeNotWrittenError,
   BureauError,
   classifyRecoveredRun,
   classifyRecoveredRunDetailed,
@@ -291,6 +292,7 @@ export {
   createRunMemoryAuthority,
   createRuntimeComposition,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
+  resolveProviderGenerate,
 } from './runtime-composition';
 export {
   serializeActionDetail,
