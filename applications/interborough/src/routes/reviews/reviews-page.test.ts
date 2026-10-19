@@ -174,21 +174,74 @@ describe('a decision that took effect', () => {
   const NOT_WRITTEN =
     'APPROVAL_OUTCOME_NOT_WRITTEN: The decision was recorded, but its outcome could not be written into the conversation.';
 
-  test('is not reported as not recorded when only its write into the conversation failed', async () => {
-    const { container, findByRole, findByText, queryByText } = open({ reviews: [APPROVAL] });
-    await waitFor(() => expect(rows(container).length).toBe(1));
+  /** Answers as the Bureau does: the decision is committed, so the review leaves the pending list, and then the write fails. */
+  function writeFails(world: BureauWorld, decidedId: string): void {
     stub?.on('bureau.reviews.resolve', () => {
+      world.reviews = world.reviews.filter((review) => review.id !== decidedId);
       throw new StubFault('Conflict', 409, 'The decision was recorded.', { reason: NOT_WRITTEN });
     });
-    const reads = stub?.callsTo('bureau.reviews.list').length ?? 0;
+  }
 
+  for (const others of [0, 1]) {
+    test(`is told on the page after the review has left the list (${others} other review)`, async () => {
+      const decided = toolApprovalFixture({
+        id: 'approval:run-a:call-1',
+        runId: 'run-a',
+        sessionId: 'session-a',
+        requestedAt: Date.now() - 200_000,
+      });
+      const other = toolApprovalFixture({
+        id: 'approval:run-b:call-1',
+        runId: 'run-b',
+        sessionId: 'session-b',
+        requestedAt: Date.now() - 100_000,
+      });
+      const world = emptyBureauWorld({ reviews: others === 0 ? [decided] : [decided, other] });
+      stub = installBureauWorld(world);
+      router.navigate('/reviews', { replace: true });
+      const { container, findByRole, findByText, queryByText } = render(Harness, {
+        props: {
+          client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+          scopes: AUTHORIZATION_SCOPES,
+        },
+      } as never);
+      await waitFor(() => expect(rows(container).length).toBe(1 + others));
+      writeFails(world, decided.id);
+      const reads = stub.callsTo('bureau.reviews.list').length;
+
+      await fireEvent.click(await findByRole('button', { name: 'Approve' }));
+
+      // The refetch drops the decided review, and the warning is still on the page.
+      await waitFor(() => expect(rows(container).length).toBe(others));
+      await findByText(REVIEWS_COPY.outcomeNotWritten.title);
+      expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
+      expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
+      expect(stub.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads);
+      // The other review, if any, has not taken the alert into its own pane.
+      expect(container.querySelectorAll('.weft-review-detail [role="alert"]').length).toBe(0);
+    });
+  }
+
+  test('stays until the operator dismisses it', async () => {
+    const decided = toolApprovalFixture({ id: 'approval:run-a:call-1', runId: 'run-a' });
+    const world = emptyBureauWorld({ reviews: [decided] });
+    stub = installBureauWorld(world);
+    router.navigate('/reviews', { replace: true });
+    const { container, findByRole, findByText, queryByText } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    writeFails(world, decided.id);
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
-
     await findByText(REVIEWS_COPY.outcomeNotWritten.title);
-    expect(container.textContent).toContain(REVIEWS_COPY.outcomeNotWritten.message);
-    expect(queryByText(REVIEWS_COPY.decisionFailed)).toBeNull();
-    // The list is read again, because the review is no longer waiting.
-    await waitFor(() => expect(stub?.callsTo('bureau.reviews.list').length).toBeGreaterThan(reads));
+
+    await fireEvent.click(await findByRole('button', { name: /dismiss/i }));
+    await waitFor(() =>
+      expect(queryByText(REVIEWS_COPY.outcomeNotWritten.title)?.textContent ?? null).toBeNull(),
+    );
   });
 
   test('does not hide a Conflict that is a lost race, which is a decision that was not recorded', async () => {

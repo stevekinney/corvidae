@@ -16,9 +16,12 @@
  * ## Reconnecting
  *
  * A stream that drops or fails to open is opened again after the shared reconnect backoff, and at
- * once when the browser reports it is back online. A stream the Bureau ends is the end: it ends
- * after a task's terminal status, and a task started with `bureau.run()` streams one snapshot and
- * ends, so the page reads such a task for its state. A refusal
+ * once when the browser reports it is back online. A stream the Bureau ends cleanly is not a drop,
+ * and what it means depends on what is known (`#run`): after a terminal status it is the end; a
+ * session run that was given a position is resumed from it after the first backoff step, because
+ * the Bureau ends every stream at the subscription route's time limit; and a task started with
+ * `bureau.run()` streams one snapshot and ends while it is going, so the page reads it until it is
+ * over and then collects its answer with one more stream (`collect`). A refusal
  * that retrying cannot change (the task is not there, the Bureau keeps no history to follow, the
  * caller may not read it) ends the following for good.
  */
@@ -27,6 +30,7 @@ import { z } from 'zod';
 import type { Fetcher } from '../../lib/bureau-client.ts';
 import {
   followTaskEvents,
+  isTerminalState,
   SNAPSHOT_CURSOR,
   taskArtifactSchema,
   type TaskArtifact,
@@ -87,6 +91,11 @@ export type TaskFollowerOptions = {
   readonly taskId: string;
   /** Called with every element, after the follower has taken what it keeps from it. */
   readonly onElement?: (element: TaskEvent) => void;
+  /**
+   * Whether the page has read the task as over. A stream resumed past a task's end has nothing to
+   * send, so it ends with no status to say why.
+   */
+  readonly isOver?: () => boolean;
   readonly storage?: TaskStorage | undefined;
   readonly fetch?: Fetcher;
   /** Waits out a backoff. Tests stand a sleep they release themselves in for the timer. */
@@ -109,6 +118,7 @@ export class TaskFollower {
   readonly #controller = new AbortController();
   #started = false;
   #removed = false;
+  #collected = false;
 
   constructor(options: TaskFollowerOptions) {
     this.#options = options;
@@ -124,6 +134,18 @@ export class TaskFollower {
   start(): void {
     if (this.#started) return;
     this.#started = true;
+    void this.#run();
+  }
+
+  /**
+   * Opens one more stream to collect the answer of a task that finished after its stream ended. A
+   * task the Bureau started with `bureau.run()` carries its answer only in the snapshot of a
+   * subscription made once it is finished, and its task view has none. It is asked for once.
+   */
+  collect(): void {
+    if (this.#collected || this.state !== 'ended' || this.#disposed) return;
+    this.#collected = true;
+    this.state = 'connecting';
     void this.#run();
   }
 
@@ -181,6 +203,14 @@ export class TaskFollower {
     }
   }
 
+  get #over(): boolean {
+    return (
+      this.#removed ||
+      (this.lastStatus !== undefined && isTerminalState(this.lastStatus)) ||
+      this.#options.isOver?.() === true
+    );
+  }
+
   async #run(): Promise<void> {
     let attempt = 0;
     while (!this.#disposed) {
@@ -200,11 +230,23 @@ export class TaskFollower {
           if (this.#removed) break;
         }
         if (this.#disposed) return;
-        // The Bureau ended the stream. That is the end, and not a dropped connection: a task it
-        // started with `bureau.run()` streams one snapshot and ends, and a session run's stream
-        // ends after its terminal status. The page reads a task whose stream is over for its state.
-        this.state = 'ended';
-        return;
+        // The Bureau ended the stream, which is not a dropped connection. What it means depends on
+        // what the follower knows:
+        //  - the task is over (a terminal status was seen, the Bureau removed it, or the page has
+        //    read it as over): the end;
+        //  - no position was ever given (a task the Bureau started with `bureau.run()` streams one
+        //    snapshot and ends while it is going): the end of this stream, and the page reads the
+        //    task until it is over and then collects the answer with `collect()`;
+        //  - a position was given and the task is going (a session run, whose stream the Bureau
+        //    ends at the subscription route's time limit expecting `Last-Event-ID` next): the
+        //    stream is resumed from that position after the first backoff step, which also keeps
+        //    an unforeseen cause of clean ends from becoming a tight loop.
+        if (this.#over || this.lastCursor === undefined) {
+          this.state = 'ended';
+          return;
+        }
+        await this.#wait(computeReconnectDelayMs(1));
+        continue;
       } catch (error) {
         if (this.#disposed) return;
         const treatment = classifyFault(error);

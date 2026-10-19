@@ -7,6 +7,8 @@
    * `reviews:read`, which is also what decides whether they count; `reviews:write` is what its
    * decision form needs, and the form disables its own submit without it.
    */
+  import { Alert } from '@lostgradient/cinder';
+
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import type { BureauHumanWait, BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
   import { getClient } from '../../lib/client.ts';
@@ -60,6 +62,8 @@
 
   /** What became of the last decision or answer on a Bureau review, when it did not simply take effect. */
   let outcome = $state<ReviewOutcome | undefined>(undefined);
+  /** Whether a decision took effect and only its write into the conversation failed. */
+  let notWritten = $state(false);
 
   function resolve(
     review: BureauReview,
@@ -67,17 +71,17 @@
     reason: string | undefined,
   ): void {
     outcome = undefined;
+    notWritten = false;
     resolveMutation.mutate(
       { id: review.id, decision, ...(reason === undefined ? {} : { reason }) },
       {
         onSuccess: (resolution) => {
           if (resolution.outcomeNotWritten === true) {
-            outcome = {
-              reviewId: review.id,
-              tone: 'warning',
-              title: REVIEWS_COPY.outcomeNotWritten.title,
-              message: REVIEWS_COPY.outcomeNotWritten.message,
-            };
+            // The Bureau drops a review from its pending list as it commits the decision, which is
+            // before it signals that the outcome could not be written. The list is read again at
+            // once, so the review is gone and no pane could carry this: it belongs to the page,
+            // and stays until the operator dismisses it.
+            notWritten = true;
           } else if (resolution.receipt === 'superseded') {
             outcome = {
               reviewId: review.id,
@@ -121,6 +125,13 @@
   <div class="weft-reviews-route__header">
     <h1 class="weft-reviews-route__title">{REVIEWS_COPY.heading}</h1>
   </div>
+
+  {#if notWritten}
+    <Alert variant="warning" dismissible onDismiss={() => (notWritten = false)}>
+      <p class="weft-bureau-review-outcome__title">{REVIEWS_COPY.outcomeNotWritten.title}</p>
+      <p class="weft-bureau-review-outcome__message">{REVIEWS_COPY.outcomeNotWritten.message}</p>
+    </Alert>
+  {/if}
 
   <ReviewsInbox
     {bureauQuery}

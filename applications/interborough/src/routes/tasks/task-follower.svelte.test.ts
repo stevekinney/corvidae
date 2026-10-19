@@ -224,14 +224,58 @@ describe('a stream that ends', () => {
     await waitFor(() => expect(current.state).toBe('ended'));
   });
 
-  test('is the end, not a dropped connection, when it ends cleanly while the task is still going', async () => {
+  test('with only a snapshot and no cursor is the end of the stream, to be collected once the task is over', async () => {
     const { follower: current, sleeper } = follow();
     await waitFor(() => expect(stub?.streams.length).toBe(1));
     stub?.streams[0]?.push(snapshotElement('run-1', 'working'));
     await waitFor(() => expect(current.state).toBe('live'));
     stub?.streams[0]?.end();
     await waitFor(() => expect(current.state).toBe('ended'));
-    // A catalog task's stream is its snapshot alone: the Bureau ended it as designed.
+    // A task started with `bureau.run()` streams its snapshot alone: nothing here is a drop.
+    expect(sleeper.pending()).toBe(0);
+    expect(stub?.streams.length).toBe(1);
+
+    // Once the page knows the task is over, one more stream collects the answer.
+    current.collect();
+    await waitFor(() => expect(stub?.streams.length).toBe(2));
+    expect(stub?.streams[1]?.lastEventId).toBeNull();
+    stub?.streams[1]?.push(
+      snapshotElement('run-1', 'completed', {
+        artifact: { artifactId: 'run-1:result', text: 'The answer.', truncated: false },
+      }),
+    );
+    stub?.streams[1]?.end();
+    await waitFor(() => expect(current.state).toBe('ended'));
+    expect(current.artifact?.text).toBe('The answer.');
+    // It is asked for once: it does not become a loop.
+    current.collect();
+    await Bun.sleep(20);
+    expect(stub?.streams.length).toBe(2);
+  });
+
+  test('with a cursor, still going, resumes from it after the first backoff step, without a drop', async () => {
+    const { follower: current, sleeper } = follow();
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(snapshotElement('run-1', 'input-required'));
+    stub?.streams[0]?.push(statusElement('run-1', '8', 'input-required'));
+    await waitFor(() => expect(current.lastCursor).toBe('8'));
+    // The Bureau ends every stream at its maximum duration, expecting the client to come back.
+    stub?.streams[0]?.end();
+    await waitFor(() => expect(sleeper.pending()).toBe(1));
+    expect(sleeper.delays).toEqual([1_000]);
+    expect(current.state).toBe('live');
+    sleeper.release();
+    await waitFor(() => expect(stub?.streams.length).toBe(2));
+    expect(stub?.streams[1]?.lastEventId).toBe('8');
+  });
+
+  test('with a cursor, once it has ended on a terminal status, is not opened again', async () => {
+    const { follower: current, sleeper } = follow();
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(statusElement('run-1', '8', 'working'));
+    stub?.streams[0]?.push(statusElement('run-1', '9', 'completed'));
+    stub?.streams[0]?.end();
+    await waitFor(() => expect(current.state).toBe('ended'));
     expect(sleeper.pending()).toBe(0);
     expect(stub?.streams.length).toBe(1);
   });

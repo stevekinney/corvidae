@@ -330,11 +330,14 @@ describe('after a cancellation that is not finished', () => {
   });
 });
 
-describe('a task whose stream is its snapshot alone', () => {
+describe('a task whose stream the Bureau ends while it is going', () => {
   // A task the Bureau started with `bureau.run()` is not a session run: its stream is one snapshot,
   // and the task's state is read with `bureau.tasks.get`.
-  test('applies each snapshot, and does not call a stream that ended as designed a dropped connection', async () => {
-    const world = emptyBureauWorld({ tasks: [taskFixture({ id: 'run-c', status: 'working' })] });
+  test('is polled while it is going, and once it is over one more stream collects its answer', async () => {
+    const world = emptyBureauWorld({
+      tasks: [taskFixture({ id: 'run-c', contextId: 'run-c', status: 'working' })],
+      contexts: [],
+    });
     stub = installBureauWorld(world);
     router.navigate('/tasks/run-c', { replace: true });
     const { container, findByText } = render(Harness, {
@@ -352,13 +355,74 @@ describe('a task whose stream is its snapshot alone', () => {
     stub?.streams[0]?.end();
     await settle();
     expect(container.textContent).not.toContain(TASK_COPY.followReconnecting);
-
-    // The task completes. Nothing is subscribed to again, so the page learns of it by asking.
-    world.tasks = [taskFixture({ id: 'run-c', status: 'completed' })];
-    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds);
-    await until(() => expect(container.querySelector('dl')?.textContent).toContain('Completed'));
-    expect(container.querySelector('button')).toBeNull();
     expect(stub?.streams.length).toBe(1);
+
+    // Still going: the page asks, and does not subscribe again.
+    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds);
+    await settle();
+    expect(stub?.streams.length).toBe(1);
+
+    // The task completes. The poll reads it, and the answer, which the task view does not carry,
+    // is collected from one more subscription, which the Bureau answers with the finished snapshot.
+    world.tasks = [taskFixture({ id: 'run-c', contextId: 'run-c', status: 'completed' })];
+    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds);
+    await until(() => expect(stub?.streams.length).toBe(2));
+    stub?.streams[1]?.push(
+      snapshotElement('run-c', 'completed', {
+        artifact: { artifactId: 'run-c:result', text: 'Catalog answer.', truncated: false },
+      }),
+    );
+    stub?.streams[1]?.end();
+    await until(() => expect(container.textContent).toContain('Catalog answer.'));
+    expect(container.querySelector('dl')?.textContent).toContain('Completed');
+    expect(container.querySelector('button')).toBeNull();
+    // One more stream, once: neither a loop nor a poll goes on after it.
+    const reads = stub?.callsTo('bureau.tasks.get').length ?? 0;
+    jest.advanceTimersByTime(TASK_COPY.endedPollMilliseconds * 4);
+    await settle();
+    expect(stub?.streams.length).toBe(2);
+    expect(stub?.callsTo('bureau.tasks.get').length).toBe(reads);
+  });
+
+  test('a session run’s stream that the Bureau ends at its time limit is resumed from its cursor', async () => {
+    const world = emptyBureauWorld({
+      tasks: [taskFixture({ id: 'run-s', contextId: 'session-1', status: 'input-required' })],
+    });
+    stub = installBureauWorld(world);
+    router.navigate('/tasks/run-s', { replace: true });
+    const { container, findByText } = render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+    await waitFor(() => expect(stub?.streams.length).toBe(1));
+    stub?.streams[0]?.push(snapshotElement('run-s', 'input-required'));
+    stub?.streams[0]?.push(statusElement('run-s', '8', 'input-required'));
+    await findByText('Waiting for input');
+    await waitFor(() =>
+      expect(
+        JSON.parse(window.sessionStorage.getItem('interborough:task-cursor:run-s') ?? 'null'),
+      ).toMatchObject({
+        cursor: '8',
+      }),
+    );
+
+    // Fifteen minutes in, the Bureau ends the response cleanly and expects Last-Event-ID next.
+    jest.useFakeTimers();
+    stub?.streams[0]?.end();
+    await settle();
+    expect(container.textContent).not.toContain(TASK_COPY.followReconnecting);
+    jest.advanceTimersByTime(1_000);
+    await until(() => expect(stub?.streams.length).toBe(2));
+    expect(stub?.streams[1]?.lastEventId).toBe('8');
+    // The answer a later status carries reaches the page on the resumed stream.
+    stub?.streams[1]?.push(
+      statusElement('run-s', '9', 'completed', {
+        artifact: { artifactId: 'run-s:result', text: 'After the wait.', truncated: false },
+      }),
+    );
+    await until(() => expect(container.textContent).toContain('After the wait.'));
   });
 
   test('takes the status a snapshot carries, and reads the task again for what it does not', async () => {

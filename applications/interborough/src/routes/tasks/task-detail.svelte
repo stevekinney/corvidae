@@ -60,6 +60,7 @@
 
   const follower = new TaskFollower({
     taskId: initialTaskId,
+    isOver: () => task.data !== undefined && isTerminalState(task.data.status),
     onElement: (element) => {
       if (element.kind === 'task.snapshot') {
         // A snapshot is the whole of a task's stream when the Bureau started it with `bureau.run()`,
@@ -96,6 +97,16 @@
     if (task.data !== undefined && isTerminalState(task.data.status)) return;
     const timer = setInterval(() => void task.refetch(), TASK_COPY.endedPollMilliseconds);
     return () => clearInterval(timer);
+  });
+
+  // A task the Bureau started with `bureau.run()` carries its answer only in the snapshot of a
+  // subscription made once it is finished. When the page reads it as over after its stream ended
+  // while it was going, one more stream collects the answer.
+  $effect(() => {
+    if (follower.state !== 'ended') return;
+    if (task.data === undefined || !isTerminalState(task.data.status)) return;
+    if (follower.lastStatus !== undefined && isTerminalState(follower.lastStatus)) return;
+    follower.collect();
   });
 
   // A catalog task's `contextId` is its run handle, and no session has it, so the link to a chat is
