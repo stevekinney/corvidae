@@ -17,6 +17,7 @@ import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { applyBlockedScheduleOccurrence, drainQueuedScheduleRun } from './schedule-overlap.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
+import { runIsolatedScheduleStateOperation } from './schedule-state-operations.ts';
 import type { RefreshedScheduleState, ScheduleCallbacks } from './schedules.ts';
 import { clearScheduleCurrentWorkflow } from './state-utilities.ts';
 import { loadScheduleState, writeScheduleState } from './storage-io.ts';
@@ -105,27 +106,23 @@ export async function applyScheduleOccurrence(
   );
 }
 
-export async function settleBackfillScheduleState(
+/**
+ * Waits for the scheduled run `workflowId` to finish its turn: starts the inline launches still
+ * queued, then waits for the run's own turn. The run's activity can call back into its schedule,
+ * and pause, resume, cancel, and update take the schedule's serialization, so a caller must not
+ * hold it while it waits here (COR-1482).
+ */
+export async function awaitScheduledRunTurn(
   internals: EngineInternals,
-  state: ScheduleState,
-  callbacks: Pick<
-    ScheduleCallbacks,
-    'flushQueuedInlineWorkflowStartsDirectly' | 'refreshScheduledWorkflowState'
-  >,
-): Promise<ScheduleState> {
-  if (!state.currentWorkflowId) {
-    return state;
-  }
-
+  workflowId: string,
+  callbacks: Pick<ScheduleCallbacks, 'flushQueuedInlineWorkflowStartsDirectly'>,
+): Promise<void> {
   await callbacks.flushQueuedInlineWorkflowStartsDirectly();
 
-  const pendingTurn = internals.inlineStrategy?.waitForWorkflowTurn(state.currentWorkflowId);
+  const pendingTurn = internals.inlineStrategy?.waitForWorkflowTurn(workflowId);
   if (pendingTurn) {
     await pendingTurn;
   }
-
-  const refreshed = await callbacks.refreshScheduledWorkflowState(state);
-  return refreshed.state;
 }
 
 export async function handleScheduledWorkflowTerminal(
@@ -143,25 +140,30 @@ export async function handleScheduledWorkflowTerminal(
     return;
   }
   const scheduleId = metadata.id;
-  const state = await loadScheduleState(internals, scheduleId);
-  if (!state || state.currentWorkflowId !== workflowId) {
-    await deleteTransientScheduleRunMetadata(internals, workflowId);
-    return;
-  }
-  const now = internals.options.getNow();
-  const clearedState: ScheduleState = {
-    ...clearScheduleCurrentWorkflow(state),
-    updatedAt: now,
-  };
-  // Queue entries are accepted work. Keep draining them even if a later update
-  // changes overlap; the new policy governs only future occurrences.
-  if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
-    await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
-    return;
-  }
-  await writeScheduleState(internals, clearedState, {
-    includeTimer: false,
-    additionalOperations: [{ type: 'delete', key: KEYS.scheduleRun(workflowId) }],
+  // COR-1482: the schedule record is read and written inside the schedule's serialized write, so
+  // what this handler changes is applied to the schedule as it is now, never to a copy loaded
+  // before a pause, an update, or a cancel committed.
+  await runIsolatedScheduleStateOperation(internals, scheduleId, async () => {
+    const state = await loadScheduleState(internals, scheduleId);
+    if (!state || state.currentWorkflowId !== workflowId) {
+      await deleteTransientScheduleRunMetadata(internals, workflowId);
+      return;
+    }
+    const now = internals.options.getNow();
+    const clearedState: ScheduleState = {
+      ...clearScheduleCurrentWorkflow(state),
+      updatedAt: now,
+    };
+    // Queue entries are accepted work. Keep draining them even if a later update
+    // changes overlap; the new policy governs only future occurrences.
+    if (clearedState.status === 'active' && clearedState.queuedRuns.length > 0) {
+      await drainQueuedScheduleRun({ ...clearedState, updatedAt: now }, callbacks, workflowId);
+      return;
+    }
+    await writeScheduleState(internals, clearedState, {
+      includeTimer: false,
+      additionalOperations: [{ type: 'delete', key: KEYS.scheduleRun(workflowId) }],
+    });
   });
 }
 

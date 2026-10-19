@@ -14,7 +14,6 @@ import {
   applyScheduleOccurrence,
   handleScheduledWorkflowTerminal,
   refreshScheduledWorkflowState,
-  settleBackfillScheduleState,
 } from './schedule-current-run.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import {
@@ -60,7 +59,6 @@ export function createScheduleCallbacks<TWorkflows extends object, TActivities e
     startScheduledRun: (state, options) => startScheduledRunForEngine(engine, state, options),
     applyScheduleOccurrence: (state, occurrence) =>
       applyScheduleOccurrenceForEngine(engine, state, occurrence),
-    settleBackfillScheduleState: (state) => settleBackfillScheduleStateForEngine(engine, state),
     flushQueuedInlineWorkflowStartsDirectly: () =>
       flushQueuedInlineWorkflowStartsDirectly(
         getInternals(engine),
@@ -143,12 +141,6 @@ export async function applyScheduleOccurrenceForEngine<
     createScheduleCallbacks(engine),
     occurrence,
   );
-}
-export async function settleBackfillScheduleStateForEngine<
-  TWorkflows extends object,
-  TActivities extends object,
->(engine: Engine<TWorkflows, TActivities>, state: ScheduleState): Promise<ScheduleState> {
-  return settleBackfillScheduleState(getInternals(engine), state, createScheduleCallbacks(engine));
 }
 export async function handleScheduleTimerForEngine<
   TWorkflows extends object,

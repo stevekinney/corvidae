@@ -62,7 +62,7 @@ test('Chat is the home screen, and a session lives under /chat/:sessionId', asyn
   await expect(page.getByRole('link', { name: /^Chat/ })).toHaveAttribute('aria-current', 'page');
 });
 
-test('runs live at /runs and /runs/:id, and /workflows is the catalog placeholder', async ({
+test('runs live at /runs and /runs/:id, and /workflows is the catalog of definitions', async ({
   page,
 }) => {
   await page.goto('/');
@@ -77,10 +77,8 @@ test('runs live at /runs and /runs/:id, and /workflows is the catalog placeholde
 
   await page.goto('/workflows');
   const catalog = page.locator('[data-view="workflows"]');
-  await expect(catalog).toHaveAttribute('data-state', 'empty');
-  await expect(catalog.getByRole('heading', { level: 1 })).toHaveText(
-    VIEW_COPY.workflows.empty?.title ?? '',
-  );
+  await expect(catalog).toHaveAttribute('data-state', 'ready');
+  await expect(catalog.getByRole('heading', { level: 1 })).toHaveText(VIEW_COPY.workflows.label);
   await expect(page.locator('[data-view="runs"]')).toHaveCount(0);
 });
 

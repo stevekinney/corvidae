@@ -59,7 +59,9 @@
   } from '@lucide/svelte';
 
   import { formatDuration, formatRelativeTime, truncateId } from '../../../lib/format/index.ts';
+  import { router } from '../../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
+  import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import {
     classifyRevisionAgainstActive,
     EAGER_REVISION_HEDGE,
@@ -229,13 +231,28 @@
     suspend: '',
     resume: '',
   };
+
+  /** The type's own page, from the run's: a modified click is left to the browser. */
+  function openWorkflowType(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(workflowTypePath(workflow.type));
+  }
 </script>
 
 <div class="weft-workflow-detail__header">
   <div class="weft-workflow-detail__title-row">
     <div class="weft-workflow-detail__identity">
       <div class="weft-workflow-detail__badges">
-        <h1 class="weft-workflow-detail__title">{workflow.type}</h1>
+        <h1 class="weft-workflow-detail__title">
+          <a
+            class="weft-workflow-detail__type-link"
+            href={router.href(workflowTypePath(workflow.type))}
+            onclick={openWorkflowType}>{workflow.type}</a
+          >
+        </h1>
         <Badge variant="accent" monospace>v{workflow.versionTuple.workflowVersion}</Badge>
         {#if workflow.revision !== undefined}
           <Tooltip

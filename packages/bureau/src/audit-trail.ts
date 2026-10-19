@@ -324,6 +324,13 @@ export interface AuditQueryOptions {
   type?: string;
   /** Maximum number of records to return. Defaults to 500. */
   limit?: number;
+  /**
+   * Only records after this position in the query's own order (COR-1482): later by `timestampMs`,
+   * or at the same millisecond with a greater `sequence` (a record with no `sequence` counts as
+   * `-1`). Pass the position of the last record a page returned to read the next page, however
+   * many records an outside filter dropped between them.
+   */
+  after?: { readonly timestampMs: number; readonly sequence: number };
 }
 
 /**
@@ -907,6 +914,20 @@ export function encodeKey(timestampMs: number, sequence: number, runId: string):
   const ts = timestampMs.toString().padStart(16, '0');
   const seq = sequence.toString().padStart(12, '0');
   return `${PREFIX}${ts}:${seq}:${runId}`;
+}
+
+/** The timestamp a record's key leads with: `audit:v1:<timestamp, 16 digits>:…`. */
+function keyTimestampMilliseconds(key: string): number {
+  return Number(key.slice(PREFIX.length, PREFIX.length + 16));
+}
+
+/** Whether `record` sorts after `position` in the order `query` returns records in. */
+function isAfterPosition(
+  record: Pick<AuditRecord, 'timestampMs' | 'sequence'>,
+  position: { readonly timestampMs: number; readonly sequence: number },
+): boolean {
+  if (record.timestampMs !== position.timestampMs) return record.timestampMs > position.timestampMs;
+  return (record.sequence ?? -1) > position.sequence;
 }
 
 /** The `runId` prefix of a schedule's synthetic audit owner, `schedule:<id>`. */
@@ -2455,7 +2476,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
     async query(options: AuditQueryOptions = {}): Promise<AuditRecord[]> {
       if (!kv) return [];
 
-      const { since, runId, type, limit = 500 } = options;
+      const { since, runId, type, limit = 500, after } = options;
 
       // AB-228 (Codex P2 review findings, PR #566: "Wait for schedule audit
       // writes before returning success", then "Avoid blocking every audit
@@ -2527,6 +2548,9 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
 
       const records: AuditRecord[] = [];
       for (const key of keys) {
+        // The key leads with its record's zero-padded timestamp, so a record that is earlier than
+        // `after` is skipped without being read.
+        if (after !== undefined && keyTimestampMilliseconds(key) < after.timestampMs) continue;
         const raw = await kv.get(key);
         if (!raw) continue;
 
@@ -2553,6 +2577,7 @@ export function createAuditTrail<D extends AgentDefinitions = AgentDefinitions>(
         const record = decoded as AuditRecord;
 
         if (since !== undefined && record.timestampMs < since) continue;
+        if (after !== undefined && !isAfterPosition(record, after)) continue;
         if (runId !== undefined && record.runId !== runId) continue;
         if (type !== undefined && record.type !== type) continue;
 

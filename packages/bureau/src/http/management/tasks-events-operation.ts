@@ -44,6 +44,7 @@ import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
   TASK_STATUS_MESSAGE_LIMIT,
+  type TaskRecord,
   type TaskRegistry,
   type TaskView,
 } from '../../task-registry.ts';
@@ -305,7 +306,7 @@ const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record'>;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled'>;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -321,6 +322,122 @@ const tasksEventsInput = z.object({
 });
 
 const tasksEventsEnvelope = z.object({ subscriptionId: z.string(), cursor: z.string() });
+
+/** The cursor of the one element that ends a schedule fire's stream. */
+const FIRE_TERMINAL_CURSOR = encodeCursor(0);
+
+const isTerminalStatus = (status: TaskView['status']): boolean =>
+  status === 'completed' || status === 'failed' || status === 'canceled';
+
+/**
+ * The stream of a schedule fire (COR-1482). A fire runs headless on the durable engine: it writes
+ * no `run.*` events to the durable history, so there is nothing to replay, and its end is what the
+ * task registry records, which is the source `bureau.tasks.get` reads. The stream is a snapshot of
+ * the task as it stands, then one element that carries the task's end (`completed`, `failed`, or
+ * `canceled`, with its answer when it has one), then it ends; a fire already over gets both at
+ * once. It has one resumable position: a client that reconnects with the terminal element's cursor
+ * has seen the end already, and a fire that is over answers it with an empty stream.
+ */
+function followScheduleFire(
+  host: BureauTaskEventsOperationHost,
+  taskId: string,
+  task: TaskView,
+  record: TaskRecord | undefined,
+  fromCursor: string | undefined,
+  runtime: Pick<RuntimeServices, 'identifiers' | 'clock'>,
+) {
+  const queue = createQueue<TaskEvent>();
+  const artifactOf = (settled: TaskRecord['settled']) =>
+    settled?.answer === undefined
+      ? null
+      : {
+          artifactId: `${taskId}:result`,
+          text: settled.answer.text,
+          truncated: settled.answer.truncated,
+        };
+  let unsubscribe: (() => void) | undefined;
+  let ended = false;
+
+  const finish = (view: TaskView, settled: TaskRecord['settled']): void => {
+    if (ended) return;
+    ended = true;
+    unsubscribe?.();
+    queue.push({
+      kind: 'task.status',
+      taskId,
+      cursor: FIRE_TERMINAL_CURSOR,
+      emittedAtMs: runtime.clock.now(),
+      status: view.status,
+      finishReason: view.finishReason,
+      message: view.statusMessage,
+      artifact: artifactOf(settled),
+    });
+    queue.end();
+  };
+
+  const seenEnd = fromCursor !== undefined && (decodeCursor(fromCursor) ?? -1) >= 0;
+  const iterable = createReplayAwareClosableIterable<TaskEvent>(
+    (onReplayComplete) => {
+      void (async () => {
+        if (fromCursor === undefined) {
+          queue.push({
+            kind: 'task.snapshot',
+            taskId,
+            cursor: '-1',
+            emittedAtMs: runtime.clock.now(),
+            status: task.status,
+            finishReason: task.finishReason,
+            message: task.statusMessage,
+            artifact: isTerminalStatus(task.status) ? artifactOf(record?.settled) : null,
+          });
+        }
+        onReplayComplete();
+        if (isTerminalStatus(task.status)) {
+          if (seenEnd) {
+            ended = true;
+            queue.end();
+          } else {
+            finish(task, record?.settled);
+          }
+          return;
+        }
+        // Listen first, then read again: a settlement that landed in between is not missed.
+        unsubscribe = host.tasks.onSettled(taskId, (view, settledRecord) => {
+          finish(view, settledRecord.settled);
+        });
+        const latest = await host.tasks.get(taskId);
+        if (latest !== undefined && isTerminalStatus(latest.status)) {
+          const latestRecord = await host.tasks.record(taskId);
+          finish(latest, latestRecord?.settled);
+        }
+      })().catch((error: unknown) => queue.fail(error));
+      return {
+        async *[Symbol.asyncIterator]() {
+          for (;;) {
+            const next = await queue.next();
+            if (next.done) return;
+            yield next.value;
+          }
+        },
+      };
+    },
+    {
+      close: () => {
+        ended = true;
+        unsubscribe?.();
+        queue.end();
+      },
+    },
+  );
+  return {
+    envelope: {
+      subscriptionId: `sub_${runtime.identifiers.next('task-subscription')}`,
+      cursor: fromCursor ?? '-1',
+    },
+    iterable,
+    close: () => iterable.close(),
+  };
+}
 
 /** A bounded hand-off from the history's listener to the stream's reader. */
 function createQueue<T>() {
@@ -398,6 +515,18 @@ export const tasksEventsOperation = defineOperation<
     const task = await host.tasks.get(taskId);
     if (task === undefined) throw resourceNotFound('task', taskId);
     const stored = await host.tasks.record(taskId);
+    // A schedule fire is not a catalog task, though it may have no incarnation yet, and it is not
+    // a session run, though it may have one: it has its own stream.
+    if (stored?.kind === 'schedule-fire') {
+      return followScheduleFire(
+        host,
+        taskId,
+        task,
+        stored,
+        input.fromCursor,
+        host.runtime ?? createDefaultRuntimeServices(),
+      );
+    }
     const catalog = stored?.incarnation === '';
     const answer = stored?.settled?.answer;
     const answerArtifact =

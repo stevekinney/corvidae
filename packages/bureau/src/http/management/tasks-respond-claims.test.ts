@@ -91,6 +91,7 @@ function hostOver(
     statusMessage: null,
     createdAt: 'then',
     updatedAt: 'then',
+    actor: null,
     cleanup: null,
     openWaits: options.openWaits,
   };

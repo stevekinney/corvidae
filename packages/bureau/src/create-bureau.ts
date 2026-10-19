@@ -235,6 +235,8 @@ import type {
   BureauToolbox,
   CatalogAgentRunOptionsResolution,
   ScheduledFireNotice,
+  ScheduledFireSettlement,
+  ScheduledSessionNotice,
   SessionAgentRun,
 } from './runtime-composition';
 import {
@@ -274,6 +276,7 @@ import {
   originatingMessageText,
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
+  TASK_STATUS_MESSAGE_LIMIT,
   type LiveTask,
 } from './task-registry';
 import {
@@ -283,6 +286,7 @@ import {
   ownerOrLocal,
   principalDefect,
   RECOVERY_ACTOR,
+  SCHEDULER_ACTOR,
 } from './owner-of-record';
 import { toScheduleSpec } from './schedule-spec';
 import {
@@ -390,6 +394,8 @@ import type {
   OwnedResource,
   DiagnosticSink,
   DurableScheduleDefinition,
+  DurableScheduleUpdate,
+  ScheduleRevisionGuard,
   EventHistoryDeletedAggregateOutcome,
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
@@ -1800,6 +1806,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // attribution map and the audit trail that record its owner, so the hook waits for both.
   const scheduledFireHandler =
     Promise.withResolvers<(fire: ScheduledFireNotice) => Promise<void>>();
+  // COR-1482: a fire is a task, so the task registry that records it, which is built after the
+  // composition, is what its end and its session are reported to.
+  const scheduledFireSettledHandler =
+    Promise.withResolvers<(settlement: ScheduledFireSettlement) => Promise<void>>();
+  const scheduledSessionKnownHandler =
+    Promise.withResolvers<(session: ScheduledSessionNotice) => Promise<void>>();
   // COR-718: the session store exists before the audit trail that consumes the owner
   // record an expiring session needs, so the hook waits for the recorder the same way.
   const sessionCleanupHandler =
@@ -1877,6 +1889,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       onScheduledFire: async (fire) => {
         const handler = await scheduledFireHandler.promise;
         await handler(fire);
+      },
+      onScheduledFireSettled: async (settlement) => {
+        const handler = await scheduledFireSettledHandler.promise;
+        await handler(settlement);
+      },
+      onScheduledSessionKnown: async (session) => {
+        const handler = await scheduledSessionKnownHandler.promise;
+        await handler(session);
       },
       beforeSessionCleanup: async (sessions) => {
         const handler = await sessionCleanupHandler.promise;
@@ -6368,6 +6388,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       {
         runId,
         handle,
+        // COR-1587: only a run whose session is still `running` is reattached here (the hook runs
+        // after the resolver provided its services, and the post-recovery pass classifies a run
+        // whose session the resolver reconciled to `error` as `cancel`). Nothing has recorded an
+        // end for it, so a rejection settles it as `error` instead of being inferred from the
+        // engine's state as a failure before replay, which the engine's late read can misread.
+        failedBeforeReplay: false,
         ...(eventSurface
           ? {
               emitter: eventSurface.emitter,
@@ -6471,7 +6497,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // conversation behavior. A run the engine failed pre-replay (services
     // unavailable) or one interrupted by teardown fires NO terminal event — the
     // adapter stays write-free for those and the resolver/teardown owns the
-    // session status; so these listeners only run for a genuinely settled run.
+    // session status. A run that fails after replay (an activity or workflow-body
+    // failure, COR-1587) settles as `error`, with `run.error` then `run.completed`,
+    // so these listeners run for it too.
     // COR-625: a reattached run whose `result` REJECTS — a recovered
     // workflow whose stored result fails its schema-version check
     // (`UnsupportedRunResultVersionError`, rethrown by
@@ -10681,6 +10709,30 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         runTerminals,
         liveTasks,
       } = abandonSessionRuns(id);
+      // COR-1482: a schedule fire is a live task of its context too, though it is not in the run
+      // store, so deleting the context stops it as it stops every other live task in it.
+      for (const fire of await tasks.unsettledFiresOfContext(id, session.incarnation)) {
+        const cancelled = await tasks.cancel(fire.taskId, 0).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'task-registry',
+            message: `[bureau] Could not cancel schedule fire "${fire.taskId}" with its context "${id}": ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          return undefined;
+        });
+        if (cancelled === undefined || cancelled.receipt === 'rejected') continue;
+        // A fire has no cleanup to acknowledge, so the stop is reported as one nothing confirms.
+        // Followed here, so the receipt of this deletion says so even with no wait: left to the
+        // caller's wait of zero, the acknowledgement would not have been seen yet and the stop
+        // would read as a cleanup still pending.
+        const closed: Promise<RunCleanupAcknowledgement> = Promise.resolve({
+          status: 'unresolved',
+          reason: 'unreachable',
+        });
+        await tasks.watchCleanup(fire.taskId, closed);
+        liveTasks.push({ taskId: fire.taskId, closed });
+      }
 
       // AB-228/AB-371/AB-384, superseded by AB-389: `session.deleted` used
       // to be dispatched directly, right here, immediately after
@@ -13290,27 +13342,93 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
-  async function pauseSchedule(scheduleId: string): Promise<true | undefined> {
+  async function pauseSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.pauseSchedule(scheduleId);
+    const transition = scheduleTransitionOptions(guard);
+    await (transition === undefined
+      ? runtime.durable.engine.pauseSchedule(scheduleId)
+      : runtime.durable.engine.pauseSchedule(scheduleId, transition));
     emitter.dispatch(new SchedulePausedEvent(scheduleId));
     return true;
   }
 
-  async function resumeSchedule(scheduleId: string): Promise<true | undefined> {
+  async function resumeSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.resumeSchedule(scheduleId);
+    const transition = scheduleTransitionOptions(guard);
+    await (transition === undefined
+      ? runtime.durable.engine.resumeSchedule(scheduleId)
+      : runtime.durable.engine.resumeSchedule(scheduleId, transition));
     emitter.dispatch(new ScheduleResumedEvent(scheduleId));
     return true;
   }
 
-  async function cancelSchedule(scheduleId: string): Promise<true | undefined> {
+  async function cancelSchedule(
+    scheduleId: string,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
     if (!runtime.durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.cancelSchedule(scheduleId);
+    const transition = scheduleTransitionOptions(guard);
+    await (transition === undefined
+      ? runtime.durable.engine.cancelSchedule(scheduleId)
+      : runtime.durable.engine.cancelSchedule(scheduleId, transition));
     emitter.dispatch(new ScheduleCancelledEvent(scheduleId));
+    return true;
+  }
+
+  /** What Weft's pause, resume, and cancel take for a guard: the revision, or nothing at all. */
+  function scheduleTransitionOptions(
+    guard: ScheduleRevisionGuard | undefined,
+  ): { expectedRevision: number } | undefined {
+    return guard?.expectedRevision === undefined
+      ? undefined
+      : { expectedRevision: guard.expectedRevision };
+  }
+
+  async function updateSchedule(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined> {
+    if (!runtime.durable) return undefined;
+    refuseWorkflowSchedule(scheduleId);
+    if (update.overlap !== undefined && update.overlap !== 'skip' && update.overlap !== 'allow') {
+      throw new BureauError(
+        `overlap policy '${String(update.overlap)}' is not supported by Bureau; only 'skip' and 'allow' are offered`,
+        'BAD_REQUEST',
+      );
+    }
+    if (update.overlap === 'allow') {
+      // A recurring session is sequential: overlapping fires would interleave its turns, which is
+      // why creating such a schedule refuses `allow` too.
+      const bytes = await runtime.durable.engine.storage.get(KEYS.schedule(scheduleId));
+      const stored: unknown = bytes ? decode(bytes) : undefined;
+      const input =
+        typeof stored === 'object' && stored !== null
+          ? (stored as { input?: unknown }).input
+          : undefined;
+      if (isScheduledAgentRunInput(input) && input.sessionId !== undefined) {
+        throw new BureauError(
+          "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
+          'BAD_REQUEST',
+        );
+      }
+    }
+    await runtime.durable.engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
+      ...(update.description === undefined ? {} : { description: update.description }),
+      ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
+      ...(guard?.expectedRevision === undefined
+        ? {}
+        : { expectedRevision: guard.expectedRevision }),
+    });
     return true;
   }
 
@@ -14975,6 +15093,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     pauseSchedule,
     resumeSchedule,
     cancelSchedule,
+    updateSchedule,
     getConfiguration,
     getTools: getToolSummaries,
     subscribeLiveFrames(listener) {
@@ -15139,6 +15258,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // recovery, so the entry is written through an atomic key and is written once.
   scheduledFireHandler.resolve(async (fire) => {
     attributeScheduledFire(runAttribution, firedRunIds, fire);
+    // COR-1482: the fire is a task owned by the schedule's owner, started by the scheduler. It is
+    // written once however many times the fire is rebuilt, and unbound to a session incarnation,
+    // because a fresh session does not exist until the fire's first step saves it.
+    try {
+      await tasks.recordAdmission({
+        taskId: fire.runId,
+        contextId: fire.sessionId,
+        incarnation: '',
+        agentName: fire.agentName,
+        owner: fire.owner,
+        actor: SCHEDULER_ACTOR,
+        kind: 'schedule-fire',
+        message: fire.message,
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not record the task of schedule fire "${fire.runId}":`,
+        cause: error,
+      });
+    }
     const trail = auditTrailInstance;
     if (trail === undefined) return;
     try {
@@ -15151,6 +15292,39 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         cause: error,
       });
     }
+  });
+
+  // COR-1482: how a fire's task ends, from the engine's own terminal event for its run, and which
+  // session incarnation it ran in.
+  scheduledFireSettledHandler.resolve(async (settlement) => {
+    const status =
+      settlement.status === 'completed'
+        ? settledTaskState('completed', settlement.finishReason)
+        : settlement.status;
+    const content = status === 'completed' ? (settlement.content ?? '') : '';
+    await tasks.recordSettled(settlement.runId, {
+      at: runtimeServices.clock.nowISO(),
+      status,
+      finishReason: settlement.finishReason ?? null,
+      message:
+        status === 'failed'
+          ? (settlement.error ?? settlement.finishReason ?? 'The task failed.').slice(
+              0,
+              TASK_STATUS_MESSAGE_LIMIT,
+            )
+          : null,
+      ...(content === ''
+        ? {}
+        : {
+            answer: {
+              text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
+              truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
+            },
+          }),
+    });
+  });
+  scheduledSessionKnownHandler.resolve(async (session) => {
+    await tasks.bindIncarnation(session.runId, session.incarnation);
   });
 
   // Wire the online eval sampler (AB-53) now that the audit trail and webhook
