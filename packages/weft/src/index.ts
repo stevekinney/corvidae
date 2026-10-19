@@ -288,8 +288,10 @@ export type {
   DeploymentSelection,
   DeploymentSelectionFailure,
   DeploymentSelectionResult,
+  WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
   WorkerDeploymentVersion,
+  WorkerDeploymentVersionReport,
   WorkerDeploymentVersionState,
 } from './worker/deployment-routing.ts';
 export { HeartbeatManager } from './worker/heartbeat.ts';

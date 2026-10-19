@@ -7,6 +7,10 @@ import { describe, expect, it } from 'bun:test';
 
 import { MemoryStorage } from '../../storage/memory.ts';
 import { throwingRejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import {
+  seedBoundRun,
+  seedLedgerEntry,
+} from '../../worker/deployment-build-references.test-support.ts';
 import { WorkerDeploymentCatalog } from '../../worker/deployment-routing.ts';
 import { testWorkerManifest } from '../../worker/registry-fixtures.test-support.ts';
 import type { OperationFault } from '../operation-fault.ts';
@@ -17,6 +21,7 @@ import {
   createRemoveWorkerDeploymentVersionOperation,
   createRollbackWorkerDeploymentOperation,
   createSetWorkerDeploymentRoutingOperation,
+  createWorkerDeploymentDiagnosticsOperation,
   workerDeploymentRemoveRestBinding,
 } from './worker-deployment-routing.ts';
 
@@ -229,7 +234,7 @@ describe('setrouting, promote, and rollback fault with typed Conflicts', () => {
       ),
     ).toMatchObject({ code: 'NotFound' });
 
-    await catalog.markDraining('billing', 'build-b');
+    await catalog.setVersionState('billing', 'build-b', 'draining');
     expect(
       await faultOf(invoke(set, { ...ROUTING, rampingBuildId: 'build-b', rampBasisPoints: 100 })),
     ).toMatchObject({ code: 'Conflict', data: { reason: 'version-not-ready' } });
@@ -254,8 +259,9 @@ describe('setrouting, promote, and rollback fault with typed Conflicts', () => {
 });
 
 describe('weft.worker.deployments.remove', () => {
-  it('removes an unreferenced build and calls the catalog’s own removeVersion', async () => {
+  it('removes a draining build that nothing references', async () => {
     const catalog = await catalogWithBuilds();
+    await catalog.setVersionState('billing', 'build-b', 'draining');
     const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
 
     expect(await invoke(remove, { deploymentName: 'billing', buildId: 'build-b' })).toEqual({
@@ -267,20 +273,84 @@ describe('weft.worker.deployments.remove', () => {
     expect(await stateOf(catalog, 'build-a')).toBe('ready');
   });
 
-  it('refuses a referenced build with a version-referenced Conflict, and leaves it ready', async () => {
+  it('refuses a build that is not draining, routed or not, and leaves it as it was', async () => {
     const catalog = await catalogWithBuilds();
-    await catalog.reference('billing', 'build-b', 1);
-    await catalog.reference('billing', 'build-b', 1);
+    await catalog.setRouting({ ...ROUTING, updatedAt: 1 });
+    const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
 
-    const fault = await faultOf(
-      invoke(createRemoveWorkerDeploymentVersionOperation({ catalog }), {
-        deploymentName: 'billing',
-        buildId: 'build-b',
-      }),
+    // `build-b` is ready and not routed: only its state keeps it, so only its state is named.
+    const unrouted = await faultOf(
+      invoke(remove, { deploymentName: 'billing', buildId: 'build-b' }),
     );
-    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-referenced' } });
-    expect(fault.message).toContain('2 executions');
+    expect(unrouted).toMatchObject({ code: 'Conflict', data: { reason: 'version-not-draining' } });
+    expect(unrouted.message).toContain('drain it first');
     expect(await stateOf(catalog, 'build-b')).toBe('ready');
+
+    // `build-a` is ready and routed: it must be drained before routing is even considered.
+    expect(
+      await faultOf(invoke(remove, { deploymentName: 'billing', buildId: 'build-a' })),
+    ).toMatchObject({ code: 'Conflict', data: { reason: 'version-not-draining' } });
+    expect(await stateOf(catalog, 'build-a')).toBe('ready');
+  });
+
+  describe('refuses a build that work is bound to', () => {
+    async function drainingBuild(storage = new MemoryStorage()) {
+      const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
+      await catalog.setVersionState('billing', 'build-b', 'draining');
+      return {
+        storage,
+        catalog,
+        remove: createRemoveWorkerDeploymentVersionOperation({ catalog }),
+      };
+    }
+    const BUILD_B = { deploymentName: 'billing', buildId: 'build-b' };
+
+    it('one non-terminal run bound to the build makes removal refuse, naming the count', async () => {
+      const { storage, catalog, remove } = await drainingBuild();
+      await seedBoundRun(storage, { workflowId: 'run-1', ...BUILD_B });
+
+      const fault = await faultOf(invoke(remove, BUILD_B));
+
+      expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-referenced' } });
+      expect(fault.message).toContain('1 piece of work');
+      expect(await stateOf(catalog, 'build-b')).toBe('draining');
+    });
+
+    it('one non-terminal ledger entry requiring the build makes removal refuse', async () => {
+      const { storage, catalog, remove } = await drainingBuild();
+      await seedLedgerEntry(storage, { operationId: 'op-1', requirement: BUILD_B });
+      await seedBoundRun(storage, { workflowId: 'run-1', ...BUILD_B });
+
+      const fault = await faultOf(invoke(remove, BUILD_B));
+
+      expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-referenced' } });
+      expect(fault.message).toContain('2 pieces of work');
+      expect(await stateOf(catalog, 'build-b')).toBe('draining');
+    });
+
+    it('removes the build once the run and the entry have finished', async () => {
+      const { storage, catalog, remove } = await drainingBuild();
+      await seedBoundRun(storage, { workflowId: 'run-1', ...BUILD_B });
+      await seedLedgerEntry(storage, { operationId: 'op-1', requirement: BUILD_B });
+      await faultOf(invoke(remove, BUILD_B));
+
+      await seedBoundRun(storage, { workflowId: 'run-1', ...BUILD_B, status: 'completed' });
+      await seedLedgerEntry(storage, { operationId: 'op-1', requirement: BUILD_B, finished: true });
+
+      expect(await invoke(remove, BUILD_B)).toEqual({ ...BUILD_B, removed: true });
+      expect(await stateOf(catalog, 'build-b')).toBe('removed');
+    });
+
+    it('is not blocked by work bound to another build of the deployment', async () => {
+      const { storage, remove } = await drainingBuild();
+      await seedBoundRun(storage, {
+        workflowId: 'run-1',
+        deploymentName: 'billing',
+        buildId: 'build-a',
+      });
+
+      expect(await invoke(remove, BUILD_B)).toMatchObject({ removed: true });
+    });
   });
 
   it.each(['current', 'ramping'] as const)(
@@ -294,11 +364,13 @@ describe('weft.worker.deployments.remove', () => {
       );
       const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
       const routed = role === 'current' ? 'build-a' : 'build-b';
+      // Draining a routed build is allowed; it is the routing pointer that then refuses removal.
+      await catalog.setVersionState('billing', routed, 'draining');
 
       const fault = await faultOf(invoke(remove, { deploymentName: 'billing', buildId: routed }));
 
       expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-routed' } });
-      expect(await stateOf(catalog, routed)).toBe('ready');
+      expect(await stateOf(catalog, routed)).toBe('draining');
       const routing = await catalog.getRouting('billing');
       expect(routing?.generation).toBe(1);
     },
@@ -308,6 +380,7 @@ describe('weft.worker.deployments.remove', () => {
     const catalog = await catalogWithBuilds();
     await catalog.setRouting({ ...ROUTING, updatedAt: 1 });
     await catalog.setRouting({ ...ROUTING, currentBuildId: 'build-b', updatedAt: 2 });
+    await catalog.setVersionState('billing', 'build-a', 'draining');
 
     const remove = createRemoveWorkerDeploymentVersionOperation({ catalog });
     expect(await invoke(remove, { deploymentName: 'billing', buildId: 'build-a' })).toMatchObject({
@@ -315,14 +388,16 @@ describe('weft.worker.deployments.remove', () => {
     });
   });
 
-  it('reports a routing change taken between its read and its write as version-routed, not a removal', async () => {
+  it('reports a drain lifted and a routing change taken between its read and its write as a refusal, not a removal', async () => {
     const storage = new InterleavingStorage();
     const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
     const rival = new WorkerDeploymentCatalog(storage);
     await catalog.setRouting({ ...ROUTING, updatedAt: 1 });
+    await catalog.setVersionState('billing', 'build-b', 'draining');
 
     storage.arm(async () => {
       // The rival points routing at build-b between the operation's checks and its write.
+      await rival.setVersionState('billing', 'build-b', 'ready');
       await rival.setRouting({ ...ROUTING, currentBuildId: 'build-b', updatedAt: 2 });
     });
     const fault = await faultOf(
@@ -331,7 +406,8 @@ describe('weft.worker.deployments.remove', () => {
         buildId: 'build-b',
       }),
     );
-    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-routed' } });
+    // The build is no longer draining, so that is what the retried checks report first.
+    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-not-draining' } });
     expect(await stateOf(catalog, 'build-b')).toBe('ready');
   });
 
@@ -346,28 +422,11 @@ describe('weft.worker.deployments.remove', () => {
       data: { resource: 'workerDeploymentVersion', identifier: 'billing/missing' },
     });
 
+    await catalog.setVersionState('billing', 'build-b', 'draining');
     await invoke(remove, { deploymentName: 'billing', buildId: 'build-b' });
     expect(
       await faultOf(invoke(remove, { deploymentName: 'billing', buildId: 'build-b' })),
     ).toMatchObject({ code: 'NotFound' });
-  });
-
-  it('reports a reference taken between its read and its write as a Conflict, not a removal', async () => {
-    const storage = new InterleavingStorage();
-    const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
-    const rival = new WorkerDeploymentCatalog(storage);
-
-    storage.arm(async () => {
-      await rival.reference('billing', 'build-b', 1);
-    });
-    const fault = await faultOf(
-      invoke(createRemoveWorkerDeploymentVersionOperation({ catalog }), {
-        deploymentName: 'billing',
-        buildId: 'build-b',
-      }),
-    );
-    expect(fault).toMatchObject({ code: 'Conflict', data: { reason: 'version-referenced' } });
-    expect(await stateOf(catalog, 'build-b')).toBe('ready');
   });
 
   it('is registered with a REST binding and needs a live catalog', async () => {
@@ -395,5 +454,46 @@ describe('weft.worker.deployments.remove', () => {
     expect(
       await throwingRejectionOf(invoke(createRemoveWorkerDeploymentVersionOperation(), input)),
     ).toThrow('live worker deployment catalog');
+  });
+});
+
+describe('weft.worker.deployments.diagnostics reports a true reference count', () => {
+  it('computes executionReferences from the work bound to each build when the list is read', async () => {
+    const storage = new MemoryStorage();
+    const catalog = await catalogWithBuilds(['build-a', 'build-b'], storage);
+    const diagnostics = createWorkerDeploymentDiagnosticsOperation({ catalog });
+    const counts = async () =>
+      Object.fromEntries(
+        (
+          (await invoke(diagnostics, { deploymentName: 'billing' })) as {
+            versions: Array<{ buildId: string; executionReferences: number }>;
+          }
+        ).versions.map((version) => [version.buildId, version.executionReferences]),
+      );
+    expect(await counts()).toEqual({ 'build-a': 0, 'build-b': 0 });
+
+    await seedBoundRun(storage, {
+      workflowId: 'run-1',
+      deploymentName: 'billing',
+      buildId: 'build-b',
+    });
+    await seedBoundRun(storage, {
+      workflowId: 'run-2',
+      deploymentName: 'billing',
+      buildId: 'build-b',
+    });
+    await seedLedgerEntry(storage, {
+      operationId: 'op-1',
+      requirement: { deploymentName: 'billing', buildId: 'build-a' },
+    });
+    expect(await counts()).toEqual({ 'build-a': 1, 'build-b': 2 });
+
+    await seedBoundRun(storage, {
+      workflowId: 'run-1',
+      deploymentName: 'billing',
+      buildId: 'build-b',
+      status: 'completed',
+    });
+    expect(await counts()).toEqual({ 'build-a': 1, 'build-b': 1 });
   });
 });

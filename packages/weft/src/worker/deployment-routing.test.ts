@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+import { decode, encode } from '../core/codec/index.ts';
 import { Engine } from '../core/engine.ts';
 import { serve } from '../server/index.ts';
 import {
@@ -14,6 +15,7 @@ import { MemoryStorage } from '../storage/memory.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   selectWorkerDeployment,
+  WORKER_DEPLOYMENT_VERSION_PREFIX,
   WorkerDeploymentCatalog,
   type DeploymentRoutingCandidate,
   type WorkerDeploymentRouting,
@@ -149,7 +151,7 @@ describe('revision-aware worker deployment routing', () => {
     });
     expect(contractMatch.candidate?.workerId).toBe('contract');
   });
-  it('protects references while draining and removing a version', async () => {
+  it('removes only a draining build, and reports why it refuses any other', async () => {
     const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
     await catalog.registerVersion({
       deploymentName: 'billing',
@@ -160,14 +162,44 @@ describe('revision-aware worker deployment routing', () => {
       state: 'ready',
       firstSeenAt: 1,
     });
-    await catalog.reference('billing', 'build-a', 1);
-    const retained = await catalog.markDraining('billing', 'build-a');
-    expect(retained?.state).toBe('ready');
-    expect(await catalog.removeVersion('billing', 'build-a')).toBe(false);
-    await catalog.reference('billing', 'build-a', -1);
-    const draining = await catalog.markDraining('billing', 'build-a');
+    expect(await catalog.removeVersion('billing', 'build-a')).toEqual({
+      outcome: 'not-draining',
+      state: 'ready',
+    });
+    const stillReady = await catalog.getVersion('billing', 'build-a');
+    expect(stillReady?.state).toBe('ready');
+    const draining = await catalog.setVersionState('billing', 'build-a', 'draining');
     expect(draining?.state).toBe('draining');
-    expect(await catalog.removeVersion('billing', 'build-a')).toBe(true);
+    expect(await catalog.removeVersion('billing', 'build-a')).toEqual({ outcome: 'removed' });
+    expect(await catalog.removeVersion('billing', 'build-a')).toEqual({ outcome: 'not-found' });
+  });
+  it('reads a record that still carries the retired stored counter, and writes it back without one', async () => {
+    const storage = new MemoryStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    const legacy = {
+      deploymentName: 'billing',
+      buildId: 'build-a',
+      artifactDigest: 'sha256:build-a',
+      manifestDigest: 'sha256:m',
+      manifest: manifest('build-a'),
+      state: 'ready',
+      firstSeenAt: 1,
+      executionReferences: 3,
+    };
+    const key = `${WORKER_DEPLOYMENT_VERSION_PREFIX}billing:build-a`;
+    await storage.put(key, encode(legacy));
+
+    expect(await catalog.getVersion('billing', 'build-a')).not.toHaveProperty(
+      'executionReferences',
+    );
+    const [reported] = await catalog.diagnostics('billing');
+    expect(reported?.executionReferences).toBe(0);
+    const drained = await catalog.setVersionState('billing', 'build-a', 'draining');
+    expect(drained?.state).toBe('draining');
+    expect(decode((await storage.get(key)) as Uint8Array)).not.toHaveProperty(
+      'executionReferences',
+    );
+    expect(await catalog.removeVersion('billing', 'build-a')).toEqual({ outcome: 'removed' });
   });
   it('covers catalog boundaries and operation mutations', async () => {
     const catalog = new WorkerDeploymentCatalog(new MemoryStorage());
@@ -191,9 +223,8 @@ describe('revision-aware worker deployment routing', () => {
     });
     const versions = await catalog.listVersions();
     expect(versions.map((version) => version.buildId)).toEqual(['build-a', 'build-b']);
-    expect(await catalog.reference('billing', 'missing', 1)).toBeNull();
-    expect(await catalog.markDraining('billing', 'missing')).toBeNull();
-    expect(await catalog.removeVersion('billing', 'missing')).toBe(false);
+    expect(await catalog.setVersionState('billing', 'missing', 'draining')).toBeNull();
+    expect(await catalog.removeVersion('billing', 'missing')).toEqual({ outcome: 'not-found' });
     expect(
       await throwingRejectionOf(
         catalog.setRouting({
@@ -408,7 +439,7 @@ describe('revision-aware worker deployment routing', () => {
       });
     }
     storage.arm(async () => {
-      await lifecycle.markDraining('billing', 'build-b');
+      await lifecycle.setVersionState('billing', 'build-b', 'draining');
     });
     expect(
       await catalog.setRouting({

@@ -14,13 +14,13 @@ import { loadWorkflowState } from '../storage-io.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { launchWorkflowFromCheckpoint } from './checkpoint-launch.ts';
 import {
-  applyForkWorkerBindingInheritance,
   buildForkBatchOperations,
   buildForkCatalogEntryCondition,
   buildForkCheckpoint,
   buildForkCommitLostRaceError,
   createForkLineage,
   createForkedWorkflowState,
+  inheritForkWorkerBinding,
   loadForkSourceCheckpoint,
   reserveLegacyForkTargetRevision,
   resolveForkPersistedRevision,
@@ -421,7 +421,7 @@ export async function fork(
       callbacks,
       persistedRevision,
     );
-    applyForkWorkerBindingInheritance(forkState, sourceState, {
+    await inheritForkWorkerBinding(internals, forkState, sourceState, {
       persistedRevision,
       forkedAt,
       checkpointId: `fork:${sourceWorkflowId}:${String(sourceCheckpoint.step)}`,

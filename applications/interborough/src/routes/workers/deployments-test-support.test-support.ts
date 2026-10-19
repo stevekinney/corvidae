@@ -1,16 +1,16 @@
 /** Fixtures for the Deployments tab tests (COR-277). */
-import type { WorkerDeploymentRouting, WorkerDeploymentVersion } from '@lostgradient/weft';
+import type { WorkerDeploymentRouting, WorkerDeploymentVersionReport } from '@lostgradient/weft';
 
 export const NOW = 1_700_000_000_000;
 
 /** A retained build as `weft.worker.deployments.diagnostics` reports it. */
 export function version(
   buildId: string,
-  overrides: Partial<Omit<WorkerDeploymentVersion, 'manifest'>> = {},
-): WorkerDeploymentVersion {
+  overrides: Partial<Omit<WorkerDeploymentVersionReport, 'manifest'>> = {},
+): WorkerDeploymentVersionReport {
   const deploymentName = overrides.deploymentName ?? 'billing';
   const artifactDigest = overrides.artifactDigest ?? `sha256:artifact-${buildId}`;
-  const manifest: WorkerDeploymentVersion['manifest'] = {
+  const manifest: WorkerDeploymentVersionReport['manifest'] = {
     manifestVersion: 1,
     protocolVersion: 8,
     sdkVersion: 'test',
@@ -45,7 +45,7 @@ export function routing(overrides: Partial<WorkerDeploymentRouting> = {}): Worke
 
 /** The JSON a diagnostics response carries. */
 export function diagnosticsBody(
-  versions: readonly WorkerDeploymentVersion[],
+  versions: readonly WorkerDeploymentVersionReport[],
   pointer: WorkerDeploymentRouting | null,
 ) {
   return { versions, routing: pointer };

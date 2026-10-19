@@ -26,6 +26,11 @@ const VERSIONS = [
   version('build-c', { firstSeenAt: NOW - 100 }),
 ];
 const POINTER = routing({ currentBuildId: 'build-b', generation: 5 });
+/** The same builds with `build-a` drained, the only state in which the server accepts a removal. */
+const WITH_DRAINING_BUILD_A = [
+  version('build-a', { firstSeenAt: NOW - 300, state: 'draining' }),
+  ...VERSIONS.slice(1),
+];
 
 function renderPanel(
   principalScopes: readonly AuthorizationScope[] = ['system:read', 'system:admin'],
@@ -66,6 +71,32 @@ function calls(script: ScriptedFetch): [string, Record<string, unknown>][] {
 function callsTo(script: ScriptedFetch, method: string) {
   return calls(script).filter(([name]) => name === method);
 }
+
+describe('DeploymentsPanel — references', () => {
+  test('shows a build with work bound to it as referenced, with the reason removal is blocked', async () => {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted, POINTER, [
+      version('build-a', { firstSeenAt: NOW - 300, state: 'draining', executionReferences: 2 }),
+      ...VERSIONS.slice(1),
+    ]);
+    const view = renderPanel();
+    await view.findByText('build-a');
+    const row = Array.from(view.container.querySelectorAll<HTMLElement>('tbody tr')).find(
+      (candidate) => candidate.textContent?.includes('build-a'),
+    )!;
+
+    const text = row.textContent?.replace(/\s+/g, ' ') ?? '';
+    expect(text).toContain('2 referenced · reachable');
+    expect(text).toContain(
+      'Cannot remove: Build billing/build-a is still referenced by 2 pieces of work',
+    );
+    expect(
+      Array.from(row.querySelectorAll('button'))
+        .find((button) => button.textContent?.trim() === 'Remove')
+        ?.hasAttribute('disabled'),
+    ).toBe(true);
+  });
+});
 
 describe('DeploymentsPanel — states', () => {
   test('shows loading, then the deployment with its builds', async () => {
@@ -275,7 +306,7 @@ describe('DeploymentsPanel — drain, resume, and removal', () => {
 
   test('removes a free build after typing its id, and refetches', async () => {
     scripted = new ScriptedFetch();
-    routeOverview(scripted);
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
     scripted.routeJsonRpcMethod('weft.worker.deployments.remove', {
       deploymentName: 'billing',
       buildId: 'build-a',
@@ -316,11 +347,11 @@ describe('DeploymentsPanel — drain, resume, and removal', () => {
 
   test('a removal the server refuses because the build became referenced says so, from the fault code', async () => {
     scripted = new ScriptedFetch();
-    routeOverview(scripted);
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
     scripted.routeJsonRpcMethodError(
       'weft.worker.deployments.remove',
       409,
-      'Deployment build billing/build-a is still referenced by 1 execution.',
+      'Deployment build billing/build-a is still referenced by 1 piece of work and cannot be removed.',
       'Conflict',
       { reason: 'version-referenced' },
     );
@@ -340,7 +371,7 @@ describe('DeploymentsPanel — drain, resume, and removal', () => {
     await fireEvent.click(await view.findByRole('button', { name: 'Remove build' }));
 
     expect(
-      await view.findByText(/That build is now referenced by an execution, so it was not removed/),
+      await view.findByText(/Work is still bound to that build, so it was not removed/),
     ).not.toBeNull();
   });
 });
@@ -411,12 +442,7 @@ describe('DeploymentsPanel — set routing, failures, and cancellation', () => {
 
   test('cancelling the routing, drain, and removal dialogs applies nothing', async () => {
     scripted = new ScriptedFetch();
-    routeOverview(scripted);
-    scripted.routeJsonRpcMethod('weft.worker.deployments.preview', {
-      valid: true,
-      message: 'ok',
-      currentGeneration: 5,
-    });
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
     const view = renderPanel();
     await view.findByText('build-a');
     const buttonIn = (name: string) =>
@@ -502,9 +528,39 @@ describe('DeploymentsPanel — overlapping actions', () => {
 });
 
 describe('DeploymentsPanel — removal refused by the server', () => {
+  test('a build the server finds not draining says to drain it first, from the fault code', async () => {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
+    scripted.routeJsonRpcMethodError(
+      'weft.worker.deployments.remove',
+      409,
+      'Deployment build billing/build-a is ready, not draining, so it cannot be removed; drain it first.',
+      'Conflict',
+      { reason: 'version-not-draining' },
+    );
+    const view = renderPanel();
+    await view.findByText('build-a');
+    const row = Array.from(view.container.querySelectorAll<HTMLElement>('tbody tr')).find(
+      (candidate) => candidate.textContent?.includes('build-a'),
+    )!;
+    await fireEvent.click(
+      Array.from(row.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Remove',
+      )!,
+    );
+    await fireEvent.input(await view.findByRole('textbox', { name: /Type .*to confirm/i }), {
+      target: { value: 'build-a' },
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Remove build' }));
+
+    expect(
+      await view.findByText(/That build is not draining, so it was not removed. Drain it first/),
+    ).not.toBeNull();
+  });
+
   test('a build that routing now names is reported as a routing target', async () => {
     scripted = new ScriptedFetch();
-    routeOverview(scripted);
+    routeOverview(scripted, POINTER, WITH_DRAINING_BUILD_A);
     scripted.routeJsonRpcMethodError(
       'weft.worker.deployments.remove',
       409,

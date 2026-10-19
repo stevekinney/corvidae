@@ -1,6 +1,7 @@
 import type { Engine } from '../../core/engine.ts';
 import type { WeftErrorCode } from '../../core/weft-error.ts';
 import type { Storage } from '../../storage/interface.ts';
+import { WorkerDeploymentVersionRemovedError } from '../../worker/deployment-version-removed-error.ts';
 import {
   shapeRestFaultAsJson,
   type OperationFault,
@@ -51,6 +52,19 @@ export function workerStartOverrideRejectedFault(message: string): OperationFaul
     code: 'Conflict',
     message,
     data: { reason: WORKER_CONFLICT_REASONS.overrideTokenRejected },
+  };
+}
+
+/**
+ * The `Conflict` a start or a fork answers when it would inherit a worker binding whose deployment
+ * build has been removed, or `undefined` when `error` is not that error.
+ */
+export function workerVersionRemovedFault(error: unknown): OperationFault | undefined {
+  if (!(error instanceof WorkerDeploymentVersionRemovedError)) return undefined;
+  return {
+    code: 'Conflict',
+    message: error.message,
+    data: { reason: WORKER_CONFLICT_REASONS.versionRemoved },
   };
 }
 

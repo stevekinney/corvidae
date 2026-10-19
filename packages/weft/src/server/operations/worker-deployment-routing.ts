@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type {
   WorkerDeploymentCatalog,
+  WorkerDeploymentRemovalOutcome,
   WorkerDeploymentRouting,
 } from '../../worker/deployment-routing.ts';
 import { shapeOperationFaultAsJson, type OperationFault } from '../operation-fault.ts';
@@ -203,14 +204,20 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
   return defineOperation({
     name: 'weft.worker.deployments.remove',
     mcpExposable: false,
-    summary: 'Remove a deployment build that nothing references',
+    summary: 'Remove a draining deployment build that no work is bound to',
     description:
-      'Mark one deployment build removed so it can no longer be routed to. A build that does ' +
-      'not exist, or was already removed, faults with NotFound. A build that a pinned run, ' +
-      'schedule, pending requirement, attempt, or realm still references (`executionReferences` ' +
-      'above zero) faults with Conflict (`reason: "version-referenced"`), and the current or ' +
-      'ramping build of the routing pointer faults with Conflict (`reason: "version-routed"`); ' +
-      'both are left as they were.',
+      'Mark one deployment build removed, irreversibly. Only a draining build can be removed ' +
+      '(drain it first with `weft.worker.deployments.drain`): a build that is not draining ' +
+      'faults with Conflict (`reason: "version-not-draining"`). A build that does not exist, or ' +
+      'was already removed, faults with NotFound. The current or ramping build of the routing ' +
+      'pointer faults with Conflict (`reason: "version-routed"`). A build that durable work is ' +
+      'still bound to faults with Conflict (`reason: "version-referenced"`): that work is every ' +
+      'run that is not terminal (running, pending, or suspended) whose current worker binding ' +
+      'names the build, under any worker-versioning policy, and every task-ledger entry that is ' +
+      'not terminal whose execution requirement names the build. Schedules and revision realms ' +
+      'do not pin a build and do not count. A refused build is left as it was. The count is ' +
+      'computed when the build is removed or listed, it is the `executionReferences` of ' +
+      '`weft.worker.deployments.diagnostics`, and it falls to zero as the work finishes.',
     destructive: true,
     tags: ['System'],
     inputSchema: deploymentInput,
@@ -230,8 +237,9 @@ export function createRemoveWorkerDeploymentVersionOperation(options: Options = 
       if (version === null || version.state === 'removed') {
         throw versionNotFoundFault(input.deploymentName, input.buildId);
       }
-      if (!(await catalog.removeVersion(input.deploymentName, input.buildId))) {
-        throw await removalRefusal(catalog, input.deploymentName, input.buildId);
+      const removal = await catalog.removeVersion(input.deploymentName, input.buildId);
+      if (removal.outcome !== 'removed') {
+        throw removalRefusal(removal, input.deploymentName, input.buildId);
       }
       return {
         deploymentName: input.deploymentName,
@@ -247,6 +255,12 @@ export function createWorkerDeploymentDiagnosticsOperation(options: Options = {}
     name: 'weft.worker.deployments.diagnostics',
     mcpExposable: false,
     summary: 'List deployment versions and routing pointers',
+    description:
+      'List the deployment builds, optionally of one deployment, with the routing pointer when ' +
+      'a deployment is named. Each build carries `executionReferences`, the number of durable ' +
+      'work items bound to it, computed from the run records and the task ledger when the list ' +
+      'is read: every run that is not terminal whose current worker binding names the build, and ' +
+      'every task-ledger entry that is not terminal whose execution requirement names it.',
     destructive: false,
     tags: ['System'],
     inputSchema: diagnosticsInput,
@@ -421,28 +435,31 @@ export const workerDeploymentRemoveRestBinding = binding(
   'weft.worker.deployments.remove',
 );
 
-/**
- * Why `removeVersion` refused, read again so the fault reports what is true now: a reference was
- * taken, the routing pointer moved onto the build, or the record changed under the write.
- */
-async function removalRefusal(
-  catalog: WorkerDeploymentCatalog,
+/** The fault that answers a removal the catalog refused, built from the reason it reported. */
+function removalRefusal(
+  refusal: Exclude<WorkerDeploymentRemovalOutcome, { outcome: 'removed' }>,
   deploymentName: string,
   buildId: string,
-): Promise<OperationFault> {
-  const now = await catalog.getVersion(deploymentName, buildId);
-  if (now === null || now.state === 'removed') return versionNotFoundFault(deploymentName, buildId);
-  const routing = await catalog.getRouting(deploymentName);
-  if (routing?.currentBuildId === buildId || routing?.rampingBuildId === buildId) {
+): OperationFault {
+  const build = `Deployment build ${deploymentName}/${buildId}`;
+  if (refusal.outcome === 'not-found') return versionNotFoundFault(deploymentName, buildId);
+  if (refusal.outcome === 'not-draining') {
     return {
       code: 'Conflict',
-      message: `Deployment build ${deploymentName}/${buildId} is a routing target and cannot be removed; route new traffic to another build first.`,
+      message: `${build} is ${refusal.state}, not draining, so it cannot be removed; drain it first.`,
+      data: { reason: WORKER_CONFLICT_REASONS.versionNotDraining },
+    };
+  }
+  if (refusal.outcome === 'routed') {
+    return {
+      code: 'Conflict',
+      message: `${build} is a routing target and cannot be removed; route new traffic to another build first.`,
       data: { reason: WORKER_CONFLICT_REASONS.versionRouted },
     };
   }
   return {
     code: 'Conflict',
-    message: `Deployment build ${deploymentName}/${buildId} is still referenced by ${now.executionReferences} execution${now.executionReferences === 1 ? '' : 's'} and cannot be removed.`,
+    message: `${build} is still referenced by ${refusal.references} piece${refusal.references === 1 ? '' : 's'} of work and cannot be removed.`,
     data: { reason: WORKER_CONFLICT_REASONS.versionReferenced },
   };
 }
