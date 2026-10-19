@@ -143,7 +143,10 @@ import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runt
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { createAssetService } from './assets/asset-service';
 import { createAssetContentSourceResolver } from './assets/content-source-resolver';
-import { createAssetGeneratedMediaAdmitter } from './assets/generated-media-admitter';
+import {
+  createAssetGeneratedMediaAdmitter,
+  releaseGeneratedAssets,
+} from './assets/generated-media-admitter';
 import type { AssetService } from './assets/types';
 import {
   AUDIT_SCHEDULE_OWNER_PREFIX,
@@ -9749,6 +9752,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return { sessionRunIds, steeringGate, runTerminals };
   }
 
+  /**
+   * COR-713: a session's rows held a retention claim on each generated asset they reference, so the
+   * asset could not expire under them. When the session is gone those claims end, and the assets
+   * fall back to the asset policy's retention. Best effort: a claim that cannot be released only
+   * keeps its asset a little longer, so a failure is reported and never fails the deletion.
+   */
+  async function releaseSessionGeneratedAssets(session: AgentSession): Promise<void> {
+    const service = assetServiceHolder.current;
+    if (service === undefined) return;
+    await releaseGeneratedAssets(
+      service,
+      ownerOrLocal(resolveSessionOwner(session.metadata)),
+      Object.values(session.conversationHistory.messages),
+      (assetId, error) =>
+        diagnose({
+          level: 'error',
+          scope: 'assets',
+          message: `[bureau] Could not release the retention claim of session "${session.id}" on generated asset "${assetId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        }),
+    );
+  }
+
   async function performDeleteSession(
     id: string,
     onStoreDeletionCommitted: () => void,
@@ -9824,6 +9850,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       });
       const removedLiveRecord = await sessionStore.delete(id);
       onStoreDeletionCommitted();
+      if (removedLiveRecord) await releaseSessionGeneratedAssets(session);
       // AB-389 — drain right here, before anything below that can stall
       // (a genuinely stuck run's terminal await further down must never
       // block this durable fact from landing): this is the ONE call site
@@ -14058,6 +14085,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // Every owner first: a record that cannot be written keeps every session, with
     // its runs untouched.
     for (const session of sessions) await recordSessionDeletionOwner(session);
+    // An expired session's rows are gone with it, so its claims on generated assets end too.
+    for (const session of sessions) await releaseSessionGeneratedAssets(session);
     // Then the expiry is a deletion for the sessions' runs too: each still-running
     // run is orphan-marked and aborted (or released, if paused) exactly as
     // `performDeleteSession` does, so none of them writes into whatever session
