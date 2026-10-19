@@ -49,12 +49,6 @@ export function urlOf(input: RequestInfo | URL): string {
   return typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 }
 
-/** The text of a request's string body; a test that sent no string body has a bug. */
-export function bodyText(init: RequestInit | undefined): string {
-  if (typeof init?.body !== 'string') throw new TypeError('Expected a request with a string body.');
-  return init.body;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

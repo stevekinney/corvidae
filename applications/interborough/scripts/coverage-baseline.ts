@@ -111,10 +111,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
-      linesFound: 1444,
-      linesHit: 1430,
-      functionsFound: 330,
-      functionsHit: 325,
+      linesFound: 1447,
+      linesHit: 1433,
+      functionsFound: 332,
+      functionsHit: 327,
     },
     'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
@@ -180,10 +180,10 @@ const LINUX_BASELINE: CoverageBaseline = {
     'src/lib': { linesFound: 1919, linesHit: 1907, functionsFound: 328, functionsHit: 324 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
-      linesFound: 1444,
-      linesHit: 1430,
-      functionsFound: 330,
-      functionsHit: 325,
+      linesFound: 1447,
+      linesHit: 1433,
+      functionsFound: 332,
+      functionsHit: 327,
     },
     'src/routes/agents': { linesFound: 455, linesHit: 454, functionsFound: 95, functionsHit: 94 },
     'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
