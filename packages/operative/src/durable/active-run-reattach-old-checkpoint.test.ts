@@ -5,7 +5,7 @@
  * the tolerant read they use rethrows an older record rather than reporting a zeroed run.
  */
 import { Engine, MemoryStorage, textValueStore } from '@lostgradient/weft';
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, spyOn } from 'bun:test';
 
 import { reattachDurableActiveRun } from './active-run-reattach';
 import { createCheckpointStore } from './checkpoint-store';
@@ -50,19 +50,16 @@ describe('reattaching a run with an old-shape checkpoint (COR-713)', () => {
     const runId = 'old-checkpoint-abort';
     const context = await contextWithVersionlessCursor(runId);
     try {
-      const run = reattachDurableActiveRun(
-        { ...context, engine: { ...context.engine, cancel: async () => undefined } as never },
-        {
-          runId,
-          handle: {
-            id: runId,
-            result: () =>
-              new Promise((_resolve, reject) =>
-                setTimeout(() => reject(new Error('cancelled')), 0),
-              ),
-          },
+      // The engine accepts the cancellation, so the rejection below is read as an abort.
+      spyOn(context.engine, 'cancel').mockResolvedValue(undefined);
+      const run = reattachDurableActiveRun(context, {
+        runId,
+        handle: {
+          id: runId,
+          result: () =>
+            new Promise((_resolve, reject) => setTimeout(() => reject(new Error('cancelled')), 0)),
         },
-      );
+      });
       run.abort();
       await expect(run.result).rejects.toBeInstanceOf(UnsupportedCheckpointRecordVersionError);
     } finally {

@@ -5,6 +5,7 @@
  * itself must refuse one, with the typed error rather than a TypeError from reading its parts.
  */
 import {
+  activity,
   Engine,
   MemoryStorage,
   textValueStore,
@@ -88,8 +89,16 @@ async function resumeOldHistory(runId: string, memo: ReturnType<typeof oldStepMe
   // they ran, so the run's history holds their results exactly as a real one would.
   const legacyActivities = {
     saveConversation: activities.saveConversation,
-    recordStep: async () => undefined,
-    saveCursor: async () => undefined,
+    recordStep: activity({
+      name: 'recordStep',
+      idempotent: true,
+      execute: async (_input: { runId: string; record: unknown }) => undefined,
+    }),
+    saveCursor: activity({
+      name: 'saveCursor',
+      idempotent: true,
+      execute: async (_input: { runId: string; cursor: unknown }) => undefined,
+    }),
   };
   const legacy = workflow({ name: 'agentRun' })
     .activities(legacyActivities)
@@ -103,7 +112,7 @@ async function resumeOldHistory(runId: string, memo: ReturnType<typeof oldStepMe
       if (memo.record !== null) {
         yield* ctx.run('recordStep', { runId: ctx.workflowId, record: memo.record });
       }
-      yield* ctx.run('saveCursor', { runId: ctx.workflowId, cursor: {} as never });
+      yield* ctx.run('saveCursor', { runId: ctx.workflowId, cursor: {} });
       yield* ctx.memo('step-1', () => {
         reached();
         return new Promise<never>(() => {});
