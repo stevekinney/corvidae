@@ -95,7 +95,7 @@ describe('a run another engine reclaimed and timed out', () => {
       const emitterA = new CompletableEventTarget<CombinedOperativeEventMap>();
       const eventsOnA = observeTerminalLifecycle(emitterA);
       const activeRun = createDurableActiveRun(
-        { engine: a.engine, checkpointStore: emptyCheckpointStore } as never,
+        { engine: a.engine, checkpointStore: emptyCheckpointStore },
         { runId, sessionId: runId, options: runOptions(), emitter: emitterA },
       );
       await activeRun.durablyStarted;
@@ -110,7 +110,7 @@ describe('a run another engine reclaimed and timed out', () => {
       const emitterB = new CompletableEventTarget<CombinedOperativeEventMap>();
       const eventsOnB = observeTerminalLifecycle(emitterB);
       const recoveredRun = reattachDurableActiveRun(
-        { engine: b.engine, checkpointStore: emptyCheckpointStore as never },
+        { engine: b.engine, checkpointStore: emptyCheckpointStore },
         { runId, handle: b.engine.getHandle(runId), emitter: emitterB },
       );
       await recoveredRun.result;

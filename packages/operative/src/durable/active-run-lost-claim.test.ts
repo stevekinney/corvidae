@@ -92,7 +92,7 @@ function startFreshRun(lostClaim: boolean, runId: string, settlement: Settlement
     {
       engine: engineThat(lostClaim, runId, settlement),
       checkpointStore: emptyCheckpointStore,
-    } as never,
+    },
     { runId, sessionId: runId, options: runOptions(), emitter },
   );
   return { activeRun, terminalEvents };
@@ -104,7 +104,7 @@ function reattachRun(lostClaim: boolean, runId: string, settlement: Settlement =
   const recoveredRun = reattachDurableActiveRun(
     {
       engine: engineThat(lostClaim, runId, settlement),
-      checkpointStore: emptyCheckpointStore as never,
+      checkpointStore: emptyCheckpointStore,
     },
     {
       runId,
