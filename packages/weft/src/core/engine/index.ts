@@ -429,6 +429,7 @@ export {
 } from './revision-errors.ts';
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
+export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
 export type { WorkflowClaimHolderStatus } from './workflow-claim-registry.ts';
 export type {

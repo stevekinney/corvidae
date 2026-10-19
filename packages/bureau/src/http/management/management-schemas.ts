@@ -51,6 +51,8 @@ export const taskViewSchema = z.object({
   contextId: z.string(),
   agentName: z.string().nullable(),
   owner: z.string(),
+  /** The service principal that started the task for its owner (a schedule's fire), or `null`. */
+  actor: z.string().nullable(),
   status: taskStateSchema,
   finishReason: z.string().nullable(),
   statusMessage: z.string().max(1000).nullable(),
@@ -81,7 +83,7 @@ export const waitMillisecondsField = z.number().int().min(0).max(MAX_WAIT_MILLIS
 
 /** The fault a missing resource, and a resource the caller may not see, both answer with. */
 export function resourceNotFound(
-  resource: 'task' | 'context' | 'agent' | 'workflow' | 'run',
+  resource: 'task' | 'context' | 'agent' | 'workflow' | 'run' | 'schedule' | 'goal',
   identifier: string,
 ): OperationFault {
   return {

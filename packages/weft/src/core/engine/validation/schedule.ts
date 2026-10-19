@@ -75,6 +75,22 @@ export function coerceScheduleId(scheduleId: unknown, fieldName: string): string
 }
 
 /**
+ * The `expectedRevision` a caller passed to a schedule transition: a non-negative safe integer, or
+ * `undefined` when the caller did not guard the transition.
+ */
+export function coerceExpectedScheduleRevision(expectedRevision: unknown): number | undefined {
+  if (expectedRevision === undefined) return undefined;
+  if (
+    typeof expectedRevision !== 'number' ||
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 0
+  ) {
+    throw new Error('options.expectedRevision must be a non-negative integer when provided');
+  }
+  return expectedRevision;
+}
+
+/**
  * A recurrence specification normalized into the discriminated cadence the
  * engine persists. Interval periods are resolved to whole milliseconds.
  */

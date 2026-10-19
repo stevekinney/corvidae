@@ -108,6 +108,7 @@ import {
   type TextValueStore,
   textValueStore,
   WorkflowCancelledEvent,
+  WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
   WorkflowFailedEvent,
   type WorkflowServicesResolution,
@@ -1442,6 +1443,17 @@ export type RuntimeCompositionDependencies = {
    */
   onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
   /**
+   * COR-1482 — called once a schedule fire's run has ended, however it ended: completed, failed,
+   * or canceled. `createBureau` settles the fire's task here.
+   */
+  onScheduledFireSettled?: (settlement: ScheduledFireSettlement) => void | Promise<void>;
+  /**
+   * COR-1482 — called when a fire's session is known: found when the fire's services are built,
+   * or saved by the fire's first step, which is when a fresh session first gets its incarnation.
+   * `createBureau` binds the fire's task to it, so the task is found by its context.
+   */
+  onScheduledSessionKnown?: (session: ScheduledSessionNotice) => void | Promise<void>;
+  /**
    * COR-1527 — whether `type` is a workflow Bureau registered from a workflow file. An instance of
    * one needs no services: its steps are the host's activities, and its fire or its recovery must
    * not be answered "unrecognized workflow type". Late-bound by the caller, since the workflow
@@ -1475,6 +1487,26 @@ export type ScheduledFireNotice = {
   readonly agentName: string;
   /** The schedule's owner of record, which also owns this fire's run and, if it creates one, its session. */
   readonly owner: string;
+  /** The text the fire delivers to its agent: the originating message of the fire's task. */
+  readonly message: string;
+};
+
+/** What {@link RuntimeCompositionDependencies.onScheduledFireSettled} is told about one fire. */
+export type ScheduledFireSettlement = {
+  readonly runId: string;
+  readonly status: 'completed' | 'failed' | 'canceled';
+  readonly finishReason: string | undefined;
+  /** Why the fire failed, when it did and the engine said. */
+  readonly error: string | undefined;
+  /** The fire's answer, when it completed with one. */
+  readonly content: string | undefined;
+};
+
+/** What {@link RuntimeCompositionDependencies.onScheduledSessionKnown} is told. */
+export type ScheduledSessionNotice = {
+  readonly runId: string;
+  readonly sessionId: string;
+  readonly incarnation: string;
 };
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
@@ -2281,6 +2313,41 @@ async function buildRuntimeComposition(
   // scheduled fires.
   const scheduledFireScheduleIds = new Map<string, string>();
 
+  /**
+   * COR-1482: tells the host which session incarnation a fire runs in. Binding a task to it is a
+   * record about the fire, so a host that cannot write it is diagnosed and the fire still runs.
+   */
+  async function reportScheduledSession(notice: ScheduledSessionNotice): Promise<void> {
+    try {
+      await dependencies.onScheduledSessionKnown?.(notice);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not bind the task of schedule fire "${notice.runId}" to its session: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * COR-1482: tells the host a schedule fire's run has ended. The settlement is a record about a
+   * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
+   * engine's event dispatch.
+   */
+  function settleScheduledFire(settlement: ScheduledFireSettlement): void {
+    const hook = dependencies.onScheduledFireSettled;
+    if (hook === undefined) return;
+    void (async () => hook(settlement))().catch((error: unknown) => {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not settle the task of schedule fire "${settlement.runId}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    });
+  }
+
   // AB-241 review finding: runId → the decoded `CatalogRunRecoveryRecord`
   // `resolveRunServices`'s catalog branch already successfully read during
   // boot recovery, cached here so BOTH `classifyCatalogRecoveredRun` (called
@@ -2473,7 +2540,19 @@ async function buildRuntimeComposition(
       // static `type` widens to `string`) — using the typed `dispatch` wrapper
       // (not the untyped inherited `dispatchEvent`) needs single-type call
       // sites.
-      if (isRunFailureFinishReason(finishReason)) {
+      const failed = isRunFailureFinishReason(finishReason);
+      const content =
+        typeof result === 'object' && result !== null && 'content' in result
+          ? result.content
+          : undefined;
+      settleScheduledFire({
+        runId: event.workflowId,
+        status: failed ? 'failed' : finishReason === 'aborted' ? 'canceled' : 'completed',
+        finishReason: typeof finishReason === 'string' ? finishReason : undefined,
+        error: undefined,
+        content: typeof content === 'string' ? content : undefined,
+      });
+      if (failed) {
         scheduleFireEvents.dispatch(new ScheduleFailedEvent(scheduleId, event.workflowId));
       } else {
         scheduleFireEvents.dispatch(new ScheduleCompletedEvent(scheduleId, event.workflowId));
@@ -2483,13 +2562,43 @@ async function buildRuntimeComposition(
       const scheduleId = scheduledFireScheduleIds.get(event.workflowId);
       if (scheduleId === undefined) return;
       scheduledFireScheduleIds.delete(event.workflowId);
+      settleScheduledFire({
+        runId: event.workflowId,
+        status: 'failed',
+        finishReason: undefined,
+        error: event.error instanceof Error ? event.error.message : String(event.error),
+        content: undefined,
+      });
+      scheduleFireEvents.dispatch(new ScheduleFailedEvent(scheduleId, event.workflowId));
+    });
+    // COR-1482: a fire that timed out is a fire that failed, and its task says so. Without this
+    // its task reads `working` until the next boot, and its attribution is never released.
+    durable.engine.addEventListener(WorkflowTimedOutEvent.type, (event) => {
+      const scheduleId = scheduledFireScheduleIds.get(event.workflowId);
+      if (scheduleId === undefined) return;
+      scheduledFireScheduleIds.delete(event.workflowId);
+      settleScheduledFire({
+        runId: event.workflowId,
+        status: 'failed',
+        finishReason: 'timed-out',
+        error: `The fire timed out (${event.timeoutType})`,
+        content: undefined,
+      });
       scheduleFireEvents.dispatch(new ScheduleFailedEvent(scheduleId, event.workflowId));
     });
     // Not a fire-terminal dispatch (cancellation is out of this issue's scope),
     // but the correlation entry must still be dropped on a cancelled fire, or
     // it leaks for the lifetime of the engine.
     durable.engine.addEventListener(WorkflowCancelledEvent.type, (event) => {
-      scheduledFireScheduleIds.delete(event.workflowId);
+      if (scheduledFireScheduleIds.delete(event.workflowId)) {
+        settleScheduledFire({
+          runId: event.workflowId,
+          status: 'canceled',
+          finishReason: 'aborted',
+          error: undefined,
+          content: undefined,
+        });
+      }
     });
 
     // COR-660: the tick observation point Weft's COR-105 exposes. Unlike the
@@ -3399,8 +3508,9 @@ async function buildRuntimeComposition(
     getActiveSkillRecords: () => readonly SkillActivationRecord[],
     owner: string,
   ): OnStepHook {
+    let bound = false;
     return async (context) => {
-      await store.update(sessionId, (existing: AgentSession | undefined) => {
+      const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
           existing?.metadata['lastRunStatus'] === 'running' &&
@@ -3451,6 +3561,12 @@ async function buildRuntimeComposition(
             : context.conversation.current,
         };
       });
+      // COR-1482: the first save of a fresh session gives it its incarnation, which the fire's
+      // task is bound to once, so `bureau.tasks.list({ contextId })` finds the fire.
+      if (!bound && saved !== undefined) {
+        bound = true;
+        await reportScheduledSession({ runId, sessionId, incarnation: saved.incarnation });
+      }
     };
   }
 
@@ -4002,6 +4118,7 @@ async function buildRuntimeComposition(
       sessionId,
       agentName,
       owner,
+      message: payloadText(scheduledInput.input),
     });
 
     // COR-851: a goal's sessions are the goal's alone. A schedule can name any
@@ -4051,6 +4168,11 @@ async function buildRuntimeComposition(
     // transcript (and any committed active-skills snapshot) belongs to a
     // stale, partial attempt that must be cleaned before replay re-appends.
     const isRecoveredFireReplay = existing?.metadata['lastScheduledFireRunId'] === runId;
+    // COR-1482: a session that already exists has its incarnation now; a fresh one gets it when
+    // the fire first saves it (below).
+    if (existing !== undefined) {
+      await reportScheduledSession({ runId, sessionId, incarnation: existing.incarnation });
+    }
     let conversation: Conversation;
     if (existing) {
       conversation = new Conversation(

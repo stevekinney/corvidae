@@ -2051,21 +2051,40 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
 
   /**
    * Pause a durable schedule. Returns `true` on success, `undefined` when no
-   * durable engine is composed.
+   * durable engine is composed. With `guard.expectedRevision`, the pause applies only if the
+   * schedule's `revision` is still that value, and a mismatch throws Weft's
+   * `ScheduleStaleRevisionError` having written nothing; Weft compares it inside its serialized
+   * write, so Bureau never compares it itself.
    */
-  pauseSchedule(scheduleId: string): Promise<true | undefined>;
+  pauseSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
 
   /**
-   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no
-   * durable engine is composed.
+   * Resume a paused durable schedule. Returns `true` on success, `undefined` when no durable
+   * engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
    */
-  resumeSchedule(scheduleId: string): Promise<true | undefined>;
+  resumeSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
 
   /**
    * Cancel and permanently delete a durable schedule. Returns `true` on success,
-   * `undefined` when no durable engine is composed.
+   * `undefined` when no durable engine is composed. `guard` as for {@link Bureau.pauseSchedule}.
    */
-  cancelSchedule(scheduleId: string): Promise<true | undefined>;
+  cancelSchedule(scheduleId: string, guard?: ScheduleRevisionGuard): Promise<true | undefined>;
+
+  /**
+   * Change a durable schedule's cadence, description, and overlap policy (COR-1482), by wrapping
+   * Weft's `updateSchedule`. Weft replaces the cadence wholesale, so `update.spec` is required, in
+   * the same grammar as {@link DurableScheduleDefinition.spec}. The schedule's input, agent, owner
+   * and session are not changed. Resolves `true`, or `undefined` when no durable engine is
+   * composed. A schedule that does not exist, and a workflow file's schedule (which belongs to its
+   * file), reject with `NOT_FOUND`; an overlap Bureau does not offer, or `'allow'` on a schedule
+   * with a recurring session, rejects with `BAD_REQUEST`. `guard` as for
+   * {@link Bureau.pauseSchedule}.
+   */
+  updateSchedule(
+    scheduleId: string,
+    update: DurableScheduleUpdate,
+    guard?: ScheduleRevisionGuard,
+  ): Promise<true | undefined>;
 
   getConfiguration(): ConfigurationResponse;
   getTools(): ToolSummary[];
@@ -2719,6 +2738,22 @@ export type ServerFrame =
  * on the given `spec`; each fire is either a fresh session (no `sessionId`)
  * or appended to the same persistent session (`sessionId` given).
  */
+/**
+ * Applies a schedule change only to the schedule the caller read: the `revision` of its summary
+ * (COR-1482). Weft compares it inside its serialized write.
+ */
+export interface ScheduleRevisionGuard {
+  readonly expectedRevision?: number | undefined;
+}
+
+/** What {@link Bureau.updateSchedule} changes. Omitted `description` and `overlap` keep their values. */
+export interface DurableScheduleUpdate {
+  /** The schedule's new cadence: a cron expression or a Weft duration shorthand, as at creation. */
+  readonly spec: string;
+  readonly description?: string | undefined;
+  readonly overlap?: 'skip' | 'allow' | undefined;
+}
+
 export interface DurableScheduleDefinition {
   /** Human-readable operator description stored with the schedule. */
   description?: string;

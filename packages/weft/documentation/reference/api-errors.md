@@ -169,15 +169,16 @@ The registered public vocabulary—every code `isWeftErrorCode` accepts—with t
 
 These classes are exported from the package root and extend `WeftError`, but their codes are not in `WeftErrorCode`. `isWeftErrorCode` rejects them, and `isWeftErrorLike` and `isWeftFault` do not match them; use `instanceof` or `isWeftError` instead. The lease and claim errors are internal-only by design under ADR 0002; `src/core/engine/lease-errors.test.ts` asserts `WorkflowClaimUnavailableError` stays unregistered, following the `EngineLease*` precedent.
 
-| Class                                    | Defined in                             |
-| ---------------------------------------- | -------------------------------------- |
-| `CodegenEmitError`                       | `json-schema/codegen-emit-keywords.ts` |
-| `EngineLeaseAcquisitionTimeoutError`     | `core/engine/lease-errors.ts`          |
-| `EngineLeaseCorruptedError`              | `core/engine/lease-errors.ts`          |
-| `EngineLeaseNotHeldError`                | `core/engine/lease-errors.ts`          |
-| `WorkflowCatalogActivationConflictError` | `core/catalog/errors.ts`               |
-| `WorkflowClaimUnavailableError`          | `core/engine/lease-errors.ts`          |
-| `WorkflowContractConversionError`        | `core/contract/build.ts`               |
+| Class                                    | Defined in                                     |
+| ---------------------------------------- | ---------------------------------------------- |
+| `CodegenEmitError`                       | `json-schema/codegen-emit-keywords.ts`         |
+| `EngineLeaseAcquisitionTimeoutError`     | `core/engine/lease-errors.ts`                  |
+| `EngineLeaseCorruptedError`              | `core/engine/lease-errors.ts`                  |
+| `EngineLeaseNotHeldError`                | `core/engine/lease-errors.ts`                  |
+| `ScheduleStaleRevisionError`             | `core/engine/schedule-stale-revision-error.ts` |
+| `WorkflowCatalogActivationConflictError` | `core/catalog/errors.ts`                       |
+| `WorkflowClaimUnavailableError`          | `core/engine/lease-errors.ts`                  |
+| `WorkflowContractConversionError`        | `core/contract/build.ts`                       |
 
 ### Root-exported errors outside the WeftError family
 

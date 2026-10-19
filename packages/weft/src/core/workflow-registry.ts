@@ -83,6 +83,7 @@ export {
   PersistedDataCorruptError,
   PersistedDataIncompatibleError,
   ScheduleHandle,
+  ScheduleStaleRevisionError,
   StartOrSignalConflictError,
   WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
   WORKFLOW_CLAIM_LOST_WARNING_NAME,
