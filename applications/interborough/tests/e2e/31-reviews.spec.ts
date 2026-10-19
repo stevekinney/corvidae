@@ -109,10 +109,12 @@ test.describe('a tool approval', () => {
     // A chat opened afterwards reads the conversation the decision wrote into.
     await page.goto(`/chat/${threadId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Refund order-1001');
-    await expect(
-      page.getByRole('alert').filter({ hasText: 'Needs your approval' }),
-    ).toHaveCount(0);
+    await expect(page.getByRole('alert').filter({ hasText: 'Needs your approval' })).toHaveCount(0);
+    // The refund shows as a tool call that succeeded, with its result to open.
     await expect(page.getByText('issue-refund').first()).toBeVisible();
+    await expect(page.getByText('Succeeded', { exact: true })).toHaveCount(2);
+    await page.getByRole('button', { name: 'Result' }).last().click();
+    await expect(page.getByText(/refundedCents/)).toBeVisible();
   });
 });
 
@@ -135,14 +137,25 @@ test.describe('a question a run asks', () => {
 
     await expect(row).toHaveCount(0);
     const task = await taskOfSession(request, threadId);
-    await expect.poll(async () => ((await bureauCall(request, 'bureau.tasks.get', { taskId: task.id })) as { status: string }).status).toBe('completed');
+    await expect
+      .poll(
+        async () =>
+          (
+            (await bureauCall(request, 'bureau.tasks.get', { taskId: task.id })) as {
+              status: string;
+            }
+          ).status,
+      )
+      .toBe('completed');
   });
 });
 
 test.describe('the count in the navigation', () => {
   test('follows what is waiting, with no reload', async ({ page, request }) => {
     await page.goto('/reviews');
-    const link = page.getByRole('navigation', { name: 'Views' }).getByRole('link', { name: /^Reviews/ });
+    const link = page
+      .getByRole('navigation', { name: 'Views' })
+      .getByRole('link', { name: /^Reviews/ });
     const before = Number(((await link.textContent()) ?? '').replace(/\D/g, '') || '0');
 
     await runToEnd(request, 'tool-runner', newThreadId('reviews-count'), 'Refund order-1001');
@@ -153,7 +166,11 @@ test.describe('the count in the navigation', () => {
 });
 
 for (const width of WIDTHS) {
-  test(`the inbox fits at ${width} pixels, and passes axe`, async ({ page, request, checkA11y }) => {
+  test(`the inbox fits at ${width} pixels, and passes axe`, async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
     await page.setViewportSize({ width, height: 900 });
     await runToEnd(request, 'tool-runner', newThreadId('reviews-width'), 'Refund order-1001');
 

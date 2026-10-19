@@ -6,24 +6,17 @@
  * started through the AG-UI mount, the way a client other than the page would, and the runs that
  * must still be going when Playwright acts are held on the barrier (`barrier-agent.ts`).
  */
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 
 import { TASK_COPY } from '../../src/app/copy.ts';
 import { taskCursorKey } from '../../src/routes/tasks/task-follower.svelte.ts';
-import {
-  expectWaiting,
-  newThreadId,
-  releaseBarrier,
-  runToEnd,
-  startRun,
-} from './chat-support.ts';
+import { expectWaiting, newThreadId, releaseBarrier, runToEnd, startRun } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { bureauCall, taskOfSession } from './task-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 const ASSISTANT_REPLY = 'Hello from the assistant.';
 const HUMAN_INPUT_THANKS = 'Thanks, the release will go to the environment you named.';
-const BARRIER_REPLY = 'The barrier opened.';
 
 /** The cursor the page kept for a task, or `null` before it has kept one. */
 async function keptCursor(page: Page, taskId: string): Promise<string | null> {
@@ -31,6 +24,68 @@ async function keptCursor(page: Page, taskId: string): Promise<string | null> {
     const text = window.sessionStorage.getItem(key);
     return text === null ? null : (JSON.parse(text) as { cursor: string }).cursor;
   }, taskCursorKey(taskId));
+}
+
+/**
+ * Lets the test cut the task streams the page has open. Chromium's offline emulation refuses new
+ * requests but leaves a stream that is already open running, so the drop is two things together:
+ * the open stream is severed the way a lost connection ends one (its reader fails), and the
+ * network is then taken away so no reconnect can succeed until it is given back.
+ */
+async function makeStreamsSeverable(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    const severs = new Set<() => void>();
+    window.fetch = async (input, init) => {
+      const response = await originalFetch(input, init);
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.includes('bureau.tasks.events') || response.body === null) return response;
+      const reader = response.body.getReader();
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          severs.add(() => controller.error(new TypeError('network error')));
+          void (async () => {
+            try {
+              for (;;) {
+                const chunk = await reader.read();
+                if (chunk.done) {
+                  controller.close();
+                  return;
+                }
+                controller.enqueue(chunk.value);
+              }
+            } catch (error) {
+              try {
+                controller.error(error);
+              } catch {
+                // The stream was already severed.
+              }
+            }
+          })();
+        },
+        cancel: (reason) => reader.cancel(reason),
+      });
+      return new Response(body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      });
+    };
+    Object.defineProperty(window, '__severTaskStreams', {
+      value: () => {
+        for (const sever of severs) sever();
+        severs.clear();
+      },
+    });
+  });
+}
+
+/** Drops the network: the open streams fail, and nothing can connect until it is restored. */
+async function dropNetwork(page: Page, context: BrowserContext): Promise<void> {
+  await context.setOffline(true);
+  await page.evaluate(() => {
+    (window as unknown as { __severTaskStreams: () => void }).__severTaskStreams();
+  });
 }
 
 /** A run left going on the barrier, and the task it is. */
@@ -121,7 +176,11 @@ test.describe('following a task', () => {
     context,
     request,
   }) => {
-    const { taskId } = await runningBarrierTask(request, 'tasks-follow');
+    await makeStreamsSeverable(page);
+    // A run parked on a question has made one durable change, so the stream has a position to keep.
+    const threadId = newThreadId('tasks-follow');
+    await runToEnd(request, 'request-human-input', threadId, 'Release it');
+    const { id: taskId } = await taskOfSession(request, threadId);
     const resumes: Array<string | undefined> = [];
     page.on('request', (outgoing) => {
       if (outgoing.url().includes('/bureau/v1/subscriptions/bureau.tasks.events')) {
@@ -130,32 +189,45 @@ test.describe('following a task', () => {
     });
 
     await page.goto(`/tasks/${taskId}`);
-    await expect(page.getByText('Working', { exact: true })).toBeVisible();
-    // The stream's snapshot has no position to resume from, so the page keeps nothing yet.
-    await expect.poll(() => resumes.length).toBeGreaterThanOrEqual(1);
-    expect(resumes[0]).toBeUndefined();
+    await expect(page.getByText('Which environment should the release go to?')).toBeVisible();
+    // The first stream has no position to resume from, and it gives the page one.
+    expect(resumes).toEqual([undefined]);
+    await expect.poll(() => keptCursor(page, taskId)).not.toBeNull();
+    const before = await keptCursor(page, taskId);
 
-    // The connection drops, and the run finishes while the page cannot hear it.
-    await context.setOffline(true);
+    // The connection drops, and the answer arrives while the page cannot hear it.
+    await dropNetwork(page, context);
     await expect(page.getByText(TASK_COPY.followReconnecting)).toBeVisible();
-    await releaseBarrier(request);
+    await bureauCall(request, 'bureau.tasks.respond', {
+      taskId,
+      messageId: `answer-${crypto.randomUUID()}`,
+      answer: 'staging',
+      signalName: 'environment',
+    });
     await expect
-      .poll(async () => ((await bureauCall(request, 'bureau.tasks.get', { taskId })) as { status: string }).status)
+      .poll(
+        async () =>
+          ((await bureauCall(request, 'bureau.tasks.get', { taskId })) as { status: string })
+            .status,
+      )
       .toBe('completed');
 
+    // With the network back, the stream resumes from the position the page had, and carries on.
     await context.setOffline(false);
     await expect(page.getByText('Completed', { exact: true })).toBeVisible();
-    await expect(page.getByText(BARRIER_REPLY)).toBeVisible();
-    const cursor = await keptCursor(page, taskId);
-    expect(cursor).not.toBeNull();
+    await expect(page.getByText(HUMAN_INPUT_THANKS)).toBeVisible();
+    expect(resumes.at(-1)).toBe(before);
+    const after = await keptCursor(page, taskId);
+    expect(after).not.toBe(before);
 
-    // After a full reload the page resumes from the cursor it kept, and still has the answer.
+    // After a full reload the page resumes from the cursor it kept, and still has the answer, which
+    // a stream resumed from a position does not send again.
     resumes.length = 0;
     await page.reload();
     await expect(page.getByText('Completed', { exact: true })).toBeVisible();
-    await expect(page.getByText(BARRIER_REPLY)).toBeVisible();
+    await expect(page.getByText(HUMAN_INPUT_THANKS)).toBeVisible();
     await expect.poll(() => resumes.length).toBeGreaterThanOrEqual(1);
-    expect(resumes[0]).toBe(cursor);
+    expect(resumes[0]).toBe(after);
   });
 });
 
@@ -179,6 +251,7 @@ test.describe('cancelling a task', () => {
       await checkA11y('a task that was cleaned up');
     } finally {
       abort();
+      await releaseBarrier(request);
     }
   });
 });
