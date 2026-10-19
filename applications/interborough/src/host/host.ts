@@ -5,7 +5,10 @@
  * The state lives in Bungalow's directory (`~/.interborough`, or `INTERBOROUGH_HOME`): the
  * Bureau runs on Bun SQLite at Bungalow's database path with `BureauOptions.id` set to Bungalow's
  * `deploymentId`, so a restart finds its tasks, sessions, schedules, and goals where it left them.
- * Agent definitions are code, so they are rebuilt from {@link createSeededAgents} on every start.
+ * The seeded agents are code, so they are rebuilt from {@link createSeededAgents} on every start.
+ * Other agents are Markdown files in `agents/` under the home, which the Bureau loads and watches
+ * (COR-1524): `researcher.md` is the agent `researcher`, its `model` is `<provider>/<model>` from
+ * the catalog below, and its `tools` come from {@link createAgentFileTools}.
  *
  * The model catalog holds the models of the providers in Bungalow's `configuration.json` that have
  * an API key in its secrets (`providers.ts`). The seeded agents still answer from a script.
@@ -65,9 +68,15 @@ import {
   type WebSocketRelayData,
 } from './engine-proxy.ts';
 import { processEnvironment, resolvePort } from './environment-configuration.ts';
-import { createCatalogGenerate, loadProviders, type ModelSelection } from './providers.ts';
+import {
+  createCatalogGenerate,
+  loadProviders,
+  PROVIDER_NAMES,
+  type ModelSelection,
+} from './providers.ts';
 import { allowedHosts, createRequestGuard } from './request-guard.ts';
 import {
+  createAgentFileTools,
   createSeededAgents,
   createSeededGenerate,
   createSeededValidators,
@@ -84,6 +93,9 @@ const LOOPBACK = '127.0.0.1';
 
 /** The Bungalow secret that signs the approvals the seeded `tool-runner` raises. */
 export const APPROVAL_SECRET_KEY = 'approval-secret';
+
+/** The directory of agent files under the Interborough home: `researcher.md` is the agent `researcher`. */
+export const AGENT_DIRECTORY_NAME = 'agents';
 
 /** The path prefix under which the Bureau handler is mounted. */
 export const BUREAU_PATH_PREFIX = '/bureau';
@@ -254,6 +266,12 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       newRefreshId: () => `catalog-refresh-${crypto.randomUUID()}`,
     });
     modelCatalog.replaceCatalog(providers.rows);
+    const generateFor = (selection: ModelSelection): GenerateFunction =>
+      createCatalogGenerate(selection, {
+        rows: providers.rows,
+        apiKeys: providers.apiKeys,
+        resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
+      });
     const bureau = await createBureau({
       id: bungalow.deploymentId,
       agents: createSeededAgents(approvalSecret(bungalow)),
@@ -267,6 +285,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       validators: createSeededValidators(),
       modelCatalog,
       storage,
+      // Agent files: Markdown files in Bungalow's `agents/` directory are agents (COR-1524). A
+      // file's `model` is a row of the catalog above, so it runs with the key in the secrets.
+      agentDirectory: bungalow.directory(AGENT_DIRECTORY_NAME),
+      agentTools: createAgentFileTools(),
+      resolveAgentGenerate: (descriptor) => {
+        const provider = PROVIDER_NAMES.find((name) => name === descriptor.provider);
+        if (provider === undefined) {
+          throw new Error(`The ${descriptor.provider} provider is not one this host offers.`);
+        }
+        return generateFor({ provider, model: descriptor.model });
+      },
     });
     held.bureau = bureau;
     if (options.seed !== false) {
@@ -351,12 +380,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       server,
       deploymentId: bungalow.deploymentId,
       databasePath: bungalow.database,
-      generateFor: (selection) =>
-        createCatalogGenerate(selection, {
-          rows: providers.rows,
-          apiKeys: providers.apiKeys,
-          resolveProviderGenerate: options.resolveProviderGenerate ?? resolveProviderGenerate,
-        }),
+      generateFor,
       close: () => (held.closing ??= teardown(held)),
     };
   } catch (error) {

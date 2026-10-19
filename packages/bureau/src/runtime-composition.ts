@@ -128,6 +128,7 @@ import {
   messageText,
 } from 'conversationalist';
 
+import type { FileAgentBinding } from './agent-file-catalog';
 import { createSkillGuardrailOptions } from './agent-skills';
 import {
   type GoalAttemptFence,
@@ -851,6 +852,16 @@ export interface CatalogRunRecoveryRecord {
    * cost. See `goal-cost-estimation.ts`.
    */
   readonly costEstimation?: GoalAttemptCostEstimation;
+  /**
+   * COR-1524 — set only when the run is of a file-based agent: the SHA-256 of the agent file's
+   * bytes the run started with. Recovery builds the agent from the snapshot stored under that
+   * hash (`agent-snapshot-store.ts`), never from the file, so a run resumed after the file was
+   * edited or deleted is the run that began. Absent for a code-defined agent.
+   *
+   * The record stays at `schemaVersion` 1, the way COR-716 widened its input: the field is
+   * additive, a reader that predates it ignores it, and nothing is deployed.
+   */
+  readonly agentDefinitionHash?: string;
 }
 
 // Exported for tests only — lets `runtime-composition.test.ts` construct the
@@ -889,6 +900,8 @@ function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecovery
   if (typeof value['definitionRevision'] !== 'number') return false;
   const principal = value['principal'];
   if (principal !== undefined && typeof principal !== 'string') return false;
+  const agentDefinitionHash = value['agentDefinitionHash'];
+  if (agentDefinitionHash !== undefined && typeof agentDefinitionHash !== 'string') return false;
   const goalAttempt = value['goalAttempt'];
   if (
     goalAttempt !== undefined &&
@@ -940,6 +953,12 @@ export type CatalogAgentRunOptionsResolution =
        * record), which is never offered `requestHumanInput`.
        */
       recoveredChild?: boolean;
+      /**
+       * COR-1524 — set when the agent is file-based: the definition the options were resolved
+       * from, which is the snapshot a recorded run asked for, or the file's current definition
+       * for a run that is starting.
+       */
+      agentBinding?: FileAgentBinding;
     }
   | { status: 'missing-agent' }
   /**
@@ -966,6 +985,13 @@ export type CatalogAgentRunOptionsResolver = (
    * recovered child's parent-signal port and correlation).
    */
   runId: string,
+  /**
+   * COR-1524 — present when the run already started and is being resumed: the definition hash it
+   * recorded, or `undefined` for a code-defined agent. A hash makes the resolver build the agent
+   * from the run's snapshot; absent altogether means a run that is starting, which resolves the
+   * agent as it is now.
+   */
+  recorded?: { readonly agentDefinitionHash: string | undefined },
 ) => Promise<CatalogAgentRunOptionsResolution>;
 
 /**
@@ -977,6 +1003,8 @@ export interface SessionAgentRun {
   readonly agentName: string;
   readonly options: RunOptions;
   readonly definitionRevision: number;
+  /** COR-1524 — the file definition the run is built from, when the agent is file-based. */
+  readonly agentBinding?: FileAgentBinding;
   readonly agentResolvesGuardrails: boolean;
   /** The agent's own system prompt, or `undefined` when its definition declares none. */
   readonly instructions: string | undefined;
@@ -1010,6 +1038,12 @@ const BUREAU_AGENT_NAME = 'bureau';
 
 /** Session metadata: the definition revision of the named agent the latest run started under. */
 export const SESSION_AGENT_REVISION_METADATA_KEY = 'lastAgentRevision';
+
+/**
+ * COR-1524 — where a session run records the SHA-256 of the agent file it started with (`null`
+ * for a code-defined agent), so a recovered run builds from its snapshot.
+ */
+export const SESSION_AGENT_DEFINITION_HASH_METADATA_KEY = 'lastAgentDefinitionHash';
 
 type RecoveredScheduleMarker =
   | { status: 'found'; scheduleId: string }
@@ -1866,6 +1900,7 @@ export interface RuntimeComposition {
     agentName: string,
     runId: string,
     principal?: string,
+    recorded?: { readonly agentDefinitionHash: string | undefined },
   ): Promise<SessionAgentRunResolution>;
   /**
    * COR-716 — how a run owned by `principalId` handles the media it carries: the
@@ -3027,6 +3062,7 @@ async function buildRuntimeComposition(
     agentName: string,
     runId: string,
     principal?: string,
+    recorded?: { readonly agentDefinitionHash: string | undefined },
   ): Promise<SessionAgentRunResolution> {
     if (!catalogAgentRunOptionsResolver) {
       return { status: 'resolver-failed', error: new Error('No catalog agent resolver is wired.') };
@@ -3036,6 +3072,7 @@ async function buildRuntimeComposition(
       SESSION_AGENT_PLACEHOLDER_INPUT,
       { agentName, ...(principal === undefined ? {} : { principal }) },
       runId,
+      ...(recorded === undefined ? [] : [recorded]),
     );
     if (resolution.status !== 'resolved') return resolution;
     return {
@@ -3044,6 +3081,7 @@ async function buildRuntimeComposition(
         agentName,
         options: resolution.options,
         definitionRevision: resolution.definitionRevision,
+        ...(resolution.agentBinding === undefined ? {} : { agentBinding: resolution.agentBinding }),
         agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
         instructions: agentInstructionsFromRunOptions(resolution.options),
       },
@@ -3226,7 +3264,10 @@ async function buildRuntimeComposition(
     if (catalogAgentRunOptionsResolver === undefined) return undefined;
     const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
     const owner = resolveSessionOwner(session.metadata);
-    const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner);
+    const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
+    const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
+      agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
+    });
     if (resolution.status === 'missing-agent') {
       throw new Error(`${label}: catalog agent "${agentName}" is no longer in the catalog`);
     }
@@ -3243,7 +3284,11 @@ async function buildRuntimeComposition(
       );
     }
     const startedAt = session.metadata[SESSION_AGENT_REVISION_METADATA_KEY];
-    if (typeof startedAt === 'number' && startedAt !== resolution.run.definitionRevision) {
+    if (
+      resolution.run.agentBinding === undefined &&
+      typeof startedAt === 'number' &&
+      startedAt !== resolution.run.definitionRevision
+    ) {
       diagnose({
         level: 'warn',
         scope: 'recovery',
@@ -3600,6 +3645,7 @@ async function buildRuntimeComposition(
         ...(record.principal !== undefined ? { principal: record.principal } : {}),
       },
       runId,
+      { agentDefinitionHash: record.agentDefinitionHash },
     );
     if (resolution.status === 'missing-agent') {
       return {
@@ -3623,7 +3669,10 @@ async function buildRuntimeComposition(
           `during recovery: ${serializeUnknownError(resolution.error)}`,
       };
     }
-    if (resolution.definitionRevision !== record.definitionRevision) {
+    if (
+      resolution.agentBinding === undefined &&
+      resolution.definitionRevision !== record.definitionRevision
+    ) {
       // Pin-and-warn, mirroring AB-10's workflow-version-mismatch precedent
       // (`workflowVersionMismatches` / 'reattach-version-mismatch'): reattach
       // with the catalog's CURRENT definition (the closest available match)

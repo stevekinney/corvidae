@@ -119,8 +119,8 @@ const LOCAL_REQUEST_CONTEXT = {
   runId: 'tool-runner',
 } as const;
 
-function createToolRunnerToolbox(approvalSecret: string) {
-  const lookupOrder = createTool({
+function createLookupOrderTool() {
+  return createTool({
     name: 'lookup-order',
     version: '1.0.0',
     description: 'Look up an order by its identifier.',
@@ -128,6 +128,19 @@ function createToolRunnerToolbox(approvalSecret: string) {
     metadata: { readOnly: true },
     execute: async ({ orderId }) => ({ orderId, status: 'delivered', totalCents: 4200 }),
   });
+}
+
+/**
+ * The tools an agent file may name in `tools`: the deployment's tool catalog. It holds the
+ * read-only `lookup-order` tool and nothing that mutates, because an agent file's toolbox has no
+ * approval policy to hold a refund for an operator.
+ */
+export function createAgentFileTools() {
+  return { 'lookup-order': createLookupOrderTool() };
+}
+
+function createToolRunnerToolbox(approvalSecret: string) {
+  const lookupOrder = createLookupOrderTool();
   const issueRefund = createTool({
     name: 'issue-refund',
     version: '1.0.0',
