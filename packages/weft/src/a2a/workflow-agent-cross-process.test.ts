@@ -281,12 +281,13 @@ describe('a workflow agent served by two processes over one store', () => {
     expect(await pending).toMatchObject({ status: { state: TaskState.TASK_STATE_INPUT_REQUIRED } });
   });
 
-  test('refuses a live poll interval that is not a positive integer', async () => {
+  test('refuses a live poll interval that is not an integer a timer honours', async () => {
     const push = await createPushFixture();
     const engine = createFixtureEngine(push.storage);
     onCleanup(() => engine[Symbol.asyncDispose]());
 
-    for (const livePollIntervalMs of [0, -1, 1.5, Number.NaN]) {
+    // Above the timer maximum, setTimeout fires after about 1 ms: a busy poll.
+    for (const livePollIntervalMs of [0, -1, 1.5, Number.NaN, 2_147_483_648]) {
       expect(() =>
         serveApproval(push, engine, manualScheduler().schedule, { livePollIntervalMs }),
       ).toThrow(RangeError);

@@ -47,6 +47,7 @@ import {
   scheduleWithTimeout,
 } from './sse-response.ts';
 import { recordStreamCursors, type StreamCursorEntry } from './stream-cursors.ts';
+import { requireTimerDelayMs } from './timer-delay.ts';
 
 /**
  * Authenticate one JSON-RPC request. Return the SDK `User` the request handler sees
@@ -234,9 +235,6 @@ async function receiveJsonRpcRequest(
   }
 }
 
-/** The largest delay a timer accepts; Bun clamps anything above it to about 1 ms. */
-const MAX_TIMER_MS = 2_147_483_647;
-
 /**
  * {@link createA2AHandler} with the stream-duration timer injected. Tests drive it
  * with a manual clock; the public entry point uses `setTimeout`.
@@ -246,17 +244,11 @@ export function createA2AHandlerWithScheduler(
   schedule: A2AStreamTimerScheduler,
 ): A2AHandler {
   const tenant = options.tenant;
-  const maxStreamDurationMs = options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS;
+  const maxStreamDurationMs = requireTimerDelayMs(
+    'maxStreamDurationMs',
+    options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS,
+  );
   const maxBodyBytes = options.maxRequestBodyBytes ?? DEFAULT_REST_MAX_BODY_BYTES;
-  if (
-    !Number.isInteger(maxStreamDurationMs) ||
-    maxStreamDurationMs < 1 ||
-    maxStreamDurationMs > MAX_TIMER_MS
-  ) {
-    throw new RangeError(
-      `maxStreamDurationMs must be an integer from 1 to ${MAX_TIMER_MS}; received ${maxStreamDurationMs}.`,
-    );
-  }
   if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 1) {
     throw new RangeError(
       `maxRequestBodyBytes must be a positive safe integer; received ${maxBodyBytes}.`,

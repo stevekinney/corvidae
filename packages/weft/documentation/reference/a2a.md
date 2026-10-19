@@ -391,7 +391,7 @@ The deliveries are found by scanning every record the outbox retains, terminal o
 
 ### Driving delivery
 
-`startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. A drain that throws is reported to `onError` (default `console.error`) and the loop continues, even when `onError` itself throws. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
+`startPushDelivery({ outbox, intervalMs = 1000, signal, onError? })` calls `outbox.drain()` for everything due, waits `intervalMs`, and repeats until `signal` aborts, resolving once it has stopped. `intervalMs` must be an integer from 1 to 2147483647 (the timer maximum), or the call rejects with a `RangeError`. A drain that throws is reported to `onError` (default `console.error`) and the loop continues, even when `onError` itself throws. Because deliveries are durable, a delivery pending when the process stops is sent by the next process's loop over the same storage.
 
 ## Serving a workflow
 
@@ -463,7 +463,7 @@ const delivering = startPushDelivery({ outbox, signal: new AbortController().sig
 | `namespace` | `workflowType` | Separates the agent's records in shared storage. |
 | `storage` | `engine.storage` | Where tasks and their events are kept: any adapter the task store accepts. |
 | `terminalRetentionMs` | thirty days | How long `taskStore.prune()` keeps a terminal task. |
-| `livePollIntervalMs` | `1000` under an ownership lease, otherwise off | How often a stream or a blocking `SendMessage` waiting on a task re-reads storage for events another process committed (see "Streams"). Must be a positive integer; construction throws a `RangeError` otherwise. |
+| `livePollIntervalMs` | `1000` under an ownership lease, otherwise off | How often a stream or a blocking `SendMessage` waiting on a task re-reads storage for events another process committed (see "Streams"). Must be an integer from 1 to 2147483647 (the timer maximum); construction throws a `RangeError` otherwise. |
 | `now` | `Date.now` | The clock that stamps status timestamps and records. |
 | `onError` | `console.error` | Receives errors no request waits on: a failed push enqueue, or a failed reconciliation after an engine event. |
 

@@ -60,6 +60,7 @@ import {
   type TaskEventRecheck,
 } from './task-event-log.ts';
 import { createWeftA2ATaskStore, type WeftA2ATaskStore } from './task-store.ts';
+import { requireTimerDelayMs } from './timer-delay.ts';
 import {
   createWorkflowAgentCard,
   type WorkflowAgentCardOptions,
@@ -346,7 +347,7 @@ class WorkflowAgentRequestHandler extends DefaultRequestHandler {
  *
  * @throws {Error} When `workflowType` is not registered, or has no description and
  *   `card.description` is unset.
- * @throws {RangeError} When `livePollIntervalMs` is not a positive integer.
+ * @throws {RangeError} When `livePollIntervalMs` is not an integer from 1 to 2147483647.
  */
 export function createWorkflowAgentExecutor(options: WorkflowAgentExecutorOptions): WorkflowAgent {
   return createWorkflowAgentExecutorWithScheduler(options, scheduleWithTimeout);
@@ -363,10 +364,7 @@ function livePollOf(
     options.livePollIntervalMs ??
     (options.engine.getLeaseHealth().mode === 'none' ? undefined : DEFAULT_LIVE_POLL_INTERVAL_MS);
   if (intervalMs === undefined) return undefined;
-  if (!Number.isSafeInteger(intervalMs) || intervalMs < 1) {
-    throw new RangeError('livePollIntervalMs must be a positive integer.');
-  }
-  return { intervalMs, schedule };
+  return { intervalMs: requireTimerDelayMs('livePollIntervalMs', intervalMs), schedule };
 }
 
 /**
