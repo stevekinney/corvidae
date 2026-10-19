@@ -179,7 +179,7 @@ function decodeSegment(segment: string): string | undefined {
 export function createAgUiMount(
   bureau: AgUiBureau,
   authorization: AgUiAuthorization,
-  publish: ReadonlyArray<string>,
+  publish: { readonly includes: (agentName: string) => boolean },
   options: AgUiOptions,
 ): OperationHandlerMount {
   const pathPrefix = (options.pathPrefix ?? DEFAULT_AG_UI_PATH_PREFIX).replace(/\/+$/, '');

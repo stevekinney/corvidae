@@ -28,7 +28,9 @@ interface Block {
   body: string[];
 }
 
-const KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_-]*)[ \t]*:(?:[ \t]|\r?$)/;
+// A key whose value starts on the next line ends its own line right after the colon, and `$`
+// without the multiline flag matches only the end of the text, so the line break is named.
+const KEY_LINE = /^([A-Za-z0-9_][A-Za-z0-9_-]*)[ \t]*:(?:[ \t]|\r?\n|$)/;
 const BLANK_OR_COMMENT = /^[ \t]*(?:#.*)?\r?\n?$/;
 
 /** Emit `mapping` as YAML that keeps a string that looks like a date or a number a string. */

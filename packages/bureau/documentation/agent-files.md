@@ -1,6 +1,6 @@
 # Agent files
 
-Bureau loads agent definitions from Markdown files in a directory the host names (COR-1524). You create and edit agents by hand, or through `bureau.agents.create`, `update`, and `delete`; either way the agent is a file. This follows how Claude Code, Codex, and OpenClaw keep agents: one file per agent, the body is the instructions, and the frontmatter describes everything else.
+Bureau loads agent definitions from Markdown files in a directory the host names (COR-1524). You create and edit agents by hand, or through `bureau.agents.create`, `update`, `publish`, `withdraw`, and `delete` (served over HTTP as `bureau.agents.definitions.*`, see [Operations](#operations)); either way the agent is a file. This follows how Claude Code, Codex, and OpenClaw keep agents: one file per agent, the body is the instructions, and the frontmatter describes everything else.
 
 Bureau does not know where the directory lives. The host passes a path (`BureauOptions.agentDirectory`), and the Interborough host passes `agents/` under its home.
 
@@ -33,7 +33,7 @@ The frontmatter keys are:
 - `model`: required, written `<provider>/<model-or-alias>`, split on the first `/`. It must name a non-retired row in the deployment's model catalog (`bureau.modelCatalog`). A bare model name is not accepted, because it would be ambiguous across providers.
 - `tools`: a list of unique names from the deployment's tool catalog (`BureauOptions.agentTools`). Defaults to none.
 - `skills`: descriptive Agent Card skills (`id`, `name`, `description`, `tags`, and optionally `examples`, `inputModes`, `outputModes`), never executable skills. Ids are unique within the agent.
-- `published`: a strict boolean, default `false`. It records whether the agent may be offered over the network. Bureau only reports it on `list()`; serving published file agents belongs to the network operations (COR-1526).
+- `published`: a strict boolean, default `false`. It records whether the agent may be offered over the network. A persisted agent is published by this key and nothing else: the `publish` allowlist of `createBureauHandler` governs code-defined agents only. See [Publication](#publication).
 
 Any other top-level key is allowed. Bureau ignores it at run time, leaves it out of the run's snapshot, and keeps it when it rewrites the file. The exported schema is `agentFileFrontmatterSchema`.
 
@@ -87,6 +87,16 @@ A write goes to a temporary dotfile in the same directory and is renamed into pl
 
 There is no cross-process file lock. A different process writing the same file in the instant between a write's last check and its `rename` is not detected, because `rename` replaces whatever is there and, for `create`, cannot refuse an existing target. The window is the time between two system calls.
 
+## Publication
+
+`bureau.agents.publish(id, { expectedHash })` sets `published: true` in the file's frontmatter, and `withdraw` sets `published: false`. Each is an `update` whose definition is the file's own, so nothing else changes: a file with no `name` key does not gain one, every other key and comment stays, and the body is byte for byte what it was. A file that already has the requested state is not rewritten and the call returns its hash. Both fail as `update` does: `agent-file-not-found`, `agent-file-unreadable`, a problem the rewrite would leave, and `agent-file-changed` (with `currentHash`) when the bytes no longer hash to `expectedHash`.
+
+An agent is published when its file says so and the file is `ready`; an `invalid` file is not an agent, so it is never published. A code-defined agent is published by the `publish` allowlist of `createBureauHandler` alone, and `publish` and `withdraw` refuse it as not found. `bureau.agents.list` (the HTTP operation) reports a ready persisted agent as `published` or `withdrawn` by this key, `bureau.deployment.get` names the published ones, and the AG-UI mount starts runs of them. Publication is read on every request.
+
+## Operations
+
+`createBureauHandler` serves the same files as `bureau.agents.definitions.*` and `bureau.agents.catalog`, under the scopes `bureau.agents:read` and `bureau.agents:write` (see [the control plane](./external-control-plane.md)). `bureau.agents.catalog` reads `bureau.modelCatalog.catalog().descriptors` unfiltered, each row reduced to the `general` audience, and `bureau.agents.tools()` (the deployment's tool catalog, by name with each description). `bureau.agents.detail(id)` is what `definitions.get` serves: the listing fields, the file's exact text, and its parsed definition, read from disk now so the hash, the text, and the state describe the same bytes. Every write the operations make that changed a file is appended to the audit trail as `agent.created`, `agent.updated`, `agent.published`, `agent.withdrawn`, or `agent.deleted`, filed under the `runId` `agent:<identifier>` and attributed to the caller. A Bureau with no persistent storage keeps no durable audit trail and records nothing.
+
 ## Snapshots
 
 A run uses the definition it started with. When a run of a file agent starts, Bureau stores the parsed definition in its database under `bureau-agent-snapshot:v1:<id>:<hash>`, where the hash is the file's, and ties the run to it with `bureau-agent-run:v1:<runId>`. The run records the hash (`agentDefinitionHash` in a `bureau.run` run's recovery record, `lastAgentDefinitionHash` in a session run's metadata), and the snapshot is written before the record that names it.
@@ -109,4 +119,4 @@ A snapshot is kept while any run that references it is retained, and pruned afte
 
 - The steering agent-identity override still validates against the code-defined map only. A file agent is not a steering target.
 - Writes are not safe against another process editing the same file (see Writing).
-- Per-user directories, Git history of the directory, and the network operations (COR-1526) are out of scope.
+- Per-user directories and Git history of the directory are out of scope.

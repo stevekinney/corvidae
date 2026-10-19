@@ -29,6 +29,8 @@ export type PublishedAgent = {
   readonly displayName: string;
   readonly description: string | null;
   readonly definitionRevision: number;
+  /** `withdrawn` for a persisted agent whose file does not publish it; a code-defined agent is only ever `published`. */
+  readonly publishState: 'published' | 'withdrawn';
 };
 
 /**
@@ -119,7 +121,11 @@ export const deploymentGetOperation = defineOperation<
   invoke: async ({ host }) => ({
     id: host.deployment.id,
     state: host.deployment.state(),
-    publishedAgents: host.deployment.publishedAgents().map((agent) => agent.name),
+    publishedAgents: host
+      .deployment
+      .publishedAgents()
+      .filter((agent) => agent.publishState === 'published')
+      .map((agent) => agent.name),
     operations: host.deployment.operations().map((operation) => ({ ...operation })),
     recovery: { ...(await host.deployment.recovery()) },
   }),
@@ -133,7 +139,7 @@ const agentsListOutput = z.object({
       displayName: z.string(),
       description: z.string().nullable(),
       definitionRevision: z.number().int().nonnegative(),
-      publishState: z.literal('published'),
+      publishState: z.enum(['published', 'withdrawn']),
     }),
   ),
 });
@@ -147,7 +153,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the published agents',
   description:
-    'Returns each published agent in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. An agent the deployment does not publish is not listed. Any authenticated principal may read it.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. A code-defined agent is listed, as `published`, only when the `publish` allowlist names it. A persisted agent (`bureau.agents.definitions.*`) is listed whenever it is ready, as `published` or `withdrawn` by its own file, after the code-defined ones. An invalid agent file is not listed. Any authenticated principal may read it.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -163,7 +169,7 @@ export const agentsListOperation = defineOperation<
       displayName: agent.displayName,
       description: agent.description,
       definitionRevision: agent.definitionRevision,
-      publishState: 'published' as const,
+      publishState: agent.publishState,
     })),
   }),
 });

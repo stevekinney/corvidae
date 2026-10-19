@@ -50,6 +50,7 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { setAgentPublished } from './agent-file-publication';
 import {
   type AgentFileWriter,
   type AgentFileWriteResult,
@@ -158,6 +159,14 @@ export interface AgentFileCatalog extends AgentFileWriter {
   detail(id: string): Promise<AgentFileDetail | undefined>;
   /** The deployment's tool catalog, by name, as an agent file may name its tools. */
   tools(): readonly AgentToolDescription[];
+  /**
+   * Set `published: true` in the file's frontmatter, if it still hashes to `expectedHash`, and
+   * nothing else: every other key, the comments, and the body stay as they are. Writes nothing
+   * for a file that is already published.
+   */
+  publish(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
+  /** Set `published: false`, as {@link publish} sets `true`. */
+  withdraw(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
   /** The agent for a file whose state is `ready`. */
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
@@ -563,6 +572,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
   return {
     ...writer,
+
+    publish: (id, publishOptions) => setAgentPublished(writer, id, true, publishOptions),
+
+    withdraw: (id, publishOptions) => setAgentPublished(writer, id, false, publishOptions),
 
     list() {
       return [...entries.values()]

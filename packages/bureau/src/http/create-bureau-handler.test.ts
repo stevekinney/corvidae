@@ -433,6 +433,15 @@ describe('createBureauHandler catalog', () => {
       const asyncDocument = JSON.stringify(await asyncApi.json());
 
       expect(document.methods.map((method) => method.name).toSorted()).toEqual([
+        'bureau.agents.catalog',
+        'bureau.agents.definitions.create',
+        'bureau.agents.definitions.delete',
+        'bureau.agents.definitions.get',
+        'bureau.agents.definitions.list',
+        'bureau.agents.definitions.publish',
+        'bureau.agents.definitions.revisions',
+        'bureau.agents.definitions.update',
+        'bureau.agents.definitions.withdraw',
         'bureau.agents.list',
         'bureau.contexts.delete',
         'bureau.contexts.get',
@@ -598,6 +607,8 @@ describe('the Bureau scope list', () => {
       'bureau.goals:write',
       'bureau.contexts:read',
       'bureau.contexts:write',
+      'bureau.agents:read',
+      'bureau.agents:write',
       'bureau.events:observe-all',
     ]);
   });

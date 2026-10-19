@@ -82,8 +82,10 @@ function rpc(method: string, params: unknown, headers: Record<string, string> = 
   });
 }
 
-function subscribe(name: string, query: Record<string, string>, headers: Record<string, string>) {
-  const search = new URLSearchParams(query).toString();
+function subscribe(name: string, query: Record<string, unknown>, headers: Record<string, string>) {
+  const search = new URLSearchParams(
+    Object.entries(query).map(([key, value]) => [key, String(value)] as [string, string]),
+  ).toString();
   return new Request(`http://localhost/v1/subscriptions/${name}?${search}`, {
     headers: { Accept: 'text/event-stream', ...headers },
   });
@@ -97,6 +99,15 @@ type RpcBody = {
 type CatalogOperation = (typeof BUREAU_HANDLER_OPERATIONS)[number];
 
 /**
+ * What the agent definition operations need beside an identifier: a hash to write against, and a
+ * definition whose model the catalog lacks, so a probe can never create or change a file.
+ */
+const AGENT_DEFINITION_PARAMETERS = {
+  expectedHash: 'x',
+  definition: { model: 'nobody/none', instructions: '' },
+} as const;
+
+/**
  * The parameters to send an operation: only the keys its own schema declares,
  * taken from `candidates`. Every operation rejects an undeclared key as
  * `InvalidParams` before it runs, so an extra key would make a request pass or
@@ -104,8 +115,8 @@ type CatalogOperation = (typeof BUREAU_HANDLER_OPERATIONS)[number];
  */
 function paramsFor(
   operation: CatalogOperation,
-  candidates: Record<string, string>,
-): Record<string, string> {
+  candidates: Record<string, unknown>,
+): Record<string, unknown> {
   const shape = (operation.inputSchema as unknown as { shape: Record<string, unknown> }).shape;
   return Object.fromEntries(
     Object.keys(shape)
@@ -545,6 +556,7 @@ describe('credentials', () => {
           messageId: 'x',
           bureauId: bureau.id,
           decision: 'approve',
+          ...AGENT_DEFINITION_PARAMETERS,
         });
         const response = operation.transports.jsonRpcHttp
           ? await handler(rpc(operation.name, params))
@@ -662,6 +674,7 @@ describe('identifiers grant nothing', () => {
               messageId: 'message-1',
               [parameter]: requested,
               decision: 'approve',
+              ...AGENT_DEFINITION_PARAMETERS,
             });
             const request = operation.transports.jsonRpcHttp
               ? rpc(operation.name, params, as('alice-key'))
@@ -803,6 +816,7 @@ describe('transcripts stay inside the Bureau', () => {
           messageId: 'message-1',
           bureauId: bureau.id,
           decision: 'approve',
+          ...AGENT_DEFINITION_PARAMETERS,
         });
         const response = operation.transports.jsonRpcHttp
           ? await handler(rpc(operation.name, params, as('k')))

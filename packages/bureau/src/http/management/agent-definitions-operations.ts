@@ -40,6 +40,7 @@ import {
   AgentFileConflictError,
   AgentFileError,
   type AgentFileDefinition,
+  type AgentFileDefinitionInput,
 } from '../../agent-file.ts';
 import type { AgentFileDetail, AgentListing } from '../../agent-file-catalog.ts';
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
@@ -58,11 +59,7 @@ import {
 export interface AgentDefinitionAuditEntry {
   readonly runId: string;
   readonly type:
-    | 'agent.created'
-    | 'agent.updated'
-    | 'agent.published'
-    | 'agent.withdrawn'
-    | 'agent.deleted';
+    'agent.created' | 'agent.updated' | 'agent.published' | 'agent.withdrawn' | 'agent.deleted';
   readonly detail: { readonly id: string; readonly hash: string; readonly previousHash?: string };
   /** The caller's owner string; absent for a caller the deployment cannot attribute. */
   readonly principal?: string;
@@ -141,6 +138,14 @@ const definitionInputSchema = z.strictObject({
   instructions: z.string(),
 });
 
+/**
+ * The definition to write, from what the caller sent. Zod types an optional key as possibly
+ * `undefined`; the schema never produces one that is present as `undefined`.
+ */
+function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDefinitionInput {
+  return input as AgentFileDefinitionInput;
+}
+
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
 
 /** The reason a file is not an agent, as a wire object. */
@@ -166,16 +171,26 @@ function listingView(listing: AgentListing) {
   };
 }
 
+/** A skill descriptor with its readonly arrays copied, so it is the plain data the wire holds. */
+function skillView(skill: AgentSkillDescriptor) {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    tags: [...skill.tags],
+    ...(skill.examples === undefined ? {} : { examples: [...skill.examples] }),
+    ...(skill.inputModes === undefined ? {} : { inputModes: [...skill.inputModes] }),
+    ...(skill.outputModes === undefined ? {} : { outputModes: [...skill.outputModes] }),
+  };
+}
+
 function definitionView(definition: AgentFileDefinition) {
   return {
     name: definition.name,
     description: definition.description,
     model: definition.model,
     tools: [...definition.tools],
-    skills: definition.skills.map((skill: AgentSkillDescriptor) => ({
-      ...skill,
-      tags: [...skill.tags],
-    })),
+    skills: definition.skills.map(skillView),
     published: definition.published,
     instructions: definition.instructions,
   };
@@ -335,7 +350,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireScope(host, principal, 'bureau.agents:write', 'Creating an agent');
     try {
-      const result = await definitions.agents.create(input.id, input.definition);
+      const result = await definitions.agents.create(input.id, definitionOf(input.definition));
       await audit(host, principal, 'agent.created', result);
       return result;
     } catch (error) {
@@ -382,7 +397,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
       const published = (await definitions.agents.detail(input.id))?.definition?.published;
       const result = await definitions.agents.update(
         input.id,
-        { ...input.definition, ...(published === undefined ? {} : { published }) },
+        { ...definitionOf(input.definition), ...(published === undefined ? {} : { published }) },
         { expectedHash: input.expectedHash },
       );
       if (result.hash !== input.expectedHash) {
@@ -634,6 +649,16 @@ const modelSchema = z.object({
   freshness: z.string(),
 });
 
+/**
+ * The general projection of a catalog row, copied out of its frozen form. `modelSchema` declares
+ * every key the projection keeps; a test compares the two.
+ */
+function modelView(descriptor: BackendDescriptor): z.infer<typeof modelSchema> {
+  return structuredClone(projectDescriptor(descriptor, 'general')) as unknown as z.infer<
+    typeof modelSchema
+  >;
+}
+
 const catalogInput = z.object({});
 const catalogOutput = z.object({
   models: z.array(modelSchema),
@@ -667,8 +692,8 @@ export const agentsCatalogOperation = defineOperation<
       'Reading the agent catalog',
     );
     return Promise.resolve({
-      // The general projection is applied here for every caller, so no caller sees a price.
-      models: definitions.models().map((descriptor) => projectDescriptor(descriptor, 'general')),
+      // The general projection is applied for every caller, so no caller sees a price.
+      models: definitions.models().map(modelView),
       tools: definitions.agents.tools().map((tool) => ({ ...tool })),
     });
   },

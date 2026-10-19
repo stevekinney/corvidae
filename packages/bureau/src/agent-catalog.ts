@@ -23,7 +23,6 @@ import type {
   AgentListing,
   AgentToolDescription,
 } from './agent-file-catalog';
-import { setAgentPublished } from './agent-file-publication';
 import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
@@ -390,10 +389,8 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
-    publish: async (id, writeOptions) =>
-      setAgentPublished(requireFiles(), id, true, writeOptions),
-    withdraw: async (id, writeOptions) =>
-      setAgentPublished(requireFiles(), id, false, writeOptions),
+    publish: async (id, writeOptions) => requireFiles().publish(id, writeOptions),
+    withdraw: async (id, writeOptions) => requireFiles().withdraw(id, writeOptions),
   };
 
   return Object.freeze(catalog);
