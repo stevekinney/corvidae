@@ -28,6 +28,7 @@ import {
   serializeNewAgentFile,
   serializeUpdatedAgentFile,
 } from './agent-file';
+import { serializePublication } from './agent-file-publication';
 import { createAtomicFileWriter } from './atomic-file-writer';
 import type { AgentFileOperations } from './agent-file-operations';
 
@@ -58,6 +59,17 @@ export interface AgentFileWriter {
     options: { readonly expectedHash: string },
   ): Promise<AgentFileWriteResult>;
   delete(id: string, options: { readonly expectedHash: string }): Promise<AgentFileWriteResult>;
+  /**
+   * Set `published` in the file's frontmatter and change nothing else, if the file still hashes
+   * to `expectedHash`. Publishing refuses a file the deployment could not run; withdrawing does
+   * not, so an agent whose model has left the catalog can still be taken out of offer. Writes
+   * nothing for a file that already has the state.
+   */
+  setPublished(
+    id: string,
+    published: boolean,
+    options: { readonly expectedHash: string },
+  ): Promise<AgentFileWriteResult>;
 }
 
 function refuse(problem: AgentFileProblem): never {
@@ -93,8 +105,11 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     if (problem !== undefined) refuse(problem);
   }
 
-  /** Refuse unless `bytes` would load as a usable agent named `id`. */
-  function checkWritable(id: string, bytes: Uint8Array): void {
+  /**
+   * Refuse unless `bytes` would load as a usable agent named `id`. `deployment: false` checks the
+   * file's own shape and leaves out what depends on the deployment (its model and tools).
+   */
+  function checkWritable(id: string, bytes: Uint8Array, deployment = true): void {
     if (bytes.length > AGENT_FILE_SIZE_LIMIT) {
       refuse({
         code: 'file-too-large',
@@ -110,6 +125,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
           : { code: 'not-utf8', message: 'The agent file is not valid UTF-8.' },
       );
     }
+    if (!deployment) return;
     const problem = dependencies.validate(id, parsed.file.definition);
     if (problem !== undefined) refuse(problem);
   }
@@ -159,6 +175,36 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         const next = serializeUpdatedAgentFile(id, parsed.file, definition);
         if (next === undefined) return { id, hash };
         checkWritable(id, next);
+        await publish(id, next, () => recheck(id, expectedHash));
+        await dependencies.refresh();
+        return { id, hash: hashAgentFileBytes(next) };
+      });
+    },
+
+    setPublished(id, published, { expectedHash }) {
+      return exclusive(async () => {
+        checkIdentifier(id);
+        const { bytes: current, hash } = await readExisting(id, expectedHash);
+        const text = decodeAgentFile(current);
+        const parsed = text === undefined ? undefined : parseAgentFile(id, text);
+        if (parsed === undefined || !parsed.ok) {
+          throw new AgentFileError(
+            'agent-file-unreadable',
+            `The file for "${id}" cannot be read as an agent file, so it cannot be ${published ? 'published' : 'withdrawn'}.`,
+            parsed?.ok === false ? parsed.problem : undefined,
+          );
+        }
+        const next = serializePublication(parsed.file, published);
+        // A file that already has the state is not rewritten, and a publish still reports a file
+        // the deployment could not run.
+        if (next === undefined) {
+          if (published) {
+            const problem = dependencies.validate(id, parsed.file.definition);
+            if (problem !== undefined) refuse(problem);
+          }
+          return { id, hash };
+        }
+        checkWritable(id, next, published);
         await publish(id, next, () => recheck(id, expectedHash));
         await dependencies.refresh();
         return { id, hash: hashAgentFileBytes(next) };

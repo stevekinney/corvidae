@@ -559,6 +559,7 @@ export function buildBureauHandlerHost(
     contexts: bureau,
     agentDefinitions: {
       agents: bureau.agents,
+      publishesCodeAgent: (id) => publish.includes(id),
       models: () => bureau.modelCatalog.catalog().descriptors,
       audit: async (entry) => {
         await bureau.auditTrail?.record(entry);

@@ -43,7 +43,6 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
-import { setAgentPublished } from './agent-file-publication';
 import {
   type AgentFileWriter,
   type AgentFileWriteResult,
@@ -391,9 +390,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   return {
     ...writer,
 
-    publish: (id, publishOptions) => setAgentPublished(writer, id, true, publishOptions),
+    publish: (id, publishOptions) => writer.setPublished(id, true, publishOptions),
 
-    withdraw: (id, publishOptions) => setAgentPublished(writer, id, false, publishOptions),
+    withdraw: (id, publishOptions) => writer.setPublished(id, false, publishOptions),
 
     list() {
       return [...directoryWatcher.entries().values()]

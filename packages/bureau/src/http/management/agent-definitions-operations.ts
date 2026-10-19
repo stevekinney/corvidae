@@ -36,6 +36,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions, BureauAgentCatalog } from '../../agent-catalog.ts';
 import {
+  AGENT_IDENTIFIER_MAX_LENGTH,
   agentSkillDescriptorSchema,
   AgentFileConflictError,
   AgentFileError,
@@ -44,7 +45,7 @@ import {
 } from '../../agent-file.ts';
 import type { AgentFileDetail, AgentListing } from '../../agent-file-catalog.ts';
 import { auditTrailAgentOwnerId } from '../../audit-trail.ts';
-import { ownerOrLocal } from '../../owner-of-record.ts';
+import { mayAccessAgents } from '../agent-access.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
@@ -80,6 +81,8 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
       | 'publish'
       | 'withdraw'
     >;
+    /** Whether the `publish` allowlist of `createBureauHandler` publishes the code-defined agent `id`. */
+    readonly publishesCodeAgent: (id: string) => boolean;
     /** The rows of the deployment's model catalog, as the catalog holds them. */
     readonly models: () => readonly BackendDescriptor[];
     /** Appends to the durable audit trail; resolves without writing when the Bureau keeps none. */
@@ -87,8 +90,8 @@ export type BureauAgentDefinitionsOperationHost = BureauOwnershipHost & {
   };
 };
 
-/** Long enough for any name, short enough that `<id>.md` and its temporary file fit a filename. */
-const agentIdentifier = z.string().min(1).max(128);
+/** The same cap the file format has, so no identifier a request can name is one no file can have. */
+const agentIdentifier = z.string().min(1).max(AGENT_IDENTIFIER_MAX_LENGTH);
 const hash = z.string().min(1);
 
 const problemSchema = z.object({
@@ -157,14 +160,22 @@ function problemView(problem: NonNullable<AgentListing['problem']>) {
   };
 }
 
-function listingView(listing: AgentListing) {
+/**
+ * An agent as the wire shows it. `published` is whoever publishes the agent saying so: the
+ * `publish` allowlist for a code-defined agent, its own file for a persisted one.
+ */
+function listingView(host: BureauAgentDefinitionsOperationHost, listing: AgentListing) {
+  const published =
+    listing.source === 'code'
+      ? host.agentDefinitions.publishesCodeAgent(listing.id)
+      : listing.published;
   return {
     id: listing.id,
     source: listing.source,
     state: listing.state,
     name: listing.name,
     description: listing.description,
-    published: listing.published,
+    published,
     owner: listing.owner,
     hash: listing.definitionHash ?? null,
     problem: listing.problem === undefined ? null : problemView(listing.problem),
@@ -196,23 +207,20 @@ function definitionView(definition: AgentFileDefinition) {
   };
 }
 
-function detailView(detail: AgentFileDetail) {
+function detailView(host: BureauAgentDefinitionsOperationHost, detail: AgentFileDetail) {
   return {
-    ...listingView(detail),
+    ...listingView(host, detail),
     definition: detail.definition === null ? null : definitionView(detail.definition),
     text: detail.text,
   };
 }
-
-/** Every agent belongs to the deployment's owner of record, whether or not a directory is configured. */
-const DEPLOYMENT_OWNER = ownerOrLocal(undefined);
 
 function mayAccess(
   host: BureauAgentDefinitionsOperationHost,
   principal: Principal,
   operatorScope: BureauScope,
 ): boolean {
-  return host.ownership.mayAccess({ principal, resourceOwner: DEPLOYMENT_OWNER, operatorScope });
+  return mayAccessAgents(host.ownership, principal, operatorScope);
 }
 
 /** A caller who may not use `operatorScope` is answered as if the agent were missing. */
@@ -224,6 +232,25 @@ function requireAccess(
 ): BureauAgentDefinitionsOperationHost['agentDefinitions'] {
   if (!mayAccess(host, principal, operatorScope)) throw resourceNotFound('agent', identifier);
   return host.agentDefinitions;
+}
+
+/**
+ * The agents an operation that changes an existing agent may reach. A caller who may not write
+ * is answered as if the agent were missing, and so is every caller for a code-defined key: its
+ * definition is code, its publication is the allowlist's, and no file is read, written, or
+ * removed on its behalf, whether or not a same-named file lies in the directory.
+ */
+function requireWritableAgent(
+  host: BureauAgentDefinitionsOperationHost,
+  principal: Principal,
+  identifier: string,
+): BureauAgentDefinitionsOperationHost['agentDefinitions'] {
+  const definitions = requireAccess(host, principal, 'bureau.agents:write', identifier);
+  const codeDefined = definitions.agents
+    .list()
+    .some((listing) => listing.id === identifier && listing.source === 'code');
+  if (codeDefined) throw resourceNotFound('agent', identifier);
+  return definitions;
 }
 
 /** A caller who may not use an operation that addresses no existing agent is refused outright. */
@@ -374,7 +401,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and whether the agent is published does not change. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined agent.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and whether the agent is published does not change. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -391,7 +418,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
-    const definitions = requireAccess(host, principal, 'bureau.agents:write', input.id);
+    const definitions = requireWritableAgent(host, principal, input.id);
     try {
       // The definition the caller supplies has no `published`: the file keeps the state it has.
       const current = await definitions.agents.detail(input.id);
@@ -449,7 +476,7 @@ function defineGuardedWrite(
     transports,
     unknownKeyPolicy,
     invoke: async ({ input, host, principal }) => {
-      const definitions = requireAccess(host, principal, 'bureau.agents:write', input.id);
+      const definitions = requireWritableAgent(host, principal, input.id);
       try {
         const result = await run(definitions.agents, input.id, input.expectedHash);
         // A publish of a published agent, or a withdrawal of a withdrawn one, wrote nothing.
@@ -467,7 +494,7 @@ function defineGuardedWrite(
 export const agentDefinitionsPublishOperation = defineGuardedWrite(
   'bureau.agents.definitions.publish',
   'Publish an agent',
-  'Sets `published: true` in the agent’s file, if it still hashes to `expectedHash`, and keeps every other key the file has. A published agent appears in `bureau.agents.list` as published and in `bureau.deployment.get`’s `publishedAgents`, and is offered by the adapters that serve published agents. Publishing a published agent writes nothing. The `publish` allowlist of `createBureauHandler` governs code-defined agents only; a code-defined agent is answered `NotFound` here. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+  'Sets `published: true` in the agent’s file, if it still hashes to `expectedHash`, and keeps every other key the file has. A published agent appears in `bureau.agents.list` as published and in `bureau.deployment.get`’s `publishedAgents`, and is offered by the adapters that serve published agents. Only a new run is gated by publication. Publishing a published agent writes nothing. The `publish` allowlist of `createBureauHandler` governs code-defined agents only; a code-defined key is answered `NotFound` here, before any file is read. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   (agents, id, expectedHash) => agents.publish(id, { expectedHash }),
   'agent.published',
 );
@@ -475,7 +502,7 @@ export const agentDefinitionsPublishOperation = defineGuardedWrite(
 export const agentDefinitionsWithdrawOperation = defineGuardedWrite(
   'bureau.agents.definitions.withdraw',
   'Withdraw an agent',
-  'Sets `published: false` in the agent’s file, if it still hashes to `expectedHash`. A withdrawn agent appears in `bureau.agents.list` as withdrawn, is no longer offered to new callers, and its runs and tasks continue. Withdrawing a withdrawn agent writes nothing. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+  'Sets `published: false` in the agent’s file, if it still hashes to `expectedHash`. A withdrawn agent appears in `bureau.agents.list` as withdrawn, but only to a caller who may read definitions, and starts no new run; a run that is waiting for an answer can still be resumed, and its other runs and tasks continue. Withdrawing needs the file to parse, not the deployment to be able to run it, so an agent whose model has left the catalog can still be withdrawn. Withdrawing a withdrawn agent writes nothing. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   (agents, id, expectedHash) => agents.withdraw(id, { expectedHash }),
   'agent.withdrawn',
 );
@@ -483,7 +510,7 @@ export const agentDefinitionsWithdrawOperation = defineGuardedWrite(
 export const agentDefinitionsDeleteOperation = defineGuardedWrite(
   'bureau.agents.definitions.delete',
   'Delete an agent definition',
-  'Deletes the agent’s file, if it still hashes to `expectedHash`, which withdraws the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. Deleting a code-defined agent’s key is answered `NotFound`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
+  'Deletes the agent’s file, if it still hashes to `expectedHash`, which withdraws the agent. A run keeps the definition it started on: the snapshots of runs that are still retained stay, and `bureau.agents.definitions.revisions` still lists them. A run waiting for an answer can still be resumed after the delete. Deleting a code-defined agent’s key is answered `NotFound` before any file is read, whether or not a same-named file exists. Requires `bureau.agents:write` unless the caller owns the deployment’s agents.',
   (agents, id, expectedHash) => agents.delete(id, { expectedHash }),
   'agent.deleted',
 );
@@ -499,7 +526,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it is published, and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready` or `invalid` (with the `problem` that makes it so), whether it is published (by the `publish` allowlist for a code-defined agent, by its own file for a persisted one; an invalid file is never published, even when its `published` key says so), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, and no definition. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -513,7 +540,7 @@ export const agentDefinitionsGetOperation = defineOperation<
     const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
     const detail = await definitions.agents.detail(input.id);
     if (detail === undefined) throw resourceNotFound('agent', input.id);
-    return detailView(detail);
+    return detailView(host, detail);
   },
 });
 
@@ -550,7 +577,7 @@ export const agentDefinitionsListOperation = defineOperation<
     const offset = input.offset ?? 0;
     const all = host.agentDefinitions.agents.list();
     return {
-      agents: all.slice(offset, offset + limit).map(listingView),
+      agents: all.slice(offset, offset + limit).map((listing) => listingView(host, listing)),
       nextOffset: all.length > offset + limit ? offset + limit : null,
     };
   },

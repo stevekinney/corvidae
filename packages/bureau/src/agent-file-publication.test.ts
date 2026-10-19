@@ -230,6 +230,25 @@ describe('publish and withdraw', () => {
     expect(await readFile(join(fixture.directory, 'researcher.md'), 'utf8')).toBe(edited);
   });
 
+  it('withdraw a published agent whose model has left the catalog, while publish refuses it', async () => {
+    const fixture = await start();
+    await fixture.put(
+      'gone-model.md',
+      agentFileText({ model: 'anthropic/none', published: 'true' }, 'Body.\n'),
+    );
+    await fixture.catalog.refresh();
+    const hash = fixture.catalog.list()[0]?.definitionHash ?? '';
+    expect(
+      await rejection(fixture.catalog.publish('gone-model', { expectedHash: hash })),
+    ).toMatchObject({
+      code: 'unknown-model',
+    });
+    await fixture.catalog.withdraw('gone-model', { expectedHash: hash });
+    expect(await readFile(join(fixture.directory, 'gone-model.md'), 'utf8')).toBe(
+      agentFileText({ model: 'anthropic/none', published: 'false' }, 'Body.\n'),
+    );
+  });
+
   it('are refused for a file that is not there, one that cannot be read, and one that would not load', async () => {
     const fixture = await start();
     await fixture.put('no-frontmatter.md', 'Just text.\n');

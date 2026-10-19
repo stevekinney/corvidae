@@ -14,6 +14,8 @@
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
+import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
 /** One operation the handler serves. */
@@ -146,13 +148,13 @@ const agentsListOutput = z.object({
 export const agentsListOperation = defineOperation<
   typeof agentsListInput,
   typeof agentsListOutput,
-  BureauDeploymentOperationHost
+  BureauDeploymentOperationHost & BureauOwnershipHost
 >({
   name: 'bureau.agents.list',
   mcpExposable: false,
-  summary: 'List the published agents',
+  summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. A code-defined agent is listed, as `published`, only when the `publish` allowlist names it. A persisted agent (`bureau.agents.definitions.*`) is listed whenever it is ready, as `published` or `withdrawn` by its own file, after the code-defined ones. An invalid agent file is not listed. Any authenticated principal may read it.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, and `publishState`. A code-defined agent is listed, as `published`, only when the `publish` allowlist names it. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -162,13 +164,20 @@ export const agentsListOperation = defineOperation<
   discoverable: true,
   transports,
   unknownKeyPolicy,
-  invoke: async ({ host }) => ({
-    agents: host.deployment.publishedAgents().map((agent) => ({
-      name: agent.name,
-      displayName: agent.displayName,
-      description: agent.description,
-      definitionRevision: agent.definitionRevision,
-      publishState: agent.publishState,
-    })),
+  invoke: async ({ host, principal }) => ({
+    agents: host.deployment
+      .publishedAgents()
+      .filter(
+        (agent) =>
+          agent.publishState === 'published' ||
+          mayDiscloseUnpublishedAgents(host.ownership, principal),
+      )
+      .map((agent) => ({
+        name: agent.name,
+        displayName: agent.displayName,
+        description: agent.description,
+        definitionRevision: agent.definitionRevision,
+        publishState: agent.publishState,
+      })),
   }),
 });
