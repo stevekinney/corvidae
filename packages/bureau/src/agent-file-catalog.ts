@@ -91,6 +91,20 @@ export interface AgentListing {
   readonly problem?: AgentFileProblem;
 }
 
+/** One agent as an editor needs it: the listing, the file's exact text, and what it parses to. */
+export interface AgentFileDetail extends AgentListing {
+  /** The file's exact text, or `null` when its bytes could not be read as UTF-8. */
+  readonly text: string | null;
+  /** What the frontmatter and body parse to, or `null` when the file does not parse. */
+  readonly definition: AgentFileDefinition | null;
+}
+
+/** One tool of the deployment's tool catalog, by the name an agent file uses. */
+export interface AgentToolDescription {
+  readonly name: string;
+  readonly description: string;
+}
+
 /** What changed in one rescan, by identifier. */
 export interface AgentCatalogChange {
   readonly added: readonly string[];
@@ -136,6 +150,14 @@ export interface AgentFileCatalogOptions {
 export interface AgentFileCatalog extends AgentFileWriter {
   /** Every file in the directory that is an agent file, ready or invalid, by identifier. */
   list(): readonly AgentListing[];
+  /**
+   * One file agent as it is on disk now: its state and problem, its hash, its exact text, and
+   * its parsed definition. `undefined` when the catalog lists no file with that identifier. The
+   * hash, the text, and the state all describe the same bytes.
+   */
+  detail(id: string): Promise<AgentFileDetail | undefined>;
+  /** The deployment's tool catalog, by name, as an agent file may name its tools. */
+  tools(): readonly AgentToolDescription[];
   /** The agent for a file whose state is `ready`. */
   find(id: string): AnyRunnableAgent | undefined;
   /** Rescan the directory; resolves once the catalog reflects it. */
@@ -155,6 +177,12 @@ interface FileEntry {
   readonly definition?: AgentFileDefinition;
   readonly agent?: AnyRunnableAgent;
   readonly problem?: AgentFileProblem;
+}
+
+/** A file read and evaluated, with the bytes the evaluation came from when they were read. */
+interface LoadedEntry {
+  readonly entry: FileEntry;
+  readonly bytes?: Uint8Array;
 }
 
 /** The catalog row a file's `<provider>/<model-or-alias>` names, or why none does. */
@@ -202,6 +230,22 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory } = options;
   const owner = ownerOrLocal(undefined);
+
+  function toListing(entry: FileEntry): AgentListing {
+    const ready = entry.problem === undefined;
+    return {
+      id: entry.id,
+      source: 'file',
+      state: ready ? 'ready' : 'invalid',
+      name: entry.definition?.name ?? entry.id,
+      description: entry.definition?.description ?? null,
+      published: ready && entry.definition?.published === true,
+      owner,
+      ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
+      ...(entry.problem === undefined ? {} : { problem: entry.problem }),
+    };
+  }
+
   const openWatcher =
     options.openWatcher ?? ((path, listener) => watch(path, { persistent: false }, listener));
   let entries = new Map<string, FileEntry>();
@@ -312,40 +356,46 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     }
   }
 
-  async function loadEntry(
+  async function readEntry(
     id: string,
     name: string,
     modelRevision: number,
     previous: FileEntry | undefined,
-  ): Promise<FileEntry | undefined> {
+  ): Promise<LoadedEntry | undefined> {
     const path = `${directory}/${name}`;
     try {
       const size = await operations.size(path);
       if (size === undefined) return undefined;
       if (size > AGENT_FILE_SIZE_LIMIT) {
         return {
-          id,
-          hash: undefined,
-          modelRevision,
-          problem: {
-            code: 'file-too-large',
-            message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
+          entry: {
+            id,
+            hash: undefined,
+            modelRevision,
+            problem: {
+              code: 'file-too-large',
+              message: `The file is ${size} bytes; an agent file may be at most ${AGENT_FILE_SIZE_LIMIT}.`,
+            },
           },
         };
       }
       const bytes = await operations.read(path);
       if (bytes === undefined) return undefined;
       const hash = hashAgentFileBytes(bytes);
-      if (previous?.hash === hash && previous.modelRevision === modelRevision) return previous;
-      return evaluate(id, bytes, hash, modelRevision);
+      if (previous?.hash === hash && previous.modelRevision === modelRevision) {
+        return { entry: previous, bytes };
+      }
+      return { entry: evaluate(id, bytes, hash, modelRevision), bytes };
     } catch (error) {
       return {
-        id,
-        hash: undefined,
-        modelRevision,
-        problem: {
-          code: 'unreadable',
-          message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+        entry: {
+          id,
+          hash: undefined,
+          modelRevision,
+          problem: {
+            code: 'unreadable',
+            message: `The file could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          },
         },
       };
     }
@@ -360,8 +410,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         continue;
       }
       const id = item.name.slice(0, -AGENT_FILE_EXTENSION.length);
-      const entry = await loadEntry(id, item.name, modelRevision, entries.get(id));
-      if (entry !== undefined) next.set(id, entry);
+      const loaded = await readEntry(id, item.name, modelRevision, entries.get(id));
+      if (loaded !== undefined) next.set(id, loaded.entry);
     }
     const added: string[] = [];
     const changed: string[] = [];
@@ -517,20 +567,31 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     list() {
       return [...entries.values()]
         .toSorted((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
-        .map((entry): AgentListing => {
-          const ready = entry.problem === undefined;
-          return {
-            id: entry.id,
-            source: 'file',
-            state: ready ? 'ready' : 'invalid',
-            name: entry.definition?.name ?? entry.id,
-            description: entry.definition?.description ?? null,
-            published: ready && entry.definition?.published === true,
-            owner,
-            ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
-            ...(entry.problem === undefined ? {} : { problem: entry.problem }),
-          };
-        });
+        .map(toListing);
+    },
+
+    async detail(id) {
+      const known = entries.get(id);
+      if (known === undefined) return undefined;
+      const loaded = await readEntry(
+        id,
+        `${id}${AGENT_FILE_EXTENSION}`,
+        options.modelCatalog.catalog().revision,
+        known,
+      );
+      if (loaded === undefined) return undefined;
+      const text = loaded.bytes === undefined ? undefined : decodeAgentFile(loaded.bytes);
+      return {
+        ...toListing(loaded.entry),
+        text: text ?? null,
+        definition: loaded.entry.definition ?? null,
+      };
+    },
+
+    tools() {
+      return Object.entries(options.tools)
+        .map(([name, tool]) => ({ name, description: tool.description }))
+        .toSorted((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
     },
 
     find(id) {

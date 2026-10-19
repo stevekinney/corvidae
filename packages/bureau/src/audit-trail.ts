@@ -915,6 +915,18 @@ export const AUDIT_SCHEDULE_OWNER_PREFIX = 'schedule:';
 /** The `runId` prefix of a session's synthetic audit owner, `session:<id>`. */
 export const AUDIT_SESSION_OWNER_PREFIX = 'session:';
 
+/** The `runId` prefix of an agent definition's synthetic audit owner, `agent:<id>` (COR-1526). */
+export const AUDIT_AGENT_OWNER_PREFIX = 'agent:';
+
+/**
+ * The synthetic `runId` a write to an agent definition is filed under, `agent:<id>`: a write to
+ * an agent file belongs to no run, and the file's owner is the deployment's. `query({ runId })`
+ * with it retrieves one agent's writes, in order.
+ */
+export function auditTrailAgentOwnerId(agentId: string): string {
+  return `${AUDIT_AGENT_OWNER_PREFIX}${agentId}`;
+}
+
 /** The `owner` field of a deletion entry's detail, or nothing when no owner was recorded. */
 function ownerDetail(owner: string | undefined): { owner?: string } {
   return owner === undefined ? {} : { owner };

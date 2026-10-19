@@ -80,7 +80,10 @@ export const MAX_WAIT_MILLISECONDS = 60_000;
 export const waitMillisecondsField = z.number().int().min(0).max(MAX_WAIT_MILLISECONDS).optional();
 
 /** The fault a missing resource, and a resource the caller may not see, both answer with. */
-export function resourceNotFound(resource: 'task' | 'context', identifier: string): OperationFault {
+export function resourceNotFound(
+  resource: 'task' | 'context' | 'agent',
+  identifier: string,
+): OperationFault {
   return {
     code: 'NotFound',
     message: `No ${resource} with id "${identifier}"`,

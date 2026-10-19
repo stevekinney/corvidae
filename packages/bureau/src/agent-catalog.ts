@@ -16,7 +16,14 @@ import type { AgentGenerationProfile, AgentRun, RunnableAgent } from '@lostgradi
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import { AgentFileError } from './agent-file';
-import type { AgentCatalogChange, AgentFileCatalog, AgentListing } from './agent-file-catalog';
+import type {
+  AgentCatalogChange,
+  AgentFileCatalog,
+  AgentFileDetail,
+  AgentListing,
+  AgentToolDescription,
+} from './agent-file-catalog';
+import { setAgentPublished } from './agent-file-publication';
 import type { AgentFileWriter } from './agent-file-writer';
 import type { AgentRevision, AgentSnapshotStore } from './agent-snapshot-store';
 import { ownerOrLocal } from './owner-of-record';
@@ -187,6 +194,15 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
    */
   list(): readonly AgentListing[];
   /**
+   * One agent as an editor needs it, or `undefined` when no agent has that identifier. For a file
+   * agent it reads the file now: the listing fields, the file's exact `text`, and the
+   * `definition` it parses to, all describing the same bytes as `definitionHash`. A code-defined
+   * agent has neither a file nor a definition Bureau can show, so both are `null`.
+   */
+  detail(id: string): Promise<AgentFileDetail | undefined>;
+  /** The tools an agent file may name: the deployment's tool catalog, by name. */
+  tools(): readonly AgentToolDescription[];
+  /**
    * The snapshots that have run for `id`, most recently run first. A snapshot is kept while any
    * run that references it is retained (`BureauOptions.taskRetention`) and pruned after the last.
    */
@@ -207,6 +223,14 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
   update: AgentFileWriter['update'];
   /** Delete an agent file. */
   delete: AgentFileWriter['delete'];
+  /**
+   * Set `published: true` in an agent file's frontmatter, if the file still hashes to
+   * `expectedHash`. Keeps every other key the file has, and writes nothing when the file is
+   * already published.
+   */
+  publish: AgentFileWriter['delete'];
+  /** Set `published: false` in an agent file's frontmatter. The counterpart of {@link publish}. */
+  withdraw: AgentFileWriter['delete'];
 }
 
 /**
@@ -282,6 +306,15 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     ([name, agent]) => Object.freeze({ name, agent }) as AgentCatalogEntry<D>,
   );
   const byName = new Map<string, AgentCatalogEntry<D>>(entries.map((entry) => [entry.name, entry]));
+  const codeListing = (entry: AgentCatalogEntry<D>): AgentListing => ({
+    id: entry.name,
+    source: 'code',
+    state: 'ready',
+    name: entry.agent.name,
+    description: entry.agent.description ?? null,
+    published: false,
+    owner: ownerOrLocal(undefined),
+  });
   // Computed once, here, not lazily per call — "cached, side-effect-free
   // read" (AC9) means a `generationProfile(name)` call is a plain Map
   // lookup, never a recomputation, so repeated reads for the same name
@@ -333,17 +366,15 @@ export function createAgentCatalog<D extends AgentDefinitions>(
       return profile;
     },
     list() {
-      const owner = ownerOrLocal(undefined);
-      const code = entries.map((entry): AgentListing => ({
-        id: entry.name,
-        source: 'code',
-        state: 'ready',
-        name: entry.agent.name,
-        description: entry.agent.description ?? null,
-        published: false,
-        owner,
-      }));
-      return [...code, ...(files?.list() ?? [])];
+      return [...entries.map(codeListing), ...(files?.list() ?? [])];
+    },
+    async detail(id) {
+      const code = byName.get(id);
+      if (code !== undefined) return { ...codeListing(code), text: null, definition: null };
+      return files?.detail(id);
+    },
+    tools() {
+      return files?.tools() ?? [];
     },
     revisions(id) {
       return snapshots?.revisions(id) ?? Promise.resolve([]);
@@ -359,6 +390,10 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     update: async (id, definition, writeOptions) =>
       requireFiles().update(id, definition, writeOptions),
     delete: async (id, writeOptions) => requireFiles().delete(id, writeOptions),
+    publish: async (id, writeOptions) =>
+      setAgentPublished(requireFiles(), id, true, writeOptions),
+    withdraw: async (id, writeOptions) =>
+      setAgentPublished(requireFiles(), id, false, writeOptions),
   };
 
   return Object.freeze(catalog);
