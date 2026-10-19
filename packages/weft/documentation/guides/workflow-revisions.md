@@ -137,6 +137,10 @@ Refresh never changes routing by default. Pass `activate: 'if-compatible'` with 
 
 Polling is disabled unless `engine.workflows.startRefreshPolling()` is called. Serverless hosts should call `engine.workflows.runRefreshMaintenance()` from their alarm or Cron handler and await it before starting another cycle. Engine disposal aborts blocked fetch and warm operations and awaits in-flight refreshes, so shutdown cannot leave a refresh capable of activating after disposal. `refreshDiagnostics()` exposes bounded state, revision, digest, generation, ETag, and the last failure for operator telemetry.
 
+A failed check throws a `WorkflowRefreshError` whose `reason` names the outcome: `source`, `integrity`, `identity`, `contract`, `runtime`, `warming`, `conflict`, `cancelled`, `stopped`, `not-registered`, or `internal`. Your own `fetch`, `validateRuntime`, and `warm` callbacks keep their message on the thrown error and as its `cause`, and diagnostics record the reason beside it. `refreshStatus()` also lists a registered source that was never checked as `idle`, and reports the polling policy, current backoff, and next check while polling runs.
+
+Over the wire, `weft.workflows.refresh` (scope `workflows:admin`) runs one check, and `weft.workflows.refresh.diagnostics` (scope `workflows:read`) reads every source with its candidate beside the revision active now. Both report a failure as its bounded `reason` and never as your callback's message, which can name a path or a credentialed URL. Registering a source is not an operation, because a source is code the host supplies.
+
 ## What runs after activation
 
 Lazy execution resolves a registered source for the selected revision. New runs persist the resolved revision during admission; recovery resolves that persisted revision rather than substituting whichever source is active now. Keep old source descriptors and loader capabilities available for as long as their runs can recover.
