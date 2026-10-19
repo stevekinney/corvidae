@@ -308,7 +308,8 @@ describe('the admission abort listener (correction)', () => {
       messageId: undefined,
       signal,
     });
-    expect((await admission.settled()).outcome).toBe('available');
+    const settlement = await admission.settled();
+    expect(settlement.outcome).toBe('available');
     await admission.closed();
 
     expect(added).toBe(1);
