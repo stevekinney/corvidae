@@ -210,6 +210,7 @@ export type {
   GeneratedMediaAdmission,
   GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
+  GeneratedMediaRetentionRequest,
   GeneratedMediaSettlement,
   InlineMediaContent,
   ManagedAssetReference,

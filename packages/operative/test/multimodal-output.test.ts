@@ -1897,3 +1897,56 @@ describe('streamed sibling admissions (correction 3)', () => {
     },
   );
 });
+
+describe('retaining the assets a committed row references (correction 3)', () => {
+  it('tells the port about the committed row and its managed parts once', async () => {
+    const admitter = createScriptedMediaAdmitter({ retention: 'record' });
+
+    const result = await run(
+      baseOptions(
+        createMockGenerate([
+          {
+            content: 'Here.',
+            parts: [{ type: 'text', text: 'Here.' }, inlineImage],
+            toolCalls: [],
+          },
+        ]),
+        { generatedMediaAdmitter: admitter.port, runId: 'run-keep' },
+      ),
+    );
+
+    expect(result.finishReason).toBe('stop-condition');
+    expect(admitter.retained).toHaveLength(1);
+    expect(admitter.retained[0]).toMatchObject({
+      runId: 'run-keep',
+      messageId: 'run-keep:step:0',
+      parts: [{ type: 'image', source: { kind: 'managed-asset', assetId: 'asset-1' } }],
+    });
+    expect(result.steps[0]?.messageId).toBe('run-keep:step:0');
+  });
+
+  it('is not called for a row with no media', async () => {
+    const admitter = createScriptedMediaAdmitter({ retention: 'record' });
+
+    await run(
+      baseOptions(createMockGenerate([{ content: 'Plain.', toolCalls: [] }]), {
+        generatedMediaAdmitter: admitter.port,
+      }),
+    );
+
+    expect(admitter.retained).toEqual([]);
+  });
+
+  it('fails the step when the port cannot keep the asset the row points at', async () => {
+    const admitter = createScriptedMediaAdmitter({ retention: 'fail' });
+
+    const result = await run(
+      baseOptions(createMockGenerate([{ content: '', parts: [inlineImage], toolCalls: [] }]), {
+        generatedMediaAdmitter: admitter.port,
+      }),
+    );
+
+    expect(result.finishReason).toBe('error');
+    expect((result.error as Error).message).toContain('retention unavailable');
+  });
+});

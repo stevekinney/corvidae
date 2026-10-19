@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { AnyToolbox } from 'armorer';
-import type { MultiModalContent } from 'conversationalist';
+import type { MediaContent, MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
@@ -494,6 +494,23 @@ export async function runStep(
     streamedRowId,
     rowId: assistantMessageIdentifier(deps.runId, step),
   });
+
+  // The row now points at the assets it carries. A port that retains generated assets claims them
+  // here, so none can expire while the row exists; the claim is released with the row's lifecycle.
+  const retain = deps.generatedMediaAdmitter?.retainCommitted?.bind(deps.generatedMediaAdmitter);
+  if (retain !== undefined && messageId !== undefined) {
+    const managed = parts.filter(
+      (part): part is MediaContent => 'source' in part && part.source.kind === 'managed-asset',
+    );
+    if (managed.length > 0) {
+      try {
+        await retain({ runId: deps.runId, messageId, parts: managed });
+      } catch (error) {
+        emitter?.dispatch(new RunErrorEvent(step, error, 'output'));
+        return { kind: 'error', error, errorKind: 'output' };
+      }
+    }
+  }
 
   // A step that committed no row (a response with tool calls and no parts) would otherwise lose
   // its metadata (the request's media lineage): stamp the lineage on the step's first tool-call

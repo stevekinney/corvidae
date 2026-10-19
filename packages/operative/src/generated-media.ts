@@ -67,6 +67,24 @@ export interface GeneratedMediaAdmitter {
   admitAll?(
     requests: readonly GeneratedMediaAdmissionRequest[],
   ): Promise<readonly GeneratedMediaAdmission[]>;
+  /**
+   * Called once a step's row is committed, with the row's id and the `managed-asset` parts it
+   * carries. A port that keeps generated assets under a retention policy registers its claim here,
+   * so an asset a persisted row references cannot expire while the row exists, and releases it with
+   * the row's own lifecycle. A part this port did not admit is its to ignore. A rejection fails the
+   * step: the row points at an asset nothing is keeping.
+   */
+  retainCommitted?(request: GeneratedMediaRetentionRequest): Promise<void>;
+}
+
+/** What {@link GeneratedMediaAdmitter.retainCommitted} is told about one committed row. */
+export interface GeneratedMediaRetentionRequest {
+  /** The run that committed the row; `undefined` for a run with no id. */
+  readonly runId: string | undefined;
+  /** The id of the committed assistant row. */
+  readonly messageId: string;
+  /** The row's media parts whose source is a managed asset. */
+  readonly parts: readonly MediaContent[];
 }
 
 /** What a hook, adapter or streaming wrapper passes in: the step supplies the rest. */

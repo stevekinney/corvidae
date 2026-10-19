@@ -2,6 +2,7 @@ import type {
   GeneratedMediaAdmission,
   GeneratedMediaAdmissionRequest,
   GeneratedMediaAdmitter,
+  GeneratedMediaRetentionRequest,
   GeneratedMediaSettlement,
   ManagedAssetReference,
 } from '../generated-media';
@@ -24,6 +25,8 @@ export interface ScriptedMediaAdmitter {
   readonly admissions: ScriptedAdmissionRecord[];
   /** The size of each `admitAll` batch the port received; empty for a port with no batch call. */
   readonly batches: number[];
+  /** Every `retainCommitted` call the port received; empty for a port with no retention call. */
+  readonly retained: GeneratedMediaRetentionRequest[];
 }
 
 /**
@@ -46,6 +49,8 @@ export function createScriptedMediaAdmitter(
     modeAt?: (position: number) => ScriptedAdmissionMode | undefined;
     /** Gives the port an `admitAll`, as Bureau's has, recording each batch's size. */
     batch?: boolean;
+    /** Gives the port a `retainCommitted`, recording each call; `'fail'` makes it reject. */
+    retention?: 'record' | 'fail';
   } = {},
 ): ScriptedMediaAdmitter {
   const {
@@ -56,11 +61,21 @@ export function createScriptedMediaAdmitter(
     onAdmit,
     modeAt,
     batch = false,
+    retention,
   } = options;
   const admissions: ScriptedAdmissionRecord[] = [];
   const batches: number[] = [];
+  const retained: GeneratedMediaRetentionRequest[] = [];
 
   const port: GeneratedMediaAdmitter = {
+    ...(retention === undefined
+      ? {}
+      : {
+          async retainCommitted(request: GeneratedMediaRetentionRequest) {
+            retained.push(request);
+            if (retention === 'fail') throw new Error('retention unavailable');
+          },
+        }),
     ...(batch
       ? {
           async admitAll(requests: readonly GeneratedMediaAdmissionRequest[]) {
@@ -135,5 +150,5 @@ export function createScriptedMediaAdmitter(
     },
   };
 
-  return { port, admissions, batches };
+  return { port, admissions, batches, retained };
 }
