@@ -299,3 +299,189 @@ describe('the approvals the conversation waits on', () => {
     expect(session.approvals).toEqual([]);
   });
 });
+
+/** A fetch whose run stream starts and then waits, recording every request it is asked for. */
+function runThatWaits(): { fetch: Fetcher; requests: string[]; finish: () => void } {
+  const requests: string[] = [];
+  let close: (() => void) | undefined;
+  const fetchStub: Fetcher = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    requests.push(`${init?.method ?? 'GET'} ${url}`);
+    if (!url.includes('/agents/')) return sse([{ type: 'RUN_ERROR', message: 'gone', code: 'X' }]);
+    const open = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encode = (event: unknown) =>
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+        encode({
+          ...started,
+          metadata: { '@lostgradient/bureau': { runId: 'native-1', sessionId: THREAD } },
+        });
+        close = () => {
+          encode(finished);
+          controller.close();
+        };
+        init?.signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+      },
+    });
+    return new Response(open, { headers: { 'content-type': 'text/event-stream' } });
+  };
+  return { fetch: fetchStub, requests, finish: () => close?.() };
+}
+
+/** A session over `run`, and a promise for the moment its run has begun and is being read. */
+function openOver(run: { fetch: Fetcher }) {
+  let begun: (() => void) | undefined;
+  const running = new Promise<void>((resolve) => {
+    begun = resolve;
+  });
+  const session = new ChatSessionState({
+    sessionId: THREAD,
+    agentName: () => 'assistant',
+    fetch: run.fetch,
+    onRunStarted: () => begun?.(),
+  });
+  sessions.push(session);
+  return { session, running };
+}
+
+describe('leaving the session', () => {
+  test('leaves the run going, and only a stop cancels it', async () => {
+    const run = runThatWaits();
+    const { session, running } = openOver(run);
+    const turn = session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Start' }, [])
+      .catch(() => undefined);
+    await running;
+
+    session.dispose();
+    await turn;
+
+    expect(run.requests.filter((entry) => entry.includes('/cancel'))).toEqual([]);
+  });
+
+  test('a stop cancels the run', async () => {
+    const run = runThatWaits();
+    const { session, running } = openOver(run);
+    const turn = session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Start' }, [])
+      .catch(() => undefined);
+    await running;
+
+    await session.controller.stop();
+    await turn;
+
+    expect(run.requests.some((entry) => entry.includes('/cancel'))).toBe(true);
+  });
+});
+
+describe('a run that waits on a person’s answer', () => {
+  const wait = {
+    id: 'human-wait:native-1:environment:0',
+    reason: 'human-wait',
+    message: 'Which environment should the release go to?',
+  };
+
+  test('shows the question, and the next message answers it and not a new run', async () => {
+    const bodies: Array<{ messages: unknown[]; resume?: unknown }> = [];
+    const session = open(async (_input, init) => {
+      bodies.push(JSON.parse(bodyText(init)));
+      return bodies.length === 1
+        ? sse([started, { ...finished, outcome: { type: 'interrupt', interrupts: [wait] } }])
+        : sse([
+            { ...started, runId: 'run-2' },
+            { ...finished, runId: 'run-2' },
+          ]);
+    });
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    expect(session.humanRequests).toEqual([{ interruptId: wait.id, message: wait.message }]);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'staging' }, []);
+
+    expect(bodies[1]?.messages).toEqual([]);
+    expect(bodies[1]?.resume).toEqual([
+      {
+        interruptId: wait.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'staging' },
+      },
+    ]);
+    expect(session.humanRequests).toEqual([]);
+    expect(session.failure).toBeUndefined();
+  });
+});
+
+describe('an attach that is still opening', () => {
+  test('holds a message until it is done, so the message goes to the run the attach joins', async () => {
+    const requests: string[] = [];
+    let release: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const session = open(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url.includes('/threads/') && url.endsWith('/run')) {
+        await held;
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (url.endsWith('/messages')) return Response.json({ threadId: THREAD, messages: [] });
+      return sse([started, finished]);
+    });
+
+    const attaching = session.attach();
+    const sent = session.adapter.sendMessage({ role: 'user', content: 'Hello' }, []);
+    for (let turn = 0; turn < 5; turn += 1) await Bun.sleep(0);
+
+    expect(requests.some((entry) => entry.startsWith('POST'))).toBe(false);
+    release?.();
+    await attaching;
+    await sent;
+    expect(requests.some((entry) => entry.startsWith('POST'))).toBe(true);
+  });
+});
+
+describe('a failed attach', () => {
+  test('is the session’s failure, not an unhandled rejection', async () => {
+    const session = open(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+
+    await session.attach();
+
+    expect(session.failure).toContain('Failed to fetch');
+    expect(session.attaching).toBe(false);
+  });
+});
+
+describe('the failure a person is told of', () => {
+  const fail = () => sse([{ type: 'RUN_ERROR', message: 'The thread is busy.', code: 'X' }]);
+
+  test('is cleared when a later turn goes through', async () => {
+    let healthy = false;
+    const session = open(async () => (healthy ? sse([started, finished]) : fail()));
+    await session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Hi' }, [])
+      .catch(() => undefined);
+    expect(session.failure).toBe('The thread is busy.');
+
+    healthy = true;
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Again' }, []);
+
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('is shown again when the same thing fails again after it was dismissed', async () => {
+    const session = open(async () => fail());
+    await session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Hi' }, [])
+      .catch(() => undefined);
+
+    session.dismissFailure();
+    expect(session.failure).toBeUndefined();
+    await session.controller.adapter
+      .sendMessage({ role: 'user', content: 'Again' }, [])
+      .catch(() => undefined);
+
+    expect(session.failure).toBe('The thread is busy.');
+  });
+});

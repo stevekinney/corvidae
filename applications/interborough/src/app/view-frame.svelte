@@ -54,6 +54,7 @@
     search: new URLSearchParams(router.current.search),
   }));
   const copy = VIEW_COPY[initial.view];
+  const notFoundCopy = copy.notFoundByPattern?.[initial.pattern ?? ''] ?? copy.notFound;
   const definition = VIEWS[initial.view];
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
@@ -98,7 +99,7 @@
       if (probe === undefined || creating) return 'ready';
       if (probeQuery.isError) {
         if (isForbiddenFault(probeQuery.error)) return 'forbidden';
-        return copy.notFound !== undefined && isNotFoundFault(probeQuery.error)
+        return notFoundCopy !== undefined && isNotFoundFault(probeQuery.error)
           ? 'not-found'
           : 'error';
       }
@@ -165,12 +166,8 @@
         {/if}
       {/snippet}
     </EmptyState>
-  {:else if state === 'not-found' && copy.notFound}
-    <EmptyState
-      title={copy.notFound.title}
-      description={copy.notFound.description}
-      headingLevel={1}
-    >
+  {:else if state === 'not-found' && notFoundCopy}
+    <EmptyState title={notFoundCopy.title} description={notFoundCopy.description} headingLevel={1}>
       {#snippet icon()}<SearchX size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
   {:else if state === 'error'}

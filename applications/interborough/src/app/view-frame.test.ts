@@ -365,10 +365,12 @@ describe('the chat list, a new chat, and the agents', () => {
         'bureau.agents.list': () => agents(...(entries as Array<Partial<typeof AGENT>>)),
       });
       const { container, findByRole, unmount } = mount('chat', { pattern: '/chat/new' });
+      // It is the agent that is missing, so the words are about the agent and not the session.
+      const words = VIEW_COPY.chat.notFoundByPattern?.['/chat/new'];
 
-      expect(
-        await findByRole('heading', { level: 1, name: VIEW_COPY.chat.notFound?.title ?? '' }),
-      ).not.toBeNull();
+      expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+      expect(container.textContent).toContain(words?.description ?? '');
+      expect(words?.title).not.toBe(VIEW_COPY.chat.notFound?.title);
       expect(frame(container).dataset['state']).toBe('not-found');
       unmount();
       restore?.();

@@ -80,26 +80,33 @@ function reply(content: string): ScriptedGenerateStep {
   return { kind: 'respond', response: replyResponse(content) };
 }
 
-function call(name: string, argumentsObject: Record<string, unknown>): ScriptedGenerateStep {
-  return { kind: 'respond', response: callResponse(name, argumentsObject) };
-}
-
 /** The signal the seeded `request-human-input` agent parks on, and the question it asks. */
 export const HUMAN_INPUT_SIGNAL = 'environment';
 export const HUMAN_INPUT_PROMPT = 'Which environment should the release go to?';
 
 /**
- * A script that picks its response by the run's step number, so every run starts from its first
- * response however many runs came before, and a run that parks resumes at the next one. The last
- * response repeats if a run goes past the end.
+ * The script of `request-human-input`: it asks its question, and once the person's answer is the
+ * last thing in the conversation (the user row a delivered signal appends) it thanks them. It
+ * answers from where the conversation has got to, not from the run's step number, and gives each
+ * question's call the number of the calls before it, because a tool call identifier names one call
+ * in a session: a second question on a session that already holds the first one's call would
+ * otherwise fail without ever ending the run's stream.
  */
-function byStep(steps: readonly ScriptedGenerateStep[]): GenerateFunction {
-  return async ({ step }) => {
-    const chosen = steps[Math.min(step, steps.length - 1)];
-    if (chosen === undefined || chosen.kind !== 'respond') {
-      throw new Error('A seeded script needs at least one response.');
+function humanInputGenerate(): GenerateFunction {
+  return async ({ conversation }) => {
+    const messages = conversation.getMessages();
+    const answer = messages.at(-1);
+    if (answer?.role === 'user' && typeof answer.content === 'string') {
+      if (answer.content.startsWith(`[signal:${HUMAN_INPUT_SIGNAL}]`)) {
+        return replyResponse('Thanks, the release will go to the environment you named.');
+      }
     }
-    return chosen.response;
+    const asked = messages.filter((message) => message.toolCall !== undefined).length;
+    return callResponse(
+      'requestHumanInput',
+      { signalName: HUMAN_INPUT_SIGNAL, prompt: HUMAN_INPUT_PROMPT },
+      `seeded-requestHumanInput-${asked + 1}`,
+    );
   };
 }
 
@@ -223,13 +230,7 @@ export function createSeededAgents(approvalSecret: string) {
     'request-human-input': createAgent({
       name: 'request-human-input',
       description: 'Asks a human which environment the release should go to.',
-      generate: byStep([
-        call('requestHumanInput', {
-          signalName: HUMAN_INPUT_SIGNAL,
-          prompt: HUMAN_INPUT_PROMPT,
-        }),
-        reply('Thanks, the release will go to the environment you named.'),
-      ]),
+      generate: humanInputGenerate(),
       // The run ends on the request so it parks; once an operator answers it continues to the
       // reply, which has no tool call.
       stopWhen: [stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()],

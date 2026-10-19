@@ -7,6 +7,10 @@
  * that run: its stream restores the transcript from the mount's snapshot and carries on live. A
  * session with nothing going has its transcript read from the mount (`wiring.history`), so a
  * finished session opens on all of it, in order.
+ *
+ * Leaving the page ends the session's streams but not its run: only a stop cancels the run. A
+ * message sent while the attach is still opening waits for it, so it goes to the run the attach
+ * joins and not to the mount as a second run.
  */
 import {
   assertRunInputAccepted,
@@ -19,7 +23,7 @@ import {
 } from '@lostgradient/chat';
 
 import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
-import { createChatRunWiring, type ChatRunWiring } from './run-wiring.ts';
+import { createChatRunWiring, type ChatRunWiring, type HumanRequest } from './run-wiring.ts';
 
 export type ChatSessionOptions = {
   /** The session's identifier, which is the conversation's and the AG-UI thread's. */
@@ -41,12 +45,25 @@ function inputPayload(message: MessageInput): string {
 export class ChatSessionState {
   conversation = $state.raw<ConversationHistory>(createConversationHistory({ id: '' }));
   streaming = $state(false);
-  /** What the last failed turn said, for a person who needs to know why a row is marked failed. */
+  /**
+   * What the last failed turn said, for a person who needs to know why a row is marked failed. It
+   * is cleared when the next turn begins or when the person dismisses it, so the same failure
+   * again is told again.
+   */
   failure = $state<string | undefined>(undefined);
+  /** The questions the run is waiting on the person to answer; the next message answers one. */
+  humanRequests = $state.raw<readonly HumanRequest[]>([]);
   /** Whether the session opened on a run that was going, and is still reading it. */
   attaching = $state(false);
 
   readonly controller: ChatSessionController;
+  /**
+   * What the page hands to Chat: the controller's adapter, whose sends wait for the attach to
+   * finish. The controller starts a run for a message sent while nothing is going, and the attach
+   * is the thing that finds out whether something is.
+   */
+  readonly adapter: ChatSessionController['adapter'];
+  #attachment: Promise<void> = Promise.resolve();
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
@@ -59,6 +76,9 @@ export class ChatSessionState {
       ...(options.onRunStarted === undefined ? {} : { onRunStarted: options.onRunStarted }),
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+      onHumanRequests: (requests) => {
+        this.humanRequests = requests;
+      },
     });
     this.controller = createChatSessionController({
       executionOwner: 'server',
@@ -82,12 +102,37 @@ export class ChatSessionState {
           this.#wiring.resolveToolApproval(toolCallId, resolution),
         onStreamingChange: (streaming) => {
           this.streaming = streaming;
+          // A new turn is a new attempt, and what failed before it is not what it will say.
+          if (streaming) this.failure = undefined;
         },
         onError: (error) => {
           this.failure = error instanceof Error ? error.message : String(error);
         },
       },
     });
+    const adapter = this.controller.adapter;
+    this.adapter = {
+      ...adapter,
+      sendMessage: async (message, attachments) => {
+        await this.#attachment;
+        return adapter.sendMessage(message, attachments);
+      },
+      ...(adapter.sendRunInput === undefined
+        ? {}
+        : {
+            sendRunInput: async (
+              ...input: Parameters<NonNullable<typeof adapter.sendRunInput>>
+            ) => {
+              await this.#attachment;
+              return adapter.sendRunInput?.(...input);
+            },
+          }),
+    };
+  }
+
+  /** Stops telling the person of the last failure. */
+  dismissFailure(): void {
+    this.failure = undefined;
   }
 
   /** The tool approvals the conversation is waiting on. */
@@ -100,7 +145,13 @@ export class ChatSessionState {
    * controller, under a row the person never sees, so everything a turn does (streaming text,
    * follow-ups, approvals) works on a run the page did not start.
    */
-  async attach(): Promise<void> {
+  attach(): Promise<void> {
+    const attached = this.#attach();
+    this.#attachment = attached;
+    return attached;
+  }
+
+  async #attach(): Promise<void> {
     this.attaching = true;
     try {
       const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
@@ -118,6 +169,10 @@ export class ChatSessionState {
       // The run is going, so the transcript is restored now and the person sees it while the run
       // carries on, not at its end. The terminal history replaces each of these rows with its own.
       this.restore(restored);
+    } catch (error) {
+      // The page opened on a session it could not read: it says so, and it is not an unhandled
+      // rejection with an empty transcript.
+      this.failure = error instanceof Error ? error.message : String(error);
     } finally {
       this.attaching = false;
     }
@@ -139,6 +194,8 @@ export class ChatSessionState {
   }
 
   dispose(): void {
+    // Leaving the page is not a stop: the run is the Bureau's, and it goes on.
+    this.#wiring.detach();
     this.#abort.abort();
     this.controller.dispose();
     void this.#wiring.discardAttach();

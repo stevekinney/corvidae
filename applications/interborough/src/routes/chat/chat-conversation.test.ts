@@ -164,10 +164,38 @@ describe('an existing session', () => {
     expect(heading.textContent).toBe('Plan the week');
     expect(container.querySelectorAll('.weft-chat-header__agent')).toHaveLength(1);
     expect(queryByRole('combobox', { name: 'Agent' })).toBeNull();
-    // Reading the session's title must not ask for it again each time the answer arrives.
-    await Bun.sleep(100);
-    const asked = served.calls.filter((call) => call.method === 'bureau.contexts.get');
-    expect(asked.length).toBeLessThanOrEqual(2);
+  });
+
+  test('reads its title once when it opens and once more when its run is over, and never in a loop', async () => {
+    // A loop never lets a timer run, so a test that waits on a clock waits for ever. This one counts
+    // the reads instead, and the read past the cap never answers, which stops a loop where it is.
+    const READ_CAP = 6;
+    let reads = 0;
+    let transcriptReads = 0;
+    const served = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) {
+        transcriptReads += 1;
+        return Response.json({ threadId: 'session-1', messages: [] });
+      }
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (typeof init?.body !== 'string' || !init.body.includes('bureau.contexts.get')) {
+        return undefined;
+      }
+      reads += 1;
+      return reads > READ_CAP ? new Response(new ReadableStream({ start() {} })) : undefined;
+    });
+    restore = served.restore;
+    landAt('/chat/session-1');
+
+    mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'assistant' });
+
+    // The page has read its title and its transcript. Its own reads are the one it opens with and,
+    // at most, the one its idle session asks again; any more is a loop.
+    await waitFor(() => expect(reads).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(transcriptReads).toBeGreaterThanOrEqual(1));
+    expect(reads).toBeLessThanOrEqual(2);
   });
 
   test('restores a finished session’s transcript when it opens', async () => {
@@ -195,5 +223,86 @@ describe('an existing session', () => {
     });
 
     expect(await findByText('Start with Monday.')).not.toBeNull();
+  });
+});
+
+describe('a run that waits on a person’s answer', () => {
+  const WAIT = {
+    id: 'human-wait:native-1:environment:0',
+    reason: 'human-wait',
+    message: 'Which environment should the release go to?',
+  };
+
+  test('shows the question above the transcript, and the next message answers it', async () => {
+    const bodies: Array<{ messages: unknown[]; resume?: unknown }> = [];
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+      const first = bodies.length === 1;
+      return sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: `run-${bodies.length}` },
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: `run-${bodies.length}`,
+          outcome: first ? { type: 'interrupt', interrupts: [WAIT] } : { type: 'success' },
+        },
+      ]);
+    }).restore;
+    landAt('/chat/session-1');
+    const { container, findByText, queryByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Ship it');
+
+    expect(await findByText(WAIT.message)).not.toBeNull();
+    await sendMessage(container, 'staging');
+    await waitFor(() => expect(queryByText(WAIT.message)).toBeNull());
+    expect(bodies[1]?.resume).toEqual([
+      {
+        interruptId: WAIT.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'staging' },
+      },
+    ]);
+  });
+});
+
+describe('what went wrong', () => {
+  test('is shown when the session could not be read, and again when the same thing fails after a dismissal', async () => {
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url) => {
+      if (url.endsWith('/messages') || url.includes('/threads/')) {
+        throw new TypeError('Failed to fetch');
+      }
+      if (url.includes('/agents/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'The thread is busy.', code: 'X' }]);
+      }
+      return undefined;
+    }).restore;
+    landAt('/chat/session-1');
+    const { container, findByText, findByRole, queryByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+
+    // The attach failed: the page says so instead of showing an empty transcript.
+    expect(await findByText('Failed to fetch')).not.toBeNull();
+
+    await sendMessage(container, 'Hello');
+    expect(await findByText('The thread is busy.')).not.toBeNull();
+    await fireEvent.click(await findByRole('button', { name: 'Dismiss alert' }));
+    await waitFor(() => expect(queryByText('The thread is busy.')).toBeNull());
+
+    await sendMessage(container, 'Hello again');
+    expect(await findByText('The thread is busy.')).not.toBeNull();
   });
 });

@@ -21,6 +21,8 @@ export type ViewCopy = {
   readonly forbidden: Pick<ViewStateCopy, 'title'>;
   /** Present only for a view that opens one item by its address. */
   readonly notFound?: ViewStateCopy;
+  /** The words for a route of the view whose missing thing is not the one `notFound` names. */
+  readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
 };
 
 /** The label on the control that asks a view to try again. */
@@ -59,6 +61,9 @@ export const CHAT_COPY = {
   agentsTitle: 'Agents',
   agentSessions: 'Chats with this agent',
   approvalTitle: 'Needs your approval',
+  humanRequestTitle: 'The agent is asking',
+  humanRequestFallback: 'The agent is waiting for your answer.',
+  humanRequestHint: 'Your next message answers it.',
   approve: 'Approve',
   deny: 'Deny',
   failureTitle: 'The agent did not answer',
@@ -96,6 +101,14 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'This conversation was not found',
       description:
         'It may have been deleted, or it may belong to someone else. Open a conversation from the list.',
+    },
+    // A new chat is for an agent, and it is the agent that is missing.
+    notFoundByPattern: {
+      '/chat/new': {
+        title: 'This agent was not found',
+        description:
+          'It may have been deleted, or it may not be published. Choose an agent from the list to start a chat.',
+      },
     },
   },
   agents: {

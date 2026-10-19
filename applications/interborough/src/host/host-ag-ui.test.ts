@@ -180,3 +180,32 @@ describe('the tool-runner approval over the mount', () => {
     expect(denied).toContain('The refund of order order-1001 was not issued.');
   });
 });
+
+describe('the request-human-input question over the mount', () => {
+  test('answering it finishes the run, and a later turn asks its own question', async () => {
+    const host = await start();
+    const first = await streamOf(host, 'request-human-input', body('thread-question'));
+    expect(first).toContain('"reason":"human-wait"');
+
+    const answered = await streamOf(
+      host,
+      'request-human-input',
+      body('thread-question', {
+        messages: [],
+        resume: [
+          {
+            interruptId: interruptOf(first),
+            status: 'resolved',
+            payload: { decision: 'approve', answer: 'staging' },
+          },
+        ],
+      }),
+    );
+    expect(answered).toContain('"type":"success"');
+
+    // The next turn's call is its own: a call identifier names one call in a conversation, and a
+    // run that repeated the first one's would fail without ever ending its stream.
+    const next = await streamOf(host, 'request-human-input', body('thread-question'));
+    expect(next).toContain('"reason":"human-wait"');
+  });
+});

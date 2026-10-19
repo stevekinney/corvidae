@@ -186,8 +186,9 @@ test.describe('a new chat', () => {
       await page.goto(`/chat/new?agent=${agent}`);
       const frame = page.locator('[data-view="chat"]');
       await expect(frame).toHaveAttribute('data-state', 'not-found');
+      // It is the agent that is missing, so the page says so and not that a conversation is.
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-        VIEW_COPY.chat.notFound?.title ?? '',
+        VIEW_COPY.chat.notFoundByPattern?.['/chat/new']?.title ?? '',
       );
     }
   });
@@ -248,38 +249,66 @@ test.describe('returning to a session', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`${label} first topic`);
   });
 
-  test('a finished session opens on its whole transcript, in order, after a reload and after navigating away and back', async ({
-    page,
-  }) => {
+  /**
+   * A new chat taken through two questions, so its transcript has a first and a second turn. The
+   * first question is unique to the session, so a list of every session names this one alone.
+   */
+  async function finishedSession(page: Page): Promise<{ address: string; first: string }> {
+    const first = `Question one ${crypto.randomUUID().slice(0, 8)}`;
     await page.goto('/chat/new');
-    await send(page, 'Question one');
+    await send(page, first);
     await expect(page).toHaveURL(sessionUrl);
     await expect(page.getByText('Hello from the assistant.')).toHaveCount(1);
     await send(page, 'Question two');
     await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
-    const address = page.url();
+    return { address: page.url(), first };
+  }
 
-    const inOrder = async () => {
-      const content = (await page.locator('[data-session]').textContent()) ?? '';
-      const positions = ['Question one', 'Hello from the assistant.', 'Question two'].map((text) =>
-        content.indexOf(text),
-      );
-      expect(positions.every((position) => position >= 0)).toBe(true);
-      expect(positions).toEqual(positions.toSorted((left, right) => left - right));
-      expect(content.lastIndexOf('Hello from the assistant.')).toBeGreaterThan(
-        content.indexOf('Question two'),
-      );
-    };
+  /** That the transcript on screen is the whole thread, in the order it happened. */
+  async function expectWholeTranscript(page: Page, first: string): Promise<void> {
+    await expect(page.getByRole('log').getByText(first)).toBeVisible();
+    await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
+    const content = (await page.locator('[data-session]').textContent()) ?? '';
+    const positions = [first, 'Hello from the assistant.', 'Question two'].map((text) =>
+      content.indexOf(text),
+    );
+    expect(positions.every((position) => position >= 0)).toBe(true);
+    expect(positions).toEqual(positions.toSorted((left, right) => left - right));
+    expect(content.lastIndexOf('Hello from the assistant.')).toBeGreaterThan(
+      content.indexOf('Question two'),
+    );
+  }
+
+  test('a finished session opens on its whole transcript, in order, after a reload and after navigating away and back', async ({
+    page,
+  }) => {
+    const { address, first } = await finishedSession(page);
 
     await page.reload();
-    await expect(page.getByRole('log').getByText('Question two')).toBeVisible();
-    await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
-    await inOrder();
+    await expectWholeTranscript(page, first);
 
     await page.goto('/runs');
     await page.goto(address);
-    await expect(page.getByRole('log').getByText('Question one')).toBeVisible();
-    await expect(page.getByText('Hello from the assistant.')).toHaveCount(2);
-    await inOrder();
+    await expectWholeTranscript(page, first);
+  });
+
+  test('a finished session opens on its whole transcript when the person leaves it inside the app and comes back', async ({
+    page,
+  }) => {
+    const { address, first } = await finishedSession(page);
+
+    // A link and Back, and a list row: no reload, so nothing of the page is carried but the app.
+    await page.getByRole('link', { name: 'Agents', exact: true }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+    await page.goBack();
+    await expect(page).toHaveURL(address);
+    await expectWholeTranscript(page, first);
+
+    await page.getByRole('link', { name: 'Agents', exact: true }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+    await page.getByRole('link', { name: 'Chat', exact: true }).first().click();
+    await page.getByRole('button', { name: new RegExp(first) }).click();
+    await expect(page).toHaveURL(address);
+    await expectWholeTranscript(page, first);
   });
 });

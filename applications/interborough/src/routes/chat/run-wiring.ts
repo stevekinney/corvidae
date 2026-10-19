@@ -18,7 +18,14 @@
  *
  * The AG-UI transport drops the interrupts that end a run, so the wiring reads them from the raw
  * events. A run that stops on a tool approval is shown to the chat as a result row parked on
- * `action_required`, which is what puts the approval in the conversation.
+ * `action_required`, which is what puts the approval in the conversation. A run that stops on a
+ * question for the person (a `human-wait` interrupt) is told to the page
+ * ({@link ChatRunWiringOptions.onHumanRequests}), and the person's next message is sent as the
+ * answer: a resume, not a new run, because the run is parked and a new run would be refused as busy.
+ *
+ * A request is committed only once the mount has answered it. The first event of the response is
+ * the answer, so a request that failed before one keeps what it carried (the decisions on
+ * approvals, the run identifier) for the retry, which the mount recognises by that identifier.
  */
 import {
   EventType,
@@ -59,6 +66,14 @@ function isMessagesSnapshot(event: unknown): event is MessagesSnapshotEvent {
   return parsed.success && parsed.data.type === EventType.MESSAGES_SNAPSHOT;
 }
 
+/** A question a run is waiting on a person to answer. */
+export type HumanRequest = {
+  /** The interrupt the answer resolves. */
+  readonly interruptId: string;
+  /** What the agent asked, or nothing when it said no more than that it is waiting. */
+  readonly message: string;
+};
+
 export type ChatRunWiringOptions = {
   /**
    * The conversation on screen. A run that follows an approval shows its tool call again, and a
@@ -75,6 +90,11 @@ export type ChatRunWiringOptions = {
    * began elsewhere and does not call it.
    */
   readonly onRunStarted?: () => void;
+  /**
+   * Told what the run is waiting on a person to answer: the questions a run ended on, and none
+   * when a run begins. The person's next message answers the first of them.
+   */
+  readonly onHumanRequests?: (requests: readonly HumanRequest[]) => void;
 };
 
 export type ChatRunWiring = {
@@ -97,6 +117,11 @@ export type ChatRunWiring = {
   history(threadId: string, signal?: AbortSignal): Promise<ConversationHistory | undefined>;
   /** Drops an attach that was opened and never read. */
   discardAttach(): Promise<void>;
+  /**
+   * Leaves the run it is reading going when the page's own signal ends, as it does when the person
+   * leaves the chat. Without it the end of the signal is a Stop, which cancels the Bureau's run.
+   */
+  detach(): void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -183,6 +208,19 @@ function onlyRow(
   return { ...conversation, ids: [message.id], messages: { [message.id]: message } };
 }
 
+/** The questions among `interrupts`, as the page shows them. */
+function humanRequestsOf(interrupts: readonly Interrupt[]): HumanRequest[] {
+  return interrupts
+    .filter((interrupt) => interrupt.reason === 'human-wait')
+    .map((interrupt) => ({ interruptId: interrupt.id, message: interrupt.message ?? '' }));
+}
+
+/** The text of a message, which is what a question is answered with. */
+function textOf(message: ConversationHistory['messages'][string]): string {
+  if (typeof message.content === 'string') return message.content;
+  return message.content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+}
+
 /** The result row an interrupt parks its tool call on, until the user decides. */
 function approvalRow(interrupt: Interrupt, toolCallId: string): ToolResult {
   return {
@@ -215,14 +253,30 @@ function withApprovalRows(
   }, conversation);
 }
 
+/**
+ * The turn's frames, with the history the run ends with made what the chat should show: each tool
+ * call that is waiting on the user parked on its approval, and the person's answer to a question
+ * left out. The run appends its own row for an answer (`ag-ui-resume.ts`), which is in the history
+ * it ends with, so the row the person typed would be a second one, ahead of the call it answers.
+ */
 async function* parkApprovals(
   frames: AsyncIterable<ChatStreamEvent>,
   interrupts: () => readonly Interrupt[],
+  answerRowId: string | undefined,
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
-    yield frame.type === 'run.completed'
-      ? { ...frame, conversation: withApprovalRows(frame.conversation, interrupts()) }
-      : frame;
+    if (frame.type !== 'run.completed') {
+      yield frame;
+      continue;
+    }
+    const parked = withApprovalRows(frame.conversation, interrupts());
+    yield {
+      ...frame,
+      conversation:
+        answerRowId !== undefined && parked.messages[answerRowId] !== undefined
+          ? removeMessage(parked, answerRowId)
+          : parked,
+    };
   }
 }
 
@@ -272,8 +326,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   const send = options.fetch ?? fetch;
   /** The interrupts the latest run ended on, read from its raw events. */
   let interrupts: readonly Interrupt[] = [];
-  let pendingResume: ResumeEntry | undefined;
+  /** The decisions on approvals, by interrupt, that no request the mount answered has carried. */
+  const decisions = new Map<string, ResumeEntry>();
+  /** The start the mount has not answered, so a retry of the same request is the same run. */
+  let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
+  let detached = false;
 
   /**
    * Stops the Bureau's run: a stop on this page ends this page's stream, and the run goes on
@@ -308,70 +366,160 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         // after it starts, and the calls this stream streams itself arrive after, never before.
         held ??= heldCalls(options.conversation());
         nativeRunId ??= nativeRunIdOf(event);
-        if (started && isRecord(event) && event['type'] === 'RUN_STARTED') {
-          options.onRunStarted?.();
+        if (isRecord(event) && event['type'] === 'RUN_STARTED') {
+          if (started) options.onRunStarted?.();
+          // A run that has begun is waiting on nobody.
+          options.onHumanRequests?.([]);
         }
         const ended = interruptsOf(event);
-        if (ended !== undefined) interrupts = ended;
+        if (ended !== undefined) {
+          interrupts = ended;
+          options.onHumanRequests?.(humanRequestsOf(ended));
+        }
         // A run that follows an approval shows the call it was waiting on again, for a client that
         // did not watch it run. This conversation holds the call, and holds it only once.
         if (isCallEventFor(event, held)) continue;
         yield event;
       }
     } finally {
-      if (signal.aborted && nativeRunId !== undefined) await cancelRun(nativeRunId);
+      // An abort is a Stop only while the page is still here: leaving it ends the signal too, and
+      // the run goes on.
+      if (signal.aborted && !detached && nativeRunId !== undefined) await cancelRun(nativeRunId);
     }
   }
 
-  function runInput(request: ChatSessionRequest, resume: ResumeEntry | undefined): RunAgentInput {
-    const conversation = withoutHiddenRows(request.conversation);
-    const opener = resume === undefined ? undefined : openingTurn(conversation);
+  /** What a start's resume carries, and whether the person's own words are the answer in it. */
+  function resumeFor(conversation: ConversationHistory): {
+    readonly entries: readonly ResumeEntry[];
+    /** The row holding the person's own words, when they are the answer in the resume. */
+    readonly answerRowId: string | undefined;
+  } {
+    if (decisions.size > 0) return { entries: [...decisions.values()], answerRowId: undefined };
+    const waiting = interrupts.find((interrupt) => interrupt.reason === 'human-wait');
+    const answer = waiting === undefined ? undefined : openingTurn(conversation);
+    if (waiting === undefined || answer === undefined) {
+      return { entries: [], answerRowId: undefined };
+    }
+    return {
+      entries: [
+        {
+          interruptId: waiting.id,
+          status: 'resolved',
+          payload: { decision: 'approve', answer: textOf(answer) },
+        },
+      ],
+      answerRowId: answer.id,
+    };
+  }
+
+  function runInput(
+    conversation: ConversationHistory,
+    resume: ReturnType<typeof resumeFor>,
+  ): RunAgentInput {
     const base = {
-      threadId: conversation.id,
-      runId: `run-${crypto.randomUUID()}`,
       tools: [],
       context: [],
       state: {},
       forwardedProps: {},
+      threadId: conversation.id,
     };
-    if (resume === undefined) {
-      return { ...base, messages: agUiConversationAdapter.export(conversation) };
+    if (resume.entries.length === 0) {
+      return {
+        ...base,
+        runId: runIdFor(conversation.id, [], conversation.ids),
+        messages: agUiConversationAdapter.export(conversation),
+      };
     }
+    // The person's answer rides in the resume. As a message too it would be a second row, next to
+    // the one the run appends for the answer.
+    const opener = resume.answerRowId !== undefined ? undefined : openingTurn(conversation);
+    const messages =
+      opener === undefined ? [] : agUiConversationAdapter.export(onlyRow(conversation, opener));
     return {
       ...base,
-      messages:
-        opener === undefined ? [] : agUiConversationAdapter.export(onlyRow(conversation, opener)),
-      resume: [resume],
+      runId: runIdFor(
+        conversation.id,
+        resume.entries,
+        messages.map((message) => message.id),
+      ),
+      messages,
+      resume: [...resume.entries],
     };
   }
 
-  function startEvents(request: ChatSessionRequest): AsyncGenerator<unknown> {
-    const resume = pendingResume;
-    pendingResume = undefined;
-    const input = runInput(request, resume);
-    return readEvents(() =>
-      send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
-        body: JSON.stringify(input),
-        signal: request.signal,
-      }),
+  /** The run identifier a request goes under: the one an unanswered attempt of it already used. */
+  function runIdFor(
+    threadId: string,
+    entries: readonly ResumeEntry[],
+    messageIds: readonly string[],
+  ): string {
+    const fingerprint = JSON.stringify([threadId, messageIds, entries]);
+    if (unanswered?.fingerprint === fingerprint) return unanswered.runId;
+    unanswered = { fingerprint, runId: `run-${crypto.randomUUID()}` };
+    return unanswered.runId;
+  }
+
+  /** What the mount's first event settles: the request it answered is no longer one to repeat. */
+  function acknowledged(sent: readonly ResumeEntry[]): void {
+    unanswered = undefined;
+    for (const entry of sent) {
+      if (decisions.get(entry.interruptId) === entry) decisions.delete(entry.interruptId);
+    }
+    // The questions and approvals of the run before are answered, or refused as the mount sees fit.
+    interrupts = [];
+  }
+
+  async function* untilAnswered(
+    events: AsyncIterable<unknown>,
+    sent: readonly ResumeEntry[],
+  ): AsyncGenerator<unknown> {
+    let answered = false;
+    for await (const event of events) {
+      if (!answered) {
+        answered = true;
+        acknowledged(sent);
+      }
+      yield event;
+    }
+  }
+
+  function startEvents(request: ChatSessionRequest): {
+    readonly events: AsyncGenerator<unknown>;
+    readonly answerRowId: string | undefined;
+  } {
+    const conversation = withoutHiddenRows(request.conversation);
+    const resume = resumeFor(conversation);
+    const input = runInput(conversation, resume);
+    const events = untilAnswered(
+      readEvents(() =>
+        send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
+          body: JSON.stringify(input),
+          signal: request.signal,
+        }),
+      ),
+      resume.entries,
     );
+    return { events, answerRowId: resume.answerRowId };
   }
 
   const transport: ChatSessionTransport = (request) => {
     const attachedStream = attached;
-    const events = attachedStream ?? startEvents(request);
+    const opened =
+      attachedStream === undefined
+        ? startEvents(request)
+        : { events: attachedStream, answerRowId: undefined };
     attached = undefined;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
     const frames = mapAGUIEventsToChatStream(
-      observe(events, request.signal, attachedStream === undefined),
+      observe(opened.events, request.signal, attachedStream === undefined),
       {
         conversation: withoutHiddenRows(request.conversation),
       },
     );
-    return parkApprovals(frames, () => interrupts);
+    return parkApprovals(frames, () => interrupts, opened.answerRowId);
   };
 
   return {
@@ -381,7 +529,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       if (interrupt === undefined) {
         throw new Error('No approval is waiting for this tool call.');
       }
-      pendingResume = resumeEntryFor(interrupt, resolution);
+      decisions.set(interrupt.id, resumeEntryFor(interrupt, resolution));
       return resultFor(toolCallId, resolution);
     },
     async attach(threadId, signal) {
@@ -430,6 +578,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         throw new Error('The Bureau answered with messages this page cannot read.');
       }
       return mergeAGUIMessages(createConversationHistory({ id: threadId }), snapshot.messages);
+    },
+    detach() {
+      detached = true;
     },
     async discardAttach() {
       const dropped = attached;

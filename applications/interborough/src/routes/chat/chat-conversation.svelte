@@ -3,7 +3,8 @@
    * The conversation: the session's title and agent once, the approvals the run is waiting on, and
    * `@lostgradient/chat`'s surface over the session's controller (`chat-session.svelte.ts`). The
    * controller owns what is sent and when, so a message typed while the run is going is a
-   * follow-up and a decision on an approval continues the run.
+   * follow-up and a decision on an approval continues the run. A question the run is waiting on a
+   * person to answer is shown above the transcript, and the next message answers it.
    *
    * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
    * is chosen above the composer, and the first message starts the run. When the run has started
@@ -91,7 +92,6 @@
   }
 
   let deciding = $state(false);
-  let failureDismissed = $state(false);
 
   /** Each approval the conversation waits on, with the name of the tool it is for. */
   const approvals = $derived(
@@ -131,11 +131,6 @@
     if (!untrack(() => isNew)) void session.attach();
     return () => session.dispose();
   });
-
-  $effect(() => {
-    // A new failure is shown even after an earlier one was dismissed.
-    if (session.failure !== undefined) failureDismissed = false;
-  });
 </script>
 
 <section class="weft-chat-route" aria-label={CHAT_COPY.regionLabel} data-session={sessionId}>
@@ -149,8 +144,20 @@
   <!-- A decision continues the run, which the controller refuses while another turn is going. -->
   <ApprovalAlert {approvals} deciding={deciding || session.streaming} onDecide={decide} />
 
-  {#if session.failure !== undefined && !failureDismissed}
-    <Alert variant="danger" dismissible onDismiss={() => (failureDismissed = true)}>
+  <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
+       message sent in between would be a follow-up, so the question waits for the turn's end. -->
+  {#each session.streaming ? [] : session.humanRequests as request (request.interruptId)}
+    <Alert variant="info" class="weft-chat-approval" data-interrupt={request.interruptId}>
+      <p class="weft-chat-approval__title">{CHAT_COPY.humanRequestTitle}</p>
+      <p class="weft-chat-approval__message">
+        {request.message === '' ? CHAT_COPY.humanRequestFallback : request.message}
+      </p>
+      <p class="weft-chat-approval__message">{CHAT_COPY.humanRequestHint}</p>
+    </Alert>
+  {/each}
+
+  {#if session.failure !== undefined}
+    <Alert variant="danger" dismissible onDismiss={() => session.dismissFailure()}>
       <p class="weft-chat-approval__title">{CHAT_COPY.failureTitle}</p>
       <p class="weft-chat-approval__message">{session.failure}</p>
     </Alert>
@@ -173,7 +180,7 @@
     <Chat
       id={`chat-${sessionId}`}
       conversation={session.conversation}
-      adapter={session.controller.adapter}
+      adapter={session.adapter}
       streaming={session.streaming}
       capabilities={{ attachments: false, editing: false, quote: false }}
     >

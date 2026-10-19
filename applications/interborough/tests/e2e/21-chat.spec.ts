@@ -20,6 +20,8 @@ const BARRIER = 'barrier';
 const BARRIER_SHORT = 'barrier-short';
 const FIRST_REPLY = 'The barrier opened.';
 const FOLLOW_UP_REPLY = 'The follow-up was delivered.';
+const REFUNDED = 'Order order-1001 was refunded.';
+const NOT_ISSUED = 'The refund of order order-1001 was not issued.';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
@@ -100,12 +102,16 @@ test.describe('a tool approval', () => {
     const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
     await expect(alert).toBeVisible();
     await expect(page.getByText('lookup-order').first()).toBeVisible();
+    // The seeded turn already refunded the order once, so one reply is the one the session opened with.
+    await expect(page.getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
     await expect(page.locator('[data-cinder-tool-approval]')).toHaveCount(0);
     await checkA11y('a session waiting on an approval');
     await alert.getByRole('button', { name: 'Approve' }).click();
 
-    await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
+    // A second reply is the run going on after the approval; a denial would say it was not issued.
+    await expect(page.getByText(REFUNDED)).toHaveCount(2);
+    await expect(page.getByText(NOT_ISSUED)).toHaveCount(0);
     await expect(alert).toHaveCount(0);
   });
 
@@ -120,7 +126,8 @@ test.describe('a tool approval', () => {
     const alert = page.getByRole('alert').filter({ hasText: 'Needs your approval' });
     await expect(alert).toBeVisible();
     await alert.getByRole('button', { name: 'Deny' }).click();
-    await expect(page.getByText('The refund of order order-1001 was not issued.')).toBeVisible();
+    await expect(page.getByText(NOT_ISSUED)).toHaveCount(1);
+    await expect(page.getByText(REFUNDED)).toHaveCount(0);
     await expect(alert).toHaveCount(0);
   });
 
@@ -145,13 +152,36 @@ test.describe('a tool approval', () => {
     await send(page, 'And one more thing');
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await alert.getByRole('button', { name: 'Approve' }).click();
-    await expect(page.getByText('Order order-1001 was refunded.')).toBeVisible();
+    await expect(page.getByText(REFUNDED)).toHaveCount(2);
 
     const opener = starts[0]?.messages.at(-1);
     const continuation = starts.find((body) => body.resume !== undefined);
     expect(opener?.content).toBe('Refund the order');
     expect(continuation?.messages.map((message) => message.id)).toEqual([opener?.id]);
     expect(JSON.stringify(continuation?.messages)).not.toContain('And one more thing');
+  });
+});
+
+test.describe('a tool call', () => {
+  test('shows its arguments and result highlighted, with no highlighter warning in the console', async ({
+    page,
+    request,
+  }) => {
+    const problems: string[] = [];
+    page.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error') problems.push(message.text());
+    });
+    const threadId = newThreadId('tool-runner');
+    const stream = await runToEnd(request, 'tool-runner', threadId, 'Refund order-1001');
+    await approveThroughMount(request, threadId, stream);
+
+    await page.goto(`/chat/${threadId}`);
+
+    await expect(page.getByText('lookup-order').first()).toBeVisible();
+    // Chat highlights each payload with Shiki, which fetches its JSON grammar when the block shows.
+    await page.getByRole('button', { name: 'Arguments' }).first().click();
+    await expect(page.locator('[data-session] pre.shiki span[style]').first()).toBeVisible();
+    expect(problems.filter((text) => text.includes('Shiki'))).toEqual([]);
   });
 });
 
@@ -214,6 +244,85 @@ test.describe('a follow-up sent while the run is going', () => {
     await releaseBarrier(request);
     await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
     await expect(page.getByText('Also this')).toHaveCount(1);
+  });
+});
+
+test.describe('leaving a chat while its run is going', () => {
+  test('leaves the run going, so coming back inside the app joins it and the follow-up is answered', async ({
+    page,
+    request,
+  }) => {
+    const threadId = await idleBarrierSession(request, BARRIER, 'leave');
+    await page.goto(`/chat/${threadId}`);
+    await send(page, 'Start the work');
+    await expectWaiting(request, 1);
+    await sendFollowUp(page, 'Also this');
+
+    // Inside the app, which tears the page down without unloading it: only a Stop cancels a run.
+    await page.getByRole('link', { name: 'Agents', exact: true }).click();
+    await expect(page).toHaveURL(/\/agents$/);
+    await expect(page.getByRole('heading', { level: 1, name: 'Agents' })).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/chat/${threadId}$`));
+    // The page joined the run it left: its transcript is the thread as the Bureau holds it.
+    await expect(page.getByText('Start the work')).toBeVisible();
+    await expectWaiting(request, 1);
+
+    await releaseBarrier(request);
+
+    await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
+    await expect(page.getByText(FIRST_REPLY)).toHaveCount(2);
+    await expect(page.getByText('Also this')).toHaveCount(1);
+  });
+});
+
+test.describe('a run that asks the person a question', () => {
+  const QUESTION = 'Which environment should the release go to?';
+  const THANKS = 'Thanks, the release will go to the environment you named.';
+
+  test('shows the question, and the next message answers it and finishes the run', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.goto('/chat/new?agent=request-human-input');
+    await send(page, 'Ship it');
+    const question = page.getByRole('alert').filter({ hasText: QUESTION });
+    await expect(question).toBeVisible();
+    await checkA11y('a chat waiting on the person’s answer');
+
+    await send(page, 'staging');
+
+    await expect(page.getByText(THANKS)).toBeVisible();
+    await expect(question).toHaveCount(0);
+    await expect(page.getByText('The agent did not answer')).toHaveCount(0);
+    // The answer is one row, the one the run holds, and not the typed one beside it.
+    await expect(page.getByText('staging')).toHaveCount(1);
+    // The session is not stuck: it takes another message, and the agent asks again.
+    await send(page, 'One more release');
+    await expect(question).toBeVisible();
+  });
+
+  test('is shown again when the page opens on the session, and answering it does not start a new run', async ({
+    page,
+    request,
+  }) => {
+    const threadId = newThreadId('human');
+    await runToEnd(request, 'request-human-input', threadId, 'Ship it');
+    const starts: Array<{ messages: unknown[]; resume?: unknown }> = [];
+    page.on('request', (outgoing) => {
+      if (outgoing.method() === 'POST' && outgoing.url().includes('/ag-ui/agents/')) {
+        starts.push(outgoing.postDataJSON());
+      }
+    });
+
+    await page.goto(`/chat/${threadId}`);
+    await expect(page.getByRole('alert').filter({ hasText: QUESTION })).toBeVisible();
+    await send(page, 'staging');
+
+    await expect(page.getByText(THANKS)).toBeVisible();
+    expect(starts).toHaveLength(1);
+    expect(starts[0]?.messages).toEqual([]);
+    expect(JSON.stringify(starts[0]?.resume)).toContain('"answer":"staging"');
   });
 });
 
