@@ -16,6 +16,7 @@ import {
 } from '../src/errors';
 import type { ReplayDataDroppedEvent } from '../src/events';
 import type { OperativeHookMap } from '../src/hooks';
+import { executeLoop } from '../src/loop';
 import { createAnthropicProvider, createAnthropicProviderStream } from '../src/providers/anthropic';
 import {
   ProviderContractError,
@@ -1541,6 +1542,57 @@ describe('a cached streamed response never rewinds a historical row (correction)
       'user',
       'assistant',
     ]);
+  });
+});
+
+describe('a cached streamed response names no row of this step, with and without a run id (correction 2)', () => {
+  async function replay(runId: string | undefined) {
+    const store = textValueStore(new MemoryStorage());
+    const cached = withCache(
+      withStreaming(async ({ streaming: handle }) => {
+        handle.update('cached answer');
+        return { content: 'cached answer', toolCalls: [] };
+      }),
+      { store, keyStrategy: () => 'same-key' },
+    );
+    const conversation = new Conversation();
+    conversation.appendUserMessage('first question');
+    await executeLoop(baseOptions(cached, { conversation }));
+    conversation.appendUserMessage('second question');
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateResponse', async () => ({ content: 'edited', toolCalls: [] }));
+    const result = await executeLoop(
+      baseOptions(cached, {
+        conversation,
+        hooks,
+        ...(runId === undefined ? {} : { runId }),
+      }),
+    );
+    return result.conversation.getMessages();
+  }
+
+  it('with no run id, appends an unnamed row and keeps every later turn', async () => {
+    const rows = await replay(undefined);
+
+    expect(rows.map((row) => [row.role, row.content])).toEqual([
+      ['user', 'first question'],
+      ['assistant', 'cached answer'],
+      ['user', 'second question'],
+      ['assistant', 'edited'],
+    ]);
+    expect(rows.at(-1)?.id).not.toContain(':step:');
+  });
+
+  it('with a run id, appends the row under its derived id and keeps every later turn', async () => {
+    const rows = await replay('run-cache');
+
+    expect(rows.map((row) => row.content)).toEqual([
+      'first question',
+      'cached answer',
+      'second question',
+      'edited',
+    ]);
+    expect(rows.at(-1)?.id).toBe('run-cache:step:0');
   });
 });
 
