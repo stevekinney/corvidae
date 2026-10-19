@@ -75,6 +75,11 @@ export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
   readonly tooLarge: (id: string, size: number, revision: number) => TEntry;
   /** The entry for a file that could not be read. */
   readonly unreadable: (id: string, error: unknown, revision: number) => TEntry;
+  /**
+   * Called after every rescan, whether or not it found a change, once the listeners have been
+   * told. A subsystem whose work on a change can fail uses it to try again on the next rescan.
+   */
+  readonly afterScan?: (() => void) | undefined;
   /** Whether a rescan found `after` to be a different file state than `before`. */
   readonly sameSignature: (before: TEntry, after: TEntry) => boolean;
 }
@@ -141,14 +146,16 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
     }
     for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
     entries = next;
-    if (added.length + changed.length + removed.length === 0) return;
-    for (const listener of listeners) {
-      try {
-        listener({ added, changed, removed });
-      } catch (error) {
-        options.diagnose(`A ${options.label} change listener threw.`, error);
+    if (added.length + changed.length + removed.length > 0) {
+      for (const listener of listeners) {
+        try {
+          listener({ added, changed, removed });
+        } catch (error) {
+          options.diagnose(`A ${options.label} change listener threw.`, error);
+        }
       }
     }
+    options.afterScan?.();
   }
 
   let dirty = false;

@@ -57,7 +57,9 @@ const agents: AgentDefinitions = {
   }),
 };
 
-async function serve(): Promise<Served> {
+async function serve(
+  onDiagnostic?: (event: { level: string; message: string }) => void,
+): Promise<Served> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-workflow-operations-'));
   const bureau = await createBureau({
     id: 'workflows-bureau',
@@ -66,6 +68,7 @@ async function serve(): Promise<Served> {
     stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
+    ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
   });
   cleanups.push(async () => {
     await bureau.dispose();
@@ -425,6 +428,35 @@ describe('faults', () => {
       owner: 'me',
     });
     expect(extra.error?.data?.httpStatus).toBe(400);
+  });
+
+  it('Unavailable for a write whose effect on the engine failed, which the next rescan applies', async () => {
+    const diagnostics: string[] = [];
+    const served = await serve((event) => diagnostics.push(event.message));
+    const created = await seed(served);
+    const engine = served.bureau.durableEngine()!;
+    const original = engine.pauseSchedule.bind(engine);
+    let failures = 1;
+    engine.pauseSchedule = async (...args: Parameters<typeof original>) => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('storage unavailable');
+      }
+      return original(...args);
+    };
+
+    const response = await ownerRpc(served.owner, 'bureau.workflows.pause', {
+      id: 'digest',
+      expectedHash: created.hash,
+    });
+
+    expect(response.error?.data?.httpStatus).toBe(503);
+    expect(response.error?.data).toMatchObject({ reason: 'workflow-apply-failed' });
+    expect(response.error?.message).toContain('storage unavailable');
+    expect(diagnostics.filter((message) => message.includes('Could not bring'))).toHaveLength(1);
+    await served.bureau.workflows?.refresh();
+    const got = await ownerRpc(served.owner, 'bureau.workflows.get', { id: 'digest' });
+    expect(got.result).toMatchObject({ paused: true, schedule: { status: 'paused' } });
   });
 
   it('NotFound for an update of a file that is gone', async () => {

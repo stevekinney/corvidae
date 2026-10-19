@@ -18,7 +18,11 @@ import {
 } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createWorkflowRuntime, type WorkflowRuntime } from './workflow-runtime';
+import {
+  createWorkflowRuntime,
+  type WorkflowRuntime,
+  WorkflowApplyError,
+} from './workflow-runtime';
 import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
@@ -518,5 +522,87 @@ describe('an instance Bureau cannot register', () => {
     const [handle] = await second.engine.recoverAll();
     await handle?.signal('go', null);
     expect(await handle?.result()).toBe('code result');
+  });
+});
+
+describe('applying file changes to the engine', () => {
+  async function scheduleStatus(engine: Engine): Promise<string | undefined> {
+    const summary = await engine.getSchedule('bureau-workflow-schedule:digest:1');
+    return summary?.status;
+  }
+
+  async function failingOnce(engine: Engine, method: 'pauseSchedule') {
+    const original = engine[method].bind(engine);
+    let failures = 1;
+    engine[method] = async (...args: Parameters<Engine['pauseSchedule']>) => {
+      if (failures > 0) {
+        failures -= 1;
+        throw new Error('storage unavailable');
+      }
+      return original(...args);
+    };
+  }
+
+  async function caught(work: Promise<unknown>): Promise<unknown> {
+    try {
+      await work;
+    } catch (error) {
+      return error;
+    }
+    return undefined;
+  }
+
+  it('fails a write whose apply failed instead of reporting success, and applies it on the next rescan', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    // The apply that startup queues behind itself must be over before a failure is armed.
+    await runtime.workflows.refresh();
+    await failingOnce(engine, 'pauseSchedule');
+    const hash = runtime.workflows.list()[0]?.hash ?? '';
+
+    const error = await caught(runtime.workflows.pause('digest', { expectedHash: hash }));
+
+    expect(error).toBeInstanceOf(WorkflowApplyError);
+    expect((error as Error).message).toContain('storage unavailable');
+    // The file says paused; the schedule has not caught up.
+    expect(runtime.workflows.list()[0]?.paused).toBe(true);
+    expect(await scheduleStatus(engine)).toBe('active');
+
+    // A rescan that finds no change still applies what failed.
+    await runtime.workflows.refresh();
+    expect(await scheduleStatus(engine)).toBe('paused');
+  });
+
+  it('retries a failed apply that no write was waiting for on the next rescan', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    // The apply that startup queues behind itself must be over before a failure is armed.
+    await runtime.workflows.refresh();
+    await failingOnce(engine, 'pauseSchedule');
+    await w.put('digest', { ...parked('digest', 'a'), paused: true });
+
+    await runtime.workflows.refresh();
+    expect(await scheduleStatus(engine)).toBe('active');
+    await runtime.workflows.refresh();
+
+    expect(await scheduleStatus(engine)).toBe('paused');
+  });
+
+  it('does not report a failure that a later apply has put right', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'a'));
+    const { engine, runtime } = await w.boot();
+    // The apply that startup queues behind itself must be over before a failure is armed.
+    await runtime.workflows.refresh();
+    await failingOnce(engine, 'pauseSchedule');
+    const hash = runtime.workflows.list()[0]?.hash ?? '';
+    await caught(runtime.workflows.pause('digest', { expectedHash: hash }));
+    await runtime.workflows.refresh();
+
+    const paused = runtime.workflows.list()[0]?.hash ?? '';
+    const resumed = await runtime.workflows.resume('digest', { expectedHash: paused });
+    expect(resumed.id).toBe('digest');
   });
 });

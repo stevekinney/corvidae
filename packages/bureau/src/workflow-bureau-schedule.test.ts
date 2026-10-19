@@ -87,7 +87,7 @@ describe('bureau.schedules on a workflow’s schedule', () => {
     expect(await harness.bureau.cancelSchedule(summary!.id)).toBe(true);
   });
 
-  it('is changed only by the workflow’s own operations, and a direct cancel through the engine is put back', async () => {
+  it('is changed only by the workflow’s own operations, and a direct cancel through the engine is put back at the next change to the files', async () => {
     const harness = await start();
     await harness.putWorkflow('digest', HOURLY);
     const engine = harness.bureau.durableEngine()!;

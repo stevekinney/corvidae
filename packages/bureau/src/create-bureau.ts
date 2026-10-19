@@ -13187,7 +13187,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // is a different handle, and this `shutdown()` call does NOT wait for it.
     const modelCatalogRefreshClosedPromise = modelCatalog.inFlightRefresh()?.closed();
     // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
-    // that is about to be disposed; the close itself is awaited at the end.
+    // that is about to be disposed; the chain below waits for the apply in progress first.
     const workflowClosed = workflowRuntime?.close();
 
     // Which owners this bureau actually composes — a report row is emitted
@@ -13272,6 +13272,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
 
     const chain = (async (): Promise<BureauShutdownReport> => {
+      // COR-1527: a change being applied to the engine finishes while the engine is still there,
+      // and nothing is applied after this, so the disposal below cannot race it.
+      await workflowClosed;
       // Stop admission before touching runs. The canonical toolbox is the
       // owner of local execution lifecycle; await its shutdown as the
       // quiescence fence before releasing durable resources.
@@ -13690,8 +13693,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await modelCatalogRefreshClosedPromise;
       // COR-1524: stop watching the agent directory and wait for a scan in flight.
       await fileAgents?.files.close();
-      // COR-1527: stop watching the workflow directory; its listeners were detached when shutdown began.
-      await workflowClosed;
       return buildReport();
     })();
 
@@ -14406,6 +14407,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * resuming it) and waits for it instead of starting a second; only a step with no run yet
    * starts one.
    */
+  /**
+   * The recorded state of a step's agent run once it has ended. `waitForDurableRun` refuses to wait
+   * under `durableBackgroundTasks: 'manual'`, where nothing re-reads the store between maintenance
+   * passes for an outside caller. This caller is the engine's own activity: the run is driven by
+   * this engine's recovery, and its handle settles when maintenance drives it.
+   */
+  async function awaitWorkflowStepRun(runId: string) {
+    if (options.durableBackgroundTasks !== 'manual') return waitForDurableRun(runId);
+    const handle = runtime.durable?.engine.getHandle(runId);
+    try {
+      await handle?.result();
+    } catch {
+      // A run that failed or was cancelled rejects its result; its recorded state is read below.
+    }
+    return runtime.durable?.engine.get(runId);
+  }
+
   async function runWorkflowAgentStep(request: AgentStepRequest): Promise<AgentStepResult> {
     const engine = runtime.durable?.engine;
     if (engine === undefined) {
@@ -14417,7 +14435,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     const runId = workflowStepRunId(request.workflowId, request.step);
     if ((await engine.get(runId)) !== null) {
-      return agentStepResultFromState(request.agent, await waitForDurableRun(runId));
+      // Adopt the run at this id only if it is this step's own: its recovery record carries the
+      // step's marker. Anything else holding the id is not a run to take a result from.
+      const claim = await runtime.loadCatalogRunRecoveryRecord(runId);
+      if (
+        claim.status !== 'found' ||
+        claim.record.workflowStep?.workflowId !== request.workflowId ||
+        claim.record.workflowStep.step !== request.step ||
+        claim.record.agentName !== request.agent ||
+        claim.record.principal !== ANONYMOUS_LOCAL_OWNER
+      ) {
+        throw new WorkflowAgentStepError(
+          'agent-run-failed',
+          request.agent,
+          `The run id "${runId}" for step ${String(request.step)} of instance "${request.workflowId}" is held by another run, so the step cannot take a result from it.`,
+        );
+      }
+      return agentStepResultFromState(request.agent, await awaitWorkflowStepRun(runId));
     }
     if (agentCatalog.find(request.agent) === undefined) {
       throw new WorkflowAgentStepError(

@@ -76,6 +76,8 @@ export interface WorkflowFileCatalogOptions {
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   readonly operations?: AgentFileOperations | undefined;
+  /** Called after every rescan, whether or not it found a change. */
+  readonly afterScan?: (() => void) | undefined;
   /** Watch the directory. Defaults to `true`; `false` leaves reloading to `refresh()`. */
   readonly watch?: boolean | undefined;
   readonly openWatcher?:
@@ -173,6 +175,7 @@ export function createWorkflowFileCatalog(
     runtime: options.runtime,
     diagnose: options.diagnose,
     operations,
+    ...(options.afterScan === undefined ? {} : { afterScan: options.afterScan }),
     ...(options.watch === undefined ? {} : { watch: options.watch }),
     ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     revision: () => 0,

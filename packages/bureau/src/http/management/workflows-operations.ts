@@ -14,7 +14,9 @@
  * A write fails with a typed `Conflict` (`data.reason` is `workflow-file-exists`) when the
  * identifier is taken, with `StaleRevision` (`data.currentRevision` is the hash of what is on disk)
  * when the file changed since the caller read it, and with `Unprocessable` (`data.reason` is the
- * problem code) when the result would not load; each writes nothing.
+ * problem code) when the result would not load; each writes nothing. A write that reached the file
+ * but whose effect on the engine or the schedule failed is `Unavailable` (`data.reason` is
+ * `workflow-apply-failed`): the file holds the change and the next rescan applies it again.
  *
  * @module workflows-operations
  */
@@ -24,7 +26,7 @@ import { z } from 'zod';
 
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import { WorkflowFileConflictError, WorkflowFileError } from '../../workflow-file.ts';
-import type { BureauWorkflows } from '../../workflow-runtime.ts';
+import { type BureauWorkflows, WorkflowApplyError } from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import {
@@ -197,6 +199,13 @@ function faultOf(error: unknown, id: string, expectedHash?: string): never {
       data: { reason: error.code },
     } satisfies OperationFault;
   }
+  if (error instanceof WorkflowApplyError) {
+    throw {
+      code: 'Unavailable',
+      message: error.message,
+      data: { reason: error.code },
+    } satisfies OperationFault;
+  }
   if (error instanceof WorkflowFileError) {
     if (error.code === 'workflow-file-not-found') throw resourceNotFound('workflow', id);
     if (error.code === 'invalid-identifier') {
@@ -236,6 +245,7 @@ export const workflowsCreateOperation = defineOperation<
     'Forbidden',
     'Conflict',
     'Unprocessable',
+    'Unavailable',
     'UnsupportedCapability',
   ],
   access: { kind: 'authenticated' },
@@ -284,6 +294,7 @@ export const workflowsUpdateOperation = defineOperation<
     'NotFound',
     'StaleRevision',
     'Unprocessable',
+    'Unavailable',
     'UnsupportedCapability',
   ],
   access: { kind: 'authenticated' },
@@ -332,6 +343,7 @@ function defineGuardedWrite(
       'NotFound',
       'StaleRevision',
       'Unprocessable',
+      'Unavailable',
       'UnsupportedCapability',
     ],
     access: { kind: 'authenticated' },

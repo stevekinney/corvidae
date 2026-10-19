@@ -149,6 +149,21 @@ export interface BureauWorkflows {
   readonly assertStartable: (id: string) => void;
 }
 
+/**
+ * Applying the workflow files to the engine failed: the file was written, but the engine or a
+ * schedule did not follow it. The next rescan applies it again.
+ */
+export class WorkflowApplyError extends Error {
+  readonly code = 'workflow-apply-failed';
+  constructor(cause: unknown) {
+    super(
+      `The change was written to the workflow file, but the engine did not follow it, and will be updated again on the next rescan: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { cause },
+    );
+    this.name = 'WorkflowApplyError';
+  }
+}
+
 /** What {@link WorkflowRuntime.start} registered as `retained`. */
 export interface WorkflowStartReport {
   readonly retained: readonly { readonly id: string; readonly workflowVersion: string }[];
@@ -229,6 +244,9 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
       engine.getWorkflowDefinition(id) !== undefined && !registeredTypes.has(id),
     runtime: options.runtime,
     diagnose: options.diagnose,
+    afterScan: () => {
+      if (applyPending) queueApply();
+    },
     ...(options.operations === undefined ? {} : { operations: options.operations }),
     ...(options.watch === undefined ? {} : { watch: options.watch }),
     ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
@@ -410,14 +428,32 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     }
   }
 
+  /** The failure of the latest apply, until a later one succeeds. */
+  let applyFailure: unknown;
+  /** Whether the engine may be behind the files, so that the next rescan applies them again. */
+  let applyPending = false;
+  let applyQueued = false;
+
   async function applyChange(): Promise<void> {
+    applyQueued = false;
     if (closed) return;
     try {
       await register([]);
       await reconcileWorkflowSchedules(engine, desiredSchedules());
+      applyFailure = undefined;
+      applyPending = false;
     } catch (error) {
+      applyFailure = error;
+      applyPending = true;
       options.diagnose('Could not bring the engine in line with the workflow files.', error);
     }
+  }
+
+  /** Queue one apply behind the work in progress, unless one is already queued. */
+  function queueApply(): void {
+    if (applyQueued || closed) return;
+    applyQueued = true;
+    track(exclusive(applyChange), 'workflow-files-apply');
   }
 
   /** Wait for whatever the last change started. */
@@ -458,7 +494,7 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     // redundant `applyChange` behind it; registering the same documents again changes nothing.
     engine.addEventListener('workflow:started', onStarted);
     const unsubscribe = catalog.onChange(() => {
-      track(exclusive(applyChange), 'workflow-files-apply');
+      queueApply();
     });
     stopListening = () => {
       engine.removeEventListener('workflow:started', onStarted);
@@ -547,9 +583,16 @@ export function createWorkflowRuntime(options: WorkflowRuntimeOptions): Workflow
     return stored.includes(type);
   }
 
+  /**
+   * Run a write to a workflow file, and wait until the engine and the schedules have followed it.
+   * A write whose apply failed is reported as a failure, because the file now says one thing and
+   * the engine another; the next rescan applies it again.
+   */
   async function write<T>(work: () => Promise<T>): Promise<T> {
     const result = await work();
+    if (applyPending) queueApply();
     await settled();
+    if (applyFailure !== undefined) throw new WorkflowApplyError(applyFailure);
     return result;
   }
 
