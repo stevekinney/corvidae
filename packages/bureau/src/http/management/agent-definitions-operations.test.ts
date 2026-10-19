@@ -36,6 +36,7 @@ import {
   serve,
 } from './agent-definitions-fixtures.test-support.ts';
 import { rpc } from './management-fixtures.test-support.ts';
+import { createMemoryAssetStorage } from '../../assets/storage';
 
 afterEach(disposeServed);
 
@@ -713,6 +714,7 @@ describe('faults', () => {
 
   it('UnsupportedCapability to write on a Bureau with no agent directory, while it still lists its code agents', async () => {
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'no-directory',
       agents: {},
       storage: { type: 'memory' },

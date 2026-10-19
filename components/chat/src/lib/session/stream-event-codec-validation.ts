@@ -290,7 +290,8 @@ export function isChatAgentRunErrorCode(value: unknown): value is ChatAgentRunEr
     value === 'SELECTION_REVALIDATION_FAILED' ||
     value === 'SUBAGENT_RUN_FAILED' ||
     value === 'TRIPWIRE' ||
-    value === 'UNKNOWN'
+    value === 'UNKNOWN' ||
+    value === 'UNSUPPORTED_MEDIA_TYPE'
   );
 }
 
