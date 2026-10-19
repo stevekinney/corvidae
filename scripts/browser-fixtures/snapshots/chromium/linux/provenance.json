@@ -6,5 +6,19 @@
   "osCodename": "jammy",
   "architecture": "arm64",
   "dockerImageTag": "corvidae-browser-fixtures:1.63.0-jammy-arm64",
-  "suiteExitCode": 0
+  "suiteExitCode": 0,
+  "componentRenders": {
+    "audio-player": {
+      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
+      "suiteExitCode": 1
+    },
+    "text": {
+      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
+      "suiteExitCode": 1
+    },
+    "video-player": {
+      "renderedSourceSha": "9db83b3f0e59fc4f6941ade8d23e3fca28b26bc9",
+      "suiteExitCode": 1
+    }
+  }
 }
