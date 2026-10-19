@@ -134,10 +134,10 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       const ended = await scope.phase(
         `durable run ${run.kind} ${run.name} ${run.runId}`,
         async () => {
-          scope.observe(
-            async () =>
-              `durable status ${JSON.stringify((await recovering.getDurableRun(run.runId))?.status)}`,
-          );
+          scope.observe(async () => {
+            const state = await recovering.getDurableRun(run.runId);
+            return `durable status ${JSON.stringify(state?.status)}`;
+          });
           return recovering.waitForDurableRun(run.runId);
         },
       );

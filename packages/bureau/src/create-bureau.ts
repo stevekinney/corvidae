@@ -1835,9 +1835,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const runSessionIncarnations = new Map<string, string>();
   // COR-1592: the engine reclaims a run with a lapsed claim on its own interval, so one can reach
-  // the services resolver as soon as the composition is built. The resolver reads the catalog
-  // resolver and the workflow file types, which this function binds only after it has scanned the
-  // agent directory, so it holds such a run until `servicesResolverGate` settles (see below).
+  // the services resolver as soon as the composition is built. A run of a catalog agent needs the
+  // catalog resolver, which this function binds only after it has scanned the agent directory, so
+  // the composition holds such a run at that read until `servicesResolverGate` settles (below).
   const servicesResolverGate = Promise.withResolvers<void>();
   servicesResolverGate.promise.catch(() => {});
   const runtime = await createRuntimeComposition(
@@ -2132,9 +2132,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       return { status: 'resolver-failed', error };
     }
   });
-  // COR-1592: everything the services resolver reads that this function binds after the
-  // composition is bound now (the catalog resolver just above, and `workflowFileTypes` earlier), so
-  // a run the engine reclaimed in the meantime and the resolver held can proceed.
+  // COR-1592: the catalog resolver, the one input the services resolver reads that this function
+  // binds after the composition, is bound now, so a run the engine reclaimed in the meantime and the
+  // composition held can proceed. (`workflowFileTypes` is bound before this, and the engine does not
+  // reclaim a workflow file's instance until `workflowRuntime.start()` registers its type.)
   servicesResolverGate.resolve();
   // AB-64/AB-250 — Bureau's selection-planning surface: `bureau.planSelection`
   // and the `SelectionGate` factory `RunOptions.selection` is built from.

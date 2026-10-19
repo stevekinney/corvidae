@@ -1434,14 +1434,14 @@ export type RuntimeCompositionDependencies = {
    */
   onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
   /**
-   * COR-1592 — settles once the host has wired everything the services resolver reads that it
-   * binds after this composition is built (`createBureau` binds the catalog resolver, and the
-   * workflow file types, once it has scanned its agent directory). The composition is complete
-   * earlier than that, and the engine reclaims a lapsed claim on its own interval, so a run can
-   * reach the resolver in between and would be answered "unavailable", which fails it for good.
-   * The resolver holds the run until this resolves, as it does until the composition itself is
-   * built. A rejection answers "unavailable" with a composition failure, as a failed composition
-   * does. A composition with none (a direct caller) has nothing late-bound to wait for.
+   * COR-1592 — settles once the host has wired the inputs it binds after this composition is
+   * built: `createBureau` binds the catalog agent resolver once it has scanned its agent
+   * directory. The composition is complete earlier than that, and the engine reclaims a lapsed
+   * claim on its own interval, so a run of a catalog agent can reach the services resolver in
+   * between and would be answered "unavailable", which fails it for good. The reads of the catalog
+   * resolver wait on this and nothing else does, so a run that needs none of it is not held. A
+   * rejection answers "unavailable" with the construction failure. A composition with none (a
+   * direct caller) has nothing late-bound to wait for.
    */
   servicesResolverGate?: Promise<void>;
   /**
@@ -2269,13 +2269,21 @@ async function buildRuntimeComposition(
   // binding. Manual mode has no background poller, but shares the same gate for consistency.
   // Only so the resolver can say, once, that it had to wait; the gate itself is `readiness`.
   let compositionOpen = false;
-  // COR-1592: whether the host's own late-bound inputs are wired too, for the same one-time note.
-  let servicesResolverGateOpen = dependencies.servicesResolverGate === undefined;
+  // COR-1592: whether the host has wired the inputs it binds after this composition is built (see
+  // `servicesResolverGate`). Only the reads of those inputs wait on it: the rest of the resolver
+  // needs nothing the host binds late, so a run that does not need them is resolved in the meantime.
+  let hostWiring:
+    { status: 'pending' } | { status: 'wired' } | { status: 'failed'; error: unknown } =
+    dependencies.servicesResolverGate === undefined ? { status: 'wired' } : { status: 'pending' };
   dependencies.servicesResolverGate?.then(
     () => {
-      servicesResolverGateOpen = true;
+      hostWiring = { status: 'wired' };
+      return undefined;
     },
-    () => {},
+    (error: unknown) => {
+      hostWiring = { status: 'failed', error };
+      return undefined;
+    },
   );
   let requestAuthorityValidator = options.requestAuthorityValidator;
   // AB-240: wired by `createBureau` once its agent catalog exists (this
@@ -3144,12 +3152,35 @@ async function buildRuntimeComposition(
    * agent resolve identically. The placeholder input is discarded: only the run options and the
    * system prompt the definition would seed are read from the result.
    */
+  /**
+   * COR-1592 — waits until the host has wired what it binds after the composition is built, which
+   * the catalog resolver is. Resolves to `undefined` once it has, and to the error that stopped the
+   * host from wiring it when construction failed. A caller reads `catalogAgentRunOptionsResolver`
+   * only after this.
+   */
+  async function hostWiringFailure(): Promise<Error | undefined> {
+    if (hostWiring.status === 'pending') {
+      diagnose({
+        level: 'warn',
+        scope: 'recovery',
+        message:
+          '[bureau] A recovered run needs the catalog agent resolver before the bureau has wired ' +
+          'it; holding the run until it has.',
+      });
+      await dependencies.servicesResolverGate?.catch(() => {});
+    }
+    if (hostWiring.status !== 'failed') return undefined;
+    return new Error(`composition failed: ${serializeUnknownError(hostWiring.error)}`);
+  }
+
   async function resolveSessionAgentRun(
     agentName: string,
     runId: string,
     principal?: string,
     recorded?: { readonly agentDefinitionHash: string | undefined },
   ): Promise<SessionAgentRunResolution> {
+    const notWired = await hostWiringFailure();
+    if (notWired !== undefined) return { status: 'resolver-failed', error: notWired };
     if (!catalogAgentRunOptionsResolver) {
       return { status: 'resolver-failed', error: new Error('No catalog agent resolver is wired.') };
     }
@@ -3347,8 +3378,10 @@ async function buildRuntimeComposition(
     if (agentName === undefined || agentName === BUREAU_AGENT_NAME) return undefined;
     // A composition with no catalog wired (`createBureau` always wires one) has no named agents,
     // so the name is only a label and the run is the Bureau-wide runtime's.
-    if (catalogAgentRunOptionsResolver === undefined) return undefined;
     const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
+    const notWired = await hostWiringFailure();
+    if (notWired !== undefined) throw new Error(`${label}: ${notWired.message}`);
+    if (catalogAgentRunOptionsResolver === undefined) return undefined;
     const owner = resolveSessionOwner(session.metadata);
     const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
@@ -3713,6 +3746,10 @@ async function buildRuntimeComposition(
     runId: string,
     record: CatalogRunRecoveryRecord,
   ): Promise<WorkflowServicesResolution> {
+    const notWired = await hostWiringFailure();
+    if (notWired !== undefined) {
+      return { status: 'unavailable', reason: `run ${runId}: ${notWired.message}` };
+    }
     if (!catalogAgentRunOptionsResolver) {
       return {
         status: 'unavailable',
@@ -4180,7 +4217,7 @@ async function buildRuntimeComposition(
     // reaches this resolver mid-construction waits for the composition instead of being answered
     // "unavailable", which the engine would turn into a terminal failure of the run. (Reading a
     // not-yet-initialized `const` below would otherwise throw a TDZ error.)
-    if (!compositionOpen || !servicesResolverGateOpen) {
+    if (!compositionOpen) {
       diagnose({
         level: 'warn',
         scope: 'recovery',
@@ -4191,7 +4228,6 @@ async function buildRuntimeComposition(
     }
     try {
       await readiness.promise;
-      await dependencies.servicesResolverGate;
     } catch {
       return {
         status: 'unavailable',

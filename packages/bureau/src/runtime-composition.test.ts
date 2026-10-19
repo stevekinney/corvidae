@@ -5617,7 +5617,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
-  it('holds a run that reaches the services resolver before the host has wired what it reads (COR-1592)', async () => {
+  it('holds a catalog run that reaches the services resolver before the host has wired the catalog resolver (COR-1592)', async () => {
     // The engine reclaims and resumes a lapsed claim on its own interval, so a run can reach the
     // resolver after the composition is built but before `createBureau` has wired the catalog
     // resolver (it scans the agent directory in between). Answering "unavailable" there fails the
@@ -5651,7 +5651,7 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
       // The record read and the engine's own storage reads are all I/O that follows the gate, so a
       // resolver that ignored the gate would have answered by now; yield through the I/O it needs.
       for (let turn = 0; turn < 50; turn += 1)
-        await new Promise<void>((done) => setImmediate(done));
+        await new Promise<void>((resolve) => setImmediate(resolve));
       expect(settled).toBe(false);
 
       runtime.setCatalogAgentRunOptionsResolver(async () => ({
@@ -5667,6 +5667,70 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     }
   });
 
+  it('holds a session run of a catalog agent until the host has wired the catalog resolver, and fails it with the construction failure when the host cannot (COR-1592)', async () => {
+    const session = createAgentSession({
+      id: 'session-early',
+      agentName: 'agent',
+      conversationHistory: createConversationHistory({ id: 'session-early' }),
+      metadata: {
+        lastRunId: 'run-early',
+        lastRunStatus: 'running',
+        lastUserMessage: 'resume',
+        lastRequestAuthority: {
+          principalId: 'run:run-early',
+          tenantId: 'bureau',
+          ownerId: 'agent',
+          capabilities: ['tools:execute'],
+          authorizationRevision: 'bureau:1',
+          audience: 'operator',
+        },
+      },
+    });
+    const wired = Promise.withResolvers<void>();
+    wired.promise.catch(() => {});
+    const runtime = await createRuntimeComposition(
+      {
+        toolbox: createToolbox([], { context: {} }),
+        storage: { type: 'memory' },
+        durableExecution: true,
+      },
+      {
+        servicesResolverGate: wired.promise,
+        createSessionStore: () =>
+          ({
+            async load() {
+              return session;
+            },
+            async updateMetadata() {},
+          }) as unknown as SessionStore,
+      },
+    );
+
+    try {
+      let settled = false;
+      const resolution = runtime
+        .resolveRunServices({
+          workflowId: 'run-early',
+          workflowType: 'agentRun',
+          input: { runId: 'run-early', sessionId: 'session-early', agentName: 'agent' },
+        })
+        .finally(() => {
+          settled = true;
+        });
+      for (let turn = 0; turn < 50; turn += 1)
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(settled).toBe(false);
+
+      wired.reject(new Error('construction failed'));
+      expect(await resolution).toMatchObject({
+        status: 'unavailable',
+        reason: 'run run-early not reconstructable',
+      });
+    } finally {
+      runtime.durable?.engine[Symbol.dispose]?.();
+    }
+  });
+
   it('answers unavailable once the services gate rejects, instead of holding the run for ever (COR-1592)', async () => {
     const wired = Promise.withResolvers<void>();
     wired.promise.catch(() => {});
@@ -5676,6 +5740,11 @@ describe('resolveRunServices catalog-run recovery branch (AB-240)', () => {
     );
 
     try {
+      await runtime.persistCatalogRunRecoveryRecord('catalog-run-failed-gate', {
+        agentName: 'echo',
+        definitionRevision: 1,
+        input: 'hello',
+      });
       wired.reject(new Error('construction failed'));
       const result = await runtime.resolveRunServices({
         workflowId: 'catalog-run-failed-gate',
