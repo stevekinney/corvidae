@@ -582,7 +582,9 @@ describe('correcting a memory', () => {
     );
 
     await waitFor(() =>
-      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull(),
+      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title }) === null).toBe(
+        true,
+      ),
     );
     expect(served.callsTo('bureau.memory.correct')).toEqual([]);
   });
@@ -597,7 +599,9 @@ describe('correcting a memory', () => {
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Close dialog' }));
 
     await waitFor(() =>
-      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title })).toBeNull(),
+      expect(view.queryByRole('dialog', { name: MEMORY_COPY.correct.dialog.title }) === null).toBe(
+        true,
+      ),
     );
     expect(served.callsTo('bureau.memory.correct')).toEqual([]);
     // It opens again, from the memory’s own text.
