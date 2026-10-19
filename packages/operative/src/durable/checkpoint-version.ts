@@ -62,3 +62,21 @@ export function assertWritableCheckpointRecord(kind: CheckpointRecordKind, value
     );
   }
 }
+
+/**
+ * Throws unless a step memo Weft replayed is at the current shape (COR-713). A memo is replayed
+ * from its recorded result without running the step again, so the write-side assertion in the
+ * checkpoint store never runs for it: an in-flight run written by an older build carries a step
+ * record without its version or parts and accumulators without the part fields, and reading them
+ * would fail with a `TypeError` (or, for a step that recorded nothing, resume silently).
+ */
+export function assertCurrentStepMemo(memo: {
+  readonly record: unknown;
+  readonly nextAccumulators: object;
+}): void {
+  if (memo.record !== null) assertWritableCheckpointRecord('step', memo.record);
+  const { lastParts, finalRowIsReplacement } = memo.nextAccumulators as Record<string, unknown>;
+  if (!Array.isArray(lastParts) || typeof finalRowIsReplacement !== 'boolean') {
+    throw new UnsupportedCheckpointRecordVersionError('cursor', undefined);
+  }
+}

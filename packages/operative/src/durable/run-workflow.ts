@@ -13,6 +13,7 @@ import { DEFAULT_MAXIMUM_STEPS } from '../run-step';
 import { createStepMediaAdmission } from '../run-step-media';
 import type { FinishReason } from '../types';
 import type { CheckpointStore } from './checkpoint-store';
+import { assertCurrentStepMemo } from './checkpoint-version';
 import {
   type AgentRunWorkflowInput,
   type CreateRunWorkflowOptions,
@@ -296,6 +297,9 @@ export function createRunWorkflow(
               runId,
               { delta: snapshot === lastStepSnapshot, maximumSteps },
             );
+            // Weft replays the memo without running the step, so an in-flight run written by an
+            // older build is refused here, with the typed error, before any of it is read.
+            assertCurrentStepMemo(stepResult);
 
             snapshot = conversationAfterStep(snapshot, stepResult);
             lastStepSnapshot = snapshot;
