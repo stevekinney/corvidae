@@ -26,7 +26,10 @@ export async function* normalizeAnthropicStream(
   const partIndexes = new Map<number, number>();
   const sequences = new Map<number, number>();
   let nextPartIndex = 0;
-  /** An unlisted block or delta is refused once, as a `stream:error`; the legacy events carry on. */
+  /**
+   * An unlisted block or delta is refused once, as a `stream:error`, and the stream ends there:
+   * nothing follows an error, not even `stream:complete`.
+   */
   let refused = false;
   const refuse = (blockType: string, position: number): StreamEvent | undefined => {
     if (refused) return undefined;
@@ -121,17 +124,30 @@ export async function* normalizeAnthropicStream(
           const opening = anthropicOpeningState(contentBlock);
           if (opening === undefined) {
             const refusal = refuse(rawType, index);
-            if (refusal) yield refusal;
+            if (refusal) {
+              yield refusal;
+              return;
+            }
           } else {
-            const partIndex = nextPartIndex++;
-            partIndexes.set(index, partIndex);
             accumulator.openBlock(index, opening);
-            yield {
-              type: 'stream:part-start',
-              messageId,
-              partIndex,
-              kind: opening.type === 'tool_use' ? 'text' : opening.type,
-            };
+            // A text block takes its part index with its first non-empty text; an empty one is
+            // not a part (the mapping table skips it), and leaves no hole in the indexes.
+            if (opening.type !== 'text') {
+              const partIndex = nextPartIndex++;
+              partIndexes.set(index, partIndex);
+              yield {
+                type: 'stream:part-start',
+                messageId,
+                partIndex,
+                kind: opening.type === 'tool_use' ? 'text' : opening.type,
+              };
+            } else if (opening.buffer !== '') {
+              const partIndex = nextPartIndex++;
+              partIndexes.set(index, partIndex);
+              yield { type: 'stream:part-start', messageId, partIndex, kind: 'text' };
+              const emitted = partDelta(index, { kind: 'text', text: opening.buffer });
+              if (emitted) yield emitted;
+            }
           }
         }
         break;
@@ -152,6 +168,11 @@ export async function* normalizeAnthropicStream(
         const partBlock = accumulator.getBlock(index);
         if (deltaType === 'text_delta' && textDelta) {
           partBlock?.appendTextDelta(textDelta);
+          if (partBlock !== undefined && !partIndexes.has(index)) {
+            const partIndex = nextPartIndex++;
+            partIndexes.set(index, partIndex);
+            yield { type: 'stream:part-start', messageId, partIndex, kind: 'text' };
+          }
           const emitted = partDelta(index, { kind: 'text', text: textDelta });
           if (emitted) yield emitted;
           block.content += textDelta;
@@ -189,6 +210,8 @@ export async function* normalizeAnthropicStream(
             blockId,
             partialArguments: block.partialArguments,
           };
+        } else if (deltaType === 'input_json_delta') {
+          // Anthropic opens every tool_use block with an empty `partial_json`: ordinary, not output.
         } else if (deltaType === 'signature_delta') {
           // Replay data: the completed part carries the whole signature, no live event.
           partBlock?.appendSignatureDelta(event.delta?.signature ?? '');
@@ -215,7 +238,10 @@ export async function* normalizeAnthropicStream(
           }
         } else if (deltaType !== undefined && deltaType !== 'text_delta') {
           const refusal = refuse(deltaType, index);
-          if (refusal) yield refusal;
+          if (refusal) {
+            yield refusal;
+            return;
+          }
         }
         break;
       }

@@ -34,8 +34,6 @@ export async function* normalizeOpenAIStream(
   const messageId = options.messageId ?? 'message';
   let textPartSequence = 0;
   let textPartComplete = false;
-  /** Audio output and the deprecated function call are refused once, as a `stream:error`. */
-  let refused = false;
   const { buildState: dependencyBuildState, findBlock: dependencyFindBlock } = dependencies;
   const state: NormalizerState = {
     blocks: [],
@@ -74,8 +72,8 @@ export async function* normalizeOpenAIStream(
     const { delta, finish_reason } = choice;
 
     for (const field of ['audio', 'function_call'] as const) {
-      if (!refused && delta[field] !== undefined && delta[field] !== null) {
-        refused = true;
+      if (delta[field] !== undefined && delta[field] !== null) {
+        // The stream ends at its error: nothing follows it, not even `stream:complete`.
         yield {
           type: 'stream:error',
           error: new ProviderContractError({
@@ -86,6 +84,7 @@ export async function* normalizeOpenAIStream(
             usage: undefined,
           }),
         };
+        return;
       }
     }
 

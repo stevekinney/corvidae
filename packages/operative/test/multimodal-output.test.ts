@@ -1,4 +1,4 @@
-import { HookRegistry } from '@lostgradient/lifecycle';
+import { HookRegistry, TypedEventTarget } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation, type MultiModalContent } from 'conversationalist';
@@ -1340,5 +1340,149 @@ describe('a run with an id commits parts under the ids a streaming client was sh
       .filter((message) => message.role === 'assistant');
     expect(rows.map((row) => row.id)).toEqual(['run-9:step:0', 'run-9:step:1']);
     expect(result.parts).toEqual([textPart('One.'), textPart('Summary.')]);
+  });
+});
+
+describe.each(ANTHROPIC_MODES)(
+  'an empty Anthropic text block is skipped the same way (%s)',
+  (mode) => {
+    const emptyText = { type: 'text', text: '' } satisfies RecordedAnthropicBlock;
+    const hello = { type: 'text', text: 'Hello' } satisfies RecordedAnthropicBlock;
+
+    it('commits no row and replays only the tool_use for [empty text, tool_use]', async () => {
+      const { result, requests } = await runAnthropic(mode, [emptyText, toolUseBlock]);
+      expect(result.steps[0]?.parts).toEqual([]);
+      expect(result.steps[0]?.messageId).toBeUndefined();
+      const assistantRows = result.conversation.getMessages().filter((m) => m.role === 'assistant');
+      expect(assistantRows.map((row) => row.content)).toEqual(['Done.']);
+      expect(JSON.stringify(assistantTurn(requests[1]))).toBe(JSON.stringify([toolUseBlock]));
+    });
+
+    it('keeps the thinking and drops the empty text for [thinking, empty text, tool_use]', async () => {
+      const { result, requests } = await runAnthropic(mode, [
+        thinkingBlock,
+        emptyText,
+        toolUseBlock,
+      ]);
+      expect(result.steps[0]?.parts).toEqual([thinkingBlock] as never);
+      expect(JSON.stringify(assistantTurn(requests[1]))).toBe(
+        JSON.stringify([thinkingBlock, toolUseBlock]),
+      );
+    });
+
+    it('puts Hello at part index 0 for [empty text, Hello]', async () => {
+      const { result } = await runAnthropic(mode, [emptyText, hello]);
+      expect(result.steps[0]?.parts).toEqual([{ type: 'text', text: 'Hello' }]);
+      expect(result.steps[0]?.content).toBe('Hello');
+    });
+  },
+);
+
+describe('an empty Anthropic text block leaves no hole in the part indexes of the live events', () => {
+  it('numbers the parts that follow an empty text block from zero', async () => {
+    const eventTarget = new TypedEventTarget<StreamEventMap>();
+    const indexes: number[] = [];
+    eventTarget.addEventListener('stream:part-start', (event) =>
+      indexes.push(event.detail.partIndex),
+    );
+    const client = createMockAnthropicStreamingClient([
+      anthropicStreamEventsFor([
+        { type: 'text', text: '' },
+        thinkingBlock,
+        { type: 'text', text: 'Hi' },
+      ]),
+    ]);
+    const generate = withEnhancedStreaming(
+      createAnthropicProviderStream({ model: 'claude-sonnet-4-6', client }),
+      { eventTarget },
+    );
+
+    const response = await generate(adapterContext());
+
+    expect(indexes).toEqual([0, 1]);
+    expect(response.parts).toEqual([thinkingBlock, { type: 'text', text: 'Hi' }] as never);
+  });
+
+  it('the public normalizer also skips an empty text block', async () => {
+    const events = await collect(
+      normalizeAnthropicStream(
+        iterate(anthropicStreamEventsFor([{ type: 'text', text: '' }, thinkingBlock])),
+      ),
+    );
+    const starts = events.filter((event) => event.type === 'stream:part-start');
+    expect(starts.map((event) => [event.partIndex, event.kind])).toEqual([[0, 'thinking']]);
+    const completes = events.filter((event) => event.type === 'stream:part-complete');
+    expect(completes.map((event) => event.partIndex)).toEqual([0]);
+  });
+});
+
+describe('stream normalizers (correction)', () => {
+  const toolUseStream = [
+    { type: 'message_start', message: { usage: { input_tokens: 5, output_tokens: 0 } } },
+    { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } },
+    { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Checking.' } },
+    { type: 'content_block_stop', index: 0 },
+    {
+      type: 'content_block_start',
+      index: 1,
+      content_block: { type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: {} },
+    },
+    // The API opens every tool_use block with an empty partial_json.
+    {
+      type: 'content_block_delta',
+      index: 1,
+      delta: { type: 'input_json_delta', partial_json: '' },
+    },
+    {
+      type: 'content_block_delta',
+      index: 1,
+      delta: { type: 'input_json_delta', partial_json: '{"location":"Paris"}' },
+    },
+    { type: 'content_block_stop', index: 1 },
+    { type: 'message_delta', delta: { stop_reason: 'tool_use' }, usage: { output_tokens: 9 } },
+    { type: 'message_stop' },
+  ];
+
+  it('Anthropic: an ordinary tool_use stream with an empty first input_json_delta raises no error', async () => {
+    const events = await collect(normalizeAnthropicStream(iterate(toolUseStream as never)));
+    expect(events.filter((event) => event.type === 'stream:error')).toEqual([]);
+    expect(events.filter((event) => event.type === 'stream:tool-call-complete')).toHaveLength(1);
+    expect(events.at(-1)?.type).toBe('stream:complete');
+  });
+
+  it('Anthropic: nothing follows a stream:error, not even stream:complete', async () => {
+    const unlisted = { type: 'tool_search_tool_result', tool_use_id: 'x', content: [] };
+    const events = await collect(
+      normalizeAnthropicStream(
+        iterate(anthropicStreamEventsFor([{ type: 'text', text: 'Hi' }, unlisted as never])),
+      ),
+    );
+    expect(events.at(-1)?.type).toBe('stream:error');
+    expect(events.filter((event) => event.type === 'stream:complete')).toEqual([]);
+
+    const mystery = anthropicStreamEventsFor([{ type: 'text', text: 'Hi' }]);
+    mystery.splice(3, 0, {
+      type: 'content_block_delta',
+      index: 0,
+      delta: { type: 'mystery_delta' },
+    });
+    const afterDelta = await collect(normalizeAnthropicStream(iterate(mystery)));
+    expect(afterDelta.at(-1)?.type).toBe('stream:error');
+  });
+
+  it('OpenAI: nothing follows a stream:error for audio or function_call', async () => {
+    for (const field of ['audio', 'function_call']) {
+      const events = await collect(
+        normalizeOpenAIStream(
+          iterate([
+            { choices: [{ delta: { content: 'Hi' }, finish_reason: null }], usage: null },
+            { choices: [{ delta: { [field]: { x: 1 } }, finish_reason: 'stop' }], usage: null },
+          ] as never),
+          undefined,
+        ),
+      );
+      expect(events.at(-1)?.type).toBe('stream:error');
+      expect(events.filter((event) => event.type === 'stream:complete')).toEqual([]);
+    }
   });
 });
