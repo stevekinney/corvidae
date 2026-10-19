@@ -33,6 +33,7 @@ import {
   typesOf,
 } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 type Handler = ReturnType<typeof createBureauHandler>;
 
@@ -63,6 +64,7 @@ async function withParentAndChild<T>(
     childStep,
   ]);
   const bureau = await createBureau({
+    assets: { storage: createMemoryAssetStorage() },
     id: 'children-fixture',
     agents: {
       assistant: createAgent({ generate: script, name: 'assistant' }),

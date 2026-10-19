@@ -526,6 +526,12 @@ export interface AssetService {
     bytes: Uint8Array,
   ): Promise<AssetUploadSession>;
   abortUpload(uploadId: string, principal: AssetPrincipal): Promise<void>;
+  /**
+   * The open upload session `uploadId`, as its owner sees it. A session that does not exist, is
+   * not open (completed, aborted or expired), or belongs to another principal is not found: the
+   * management plane asks before it admits, so a refused completion starts no admission.
+   */
+  inspectUpload(uploadId: string, principal: AssetPrincipal): Promise<AssetUploadSession>;
   inspect(
     assetId: string,
     principal: AssetPrincipal,

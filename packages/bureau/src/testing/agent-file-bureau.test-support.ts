@@ -18,6 +18,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import type { Bureau, BureauOptions } from '../types.ts';
 import { lookupTool } from './agent-file-fixtures.test-support.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 /** What a scripted generate saw on one call. */
 export interface Observation {
@@ -85,6 +86,8 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     stopWhen: stopWhen.noToolCalls(),
     storage: { type: 'memory' },
     durableExecution: true,
+    // A handler over this Bureau serves the asset operations, so the Bureau has the service.
+    assets: { storage: createMemoryAssetStorage() },
     ...options.overrides,
   });
   return {

@@ -6,6 +6,7 @@ import type { TokenBudget } from '../../context/token-budget.ts';
 import type {
   ContextAssembler,
   MediaCostEstimator,
+  MediaCostOutcome,
   UnadmittedMediaCost,
 } from '../../context/types.ts';
 import { MediaAdmissionError } from '../../errors.ts';
@@ -83,7 +84,7 @@ export function createCacheAwareAssembly(
 function refuseOmittedMedia(
   context: GenerateContext,
   assembled: readonly Message[],
-  mediaCosts: readonly (UnadmittedMediaCost | { readonly outcome: 'estimated' })[],
+  mediaCosts: readonly MediaCostOutcome[],
 ): void {
   const kept = new Set(assembled.map((message) => message.id));
   const refused: UnadmittedMediaCost[] = mediaCosts.filter(
@@ -103,5 +104,12 @@ function refuseOmittedMedia(
       });
     });
   }
-  if (refused.length > 0) throw new MediaAdmissionError(refused);
+  if (refused.length > 0) {
+    // A part that was costed and admitted beside a refusal means the message is not one the model
+    // takes none of. (An estimated part of a dropped message is also reported refused, as
+    // `media-over-budget`, which keeps the code the same.)
+    throw new MediaAdmissionError(refused, {
+      admitted: mediaCosts.filter((cost) => cost.outcome === 'estimated'),
+    });
+  }
 }

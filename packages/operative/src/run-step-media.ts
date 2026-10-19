@@ -436,7 +436,11 @@ export function createStepMediaAdmission(input: {
     const refused = outcomes.filter(
       (outcome): outcome is UnadmittedMediaCost => outcome.outcome !== 'estimated',
     );
-    if (refused.length > 0) throw new MediaAdmissionError(refused);
+    if (refused.length > 0) {
+      throw new MediaAdmissionError(refused, {
+        admitted: outcomes.filter((outcome) => outcome.outcome === 'estimated'),
+      });
+    }
     const mediaTokens = outcomes.reduce(
       (sum, outcome) => sum + (outcome.outcome === 'estimated' ? outcome.tokens : 0),
       0,
