@@ -25,6 +25,16 @@
 
 import { type Conversation, withMessageId } from 'conversationalist';
 
+/**
+ * The id of the `user` row a durable run is seeded with, or `undefined` for a run with no id. A
+ * replay of the workflow seeds again, outside any checkpointed step, so a row minted at random would
+ * get a new id each time; a claim keyed by it would leave one permanent reference per replay
+ * (COR-1581).
+ */
+export function inputMessageIdentifier(runId: string | undefined): string | undefined {
+  return runId === undefined ? undefined : `${runId}:input`;
+}
+
 /** The id of the assistant text row of `step`, or `undefined` for a run with no id. */
 export function assistantMessageIdentifier(
   runId: string | undefined,
