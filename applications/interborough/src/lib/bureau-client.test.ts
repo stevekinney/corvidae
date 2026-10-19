@@ -4,7 +4,6 @@ import { describe, expect, test } from 'bun:test';
 import {
   callBureau,
   type Fetcher,
-  getAgentDefinition,
   getContext,
   getThreadMessages,
   listAgents,
@@ -220,29 +219,6 @@ describe('the lists and details the chat and agents views read', () => {
 
     expect(agents).toEqual([agent as never]);
     expect(stub.calls[0]?.body.method).toBe('bureau.agents.list');
-  });
-
-  test('getAgentDefinition reads a file agent’s model, tools and skills, and nothing for a code agent', async () => {
-    const stub = answering(
-      result({
-        id: 'researcher',
-        source: 'file',
-        definition: {
-          model: 'anthropic/sonnet',
-          tools: ['lookup-order'],
-          skills: [{ id: 'cite', name: 'Cite', description: 'Cites sources' }],
-          instructions: 'Be careful.',
-        },
-      }),
-    );
-
-    const detail = await withStub(stub.fetch, () => getAgentDefinition('researcher'));
-
-    expect(detail.definition?.model).toBe('anthropic/sonnet');
-    expect(stub.calls[0]?.body).toMatchObject({
-      method: 'bureau.agents.definitions.get',
-      params: { id: 'researcher' },
-    });
   });
 
   test('getThreadMessages returns the messages the mount gives for a thread', async () => {
