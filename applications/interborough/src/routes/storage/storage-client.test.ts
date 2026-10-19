@@ -10,13 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { rejectionOf } from '@lostgradient/testing';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
-import {
-  probeConditionalBatchSupported,
-  storageDelete,
-  storageGet,
-  storagePut,
-  type StorageConnection,
-} from './storage-client.ts';
+import { storageDelete, storageGet, storagePut, type StorageConnection } from './storage-client.ts';
 
 interface FetchCall {
   readonly url: string;
@@ -152,23 +146,6 @@ describe('storageGet', () => {
 
     const rejection = storageGet(connection, 'k');
     expect(await rejectionOf(rejection)).toMatchObject({ status: 500, message: 'Server Error' });
-  });
-});
-
-describe('probeConditionalBatchSupported', () => {
-  test('returns false when the server reports that conditional batches are not implemented', async () => {
-    scripted = new ScriptedFetch();
-    scripted.respondWith(
-      new Response(JSON.stringify({ error: 'Conditional batch is not supported.' }), {
-        status: 501,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    );
-
-    expect(await probeConditionalBatchSupported(connection)).toBe(false);
-    expect(scripted.calls).toHaveLength(1);
-    expect(scripted.calls[0]?.url).toBe(`${connection.baseUrl}/v1/storage/-/conditional-batch`);
-    expect(scripted.calls[0]?.method).toBe('POST');
   });
 });
 

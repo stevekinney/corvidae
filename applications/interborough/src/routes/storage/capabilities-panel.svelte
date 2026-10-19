@@ -1,63 +1,92 @@
 <script lang="ts">
   /**
-   * Capabilities panel (plan §9.6; design `Weft UI.dc.html` STORAGE
-   * "stCaps"): `DescriptionList` with persistence badge + durable-recovery
-   * checklist.
+   * Capabilities panel: the storage backend's capability profile exactly as
+   * `weft.storage.capabilities` reports it (persistence, read-after-write,
+   * scan consistency, atomic batch, conditional batch, bounded range
+   * delete). Nothing is inferred from other operations.
    *
-   * **What's real vs. what's honestly unavailable.** Weft has no operation
-   * exposing `Storage.capabilities()` over the wire at all (verified against
-   * the full v0.11.0 operation catalog) — filed upstream:
-   * https://github.com/stevekinney/weft/issues/727. Fabricating
-   * persistence/consistency/durable-recovery-checklist values with no wire
-   * signal would be placeholder content presented as fact, so this panel
-   * shows only what a remote client can actually establish today:
-   *   - **Batch operations**: always supported — `weft.storage.batch`
-   *     applies its operations unconditionally, no capability gate exists
-   *     on that route (`storageBatchOperation.invoke` in
-   *     `src/server/operations/storage.ts`).
-   *   - **Conditional batch**: from the `conditionalBatchSupported` probe
-   *     result passed in by `index.svelte` (see `storage-client.ts`'s
-   *     `probeConditionalBatchSupported` doc comment).
-   * Persistence, read-after-write, scan consistency, atomic-batch, and the
-   * durable-recovery checklist (`assertDurableStorageForRecovery`'s five
-   * checks) all require that missing operation — the banner below says so
-   * rather than guessing.
+   * Only `conditionalBatch` gates a control in this console (the batch
+   * panel's conditional section); the other five are displayed because
+   * Weft treats them as trusted contracts or operational hints and does not
+   * gate on them (`WEFT/src/storage/capabilities.ts`).
    */
-  import { Badge, Callout, DescriptionList } from '@lostgradient/cinder';
+  import { Badge, DescriptionList, Skeleton } from '@lostgradient/cinder';
+  import type { StorageCapabilities } from '@lostgradient/weft';
+
+  import QueryFaultBanner from '../system/query-fault-banner.svelte';
 
   interface CapabilitiesPanelProps {
-    conditionalBatchSupported: boolean | undefined;
+    capabilities: StorageCapabilities | undefined;
+    loading: boolean;
+    error: unknown;
+    onRetry?: (() => void) | undefined;
   }
 
-  let { conditionalBatchSupported }: CapabilitiesPanelProps = $props();
+  let { capabilities, loading, error, onRetry = undefined }: CapabilitiesPanelProps = $props();
+
+  const PERSISTENCE_LABEL: Readonly<Record<StorageCapabilities['persistence'], string>> = {
+    ephemeral: 'ephemeral (lost when the runtime exits)',
+    local: 'local (durable on this host)',
+    remote: 'remote (owned by a remote service)',
+  };
+
+  const READ_AFTER_WRITE_LABEL: Readonly<Record<StorageCapabilities['readAfterWrite'], string>> = {
+    linearizable: 'linearizable',
+    session: 'session',
+    eventual: 'eventual',
+  };
+
+  const SCAN_CONSISTENCY_LABEL: Readonly<Record<StorageCapabilities['scanConsistency'], string>> = {
+    snapshot: 'snapshot',
+    'best-effort': 'best-effort',
+  };
+
+  const items = $derived(
+    capabilities === undefined
+      ? []
+      : [
+          { term: 'Persistence', definition: PERSISTENCE_LABEL[capabilities.persistence] },
+          {
+            term: 'Read after write',
+            definition: READ_AFTER_WRITE_LABEL[capabilities.readAfterWrite],
+          },
+          {
+            term: 'Scan consistency',
+            definition: SCAN_CONSISTENCY_LABEL[capabilities.scanConsistency],
+          },
+          { term: 'Atomic batch', definition: atomicBatchBadge },
+          { term: 'Conditional batch', definition: conditionalBatchBadge },
+          { term: 'Bounded range delete', definition: boundedRangeDeleteBadge },
+        ],
+  );
 </script>
 
-{#snippet conditionalBatchBadge()}
-  {#if conditionalBatchSupported === undefined}
-    <Badge variant="neutral">checking…</Badge>
-  {:else if conditionalBatchSupported}
-    <Badge variant="success">supported</Badge>
-  {:else}
-    <Badge variant="neutral">not supported</Badge>
-  {/if}
+{#snippet supportBadge(supported: boolean)}
+  <Badge variant={supported ? 'success' : 'neutral'}>
+    {supported ? 'supported' : 'not supported'}
+  </Badge>
 {/snippet}
 
-{#snippet batchBadge()}
-  <Badge variant="success">supported</Badge>
+{#snippet atomicBatchBadge()}
+  {@render supportBadge(capabilities?.atomicBatch === true)}
+{/snippet}
+
+{#snippet conditionalBatchBadge()}
+  {@render supportBadge(capabilities?.conditionalBatch === true)}
+{/snippet}
+
+{#snippet boundedRangeDeleteBadge()}
+  {@render supportBadge(capabilities?.boundedRangeDelete === true)}
 {/snippet}
 
 <div class="weft-storage-capabilities">
-  <DescriptionList
-    items={[
-      { term: 'Batch operations', definition: batchBadge },
-      { term: 'Conditional batch', definition: conditionalBatchBadge },
-    ]}
-  />
-  <Callout variant="info" semantic="note">
-    Persistence, consistency guarantees, and the durable-recovery checklist require a server-side
-    capability-introspection operation that doesn't exist yet — filed as
-    <a href="https://github.com/stevekinney/weft/issues/727" target="_blank" rel="noreferrer"
-      >weft#727</a
-    >. This panel shows only what the client can establish without it.
-  </Callout>
+  {#if loading}
+    <div role="status" aria-busy="true" aria-label="Loading storage capabilities">
+      <Skeleton height="8rem" />
+    </div>
+  {:else if error}
+    <QueryFaultBanner {error} {onRetry} />
+  {:else if capabilities !== undefined}
+    <DescriptionList {items} />
+  {/if}
 </div>
