@@ -380,7 +380,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   agentDirectory?: string;
   /**
    * COR-1524 — the deployment's tool catalog: the tools an agent file may name in `tools`, by
-   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none.
+   * the name it uses. A file naming a tool that is not here is `invalid`. Defaults to none. With
+   * {@link BureauOptions.workflowDirectory} Bureau adds `workflows-create`, `workflows-update`,
+   * `workflows-pause`, `workflows-resume`, and `workflows-list` (COR-1529); a tool of the host's
+   * with one of those names is refused with `BureauError` (`BAD_REQUEST`).
    */
   agentTools?: Readonly<Record<string, Tool>>;
   /**

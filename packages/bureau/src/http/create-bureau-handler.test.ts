@@ -463,6 +463,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.workflows.revisions',
         'bureau.workflows.runs.get',
         'bureau.workflows.runs.list',
+        'bureau.workflows.signal',
         'bureau.workflows.update',
         'rpc.discover',
         'weft.system.principal',
