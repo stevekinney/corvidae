@@ -26,8 +26,10 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { AgentSkillDescriptor } from '@lostgradient/operative';
-import { CORE_SCHEMA, dump, load as loadYaml, YAMLException } from 'js-yaml';
+import { CORE_SCHEMA, load as loadYaml, YAMLException } from 'js-yaml';
 import { z } from 'zod';
+
+import { emitMapping, rewriteFrontmatter } from './agent-file-frontmatter';
 
 /** What an agent's identifier must look like: it doubles as a path segment later. */
 export const AGENT_IDENTIFIER_PATTERN = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
@@ -113,6 +115,21 @@ export const agentFileFrontmatterSchema = z.looseObject({
     .nullish(),
   /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
   published: z.boolean().nullish(),
+});
+
+/**
+ * A definition as a snapshot stores it. Read back with the defaults a later field would need, so
+ * a snapshot written before that field existed still resumes; a stored value that is not valid
+ * is refused at the boundary rather than failing later as a `TypeError`.
+ */
+export const agentFileDefinitionSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().default(null),
+  model: z.string().min(1),
+  tools: z.array(z.string().min(1)).default([]),
+  skills: z.array(agentSkillDescriptorSchema).default([]),
+  published: z.boolean().default(false),
+  instructions: z.string(),
 });
 
 /** The frontmatter as written, before defaults. */
@@ -324,14 +341,9 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
   return known;
 }
 
-function emitFrontmatter(mapping: Record<string, unknown>, lineEnding: '\n' | '\r\n'): string {
-  const yaml = dump(mapping, { schema: CORE_SCHEMA, lineWidth: -1, noRefs: true });
-  return lineEnding === '\n' ? yaml : yaml.replaceAll('\n', lineEnding);
-}
-
 /** The bytes of a brand-new agent file. */
 export function serializeNewAgentFile(definition: AgentFileDefinitionInput): Uint8Array {
-  const frontmatter = emitFrontmatter(
+  const frontmatter = emitMapping(
     knownFrontmatter({ ...definition, published: definition.published ?? false }),
     '\n',
   );
@@ -379,16 +391,12 @@ export function serializeUpdatedAgentFile(
   const fence = `---${existing.lineEnding}`;
   let frontmatter = existing.frontmatter;
   if (frontmatterChanged) {
-    const known = knownFrontmatter(input);
-    const mapping: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(existing.raw)) {
-      if (!(AGENT_FILE_KNOWN_KEYS as readonly string[]).includes(key)) mapping[key] = value;
-      else if (key in known) mapping[key] = known[key];
-    }
-    for (const [key, value] of Object.entries(known)) {
-      if (!(key in mapping)) mapping[key] = value;
-    }
-    frontmatter = emitFrontmatter(mapping, existing.lineEnding);
+    frontmatter = rewriteFrontmatter(
+      existing,
+      knownFrontmatter(input),
+      AGENT_FILE_KNOWN_KEYS,
+      existing.lineEnding,
+    );
   }
   return textEncoder.encode(`${prefix}${fence}${frontmatter}${fence}${next.instructions}`);
 }

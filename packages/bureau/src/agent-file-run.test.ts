@@ -200,6 +200,31 @@ describe('a session run of a file agent', () => {
     expect(revisions.map((revision) => revision.hash)).toEqual([hash ?? '']);
   });
 
+  it('releases its snapshot reference when its session save loses to another agent binding the session', async () => {
+    const { bureau, put } = await start({ scripts: { [OPUS_5_5]: () => 'reply' } });
+    await put('alpha-file.md', agentFileText({ model: KNOWN_MODEL }, 'Alpha.\n'));
+    await put('bravo-file.md', agentFileText({ model: KNOWN_MODEL }, 'Bravo.\n'));
+    await bureau.agents.refresh();
+
+    // Both pass the preflight check for a session that does not exist yet; one binds it first.
+    const outcomes = await Promise.allSettled(
+      ['alpha-file', 'bravo-file'].map((agentName) =>
+        bureau.createRun({ message: 'hello', agentName, sessionId: 'session-shared' }),
+      ),
+    );
+    expect(outcomes.map((outcome) => outcome.status).toSorted()).toEqual(['fulfilled', 'rejected']);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'fulfilled') await waitForRunState(bureau, outcome.value.id);
+    }
+
+    // The loser kept no reference, and with it no snapshot; the winner's run holds its own.
+    const kept = [
+      ...(await bureau.agents.revisions('alpha-file')),
+      ...(await bureau.agents.revisions('bravo-file')),
+    ];
+    expect(kept).toHaveLength(1);
+  });
+
   it('is refused with NOT_FOUND for an invalid file, before anything is persisted', async () => {
     const { bureau, put } = await start();
     await put('broken.md', agentFileText({ model: 'anthropic/none' }));

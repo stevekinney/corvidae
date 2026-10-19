@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen } from '@lostgradient/operative';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
 import { describe, expect, it } from 'bun:test';
@@ -142,6 +142,38 @@ async function crashScenario(scope: ScenarioScope): Promise<void> {
       expect(call.model).toBe('claude-opus-5-5');
       expect(call.tools).toEqual(['lookup-order']);
     }
+
+    // Retention: every one of those runs, a recovered `bureau.run` run included, settled when it
+    // ended, so a maintenance pass a year on prunes all of their snapshots. The run is in no
+    // store, so only recovery's own settlement can have marked it.
+    const recoveredShutdown = await bureau.shutdown();
+    expect(recoveredShutdown.unresolved).toBe(0);
+    const yearOn = createManualRuntimeServices({
+      origin: new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString(),
+    });
+    bureau = await createBureau({
+      agents: {},
+      agentDirectory: agents,
+      agentTools: { 'lookup-order': lookupTool },
+      resolveAgentGenerate: () => async () => ({ content: 'unused', toolCalls: [] }),
+      stopWhen: stopWhen.noToolCalls(),
+      storage: { type: 'sqlite', path: storagePath },
+      durableExecution: true,
+      durableOwnership: { ownership: 'none' },
+      durableBackgroundTasks: 'manual',
+      runtime: yearOn,
+    });
+    const before = await Promise.all([
+      bureau.agents.revisions('gone'),
+      bureau.agents.revisions('edited'),
+    ]);
+    expect(before.map((revisions) => revisions.length)).toEqual([1, 1]);
+    await bureau.runDurableMaintenance();
+    const after = await Promise.all([
+      bureau.agents.revisions('gone'),
+      bureau.agents.revisions('edited'),
+    ]);
+    expect(after.map((revisions) => revisions.length)).toEqual([0, 0]);
   } finally {
     const shutdown = await bureau?.shutdown();
     rmSync(directory, { recursive: true, force: true });

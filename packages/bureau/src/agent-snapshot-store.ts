@@ -10,29 +10,45 @@
  *
  * - `bureau-agent-snapshot:v1:<id>:<hash>` holds an {@link AgentSnapshot}. An identifier cannot
  *   hold `:` and a hash is hex, so the key needs no encoding and `revisions(id)` is one prefix
- *   list.
+ *   list. The stored definition is validated on read (`agentFileDefinitionSchema`).
  * - `bureau-agent-run:v1:<runId>` holds an {@link AgentRunReference}, the reference that keeps a
  *   snapshot alive until its run's retention ends.
+ *
+ * ## Starting a run
+ *
+ * A start is a ticket ({@link AgentSnapshotStore.begin}): the snapshot is written first, so a
+ * recovery record that names its hash can always be resumed, and the reference only when the run
+ * is known to be this execution's ({@link AgentStartTicket.hold}). A start that loses its claim or
+ * fails abandons the ticket, which removes a snapshot nothing holds and touches no reference. A
+ * snapshot with a start in flight is never removed by a release or a prune.
  *
  * ## Retention
  *
  * A snapshot is kept while any reference to it remains. A reference leaves when its run is
- * deleted ({@link AgentSnapshotStore.releaseRun}, from `run.removed`) or when it has been settled
- * for longer than the task retention window ({@link AgentSnapshotStore.pruneSettledBefore}). The
- * second path is what releases a `bureau.run()` run, which leaves the run store the moment it
- * settles and is never deleted. A run that has not settled keeps its snapshot indefinitely: it may
- * still be resumed.
+ * deleted ({@link AgentSnapshotStore.releaseRun}, from `run.removed`), when it has been settled
+ * for longer than the task retention window ({@link AgentSnapshotStore.pruneSettledBefore}), or
+ * when the maintenance pass finds its run never started. The second path is what releases a
+ * `bureau.run()` run, which leaves the run store the moment it settles and is never deleted. A
+ * run that has not settled keeps its snapshot: it may still be resumed.
  *
- * Writes and prunes are serialized in this process. A different process pruning the same store
- * in the instant between a run's reference and its snapshot is not excluded; `recordRun` checks
- * for that and rewrites the snapshot.
+ * ## What is not guaranteed
+ *
+ * Writes, holds, and prunes are serialized in this process only. Pruning is not atomic across
+ * Bureau instances that share a store: one instance can list the references, another can record
+ * a new run on the same definition, and the first can then delete the snapshot. Agent files
+ * support one Bureau per store (Interborough is one process), so no cross-instance check is made;
+ * a topology with several Bureaus over one store would need a conditional delete.
  *
  * @module agent-snapshot-store
  */
 
 import { MemoryStorage, textValueStore, type TextValueStore } from '@lostgradient/weft';
 
-import type { AgentFileDefinition } from './agent-file';
+import {
+  AgentSnapshotError,
+  agentFileDefinitionSchema,
+  type AgentFileDefinition,
+} from './agent-file';
 
 export const AGENT_SNAPSHOT_KEY_PREFIX = 'bureau-agent-snapshot:v1:';
 export const AGENT_RUN_REFERENCE_KEY_PREFIX = 'bureau-agent-run:v1:';
@@ -56,7 +72,7 @@ export interface AgentRunReference {
   readonly settledAt?: string;
 }
 
-/** What `recordRun` stores: the file agent as it stood when the run started. */
+/** What a start stores: the file agent as it stood when the run started. */
 export interface AgentSnapshotSource {
   readonly id: string;
   readonly hash: string;
@@ -72,16 +88,38 @@ export interface AgentRevision {
   readonly definition: AgentFileDefinition;
 }
 
+/** A run's reference with the run it belongs to. */
+export interface AgentRunReferenceEntry extends AgentRunReference {
+  readonly runId: string;
+}
+
+/** A start in progress: the snapshot is stored, and the run is not yet known to be this one's. */
+export interface AgentStartTicket {
+  /** The run is this execution's: tie it to the snapshot. Ends the ticket. */
+  hold(runId: string): Promise<void>;
+  /** The run will not exist: drop the snapshot if nothing holds it. Ends the ticket; idempotent. */
+  abandon(): Promise<void>;
+}
+
 export interface AgentSnapshotStore {
-  /** Store the snapshot if it is absent (else note this run on it) and tie `runId` to it. */
+  /** Store the snapshot if it is absent and return the ticket for a run that may use it. */
+  begin(source: AgentSnapshotSource): Promise<AgentStartTicket>;
+  /** `begin`, then `hold`: for a run whose identifier no other execution can claim. */
   recordRun(source: AgentSnapshotSource, runId: string): Promise<void>;
-  /** Stamp the run's reference as settled. A no-op for a run with no reference. */
-  settleRun(runId: string): Promise<void>;
-  /** Drop the run's reference, then its snapshot if no other reference holds it. */
+  /** Stamp the run's reference settled, now or at `at`. A no-op for a run with none, or one already settled. */
+  settleRun(runId: string, at?: string): Promise<void>;
+  /** Drop the run's reference, then its snapshot if no other reference or start holds it. */
   releaseRun(runId: string): Promise<void>;
-  /** The snapshot for `id` at `hash`, or `undefined` when there is none. */
+  /** The run's reference, or `undefined`. */
+  reference(runId: string): Promise<AgentRunReference | undefined>;
+  /** Every reference that has not settled. */
+  unsettledReferences(): Promise<readonly AgentRunReferenceEntry[]>;
+  /**
+   * The snapshot for `id` at `hash`, or `undefined` when there is none. A stored snapshot whose
+   * definition is not valid throws `AgentSnapshotError` (`snapshot-unresolvable`).
+   */
   load(id: string, hash: string): Promise<AgentSnapshot | undefined>;
-  /** The snapshots that have run for `id`, most recently run first. */
+  /** The snapshots that have run for `id`, most recently run first. One that is not valid is skipped. */
   revisions(id: string): Promise<readonly AgentRevision[]>;
   /**
    * Drop every reference settled before `cutoff` (epoch milliseconds), then every snapshot left
@@ -108,25 +146,44 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function parseSnapshot(text: string | null): AgentSnapshot | undefined {
-  if (text === null) return undefined;
+type ParsedSnapshot =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'invalid' }
+  | { readonly kind: 'ok'; readonly snapshot: AgentSnapshot };
+
+/** A stored snapshot, with its definition checked and its defaults filled in. */
+function parseSnapshot(text: string | null): ParsedSnapshot {
+  if (text === null) return { kind: 'absent' };
+  let value: unknown;
   try {
-    const value: unknown = JSON.parse(text);
-    if (
-      isRecord(value) &&
-      value['schemaVersion'] === 1 &&
-      typeof value['id'] === 'string' &&
-      typeof value['hash'] === 'string' &&
-      typeof value['firstRunAt'] === 'string' &&
-      typeof value['lastRunAt'] === 'string' &&
-      isRecord(value['definition'])
-    ) {
-      return value as unknown as AgentSnapshot;
-    }
+    value = JSON.parse(text);
   } catch {
     // A record that is not JSON is not a snapshot.
+    return { kind: 'absent' };
   }
-  return undefined;
+  if (
+    !isRecord(value) ||
+    value['schemaVersion'] !== 1 ||
+    typeof value['id'] !== 'string' ||
+    typeof value['hash'] !== 'string' ||
+    typeof value['firstRunAt'] !== 'string' ||
+    typeof value['lastRunAt'] !== 'string'
+  ) {
+    return { kind: 'absent' };
+  }
+  const definition = agentFileDefinitionSchema.safeParse(value['definition']);
+  if (!definition.success) return { kind: 'invalid' };
+  return {
+    kind: 'ok',
+    snapshot: {
+      schemaVersion: 1,
+      id: value['id'],
+      hash: value['hash'],
+      firstRunAt: value['firstRunAt'],
+      lastRunAt: value['lastRunAt'],
+      definition: definition.data as AgentFileDefinition,
+    },
+  };
 }
 
 function parseReference(text: string | null): AgentRunReference | undefined {
@@ -158,8 +215,15 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
     tail = result.catch(() => undefined);
     return result;
   }
+  /** Starts that have stored a snapshot and not yet held or abandoned it, by snapshot key. */
+  const inFlight = new Map<string, number>();
+  const adjustInFlight = (key: string, change: 1 | -1): void => {
+    const next = (inFlight.get(key) ?? 0) + change;
+    if (next <= 0) inFlight.delete(key);
+    else inFlight.set(key, next);
+  };
 
-  async function referencedHashes(): Promise<Set<string>> {
+  async function referencedKeys(): Promise<Set<string>> {
     const referenced = new Set<string>();
     for (const key of await store.list(AGENT_RUN_REFERENCE_KEY_PREFIX)) {
       const reference = parseReference(await store.get(key));
@@ -168,50 +232,104 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
     return referenced;
   }
 
-  async function deleteSnapshotIfUnreferenced(key: string): Promise<boolean> {
-    const referenced = await referencedHashes();
+  async function deleteSnapshotIfUnheld(key: string): Promise<boolean> {
+    if (inFlight.has(key)) return false;
+    const referenced = await referencedKeys();
     if (referenced.has(key)) return false;
     await store.delete(key);
     return true;
   }
 
-  return {
-    recordRun(source, runId) {
-      return exclusive(async () => {
+  async function begin(source: AgentSnapshotSource): Promise<AgentStartTicket> {
+    const key = snapshotKey(source.id, source.hash);
+    await exclusive(async () => {
+      adjustInFlight(key, 1);
+      try {
+        if (parseSnapshot(await store.get(key)).kind === 'ok') return;
         const now = options.nowISO();
-        const key = snapshotKey(source.id, source.hash);
-        // The reference first: a prune that lists references between the two writes then sees it.
         await store.set(
-          referenceKey(runId),
+          key,
           JSON.stringify({
             schemaVersion: 1,
             id: source.id,
             hash: source.hash,
-            startedAt: now,
-          } satisfies AgentRunReference),
+            firstRunAt: now,
+            lastRunAt: now,
+            definition: source.definition,
+          } satisfies AgentSnapshot),
         );
-        const existing = parseSnapshot(await store.get(key));
-        const snapshot: AgentSnapshot = {
-          schemaVersion: 1,
-          id: source.id,
-          hash: source.hash,
-          firstRunAt: existing?.firstRunAt ?? now,
-          lastRunAt: now,
-          definition: existing?.definition ?? source.definition,
-        };
-        await store.set(key, JSON.stringify(snapshot));
-        // Another process may have pruned the snapshot between the reference and this write.
-        if ((await store.get(key)) === null) await store.set(key, JSON.stringify(snapshot));
-      });
+      } catch (error) {
+        adjustInFlight(key, -1);
+        throw error;
+      }
+    });
+    let ended = false;
+    return {
+      hold(runId) {
+        return exclusive(async () => {
+          if (ended) throw new Error('This agent start has already been held or abandoned.');
+          ended = true;
+          try {
+            const now = options.nowISO();
+            const existing = parseReference(await store.get(referenceKey(runId)));
+            // The reference first: a prune that lists references between the two writes sees it.
+            if (existing?.id !== source.id || existing.hash !== source.hash) {
+              await store.set(
+                referenceKey(runId),
+                JSON.stringify({
+                  schemaVersion: 1,
+                  id: source.id,
+                  hash: source.hash,
+                  startedAt: now,
+                } satisfies AgentRunReference),
+              );
+            }
+            const current = parseSnapshot(await store.get(key));
+            const snapshot: AgentSnapshot = {
+              schemaVersion: 1,
+              id: source.id,
+              hash: source.hash,
+              firstRunAt: current.kind === 'ok' ? current.snapshot.firstRunAt : now,
+              lastRunAt: now,
+              definition: source.definition,
+            };
+            await store.set(key, JSON.stringify(snapshot));
+          } finally {
+            adjustInFlight(key, -1);
+          }
+        });
+      },
+      abandon() {
+        return exclusive(async () => {
+          if (ended) return;
+          ended = true;
+          adjustInFlight(key, -1);
+          await deleteSnapshotIfUnheld(key);
+        });
+      },
+    };
+  }
+
+  return {
+    begin,
+
+    async recordRun(source, runId) {
+      const ticket = await begin(source);
+      try {
+        await ticket.hold(runId);
+      } catch (error) {
+        await ticket.abandon();
+        throw error;
+      }
     },
 
-    settleRun(runId) {
+    settleRun(runId, at) {
       return exclusive(async () => {
         const reference = parseReference(await store.get(referenceKey(runId)));
         if (reference === undefined || reference.settledAt !== undefined) return;
         await store.set(
           referenceKey(runId),
-          JSON.stringify({ ...reference, settledAt: options.nowISO() }),
+          JSON.stringify({ ...reference, settledAt: at ?? options.nowISO() }),
         );
       });
     },
@@ -221,19 +339,43 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
         const reference = parseReference(await store.get(referenceKey(runId)));
         if (reference === undefined) return;
         await store.delete(referenceKey(runId));
-        await deleteSnapshotIfUnreferenced(snapshotKey(reference.id, reference.hash));
+        await deleteSnapshotIfUnheld(snapshotKey(reference.id, reference.hash));
       });
     },
 
+    async reference(runId) {
+      return parseReference(await store.get(referenceKey(runId)));
+    },
+
+    async unsettledReferences() {
+      const open: AgentRunReferenceEntry[] = [];
+      for (const key of await store.list(AGENT_RUN_REFERENCE_KEY_PREFIX)) {
+        const reference = parseReference(await store.get(key));
+        if (reference === undefined || reference.settledAt !== undefined) continue;
+        open.push({ ...reference, runId: key.slice(AGENT_RUN_REFERENCE_KEY_PREFIX.length) });
+      }
+      return open;
+    },
+
     async load(id, hash) {
-      return parseSnapshot(await store.get(snapshotKey(id, hash)));
+      const parsed = parseSnapshot(await store.get(snapshotKey(id, hash)));
+      if (parsed.kind === 'invalid') {
+        throw new AgentSnapshotError(
+          'snapshot-unresolvable',
+          id,
+          hash,
+          `The stored snapshot of agent "${id}" at ${hash} is not a valid definition.`,
+        );
+      }
+      return parsed.kind === 'ok' ? parsed.snapshot : undefined;
     },
 
     async revisions(id) {
       const found: AgentRevision[] = [];
       for (const key of await store.list(`${AGENT_SNAPSHOT_KEY_PREFIX}${id}:`)) {
-        const snapshot = parseSnapshot(await store.get(key));
-        if (snapshot === undefined) continue;
+        const parsed = parseSnapshot(await store.get(key));
+        if (parsed.kind !== 'ok') continue;
+        const { snapshot } = parsed;
         found.push({
           id: snapshot.id,
           hash: snapshot.hash,
@@ -262,7 +404,7 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
         }
         let removed = 0;
         for (const key of touched) {
-          if (await deleteSnapshotIfUnreferenced(key)) removed += 1;
+          if (await deleteSnapshotIfUnheld(key)) removed += 1;
         }
         return removed;
       });

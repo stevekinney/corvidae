@@ -92,7 +92,10 @@ export interface CatalogDispatcherDependencies {
    * and its reference settled when it ends. Absent when the Bureau has no agent directory.
    */
   readonly fileAgents?:
-    | Pick<FileAgentRuntime, 'agentForRecordedRun' | 'recordRunStart' | 'releaseRun' | 'settleRun'>
+    | Pick<
+        FileAgentRuntime,
+        'agentForRecordedRun' | 'beginRunStart' | 'recordRunStart' | 'releaseRun' | 'settleRun'
+      >
     | undefined;
 }
 
@@ -580,10 +583,14 @@ export function createCatalogDispatcher({
       // propagates uncaught, same as every other resolver failure in this
       // function — better to fail this run's start than dispatch a durable
       // run with no way to reattach it later.
-      // COR-1524 — a file agent's definition is stored, and this run tied to it, before the
-      // recovery record that names its hash exists: a record with no snapshot behind it could
-      // never be resumed.
-      const fileBinding = await fileAgents?.recordRunStart(agent, runId);
+      // COR-1524 — a file agent's definition is stored before the recovery record that names its
+      // hash exists: a record with no snapshot behind it could never be resumed. The run is tied
+      // to the snapshot (`hold`) at once for a minted id, which no other execution can claim, and
+      // only once the claim is won for a fixed one, so a start that loses never touches the
+      // reference of the run that won.
+      const fileStart = await fileAgents?.beginRunStart(agent);
+      const fileBinding = fileStart?.binding;
+      let heldReference = false;
       const recoveryRecord = {
         agentName: name,
         // Type-level-only correction (mirrors `agent-catalog.ts`'s own
@@ -611,71 +618,91 @@ export function createCatalogDispatcher({
       let claimLost = false;
       try {
         if (runIdOverride === undefined) {
+          await fileStart?.hold(runId);
+          heldReference = fileStart !== undefined;
           await runtime.persistCatalogRunRecoveryRecord(runId, recoveryRecord);
         } else {
           claimLost = !(await runtime.claimCatalogRunRecoveryRecord(runId, recoveryRecord));
+          if (!claimLost) {
+            await fileStart?.hold(runId);
+            heldReference = fileStart !== undefined;
+          }
         }
       } catch (error) {
         // The run never started, so nothing will settle or remove its reference.
-        if (fileBinding !== undefined && runIdOverride === undefined) {
-          await fileAgents?.releaseRun(runId);
-        }
+        if (heldReference && runIdOverride === undefined) await fileAgents?.releaseRun(runId);
+        else await fileStart?.abandon();
         throw error;
       }
       if (claimLost) {
-        if (goalAttempt === undefined) {
-          throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
-        }
-        // Only the same attempt's own claim may be continued. A claim another
-        // run, another goal, or another principal holds is never touched.
-        const existing = await runtime.loadCatalogRunRecoveryRecord(runId);
-        const owned =
-          existing.status === 'found' &&
-          existing.record.goalAttempt?.goalRunId === goalAttempt.goalRunId &&
-          existing.record.goalAttempt.attemptIndex === goalAttempt.attemptIndex &&
-          existing.record.agentName === name &&
-          existing.record.principal === principal;
-        if (!owned) {
-          throw createBureauError(
-            `Run "${runId}" already exists and does not belong to this goal attempt`,
-            'CONFLICT',
+        try {
+          if (goalAttempt === undefined) {
+            throw createBureauError(`Run "${runId}" already exists`, 'CONFLICT');
+          }
+          // Only the same attempt's own claim may be continued. A claim another
+          // run, another goal, or another principal holds is never touched.
+          const existing = await runtime.loadCatalogRunRecoveryRecord(runId);
+          const owned =
+            existing.status === 'found' &&
+            existing.record.goalAttempt?.goalRunId === goalAttempt.goalRunId &&
+            existing.record.goalAttempt.attemptIndex === goalAttempt.attemptIndex &&
+            existing.record.agentName === name &&
+            existing.record.principal === principal;
+          if (!owned) {
+            throw createBureauError(
+              `Run "${runId}" already exists and does not belong to this goal attempt`,
+              'CONFLICT',
+            );
+          }
+          // A tombstoned claim is the goal saying it is over this attempt. It is the
+          // pre-start half of the fence: the start stops here, before the engine is
+          // asked for a workflow. A start that already passed this point is stopped
+          // by the run's own fence instead, which also refuses any step until the goal
+          // acknowledges the attempt as running (see goal-attempt-fence.ts).
+          if (existing.record.goalAttempt?.tombstonedAt !== undefined) {
+            releaseAttribution();
+            throw new GoalAttemptTombstonedError(runId);
+          }
+          // The winning claim is immutable. Two at-least-once executions of one
+          // attempt can overlap, and either may be the one whose workflow the
+          // engine accepts, so a loser never rewrites what the winner wrote: the
+          // record has to describe the workflow that runs, and the one claim
+          // does. A workflow this execution still has to start is built from that
+          // claim's own input and estimator, not from what this execution
+          // resolved. The claim's definition revision cannot be rebuilt (the
+          // catalog holds only the current one); recovery pins it and warns on a
+          // drift, and this start is no different.
+          const claimed = existing.record;
+          // COR-1524 — the claim's run began on a definition of a file agent that may since have
+          // changed; this execution continues that run, so it is built from the claim's snapshot.
+          let claimedAgent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver = agent;
+          if (claimed.agentDefinitionHash !== undefined && fileAgents !== undefined) {
+            const recorded = await fileAgents.agentForRecordedRun(
+              name,
+              claimed.agentDefinitionHash,
+            );
+            claimedAgent = recorded.agent as AnyRunnableAgent &
+              DefinitionResolvingAgentWithResolver;
+            // The run is the winner's, on the winner's snapshot: tie it there, then drop this
+            // execution's own.
+            await fileAgents.recordRunStart(claimedAgent, runId);
+            heldReference = true;
+          }
+          await fileStart?.abandon();
+          resolvedOptions = composeResolvedOptions(
+            await claimedAgent[OPERATIVE_RESOLVE_RUN_OPTIONS](claimed.input, context),
           );
-        }
-        // A tombstoned claim is the goal saying it is over this attempt. It is the
-        // pre-start half of the fence: the start stops here, before the engine is
-        // asked for a workflow. A start that already passed this point is stopped
-        // by the run's own fence instead, which also refuses any step until the goal
-        // acknowledges the attempt as running (see goal-attempt-fence.ts).
-        if (existing.record.goalAttempt?.tombstonedAt !== undefined) {
-          releaseAttribution();
-          throw new GoalAttemptTombstonedError(runId);
-        }
-        // The winning claim is immutable. Two at-least-once executions of one
-        // attempt can overlap, and either may be the one whose workflow the
-        // engine accepts, so a loser never rewrites what the winner wrote: the
-        // record has to describe the workflow that runs, and the one claim
-        // does. A workflow this execution still has to start is built from that
-        // claim's own input and estimator, not from what this execution
-        // resolved. The claim's definition revision cannot be rebuilt (the
-        // catalog holds only the current one); recovery pins it and warns on a
-        // drift, and this start is no different.
-        const claimed = existing.record;
-        // COR-1524 — the claim's run began on a definition of a file agent that may since have
-        // changed; this execution continues that run, so it is built from the claim's snapshot.
-        let claimedAgent: AnyRunnableAgent & DefinitionResolvingAgentWithResolver = agent;
-        if (claimed.agentDefinitionHash !== undefined && fileAgents !== undefined) {
-          const recorded = await fileAgents.agentForRecordedRun(name, claimed.agentDefinitionHash);
-          claimedAgent = recorded.agent as AnyRunnableAgent & DefinitionResolvingAgentWithResolver;
-          await fileAgents.recordRunStart(claimedAgent, runId);
-        }
-        resolvedOptions = composeResolvedOptions(
-          await claimedAgent[OPERATIVE_RESOLVE_RUN_OPTIONS](claimed.input, context),
-        );
-        if (claimed.costEstimation !== undefined) {
-          resolvedOptions = {
-            ...resolvedOptions,
-            costEstimation: claimed.costEstimation ?? undefined,
-          };
+          if (claimed.costEstimation !== undefined) {
+            resolvedOptions = {
+              ...resolvedOptions,
+              costEstimation: claimed.costEstimation ?? undefined,
+            };
+          }
+        } catch (error) {
+          // This execution lost, and keeps nothing of the run it will not start: the winner's
+          // reference and snapshot are untouched, and this execution's snapshot is dropped.
+          await fileStart?.abandon();
+          throw error;
         }
       }
       const activeRun = createActiveRun(
@@ -725,7 +752,7 @@ export function createCatalogDispatcher({
       const agentRun = createAgentRun<unknown, boolean>(activeRun, {
         hasOutput: resolvedOptions.output !== undefined,
       });
-      if (fileBinding !== undefined) {
+      if (heldReference) {
         // The reference stays until the run ends, so a resume always finds its snapshot.
         detachBestEffortPromise(agentRun.result().finally(() => fileAgents?.settleRun(runId)));
       }
@@ -949,22 +976,30 @@ export function createCatalogDispatcher({
     // microtask later than before — compatible with the contract, which
     // promises a synchronous RETURN of the handle, not synchronous START of
     // the agent's own work.
+    // COR-1524 — a file agent's snapshot is stored, and this run tied to it, from the moment the
+    // handle exists, and settled when the handle ends, however it ends.
+    const fileReference = beginDirectFileReference(agent, context.runId);
     return indexCatalogRun(
       trackCatalogRun(
-        createDeferredAgentRun(
-          () =>
-            resolveInvariantComposedAgent(
-              name,
-              input,
-              context,
-              principal,
-              agent,
-              hasResolver,
-              registerCatalogRun,
-            ),
-          input,
-          context,
-          name,
+        settleDirectFileReference(
+          createDeferredAgentRun(
+            () =>
+              resolveInvariantComposedAgent(
+                name,
+                input,
+                context,
+                principal,
+                agent,
+                hasResolver,
+                registerCatalogRun,
+                fileReference,
+              ),
+            input,
+            context,
+            name,
+          ),
+          fileReference,
+          context.runId,
         ),
       ),
       name,
@@ -1023,20 +1058,27 @@ export function createCatalogDispatcher({
     // child, which the durable branch above passes as its workflow id, so a
     // process-local child's handle carries the same id `children` reports.
     context.runId = start.childRunId;
+    const fileReference = beginDirectFileReference(agent, context.runId);
     return trackCatalogRun(
-      createDeferredAgentRun(
-        () =>
-          resolveInvariantComposedAgent(
-            start.agentName,
-            start.input,
-            context,
-            start.principal,
-            agent,
-            hasResolver,
-          ),
-        start.input,
-        context,
-        start.agentName,
+      settleDirectFileReference(
+        createDeferredAgentRun(
+          () =>
+            resolveInvariantComposedAgent(
+              start.agentName,
+              start.input,
+              context,
+              start.principal,
+              agent,
+              hasResolver,
+              undefined,
+              fileReference,
+            ),
+          start.input,
+          context,
+          start.agentName,
+        ),
+        fileReference,
+        context.runId,
       ),
     );
   }
@@ -1121,6 +1163,8 @@ export function createCatalogDispatcher({
     hasResolver: boolean,
     /** COR-1302 — receives the run this dispatch builds; see `registerCatalogRun`. */
     onActiveRun?: (activeRun: ActiveRun) => void,
+    /** COR-1524 — settles once a file agent's snapshot is stored; a failure stops the start. */
+    fileReference?: Promise<unknown>,
   ): Promise<RunnableAgent<unknown, boolean>> {
     // An agent exposing no `OPERATIVE_RESOLVE_RUN_OPTIONS` builds its
     // `RunOptions` entirely inside `run()`, so there is no bag to merge a tier
@@ -1178,11 +1222,8 @@ export function createCatalogDispatcher({
     // for a hand-written resolver that omits it.
     resolvedOptions = { runtime: runtimeServices, ...resolvedOptions };
 
-    // COR-1524 — a file agent's snapshot is stored, and this run tied to it, before it starts.
-    const fileBinding =
-      context.runId === undefined
-        ? undefined
-        : await fileAgents?.recordRunStart(agent, context.runId);
+    // COR-1524 — the snapshot is stored before the run starts.
+    await fileReference;
 
     const merged: RunOptions = {
       ...resolvedOptions,
@@ -1216,14 +1257,44 @@ export function createCatalogDispatcher({
           principal !== undefined ? { owner: principal } : undefined,
         );
         onActiveRun?.(activeRun);
-        const agentRun = createAgentRun<unknown, boolean>(activeRun, { hasOutput });
-        if (fileBinding !== undefined && context.runId !== undefined) {
-          const runId = context.runId;
-          detachBestEffortPromise(agentRun.result().finally(() => fileAgents?.settleRun(runId)));
-        }
-        return agentRun;
+        return createAgentRun<unknown, boolean>(activeRun, { hasOutput });
       },
     };
+  }
+
+  /**
+   * COR-1524 — begin recording a direct (not durable) run of a file agent: its snapshot is stored
+   * and the run tied to it. Resolves the binding, or `undefined` for any other agent; the promise
+   * is started with the handle, so a handle aborted while it is still resolving is covered by
+   * {@link settleDirectFileReference} like any other.
+   */
+  function beginDirectFileReference(
+    agent: object,
+    runId: string | undefined,
+  ): Promise<unknown> | undefined {
+    if (fileAgents === undefined || runId === undefined) return undefined;
+    const recorded = fileAgents.recordRunStart(agent, runId);
+    // Observed here, so a failure is not unhandled; the run start awaits it and fails with it.
+    recorded.catch(() => undefined);
+    return recorded;
+  }
+
+  /** Settle the reference once the handle ends, after the snapshot it names was stored. */
+  function settleDirectFileReference(
+    handle: AgentRun<unknown, boolean>,
+    recorded: Promise<unknown> | undefined,
+    runId: string | undefined,
+  ): AgentRun<unknown, boolean> {
+    if (recorded === undefined || runId === undefined) return handle;
+    detachBestEffortPromise(
+      handle.result().finally(() =>
+        recorded.then(
+          (binding) => (binding === undefined ? undefined : fileAgents?.settleRun(runId)),
+          () => undefined,
+        ),
+      ),
+    );
+    return handle;
   }
 
   function findCatalogRun(id: string): DispatchedCatalogRun | undefined {

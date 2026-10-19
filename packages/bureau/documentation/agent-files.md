@@ -79,11 +79,11 @@ Bureau watches the directory, so adding, editing, or deleting a file takes effec
 
 ## Writing
 
-`bureau.agents.read(id)` returns the file's text and `hash`, the SHA-256 of its bytes. `create(id, definition)`, `update(id, definition, { expectedHash })`, and `delete(id, { expectedHash })` write through the same files. Each checks that the result would load (schema, identifier, model, tools, code names) and writes nothing otherwise, throwing `AgentFileError` with the codes above.
+`bureau.agents.read(id)` returns the file's text and `hash`, the SHA-256 of its bytes. `create(id, definition)`, `update(id, definition, { expectedHash })`, and `delete(id, { expectedHash })` write through the same files. Each checks that the result would load (schema, identifier, model, tools, code names, and that the host's `resolveAgentGenerate` can set the model up) and writes nothing otherwise, throwing `AgentFileError` with the codes above.
 
 A write goes to a temporary dotfile in the same directory and is renamed into place, so nothing reads half a file. Writes are serialized in this process. `create` throws `AgentFileConflictError` (`agent-file-exists`) when the file exists. `update` and `delete` throw it (`agent-file-changed`, with `currentHash`) when the bytes no longer hash to `expectedHash`, and `AgentFileError` (`agent-file-not-found`) when the file is gone.
 
-`update` keeps the frontmatter keys Bureau does not know, in place, and the body byte for byte when the supplied instructions equal it. A frontmatter whose meaning does not change keeps its original text, and an update that changes nothing writes nothing. A frontmatter that does change is re-emitted by `js-yaml` `dump`, which drops YAML comments and reformats it; the body stays untouched.
+`update` keeps the body byte for byte when the supplied instructions equal it, and a frontmatter whose meaning does not change keeps its original text. When the frontmatter does change, Bureau replaces the lines of the keys it knows (`name`, `description`, `model`, `tools`, `skills`, `published`) and keeps every other line, comments included, byte for byte, so an unknown key keeps its value and its YAML type for other tools: a quoted `created: '2024-01-01'` stays a string and an unquoted date stays a date. Bureau reads the rewritten frontmatter back and requires it to hold exactly the keys and values asked for. If it does not (a quoted key, say, which a line edit does not recognise), the whole frontmatter is re-emitted with `js-yaml`, which keeps values and types but drops comments and layout. An update that changes nothing writes nothing. An update or delete of a symbolic-linked agent file replaces the link with a regular file and leaves its target alone.
 
 There is no cross-process file lock. A different process writing the same file in the instant between a write's last check and its `rename` is not detected, because `rename` replaces whatever is there and, for `create`, cannot refuse an existing target. The window is the time between two system calls.
 
@@ -97,9 +97,13 @@ Editing or deleting the file mid-run does not change the run, because the agent 
 
 A snapshot is kept while any run that references it is retained, and pruned after the last one's retention ends:
 
-- A session run's reference goes when its task is deleted (the `run.removed` event, which task retention triggers).
+- A reference is written only once the run is this execution's. A run with a minted identifier ties itself to its snapshot at once. A child or a goal attempt, whose identifier is claimed first, ties itself only after it wins the claim; a start that loses the claim, or fails, leaves the winner's reference alone and drops a snapshot nothing holds.
+- A session run's reference goes when its task is deleted (the `run.removed` event, which task retention triggers), or when its session save fails before the run exists.
 - Any run's reference also goes once it has been settled for longer than `BureauOptions.taskRetention` (default 30 days; `'forever'` prunes nothing). The durable maintenance pass does this. It is what releases a `bureau.run` run, which leaves the run store the moment it settles and was never subject to task retention before. Those runs now have a snapshot retention window equal to `taskRetention`.
+- A run settles its reference as it ends: a fresh run through its handle or the store, a recovered `bureau.run` run through the recovery branch. The maintenance pass also reconciles every open reference against the durable engine. A run the engine says has ended is settled at its end time. A reference with no run behind it, once it is ten minutes old, belongs to a start that failed and is released. A run still active, or one this process is driving, is left alone.
 - A run that has not settled keeps its snapshot indefinitely, because it may still be resumed.
+- A snapshot read back is validated against the definition schema, with the defaults a later field would need. One that is not valid fails the resume with `snapshot-unresolvable`.
+- Pruning is not atomic across Bureau instances that share a store: one can list the references while another records a run on the same definition, and the first can then delete the snapshot. Agent files support one Bureau per store, which is how Interborough runs.
 
 ## Limits
 

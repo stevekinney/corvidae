@@ -7,7 +7,10 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AgentSnapshotError, type AgentFileDefinition } from './agent-file';
 import { readFileAgentBinding } from './agent-file-catalog';
-import { createFileAgentRuntime } from './agent-file-runtime';
+import {
+  createFileAgentRuntime,
+  UNSTARTED_RUN_REFERENCE_GRACE_MILLISECONDS,
+} from './agent-file-runtime';
 import {
   AGENT_RUN_REFERENCE_KEY_PREFIX,
   AGENT_SNAPSHOT_KEY_PREFIX,
@@ -158,5 +161,106 @@ describe('the persisted keys', () => {
         expect(other.startsWith(prefix), `${other} starts with ${prefix}`).toBe(false);
       }
     }
+  });
+});
+
+describe('reconcile', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const T0 = Date.parse('2026-10-18T00:00:00.000Z');
+
+  /** A runtime whose clock a test moves, and whose references start at `T0`. */
+  async function reconciling() {
+    const fixture = await createAgentFileFixture({ watch: false });
+    fixtures.push(fixture);
+    const clock = { now: T0 };
+    const snapshots = createAgentSnapshotStore({ nowISO: () => new Date(clock.now).toISOString() });
+    const runtime = createFileAgentRuntime({
+      files: fixture.catalog,
+      snapshots,
+      diagnose: (message, cause) => {
+        throw new Error(`${message} ${String(cause)}`);
+      },
+    });
+    const hold = (runId: string, hash: string) =>
+      snapshots.recordRun({ id: 'helper', hash, definition: DEFINITION }, runId);
+    return { clock, snapshots, runtime, hold };
+  }
+
+  it('settles a run the engine says has ended, at the time it ended', async () => {
+    const { clock, snapshots, runtime, hold } = await reconciling();
+    await hold('ended', 'aa');
+    clock.now += DAY;
+    const result = await runtime.reconcile({
+      now: clock.now,
+      isLive: () => false,
+      durableState: async () => ({ kind: 'ended', at: '2026-10-18T06:00:00.000Z' }),
+    });
+    expect(result).toEqual({ settled: 1, released: 0 });
+    const ended = await snapshots.reference('ended');
+    expect(ended?.settledAt).toBe('2026-10-18T06:00:00.000Z');
+  });
+
+  it('leaves a run that is still active, and one this process is driving', async () => {
+    const { clock, snapshots, runtime, hold } = await reconciling();
+    await hold('active', 'aa');
+    await hold('live', 'bb');
+    clock.now += 30 * DAY;
+    const result = await runtime.reconcile({
+      now: clock.now,
+      isLive: (runId) => runId === 'live',
+      durableState: async () => ({ kind: 'active' }),
+    });
+    expect(result).toEqual({ settled: 0, released: 0 });
+    const open = await snapshots.unsettledReferences();
+    expect(open.map((reference) => reference.runId).toSorted()).toEqual(['active', 'live']);
+  });
+
+  it('keeps a reference with no run behind it until the grace period has passed, then releases it', async () => {
+    const { clock, snapshots, runtime, hold } = await reconciling();
+    await hold('never-started', 'aa');
+    const reconcile = () =>
+      runtime.reconcile({
+        now: clock.now,
+        isLive: () => false,
+        durableState: async () => ({ kind: 'absent' }),
+      });
+
+    clock.now += UNSTARTED_RUN_REFERENCE_GRACE_MILLISECONDS;
+    expect(await reconcile()).toEqual({ settled: 0, released: 0 });
+    expect(await snapshots.reference('never-started')).toBeDefined();
+
+    clock.now += 1;
+    expect(await reconcile()).toEqual({ settled: 0, released: 1 });
+    expect(await snapshots.reference('never-started')).toBeUndefined();
+    // Nothing else held the snapshot, so it went with the reference.
+    expect(await snapshots.load('helper', 'aa')).toBeUndefined();
+  });
+
+  it('keeps a snapshot that another run still holds when it releases one that never started', async () => {
+    const { clock, snapshots, runtime, hold } = await reconciling();
+    await hold('never-started', 'aa');
+    await hold('running', 'aa');
+    clock.now += DAY;
+    await runtime.reconcile({
+      now: clock.now,
+      isLive: () => false,
+      durableState: async (reference) =>
+        reference.runId === 'running' ? { kind: 'active' } : { kind: 'absent' },
+    });
+    expect(await snapshots.reference('never-started')).toBeUndefined();
+    expect(await snapshots.load('helper', 'aa')).toBeDefined();
+  });
+
+  it('settles then lets retention prune, so a finished run’s snapshot does not outlive its window', async () => {
+    const { clock, snapshots, runtime, hold } = await reconciling();
+    await hold('ended', 'aa');
+    await runtime.reconcile({
+      now: clock.now,
+      isLive: () => false,
+      durableState: async () => ({ kind: 'ended', at: new Date(clock.now).toISOString() }),
+    });
+    clock.now += 31 * DAY;
+    expect(await snapshots.pruneSettledBefore(clock.now - 30 * DAY)).toBe(1);
+    expect(await snapshots.load('helper', 'aa')).toBeUndefined();
   });
 });

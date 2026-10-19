@@ -18,6 +18,7 @@ import { z } from 'zod';
 import {
   type AgentCatalogChange,
   type AgentFileCatalog,
+  type AgentFileCatalogOptions,
   createAgentFileCatalog,
 } from '../agent-file-catalog.ts';
 import type { AgentFileOperations } from '../agent-file-operations.ts';
@@ -67,6 +68,10 @@ export interface AgentFileFixtureOptions {
   readonly operations?: AgentFileOperations;
   readonly descriptors?: readonly BackendDescriptor[];
   readonly runtime?: RuntimeServices;
+  /** Replaces the host's resolver, to make a model that cannot be set up. */
+  readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
+  /** Replaces how a directory is watched, to observe the watchers the catalog opens. */
+  readonly openWatcher?: AgentFileCatalogOptions['openWatcher'];
 }
 
 export async function createAgentFileFixture(
@@ -91,12 +96,13 @@ export async function createAgentFileFixture(
     reservedIdentifiers: new Set(options.reserved ?? ['alpha']),
     tools: { 'lookup-order': lookupTool },
     modelCatalog,
-    resolveGenerate,
+    resolveGenerate: options.resolveGenerate ?? resolveGenerate,
     runtime: options.runtime ?? createDefaultRuntimeServices(),
     diagnose: (message, cause) => {
       throw new Error(`${message} ${String(cause)}`);
     },
     ...(options.watch === undefined ? {} : { watch: options.watch }),
+    ...(options.openWatcher === undefined ? {} : { openWatcher: options.openWatcher }),
     ...(options.operations === undefined ? {} : { operations: options.operations }),
   });
   return {

@@ -127,6 +127,10 @@ export interface AgentFileCatalogOptions {
   readonly operations?: AgentFileOperations | undefined;
   /** Watch the directory. Defaults to `true`; `false` leaves reloading to {@link AgentFileCatalog.refresh}. */
   readonly watch?: boolean | undefined;
+  /** How a directory is watched. Defaults to `fs.watch` without keeping the process alive; a test replaces it. */
+  readonly openWatcher?:
+    | ((path: string, listener: (event: string, filename: string | null) => void) => FSWatcher)
+    | undefined;
 }
 
 export interface AgentFileCatalog extends AgentFileWriter {
@@ -198,6 +202,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory } = options;
   const owner = ownerOrLocal(undefined);
+  const openWatcher =
+    options.openWatcher ?? ((path, listener) => watch(path, { persistent: false }, listener));
   let entries = new Map<string, FileEntry>();
   const listeners = new Set<(change: AgentCatalogChange) => void>();
 
@@ -270,6 +276,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return agent;
   }
 
+  /** The problem a model that is in the catalog but cannot be set up leaves a file with. */
+  function modelSetupProblem(definition: AgentFileDefinition, error: unknown): AgentFileProblem {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      code: 'unknown-model',
+      message: `The model "${definition.model}" could not be set up: ${message}`,
+    };
+  }
+
   function evaluate(id: string, bytes: Uint8Array, hash: string, modelRevision: number): FileEntry {
     const invalid = (problem: AgentFileProblem): FileEntry => ({
       id,
@@ -293,17 +308,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       const agent = buildAgent(id, hash, definition, checked.descriptor);
       return { id, hash, modelRevision, definition, agent };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        id,
-        hash,
-        modelRevision,
-        definition,
-        problem: {
-          code: 'unknown-model',
-          message: `The model "${definition.model}" could not be set up: ${message}`,
-        },
-      };
+      return { id, hash, modelRevision, definition, problem: modelSetupProblem(definition, error) };
     }
   }
 
@@ -406,8 +411,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   }
 
   function open(path: string, entry: string | undefined): void {
+    if (closed) return;
     try {
-      const opened = watch(path, { persistent: false }, (event, filename) => {
+      const opened = openWatcher(path, (event, filename) => {
         const name = filename ?? null;
         if (entry !== undefined && name !== null && name !== entry) return;
         if (entry === undefined && event === 'rename' && name === null) forceRearm = true;
@@ -429,6 +435,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const wanted = new Map<string, string | undefined>();
     if ((await operations.size(directory)) !== undefined) wanted.set(directory, undefined);
     const ancestor = await nearestExistingAncestor();
+    // `close()` may have landed while the directory was being looked at: open nothing then.
+    if (closed) return;
     if (ancestor !== undefined) wanted.set(ancestor.path, ancestor.entry);
     for (const [path, held] of watchers) {
       const entry = wanted.get(path);
@@ -456,11 +464,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   async function loop(): Promise<void> {
     startPolling();
     for (;;) {
-      if (!dirty || closed) return;
+      // Decided and cleared in one synchronous step, so a `refresh()` is either behind a scan
+      // that has not started yet or starts a loop of its own, never handed a loop that is over.
+      if (!dirty || closed) {
+        running = undefined;
+        return;
+      }
       dirty = false;
       // Armed before the scan, so a change after the scan reads the directory is not missed.
-      await arm();
       try {
+        await arm();
         await scanOnce();
       } catch (error) {
         options.diagnose('The agent directory could not be scanned.', error);
@@ -471,11 +484,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   function trigger(): void {
     if (closed) return;
     dirty = true;
-    if (running === undefined) {
-      running = loop().finally(() => {
-        running = undefined;
-      });
-    }
+    running ??= loop();
   }
 
   function refresh(): Promise<void> {
@@ -488,7 +497,15 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     operations,
     validate(id, definition) {
       const checked = checkDeployment(id, definition);
-      return 'problem' in checked ? checked.problem : undefined;
+      if ('problem' in checked) return checked.problem;
+      // The host's resolver is asked here too, so a write is refused for a model it cannot set
+      // up rather than committed and then listed invalid.
+      try {
+        options.resolveGenerate(checked.descriptor);
+      } catch (error) {
+        return modelSetupProblem(definition, error);
+      }
+      return undefined;
     },
     refresh,
     newTemporaryName: () => randomUUID(),
@@ -548,10 +565,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       closed = true;
       if (pollTimer !== undefined) options.runtime.timers.clearInterval(pollTimer);
       pollTimer = undefined;
+      listeners.clear();
+      // A scan in flight may be setting watchers up: it opens none once `closed` is set, and the
+      // watchers it opened before are closed here, after it has stopped.
+      await running;
       for (const held of watchers.values()) held.watcher.close();
       watchers.clear();
-      listeners.clear();
-      await running;
     },
   };
 }

@@ -1614,6 +1614,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // (not `runtime`) to avoid colliding with the pre-existing local `runtime`
   // below, which names the unrelated `RuntimeComposition` value.
   const runtimeServices: RuntimeServices = options.runtime ?? createDefaultRuntimeServices();
+  // COR-1524: when this Bureau was built, for telling a reference left by an earlier process apart.
+  const constructedAtMilliseconds = runtimeServices.clock.now();
   // AB-388: ONE resolver shared by `createAuditTrail` and
   // `createDurableEventProducer` below — see `event-timestamp.ts`. Declared
   // this early (well before either subsystem exists) so both constructions
@@ -4479,7 +4481,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     metadata: Record<string, JSONValue>,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
     if (agentName === BUREAU_AGENT_NAME) return undefined;
-    const recordedHash = metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
+    // COR-1524: the definition THIS run started with. A session's metadata names only its latest
+    // run's, and a session's runs may be of different agents, so the run's own reference decides
+    // and the session's hash is what an older record without one falls back to.
+    const reference = await fileAgents?.snapshots.reference(runId);
+    const recordedHash =
+      reference !== undefined && reference.id === agentName
+        ? reference.hash
+        : metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
@@ -4800,6 +4809,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // the SAME `runAttribution.delete(runId)` cleanup a genuinely
     // never-registered run needs.
     let registeredForRecovery = false;
+    // COR-1524: whether this run holds a snapshot reference that nothing else will settle if the
+    // run never registers.
+    let heldAgentReference = false;
     let created: RunSummary;
     try {
       if (!session) {
@@ -4843,6 +4855,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // session names the run, so recovery always finds the snapshot the session's hash points at.
       if (sessionAgent?.agentBinding !== undefined) {
         await fileAgents?.recordBoundRun(sessionAgent.agentBinding, runId);
+        heldAgentReference = fileAgents !== undefined;
       }
       const savedAsRunning = await saveSession(
         sessionId,
@@ -5503,6 +5516,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // bookkeeping this function itself owns, not to unregistering the
       // run.
       flowController?.settle(runId);
+      // COR-1524: a run that never registered has no terminal action to settle its snapshot
+      // reference, so the reference is released here; a registered one settles through the store.
+      if (heldAgentReference && !registeredForRecovery) {
+        await fileAgents?.releaseRun(runId);
+      }
       runRequestContexts.delete(runId);
       // AB-361 review (codex P2 PRRT_kwDORvupsc6ga0TX): only the
       // never-registered case may delete `runAttribution` — a run that
@@ -6273,10 +6291,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // review again, under the id it had, and the parks it makes from here on are heard.
       await runHumanWaits.restore(info.workflowId, info.input.agentName);
       runHumanWaits.observe(info.workflowId, info.input.agentName, info.services as DurableRunDeps);
-      void info.handle.result().then(
-        () => runHumanWaits.forget(info.workflowId),
-        () => runHumanWaits.forget(info.workflowId),
-      );
+      // COR-1524: a recovered run is in no store and has no handle of its own to settle its
+      // snapshot reference, so it settles here, as it ends.
+      const settleRecovered = (): void => {
+        runHumanWaits.forget(info.workflowId);
+        if (fileAgents !== undefined)
+          detachBestEffortPromise(fileAgents.settleRun(info.workflowId));
+      };
+      void info.handle.result().then(settleRecovered, settleRecovered);
       void monitorRecoveredCatalogRun(info.handle, info.input.agentName, diagnose);
       return;
     }
@@ -8499,6 +8521,37 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1524 — finishes the snapshot references that in-process settlement did not: a run the
+   * durable engine has ended is settled at the time it ended (a crash, a recovered run, or a
+   * handle that never attached), and a reference whose run the engine has no record of, past a
+   * grace period, is a start that failed and is released. A run this process is driving is left
+   * to settle itself. Runs ahead of {@link retainAgentSnapshots}, which prunes what it settles.
+   */
+  async function reconcileAgentSnapshots(): Promise<void> {
+    if (fileAgents === undefined) return;
+    await fileAgents.reconcile({
+      now: runtimeServices.clock.now(),
+      isLive: (runId) => {
+        const status = store.getRun(runId)?.status;
+        return status === 'running' || status === 'aborting' || findCatalogRun(runId) !== undefined;
+      },
+      durableState: async (reference) => {
+        // Without a durable engine nothing outlives the process, so a reference from before this
+        // Bureau was built belongs to a run no one can resume.
+        if (!runtime.durable) {
+          return Date.parse(reference.startedAt) < constructedAtMilliseconds
+            ? { kind: 'absent' }
+            : { kind: 'active' };
+        }
+        const record = await runtime.durable.engine.get(reference.runId);
+        if (record === null || record === undefined) return { kind: 'absent' };
+        if (DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(record.status)) return { kind: 'active' };
+        return { kind: 'ended', at: new Date(record.updatedAt).toISOString() };
+      },
+    });
+  }
+
+  /**
    * COR-1477 — removes every terminal task older than {@link BureauOptions.taskRetention}
    * (default 30 days) through {@link deleteRun}, which removes the run from the
    * run store, so the store's `run.removed` event fires and Bureau's own
@@ -9187,6 +9240,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       }
       try {
+        await reconcileAgentSnapshots();
         await retainAgentSnapshots();
       } catch (error: unknown) {
         diagnose({
@@ -9423,6 +9477,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           });
         }
         try {
+          await reconcileAgentSnapshots();
           await retainAgentSnapshots();
         } catch (error: unknown) {
           diagnose({

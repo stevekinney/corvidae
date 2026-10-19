@@ -2,6 +2,7 @@
  * COR-1524 — the agent file format: what a file parses to, how a file that cannot be used is
  * described, and how a write keeps what it does not own.
  */
+import { load as loadYaml } from 'js-yaml';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -236,5 +237,137 @@ describe('serializeUpdatedAgentFile', () => {
     const next = new TextDecoder('utf-8', { ignoreBOM: true }).decode(bytes);
     expect(bytes?.[0]).toBe(0xef);
     expect(next).toBe('\uFEFF---\r\nmodel: a/c\r\n---\r\nbody');
+  });
+});
+
+describe('an update keeps what other tools read from the keys it does not own', () => {
+  const rewrite = (id: string, text: string, model = 'a/changed'): string => {
+    const existing = parsed(id, text);
+    return decoder.decode(
+      serializeUpdatedAgentFile(id, existing, { model, instructions: existing.body }),
+    );
+  };
+  /** What a reader using js-yaml's default schema, as gray-matter does, sees. */
+  const defaultRead = (text: string): Record<string, unknown> => {
+    const fence = text.indexOf('\n---', 4);
+    return loadYaml(text.slice(4, fence)) as Record<string, unknown>;
+  };
+
+  it('keeps a quoted date, a quoted number, and a quoted boolean as strings', () => {
+    const original = [
+      '---',
+      'model: a/b',
+      "created: '2024-01-01'",
+      "version: '1.10'",
+      "flag: 'true'",
+      "octal: '0o17'",
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const next = rewrite('quoted', original);
+    expect(defaultRead(next)).toMatchObject({
+      model: 'a/changed',
+      created: '2024-01-01',
+      version: '1.10',
+      flag: 'true',
+      octal: '0o17',
+    });
+    expect(typeof defaultRead(next)['created']).toBe('string');
+  });
+
+  it('keeps an unquoted date a date, and numbers and booleans what they were', () => {
+    const original = [
+      '---',
+      'model: a/b',
+      'created: 2024-01-01',
+      'count: 3',
+      'ratio: 0.5',
+      'enabled: true',
+      'nothing: null',
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const read = defaultRead(rewrite('plain', original));
+    expect(read['created']).toBeInstanceOf(Date);
+    expect(read).toMatchObject({ count: 3, ratio: 0.5, enabled: true, nothing: null });
+  });
+
+  it('keeps comments and the formatting of every line it does not own', () => {
+    const original = [
+      '---',
+      '# who made this',
+      'author:   Someone   # trailing',
+      'model: a/b',
+      'tags: [x,   y]',
+      'notes: |',
+      '  keep',
+      '    this',
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const next = rewrite('formatted', original);
+    for (const line of [
+      '# who made this',
+      'author:   Someone   # trailing',
+      'tags: [x,   y]',
+      'notes: |',
+      '  keep',
+      '    this',
+    ]) {
+      expect(next.split('\n')).toContain(line);
+    }
+    expect(next).toContain('model: a/changed');
+    expect(next).not.toContain('model: a/b');
+  });
+
+  it('adds and removes known keys without touching the others', () => {
+    const original = [
+      '---',
+      'model: a/b',
+      'extra: 1',
+      'tools:',
+      '  - one',
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const existing = parsed('keys', original);
+    const next = decoder.decode(
+      serializeUpdatedAgentFile('keys', existing, {
+        model: 'a/b',
+        description: 'Now described',
+        instructions: existing.body,
+      }),
+    );
+    const reread = parsed('keys', next);
+    expect(reread.definition).toMatchObject({ description: 'Now described', tools: [] });
+    expect(reread.raw['extra']).toBe(1);
+    expect(reread.raw['tools']).toBeUndefined();
+    expect(next.split('\n')).toContain('extra: 1');
+  });
+
+  it('re-emits the whole frontmatter, keeping values and types, when a rewrite cannot be verified', () => {
+    // A quoted key is one a line edit does not recognise, so appending `model` would duplicate it.
+    const original = [
+      '---',
+      '"model": a/b',
+      "created: '2024-01-01'",
+      'due: 2024-02-02',
+      "meta: {a: 1, b: '2024-01-01'}",
+      '---',
+      'Body.',
+      '',
+    ].join('\n');
+    const next = rewrite('flow', original);
+    const reread = parsed('flow', next);
+    expect(reread.definition.model).toBe('a/changed');
+    expect(reread.raw['meta']).toEqual({ a: 1, b: '2024-01-01' });
+    const read = defaultRead(next);
+    expect(read['created']).toBe('2024-01-01');
+    expect(read['due']).toBeInstanceOf(Date);
+    expect(read['meta']).toEqual({ a: 1, b: '2024-01-01' });
   });
 });
