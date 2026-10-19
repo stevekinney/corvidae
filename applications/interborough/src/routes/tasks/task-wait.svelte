@@ -13,6 +13,7 @@
   import { getBureauReview } from '../../lib/bureau-reviews.ts';
   import { respondToTask, type TaskOpenWait } from '../../lib/bureau-tasks.ts';
   import { classifyFault, faultTreatment } from '../../lib/faults.ts';
+  import { PendingCommandKey } from '../../lib/pending-command-key.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -41,6 +42,9 @@
       (review.data !== undefined && review.data.status !== 'pending'),
   );
 
+  // One key stays with an answer until the Bureau confirms it, so a retry after a lost response is
+  // the same command and the Bureau answers it from its ledger.
+  const commandKey = new PendingCommandKey();
   let answer = $state('');
   let submitting = $state(false);
   let failure = $state<string | undefined>(undefined);
@@ -53,10 +57,11 @@
     try {
       await respondToTask({
         taskId,
-        messageId: crypto.randomUUID(),
+        messageId: commandKey.keyFor(`${taskId}:${wait.reviewId}`, answer.trim()),
         answer: answer.trim(),
         signalName: wait.signalName,
       });
+      commandKey.confirmed();
       answer = '';
       // The wait is answered, so the task continues, and the reviews that listed it no longer do.
       await invalidateReviewQueries(queryClient);

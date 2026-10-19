@@ -206,6 +206,75 @@ describe('a task that waits on a person', () => {
     ).toBeGreaterThan(8);
   });
 
+  test('retries an answer whose response was lost under the same message identifier, and a changed answer under a new one', async () => {
+    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, {
+      reviews: [humanWaitFixture()],
+    });
+    let lost = true;
+    stub?.on('bureau.tasks.respond', () => {
+      // The Bureau applied the answer, but the response never arrived.
+      if (lost) throw new Error('The response was lost.');
+      return {
+        taskId: 'run-2',
+        messageId: 'm',
+        reviewId: humanWaitFixture().id,
+        kind: 'human-wait',
+        decision: 'approve',
+        receipt: 'applied',
+      };
+    });
+    const field = await findByLabelText('Your answer');
+    const send = async () => {
+      await fireEvent.click(getByRole('button', { name: 'Send answer' }));
+      await waitFor(() => expect(getByRole('button', { name: 'Send answer' })).not.toBeNull());
+    };
+    const identifiers = () =>
+      stub?.callsTo('bureau.tasks.respond').map((call) => call.params['messageId']);
+
+    await fireEvent.input(field, { target: { value: 'staging' } });
+    await send();
+    await waitFor(() => expect(identifiers()?.length).toBe(1));
+    await send();
+    await waitFor(() => expect(identifiers()?.length).toBe(2));
+    // The answer changed, so it is a different command.
+    await fireEvent.input(field, { target: { value: 'production' } });
+    await send();
+    await waitFor(() => expect(identifiers()?.length).toBe(3));
+    lost = false;
+    await send();
+    await waitFor(() => expect(identifiers()?.length).toBe(4));
+
+    const [first, retry, changed, changedRetry] = identifiers() ?? [];
+    expect(retry).toBe(first);
+    expect(changed).not.toBe(first);
+    expect(changedRetry).toBe(changed);
+  });
+
+  test('mints a new message identifier for the next answer once one is confirmed', async () => {
+    const { findByLabelText, getByRole } = open(WAITING_FOR_ANSWER, {
+      reviews: [humanWaitFixture()],
+    });
+    stub?.on('bureau.tasks.respond', () => ({
+      taskId: 'run-2',
+      messageId: 'm',
+      reviewId: humanWaitFixture().id,
+      kind: 'human-wait',
+      decision: 'approve',
+      receipt: 'applied',
+    }));
+    const field = await findByLabelText('Your answer');
+    for (const sent of [1, 2]) {
+      await fireEvent.input(field, { target: { value: 'staging' } });
+      await fireEvent.click(getByRole('button', { name: 'Send answer' }));
+      await waitFor(() => expect(stub?.callsTo('bureau.tasks.respond').length).toBe(sent));
+      await waitFor(() => expect((field as HTMLTextAreaElement).value).toBe(''));
+    }
+    const identifiers = stub
+      ?.callsTo('bureau.tasks.respond')
+      .map((call) => call.params['messageId']);
+    expect(identifiers?.[1]).not.toBe(identifiers?.[0]);
+  });
+
   test('reads the task again once the answer is accepted, so the task shows it continued', async () => {
     const { findByLabelText, getByRole, findByText } = open(WAITING_FOR_ANSWER, {
       reviews: [humanWaitFixture()],

@@ -310,6 +310,47 @@ describe('a decision the Bureau gated again', () => {
 });
 
 describe('answering a Bureau question', () => {
+  test('retries an answer whose response was lost under the same message identifier, and a changed answer under a new one', async () => {
+    const { container, findByLabelText, getByRole } = open({ reviews: [QUESTION] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    let lost = true;
+    stub?.on('bureau.tasks.respond', () => {
+      // The Bureau applied the answer, but the response never arrived.
+      if (lost) throw new Error('The response was lost.');
+      return {
+        taskId: QUESTION.runId,
+        messageId: 'm',
+        reviewId: QUESTION.id,
+        kind: 'human-wait',
+        decision: 'approve',
+        receipt: 'applied',
+      };
+    });
+    const field = await findByLabelText('Your answer');
+    const identifiers = () =>
+      stub?.callsTo('bureau.tasks.respond').map((call) => call.params['messageId']);
+    const send = async (count: number) => {
+      await fireEvent.click(getByRole('button', { name: 'Send answer' }));
+      await waitFor(() => expect(identifiers()?.length).toBe(count));
+      await waitFor(() =>
+        expect(getByRole('button', { name: 'Send answer' }).hasAttribute('disabled')).toBe(false),
+      );
+    };
+
+    await fireEvent.input(field, { target: { value: 'staging' } });
+    await send(1);
+    await send(2);
+    await fireEvent.input(field, { target: { value: 'production' } });
+    await send(3);
+    lost = false;
+    await send(4);
+
+    const [first, retry, changed, changedRetry] = identifiers() ?? [];
+    expect(retry).toBe(first);
+    expect(changed).not.toBe(first);
+    expect(changedRetry).toBe(changed);
+  });
+
   test('says the answer was not sent when the Bureau refuses it', async () => {
     const { container, findByLabelText, findByText, getByRole } = open({ reviews: [QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(1));

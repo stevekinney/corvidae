@@ -153,6 +153,8 @@ export function resolveBureauReviewMutation(): CreateMutationResult<
 }
 
 export interface AnswerHumanWaitVariables {
+  /** The command's idempotency key, which a retry of the same answer reuses (`PendingCommandKey`). */
+  readonly messageId: string;
   readonly taskId: string;
   readonly answer: string;
   readonly signalName: string;
@@ -167,10 +169,9 @@ export function answerHumanWaitMutation(): CreateMutationResult<
   const queryClient = useQueryClient();
 
   return createMutation(() => ({
-    mutationFn: (variables: AnswerHumanWaitVariables) =>
-      // One identifier per answer sent. The mutation does not retry, so each answer is one command,
-      // and an answer to a wait that was already answered is the Bureau's `Conflict`.
-      respondToTask({ ...variables, messageId: crypto.randomUUID() }),
+    // The caller holds the key, because a retry after a response that was lost must send the same
+    // one: the Bureau answers an exact retry from its ledger and applies nothing twice.
+    mutationFn: (variables: AnswerHumanWaitVariables) => respondToTask(variables),
     onSettled: () => {
       void invalidateReviewQueries(queryClient);
     },
