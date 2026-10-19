@@ -372,6 +372,73 @@ describe('retention (step two)', () => {
   });
 });
 
+describe('retention keeps the trace of an instance still in flight (COR-1583)', () => {
+  const FAR_FUTURE = Date.parse('2099-01-01T00:00:00.000Z');
+
+  /** `digest` has one instance parked on `go`, its file is gone, and its only record is unreadable. */
+  async function damagedWorld() {
+    const w = await world();
+    await w.put('digest', parked('digest', 'digest question'));
+    const first = await w.boot();
+    await first.engine.start('digest', null, { id: 'digest-run' });
+    await parkedOnSignal(first.engine, 'digest-run');
+    await w.remove('digest');
+    await first.runtime.workflows.refresh();
+    const keys = await w.store.list('bureau-workflow-snapshot:v1:digest:');
+    expect(keys).toHaveLength(1);
+    await w.store.set(keys[0] ?? '', '{');
+    return { w, first, keys };
+  }
+
+  it('keeps an unreadable snapshot record while an instance of that workflow is in flight, so the next boot cancels it with a reason', async () => {
+    const { w, first, keys } = await damagedWorld();
+
+    expect(await first.runtime.pruneSnapshots(FAR_FUTURE)).toBe(0);
+    expect(await w.store.list('bureau-workflow-snapshot:v1:digest:')).toEqual(keys);
+    await first.engine[Symbol.asyncDispose]();
+
+    const second = await w.boot();
+    expect(await second.engine.recoverAll()).toEqual([]);
+    const run = await second.runtime.workflows.getRun('digest-run');
+    expect(run?.status).toBe('cancelled');
+    expect(run?.error).toContain('cannot be used');
+    expect(w.diagnostics.filter((message) => message.includes('digest-run'))).toHaveLength(1);
+  });
+
+  it('deletes an unreadable snapshot record once no instance of that workflow is in flight', async () => {
+    const { w, first } = await damagedWorld();
+    await first.engine.cancel('digest-run');
+
+    expect(await first.runtime.pruneSnapshots(FAR_FUTURE)).toBe(1);
+    expect(await w.store.list('bureau-workflow-snapshot:v1:digest:')).toEqual([]);
+  });
+
+  it('keeps a cancellation record past the cutoff while an instance of that workflow is in flight, and deletes it once none is', async () => {
+    const w = await world();
+    await w.put('digest', parked('digest', 'digest question'));
+    const { engine, runtime } = await w.boot();
+    await engine.start('digest', null, { id: 'digest-run' });
+    await parkedOnSignal(engine, 'digest-run');
+    const snapshots = createWorkflowSnapshotStore({ store: w.store, nowISO: () => '' });
+    // A cancellation whose `engine.cancel` never succeeded: the run it names is still in flight.
+    await snapshots.recordCancellation({
+      schemaVersion: 1,
+      runId: 'digest-run',
+      id: 'digest',
+      workflowVersion: 'sha256:pinned',
+      reason: 'Cancelled at startup because it cannot resume: for the test.',
+      cancelledAt: '2020-01-01T00:00:00.000Z',
+    });
+
+    await runtime.pruneSnapshots(FAR_FUTURE);
+    expect(await snapshots.cancellationOf('digest-run')).toBeDefined();
+
+    await engine.cancel('digest-run');
+    await runtime.pruneSnapshots(FAR_FUTURE);
+    expect(await snapshots.cancellationOf('digest-run')).toBeUndefined();
+  });
+});
+
 describe('assertStartable', () => {
   it('passes for a ready, unpaused workflow and throws a not-found error for a missing, invalid, or paused one', async () => {
     const w = await world();
