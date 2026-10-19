@@ -27,6 +27,7 @@ import {
 } from './child-topology';
 import {
   type BureauChildRecord,
+  CHILD_RECORD_KEY_PREFIX,
   type ChildTopologyStore,
   createChildTopologyStore,
 } from './child-topology-store';
@@ -1414,6 +1415,24 @@ describe('recovery', () => {
     await fixture.topology.reconcileRecovery();
     await fixture.topology.drain();
   }
+
+  it('recovers a current child although another child record is at an unsupported version (COR-713)', async () => {
+    const engine = createFakeEngine();
+    const fixture = createFixture({ engine });
+    await fixture.store.register(runningRecord({ childRunId: 'current' }));
+    await fixture.kv.set(
+      `${CHILD_RECORD_KEY_PREFIX}old`,
+      JSON.stringify({ ...runningRecord({ childRunId: 'old' }), schemaVersion: 1 }),
+    );
+
+    await recover(fixture);
+
+    // The old record is skipped; the current child is reconciled (no workflow on the fake engine).
+    expect(await fixture.store.get('current')).toMatchObject({
+      status: 'failed',
+      outcome: { reason: 'workflow missing on recovery' },
+    });
+  });
 
   it('records children that cannot come back — process-local, no engine, or no workflow — as failed', async () => {
     const engine = createFakeEngine();

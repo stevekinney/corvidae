@@ -13441,6 +13441,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           scope: 'child-topology',
           message: `[bureau] Ignoring an unreadable child-topology record at "${key}".`,
         }),
+      onUnsupported: (key, error) =>
+        diagnose({
+          level: 'error',
+          scope: 'child-topology',
+          message: `[bureau] Skipping the child-topology record at "${key}", which this build cannot read: ${error.message}`,
+          cause: error,
+        }),
     },
   );
 

@@ -318,6 +318,13 @@ export interface ChildTopologyStore {
 export interface ChildTopologyStoreOptions {
   /** Called once per unreadable key encountered. Defaults to a no-op. */
   readonly onCorrupt?: ((key: string) => void) | undefined;
+  /**
+   * Called once per record a list skipped because it was written at another schema version
+   * (COR-713). A list never fails for one such record, so the rest still load; `get` and `update`
+   * still throw {@link UnsupportedChildRecordVersionError} for it. Defaults to a no-op.
+   */
+  readonly onUnsupported?:
+    ((key: string, error: UnsupportedChildRecordVersionError) => void) | undefined;
 }
 
 export function createChildTopologyStore(
@@ -325,6 +332,7 @@ export function createChildTopologyStore(
   options: ChildTopologyStoreOptions = {},
 ): ChildTopologyStore {
   const onCorrupt = options.onCorrupt ?? (() => {});
+  const onUnsupported = options.onUnsupported ?? (() => {});
 
   async function readRecord(
     key: string,
@@ -352,7 +360,20 @@ export function createChildTopologyStore(
   }
 
   async function readRecords(keys: readonly string[]): Promise<BureauChildRecord[]> {
-    const stored = await Promise.all(keys.map((key) => readRecord(key)));
+    // One record at another schema version is skipped and reported, not allowed to reject the
+    // whole list: recovery lists every child, and a single old record would otherwise leave every
+    // other child unrecovered for the life of the process.
+    const stored = await Promise.all(
+      keys.map(async (key) => {
+        try {
+          return await readRecord(key);
+        } catch (error) {
+          if (!(error instanceof UnsupportedChildRecordVersionError)) throw error;
+          onUnsupported(key, error);
+          return undefined;
+        }
+      }),
+    );
     return stored
       .map((entry) => entry?.record)
       .filter((record): record is BureauChildRecord => record !== undefined);

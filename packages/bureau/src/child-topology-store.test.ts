@@ -13,6 +13,7 @@ import { describe, expect, it } from 'bun:test';
 
 import {
   type BureauChildRecord,
+  CHILD_PARENT_INDEX_KEY_PREFIX,
   CHILD_RECORD_KEY_PREFIX,
   createChildTopologyStore,
   DELEGATION_GRANT_KEY_PREFIX,
@@ -275,6 +276,32 @@ describe('createChildTopologyStore — child records', () => {
       JSON.stringify({ ...childRecord(), schemaVersion: 1 }),
     );
 
+    const error = await throwingRejectionOf(store.get('child-1'));
+    expect(error).toThrow(UnsupportedChildRecordVersionError);
+  });
+
+  it('skips and reports one unsupported-version record in a list, and still lists the others', async () => {
+    const kv = createKv();
+    const skipped: Array<{ key: string; error: unknown }> = [];
+    const store = createChildTopologyStore(kv, {
+      onUnsupported: (key, error) => skipped.push({ key, error }),
+    });
+    const current = childRecord({ childRunId: 'child-2' });
+    await store.register(current);
+    await kv.set(
+      `${CHILD_RECORD_KEY_PREFIX}child-1`,
+      JSON.stringify({ ...childRecord(), schemaVersion: 1 }),
+    );
+    await kv.set(`${CHILD_PARENT_INDEX_KEY_PREFIX}parent-1:child-1`, '1');
+
+    expect(await store.listAll()).toEqual([current]);
+    expect(await store.listByParent('parent-1')).toEqual([current]);
+    expect(skipped.map((entry) => entry.key)).toEqual([
+      `${CHILD_RECORD_KEY_PREFIX}child-1`,
+      `${CHILD_RECORD_KEY_PREFIX}child-1`,
+    ]);
+    expect(skipped[0]?.error).toBeInstanceOf(UnsupportedChildRecordVersionError);
+    // A direct read of that one record still fails explicitly.
     const error = await throwingRejectionOf(store.get('child-1'));
     expect(error).toThrow(UnsupportedChildRecordVersionError);
   });
