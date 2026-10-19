@@ -17,7 +17,6 @@ import { MemoryStorage, type Storage } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau } from '../types.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
@@ -114,8 +113,8 @@ async function openBureau(options: {
 
 type Opened = Awaited<ReturnType<typeof openBureau>>;
 
-function mountOver(bureau: Bureau | Parameters<typeof createBureauHandler>[0]) {
-  return createBureauHandler(bureau as Parameters<typeof createBureauHandler>[0], {
+function mountOver(bureau: Parameters<typeof createBureauHandler>[0]) {
+  return createBureauHandler(bureau, {
     unauthenticatedAccess: 'allow',
     publish: ['assistant'],
     agUi: {},
@@ -220,7 +219,7 @@ describe('a session that cannot be read at the end of a run that took input', ()
           return opened.bureau.getSession(id);
         },
       };
-      const stream = await runThatTakesInput(opened, mountOver(failing as unknown as Bureau));
+      const stream = await runThatTakesInput(opened, mountOver(failing));
 
       const last = stream.received.at(-1)?.event;
       expect(last?.type).toBe(EventType.RUN_ERROR);
