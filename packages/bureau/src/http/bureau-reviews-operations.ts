@@ -19,6 +19,11 @@
  * token. A reviewer sees what it needs to decide (the tool, its arguments, and
  * the reason it paused) and nothing that would let it act outside `resolve`.
  *
+ * A review whose run another Bureau process holds (COR-1579) is listed, read and
+ * resolved here as well: the list adds the human waits it derives from durable
+ * state for every running agent run, and get and resolve reach them through the
+ * Bureau's own derivation by id.
+ *
  * @module bureau-reviews-operations
  */
 
@@ -32,8 +37,50 @@ import { type BureauOwnershipHost, ownerOfPrincipal } from './owner-predicate.ts
 
 /** What the reviews operations read from the handler's `host`. */
 export type BureauReviewsOperationHost = {
-  readonly reviews: Pick<Bureau, 'listPendingReviews' | 'getReview' | 'resolveReview'>;
+  readonly reviews: Pick<Bureau, 'listPendingReviews' | 'getReview' | 'resolveReview'> &
+    /**
+     * COR-1579: what the list reads to add the parks of runs another process holds. A host that
+     * provides neither lists this process's reviews alone.
+     */
+    Partial<Pick<Bureau, 'pendingHumanWaitsOfRun' | 'durableEngine'>>;
 } & BureauOwnershipHost;
+
+/** How many running agent runs one `engine.list` page reads. */
+const RUNNING_RUNS_PAGE_SIZE = 100;
+
+/**
+ * The pending reviews of this process, merged by id with the human waits derived for every running
+ * agent run in the durable store, so a park another process holds is listed too. A parked run
+ * stays `running`. This process's own entry wins over a derived one with the same id.
+ */
+async function pendingReviewsOfEveryProcess(
+  reviews: BureauReviewsOperationHost['reviews'],
+): Promise<PendingReview[]> {
+  const local = reviews.listPendingReviews();
+  const engine = reviews.durableEngine?.();
+  const derive = reviews.pendingHumanWaitsOfRun;
+  if (engine === undefined || derive === undefined) return local;
+  const merged = [...local];
+  const seen = new Set(local.map((review) => review.id));
+  // Paged by what each page reports, not by the size asked for, which the engine may cap.
+  let offset = 0;
+  for (;;) {
+    const page = await engine.list({
+      status: 'running',
+      type: 'agentRun',
+      limit: RUNNING_RUNS_PAGE_SIZE,
+      offset,
+    });
+    const derived = await Promise.all(page.items.map((run) => derive(run.id)));
+    for (const review of derived.flat()) {
+      if (seen.has(review.id)) continue;
+      seen.add(review.id);
+      merged.push(review);
+    }
+    offset += page.items.length;
+    if (page.items.length === 0 || offset >= page.total) return merged;
+  }
+}
 
 const reviewStatusSchema = z.enum([
   'pending',
@@ -309,7 +356,7 @@ export const reviewsListOperation = defineOperation<
   transports,
   unknownKeyPolicy,
   invoke: async ({ host, principal }) => {
-    const pending = host.reviews.listPendingReviews();
+    const pending = await pendingReviewsOfEveryProcess(host.reviews);
     const visible = await Promise.all(
       pending.map(async (review) => {
         const allowed = await mayAccessReview(host, principal, review.runId, 'bureau.reviews:read');

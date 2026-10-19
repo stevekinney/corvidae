@@ -10,13 +10,20 @@
  * admission's commit" without reaching into Bureau. Not a test file: it is
  * imported by the `session-input-*.test.ts` files.
  */
-import type { GenerateContext } from '@lostgradient/operative';
+import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
+  encodeStorageKeyComponent,
+  resolveStorage,
   type Storage,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
+import { createToolbox } from 'armorer';
+
+import type { AgentDefinitions } from '../agent-catalog';
+import { createBureau } from '../create-bureau';
+import type { Bureau, BureauOptions } from '../types';
 
 export function deferred<T = void>() {
   let release!: (value: T) => void;
@@ -413,4 +420,78 @@ export function readsMailbox(key: string): boolean {
 /** A read of the durable engine's workflow records or indexes, which `engine.list` and `engine.get` make. */
 export function readsWorkflows(key: string): boolean {
   return key.startsWith('wf:') || key.startsWith('wf-idx-');
+}
+
+/** A read of a review's durable decision record (COR-1579). */
+export function readsDecisionRecord(key: string): boolean {
+  return key.startsWith('review-decision:v1:');
+}
+
+/** A write of a review's durable decision record: its claim, release, or recorded mark. */
+export function writesDecisionRecord(operations: readonly BatchOperation[]): boolean {
+  return operations.some((operation) => operation.key.startsWith('review-decision:v1:'));
+}
+
+/** A write that buffers a signal for a workflow: the `sig:` payload Weft commits on delivery. */
+export function buffersSignal(operations: readonly BatchOperation[]): boolean {
+  return operations.some(
+    (operation) => operation.type === 'put' && operation.key.startsWith('sig:'),
+  );
+}
+
+/** The signals still buffered for a run, delivered and not consumed. */
+export async function bufferedSignals(storage: Storage, runId: string): Promise<string[]> {
+  const keys: string[] = [];
+  for await (const [key] of storage.scan(`sig:${encodeStorageKeyComponent(runId)}:`)) {
+    keys.push(key);
+  }
+  return keys;
+}
+
+/** The `review.*` audit entries recorded for one review id. */
+export async function reviewAuditEntries(
+  bureau: Pick<Bureau<AgentDefinitions>, 'auditTrail'>,
+  runId: string,
+  reviewId: string,
+): Promise<Array<{ readonly type: string; readonly principal?: string | undefined }>> {
+  const records = (await bureau.auditTrail?.query({ runId })) ?? [];
+  return records.filter((record) => {
+    if (!record.type.startsWith('review.')) return false;
+    const detail = record.detail as { review?: { id?: unknown } } | null | undefined;
+    return detail?.review?.id === reviewId;
+  });
+}
+
+/** One Bureau process over the SQLite file at a path, sharing nothing else with any other. */
+export interface OpenedProcess {
+  readonly bureau: Bureau<AgentDefinitions>;
+  /** The seam over this process's own connection to the file. */
+  readonly seam: StorageSeam;
+  /** That connection without the seam, for reading what the processes wrote. */
+  readonly real: Storage;
+}
+
+/**
+ * Opens a Bureau over the SQLite file at `path` through a {@link seamStorage}, as one of several
+ * processes sharing that file would: each call opens its own connection and shares nothing else.
+ * `options` are spread over the defaults (no agents, an empty toolbox, durable execution, and a
+ * run that stops when the model calls no tool).
+ */
+export async function openProcess(
+  path: string,
+  generate: GenerateFunction,
+  options: Partial<BureauOptions<AgentDefinitions>> = {},
+): Promise<OpenedProcess> {
+  const real = await resolveStorage({ type: 'sqlite', path });
+  const seam = seamStorage(real);
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {},
+    generate,
+    toolbox: createToolbox([]),
+    durableExecution: true,
+    stopWhen: stopWhen.noToolCalls(),
+    ...options,
+    storage: seam.storage,
+  });
+  return { bureau, seam, real };
 }
