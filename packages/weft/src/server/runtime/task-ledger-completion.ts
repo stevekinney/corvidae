@@ -73,6 +73,7 @@
  */
 
 import { TaskResultDeadLetteredEvent } from '../../core/events.ts';
+import { tagWorkflowEventGeneration } from '../../core/events/workflow-event-generation.ts';
 import { isJSONValue } from '../../core/json.ts';
 import { buildCurrentAttemptDispositionWrites } from '../../core/task-ledger/task-attempt-runtime.ts';
 import { commitTaskLedgerTransition } from '../../core/task-ledger/task-ledger-runtime.ts';
@@ -272,14 +273,17 @@ export function dispatchTaskDeadLetteredEvent(
   workerId: string | undefined,
 ): void {
   options.engine.dispatchEvent(
-    new TaskResultDeadLetteredEvent({
-      operationId,
-      workflowId: deadLettered.workflowId,
-      activityName: deadLettered.activityName,
-      queue: deadLettered.queue,
-      workerId,
-      errorMessage: deadLettered.persistenceFailureReason,
-    }),
+    tagWorkflowEventGeneration(
+      new TaskResultDeadLetteredEvent({
+        operationId,
+        workflowId: deadLettered.workflowId,
+        activityName: deadLettered.activityName,
+        queue: deadLettered.queue,
+        workerId,
+        errorMessage: deadLettered.persistenceFailureReason,
+      }),
+      deadLettered.workflowExecutionToken,
+    ),
   );
 }
 

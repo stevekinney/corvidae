@@ -27,6 +27,11 @@ import {
 } from './durable-heartbeat-tick-workflow';
 import { GOAL_WORKFLOW_TYPE } from './goal-workflow-ports';
 import { createHumanWaitMarkerSink } from './human-wait-park-marker';
+import {
+  RUN_ENGINE_WORKFLOW_TYPE,
+  RUN_ENGINE_WORKFLOW_TYPES,
+  type RunEngineWorkflowType,
+} from './run-engine-workflow-types';
 import { createStorageActivities } from './storage-activities';
 
 /**
@@ -393,11 +398,18 @@ export async function createRunEngine(options: CreateRunEngineOptions): Promise<
       reason: `run ${info.workflowId} has no configured workflow services resolver`,
     };
   }
-  const workflows: Record<string, AnyWorkflowDefinition> = {
-    agentRun: options.runWorkflow,
-    durableHeartbeatTick: createDurableHeartbeatTickWorkflow(),
-    ...(options.goalWorkflow === undefined ? {} : { [GOAL_WORKFLOW_TYPE]: options.goalWorkflow }),
+  // Keyed from `RUN_ENGINE_WORKFLOW_TYPE`, so a type added there is a type this record must hold, and
+  // the types a host reserves are exactly the ones registered here.
+  const definitions: Record<RunEngineWorkflowType, AnyWorkflowDefinition | undefined> = {
+    [RUN_ENGINE_WORKFLOW_TYPE.agentRun]: options.runWorkflow,
+    [RUN_ENGINE_WORKFLOW_TYPE.durableHeartbeatTick]: createDurableHeartbeatTickWorkflow(),
+    [RUN_ENGINE_WORKFLOW_TYPE.goalRun]: options.goalWorkflow,
   };
+  const workflows: Record<string, AnyWorkflowDefinition> = {};
+  for (const type of RUN_ENGINE_WORKFLOW_TYPES) {
+    const definition = definitions[type];
+    if (definition !== undefined) workflows[type] = definition;
+  }
 
   const engine = await Engine.create({
     storage: options.storage,

@@ -37,6 +37,7 @@
     withdrawAgent,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -173,7 +174,7 @@
     },
     onSuccess: (result) => {
       wasWritten();
-      router.navigate(`/agents/${encodeURIComponent(result.id)}`);
+      router.navigate(agentPath(result.id));
     },
     onError: (error) => failWith(agentFaultOf(error), copy.saveFailed),
   }));
@@ -221,7 +222,7 @@
   }
 
   function cancel(): void {
-    router.navigate(agentId === undefined ? '/agents' : `/agents/${encodeURIComponent(agentId)}`);
+    router.navigate(agentId === undefined ? '/agents' : agentPath(agentId));
   }
 
   /** Reads the file again and fills the form from it, which discards whatever was typed. */

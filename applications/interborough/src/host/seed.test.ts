@@ -7,6 +7,7 @@ import { startHost, type Host } from './host.ts';
 import {
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
+  NEVER_PASSING_VALIDATOR,
   PUBLISHED_AGENT_NAMES,
   SEEDED_AGENT_NAMES,
   SEEDED_GOAL_RUN_IDENTIFIER,
@@ -214,6 +215,36 @@ describe('the seeded schedule and goal', () => {
       status = await goalStatus(host);
     }
     expect(status).toBe('succeeded');
+  });
+
+  test('a goal that names the validator that never passes is still going later, and cancelling it ends it as canceled', async () => {
+    const host = await start();
+    const created = await host.bureau.goals.create({
+      goalRunId: 'goal-that-never-passes',
+      agentName: 'assistant',
+      prompt: 'Say hello.',
+      identity: { name: 'say-hello', version: '1' },
+      validator: NEVER_PASSING_VALIDATOR,
+      bounds: { maximumAttempts: 3, maximumTotalSteps: 20 },
+    });
+    expect(created).toMatchObject({ outcome: 'created' });
+    const statusOf = async () => {
+      const goal = await host.bureau.goals.get('goal-that-never-passes');
+      return goal?.status;
+    };
+    // The agent answers at once, and then the validator is what the goal waits on.
+    const deadline = Date.now() + 5_000;
+    while ((await statusOf()) !== 'evaluating' && Date.now() < deadline) await Bun.sleep(25);
+    expect(await statusOf()).toBe('evaluating');
+    await Bun.sleep(400);
+    expect(await statusOf()).toBe('evaluating');
+
+    const cancelled = await host.bureau.goals.cancel('goal-that-never-passes');
+
+    expect(['canceled', 'cancellation-pending']).toContain(cancelled.outcome);
+    const endBy = Date.now() + 5_000;
+    while ((await statusOf()) !== 'canceled' && Date.now() < endBy) await Bun.sleep(25);
+    expect(await statusOf()).toBe('canceled');
   });
 
   test('can be left out', async () => {

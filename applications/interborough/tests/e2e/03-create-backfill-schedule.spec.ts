@@ -66,7 +66,7 @@ test('operator creates a cron schedule with backfill and lands on its detail', a
   await drawer.getByRole('button', { name: 'Create schedule' }).click();
   await expect(drawer).not.toBeVisible();
 
-  await expect(page).toHaveURL(/\/schedules\?id=/);
+  await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   await expect(page.getByText('Next 5 fires')).toBeVisible();
   await expect(page.getByText('Not scheduled')).toHaveCount(0);
   await expect(page.locator('.weft-schedule-detail__fires-list li').first()).toBeVisible();

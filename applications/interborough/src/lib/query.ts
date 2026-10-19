@@ -26,6 +26,7 @@ import type { ReviewListFilter, ScheduleFilter } from '@lostgradient/weft';
 import { keepPreviousData, QueryClient, type QueryKey } from '@tanstack/svelte-query';
 
 import { showFault } from '../app/toast-host.svelte';
+import type { AuditFilter } from './bureau-audit.ts';
 import { classifyFault, faultTreatment } from './faults.ts';
 import type { WorkflowListQuery } from './filters.ts';
 
@@ -68,6 +69,14 @@ export const queryKeys = {
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
   },
+  /** The caller's goals (`bureau.goals.list`). */
+  goals: {
+    list: () => ['goals', 'list'] as const,
+  },
+  /** The audit trail, narrowed by a search (`bureau.audit.query`). */
+  audit: {
+    list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,
@@ -77,6 +86,8 @@ export const queryKeys = {
   },
   schedules: {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,
+    /** What the Bureau knows of the engine's schedules: the agent each runs, and the workflow files (`lib/schedule-kinds.ts`). */
+    overlay: () => ['schedules', 'overlay'] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,
