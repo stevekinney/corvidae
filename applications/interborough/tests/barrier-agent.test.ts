@@ -1,9 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  BARRIER_AGENT_NAME,
   BARRIER_FIRST_REPLY,
   BARRIER_FOLLOW_UP_REPLY,
+  BARRIER_SHORT_AGENT_NAME,
   createBarrier,
+  createBarrierAgents,
 } from './e2e/barrier-agent.ts';
 
 const context = (step: number, signal?: AbortSignal) =>
@@ -63,5 +66,15 @@ describe('the barrier', () => {
 
     expect(String(failure)).toContain('aborted');
     expect(barrier.waiting()).toBe(0);
+  });
+});
+
+describe('the barrier agents', () => {
+  test('are two agents over one barrier, one of which has a single step', () => {
+    const agents = createBarrierAgents(createBarrier());
+
+    expect(Object.keys(agents)).toEqual([BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME]);
+    expect(agents[BARRIER_AGENT_NAME]?.name).toBe(BARRIER_AGENT_NAME);
+    expect(agents[BARRIER_SHORT_AGENT_NAME]?.name).toBe(BARRIER_SHORT_AGENT_NAME);
   });
 });
