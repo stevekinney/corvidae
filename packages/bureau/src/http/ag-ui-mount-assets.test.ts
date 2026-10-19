@@ -6,7 +6,11 @@
  * it is called, with `UNSUPPORTED_MEDIA_TYPE`.
  */
 import { EventType, type Event } from '@ag-ui/core';
-import { createModelCatalog, type BackendDescriptor } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  type BackendDescriptor,
+  waitForCondition,
+} from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { base64Of, pngBytes, wavBytes } from '../testing/asset-fixtures.test-support.ts';
@@ -432,6 +436,41 @@ describe('media the model does not take', () => {
         const runId = bureauMetadata(frames[0]!.event)['runId'] as string;
         const events = harness.bureau.getRun(runId)?.events ?? [];
         expect(events.map((event) => event.event)).not.toContain('generate.started');
+      },
+    );
+  });
+
+  it('is UNSUPPORTED_MEDIA_TYPE on a later turn, though the thread admitted an image earlier', async () => {
+    await withHarness(
+      { script: [say('Seen.'), say('Heard.')], backends: anthropic.slice(0, 1) },
+      async (harness) => {
+        const image = await admit(harness, pngBytes(4, 3, 64));
+        const audio = await admit(harness, wavBytes());
+        const first = await readAgUiStream(
+          await harness.handler(startRequest(userInput([attachment(image)]))),
+        );
+        expect(first.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+        await waitForCondition(
+          () => harness.bureau.listRuns().every((run) => run.status !== 'running'),
+          'the first turn did not settle',
+        );
+
+        // The image the thread admitted in its first message says nothing about this one.
+        const part = { type: 'audio' as const, source: attachment(audio).source };
+        const second = await readAgUiStream(
+          await harness.handler(
+            startRequest(
+              runAgentInput({
+                runId: 'client-run-2',
+                messages: [{ id: 'user-2', role: 'user', content: [part] as never }],
+              }),
+            ),
+          ),
+        );
+        const errors = second.filter((frame) => frame.event.type === EventType.RUN_ERROR);
+        expect(errors).toHaveLength(1);
+        expect(errors[0]!.event).toMatchObject({ code: 'UNSUPPORTED_MEDIA_TYPE' });
+        expect(harness.generate.callCount).toBe(1);
       },
     );
   });

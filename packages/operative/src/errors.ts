@@ -1,7 +1,7 @@
 import { isToolboxBudgetExceededToolError } from 'armorer';
 import { type core, ZodError } from 'zod';
 
-import type { UnadmittedMediaCost } from './context/types';
+import type { MediaPartPosition, UnadmittedMediaCost } from './context/types';
 import { isToolCallParseError } from './providers/errors.ts';
 import type { SelectionPlan } from './providers/selection.ts';
 import type { RunResult, TokenUsage } from './types';
@@ -314,16 +314,22 @@ export class MediaAdmissionError extends AgentRunError {
 
   /**
    * @param outcomes One outcome for each refused part.
-   * @param options `admittedParts` is how many media parts were admitted beside the refused ones.
+   * @param options `admitted` is where every admitted media part sits. Only those in a message that
+   *   holds a refused part count against `UNSUPPORTED_MEDIA_TYPE`: an attachment a thread admitted
+   *   in an earlier message says nothing about the one refused now.
    */
   constructor(
     outcomes: readonly UnadmittedMediaCost[],
-    options: { readonly admittedParts?: number } = {},
+    options: { readonly admitted?: readonly MediaPartPosition[] } = {},
   ) {
+    const refusedMessages = new Set(outcomes.map((outcome) => outcome.messageId));
+    const admittedBeside = (options.admitted ?? []).filter((position) =>
+      refusedMessages.has(position.messageId),
+    ).length;
     super(`${outcomes.length} media part(s) cannot be admitted to the context window`, {
       kind: 'policy',
       code:
-        (options.admittedParts ?? 0) === 0 && outcomes.length > 0 && outcomes.every(isNotAccepted)
+        admittedBeside === 0 && outcomes.length > 0 && outcomes.every(isNotAccepted)
           ? 'UNSUPPORTED_MEDIA_TYPE'
           : 'MEDIA_NOT_ADMITTED',
     });

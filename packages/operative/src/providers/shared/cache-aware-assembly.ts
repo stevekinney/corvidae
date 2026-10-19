@@ -107,7 +107,8 @@ function refuseOmittedMedia(
     // A part that was costed and admitted beside a refusal means the message is not one the model
     // takes none of. (An estimated part of a dropped message is also reported refused, as
     // `media-over-budget`, which keeps the code the same.)
-    const admittedParts = mediaCosts.filter((cost) => cost.outcome === 'estimated').length;
-    throw new MediaAdmissionError(refused, { admittedParts });
+    throw new MediaAdmissionError(refused, {
+      admitted: mediaCosts.filter((cost) => cost.outcome === 'estimated'),
+    });
   }
 }

@@ -68,6 +68,68 @@ async function refusedWith(verdicts: readonly Verdict[], media: readonly MediaCo
 
 const codeOf = (result: { error?: unknown }): string => (result.error as MediaAdmissionError).code;
 
+const image: MediaContent = {
+  type: 'image',
+  mimeType: 'image/png',
+  source: { kind: 'inline', data: 'QUJD', encoding: 'base64' },
+};
+
+describe('which admitted parts count against UNSUPPORTED_MEDIA_TYPE (COR-1547)', () => {
+  it('counts only the parts admitted in a message that holds a refused part', () => {
+    const refused = [
+      {
+        messageId: 'second',
+        partIndex: 0,
+        modality: 'audio' as const,
+        outcome: 'unsupported' as const,
+        reason: 'modality-not-accepted' as const,
+      },
+    ];
+    // An image the thread admitted in an earlier message says nothing about the audio refused now.
+    expect(
+      new MediaAdmissionError(refused, { admitted: [{ messageId: 'first', partIndex: 0 }] }).code,
+    ).toBe('UNSUPPORTED_MEDIA_TYPE');
+    // An image admitted beside the audio, in the same message, does.
+    expect(
+      new MediaAdmissionError(refused, { admitted: [{ messageId: 'second', partIndex: 1 }] }).code,
+    ).toBe('MEDIA_NOT_ADMITTED');
+  });
+
+  it('is UNSUPPORTED_MEDIA_TYPE for a refused message after an earlier message whose media was admitted', async () => {
+    const seen: GenerateContext[] = [];
+    const conversation = new Conversation();
+    conversation.appendUserMessage([image]);
+    const firstId = conversation.getMessages()[0]!.id;
+    conversation.appendUserMessage([parts[0]!]);
+    const result = await createActiveRun({
+      generate: async (context) => {
+        seen.push(context);
+        return { content: 'ok', toolCalls: [] };
+      },
+      toolbox: createToolbox([]),
+      conversation,
+      stopWhen: () => true,
+      mediaCostEstimator: (part, position): MediaCostOutcome =>
+        position.messageId === firstId
+          ? {
+              ...position,
+              modality: part.type,
+              outcome: 'estimated',
+              tokens: 10,
+              basis: 'catalog-estimate',
+            }
+          : {
+              ...position,
+              modality: part.type,
+              outcome: 'unsupported',
+              reason: 'modality-not-accepted',
+            },
+    }).result;
+    expect(codeOf(result)).toBe('UNSUPPORTED_MEDIA_TYPE');
+    expect(seen).toEqual([]);
+  });
+});
+
 describe('the code of a media admission refusal (COR-1547)', () => {
   it.each(['modality-not-accepted', 'mime-family-not-accepted'] as const)(
     'is UNSUPPORTED_MEDIA_TYPE when every part is refused as %s, before any generation',
