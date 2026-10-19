@@ -122,6 +122,8 @@ export type BureauHandlerSource = Pick<
   | 'listPendingReviews'
   | 'getReview'
   | 'resolveReview'
+  | 'pendingHumanWaitsOfRun'
+  | 'durableEngine'
   | 'getOwner'
   | 'getScheduleAgentName'
   | 'tasks'

@@ -201,6 +201,7 @@ import {
 import { assertLeaseHeldForEngineWork, commitFencedEngineWrite } from './fenced-write.ts';
 import { recordFinalizerState } from './finalizer-state.ts';
 import { getFinalizerStatus as getFinalizerStatusFromInternals } from './finalizer-status.ts';
+import { forwardWorkflowEventToHandle } from './handle-event-forwarding.ts';
 import {
   createWorkflowHandleWithResultPromise as createWorkflowHandleWithResultPromiseFromInternals,
   getWorkflowResultPromise as getWorkflowResultPromiseFromInternals,
@@ -218,7 +219,12 @@ import {
   resumeParkedInlineWorkflow as resumeParkedInlineWorkflowFromInternals,
   type InlineParkingCallbacks,
 } from './inline-parking.ts';
-import { getInternals, initializeInternals, type EngineInternals } from './internals.ts';
+import {
+  getInternals,
+  initializeInternals,
+  peekInternals,
+  type EngineInternals,
+} from './internals.ts';
 import { ENGINE_LEASE_LOST_WARNING_NAME, handleDeposition } from './lease-deposition.ts';
 import type { EngineLeaseHealth, LeaseLostReason } from './lease-health.ts';
 import { createLeaseManager } from './lease-manager.ts';
@@ -1023,6 +1029,22 @@ export class Engine<
     options?: boolean | EventListenerOptions,
   ): void {
     super.removeEventListener(type, listener, options);
+  }
+
+  /**
+   * Dispatch an event to the engine's listeners, then forward it to the cached
+   * {@link WorkflowHandle} of the workflow it names, so `handle.addEventListener`
+   * and `for await (const event of handle)` observe the same workflow-scoped
+   * events (`signal:waiting`, `signal:received`, `activity:*`, and the rest) that
+   * engine listeners and the fleet feed see, in dispatch order. Terminal and
+   * `workflow:suspended` events are forwarded by termination itself; events
+   * without a `workflowId` stay on the engine.
+   */
+  override dispatchEvent(event: Event): boolean {
+    const result = super.dispatchEvent(event);
+    const internals = peekInternals(this);
+    if (internals) forwardWorkflowEventToHandle(internals, event);
+    return result;
   }
 
   /**

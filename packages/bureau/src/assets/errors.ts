@@ -60,6 +60,26 @@ export class AssetUnavailableError extends Error {
   }
 }
 
+/**
+ * A stored asset record cannot be read as an {@link AssetRecord}: its JSON does not parse, or a
+ * parsed record lacks a member the service reads or has one of the wrong type. The bytes and the
+ * record's content stay out of the message; it names the asset and the member only. The asset is
+ * not lost, but nothing can claim, inspect or resolve it until the record is repaired, which is
+ * why the session outbox drain treats this one failure as permanent (COR-1581).
+ */
+export class AssetRecordCorruptError extends Error {
+  readonly assetId: string;
+  /** What is wrong, as a member name or a stable code; never any of the record's content. */
+  readonly reason: string;
+
+  constructor(assetId: string, reason: string) {
+    super(`The stored record of asset "${assetId}" is corrupt: ${reason}.`);
+    this.name = 'AssetRecordCorruptError';
+    this.assetId = assetId;
+    this.reason = reason;
+  }
+}
+
 /** A legal or audit hold forbids the requested deletion or expiry. */
 export class AssetHeldError extends Error {
   readonly assetId: string;

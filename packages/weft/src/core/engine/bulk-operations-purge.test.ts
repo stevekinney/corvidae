@@ -122,6 +122,7 @@ describe('bulk purge helpers', () => {
     };
     const waiter = {
       ...Promise.withResolvers<unknown>(),
+      boundToRun: true,
       workflowExecutionToken: 'replacement-run',
     };
     internals.resultResolvers.set('replaced-run', waiter);

@@ -13,7 +13,12 @@
  * releasing a session's claims is symmetric with taking them.
  */
 
-import { AssetAccessDeniedError, AssetNotFoundError, AssetUnavailableError } from './errors';
+import {
+  AssetAccessDeniedError,
+  AssetNotFoundError,
+  AssetRecordCorruptError,
+  AssetUnavailableError,
+} from './errors';
 import type { AssetService } from './types';
 
 /**
@@ -59,17 +64,37 @@ function isNotOurs(error: unknown): boolean {
 }
 
 /**
+ * A claim failure no retry can fix: the asset's stored record is corrupt (COR-1581). Every other
+ * failure (a backend error, a lost compare-and-swap, a closed service, a full store) is transient,
+ * and the claim is worth trying again.
+ */
+export function isPermanentClaimFailure(error: unknown): boolean {
+  return error instanceof AssetRecordCorruptError;
+}
+
+/** What {@link claimRowAssets} reports; both are told which row the asset was found in. */
+export interface RowClaimReports {
+  /** A claim that failed. Check {@link isPermanentClaimFailure} to tell a repair from a retry. */
+  readonly onFailure: (assetId: string, error: unknown, rowId: string) => void;
+  /** A claim skipped as not this principal's to make; skipped quietly when this is absent. */
+  readonly onSkipped?: ((assetId: string, error: unknown, rowId: string) => void) | undefined;
+}
+
+/**
  * Claims, under `holderOf(row.id)`, every managed asset the rows reference. Idempotent: a claim
  * already held is not changed. An asset the principal cannot see, or that is no longer available
- * (a reference a hook supplied, or an asset already gone), is skipped; any other failure goes to
- * `onFailure` and the rest are still claimed.
+ * (a reference a hook supplied, or an asset already gone), is skipped, and reported only to
+ * `onSkipped`; any other failure goes to `onFailure` and the rest are still claimed.
+ *
+ * `alreadyClaimed` remembers the claims taken and also the ones that failed permanently, so a
+ * claim that can never succeed is neither retried nor reported again for as long as the set lives.
  */
 export async function claimRowAssets(
   assets: AssetService,
   principalId: string,
   holderOf: (rowId: string) => string,
   rows: Iterable<{ readonly id: string; readonly content: unknown }>,
-  onFailure: (assetId: string, error: unknown) => void,
+  reports: RowClaimReports,
   alreadyClaimed?: Set<string>,
 ): Promise<void> {
   for (const row of rows) {
@@ -81,7 +106,12 @@ export async function claimRowAssets(
         await assets.retain(assetId, { id: principalId }, { holderId, until: ROW_CLAIM_UNTIL });
         alreadyClaimed?.add(key);
       } catch (error) {
-        if (!isNotOurs(error)) onFailure(assetId, error);
+        if (isNotOurs(error)) {
+          reports.onSkipped?.(assetId, error, row.id);
+          continue;
+        }
+        if (isPermanentClaimFailure(error)) alreadyClaimed?.add(key);
+        reports.onFailure(assetId, error, row.id);
       }
     }
   }
@@ -96,7 +126,7 @@ export async function releaseRowAssetClaims(
   principalId: string,
   holderOf: (rowId: string) => string,
   rows: Iterable<{ readonly id: string; readonly content: unknown }>,
-  onFailure: (assetId: string, error: unknown) => void,
+  onFailure: (assetId: string, error: unknown, rowId: string) => void,
   claimed?: Set<string>,
 ): Promise<void> {
   for (const row of rows) {
@@ -106,7 +136,7 @@ export async function releaseRowAssetClaims(
       try {
         await assets.release(assetId, { id: principalId }, holderId);
       } catch (error) {
-        if (!isNotOurs(error)) onFailure(assetId, error);
+        if (!isNotOurs(error)) onFailure(assetId, error, row.id);
       }
     }
   }

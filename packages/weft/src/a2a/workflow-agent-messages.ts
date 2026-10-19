@@ -30,13 +30,9 @@ import type { PushNotificationStore, ServerCallContext } from '@a2a-js/sdk/serve
 
 import type { Engine } from '../core/engine.ts';
 import { encodeStorageKeyComponent } from '../storage/key-encoding.ts';
+import { pushConfigurationCreatePlannerOf } from './push-notification-store.ts';
 import { withStreamEventCursor } from './stream-cursors.ts';
-import {
-  sameOwner,
-  type StoredWorkflowTask,
-  taskEventCursor,
-  type TaskEventLog,
-} from './task-event-log.ts';
+import { type StoredWorkflowTask, taskEventCursor, type TaskEventLog } from './task-event-log.ts';
 import type { WorkflowAgentInputMode } from './workflow-agent-card.ts';
 import {
   isSettledTaskState,
@@ -201,13 +197,18 @@ export function createWorkflowAgentMessaging(options: {
 }): WorkflowAgentMessaging {
   const { engine, workflowType, inputMode, inputModes, log, runtime, pushStore, now } = options;
   const { toInput, respond } = options;
+  // The planner of a store `createWeftPushNotificationStore` made writes its records,
+  // stamped with its clock, in the batch that creates a task. Any other store keeps its
+  // own records, so only its own `save` can store a configuration in it.
+  const planPushCreate = pushConfigurationCreatePlannerOf(pushStore);
 
   /**
    * Save the message's inline push configuration for its task, under the store's
    * create rules: a configuration it repeats is returned rather than stored again, and
    * one naming a deleted or different configuration's `id` is refused. Every message
    * that reaches a task does this, whether it created the task, retried the message
-   * that did, or continued it, as the SDK's `DefaultRequestHandler` does.
+   * that did, or continued it, as the SDK's `DefaultRequestHandler` does; the message
+   * that creates the task stores it in the batch that creates the task instead (see `createTask`).
    */
   async function installPushConfiguration(
     params: SendMessageRequest,
@@ -220,18 +221,54 @@ export function createWorkflowAgentMessaging(options: {
   }
 
   /**
-   * Refuse a run another caller's task holds, or held before it was pruned, before
-   * anything is saved in this caller's scope.
+   * Create the task a first message started, with its owner record and the message's
+   * inline push configuration, in one conditional batch. The configuration is stored
+   * before the task's first status is sent, so a status as fast as a workflow that
+   * completes at once reaches it. A create that loses to another caller, fails, or
+   * never commits because the process stops leaves no configuration in this caller's
+   * scope, where no task record would lead pruning to it. A push store that did not
+   * come from `createWeftPushNotificationStore` saves the configuration itself before
+   * the task is created, so it too has it before the first status, without that
+   * guarantee.
    */
-  async function refuseForeignRun(
+  async function createTask(
     message: Message,
-    taskId: string,
+    params: SendMessageRequest,
     context: ServerCallContext,
+    taskId: string,
   ): Promise<void> {
-    const owner = await log.findOwner(taskId);
-    if (owner !== undefined && !sameOwner(owner, taskOwnerOf(context))) {
-      throw foreignMessage(message);
+    const contextId = message.contextId === '' ? taskId : message.contextId;
+    const submitted: Task = {
+      id: taskId,
+      contextId,
+      status: undefined,
+      artifacts: [],
+      history: [{ ...message, taskId, contextId }],
+      metadata: undefined,
+    };
+    const status = {
+      state: TaskState.TASK_STATE_SUBMITTED,
+      message: undefined,
+      timestamp: new Date(now()).toISOString(),
+    };
+    const task = withStatus(submitted, status);
+    const config = params.configuration?.taskPushNotificationConfig;
+    if (planPushCreate === undefined) await installPushConfiguration(params, taskId, context);
+    const created = await log.create(
+      runtime.scopeOf(context),
+      taskOwnerOf(context),
+      { task, events: [statusUpdateEvent(task, status)] },
+      config === undefined || planPushCreate === undefined
+        ? undefined
+        : () => planPushCreate(taskId, context, { ...config, taskId }),
+    );
+    if (created === 'foreign') throw foreignMessage(message);
+    // Another request for the same message created the task first, so this one reached
+    // an existing task, as a retry does.
+    if (created === undefined && planPushCreate !== undefined) {
+      await installPushConfiguration(params, taskId, context);
     }
+    await runtime.publish(created, context);
   }
 
   /** Start (or, for a retried message, find) the workflow and its task. */
@@ -252,33 +289,12 @@ export function createWorkflowAgentMessaging(options: {
     // another agent or tenant used first names a run that is not this caller's task.
     if (workflowState?.type !== workflowType) throw foreignMessage(message);
     const existing = await log.read(scope, taskId);
-    if (existing === undefined) await refuseForeignRun(message, taskId, context);
-    // Before the task is created, so its first status reaches the configuration; a
-    // retried message returns the caller's existing task, and its configuration applies
-    // to that task like any other.
-    await installPushConfiguration(params, taskId, context);
     if (existing === undefined) {
-      const contextId = message.contextId === '' ? taskId : message.contextId;
-      const submitted: Task = {
-        id: taskId,
-        contextId,
-        status: undefined,
-        artifacts: [],
-        history: [{ ...message, taskId, contextId }],
-        metadata: undefined,
-      };
-      const status = {
-        state: TaskState.TASK_STATE_SUBMITTED,
-        message: undefined,
-        timestamp: new Date(now()).toISOString(),
-      };
-      const task = withStatus(submitted, status);
-      const created = await log.create(scope, taskOwnerOf(context), {
-        task,
-        events: [statusUpdateEvent(task, status)],
-      });
-      if (created === 'foreign') throw foreignMessage(message);
-      await runtime.publish(created, context);
+      await createTask(message, params, context, taskId);
+    } else {
+      // A retried message returns the caller's existing task, and its configuration
+      // applies to that task like any other.
+      await installPushConfiguration(params, taskId, context);
     }
     const stored = await runtime.reconcile(taskId, context);
     if (stored === undefined) throw new TaskNotFoundError(`Task not found: ${taskId}`);
