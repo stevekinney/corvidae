@@ -7,17 +7,10 @@
  * the SHA-256 of the bytes the caller last read and refuse with an {@link AgentFileConflictError}
  * when the file has changed since. Writes are serialized in this process.
  *
- * ## What is not guaranteed
- *
- * There is no cross-process file lock. A different process writing the same file in the instant
- * between a write's last check and its `rename` is not detected: `rename` replaces whatever is
- * there, and for `create` it cannot refuse an existing target. The window is the time between two
- * system calls.
+ * The write core is `atomic-file-writer.ts`, shared with the workflow files (COR-1527).
  *
  * @module agent-file-writer
  */
-
-import { join } from 'node:path';
 
 import {
   AGENT_FILE_EXTENSION,
@@ -35,6 +28,7 @@ import {
   serializeNewAgentFile,
   serializeUpdatedAgentFile,
 } from './agent-file';
+import { createAtomicFileWriter } from './atomic-file-writer';
 import type { AgentFileOperations } from './agent-file-operations';
 
 export interface AgentFileWriterDependencies {
@@ -72,16 +66,27 @@ function refuse(problem: AgentFileProblem): never {
 
 export function createAgentFileWriter(dependencies: AgentFileWriterDependencies): AgentFileWriter {
   const { directory, operations } = dependencies;
-  let tail: Promise<unknown> = Promise.resolve();
-  function exclusive<T>(work: () => Promise<T>): Promise<T> {
-    const result = tail.then(work, work);
-    tail = result.catch(() => undefined);
-    return result;
-  }
-
-  const pathOf = (id: string): string => join(directory, `${id}${AGENT_FILE_EXTENSION}`);
-  const temporaryPathOf = (id: string): string =>
-    join(directory, `.${id}${AGENT_FILE_EXTENSION}.${dependencies.newTemporaryName()}.tmp`);
+  const files = createAtomicFileWriter({
+    directory,
+    operations,
+    extension: AGENT_FILE_EXTENSION,
+    newTemporaryName: () => dependencies.newTemporaryName(),
+    notFound: (id) =>
+      new AgentFileError('agent-file-not-found', `There is no agent file for "${id}".`),
+    exists: (id, currentHash) =>
+      new AgentFileConflictError(
+        'agent-file-exists',
+        `An agent file for "${id}" already exists.`,
+        currentHash,
+      ),
+    changed: (id, currentHash) =>
+      new AgentFileConflictError(
+        'agent-file-changed',
+        `The file for "${id}" has changed since it was read.`,
+        currentHash,
+      ),
+  });
+  const { exclusive, readExisting, recheck, publish } = files;
 
   function checkIdentifier(id: string): void {
     const problem = checkAgentIdentifier(id);
@@ -109,62 +114,10 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
     if (problem !== undefined) refuse(problem);
   }
 
-  async function readExisting(
-    id: string,
-    expectedHash: string,
-  ): Promise<{ readonly bytes: Uint8Array; readonly hash: string }> {
-    const bytes = await operations.read(pathOf(id));
-    if (bytes === undefined) {
-      throw new AgentFileError('agent-file-not-found', `There is no agent file for "${id}".`);
-    }
-    const hash = hashAgentFileBytes(bytes);
-    if (hash !== expectedHash) {
-      throw new AgentFileConflictError(
-        'agent-file-changed',
-        `The file for "${id}" has changed since it was read.`,
-        hash,
-      );
-    }
-    return { bytes, hash };
-  }
-
-  /** Check, once more and as late as possible, that the target still holds `expectedHash`. */
-  async function recheck(id: string, expectedHash: string): Promise<void> {
-    const bytes = await operations.read(pathOf(id));
-    if (bytes === undefined) {
-      throw new AgentFileError('agent-file-not-found', `There is no agent file for "${id}".`);
-    }
-    const hash = hashAgentFileBytes(bytes);
-    if (hash !== expectedHash) {
-      throw new AgentFileConflictError(
-        'agent-file-changed',
-        `The file for "${id}" has changed since it was read.`,
-        hash,
-      );
-    }
-  }
-
-  async function publish(
-    id: string,
-    bytes: Uint8Array,
-    beforeRename: () => Promise<void>,
-  ): Promise<void> {
-    const temporary = temporaryPathOf(id);
-    await operations.makeDirectory(directory);
-    await operations.writeTemporary(temporary, bytes);
-    try {
-      await beforeRename();
-      await operations.rename(temporary, pathOf(id));
-    } catch (error) {
-      await operations.remove(temporary).catch(() => undefined);
-      throw error;
-    }
-  }
-
   return {
     async read(id) {
       checkIdentifier(id);
-      const bytes = await operations.read(pathOf(id));
+      const bytes = await files.readBytes(id);
       if (bytes === undefined) return undefined;
       const text = decodeAgentFile(bytes);
       if (text === undefined) {
@@ -178,16 +131,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         checkIdentifier(id);
         const bytes = serializeNewAgentFile(definition);
         checkWritable(id, bytes);
-        const existing = async (): Promise<void> => {
-          const current = await operations.read(pathOf(id));
-          if (current !== undefined) {
-            throw new AgentFileConflictError(
-              'agent-file-exists',
-              `An agent file for "${id}" already exists.`,
-              hashAgentFileBytes(current),
-            );
-          }
-        };
+        const existing = (): Promise<void> => files.assertAbsent(id);
         await existing();
         await publish(id, bytes, existing);
         await dependencies.refresh();
@@ -226,7 +170,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
         checkIdentifier(id);
         const { hash } = await readExisting(id, expectedHash);
         await recheck(id, expectedHash);
-        await operations.remove(pathOf(id));
+        await files.remove(id);
         await dependencies.refresh();
         return { id, hash };
       });

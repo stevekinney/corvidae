@@ -445,6 +445,16 @@ describe('createBureauHandler catalog', () => {
         'bureau.tasks.get',
         'bureau.tasks.list',
         'bureau.tasks.respond',
+        'bureau.workflows.create',
+        'bureau.workflows.delete',
+        'bureau.workflows.get',
+        'bureau.workflows.list',
+        'bureau.workflows.pause',
+        'bureau.workflows.resume',
+        'bureau.workflows.revisions',
+        'bureau.workflows.runs.get',
+        'bureau.workflows.runs.list',
+        'bureau.workflows.update',
         'rpc.discover',
         'weft.system.principal',
       ]);
@@ -598,6 +608,8 @@ describe('the Bureau scope list', () => {
       'bureau.goals:write',
       'bureau.contexts:read',
       'bureau.contexts:write',
+      'bureau.workflows:read',
+      'bureau.workflows:write',
       'bureau.events:observe-all',
     ]);
   });

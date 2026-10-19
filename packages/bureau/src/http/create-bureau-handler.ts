@@ -64,6 +64,10 @@ import {
   type PublishedAgent,
 } from './management/deployment-operations.ts';
 import {
+  type BureauWorkflowsOperationHost,
+  bureauWorkflowsOperations,
+} from './management/workflows-operations.ts';
+import {
   type BureauTaskEventsOperationHost,
   tasksEventsOperation,
 } from './management/tasks-events-operation.ts';
@@ -117,6 +121,7 @@ export type BureauHandlerSource = Pick<
   | 'locateRunCreationReceipt'
   | 'children'
   | 'getDurableRun'
+  | 'workflows'
 > & {
   readonly agents: { has(name: string): boolean; find(name: string): AgentDescription | undefined };
 };
@@ -133,7 +138,8 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksOperationHost &
   BureauTaskEventsOperationHost &
   BureauTasksRespondOperationHost &
-  BureauContextsOperationHost;
+  BureauContextsOperationHost &
+  BureauWorkflowsOperationHost;
 
 export type BureauHandlerOptions = {
   /**
@@ -349,6 +355,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsListOperation,
   contextsGetOperation,
   contextsDeleteOperation,
+  ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
   bureauRunEventsSubscriptionOperation,
   ...bureauReviewsOperations,
@@ -480,6 +487,7 @@ export function buildBureauHandlerHost(
     tasks: bureau.tasks,
     taskHistory: bureau,
     contexts: bureau,
+    workflows: bureau.workflows,
     respondLedger: createRespondLedger(bureau),
     respondInFlight: new Map(),
     deployment: {

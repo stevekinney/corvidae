@@ -27,6 +27,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [Governed memory (COR-41)](#governed-memory-cor-41)
 - [`AgentDefinitions` and the Agent Catalog](#agentdefinitions-and-the-agent-catalog)
   - [Agent files (COR-1524)](#agent-files-cor-1524)
+  - [Workflow files (COR-1527)](#workflow-files-cor-1527)
   - [`createSupervisor` and `createAgentDiscoveryTool`](#createsupervisor-and-createagentdiscoverytool)
 - [Test utilities](#test-utilities)
 - [Development](#development)
@@ -799,6 +800,12 @@ A run uses the definition it started with. Bureau stores that definition as a sn
 - **Steering**: the agent-identity steering override still validates against the code-defined `agents` map only, so a file agent is not a steering target.
 - **Create race**: a write goes to a temporary file in the same directory and is renamed into place, under a lock in this process. There is no cross-process file lock, so another process writing the same file between a write's last check and its `rename` is not detected, and `create` cannot refuse an existing target at that instant.
 - **Rewrites**: an API write that changes the frontmatter replaces the lines of the keys Bureau knows and keeps every other line, comments included, byte for byte, so an unknown key keeps its value and its YAML type for other tools (a quoted `created: '2024-01-01'` stays a string, an unquoted date stays a date). Bureau reads the result back and, if a line edit cannot be verified (a quoted key, say), re-emits the whole frontmatter instead, which keeps values and types but drops comments and layout. The body survives byte for byte, and an update that changes nothing writes nothing. An update or delete of a symbolic-linked agent file replaces the link with a regular file.
+
+### Workflow files (COR-1527)
+
+`createBureau({ workflowDirectory })` loads agent-authored workflows from JSON files in a directory the host names, and needs a durable engine. A file `nightly-digest.json` is the workflow `nightly-digest`: Weft's workflow document (`name`, `trigger`, `steps`) plus an optional `agent` (who wrote it) and `paused`, and nothing else. The trigger is `{ kind: 'schedule', spec, overlap? }`, and the one activity is `agent`, `{ agent, message }`, which starts a standalone durable run of that agent as the deployment's owner and passes `{ content, output, finishReason }` to the next step. Bureau registers each file as its own Weft workflow type, keeps one native schedule per workflow that matches its file, watches the directory so a change takes effect without a restart, and `bureau.workflows.create`, `update`, `pause`, `resume`, and `delete` write through the same files with the agent files' rules (a temporary file renamed into place, `expectedHash`). A file that cannot be used is listed with `state: 'invalid'` and a typed `problem` and leaves every other workflow working.
+
+A run keeps the revision it began on. Bureau stores each registered document in its database under its Weft `workflowVersion`, and at startup registers every file's current document plus each older revision that still has an instance in flight, before the engine recovers, so an instance parked in a `sleep` or an `await-signal` whose file was edited or deleted resumes on its original revision. `bureau.workflows.revisions(id)` lists the revisions that have run, newest first. See [`documentation/workflow-files.md`](documentation/workflow-files.md) for the format and the full contract, and `bureau.workflows.*` in [`documentation/external-control-plane.md`](documentation/external-control-plane.md) for the owner-scoped operations under the scopes `bureau.workflows:read` and `bureau.workflows:write`.
 
 ### `createSupervisor` and `createAgentDiscoveryTool`
 
