@@ -388,6 +388,7 @@ The option is `agUi?: { pathPrefix?, maxStreamDurationMs?, liveBufferSize?, keep
 | --- | --- | --- |
 | `POST <prefix>/agents/<name>/run` | `RunAgentInput` (JSON); `Accept` must include `text/event-stream` | An AG-UI event stream. `resume` absent or empty starts a run; `resume` present resumes one. |
 | `GET <prefix>/threads/<threadId>/run` | none | A stream attached to the thread's most recent root run while it is live, parked on a human wait, or settled with a tool approval pending; otherwise a one-event `RUN_NOT_FOUND` stream. |
+| `GET <prefix>/threads/<threadId>/messages` | none | JSON `{ threadId, messages }`: the thread's conversation as AG-UI messages (the mapping the attach snapshot uses), whether or not a run is going, so a client can open a finished session. Decided by the attach route's predicate; a thread the caller may not read is a `NotFound` fault, as a missing one is. |
 | `GET <prefix>/runs/<runId>` | none | The same, for that run by native id. A child run's owner attaches here too, by the child's own id: see **Events**. |
 | `POST <prefix>/runs/<runId>/cancel` | none | JSON `{ runId, status }`, or a `NotFound` fault. |
 

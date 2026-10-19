@@ -189,6 +189,7 @@ describe('bureau.agents.list', () => {
               displayName: 'Writer',
               description: 'Drafts documents',
               definitionRevision: expect.any(Number) as unknown,
+              kind: 'code',
               publishState: 'published',
             },
             {
@@ -196,6 +197,7 @@ describe('bureau.agents.list', () => {
               displayName: 'plain-agent',
               description: null,
               definitionRevision: expect.any(Number) as unknown,
+              kind: 'code',
               publishState: 'published',
             },
           ],
