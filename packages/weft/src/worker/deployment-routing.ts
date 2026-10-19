@@ -1,11 +1,17 @@
 /** Durable deployment versions and deterministic, revision-aware selection. */
-import { decode, encode } from '../core/codec/index.ts';
+import { encode } from '../core/codec/index.ts';
 import { hashString } from '../runtime/portable.ts';
 import { storageConditionalBatch, type Storage } from '../storage/interface.ts';
+import { countBuildReferences } from './deployment-build-references.ts';
+import {
+  decodeRouting,
+  decodeVersion,
+  routingKey,
+  versionKey,
+  WORKER_DEPLOYMENT_VERSION_PREFIX,
+} from './deployment-records.ts';
+import { removeWorkerDeploymentVersion } from './deployment-removal.ts';
 import type { WorkerExecutionRequirement, WorkerManifest } from './manifest/types.ts';
-
-export const WORKER_DEPLOYMENT_VERSION_PREFIX = 'worker-deployment-version:';
-export const WORKER_DEPLOYMENT_ROUTING_PREFIX = 'worker-deployment-routing:';
 
 export type WorkerDeploymentVersionState = 'ready' | 'draining' | 'removed';
 
@@ -17,8 +23,24 @@ export type WorkerDeploymentVersion = Readonly<{
   manifest: WorkerManifest;
   state: WorkerDeploymentVersionState;
   firstSeenAt: number;
-  executionReferences: number;
 }>;
+
+/**
+ * A version as the catalog reports it: `executionReferences` is computed from the durable work
+ * that is bound to the build at the moment of the read (see `deployment-build-references.ts`),
+ * never stored.
+ */
+export type WorkerDeploymentVersionReport = WorkerDeploymentVersion &
+  Readonly<{ executionReferences: number }>;
+
+/** Why a removal did not happen, or that it did. */
+export type WorkerDeploymentRemovalOutcome =
+  | Readonly<{ outcome: 'removed' }>
+  | Readonly<{ outcome: 'not-found' }>
+  | Readonly<{ outcome: 'not-draining'; state: WorkerDeploymentVersionState }>
+  | Readonly<{ outcome: 'routed' }>
+  | Readonly<{ outcome: 'referenced'; references: number }>
+  | Readonly<{ outcome: 'busy' }>;
 
 export type WorkerDeploymentRouting = Readonly<{
   deploymentName: string;
@@ -71,57 +93,6 @@ export class WorkerDeploymentVersionConflictError extends Error {
     );
     this.name = 'WorkerDeploymentVersionConflictError';
   }
-}
-
-type StoredVersion = Omit<WorkerDeploymentVersion, 'manifest'> & { manifest: WorkerManifest };
-
-function decodeVersion(value: Uint8Array): WorkerDeploymentVersion {
-  const decoded = decode(value) as Partial<WorkerDeploymentVersion>;
-  const valid = [
-    typeof decoded.deploymentName === 'string',
-    typeof decoded.buildId === 'string',
-    typeof decoded.artifactDigest === 'string',
-    typeof decoded.manifestDigest === 'string',
-    typeof decoded.firstSeenAt === 'number',
-    Number.isInteger(decoded.executionReferences),
-    (decoded.executionReferences ?? -1) >= 0,
-    ['ready', 'draining', 'removed'].includes(decoded.state ?? ''),
-    typeof decoded.manifest === 'object',
-    decoded.manifest !== null,
-  ].every(Boolean);
-  if (!valid) throw new Error('Invalid worker deployment version record.');
-  const deployment = decoded.manifest!.deployment;
-  if (
-    deployment.name !== decoded.deploymentName ||
-    deployment.buildId !== decoded.buildId ||
-    deployment.artifactDigest !== decoded.artifactDigest
-  )
-    throw new Error('Worker deployment version manifest identity disagrees with its storage key.');
-  return decoded as WorkerDeploymentVersion;
-}
-
-function decodeRouting(value: Uint8Array): WorkerDeploymentRouting {
-  const decoded = decode(value) as Partial<WorkerDeploymentRouting>;
-  const valid = [
-    typeof decoded.deploymentName === 'string',
-    typeof decoded.currentBuildId === 'string',
-    Number.isInteger(decoded.generation),
-    (decoded.generation ?? 0) >= 1,
-    Number.isInteger(decoded.rampBasisPoints),
-    (decoded.rampBasisPoints ?? -1) >= 0,
-    (decoded.rampBasisPoints ?? 10_001) <= 10_000,
-    typeof decoded.updatedAt === 'number',
-  ].every(Boolean);
-  if (!valid) throw new Error('Invalid worker deployment routing record.');
-  return decoded as WorkerDeploymentRouting;
-}
-
-function versionKey(deploymentName: string, buildId: string): string {
-  return `${WORKER_DEPLOYMENT_VERSION_PREFIX}${encodeURIComponent(deploymentName)}:${encodeURIComponent(buildId)}`;
-}
-
-function routingKey(deploymentName: string): string {
-  return `${WORKER_DEPLOYMENT_ROUTING_PREFIX}${encodeURIComponent(deploymentName)}`;
 }
 
 function bucket(deploymentName: string, workflowId: string, generation: number): number {
@@ -263,13 +234,11 @@ export class WorkerDeploymentCatalog {
     this.#storage = storage;
   }
 
-  async registerVersion(
-    version: Omit<WorkerDeploymentVersion, 'executionReferences'>,
-  ): Promise<WorkerDeploymentVersion> {
+  async registerVersion(version: WorkerDeploymentVersion): Promise<WorkerDeploymentVersion> {
     const key = versionKey(version.deploymentName, version.buildId);
     const existing = await this.#storage.get(key);
     if (existing !== null) {
-      const current = decodeVersion(existing) as StoredVersion;
+      const current = decodeVersion(existing);
       if (
         current.artifactDigest !== version.artifactDigest ||
         current.manifestDigest !== version.manifestDigest
@@ -277,14 +246,13 @@ export class WorkerDeploymentCatalog {
         throw new WorkerDeploymentVersionConflictError(version.deploymentName, version.buildId);
       return current;
     }
-    const stored: StoredVersion = { ...version, executionReferences: 0 };
     const applied = await storageConditionalBatch(
       this.#storage,
       [{ key, expectedValue: null }],
-      [{ type: 'put', key, value: encode(stored) }],
+      [{ type: 'put', key, value: encode(version) }],
     );
     if (!applied) return this.registerVersion(version);
-    return stored;
+    return version;
   }
 
   async getVersion(
@@ -344,92 +312,52 @@ export class WorkerDeploymentCatalog {
     return applied ? next : null;
   }
 
-  async markDraining(
-    deploymentName: string,
-    buildId: string,
-  ): Promise<WorkerDeploymentVersion | null> {
-    const current = await this.getVersion(deploymentName, buildId);
-    if (current === null || current.executionReferences > 0) return current;
-    const key = versionKey(deploymentName, buildId);
-    const next = { ...current, state: 'draining' as const };
-    const applied = await storageConditionalBatch(
-      this.#storage,
-      [{ key, expectedValue: encode(current) }],
-      [{ type: 'put', key, value: encode(next) }],
-    );
-    return applied ? next : this.markDraining(deploymentName, buildId);
-  }
-
   /**
-   * Move a build between `ready` and `draining`, whatever references it holds: a drain keeps
-   * existing work visible and only stops new untargeted work, so it must not wait for references
-   * to reach zero the way `markDraining` does. A build that is unknown or `removed` is returned
-   * untouched, and never revived.
+   * Move a build between `ready` and `draining`, whatever work is bound to it: a drain keeps
+   * existing work visible and only stops new untargeted work, so it never waits for the build's
+   * references to reach zero. A build that is unknown or `removed` is returned untouched, and
+   * never revived. The write is conditioned on the exact bytes read, so a record that carries a
+   * field this version no longer writes still matches.
    */
   async setVersionState(
     deploymentName: string,
     buildId: string,
     state: 'ready' | 'draining',
   ): Promise<WorkerDeploymentVersion | null> {
-    const current = await this.getVersion(deploymentName, buildId);
-    if (current === null || current.state === 'removed' || current.state === state) return current;
     const key = versionKey(deploymentName, buildId);
+    const currentBytes = await this.#storage.get(key);
+    if (currentBytes === null) return null;
+    const current = decodeVersion(currentBytes);
+    if (current.state === 'removed') return current;
+    if (current.state === state) return current;
+    const next = { ...current, state };
     const applied = await storageConditionalBatch(
       this.#storage,
-      [{ key, expectedValue: encode(current) }],
-      [{ type: 'put', key, value: encode({ ...current, state }) }],
-    );
-    return applied ? { ...current, state } : this.setVersionState(deploymentName, buildId, state);
-  }
-
-  async reference(
-    deploymentName: string,
-    buildId: string,
-    delta: 1 | -1,
-  ): Promise<WorkerDeploymentVersion | null> {
-    const current = await this.getVersion(deploymentName, buildId);
-    if (current === null) return null;
-    const next = {
-      ...current,
-      executionReferences: Math.max(0, current.executionReferences + delta),
-    };
-    const key = versionKey(deploymentName, buildId);
-    const applied = await storageConditionalBatch(
-      this.#storage,
-      [{ key, expectedValue: encode(current) }],
+      [{ key, expectedValue: currentBytes }],
       [{ type: 'put', key, value: encode(next) }],
     );
-    return applied ? next : this.reference(deploymentName, buildId, delta);
+    return applied ? next : this.setVersionState(deploymentName, buildId, state);
   }
 
   /**
-   * Mark a build removed. Refuses (returns `false`) a build that does not exist, that an
-   * execution still references, or that the routing pointer names as its current or ramping
-   * build. The routing pointer's bytes are a condition of the same write, so a routing change
-   * that lands between the check and the write fails the removal instead of routing to a
-   * removed build.
+   * Mark a build removed, irreversibly: only a draining build, by optimistic concurrency against
+   * everything that binds work to it (`deployment-removal.ts`). Reports why it did not, when it
+   * did not, and `busy` when bindings kept landing on the build during its scans.
    */
-  async removeVersion(deploymentName: string, buildId: string): Promise<boolean> {
-    const current = await this.getVersion(deploymentName, buildId);
-    if (current === null || current.executionReferences > 0) return false;
-    const routingBytes = await this.#storage.get(routingKey(deploymentName));
-    if (routingBytes !== null) {
-      const routing = decodeRouting(routingBytes);
-      if (routing.currentBuildId === buildId || routing.rampingBuildId === buildId) return false;
-    }
-    const key = versionKey(deploymentName, buildId);
-    return storageConditionalBatch(
-      this.#storage,
-      [
-        { key, expectedValue: encode(current) },
-        { key: routingKey(deploymentName), expectedValue: routingBytes },
-      ],
-      [{ type: 'put', key, value: encode({ ...current, state: 'removed' as const }) }],
-    );
+  removeVersion(deploymentName: string, buildId: string): Promise<WorkerDeploymentRemovalOutcome> {
+    return removeWorkerDeploymentVersion(this.#storage, deploymentName, buildId);
   }
 
-  async diagnostics(deploymentName?: string): Promise<ReadonlyArray<WorkerDeploymentVersion>> {
-    return this.listVersions(deploymentName);
+  /** Every version with the count of durable work bound to its build, computed by one scan. */
+  async diagnostics(
+    deploymentName?: string,
+  ): Promise<ReadonlyArray<WorkerDeploymentVersionReport>> {
+    const versions = await this.listVersions(deploymentName);
+    const counts = await countBuildReferences(this.#storage, versions);
+    return versions.map((version, index) => ({
+      ...version,
+      executionReferences: counts[index] ?? 0,
+    }));
   }
 }
 

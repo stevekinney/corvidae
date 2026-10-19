@@ -17,7 +17,8 @@ export type TaggedStartCondition = {
     | 'duplicate-id'
     | 'duplicate-id-generation'
     | 'worker-start-override'
-    | 'catalog-entry';
+    | 'catalog-entry'
+    | 'worker-build-tombstone';
   condition: ConditionalBatchCondition;
 };
 
@@ -66,6 +67,7 @@ export function tagStartConditions(conditions: {
   workflowConcurrency: ConditionalBatchCondition[] | undefined;
   workerStartOverride: ConditionalBatchCondition[] | undefined;
   catalogEntry: TaggedStartCondition | undefined;
+  workerBuildTombstone: TaggedStartCondition | undefined;
 }): TaggedStartCondition[] {
   return [
     ...tagStartPreconditions(conditions.idempotency),
@@ -73,5 +75,6 @@ export function tagStartConditions(conditions: {
     ...tagWorkflowConcurrencyConditions(conditions.workflowConcurrency ?? []),
     ...tagWorkerStartOverrideConditions(conditions.workerStartOverride),
     ...(conditions.catalogEntry === undefined ? [] : [conditions.catalogEntry]),
+    ...(conditions.workerBuildTombstone === undefined ? [] : [conditions.workerBuildTombstone]),
   ];
 }

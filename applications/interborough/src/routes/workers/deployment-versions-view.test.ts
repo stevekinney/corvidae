@@ -163,13 +163,27 @@ describe('DeploymentVersionsView — actions', () => {
     ).toBeNull();
   });
 
-  test('removal is offered only for a build nothing depends on, and says exactly why it is not', async () => {
-    const { container, calls } = renderView();
-    // build-a is referenced; build-b is current; build-c is ramping.
+  test('removal is offered only for a draining build nothing depends on, and says exactly why it is not', async () => {
+    const draining = (buildId: string, overrides = {}) =>
+      version(buildId, { state: 'draining', ...overrides });
+    const { container, calls } = renderView({
+      overviews: [
+        overview({
+          versions: [
+            draining('build-a', { firstSeenAt: NOW - 300, executionReferences: 2 }),
+            draining('build-b', { firstSeenAt: NOW - 200 }),
+            draining('build-c', { firstSeenAt: NOW - 100 }),
+            version('build-d', { firstSeenAt: NOW - 50 }),
+          ],
+        }),
+      ],
+    });
+    // build-a is referenced; build-b is current; build-c is ramping; build-d is ready.
     for (const [buildId, reason] of [
-      ['build-a', 'Build billing/build-a is still referenced by 2 executions'],
+      ['build-a', 'Build billing/build-a is still referenced by 2 pieces of work'],
       ['build-b', 'Build billing/build-b is the current build of its routing pointer'],
       ['build-c', 'Build billing/build-c is the ramping build of its routing pointer'],
+      ['build-d', 'Build billing/build-d is ready, so it is not draining. Drain it first'],
     ] as const) {
       const target = row(container, buildId);
       expect(within(target).getByRole('button', { name: 'Remove' }).hasAttribute('disabled')).toBe(
@@ -180,7 +194,12 @@ describe('DeploymentVersionsView — actions', () => {
     expect(calls).toEqual([]);
 
     const free = renderView({
-      overviews: [overview({ routing: routing({ currentBuildId: 'build-b' }) })],
+      overviews: [
+        overview({
+          versions: [version('build-b'), version('build-c', { state: 'draining' })],
+          routing: routing({ currentBuildId: 'build-b' }),
+        }),
+      ],
     });
     const removable = within(row(free.container, 'build-c')).getByRole('button', {
       name: 'Remove',

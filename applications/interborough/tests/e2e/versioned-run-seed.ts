@@ -14,6 +14,9 @@
  *   manifest was built from (a worker policy is not part of a workflow's contract, so the revision
  *   the manifest advertises is the revision the engine registers).
  *
+ * A third, held run of a pinned workflow that waits for a signal nothing sends binds to the first
+ * build and stays running, so that build has one piece of durable work bound to it (COR-1582).
+ *
  * Routing is moved to the second build afterwards, which bumps its generation to 2. The pinned run
  * stays on the first build at generation 1. The auto-upgrade run's preview resolves against the
  * policy's pinned first build at generation 2, so spending the preview is what moves its
@@ -31,6 +34,8 @@ import {
 import {
   E2E_AUTO_UPGRADE_RUN_ID,
   E2E_AUTO_UPGRADE_WORKFLOW_TYPE,
+  E2E_HELD_RUN_ID,
+  E2E_HELD_WORKFLOW_TYPE,
   E2E_PINNED_RUN_ID,
   E2E_PINNED_WORKFLOW_TYPE,
   E2E_PORT,
@@ -45,7 +50,9 @@ type AutoUpgradeCompatibility = Extract<
 >['compatibility'];
 
 interface RegistrableEngine {
-  register(definition: ReturnType<typeof versionedWorkflow>): unknown;
+  register(
+    definition: ReturnType<typeof versionedWorkflow> | ReturnType<typeof heldWorkflow>,
+  ): unknown;
   start(
     type: string,
     input: unknown,
@@ -59,6 +66,16 @@ function versionedWorkflow(
 ) {
   return workflow({ name, workerVersioningPolicy: policy }).execute(async function* () {
     return 'ok';
+  });
+}
+
+/** A pinned workflow that never finishes: it waits for a signal nothing sends. */
+function heldWorkflow() {
+  return workflow({
+    name: E2E_HELD_WORKFLOW_TYPE,
+    workerVersioningPolicy: { mode: 'pinned' },
+  }).execute(async function* (ctx) {
+    return yield* ctx.waitForSignal<string>('release');
   });
 }
 
@@ -84,7 +101,11 @@ function acceptedManifestDigest(diagnostics: unknown, buildId: string): string {
 
 async function buildManifest(draft: Engine, buildId: string): Promise<WorkerManifest> {
   return buildWorkerManifestFromRegistry(draft, {
-    workflows: { [E2E_PINNED_WORKFLOW_TYPE]: [], [E2E_AUTO_UPGRADE_WORKFLOW_TYPE]: [] },
+    workflows: {
+      [E2E_PINNED_WORKFLOW_TYPE]: [],
+      [E2E_AUTO_UPGRADE_WORKFLOW_TYPE]: [],
+      [E2E_HELD_WORKFLOW_TYPE]: [],
+    },
     deployment: {
       name: E2E_VERSIONED_DEPLOYMENT_NAME,
       buildId,
@@ -103,6 +124,7 @@ function workerFor(buildId: string, manifest: WorkerManifest): RemoteWorker {
     workflows: {
       [E2E_PINNED_WORKFLOW_TYPE]: { name: E2E_PINNED_WORKFLOW_TYPE, activities: {} },
       [E2E_AUTO_UPGRADE_WORKFLOW_TYPE]: { name: E2E_AUTO_UPGRADE_WORKFLOW_TYPE, activities: {} },
+      [E2E_HELD_WORKFLOW_TYPE]: { name: E2E_HELD_WORKFLOW_TYPE, activities: {} },
     },
     manifest,
   });
@@ -116,6 +138,7 @@ export async function seedVersionedRuns(
   using draft = new Engine();
   draft.register(versionedWorkflow(E2E_PINNED_WORKFLOW_TYPE, { mode: 'pinned' }));
   draft.register(versionedWorkflow(E2E_AUTO_UPGRADE_WORKFLOW_TYPE, { mode: 'pinned' }));
+  draft.register(heldWorkflow());
 
   const first = await buildManifest(draft, E2E_VERSIONED_FIRST_BUILD_ID);
   const second = await buildManifest(draft, E2E_VERSIONED_SECOND_BUILD_ID);
@@ -144,6 +167,8 @@ export async function seedVersionedRuns(
     versionedWorkflow(E2E_AUTO_UPGRADE_WORKFLOW_TYPE, { mode: 'auto-upgrade', compatibility }),
   );
 
+  engine.register(heldWorkflow());
+
   await client.operations['weft.worker.deployments.setrouting']({
     deploymentName: E2E_VERSIONED_DEPLOYMENT_NAME,
     currentBuildId: E2E_VERSIONED_FIRST_BUILD_ID,
@@ -157,6 +182,8 @@ export async function seedVersionedRuns(
     const handle = await engine.start(type, {}, { id });
     await handle.result();
   }
+  // Not awaited: the held run stays running, bound to the first build.
+  await engine.start(E2E_HELD_WORKFLOW_TYPE, {}, { id: E2E_HELD_RUN_ID });
   await client.operations['weft.worker.deployments.setrouting']({
     deploymentName: E2E_VERSIONED_DEPLOYMENT_NAME,
     currentBuildId: E2E_VERSIONED_SECOND_BUILD_ID,

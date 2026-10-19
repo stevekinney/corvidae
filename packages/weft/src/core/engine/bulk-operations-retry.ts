@@ -4,6 +4,7 @@ import {
   type BatchOperation,
   type ConditionalBatchCondition,
 } from '../../storage/interface.ts';
+import type { WorkerBuildIdentity } from '../../worker/deployment-records.ts';
 import { assertScopedBulkWorkflowFilter } from '../bulk-workflow-filter.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
 import { decode, encode } from '../codec.ts';
@@ -32,6 +33,7 @@ import {
   validateBulkConfirmation,
   withBulkAuditEvent,
 } from './bulk-operations-shared.ts';
+import { bindReactivation, throwIfReactivationLostToRemoval } from './bulk-retry-build-binding.ts';
 import { ensureWorkflowCatalogReady, isWorkflowCatalogReady } from './catalog-readiness.ts';
 import { resolveExecutableRegistrationForRetry } from './dynamic-source-execution.ts';
 import {
@@ -248,6 +250,7 @@ async function reactivateFailedWorkflowFromCheckpointSerialized(
       commit.conditions,
     );
 
+    if (!committed) await throwIfReactivationLostToRemoval(internals, commit.binding);
     if (committed) {
       return {
         terminalCleanupTimerId:
@@ -299,6 +302,7 @@ type ReactivationCommit = {
   operations: BatchOperation[];
   conditions: ConditionalBatchCondition[];
   concurrencyStateKey: string | undefined;
+  binding: { build: WorkerBuildIdentity | undefined };
 };
 
 /**
@@ -373,14 +377,14 @@ async function buildReactivationCommit(
     concurrencyStartOperations?.operations,
   );
 
-  return {
+  return bindReactivation(internals, currentState, {
     operations,
     conditions: [
       ...(concurrencyStartOperations?.conditions ?? []),
       ...(catalogEntryCondition === undefined ? [] : [catalogEntryCondition]),
     ],
     concurrencyStateKey: concurrencyStartOperations?.stateKey,
-  };
+  });
 }
 
 function buildReactivationBatchOperations(

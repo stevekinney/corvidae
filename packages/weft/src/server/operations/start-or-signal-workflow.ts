@@ -20,7 +20,11 @@ import type {
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { invalidParamsFault, workerStartOverrideRejectedFault } from './operation-helpers.ts';
+import {
+  invalidParamsFault,
+  workerStartOverrideRejectedFault,
+  workerVersionRemovedFault,
+} from './operation-helpers.ts';
 import { buildStartOrSignalWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,
@@ -142,8 +146,9 @@ function assertConvergenceTokenProvided(
  *   3. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
  *   4. WorkflowTeardownPendingError → Conflict (terminal cleanup not done)
  *   5. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
- *   6. StartWorkflowValidationError → InvalidParams
- *   7. otherwise                    → EngineFailure
+ *   6. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
+ *   7. StartWorkflowValidationError → InvalidParams
+ *   8. otherwise                    → EngineFailure
  */
 function resolveStartOrSignalWorkflowFault(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -176,6 +181,8 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   if (error instanceof WorkerStartOverrideRejectedError) {
     throw workerStartOverrideRejectedFault(message);
   }
+  const removedFault = workerVersionRemovedFault(error);
+  if (removedFault !== undefined) throw removedFault;
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }

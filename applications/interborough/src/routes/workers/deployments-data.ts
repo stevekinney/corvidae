@@ -4,7 +4,7 @@
  * types as `unknown`, and the mutations behind routing, promote, rollback,
  * version drain, and removal.
  *
- * The guards build on Weft's own exported `WorkerDeploymentVersion` and
+ * The guards build on Weft's own exported `WorkerDeploymentVersionReport` and
  * `WorkerDeploymentRouting`, so a change to either surfaces here as a type
  * error. Nothing in this module chooses a build or validates a routing change:
  * both stay with the server, and the UI only forwards what the operator asked
@@ -15,7 +15,7 @@
 import type {
   HttpClient,
   WorkerDeploymentRouting,
-  WorkerDeploymentVersion,
+  WorkerDeploymentVersionReport,
 } from '@lostgradient/weft';
 import { HttpClientError } from '@lostgradient/weft';
 import {
@@ -46,7 +46,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 const VERSION_STATES: ReadonlySet<unknown> = new Set(['ready', 'draining', 'removed']);
 
-function isDeploymentVersion(value: unknown): value is WorkerDeploymentVersion {
+function isDeploymentVersion(value: unknown): value is WorkerDeploymentVersionReport {
   return (
     isRecord(value) &&
     typeof value['deploymentName'] === 'string' &&
@@ -85,14 +85,14 @@ function isDeploymentRouting(value: unknown): value is WorkerDeploymentRouting {
 export interface DeploymentOverview {
   readonly deploymentName: string;
   /** Every retained version, `removed` ones included, ordered by build id. */
-  readonly versions: readonly WorkerDeploymentVersion[];
+  readonly versions: readonly WorkerDeploymentVersionReport[];
   /** The routing pointer, or `null` before the first routing change. */
   readonly routing: WorkerDeploymentRouting | null;
 }
 
 /** Validates a `{ versions, routing }` diagnostics response at the trust boundary. */
 export function parseDeploymentDiagnostics(value: unknown): {
-  versions: readonly WorkerDeploymentVersion[];
+  versions: readonly WorkerDeploymentVersionReport[];
   routing: WorkerDeploymentRouting | null;
 } {
   if (!isRecord(value) || !Array.isArray(value['versions'])) {
@@ -152,7 +152,7 @@ export function staleGenerationOf(error: unknown): number | undefined {
   return typeof generation === 'number' && Number.isInteger(generation) ? generation : undefined;
 }
 
-/** Whether a Conflict names why: `version-referenced`, `version-not-ready`, or `stale-generation`. */
+/** Whether a Conflict names why: `version-not-draining`, `version-referenced`, `version-routed`, `version-not-ready`, or `stale-generation`. */
 export function conflictReasonOf(error: unknown): string | undefined {
   if (!(error instanceof HttpClientError) || error.status !== 409) return undefined;
   const reason = error.data?.['reason'];

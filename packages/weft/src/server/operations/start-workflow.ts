@@ -14,7 +14,11 @@ import type { SearchAttributeSchema, StartOptions } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
-import { invalidParamsFault, workerStartOverrideRejectedFault } from './operation-helpers.ts';
+import {
+  invalidParamsFault,
+  workerStartOverrideRejectedFault,
+  workerVersionRemovedFault,
+} from './operation-helpers.ts';
 import { buildSharedStartWorkflowOptions } from './start-workflow-options.ts';
 import {
   extractSharedStartWorkflowRestFields,
@@ -87,8 +91,9 @@ function validateStartWorkflowInput(
  *   2. WorkflowAlreadyExistsError   → Conflict
  *   3. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
  *   4. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
- *   5. StartWorkflowValidationError → InvalidParams
- *   6. otherwise                    → EngineFailure
+ *   5. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
+ *   6. StartWorkflowValidationError → InvalidParams
+ *   7. otherwise                    → EngineFailure
  */
 function resolveStartWorkflowAccess(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -111,6 +116,8 @@ function resolveStartWorkflowAccess(error: unknown): never {
   if (error instanceof WorkerStartOverrideRejectedError) {
     throw workerStartOverrideRejectedFault(message);
   }
+  const removedFault = workerVersionRemovedFault(error);
+  if (removedFault !== undefined) throw removedFault;
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }

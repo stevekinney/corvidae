@@ -201,7 +201,6 @@ describe.each([
       artifactDigest: 'sha256:artifact-a',
       manifestDigest: result.digest,
       state: 'ready',
-      executionReferences: 0,
     });
     expect(stored?.firstSeenAt).toBeGreaterThan(0);
     expect(stored?.manifest.deployment).toEqual(manifest().deployment);
@@ -224,8 +223,8 @@ describe.each([
     async (state) => {
       const env = setup();
       await register(env, manifest(), 'worker-1');
-      if (state === 'draining') await env.catalog.markDraining('billing', 'build-1');
-      else await env.catalog.removeVersion('billing', 'build-1');
+      await env.catalog.setVersionState('billing', 'build-1', 'draining');
+      if (state === 'removed') await env.catalog.removeVersion('billing', 'build-1');
 
       const result = await register(env, manifest(), 'worker-2');
 
@@ -276,8 +275,8 @@ describe.each([
     async (state) => {
       const env = setup();
       await register(env, manifest(), 'worker-1');
-      if (state === 'draining') await env.catalog.markDraining('billing', 'build-1');
-      else await env.catalog.removeVersion('billing', 'build-1');
+      await env.catalog.setVersionState('billing', 'build-1', 'draining');
+      if (state === 'removed') await env.catalog.removeVersion('billing', 'build-1');
       // A restarted server has no drain marker in memory; only the catalog remembers.
       const restarted = {
         ...env,
