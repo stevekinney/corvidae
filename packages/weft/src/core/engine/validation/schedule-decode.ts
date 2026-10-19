@@ -66,6 +66,7 @@ type ScheduleRuntimeFields = Pick<
   | 'skippedCount'
   | 'lastSkippedAt'
   | 'queuedRuns'
+  | 'revision'
 >;
 
 function decodeScheduleBackfill(
@@ -251,6 +252,35 @@ function decodeScheduleSkipFields(
   };
 }
 
+/**
+ * A record written before the schedule `revision` existed has none, and reads as `0`: it counts
+ * no change yet, so its first transition makes it `1`. Any other value must be a non-negative
+ * safe integer.
+ */
+function decodeScheduleRevision(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): number | null {
+  const revision = decoded['revision'];
+  if (revision === undefined) return 0;
+  if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) {
+    return rejectInvalidScheduleRecord(scheduleId, 'with invalid revision');
+  }
+  return revision;
+}
+
+/** The counters a schedule keeps: what its overlap policy skipped, and its own revision. */
+function decodeScheduleCounterFields(
+  decoded: Record<string, unknown>,
+  scheduleId: string,
+): Pick<ScheduleRuntimeFields, 'skippedCount' | 'lastSkippedAt' | 'revision'> | null {
+  const skipFields = decodeScheduleSkipFields(decoded, scheduleId);
+  if (skipFields === null) return null;
+  const revision = decodeScheduleRevision(decoded, scheduleId);
+  if (revision === null) return null;
+  return { ...skipFields, revision };
+}
+
 function decodeScheduleQueueFields(
   decoded: Record<string, unknown>,
   scheduleId: string,
@@ -303,8 +333,8 @@ export function decodeScheduleRuntimeFields(
   const queueFields = decodeScheduleQueueFields(decoded, scheduleId);
   if (queueFields === null) return null;
 
-  const skipFields = decodeScheduleSkipFields(decoded, scheduleId);
-  if (skipFields === null) return null;
+  const counterFields = decodeScheduleCounterFields(decoded, scheduleId);
+  if (counterFields === null) return null;
   if (
     currentWorkflow.value !== undefined &&
     queueFields.queuedRuns.some((queuedRun) => queuedRun.workflowId === currentWorkflow.value)
@@ -318,7 +348,7 @@ export function decodeScheduleRuntimeFields(
     nextFireAt: nextFireAt.value,
     ...(currentWorkflow.value !== undefined && { currentWorkflowId: currentWorkflow.value }),
     ...queueFields,
-    ...skipFields,
+    ...counterFields,
   };
 }
 

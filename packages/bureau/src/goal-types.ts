@@ -230,6 +230,14 @@ export type BureauGoalCloseOutcome =
 
 export interface BureauGoalCancelOptions extends BureauGoalQuery {
   readonly reason?: string | undefined;
+  /**
+   * Cancel only the goal the caller read: its `revision`. Checked against the record the call
+   * authorizes, and again inside the compare-and-swap that writes the cancellation marker, so a
+   * write that lands between the two is caught. Any other revision answers `stale-revision`
+   * having written nothing, whatever the goal's status. The revision advances on every write,
+   * a controller transition included, so a token can go stale from work the caller did not do.
+   */
+  readonly expectedRevision?: number | undefined;
 }
 
 /** What `cancel()` could not yet read back as finished. */
@@ -303,6 +311,11 @@ export type BureauGoalCancelOutcome =
     }
   | { readonly outcome: 'already-terminal'; readonly goal: GoalState }
   | { readonly outcome: 'contended'; readonly goal: GoalState }
+  /**
+   * `expectedRevision` was named and the goal's `revision` is another: it changed after the
+   * caller read it. Nothing was written. `goal` is what is stored now.
+   */
+  | { readonly outcome: 'stale-revision'; readonly goal: GoalState }
   /** A record is stored under this id but cannot be decoded: a permanent fault, not absence. */
   | { readonly outcome: 'record-unreadable' }
   | { readonly outcome: 'not-found' };

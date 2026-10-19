@@ -24,18 +24,16 @@ import { ScheduleHandle } from './schedule-handle.ts';
 import { resolveEffectiveScheduleFireAt } from './schedule-jitter.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
+import { runScheduleTransition } from './schedule-state-operations.ts';
 import {
   createScheduleTimerId,
   matchesScheduleFilter,
   paginateScheduleSummaries,
 } from './state-utilities.ts';
-import {
-  requireScheduleState,
-  runSerializedScheduleStateOperation,
-  writeScheduleState,
-} from './storage-io.ts';
+import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
+  coerceExpectedScheduleRevision,
   coerceScheduleId,
   normalizeScheduleFilter,
   normalizeScheduleOptions,
@@ -81,7 +79,6 @@ export type ScheduleCallbacks = {
   refreshScheduledWorkflowState: (state: ScheduleState) => Promise<RefreshedScheduleState>;
   startScheduledRun: (state: ScheduleState, options?: ScheduledRunStartOptions) => Promise<string>;
   applyScheduleOccurrence: (state: ScheduleState, occurrence?: number) => Promise<ScheduleState>;
-  settleBackfillScheduleState: (state: ScheduleState) => Promise<ScheduleState>;
   flushQueuedInlineWorkflowStartsDirectly: () => Promise<void>;
   failWorkflow: (workflowId: string, error: Error) => Promise<void>;
   handleCleanupError: (source: string, error: unknown, workflowId: string) => void;
@@ -132,6 +129,7 @@ export async function schedule(
       ...(normalizedOptions.jitterMs !== undefined && { jitterMs: normalizedOptions.jitterMs }),
       revisionPolicy,
       ...(pinnedRevision !== undefined && { pinnedRevision }),
+      revision: 1,
       createdAt: now,
       updatedAt: now,
       nextFireAt: getNextScheduleOccurrence({ ...cadenceFields, createdAt: now }, now),
@@ -248,6 +246,11 @@ function scheduleTransitionWriteOptions(options: ScheduleTransitionOptions | und
  * into this SAME storage commit — see {@link ScheduleTransitionOptions}. Every
  * existing caller passes neither and gets byte-for-byte the pre-COR-67 commit
  * shape.
+ *
+ * COR-1482: pause, resume, and cancel run inside the schedule's serialized write, as the timer
+ * callback and `updateSchedule` do, so `options.expectedRevision` is compared against the state
+ * the write is made from. A pause counts as a change to the schedule (`revision` goes up by one)
+ * only when the schedule was active.
  */
 export async function pauseSchedule(
   internals: EngineInternals,
@@ -255,74 +258,89 @@ export async function pauseSchedule(
   options?: ScheduleTransitionOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
-  const state = await requireScheduleState(internals, normalizedScheduleId);
-  if (state.status !== 'active') return;
-  await internals.scheduler.cancel(
-    createScheduleTimerId(normalizedScheduleId),
-    normalizedScheduleId,
-  );
-  const now = internals.options.getNow();
-  const updatedState: ScheduleState = {
-    ...state,
-    status: 'paused',
-    updatedAt: now,
-    nextFireAt: getNextScheduleOccurrence(state, now),
-    queuedRuns: [],
-  };
-  await writeScheduleState(internals, updatedState, {
-    includeTimer: false,
-    ...scheduleTransitionWriteOptions(options),
+  const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+    if (state.status !== 'active') return;
+    await internals.scheduler.cancel(
+      createScheduleTimerId(normalizedScheduleId),
+      normalizedScheduleId,
+    );
+    const now = internals.options.getNow();
+    const updatedState: ScheduleState = {
+      ...state,
+      status: 'paused',
+      revision: state.revision + 1,
+      updatedAt: now,
+      nextFireAt: getNextScheduleOccurrence(state, now),
+      queuedRuns: [],
+    };
+    await writeScheduleState(internals, updatedState, {
+      includeTimer: false,
+      ...scheduleTransitionWriteOptions(options),
+    });
   });
 }
 
-/** `options` (COR-67) — see {@link pauseSchedule}'s doc comment. */
+/** `options` (COR-67, COR-1482) — see {@link pauseSchedule}'s doc comment. */
 export async function resumeSchedule(
   internals: EngineInternals,
   scheduleId: string,
   options?: ScheduleTransitionOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
-  const state = await requireScheduleState(internals, normalizedScheduleId);
-  if (state.status === 'cancelled') {
-    throw new Error(`Schedule "${normalizedScheduleId}" has been cancelled and cannot be resumed`);
-  }
-  if (state.status === 'active') return;
-  const now = internals.options.getNow();
-  const updatedState: ScheduleState = {
-    ...state,
-    status: 'active',
-    updatedAt: now,
-    nextFireAt: getNextScheduleOccurrence(state, now),
-  };
-  await writeScheduleState(internals, updatedState, {
-    ...scheduleTransitionWriteOptions(options),
+  const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+    if (state.status === 'cancelled') {
+      throw new Error(
+        `Schedule "${normalizedScheduleId}" has been cancelled and cannot be resumed`,
+      );
+    }
+    if (state.status === 'active') return;
+    const now = internals.options.getNow();
+    const updatedState: ScheduleState = {
+      ...state,
+      status: 'active',
+      revision: state.revision + 1,
+      updatedAt: now,
+      nextFireAt: getNextScheduleOccurrence(state, now),
+    };
+    await writeScheduleState(internals, updatedState, {
+      ...scheduleTransitionWriteOptions(options),
+    });
   });
 }
 
-/** `options` (COR-67) — see {@link pauseSchedule}'s doc comment. */
+/**
+ * `options` (COR-67, COR-1482) — see {@link pauseSchedule}'s doc comment. Cancelling a schedule
+ * that is already cancelled still commits the caller's `additionalOperations`, and changes nothing
+ * about the schedule, so its `revision` stays.
+ */
 export async function cancelSchedule(
   internals: EngineInternals,
   scheduleId: string,
   options?: ScheduleTransitionOptions,
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
-  const state = await requireScheduleState(internals, normalizedScheduleId);
-  if (state.status === 'active') {
-    await internals.scheduler.cancel(
-      createScheduleTimerId(normalizedScheduleId),
-      normalizedScheduleId,
-    );
-  }
-  const updatedState: ScheduleState = {
-    ...state,
-    status: 'cancelled',
-    updatedAt: internals.options.getNow(),
-    nextFireAt: null,
-    queuedRuns: [],
-  };
-  await writeScheduleState(internals, updatedState, {
-    includeTimer: false,
-    ...scheduleTransitionWriteOptions(options),
+  const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
+    if (state.status === 'active') {
+      await internals.scheduler.cancel(
+        createScheduleTimerId(normalizedScheduleId),
+        normalizedScheduleId,
+      );
+    }
+    const updatedState: ScheduleState = {
+      ...state,
+      status: 'cancelled',
+      revision: state.status === 'cancelled' ? state.revision : state.revision + 1,
+      updatedAt: internals.options.getNow(),
+      nextFireAt: null,
+      queuedRuns: [],
+    };
+    await writeScheduleState(internals, updatedState, {
+      includeTimer: false,
+      ...scheduleTransitionWriteOptions(options),
+    });
   });
 }
 
@@ -335,8 +353,8 @@ export async function updateSchedule(
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const normalizedSpec = normalizeScheduleSpec(newSpec);
   const normalizedOptions = normalizeScheduleUpdateOptions(options);
-  await runSerializedScheduleStateOperation(internals, normalizedScheduleId, async () => {
-    const state = await requireScheduleState(internals, normalizedScheduleId);
+  const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
+  await runScheduleTransition(internals, normalizedScheduleId, expectedRevision, async (state) => {
     const now = internals.options.getNow();
     // Replace the cadence wholesale so switching kinds (cron <-> interval) never
     // leaves a stale field behind. Interval cadence re-anchors at the update time.
@@ -388,6 +406,7 @@ export async function updateSchedule(
       ...cadenceFields,
       ...anchorFields,
       ...revisionFields,
+      revision: state.revision + 1,
       updatedAt: now,
       nextFireAt:
         state.status === 'cancelled'

@@ -41,7 +41,7 @@ export function holdsScope(principal: Principal, scope: BureauScope): boolean {
  * Whether `principal` may act on the task `taskId` with `operatorScope`: it owns
  * it, or holds the scope. The owner is the one the task's record was written with,
  * which outlives the run store and a restart; a task with no record (an id that is
- * not a task at all, such as a schedule fire or a child run) has no owner, so only
+ * not a task at all, such as a child run) has no owner, so only
  * the scope reaches it, and the operation then finds no task to act on.
  */
 export async function mayAccessTask(
