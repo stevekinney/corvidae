@@ -18,6 +18,7 @@ import { createOutboxKeys } from '../core/outbox-storage.ts';
 import { isApplicationDeliveryTerminalState } from '../core/outbox-types.ts';
 import type { Outbox } from '../core/outbox.ts';
 import { type HttpDeliveryAdapter, isHttpDeliveryAdapter } from './http-delivery-adapter.ts';
+import { requireTimerDelayMs } from './timer-delay.ts';
 
 /** How often {@link startPushDelivery} drains the outbox by default. */
 export const DEFAULT_PUSH_DELIVERY_INTERVAL_MS = 1000;
@@ -66,16 +67,16 @@ function defaultErrorSink(error: unknown): void {
  * attempt is never cut short by a drain budget. Resolves once the loop has stopped.
  *
  * @throws {TypeError} When the outbox's adapter is not `createHttpDeliveryAdapter`.
- * @throws {RangeError} When `intervalMs` is not a positive integer, or the adapter's
+ * @throws {RangeError} When `intervalMs` is not an integer from 1 to 2147483647, or the adapter's
  *   timeout is not below the outbox's `attemptTimeoutMs`.
  */
 export async function startPushDelivery(options: StartPushDeliveryOptions): Promise<void> {
   const { outbox, signal } = options;
   requirePushOutbox(outbox);
-  const intervalMs = options.intervalMs ?? DEFAULT_PUSH_DELIVERY_INTERVAL_MS;
-  if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) {
-    throw new RangeError('intervalMs must be a positive integer.');
-  }
+  const intervalMs = requireTimerDelayMs(
+    'intervalMs',
+    options.intervalMs ?? DEFAULT_PUSH_DELIVERY_INTERVAL_MS,
+  );
   const onError = options.onError ?? defaultErrorSink;
   const never = new AbortController().signal;
   while (!signal.aborted) {

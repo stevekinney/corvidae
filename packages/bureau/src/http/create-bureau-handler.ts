@@ -156,6 +156,8 @@ export type BureauHandlerSource = Pick<
   | 'locateRunCreationReceipt'
   | 'children'
   | 'getDurableRun'
+  | 'waitForDurableRun'
+  | 'cancelDurableRun'
   | 'modelCatalog'
   | 'auditTrail'
   | 'workflows'
