@@ -11,7 +11,8 @@
    * exactly Cinder's own documented escape hatch for "richer body content"
    * (`confirm-dialog/README.md`).
    */
-  import { Button, Modal, Textarea } from '@lostgradient/cinder';
+  import { Button, Callout, Modal, Textarea } from '@lostgradient/cinder';
+  import { TriangleAlert } from '@lucide/svelte';
 
   export type DrainTarget =
     | { readonly kind: 'worker'; readonly id: string }
@@ -21,12 +22,21 @@
   interface DrainDialogProps {
     readonly open: boolean;
     readonly target: DrainTarget;
+    /** For a build target: whether routing names the build as its current or ramping one. */
+    readonly routingRole?: 'current' | 'ramping' | 'none' | undefined;
     readonly submitting: boolean;
     readonly onDrain: (reason: string | undefined) => void;
     readonly onCancel: () => void;
   }
 
-  let { open = $bindable(), target, submitting, onDrain, onCancel }: DrainDialogProps = $props();
+  let {
+    open = $bindable(),
+    target,
+    routingRole = 'none',
+    submitting,
+    onDrain,
+    onCancel,
+  }: DrainDialogProps = $props();
 
   let reason = $state('');
 
@@ -66,6 +76,16 @@
       Draining <strong class="weft-drain-dialog__target">{targetLabel}</strong> stops new task assignment
       while in-flight work finishes. Resume clears the drain marker at any time.
     </p>
+    {#if target.kind === 'build' && routingRole !== 'none'}
+      <Callout variant="warning" semantic="note" title={`This is the ${routingRole} build`}>
+        {#snippet icon()}
+          <TriangleAlert aria-hidden="true" size={17} />
+        {/snippet}
+        Routing sends new traffic to the {routingRole} build. While it drains, its catalog state is draining,
+        so the server will refuse new starts of workflows that carry a worker versioning policy until
+        you resume the build or route traffic to another one.
+      </Callout>
+    {/if}
     <Textarea
       id="drain-reason"
       label="Reason"

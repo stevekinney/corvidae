@@ -330,11 +330,10 @@ function buildWorkerStartOverridePreviewOperation(options: LiveOperationRegistry
 }
 
 function buildStartOrSignalWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {
-  return createStartOrSignalWorkflowOperation(
-    options.workerStartOverrideSigningSecret === undefined
-      ? {}
-      : { workerStartOverrideSigningSecret: options.workerStartOverrideSigningSecret },
-  );
+  const { workerStartOverrideSigningSecret } = options;
+  const signing =
+    workerStartOverrideSigningSecret === undefined ? {} : { workerStartOverrideSigningSecret };
+  return createStartOrSignalWorkflowOperation(signing);
 }
 
 function buildStartWorkflowOperationForRegistry(options: LiveOperationRegistryOptions) {

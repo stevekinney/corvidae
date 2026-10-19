@@ -500,3 +500,34 @@ describe('DeploymentsPanel — overlapping actions', () => {
   test('a failed resume of one build is still reported when another resume follows it', () =>
     resumeFailingBuildA(true));
 });
+
+describe('DeploymentsPanel — removal refused by the server', () => {
+  test('a build that routing now names is reported as a routing target', async () => {
+    scripted = new ScriptedFetch();
+    routeOverview(scripted);
+    scripted.routeJsonRpcMethodError(
+      'weft.worker.deployments.remove',
+      409,
+      'is a routing target',
+      'Conflict',
+      { reason: 'version-routed' },
+    );
+    const view = renderPanel();
+    await view.findByText('build-a');
+    const row = Array.from(view.container.querySelectorAll<HTMLElement>('tbody tr')).find(
+      (candidate) => candidate.textContent?.includes('build-a'),
+    )!;
+    // build-a is not routed in the overview, so the console offers Remove; the server then refuses.
+    await fireEvent.click(
+      Array.from(row.querySelectorAll('button')).find(
+        (button) => button.textContent?.trim() === 'Remove',
+      )!,
+    );
+    await fireEvent.input(await view.findByRole('textbox', { name: /Type .*to confirm/i }), {
+      target: { value: 'build-a' },
+    });
+    await fireEvent.click(await view.findByRole('button', { name: 'Remove build' }));
+
+    expect(await view.findByText(/now a routing target/)).not.toBeNull();
+  });
+});

@@ -35,6 +35,7 @@
     type RoutingAction,
   } from './deployments-data.ts';
   import DeploymentVersionsView from './deployment-versions-view.svelte';
+  import { versionRole } from './deployments-presentation.ts';
   import DrainDialog, { type DrainTarget } from './drain-dialog.svelte';
   import RoutingDialog, { type RoutingDialogRequest } from './routing-dialog.svelte';
   import type { WorkerSummary } from './worker-catalog-types.ts';
@@ -202,6 +203,9 @@
 <DrainDialog
   bind:open={drainOpen}
   target={drainTarget}
+  routingRole={drainTarget.kind === 'build'
+    ? versionRole(overviewOf(drainTarget.deploymentName)?.routing ?? null, drainTarget.buildId)
+    : 'none'}
   submitting={drainVersion.isPending}
   onDrain={confirmDrain}
   onCancel={() => (drainOpen = false)}

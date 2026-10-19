@@ -673,6 +673,16 @@ type DeploymentDrainResponse = {
 
 A build drain is also written to the deployment catalog as the build's `draining` state (whatever executions reference it), so it survives a restart and `weft.worker.deployments.diagnostics` reports the build as `draining`; a worker that registers on a draining or removed build joins drained.
 
+Which drains survive a server restart:
+
+| Drain | Survives a restart | Why |
+| --- | --- | --- |
+| A build (`buildId` given) | Yes | The catalog records the build as `draining`, and a worker that registers on it joins drained. |
+| A whole deployment (no `buildId`) | No | Only the registry's in-memory marker holds it. |
+| One worker (`weft.workers.drain`) | No | Only the registry's in-memory marker holds it. |
+
+Draining the current or ramping build of a routing pointer has a side effect: the build's catalog state is no longer `ready`, so new starts of workflows that carry a worker versioning policy find no routed build and are refused (`no-routed-deployment`) until the build is resumed or routing moves to another build. The console warns before draining such a build.
+
 The JSON-RPC operation name is `weft.worker.deployments.drain`.
 
 ### `DELETE /api/v1/worker-deployments/:deploymentName/drain`

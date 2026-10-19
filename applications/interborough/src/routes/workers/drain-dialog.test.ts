@@ -87,4 +87,37 @@ describe('DrainDialog', () => {
     await fireEvent.click(getByRole('button', { name: 'Drain build' }));
     expect(drained).toEqual([undefined]);
   });
+
+  test.each(['current', 'ramping'] as const)(
+    'a %s build warns that new policy-bearing starts will be refused while it drains',
+    (routingRole) => {
+      const { getByRole } = render(DrainDialog, {
+        props: {
+          open: true,
+          target: { kind: 'build', deploymentName: 'api-prod', buildId: 'build-b' },
+          routingRole,
+          submitting: false,
+          onDrain: () => {},
+          onCancel: () => {},
+        },
+      });
+      const warning = getByRole('note');
+      expect(warning.textContent).toContain(routingRole);
+      expect(warning.textContent).toContain('refuse');
+    },
+  );
+
+  test('a build that routing does not name shows no such warning', () => {
+    const { queryByRole } = render(DrainDialog, {
+      props: {
+        open: true,
+        target: { kind: 'build', deploymentName: 'api-prod', buildId: 'build-a' },
+        routingRole: 'none',
+        submitting: false,
+        onDrain: () => {},
+        onCancel: () => {},
+      },
+    });
+    expect(queryByRole('note')?.textContent ?? null).toBeNull();
+  });
 });

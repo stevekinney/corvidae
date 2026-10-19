@@ -24,6 +24,22 @@ class FlakyStorage extends MemoryStorage {
   }
 }
 
+/** Serves the first read of each key and fails the reads after it, once armed. */
+class ReadOnceStorage extends MemoryStorage {
+  armed = false;
+  readonly #read = new Set<string>();
+  /** Start counting reads from now: each key's next read is served, the ones after it fail. */
+  arm(): void {
+    this.#read.clear();
+    this.armed = true;
+  }
+  override async get(key: string) {
+    if (this.armed && this.#read.has(key)) throw new Error('storage offline on the re-read');
+    this.#read.add(key);
+    return super.get(key);
+  }
+}
+
 function manifest(
   artifactDigest = 'sha256:artifact-a',
   buildId = 'build-1',
@@ -353,6 +369,37 @@ describe.each([
     expect(await versionOf(env.catalog)).not.toBeNull();
   });
 
+  it('refuses retryably when the catalog fails while re-reading a conflicting version', async () => {
+    const storage = new ReadOnceStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    const env = {
+      storage,
+      catalog,
+      context: { ...minimalServerContext(), workerDeploymentCatalog: catalog },
+      options: minimalServeOptions(),
+    };
+    // The stored version has the same artifact but another manifest digest, so `registerVersion`
+    // reports a conflict and registration must read the stored version back to decide.
+    await catalog.registerVersion({
+      deploymentName: 'billing',
+      buildId: 'build-1',
+      artifactDigest: 'sha256:artifact-a',
+      manifestDigest: 'sha256:manifest-first-seen',
+      manifest: manifest(),
+      state: 'ready',
+      firstSeenAt: 1,
+    });
+    storage.arm();
+    using warning = spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await register(env as never, manifest(), 'worker-1');
+
+    expect(result.accepted).toBe(false);
+    expect(result.detail).toBe(transport === 'websocket' ? '1013' : 'catalog_unavailable');
+    expect(env.context.registry.size).toBe(0);
+    expect(warning).toHaveBeenCalled();
+  });
+
   it('registers without a catalog on a hand-built context', async () => {
     const env = setup();
     const bare = { ...env, context: minimalServerContext() };
@@ -405,5 +452,61 @@ describe('WebSocket: a refused registration records nothing', () => {
     expect(answer(legitimate).type).toBe('registerAck');
     const recorded = await env.catalog.getVersion('billing', 'build-2');
     expect(recorded?.artifactDigest).toBe('sha256:Y');
+  });
+});
+
+/** Holds the first read of any key until released, so one registration can be paused mid-write. */
+class FirstReadGatedStorage extends MemoryStorage {
+  #gate: Promise<void> | undefined;
+  #release: (() => void) | undefined;
+  armed = false;
+
+  override async get(key: string) {
+    if (this.armed && this.#gate === undefined) {
+      this.#gate = new Promise<void>((resolve) => {
+        this.#release = resolve;
+      });
+      await this.#gate;
+    }
+    return super.get(key);
+  }
+
+  release(): void {
+    this.#release?.();
+  }
+
+  get held(): boolean {
+    return this.#gate !== undefined;
+  }
+}
+
+describe('WebSocket: a worker id taken while a registration is writing the catalog', () => {
+  it('is refused at the final commit, which re-checks what the read-only gate saw', async () => {
+    const storage = new FirstReadGatedStorage();
+    const catalog = new WorkerDeploymentCatalog(storage);
+    const env = {
+      storage,
+      catalog,
+      context: { ...minimalServerContext(), workerDeploymentCatalog: catalog },
+      options: minimalServeOptions(),
+    };
+    storage.armed = true;
+
+    // The first registration passes the read-only gate, then pauses inside the catalog write.
+    const paused = registerSocket(env.context, env.options, 'W1', manifest());
+    await waitForCondition(() => storage.held, { timeoutMs: 1_000, label: 'the write paused' });
+    // A second socket takes the id while it is paused (its own catalog read is not held).
+    const winner = await registerSocket(env.context, env.options, 'W1', manifest());
+    expect(answer(winner).type).toBe('registerAck');
+
+    storage.release();
+    const loser = await paused;
+
+    expect(answer(loser).code).toBe('invalid_registration');
+    expect(env.context.registry.size).toBe(1);
+    await waitForCondition(() => loser.terminated, {
+      timeoutMs: 1_000,
+      label: 'the refused socket terminated',
+    });
   });
 });
