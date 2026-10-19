@@ -98,7 +98,8 @@ export type AgentRunErrorCode =
   | 'SELECTION_REVALIDATION_FAILED'
   | 'SUBAGENT_RUN_FAILED'
   | 'TRIPWIRE'
-  | 'UNKNOWN';
+  | 'UNKNOWN'
+  | 'UNSUPPORTED_MEDIA_TYPE';
 
 export class AgentRunError extends Error {
   readonly kind: AgentRunErrorKind;
@@ -293,6 +294,11 @@ export class AgentContractError extends AgentRunError {
  * cannot be admitted to the context window: the backend does not accept it, or
  * its cost cannot be bounded. Carries one typed outcome per refused part. The
  * run fails here rather than sending the part as free or dropping it.
+ *
+ * Its code is `UNSUPPORTED_MEDIA_TYPE` when every refused part is `unsupported`
+ * (the model does not take that kind of media, which a client can act on by
+ * sending something else), and `MEDIA_NOT_ADMITTED` for any other mix, such as
+ * an `unsupported` part beside an `unbounded` one.
  */
 export class MediaAdmissionError extends AgentRunError {
   readonly outcomes: readonly UnadmittedMediaCost[];
@@ -300,7 +306,10 @@ export class MediaAdmissionError extends AgentRunError {
   constructor(outcomes: readonly UnadmittedMediaCost[]) {
     super(`${outcomes.length} media part(s) cannot be admitted to the context window`, {
       kind: 'policy',
-      code: 'MEDIA_NOT_ADMITTED',
+      code:
+        outcomes.length > 0 && outcomes.every((outcome) => outcome.outcome === 'unsupported')
+          ? 'UNSUPPORTED_MEDIA_TYPE'
+          : 'MEDIA_NOT_ADMITTED',
     });
     this.name = 'MediaAdmissionError';
     this.outcomes = outcomes;

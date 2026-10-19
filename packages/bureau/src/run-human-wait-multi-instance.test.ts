@@ -34,6 +34,7 @@ import {
 } from './test/session-input-fixtures';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, PendingHumanWaitReview, ResolveReviewInput } from './types';
+import { createMemoryAssetStorage } from './assets/storage';
 
 /** The owner string of the API key `owner-key`, whose subject is `tester`. */
 const OWNER = 'api-key:tester';
@@ -107,6 +108,7 @@ const neverGenerates: GenerateFunction = async () => {
 async function open(seen: Seen, parks = 1): Promise<OpenedProcess> {
   const opened = await openProcess(path, neverGenerates, {
     id: 'run-human-wait-multi-instance',
+    assets: { storage: createMemoryAssetStorage() },
     agents: { asker: askingAgent(seen, parks) },
     humanInput: true,
     durableOwnership: OWNERSHIP,

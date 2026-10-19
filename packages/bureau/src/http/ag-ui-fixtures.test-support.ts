@@ -5,12 +5,14 @@
  */
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 import {
+  type BackendDescriptor,
   createAgent,
   createScriptedGenerate,
   type ScriptedGenerate,
   type ScriptedGenerateStep,
   type StopCondition,
   stopWhen,
+  withBackendDescriptors,
 } from '@lostgradient/operative';
 import {
   type AuthConfig,
@@ -21,6 +23,7 @@ import {
 import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
+import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import type { Bureau, BureauDiagnostic } from '../types.ts';
@@ -76,6 +79,11 @@ export type HarnessOptions = {
   readonly authentication?: AuthConfig;
   /** Receives the Bureau's diagnostics. */
   readonly onDiagnostic?: (diagnostic: BureauDiagnostic) => void;
+  /**
+   * The backends the scripted model describes itself as, which decide the media it accepts and
+   * produces. Omitted, it carries no descriptors and so admits no media.
+   */
+  readonly backends?: readonly BackendDescriptor[];
 };
 
 /** Keys the suites present, by name, with the scopes each holds. */
@@ -117,6 +125,7 @@ async function build(
   ownsStorage = true,
 ): Promise<Harness> {
   const generate = createScriptedGenerate(options.script);
+  if (options.backends !== undefined) withBackendDescriptors(generate, options.backends);
   const bureau = await createBureau({
     id: 'ag-ui-fixture',
     agents: Object.fromEntries(
@@ -137,6 +146,8 @@ async function build(
     toolbox: options.toolbox ?? (createToolbox([]) as unknown as Toolbox),
     storage: fixture?.configuration ?? { type: 'memory' },
     durableExecution: true,
+    // The handler serves the asset operations and the content route, so it needs the service.
+    assets: { storage: createMemoryAssetStorage() },
     sessionPersistenceRetryDelayMilliseconds: 0,
     ...(options.bureauRuntime === undefined ? {} : { runtime: options.bureauRuntime }),
     ...(options.durableBackgroundTasks === undefined

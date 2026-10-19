@@ -1,5 +1,5 @@
-// Type-level tripwire (COR-1300): `createBureauHandler` accepts exactly four
-// options, and a `Bureau` reports whether its id was supplied. If this file
+// Type-level tripwire (COR-1300): `createBureauHandler` accepts exactly these
+// options (COR-1547 added `maxRequestBodyBytes`), and a `Bureau` reports whether its id was supplied. If this file
 // stops compiling, the handler's option surface or `Bureau.hasExplicitId`
 // changed shape.
 
@@ -19,6 +19,7 @@ const everyOption = {
   authentication,
   unauthenticatedAccess: 'reject',
   mounts: [mount],
+  maxRequestBodyBytes: 1024,
 } satisfies BureauHandlerOptions;
 export const handler: OperationHandler = createBureauHandler(bureau, everyOption);
 
@@ -27,6 +28,11 @@ createBureauHandler(bureau, { publish: ['support'] });
 createBureauHandler(bureau, { authentication });
 createBureauHandler(bureau, { unauthenticatedAccess: 'allow' });
 createBureauHandler(bureau, { mounts: [mount] });
+createBureauHandler(bureau, { unauthenticatedAccess: 'allow', maxRequestBodyBytes: 1024 });
+
+// `maxRequestBodyBytes` is a number of bytes.
+// @ts-expect-error -- a string is not a number
+createBureauHandler(bureau, { unauthenticatedAccess: 'allow', maxRequestBodyBytes: '1024' });
 
 // `unauthenticatedAccess` is a closed union.
 // @ts-expect-error -- only 'reject' and 'allow'

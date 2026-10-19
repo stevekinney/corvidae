@@ -69,10 +69,11 @@ import { RunAgentInputSchema } from '@ag-ui/core/schemas';
 import type { OperationHandlerMount } from '@lostgradient/weft';
 import { createConversationHistory } from 'conversationalist';
 
+import { AssetNotFoundError } from '../assets/errors.ts';
 import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { BureauError, isDurableRunUnsettled } from '../create-bureau.ts';
 import type { Bureau } from '../types.ts';
-import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
+import { managedAssetIdsOf, rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 import { createAgUiLeases, releaseQuietly } from './ag-ui-lease.ts';
 import { createResume } from './ag-ui-resume.ts';
 import { type OwnedSession, ownedSession, runIsOwnedBy } from './ag-ui-session-owner.ts';
@@ -141,6 +142,7 @@ export type AgUiBureau = AgUiStreamBureau &
     | 'getReview'
     | 'resolveReview'
     | 'kv'
+    | 'assets'
   >;
 
 /**
@@ -556,6 +558,20 @@ export function createAgUiMount(
           };
         }
 
+        // An asset the start names is the caller's to use, or the start is refused as one that names
+        // an asset that does not exist: nothing is added to the thread and no run is created.
+        let unreadable: string | undefined;
+        try {
+          unreadable = await firstUnreadableAsset(bureau, owner, appendMessages);
+        } catch {
+          return { response: refuse('RUN_FAILED', 'The run could not be started') };
+        }
+        if (unreadable !== undefined) {
+          return {
+            response: refuse('INVALID_INPUT', `Asset "${unreadable}" was not found`),
+          };
+        }
+
         // A start the thread already holds the rows of is the retry of one that
         // created them: it attaches to the run that did, rather than starting
         // another. A start that added new rows under a used runId falls through to
@@ -709,6 +725,28 @@ export function createAgUiMount(
     pathPrefix,
     fetch: (request, context) => route(request, context),
   };
+}
+
+/**
+ * The first managed asset `rows` name that `owner` cannot read, or `undefined` when every one is
+ * theirs. An asset another owner holds and one that does not exist read alike: not found.
+ */
+async function firstUnreadableAsset(
+  bureau: Pick<AgUiBureau, 'assets'>,
+  owner: string,
+  rows: Parameters<typeof managedAssetIdsOf>[0],
+): Promise<string | undefined> {
+  const assets = bureau.assets;
+  if (assets === undefined) return undefined;
+  for (const assetId of managedAssetIdsOf(rows)) {
+    try {
+      await assets.inspect(assetId, { id: owner });
+    } catch (error) {
+      if (error instanceof AssetNotFoundError) return assetId;
+      throw error;
+    }
+  }
+  return undefined;
 }
 
 /** How a failure to create the run is told to the client, as a code and a message. */

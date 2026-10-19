@@ -26,6 +26,7 @@ import {
   createBureauHandler,
 } from '../create-bureau-handler.ts';
 import { authentication, type Handler, type RpcBody } from './management-fixtures.test-support.ts';
+import { createMemoryAssetStorage } from '../../assets/storage';
 
 export interface Served {
   readonly bureau: Bureau;
@@ -55,6 +56,7 @@ export async function serveWorkflows(
 ): Promise<Served> {
   const directory = await mkdtemp(join(tmpdir(), 'bureau-workflow-operations-'));
   const bureau = await createBureau({
+    assets: { storage: createMemoryAssetStorage() },
     id: 'workflows-bureau',
     agents: options.agents ?? agents,
     workflowDirectory: directory,

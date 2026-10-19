@@ -1,0 +1,337 @@
+import { describe, expect, it } from 'bun:test';
+
+import { KEYS } from '../../assets/records.ts';
+import { createMemoryAssetStorage } from '../../assets/storage.ts';
+import { base64Of, pngBytes, textBytes } from '../../testing/asset-fixtures.test-support.ts';
+import { BUREAU_SCOPES } from '../bureau-scopes.ts';
+import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import {
+  assetsGetOperation,
+  assetsUploadsAppendOperation,
+  assetsUploadsCompleteOperation,
+  assetsUploadsCreateOperation,
+} from './assets-operations.ts';
+import {
+  openBureau,
+  type OpenedBureau,
+  type RpcBody,
+  rpc,
+} from './management-fixtures.test-support.ts';
+
+const png = pngBytes(4, 3, 64);
+
+async function withBureau<T>(
+  options: Parameters<typeof openBureau>[0],
+  body: (opened: OpenedBureau) => Promise<T>,
+): Promise<T> {
+  const opened = await openBureau(options);
+  try {
+    return await body(opened);
+  } finally {
+    await opened.dispose();
+  }
+}
+
+const create = (
+  opened: OpenedBureau,
+  key: string,
+  params: { declaredByteLength: number; declaredMediaType?: string },
+) => rpc(opened.handler, 'bureau.assets.uploads.create', params, key);
+
+const append = (opened: OpenedBureau, key: string, uploadId: string, bytes: Uint8Array) =>
+  rpc(opened.handler, 'bureau.assets.uploads.append', { uploadId, chunk: base64Of(bytes) }, key);
+
+const complete = (opened: OpenedBureau, key: string, uploadId: string) =>
+  rpc(opened.handler, 'bureau.assets.uploads.complete', { uploadId }, key);
+
+const get = (opened: OpenedBureau, key: string, assetId: string) =>
+  rpc(opened.handler, 'bureau.assets.get', { assetId }, key);
+
+/** An upload of `bytes` through the three upload operations, answered with the completion. */
+async function upload(
+  opened: OpenedBureau,
+  key: string,
+  bytes: Uint8Array,
+  declaredMediaType?: string,
+): Promise<{ readonly uploadId: string; readonly completed: RpcBody }> {
+  const created = await create(opened, key, {
+    declaredByteLength: bytes.byteLength,
+    ...(declaredMediaType === undefined ? {} : { declaredMediaType }),
+  });
+  const uploadId = created.result!['uploadId'] as string;
+  const half = Math.floor(bytes.byteLength / 2);
+  await append(opened, key, uploadId, bytes.subarray(0, half));
+  await append(opened, key, uploadId, bytes.subarray(half));
+  return { uploadId, completed: await complete(opened, key, uploadId) };
+}
+
+const httpStatusOf = (body: RpcBody) => body.error?.data?.httpStatus;
+
+describe('the asset operations and their scopes', () => {
+  it('are served by the handler, and the two scopes are registered', () => {
+    for (const operation of [
+      assetsUploadsCreateOperation,
+      assetsUploadsAppendOperation,
+      assetsUploadsCompleteOperation,
+      assetsGetOperation,
+    ]) {
+      expect(BUREAU_HANDLER_OPERATIONS).toContain(operation);
+    }
+    expect(BUREAU_SCOPES).toContain('bureau.assets:read');
+    expect(BUREAU_SCOPES).toContain('bureau.assets:write');
+    expect(BUREAU_HANDLER_OPERATIONS.map((operation) => operation.name)).not.toContain(
+      'bureau.assets.uploads.abort',
+    );
+  });
+
+  it('answer 403 to a caller without the scope each needs, and a write scope does not imply read', async () => {
+    await withBureau({}, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+
+      const unscoped = await create(opened, 'alice-key', { declaredByteLength: 4 });
+      const readOnly = await create(opened, 'assets-reader-key', { declaredByteLength: 4 });
+      const writeOnly = await get(opened, 'assets-writer-key', 'asset-1');
+      const unscopedGet = await get(opened, 'alice-key', 'asset-1');
+      const unscopedAppend = await append(opened, 'alice-key', uploadId, png);
+      const unscopedComplete = await complete(opened, 'alice-key', uploadId);
+
+      for (const body of [
+        unscoped,
+        readOnly,
+        writeOnly,
+        unscopedGet,
+        unscopedAppend,
+        unscopedComplete,
+      ]) {
+        expect(httpStatusOf(body)).toBe(403);
+      }
+    });
+  });
+});
+
+describe('an upload through the management plane', () => {
+  it('is created, appended to in chunks, completed, and read back as an available descriptor', async () => {
+    await withBureau({}, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+        declaredMediaType: 'image/png',
+      });
+      expect(created.result).toMatchObject({
+        declaredByteLength: png.byteLength,
+        declaredMediaType: 'image/png',
+        receivedBytes: 0,
+        state: 'open',
+      });
+      const uploadId = created.result!['uploadId'] as string;
+
+      const half = Math.floor(png.byteLength / 2);
+      const first = await append(opened, 'alice-assets-key', uploadId, png.subarray(0, half));
+      expect(first.result).toMatchObject({ uploadId, receivedBytes: half });
+      const second = await append(opened, 'alice-assets-key', uploadId, png.subarray(half));
+      expect(second.result).toMatchObject({ uploadId, receivedBytes: png.byteLength });
+
+      const completed = await complete(opened, 'alice-assets-key', uploadId);
+      expect(completed.result).toMatchObject({
+        state: 'available',
+        mediaType: 'image/png',
+        byteLength: png.byteLength,
+        access: 'owner',
+      });
+      const assetId = completed.result!['assetId'] as string;
+
+      const read = await get(opened, 'alice-assets-key', assetId);
+      expect(read.result).toEqual(completed.result);
+      // The asset is the caller's under the owner string runs use, so a chat that names it resolves.
+      expect(await opened.bureau.assets!.inspect(assetId, { id: 'api-key:alice' })).toMatchObject({
+        state: 'available',
+      });
+    });
+  });
+
+  it('does not resolve a completion while the asset is pending, and resolves available once it has settled', async () => {
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    await withBureau(
+      {
+        assetPorts: {
+          extractMetadata: async () => {
+            reached.resolve();
+            await release.promise;
+            return {};
+          },
+        },
+      },
+      async (opened) => {
+        const created = await create(opened, 'alice-assets-key', {
+          declaredByteLength: png.byteLength,
+        });
+        const uploadId = created.result!['uploadId'] as string;
+        await append(opened, 'alice-assets-key', uploadId, png);
+
+        let settled = false;
+        const completing = complete(opened, 'alice-assets-key', uploadId).then((body) => {
+          settled = true;
+          return body;
+        });
+        await reached.promise;
+        // The asset is pending: its admission has not finished, so the call has not answered.
+        await Bun.sleep(20);
+        expect(settled).toBe(false);
+        const pending = opened.bureau
+          .assets!.activeWork()
+          .find((work) => work.workKind === 'admission');
+        expect(pending).toBeDefined();
+
+        release.resolve();
+        const body = await completing;
+        expect(body.result).toMatchObject({ state: 'available' });
+      },
+    );
+  });
+
+  it('answers a rejected asset with a typed fault carrying its rejection code', async () => {
+    await withBureau({}, async (opened) => {
+      const { completed } = await upload(opened, 'alice-assets-key', png, 'application/pdf');
+
+      expect(completed.result).toBeUndefined();
+      expect(completed.error?.data).toMatchObject({
+        httpStatus: 422,
+        reason: 'media-type-mismatch',
+      });
+      expect(completed.error?.message).toMatch(/was rejected/);
+    });
+  });
+
+  it('answers a quarantined asset with a typed fault carrying its rejection code', async () => {
+    await withBureau(
+      {
+        assetPorts: {
+          safetyGates: [
+            { name: 'scanner', inspect: async () => ({ verdict: 'flagged', category: 'malware' }) },
+          ],
+        },
+      },
+      async (opened) => {
+        const { completed } = await upload(opened, 'alice-assets-key', textBytes('hello world'));
+
+        expect(completed.error?.data).toMatchObject({
+          httpStatus: 422,
+          reason: 'safety-gate-flagged',
+        });
+        expect(completed.error?.message).toMatch(/was quarantined/);
+        // The fault names the asset and the code, never the category a gate saw.
+        expect(JSON.stringify(completed)).not.toContain('malware');
+      },
+    );
+  });
+
+  it('refuses a declared length above the policy ceiling before anything is stored', async () => {
+    await withBureau({ assetPolicy: { maxAssetBytes: 16 } }, async (opened) => {
+      const refused = await create(opened, 'alice-assets-key', { declaredByteLength: 17 });
+
+      expect(refused.error?.data).toMatchObject({
+        httpStatus: 422,
+        reason: 'per-part-limit-exceeded',
+      });
+    });
+  });
+
+  it('refuses a chunk that is not base64 as invalid params, and writes nothing', async () => {
+    await withBureau({}, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+
+      const refused = await rpc(
+        opened.handler,
+        'bureau.assets.uploads.append',
+        { uploadId, chunk: 'not base64 !!' },
+        'alice-assets-key',
+      );
+      expect(httpStatusOf(refused)).toBe(400);
+
+      // The session still holds nothing: the whole asset is what the next append supplies.
+      const whole = await append(opened, 'alice-assets-key', uploadId, png);
+      expect(whole.result).toMatchObject({ receivedBytes: png.byteLength });
+    });
+  });
+});
+
+describe('a chunk larger than maxRequestBodyBytes', () => {
+  it('answers 413 before any write, leaving the session’s received bytes and chunks as they were', async () => {
+    const assetStorage = createMemoryAssetStorage();
+    await withBureau(
+      { handlerOptions: { maxRequestBodyBytes: 600 }, assetStorage },
+      async (opened) => {
+        const created = await create(opened, 'alice-assets-key', { declaredByteLength: 4096 });
+        const uploadId = created.result!['uploadId'] as string;
+        const small = new Uint8Array(100).fill(7);
+        await append(opened, 'alice-assets-key', uploadId, small);
+
+        const oversized = await opened.handler(
+          new Request('http://localhost/jsonrpc', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'X-API-Key': 'alice-assets-key' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'bureau.assets.uploads.append',
+              params: { uploadId, chunk: base64Of(new Uint8Array(1024).fill(9)) },
+            }),
+          }),
+        );
+        expect(oversized.status).toBe(413);
+        // Nothing was written for it: the session holds the one chunk it held, and its record still
+        // says so.
+        expect(await assetStorage.list(KEYS.chunkPrefix(uploadId))).toHaveLength(1);
+        const record = JSON.parse((await assetStorage.get(KEYS.upload(uploadId)))!) as {
+          receivedBytes: number;
+          chunkCount: number;
+        };
+        expect(record).toMatchObject({ receivedBytes: 100, chunkCount: 1 });
+
+        // Only the first chunk is stored: the next append reports its bytes added to the 100 held.
+        const next = await append(opened, 'alice-assets-key', uploadId, small);
+        expect(next.result).toMatchObject({ receivedBytes: 200 });
+      },
+    );
+  });
+});
+
+describe('two principals', () => {
+  it('answer another owner’s upload and asset exactly as a missing one, even holding the scopes', async () => {
+    await withBureau({}, async (opened) => {
+      const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const assetId = completed.result!['assetId'] as string;
+      const openUpload = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const openUploadId = openUpload.result!['uploadId'] as string;
+
+      const probes = async (key: string, upload: string, asset: string) => [
+        await get(opened, key, asset),
+        await append(opened, key, upload, png),
+        await complete(opened, key, upload),
+      ];
+      const mask = (bodies: RpcBody[], ids: string[]) =>
+        JSON.stringify(bodies, null, 1).replaceAll(ids[0]!, '<id>').replaceAll(ids[1]!, '<id>');
+
+      const bob = await probes('bob-assets-key', openUploadId, assetId);
+      const missing = await probes('bob-assets-key', 'upload-missing', 'asset-missing');
+
+      for (const body of bob) expect(httpStatusOf(body)).toBe(404);
+      expect(mask(bob, [openUploadId, assetId])).toBe(
+        mask(missing, ['upload-missing', 'asset-missing']),
+      );
+      // The completed session is gone for everyone, its owner included, and reads as missing.
+      expect(httpStatusOf(await complete(opened, 'alice-assets-key', uploadId))).toBe(404);
+      // Alice's own upload was untouched by bob's attempts.
+      const own = await append(opened, 'alice-assets-key', openUploadId, png);
+      expect(own.result).toMatchObject({ receivedBytes: png.byteLength });
+    });
+  });
+});

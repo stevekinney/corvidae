@@ -11,7 +11,9 @@ import type { PackageAuthorizationScope } from '@lostgradient/weft';
  * These are operator scopes (`documentation/external-control-plane.md`,
  * "The predicate per action"): an authenticated principal reaches its own
  * resources without any of them, and a kind's scope grants cross-owner access
- * to that kind. A write scope does not imply its read scope.
+ * to that kind. A write scope does not imply its read scope. The two `bureau.assets` scopes are
+ * the exception: they gate who may upload and read assets and grant nothing across owners,
+ * because `AssetService` authorizes by an asset's owner and readers alone.
  * `bureau.events:observe-all` is the fleet-wide feed and is not implied by
  * `bureau.tasks:read`. The `bureau.deliveries:*` scopes are not registered.
  */
@@ -31,6 +33,8 @@ export const BUREAU_SCOPES = [
   'bureau.agents:write',
   'bureau.workflows:read',
   'bureau.workflows:write',
+  'bureau.assets:read',
+  'bureau.assets:write',
   'bureau.events:observe-all',
 ] as const satisfies readonly PackageAuthorizationScope[];
 

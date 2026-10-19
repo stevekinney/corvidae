@@ -220,6 +220,37 @@ describe('admission API', () => {
     await harness.close();
   });
 
+  it('inspects an open upload for its owner only, and not once it is completed or aborted', async () => {
+    const { assets, harness } = await open({ storage: memoryFixture().storage });
+    const bytes = textBytes('inspect me');
+    const session = await assets.beginUpload(alice, { declaredByteLength: bytes.byteLength });
+    await assets.appendUpload(session.uploadId, alice, bytes.subarray(0, 4));
+
+    expect(await assets.inspectUpload(session.uploadId, alice)).toMatchObject({
+      uploadId: session.uploadId,
+      receivedBytes: 4,
+      state: 'open',
+    });
+    // Another principal, and a session that never existed, are the same not-found.
+    expect(await rejectionOf(assets.inspectUpload(session.uploadId, bob))).toBeInstanceOf(
+      AssetNotFoundError,
+    );
+    expect(await rejectionOf(assets.inspectUpload('upload-never', alice))).toBeInstanceOf(
+      AssetNotFoundError,
+    );
+
+    await assets.appendUpload(session.uploadId, alice, bytes.subarray(4));
+    const admission = await assets.admit(
+      { source: { kind: 'upload', uploadId: session.uploadId } },
+      alice,
+    );
+    await admission.work.result();
+    expect(await rejectionOf(assets.inspectUpload(session.uploadId, alice))).toBeInstanceOf(
+      AssetNotFoundError,
+    );
+    await harness.close();
+  });
+
   it('admits an authorized URL through the host fetch port, keeping only the origin as provenance', async () => {
     const bytes = pngBytes(2, 2);
     const resolver = scriptedResolver({ 'cdn.example.com': [['93.184.216.34']] });

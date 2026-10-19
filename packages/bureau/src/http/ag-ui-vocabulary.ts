@@ -33,6 +33,38 @@ export const AG_UI_ERROR_CODES = [
 
 export type AgUiErrorCode = (typeof AG_UI_ERROR_CODES)[number];
 
+/**
+ * The `name` of the `CUSTOM` event that announces one managed asset a message carries. Its `value`
+ * is an {@link AssetPartAnnouncement}. A client branches on the name, so it is a one-way door.
+ */
+export const ASSET_PART_EVENT_NAME = 'bureau.asset-part';
+
+/**
+ * The `provider` of the `file` part source an AG-UI message names a managed asset with: `value` is
+ * the asset's id. A client that sends or reads an attachment branches on it.
+ */
+export const ASSET_FILE_PROVIDER = 'bureau';
+
+/**
+ * Where an assistant row of a `MESSAGES_SNAPSHOT` keeps the managed assets it carries, in its
+ * `metadata`, as a list of {@link AssetPartReference}. An AG-UI assistant message holds text only,
+ * so the assets ride beside it, the way Conversationalist keeps cited text parts under
+ * `conversationalist:textParts`. A client reads it by name, so it is a one-way door.
+ */
+export const ASSET_PARTS_METADATA_KEY = 'bureau:assetParts';
+
+/** One managed asset an assistant message carries: its position in the message's parts, and what it is. */
+export type AssetPartReference = {
+  /** The part's position among the message's parts, as the run's `partIndex` counts them. */
+  readonly index: number;
+  readonly assetId: string;
+  /** The asset's media type; `application/octet-stream` when the part declared none. */
+  readonly mediaType: string;
+};
+
+/** The `value` of a {@link ASSET_PART_EVENT_NAME} event. */
+export type AssetPartAnnouncement = AssetPartReference & { readonly messageId: string };
+
 /** The key every event's `metadata` carries Bureau's own fields under, as `@ag-ui/client` namespaces its own. */
 export const BUREAU_METADATA_KEY = '@lostgradient/bureau';
 
