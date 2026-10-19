@@ -15,6 +15,7 @@
   import { onDestroy, untrack } from 'svelte';
 
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
+  import ToastHost, { provideToastHost } from '../../app/toast-host.svelte';
   import {
     installBureauStub,
     type BureauHandler,
@@ -73,6 +74,9 @@
   // harness never swaps `onQueryClient` after mount.
   untrack(() => onQueryClient)?.(queryClient);
 
+  // A write that fails is a toast, as it is in the shell, so the page's own toasts have somewhere to go.
+  provideToastHost();
+
   provideClient(untrack(() => client));
   const principalStore = providePrincipalStore();
   const principal: Principal = untrack(() => ({
@@ -95,4 +99,5 @@
 
 <QueryClientProvider client={queryClient}>
   {@render children()}
+  <ToastHost />
 </QueryClientProvider>

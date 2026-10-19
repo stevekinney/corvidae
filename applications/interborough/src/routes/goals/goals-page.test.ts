@@ -12,13 +12,14 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { GOALS_COPY, SCHEDULE_COPY, VIEW_COPY } from '../../app/copy.ts';
+import { GOALS_COPY, RETRY_LABEL, SCHEDULE_COPY, VIEW_COPY } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,
   StubFault,
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
+import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 
@@ -415,5 +416,139 @@ describe('who may see the goals', () => {
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' });
     expect(frameState(view.container)).toBe('empty');
+  });
+});
+
+describe('a goal the Bureau is still stopping', () => {
+  test('says the cancellation is recorded and will finish, and shows the goal as asked to stop', async () => {
+    const { view } = open([goal('goal-1', { revision: 7 })]);
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
+    stub?.restore();
+    // The Bureau records the cancellation and has not finished.
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: AGENTS }),
+      'bureau.goals.list': () => ({
+        goals: [
+          goal('goal-1', {
+            revision: 8,
+            status: 'evaluating',
+            cancellation: { requestedAt: '2026-10-19T08:06:00.000Z', reason: null },
+          }),
+        ],
+        nextOffset: null,
+      }),
+      'bureau.goals.cancel': () => ({
+        goalRunId: 'goal-1',
+        outcome: 'cancellation-pending',
+        status: 'evaluating',
+        revision: 8,
+      }),
+    });
+
+    await fireEvent.click(
+      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
+        name: GOALS_COPY.cancelAction,
+      }),
+    );
+    await fireEvent.click(
+      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
+    );
+
+    await view.findByText(GOALS_COPY.cancelPending);
+    await waitFor(() =>
+      expect(row(view.container, 'goal-1')?.textContent).toContain(GOALS_COPY.cancelRequested),
+    );
+  });
+
+  test('is a toast that says the goal was not cancelled when the Bureau refuses for another reason', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
+    stub?.restore();
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: AGENTS }),
+      'bureau.goals.list': () => ({ goals: [goal('goal-1')], nextOffset: null }),
+      'bureau.goals.cancel': () => {
+        throw new StubFault('Unavailable', 503, 'The goal’s record cannot be read.');
+      },
+    });
+
+    await fireEvent.click(
+      within(row(view.container, 'goal-1') as HTMLElement).getByRole('button', {
+        name: GOALS_COPY.cancelAction,
+      }),
+    );
+    await fireEvent.click(
+      await view.findByRole('button', { name: GOALS_COPY.cancelDialog.confirm }),
+    );
+
+    await view.findByText(GOALS_COPY.cancelFailed, { exact: false });
+  });
+});
+
+describe('the list of goals', () => {
+  test('says so inline, and can be tried again, when a read fails after the view opened', async () => {
+    let failing = false;
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: AGENTS }),
+      'bureau.goals.list': (params) => {
+        if (params['limit'] === 1) return { goals: [goal('goal-1')], nextOffset: null };
+        if (failing) throw new StubFault('Unavailable', 503, 'The Bureau is down.');
+        return { goals: [goal('goal-1')], nextOffset: null };
+      },
+    });
+    landAt('/goals');
+    failing = true;
+    const { findByRole, container, findByText } = render(RouteOutletHarness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+
+    await findByText(VIEW_COPY.goals.error.title);
+    failing = false;
+    await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));
+
+    await findByText('goal-1');
+    expect(row(container, 'goal-1') === null).toBe(false);
+  });
+
+  test('links a goal’s agent, and leaves a modified click to the browser', async () => {
+    const { view } = open([goal('goal-1')]);
+    const link = await view.findByRole('link', { name: 'assistant' });
+
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/goals');
+    link.click();
+
+    expect(router.pathname).toBe('/agents/assistant');
+  });
+});
+
+describe('the drawer that creates a goal', () => {
+  test('takes a typed agent name when the Bureau cannot list the agents', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
+    stub?.on('bureau.agents.list', () => {
+      throw new StubFault('Unavailable', 503, 'No agents.');
+    });
+    // A new read of the agents: the drawer asks when it opens.
+    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
+    const dialog = within(await view.findByRole('dialog', { name: GOALS_COPY.form.title }));
+
+    const agent = await dialog.findByLabelText(GOALS_COPY.form.agentLabel);
+    await waitFor(() => expect(agent.tagName).toBe('INPUT'));
+  });
+
+  test('closes with Cancel, and creates nothing', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1') === null).toBe(false));
+    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
+    const dialog = within(await view.findByRole('dialog', { name: GOALS_COPY.form.title }));
+
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.cancelAction }));
+
+    await waitFor(() => expect(router.search.get('create')).toBeNull());
+    expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
   });
 });

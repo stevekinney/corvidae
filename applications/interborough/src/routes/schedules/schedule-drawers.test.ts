@@ -419,3 +419,128 @@ describe('creating a schedule', () => {
     expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
   });
 });
+
+describe('the drawers when something is not as it was', () => {
+  test('a new agent run takes a typed agent name when the Bureau cannot list the agents', async () => {
+    open('/schedules?create=1', {}, (installed) =>
+      installed.on('bureau.agents.list', () => {
+        throw workflowFaults.unavailable();
+      }),
+    );
+    const dialog = within(await drawer('Create schedule'));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
+
+    const agent = await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel);
+    await waitFor(() => expect(agent.tagName).toBe('INPUT'));
+    await fireEvent.input(agent, { target: { value: 'assistant' } });
+    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
+      target: { value: 'Hello' },
+    });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.create')[0]?.params).toMatchObject({
+      agentName: 'assistant',
+    });
+  });
+
+  test('says there are no agents when the Bureau lists none', async () => {
+    open('/schedules?create=1', { agents: [] });
+    const dialog = within(await drawer('Create schedule'));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
+
+    await dialog.findByText(SCHEDULE_COPY.form.noAgents, { exact: false });
+  });
+
+  test('closes with Cancel, and creates nothing', async () => {
+    open('/schedules?create=1');
+    const dialog = within(await drawer('Create schedule'));
+
+    await fireEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+
+    await waitFor(() => expect(router.search.get('create')).toBeNull());
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
+  });
+
+  test('an edit says so when the Bureau has not said what the schedule is, and offers nothing', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}?edit=1`, { failBureauSchedules: true });
+    const dialog = within(await drawer('Edit schedule'));
+
+    await dialog.findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
+    expect(dialog.queryByLabelText('Description')).toBeNull();
+  });
+
+  test('an edit of a schedule that is not there says so', async () => {
+    open('/schedules/no-such-schedule?edit=1');
+    const dialog = within(await drawer('Edit schedule'));
+
+    await dialog.findByText(/No schedule with id "no-such-schedule" exists/);
+  });
+
+  test('a code-defined schedule on an interval is edited and saved as an interval', async () => {
+    // A schedule on an interval has no cron expression.
+    const hourly = scheduleFixture('every-hour', 'order-processing', {
+      intervalMs: 3_600_000,
+      revision: 2,
+      description: 'Hourly',
+    });
+    delete hourly.cronExpression;
+    open(`/schedules/every-hour?edit=1`, { schedules: [hourly] });
+    const dialog = within(await drawer('Edit schedule'));
+    const description = await dialog.findByLabelText('Description');
+
+    await fireEvent.input(description, { target: { value: 'Hourly, edited' } });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
+    expect(stub?.callsTo('PATCH /schedules/:id body')[0]?.params).toMatchObject({
+      every: 3_600_000,
+      description: 'Hourly, edited',
+    });
+  });
+
+  test('an agent run’s cadence can be changed to an interval, which is sent as a duration', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+
+    await fireEvent.click(dialog.getByRole('tab', { name: 'Interval' }));
+    const every = dialog.getByLabelText('Every');
+    await fireEvent.input(every, { target: { value: '20' } });
+    await fireEvent.change(every, { target: { value: '20' } });
+    await fireEvent.blur(every);
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params['spec']).toBe('20m');
+  });
+
+  test('a new agent run’s cadence can be a cron expression, which is sent as written', async () => {
+    open('/schedules?create=1');
+    const dialog = within(await drawer('Create schedule'));
+    await fireEvent.click(
+      await dialog.findByRole('radio', { name: SCHEDULE_COPY.form.startsAgent }),
+    );
+    await fireEvent.change(await dialog.findByLabelText(SCHEDULE_COPY.form.agentLabel), {
+      target: { value: 'tool-runner' },
+    });
+    await fireEvent.input(dialog.getByLabelText(SCHEDULE_COPY.form.inputLabel), {
+      target: { value: 'Hello' },
+    });
+
+    await fireEvent.click(dialog.getByRole('tab', { name: 'Cron' }));
+    // The minute field's raw expression, which the cadence follows.
+    const minute = document.querySelector('[id$="cron-field-0-raw"]');
+    if (!(minute instanceof HTMLInputElement)) throw new Error('expected the minute field');
+    await fireEvent.input(minute, { target: { value: '30' } });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Create schedule' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.create')[0]?.params['spec']).toMatch(/^30 /);
+  });
+});

@@ -1,3 +1,4 @@
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { cancelGoal, createGoal, GOAL_STATUSES, goalHasEnded, listGoals } from './bureau-goals.ts';
@@ -27,7 +28,7 @@ describe('the Bureau’s goals', () => {
         throw new Error('not reached');
       },
     });
-    await expect(
+    const refused = await throwingRejectionOf(
       createGoal({
         agentName: 'assistant',
         prompt: 'Say hello.',
@@ -36,7 +37,8 @@ describe('the Bureau’s goals', () => {
         maximumAttempts: 3,
         maximumTotalSteps: 20,
       }),
-    ).rejects.toThrow();
+    );
+    expect(refused).toThrow();
     expect(stub.callsTo('bureau.goals.create')[0]?.params).toEqual({
       agentName: 'assistant',
       prompt: 'Say hello.',

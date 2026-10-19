@@ -390,13 +390,6 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       if (world.failBureauSchedules) throw workflowFaults.unavailable();
       return { schedules: world.schedules.filter(bureauKnows).map(bureauView), nextOffset: null };
     },
-    'bureau.schedules.get': (params) => {
-      const schedule = findSchedule(params['scheduleId']);
-      if (schedule === undefined || !bureauKnows(schedule)) {
-        throw workflowFaults.notFound(`schedule ${String(params['scheduleId'])}`);
-      }
-      return bureauView(schedule);
-    },
     'bureau.schedules.create': (params) => {
       counter += 1;
       const spec = String(params['spec']);
@@ -547,11 +540,10 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
           String(request['type']),
           typeof request['description'] === 'string' ? { description: request['description'] } : {},
         );
-        if (typeof request['cronExpression'] === 'string') {
-          created.cronExpression = request['cronExpression'];
-        } else {
+        // A fixture is on a cron cadence; one made with an interval has no cron expression.
+        if (typeof request['every'] === 'number') {
           delete created.cronExpression;
-          created.intervalMs = Number(request['every']);
+          created.intervalMs = request['every'];
         }
         world.schedules.push(created);
         return Response.json({ id: created.id });

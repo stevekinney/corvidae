@@ -247,7 +247,9 @@ describe('Load more', () => {
     await findByText('third');
     expect(queries().at(-1)).toMatchObject({ cursor: '1760860920000:2' });
     expect(rows(container)).toEqual(['1', '2', '3']);
-    await waitFor(() => expect(queryByRole('button', { name: AUDIT_COPY.loadMore })).toBeNull());
+    await waitFor(() =>
+      expect(queryByRole('button', { name: AUDIT_COPY.loadMore }) === null).toBe(true),
+    );
   });
 
   test('keeps the filters it was asked with when it loads the next page', async () => {
@@ -311,8 +313,7 @@ describe('who may see it', () => {
     await fireEvent.input(await findByLabelText(AUDIT_COPY.typeLabel), { target: { value: 'x' } });
     await fireEvent.click(getByRole('button', { name: AUDIT_COPY.searchAction }));
 
-    const alert = await findByRole('alert');
-    expect(alert.textContent).toContain(AUDIT_COPY.failed.title);
+    await findByText(AUDIT_COPY.failed.title);
     failing = false;
     await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
     await findByText('back-again');

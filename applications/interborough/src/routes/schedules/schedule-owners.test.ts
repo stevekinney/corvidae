@@ -22,6 +22,7 @@ import {
   readyFile,
   scheduleFixture,
   sourceDefinition,
+  workflowFaults,
   type WorkflowStub,
   type World,
 } from '../../lib/workflow-world.test-support.ts';
@@ -344,6 +345,21 @@ describe('an agent run and a code-defined schedule', () => {
     }
   });
 
+  test('cancel a code-defined schedule through the engine, after the confirmation', async () => {
+    const { container } = open('/schedules');
+    await listed(container);
+
+    const view = await openMenu(container, CODE_SCHEDULE);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Cancel/ }));
+    await fireEvent.click(await view.findByRole('button', { name: 'Cancel schedule' }));
+
+    await waitFor(() => expect(row(container, CODE_SCHEDULE)?.dataset['status']).toBe('cancelled'));
+    expect(stub?.callsTo('DELETE /schedules/:id').map((call) => call.params)).toEqual([
+      { id: CODE_SCHEDULE },
+    ]);
+    expect(stub?.callsTo('bureau.schedules.cancel')).toEqual([]);
+  });
+
   test('cancel an agent run through bureau.schedules.cancel, after the confirmation', async () => {
     const { container } = open('/schedules');
     await listed(container);
@@ -358,5 +374,158 @@ describe('an agent run and a code-defined schedule', () => {
     expect(stub?.callsTo('bureau.schedules.cancel').map((call) => call.params)).toEqual([
       { scheduleId: AGENT_SCHEDULE, expectedRevision: 3 },
     ]);
+  });
+});
+
+describe('a write that does not go through', () => {
+  test('for another reason is a toast that says what was not done, and the row stays as it is', async () => {
+    const { container, findByText } = open('/schedules');
+    await listed(container);
+    // The Bureau no longer shows this caller the schedule, so it answers as it does for a missing one.
+    delete stub?.world.scheduleAgents[AGENT_SCHEDULE];
+
+    const view = await openMenu(container, AGENT_SCHEDULE);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
+
+    await findByText(SCHEDULE_COPY.pauseFailed, { exact: false });
+    expect(stale()).toBeNull();
+    expect(row(container, AGENT_SCHEDULE)?.dataset['status']).toBe('active');
+  });
+
+  test('that the Bureau made and the engine could not follow says the file has the change, and reads the row again', async () => {
+    const { container } = open('/schedules');
+    await listed(container);
+    stub?.on('bureau.workflows.pause', () => {
+      throw workflowFaults.applyFailed();
+    });
+    const reads = stub?.callsTo('GET /schedules').length ?? 0;
+
+    const view = await openMenu(container, FILE_SCHEDULE);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
+
+    await waitFor(() => expect(stale()?.getAttribute('data-notice')).toBe('unapplied'));
+    expect(stale()?.textContent).toContain(SCHEDULE_COPY.unapplied.title);
+    await waitFor(() => expect(stub?.callsTo('GET /schedules').length).toBeGreaterThan(reads));
+  });
+
+  test('can have its notice dismissed', async () => {
+    const { container } = open('/schedules');
+    await listed(container);
+    stub?.on('bureau.workflows.pause', () => {
+      throw workflowFaults.applyFailed();
+    });
+    const view = await openMenu(container, FILE_SCHEDULE);
+    await fireEvent.click(view.getByRole('menuitem', { name: /Pause/ }));
+    await waitFor(() => expect(stale()).not.toBeNull());
+
+    await fireEvent.click(within(stale() as HTMLElement).getByRole('button', { name: /dismiss/i }));
+
+    await waitFor(() => expect(stale()).toBeNull());
+  });
+});
+
+describe('an agent run the Bureau does not name', () => {
+  test('is labelled an agent run, and links nowhere, because no agent is known', async () => {
+    const { container } = open('/schedules', { scheduleAgents: {} });
+    await waitFor(() => expect(row(container, AGENT_SCHEDULE)?.dataset['kind']).toBe('agent-run'));
+
+    const target = within(row(container, AGENT_SCHEDULE) as HTMLElement).getByTestId(
+      'schedule-target',
+    );
+    expect(target.textContent).toContain(SCHEDULE_COPY.unnamedAgent);
+    expect(target.querySelector('a')).toBeNull();
+  });
+});
+
+describe('a link from what a schedule starts', () => {
+  test('opens the agent, and leaves a modified click to the browser', async () => {
+    const { container } = open('/schedules');
+    await listed(container);
+    const link = within(row(container, AGENT_SCHEDULE) as HTMLElement).getByRole('link', {
+      name: 'assistant',
+    });
+
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/schedules');
+    link.click();
+
+    expect(router.pathname).toBe('/agents/assistant');
+  });
+});
+
+describe('one schedule’s page, by kind', () => {
+  test('an agent run pauses and resumes through the Bureau, naming the revision each time', async () => {
+    const { findByRole } = open(`/schedules/${AGENT_SCHEDULE}`);
+
+    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
+    await findByRole('button', { name: /Resume/ });
+    expect(stub?.callsTo('bureau.schedules.pause')[0]?.params).toEqual({
+      scheduleId: AGENT_SCHEDULE,
+      expectedRevision: 3,
+    });
+    await fireEvent.click(await findByRole('button', { name: /Resume/ }));
+    await findByRole('button', { name: /Pause/ });
+    expect(stub?.callsTo('bureau.schedules.resume')[0]?.params).toEqual({
+      scheduleId: AGENT_SCHEDULE,
+      expectedRevision: 4,
+    });
+  });
+
+  test('an agent run opens its edit drawer from Edit', async () => {
+    const { findByRole } = open(`/schedules/${AGENT_SCHEDULE}`);
+
+    await fireEvent.click(await findByRole('button', { name: 'Edit' }));
+
+    await findByRole('dialog', { name: 'Edit schedule' });
+    expect(router.search.get('edit')).toBe('1');
+  });
+
+  test('an agent run is cancelled through the Bureau, after the confirmation', async () => {
+    const { findByRole, findByText } = open(`/schedules/${AGENT_SCHEDULE}`);
+
+    await fireEvent.click(await findByRole('button', { name: 'Cancel' }));
+    expect(stub?.callsTo('bureau.schedules.cancel')).toEqual([]);
+    await fireEvent.click(await findByText('Cancel schedule'));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.cancel').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.cancel')[0]?.params).toEqual({
+      scheduleId: AGENT_SCHEDULE,
+      expectedRevision: 3,
+    });
+  });
+
+  test('a workflow file’s schedule pauses and resumes through its file', async () => {
+    const { findByRole } = open(`/schedules/${FILE_SCHEDULE}`);
+
+    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
+    await findByRole('button', { name: /Resume/ });
+    await fireEvent.click(await findByRole('button', { name: /Resume/ }));
+    await findByRole('button', { name: /Pause/ });
+
+    expect(stub?.callsTo('bureau.workflows.pause')[0]?.params).toEqual({
+      id: 'digest',
+      expectedHash: 'hash-1',
+    });
+    expect(stub?.callsTo('bureau.workflows.resume')).toHaveLength(1);
+  });
+
+  test('a code-defined schedule pauses through the engine', async () => {
+    const { findByRole } = open(`/schedules/${CODE_SCHEDULE}`);
+
+    await fireEvent.click(await findByRole('button', { name: /Pause/ }));
+
+    await findByRole('button', { name: /Resume/ });
+    expect(stub?.callsTo('POST pause /schedules/:id')).toHaveLength(1);
+  });
+
+  test('offers nothing to change until the Bureau has said what it is, and says that it has not', async () => {
+    const { findByText, queryByRole } = open(`/schedules/${AGENT_SCHEDULE}`, {
+      failBureauSchedules: true,
+    });
+
+    await findByText(SCHEDULE_COPY.overlayFailed.title, { exact: false });
+    expect(queryByRole('button', { name: /Pause/ })).toBeNull();
+    expect(queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(queryByRole('button', { name: 'Cancel' })).toBeNull();
   });
 });

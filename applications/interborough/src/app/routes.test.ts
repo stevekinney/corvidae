@@ -53,6 +53,13 @@ describe('the route table', () => {
     ).toEqual(['/']);
   });
 
+  test('gives the route that redirects a component too, which the outlet never mounts', async () => {
+    const home = routes.find((route) => route.redirect !== undefined);
+    expect(home?.pattern).toBe('/');
+    const loaded = await home?.load();
+    expect(loaded?.default).toBeDefined();
+  });
+
   test('registers /chat/new before /chat/:sessionId, because the first match wins', () => {
     const patterns = routes.map((route) => route.pattern);
 
