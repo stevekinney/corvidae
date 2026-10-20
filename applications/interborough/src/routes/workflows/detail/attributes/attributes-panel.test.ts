@@ -142,11 +142,13 @@ describe('AttributesPanel', () => {
     await waitFor(() =>
       expect(sets).toEqual([{ workflowId: 'wf-1', attributes: { region: 'eu-central' } }]),
     );
-    await findByText('eu-central');
+    // The value on the page is what the refetch returned, not what was typed.
+    await waitFor(() => expect(rowFor(container, 'region').textContent).toContain('eu-central'));
     expect(gets()).toBeGreaterThan(readsBefore);
     expect(rowFor(container, 'region').textContent).not.toContain('us-east');
-    // The editor closes once the save lands.
-    await waitFor(() => expect(container.querySelector('input')).toBeNull());
+    // The editor closes once the save lands. (Compared as a boolean: a failed `toBeNull()` on an element
+    // formats the whole happy-dom node, which takes about a second a try.)
+    await waitFor(() => expect(container.querySelector('input') === null).toBe(true));
   });
 
   test('edits a number in its own type', async () => {

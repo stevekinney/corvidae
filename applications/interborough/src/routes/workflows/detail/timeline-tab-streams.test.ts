@@ -136,7 +136,7 @@ describe('TimelineTab stream links', () => {
     expect(queryByText('starting')).toBeNull();
 
     await fireEvent.click(await findByRole('button', { name: 'Close' }));
-    await waitFor(() => expect(container.querySelector('[data-stream-key]')).toBeNull());
+    await waitFor(() => expect(container.querySelector('[data-stream-key]') === null).toBe(true));
   });
 
   test('renders no stream link without streams:read', async () => {

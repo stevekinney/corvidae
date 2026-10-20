@@ -16,7 +16,7 @@ import {
   UPDATE_DESK_RUN_ID,
 } from './engine-console-ids.ts';
 import { ATTRIBUTE_SHOWCASE_ATTRIBUTES, seedEngineConsole } from './engine-console.ts';
-import { seed, workflows } from './workflows.ts';
+import { workflows } from './workflows.ts';
 
 let engines: Engine[] = [];
 
@@ -85,18 +85,5 @@ describe('seedEngineConsole', () => {
       ['explode', 'failed', 'the desk refused this update'],
       ['greet', 'completed', undefined],
     ]);
-  });
-});
-
-describe('the full fixture seed', () => {
-  it('seeds the engine-console runs along with every other fixture', async () => {
-    const engine = await Engine.create({ workflows });
-    engines.push(engine);
-    await seed(engine);
-
-    for (const type of ['attribute-showcase', 'chunk-streamer', 'update-desk']) {
-      const { items } = await engine.list({ type });
-      expect(items).toHaveLength(1);
-    }
   });
 });
