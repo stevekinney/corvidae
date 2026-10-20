@@ -1,3 +1,8 @@
+/**
+ * A schedule fire in the real host runs once and ends normally. The fire is started by Weft's
+ * scheduler poller on real elapsed time (a `1s` schedule on a one-second poll), so this is slow by
+ * nature and lives in the `test:slow` lane (COR-1576).
+ */
 import { afterEach, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
