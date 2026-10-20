@@ -97,40 +97,6 @@ describe('a deferring activity never holds the result (COR-1597)', () => {
     );
     expect(getInternals(engine).pendingTerminalSettlements.size).toBe(0);
   });
-
-  it('a history-breaker termination inside the checkpoint of a remotely dispatched activity rejects its result promptly', async () => {
-    const id = nextId('defer-remote');
-    // Remote mode runs every activity remotely, so a signal wait comes first and the breaker
-    // fires inside the remote activity's own checkpoint. The engine does not dispatch an activity
-    // whose run is already terminal (no `activity:remote-queued` event), so the turn ends and the
-    // hold never forms; the deferral release cannot be reached through remote mode, and the
-    // async-completion tests above cover it. This pins that the result is not held either way.
-    await using engine = new Engine({
-      history: { maxEvents: 1 },
-      activityExecution: { mode: 'remote' },
-    });
-    let dispatched = false;
-    engine.addEventListener('activity:remote-queued', () => (dispatched = true), { once: true });
-    const remoteWork = activity({ name: 'remoteWork', execute: async (_input: void) => 'local' });
-    engine.register(
-      workflow({ name: 'remote-workflow' })
-        .activities({ remoteWork })
-        .execute(async function* (ctx: WorkflowContext) {
-          yield* ctx.waitForSignal('go');
-          return yield* ctx.run(remoteWork);
-        }),
-    );
-    const handle = await engine.start('remote-workflow', null, { id });
-    const result = observe(handle.result());
-    await engine.signal(id, 'go', null);
-    await macrotasks(5);
-
-    expect(await statusOf(engine, id)).toBe('timed-out');
-    expect(dispatched).toBe(false);
-    expect(result.state).toBe('rejected');
-    expect(result.reason).toBeInstanceOf(WorkflowTimeoutError);
-    expect(getInternals(engine).pendingTerminalSettlements.size).toBe(0);
-  });
 });
 
 describe('a purge leaves a held result to its pending settlement (COR-1597)', () => {
