@@ -1,6 +1,7 @@
 import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import type { WorkflowState } from '../types.ts';
+import { EngineDisposedError } from './errors.ts';
 import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { isScannedRun } from './purge-supersession.ts';
@@ -42,30 +43,49 @@ export async function drainUpdateHistory(
     : [];
 
   const prefix = KEYS.updateHistoryPrefix(state.id);
-  let more = true;
-  while (more) {
-    const operations = await nextChunk(internals, prefix);
+  // Each chunk scans past the last key the one before it deleted, so a store whose scans lag its
+  // deletes (`readAfterWrite: 'eventual'`) never hands back a key already removed, and every chunk
+  // advances: the drain ends after one pass over the history, whatever the store's consistency.
+  let after: string | undefined;
+  let draining = true;
+  while (draining) {
+    if (internals.disposed) throw new EngineDisposedError();
+    const chunk = await nextChunk(internals, prefix, after);
     // An empty chunk is the end; a chunk the fence refused ends it too.
-    more =
-      operations.length > 0 &&
+    draining =
+      chunk.last !== undefined &&
       (await commitFencedEngineWriteAllowingPreconditionFailure(
         internals,
         null,
-        operations,
+        chunk.operations,
         conditions,
       ));
+    after = chunk.last;
   }
 }
 
-/** The deletes for the next {@link UPDATE_HISTORY_PURGE_CHUNK} entries that remain, and the responses they name. */
-async function nextChunk(internals: EngineInternals, prefix: string): Promise<BatchOperation[]> {
+/**
+ * The deletes for the next {@link UPDATE_HISTORY_PURGE_CHUNK} entries after `after`, and the responses
+ * they name, with the last entry key scanned (`undefined` when none remain).
+ */
+async function nextChunk(
+  internals: EngineInternals,
+  prefix: string,
+  after: string | undefined,
+): Promise<{ operations: BatchOperation[]; last: string | undefined }> {
   const operations: BatchOperation[] = [];
-  for await (const [key] of internals.storage.scan(prefix, { limit: UPDATE_HISTORY_PURGE_CHUNK })) {
+  let last: string | undefined;
+  const range = after === undefined ? {} : { gt: after };
+  for await (const [key] of internals.storage.scan(prefix, {
+    ...range,
+    limit: UPDATE_HISTORY_PURGE_CHUNK,
+  })) {
     operations.push({ type: 'delete', key });
+    last = key;
     // `<receivedAt>:<updateId>`: an update id is a UUID, so it holds no colon.
     const updateId = key.slice(key.lastIndexOf(':') + 1);
     if (updateId.length > 0)
       operations.push({ type: 'delete', key: KEYS.updateResponse(updateId) });
   }
-  return operations;
+  return { operations, last };
 }

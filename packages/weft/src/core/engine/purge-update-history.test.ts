@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import type { Storage } from '../../storage/interface.ts';
+import type { ScanOptions, Storage } from '../../storage/interface.ts';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
@@ -13,6 +13,7 @@ import { Engine } from '../engine.ts';
 import type { WorkflowContext } from '../types.ts';
 import { workflow } from '../types.ts';
 import type { UpdateHistoryEntry } from '../update-history.ts';
+import { EngineDisposedError } from './errors.ts';
 import { getInternals } from './internals.ts';
 import { drainUpdateHistory, UPDATE_HISTORY_PURGE_CHUNK } from './purge-update-history.ts';
 import { addUpdateDeleteKeys } from './purge-update-keys.ts';
@@ -138,5 +139,82 @@ describe('addUpdateDeleteKeys', () => {
         KEYS.updateResponse('drain-update-1'),
       ].toSorted(),
     );
+  });
+});
+
+/**
+ * Storage whose scans of the update history keep listing what they listed when it was frozen, as an
+ * eventually consistent store (`readAfterWrite: 'eventual'`) may until its deletes are visible. A
+ * scan cap turns a drain that re-reads deleted keys into a failure instead of a hung test.
+ */
+class StaleHistoryScans extends MemoryStorage {
+  #frozen: string[] | undefined;
+  historyScans = 0;
+
+  freezeHistory(keys: readonly string[]): void {
+    this.#frozen = keys.toSorted();
+  }
+
+  override async *scan(
+    prefix: string,
+    options: ScanOptions = {},
+  ): AsyncIterable<[string, Uint8Array]> {
+    if (this.#frozen === undefined || !prefix.startsWith('uph:')) {
+      yield* super.scan(prefix, options);
+      return;
+    }
+    this.historyScans += 1;
+    if (this.historyScans > 50) throw new Error('the drain kept scanning keys it had deleted');
+    let emitted = 0;
+    for (const key of this.#frozen) {
+      if (!key.startsWith(prefix)) continue;
+      if (options.gt !== undefined && key <= options.gt) continue;
+      if (options.limit !== undefined && emitted >= options.limit) return;
+      yield [key, (await super.get(key)) ?? new Uint8Array()];
+      emitted += 1;
+    }
+  }
+}
+
+describe('drainUpdateHistory over a store whose scans lag its deletes', () => {
+  let engine: Engine | undefined;
+
+  afterEach(async () => {
+    engine?.[Symbol.dispose]();
+    await flush();
+  });
+
+  it('never rescans what it deleted, so it ends after one pass over the history', async () => {
+    const storage = new StaleHistoryScans();
+    const count = UPDATE_HISTORY_PURGE_CHUNK * 2 + 5;
+    const run = await completedRunWithHistory(storage, count);
+    engine = run.engine;
+    const state = await engine.get(run.workflowId);
+    storage.freezeHistory(await collectKeys(storage, 'uph:'));
+
+    await drainUpdateHistory(getInternals(engine), state!);
+
+    // Three chunks of history, then one scan that finds nothing past the last key deleted.
+    expect(storage.historyScans).toBe(4);
+    const remaining: string[] = [];
+    for await (const [key] of MemoryStorage.prototype.scan.call(storage, 'uph:'))
+      remaining.push(key);
+    expect(remaining).toEqual([]);
+  });
+
+  it('stops at once when the engine is disposed between chunks', async () => {
+    const storage = new StaleHistoryScans();
+    const run = await completedRunWithHistory(storage, UPDATE_HISTORY_PURGE_CHUNK + 5);
+    engine = run.engine;
+    const state = await engine.get(run.workflowId);
+    const internals = getInternals(engine);
+    engine[Symbol.dispose]();
+    engine = undefined;
+
+    const failure = await drainUpdateHistory(internals, state!).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(EngineDisposedError);
   });
 });
