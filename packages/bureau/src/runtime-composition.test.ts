@@ -1461,10 +1461,10 @@ describe('a composition built without a memory owner (COR-1546)', () => {
       await entry?.handler(stepOf(`${ownerId} remembers this`));
     }
 
-    const contentsOf = async (ownerId: string) =>
-      (await memory.list(listerFor(ownerId), { collection: 'agent' })).map(
-        (record) => record.content,
-      );
+    const contentsOf = async (ownerId: string) => {
+      const records = await memory.list(listerFor(ownerId), { collection: 'agent' });
+      return records.map((record) => record.content);
+    };
     expect(await contentsOf('owner-a')).toEqual(['owner-a remembers this']);
     expect(await contentsOf('owner-b')).toEqual(['owner-b remembers this']);
     expect(await contentsOf('anonymous:local')).toEqual([]);
