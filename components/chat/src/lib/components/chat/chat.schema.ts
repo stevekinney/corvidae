@@ -125,6 +125,19 @@ const schema = {
       description:
         'Status text while older messages are loading. Default `"Loading earlier messages"`.',
     },
+    maxFileSize: {
+      type: 'number',
+      description:
+        'Largest file the composer takes, in bytes. A larger file shows as an `error` attachment and is never uploaded. Default 10 MiB.',
+    },
+    acceptedTypes: {
+      type: 'array',
+      items: {
+        type: 'string',
+      },
+      description:
+        "MIME types the composer takes, as exact types or `type/*` families; also the file picker's `accept`. A file of another type shows as an `error` attachment and is never uploaded.",
+    },
     emptyPrompts: {
       type: 'array',
       items: {
@@ -230,6 +243,18 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           'Called when the user resolves an action-required approval. The complete\nresolution payload is forwarded unchanged. When an adapter is also wired,\nChat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and\nuses this callback only when the adapter does not implement that method.',
+      },
+      {
+        name: 'uploadAttachment',
+        reason: 'function-or-snippet',
+        description:
+          "Uploads each file the person attaches, as soon as it is attached. The attachment shows `uploading`, Send waits for every upload, and the hook's reference rides on the submitted attachment.",
+      },
+      {
+        name: 'formatAttachmentError',
+        reason: 'function-or-snippet',
+        description:
+          'The words shown for an attachment in the `error` state: too large, a type not accepted, or a failed upload.',
       },
       {
         name: 'onAttachmentAdd',

@@ -3,20 +3,20 @@
  * memory's lineage, and forgetting and correcting.
  *
  * Every case seeds its memory with a scripted chat turn. The host has one memory writer, the
- * persist hook of a run, so a memory comes from an agent answering in a chat; the `echo` agent
- * (`echo-agent.ts`) answers with what it was sent, so a case that sends a unique label stores a
+ * persist hook of a run, so a memory comes from an agent answering in a chat; the `echo-text` agent
+ * (`text-echo-agent.ts`) answers with what it was sent, so a case that sends a unique label stores a
  * memory that is its own, whatever the seeded agents' fixed replies have stored in the same run.
  */
 import type { Page } from '@playwright/test';
 
 import { MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
-import { ECHO_AGENT_NAME, ECHO_SOLO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
+import { TEXT_ECHO_AGENT_NAME, TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 1280] as const;
 
-const MEMORY_PATH = `/agents/${ECHO_AGENT_NAME}/memory`;
+const MEMORY_PATH = `/agents/${TEXT_ECHO_AGENT_NAME}/memory`;
 
 /** A label no other case stores: it is both what the agent is sent and what it remembers. */
 const uniqueLabel = (prefix: string) => `${prefix} ${crypto.randomUUID().slice(0, 8)}`;
@@ -40,8 +40,13 @@ test.describe('the memory page', () => {
   }) => {
     const label = uniqueLabel('Window seat');
     const threadId = newThreadId('memory');
-    await runToEnd(request, ECHO_AGENT_NAME, threadId, label);
-    await runToEnd(request, ECHO_AGENT_NAME, newThreadId('memory-other'), uniqueLabel('Aisle'));
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, threadId, label);
+    await runToEnd(
+      request,
+      TEXT_ECHO_AGENT_NAME,
+      newThreadId('memory-other'),
+      uniqueLabel('Aisle'),
+    );
 
     await page.goto(MEMORY_PATH);
 
@@ -81,9 +86,14 @@ test.describe('the memory page', () => {
 
   test('forgets a memory and no longer lists it', async ({ page, request }) => {
     const label = uniqueLabel('Forget me');
-    await runToEnd(request, ECHO_AGENT_NAME, newThreadId('memory-forget'), label);
+    await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-forget'), label);
     // A second memory keeps the agent from being empty when this one goes.
-    await runToEnd(request, ECHO_AGENT_NAME, newThreadId('memory-keep'), uniqueLabel('Keep me'));
+    await runToEnd(
+      request,
+      TEXT_ECHO_AGENT_NAME,
+      newThreadId('memory-keep'),
+      uniqueLabel('Keep me'),
+    );
     await page.goto(MEMORY_PATH);
     await openDetails(page, label);
 
@@ -103,8 +113,8 @@ test.describe('the memory page', () => {
     request,
   }) => {
     const label = uniqueLabel('Only memory');
-    await runToEnd(request, ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
-    await page.goto(`/agents/${ECHO_SOLO_AGENT_NAME}/memory`);
+    await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
     await openDetails(page, label);
 
     await detailOf(page).getByRole('button', { name: MEMORY_COPY.forget.action }).click();
@@ -118,7 +128,7 @@ test.describe('the memory page', () => {
     ).toBeVisible();
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
     // Opening the page again asks the Bureau again, and the agent is empty.
-    await page.goto(`/agents/${ECHO_SOLO_AGENT_NAME}/memory`);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
     await expect(frame(page)).toHaveAttribute('data-state', 'empty');
   });
 
@@ -142,7 +152,7 @@ test.describe('the memory page', () => {
   });
 
   test('is reached from the agent’s own page', async ({ page }) => {
-    await page.goto(`/agents/${ECHO_AGENT_NAME}`);
+    await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}`);
 
     await page.getByRole('link', { name: MEMORY_COPY.link }).click();
 
@@ -164,7 +174,7 @@ for (const width of WIDTHS) {
     }) => {
       const original = uniqueLabel(`Original at ${width}`);
       const correction = uniqueLabel(`Correction at ${width}`);
-      await runToEnd(request, ECHO_AGENT_NAME, newThreadId('memory-correct'), original);
+      await runToEnd(request, TEXT_ECHO_AGENT_NAME, newThreadId('memory-correct'), original);
       await page.goto(MEMORY_PATH);
       await expect(frame(page)).toHaveAttribute('data-state', 'ready');
       await expect(rowOf(page, original)).toHaveCount(1);

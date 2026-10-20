@@ -41,6 +41,7 @@ import {
   mapAGUIEventsToChatStream,
   removeMessage,
   replaceToolResult,
+  type ChatAttachment,
   type ChatSessionRequest,
   type ChatSessionTransport,
   type ChatStreamEvent,
@@ -51,6 +52,12 @@ import type { ApprovalResolution } from '@lostgradient/cinder';
 import { HttpClientError } from '@lostgradient/weft';
 import { agUiConversationAdapter, mergeAGUIMessages } from 'conversationalist';
 
+import {
+  ASSET_FILE_PROVIDER,
+  ASSET_PART_EVENT_NAME,
+  ASSET_PARTS_METADATA_KEY,
+  type AssetPartReference,
+} from '../../lib/bureau-assets.ts';
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
 import { readEvents } from './ag-ui-events.ts';
 
@@ -122,6 +129,12 @@ export type ChatRunWiring = {
    * leaves the chat. Without it the end of the signal is a Stop, which cancels the Bureau's run.
    */
   detach(): void;
+  /**
+   * The assets the last turn announced that no terminal frame stamped on a row: a turn that ended
+   * in an error or a stop carries no history to stamp them on. Answers them once, and the caller
+   * puts them on the rows with {@link withAssetParts}.
+   */
+  drainAssets(): readonly AssetAnnouncement[];
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -258,18 +271,23 @@ function withApprovalRows(
  * call that is waiting on the user parked on its approval, and the person's answer to a question
  * left out. The run appends its own row for an answer (`ag-ui-resume.ts`), which is in the history
  * it ends with, so the row the person typed would be a second one, ahead of the call it answers.
+ * The assets the run announced are put on the rows that carry them, as a reloaded thread's
+ * snapshot has them.
  */
 async function* parkApprovals(
   frames: AsyncIterable<ChatStreamEvent>,
   interrupts: () => readonly Interrupt[],
   answerRowId: string | undefined,
+  announced: AssetAnnouncement[],
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
     if (frame.type !== 'run.completed') {
       yield frame;
       continue;
     }
-    const parked = withApprovalRows(frame.conversation, interrupts());
+    const parked = withAssetParts(withApprovalRows(frame.conversation, interrupts()), announced);
+    // Stamped, so nothing is left for the end of the turn to put on a row a second time.
+    announced.splice(0);
     yield {
       ...frame,
       conversation:
@@ -322,6 +340,133 @@ function resultFor(toolCallId: string, resolution: ApprovalResolution): ToolResu
   };
 }
 
+/** One `bureau.asset-part` event: an asset the assistant row `messageId` carries. */
+export type AssetAnnouncement = AssetPartReference & { readonly messageId: string };
+
+/** The announcement a `CUSTOM` event carries, or `undefined` for any other event. */
+function announcementOf(event: unknown): AssetAnnouncement | undefined {
+  if (!isRecord(event) || event['type'] !== 'CUSTOM' || event['name'] !== ASSET_PART_EVENT_NAME) {
+    return undefined;
+  }
+  const value = event['value'];
+  if (
+    !isRecord(value) ||
+    typeof value['messageId'] !== 'string' ||
+    typeof value['index'] !== 'number' ||
+    typeof value['assetId'] !== 'string' ||
+    typeof value['mediaType'] !== 'string'
+  ) {
+    return undefined;
+  }
+  return {
+    messageId: value['messageId'],
+    index: value['index'],
+    assetId: value['assetId'],
+    mediaType: value['mediaType'],
+  };
+}
+
+/**
+ * The conversation with each announced asset on the row that carries it, under
+ * {@link ASSET_PARTS_METADATA_KEY}, in part order: the key a reloaded thread's snapshot already
+ * holds, so a live row and a reloaded one are read the same way. An announcement for a row the
+ * conversation does not hold is dropped.
+ */
+export function withAssetParts(
+  conversation: ConversationHistory,
+  announced: readonly AssetAnnouncement[],
+): ConversationHistory {
+  if (announced.length === 0) return conversation;
+  const messages = { ...conversation.messages };
+  for (const messageId of new Set(announced.map((announcement) => announcement.messageId))) {
+    const message = messages[messageId];
+    if (message === undefined) continue;
+    const assets = announced
+      .filter((announcement) => announcement.messageId === messageId)
+      .map(({ index, assetId, mediaType }): AssetPartReference => ({ index, assetId, mediaType }))
+      .toSorted((left, right) => left.index - right.index);
+    messages[messageId] = {
+      ...message,
+      metadata: { ...message.metadata, [ASSET_PARTS_METADATA_KEY]: assets },
+    };
+  }
+  return { ...conversation, messages };
+}
+
+/** The AG-UI part type an attachment of `mimeType` is sent as. A text file is a document. */
+function partTypeOf(mimeType: string): 'image' | 'audio' | 'video' | 'document' {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.startsWith('audio/')) return 'audio';
+  if (mimeType.startsWith('video/')) return 'video';
+  return 'document';
+}
+
+/** The AG-UI parts for the attachments that finished uploading, each naming its asset. */
+function attachmentParts(attachments: readonly ChatAttachment[]): Record<string, unknown>[] {
+  return attachments.flatMap((attachment) => {
+    const { reference } = attachment;
+    if (attachment.status !== 'ready' || reference === undefined) return [];
+    if (attachment.restoreText !== undefined) return [];
+    const mimeType =
+      reference.mimeType ?? (attachment.file.type === '' ? undefined : attachment.file.type);
+    return [
+      {
+        type: partTypeOf(mimeType ?? ''),
+        source: {
+          type: 'file',
+          provider: ASSET_FILE_PROVIDER,
+          value: reference.id,
+          ...(mimeType === undefined ? {} : { mimeType }),
+        },
+      },
+    ];
+  });
+}
+
+/** The identifiers of the assets a message's content already names. */
+function namedAssets(content: unknown): ReadonlySet<string> {
+  if (!Array.isArray(content)) return new Set();
+  return new Set(
+    content.flatMap((part): string[] => {
+      const source: unknown = isRecord(part) ? part['source'] : undefined;
+      return isRecord(source) && source['provider'] === ASSET_FILE_PROVIDER
+        ? [String(source['value'])]
+        : [];
+    }),
+  );
+}
+
+/**
+ * `messages` with the attachments' parts added to the message `openerId`, which keeps its text as
+ * a text part. A file the message already names (the chat page puts it on the row it appends) is
+ * not added twice. A message with no attachment to add is left as it is.
+ */
+function withAttachmentParts<T extends { id: string }>(
+  messages: readonly T[],
+  openerId: string | undefined,
+  attachments: readonly ChatAttachment[],
+): T[] {
+  if (openerId === undefined) return [...messages];
+  return messages.map((message) => {
+    if (message.id !== openerId) return message;
+    const content: unknown = Reflect.get(message, 'content');
+    const named = namedAssets(content);
+    const parts = attachmentParts(
+      attachments.filter((attachment) => !named.has(attachment.reference?.id ?? '')),
+    );
+    if (parts.length === 0) return message;
+    const lead =
+      typeof content === 'string'
+        ? content === ''
+          ? []
+          : [{ type: 'text', text: content }]
+        : Array.isArray(content)
+          ? content
+          : [];
+    return { ...message, content: [...lead, ...parts] };
+  });
+}
+
 export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWiring {
   const send = options.fetch ?? fetch;
   /** The interrupts the latest run ended on, read from its raw events. */
@@ -332,6 +477,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
   let detached = false;
+  /** The assets the turn on screen announced that no terminal frame has put on a row. */
+  let unstamped: AssetAnnouncement[] = [];
 
   /**
    * Stops the Bureau's run: a stop on this page ends this page's stream, and the run goes on
@@ -357,6 +504,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     events: AsyncIterable<unknown>,
     signal: AbortSignal,
     started: boolean,
+    announced: AssetAnnouncement[],
   ): AsyncGenerator<unknown> {
     let nativeRunId: string | undefined;
     let held: ReadonlySet<string> | undefined;
@@ -371,6 +519,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           // A run that has begun is waiting on nobody.
           options.onHumanRequests?.([]);
         }
+        const announcement = announcementOf(event);
+        if (announcement !== undefined) announced.push(announcement);
         const ended = interruptsOf(event);
         if (ended !== undefined) {
           interrupts = ended;
@@ -415,6 +565,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   function runInput(
     conversation: ConversationHistory,
     resume: ReturnType<typeof resumeFor>,
+    attachments: readonly ChatAttachment[],
   ): RunAgentInput {
     const base = {
       tools: [],
@@ -427,14 +578,24 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       return {
         ...base,
         runId: runIdFor(conversation.id, [], conversation.ids),
-        messages: agUiConversationAdapter.export(conversation),
+        messages: withAttachmentParts(
+          agUiConversationAdapter.export(conversation),
+          openingTurn(conversation)?.id,
+          attachments,
+        ),
       };
     }
     // The person's answer rides in the resume. As a message too it would be a second row, next to
     // the one the run appends for the answer.
     const opener = resume.answerRowId !== undefined ? undefined : openingTurn(conversation);
     const messages =
-      opener === undefined ? [] : agUiConversationAdapter.export(onlyRow(conversation, opener));
+      opener === undefined
+        ? []
+        : withAttachmentParts(
+            agUiConversationAdapter.export(onlyRow(conversation, opener)),
+            opener.id,
+            attachments,
+          );
     return {
       ...base,
       runId: runIdFor(
@@ -489,7 +650,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   } {
     const conversation = withoutHiddenRows(request.conversation);
     const resume = resumeFor(conversation);
-    const input = runInput(conversation, resume);
+    const input = runInput(conversation, resume, request.attachments);
     const events = untilAnswered(
       readEvents(() =>
         send(`${AG_UI_PATH}/agents/${encodeURIComponent(options.agentName())}/run`, {
@@ -511,15 +672,17 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ? startEvents(request)
         : { events: attachedStream, answerRowId: undefined };
     attached = undefined;
+    const announced: AssetAnnouncement[] = [];
+    unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
     const frames = mapAGUIEventsToChatStream(
-      observe(opened.events, request.signal, attachedStream === undefined),
+      observe(opened.events, request.signal, attachedStream === undefined, announced),
       {
         conversation: withoutHiddenRows(request.conversation),
       },
     );
-    return parkApprovals(frames, () => interrupts, opened.answerRowId);
+    return parkApprovals(frames, () => interrupts, opened.answerRowId, announced);
   };
 
   return {
@@ -581,6 +744,9 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     detach() {
       detached = true;
+    },
+    drainAssets() {
+      return unstamped.splice(0);
     },
     async discardAttach() {
       const dropped = attached;

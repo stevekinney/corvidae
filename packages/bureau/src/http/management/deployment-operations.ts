@@ -14,6 +14,7 @@
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import type { AgentMediaCapabilities } from '../../agent-catalog.ts';
 import { mayDiscloseUnpublishedAgents } from '../agent-access.ts';
 import type { BureauOwnershipHost } from '../owner-predicate.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
@@ -38,6 +39,8 @@ export type PublishedAgent = {
    * code-defined agent the `publish` allowlist does not name.
    */
   readonly publishState: 'published' | 'withdrawn' | 'unpublished';
+  /** What the agent's model takes in the way of media, or `null` when it names no model descriptor. */
+  readonly media: AgentMediaCapabilities | null;
 };
 
 /**
@@ -147,6 +150,15 @@ const agentsListOutput = z.object({
       definitionRevision: z.number().int().nonnegative(),
       kind: z.enum(['code', 'file']),
       publishState: z.enum(['published', 'withdrawn', 'unpublished']),
+      media: z
+        .object({
+          modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
+          mimeFamilies: z.array(z.string()),
+          mediaLimits: z.array(
+            z.object({ modality: z.string(), maxBytes: z.number().int().nonnegative() }),
+          ),
+        })
+        .nullable(),
     }),
   ),
 });
@@ -160,7 +172,7 @@ export const agentsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the agents the caller may see',
   description:
-    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), and `publishState`. A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
+    'Returns the agents the deployment publishes, in definition order: its `name` (the catalog key every other operation calls `agentName`), `displayName`, `description`, `definitionRevision`, `kind` (`code` for a code-defined agent, `file` for a persisted one), `publishState`, and `media` (what the agent’s model takes in the way of media, as `modalities`, `mimeFamilies` and per-part `mediaLimits`, or `null` when the agent names no model descriptor; for a routed agent, what every route takes). A code-defined agent is `published` when the `publish` allowlist names it, and any authenticated principal sees it then. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the code-defined agents the allowlist does not name, as `unpublished`; to anyone else those agents do not exist. A persisted agent (`bureau.agents.definitions.*`) is published by its own file. Any authenticated principal sees the published agents. A caller who owns the deployment’s agents or holds `bureau.agents:read` also sees the persisted agents that are ready and not published, as `withdrawn`; to anyone else those agents do not exist, as they do not in `bureau.agents.definitions.get`. An invalid agent file is not listed.',
   destructive: false,
   tags: ['Deployment'],
   inputSchema: agentsListInput,
@@ -185,6 +197,7 @@ export const agentsListOperation = defineOperation<
         definitionRevision: agent.definitionRevision,
         kind: agent.kind,
         publishState: agent.publishState,
+        media: agent.media,
       })),
   }),
 });

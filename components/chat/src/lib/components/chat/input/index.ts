@@ -5,5 +5,11 @@ export {
   serializeChatAttachments,
   type SerializedChatAttachment,
 } from './chat-attachment-serialization.ts';
-export type { ChatAttachment } from './chat-attachment.ts';
+export type {
+  ChatAttachment,
+  ChatAttachmentErrorFormatter,
+  ChatAttachmentFailure,
+  ChatAttachmentReference,
+  ChatAttachmentUpload,
+} from './chat-attachment.ts';
 export { default as ChatInput } from './chat-input.svelte';

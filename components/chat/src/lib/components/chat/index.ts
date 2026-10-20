@@ -170,7 +170,15 @@ export {
   serializeChatAttachment,
   serializeChatAttachments,
 } from './input/index.ts';
-export type { AttachmentKind, ChatAttachment, SerializedChatAttachment } from './input/index.ts';
+export type {
+  AttachmentKind,
+  ChatAttachment,
+  ChatAttachmentErrorFormatter,
+  ChatAttachmentFailure,
+  ChatAttachmentReference,
+  ChatAttachmentUpload,
+  SerializedChatAttachment,
+} from './input/index.ts';
 
 // Message
 export {

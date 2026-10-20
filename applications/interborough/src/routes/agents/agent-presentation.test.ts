@@ -10,6 +10,7 @@ const agent = (publishState: AgentSummary['publishState']): AgentSummary => ({
   definitionRevision: 1,
   kind: 'file',
   publishState,
+  media: null,
 });
 
 describe('an agent as the agents views show it', () => {

@@ -42,7 +42,11 @@ import {
   type BureauEventsOperationHost,
   defineBureauEventsSubscriptionOperation,
 } from '../bureau-events-operation.ts';
-import type { AgentDefinitions, BureauAgentCatalog } from '../agent-catalog.ts';
+import {
+  type AgentDefinitions,
+  type BureauAgentCatalog,
+  mediaCapabilitiesOf,
+} from '../agent-catalog.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
@@ -554,6 +558,7 @@ function publishedAgentsOf(
         description: agent.description ?? null,
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: publish.includes(listing.id) ? 'published' : 'unpublished',
+        media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
       },
     ];
   });
@@ -569,6 +574,7 @@ function publishedAgentsOf(
         description: listing.description,
         definitionRevision: readGenerationProfile(agent as never).revision,
         publishState: listing.published ? 'published' : 'withdrawn',
+        media: mediaCapabilitiesOf(readGenerationProfile(agent as never).descriptors),
       },
     ];
   });
