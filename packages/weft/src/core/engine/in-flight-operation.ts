@@ -90,5 +90,8 @@ export function captureInFlightActivityTurn(
   const turn = internals.inlineStrategy?.waitForWorkflowTurn(workflowId);
   if (turn === undefined) return undefined;
   const deferred = new Promise<void>((resolve) => record.deferralListeners.push(resolve));
-  return Promise.race([turn, deferred]);
+  const captured = Promise.race([turn, deferred]);
+  // A termination that fails to commit never awaits this, and the turn it follows may reject.
+  captured.catch(() => {});
+  return captured;
 }
