@@ -5,7 +5,12 @@ import {
   mergeHookRegistries,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
-import type { GovernedMemory, MemoryAuthority, MemoryCapability } from '@lostgradient/memory';
+import type {
+  GovernedMemory,
+  MemoryAuthority,
+  MemoryCapability,
+  MemoryWriteReceipt,
+} from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
 import type {
   AgentInput,
@@ -142,11 +147,13 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
+  resolveRunMemoryOwner,
   resolveSessionOwner,
   SessionOwnerConflictError,
 } from './session-authority';
@@ -674,6 +681,32 @@ export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Obje
 ]);
 
 /**
+ * COR-1546 — who a run's memory belongs to. Memory is partitioned by the Bureau's deployment
+ * (`tenantId`) and the run's owner of record (`ownerId`), the same pair `bureau.memory.*` builds
+ * its authority from, so what a chat run remembers is what its owner's own operations list. It is
+ * never the request authority's `tenantId` and `ownerId`: those are the tool-execution authority,
+ * and a run that states none gets the agent's name as its owner (`normalizeRunRequestContext`).
+ */
+export type RunMemoryIdentity = {
+  readonly runId: string;
+  /** The Bureau's identifier, which is the tenant memory is partitioned under. */
+  readonly tenantId: string;
+  /** The run's owner of record: `anonymous:local` when none was recorded. */
+  readonly ownerId: string;
+};
+
+/**
+ * COR-1546 — where a run's memory is kept: the agent's identifier is the collection, so an agent
+ * remembers across every chat its owner has with it, and the session that produced a record is
+ * written into the record's `metadata`.
+ */
+export type RunMemoryTarget = {
+  /** The agent's identifier. */
+  readonly collection: string;
+  readonly sessionId: string;
+};
+
+/**
  * COR-41 — the memory authority a run acts under, derived from its persisted
  * request authority. The delegation chain runs from Bureau (holding the
  * deployment's `runCapabilities`) through the request principal to the run, so
@@ -683,7 +716,7 @@ export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Obje
  */
 export function createRunMemoryAuthority(
   requestContext: ToolRequestContext,
-  run: { readonly runId: string },
+  run: RunMemoryIdentity,
   options: BureauMemoryAuthorityOptions = {},
 ): MemoryAuthority {
   const deployment = options.runCapabilities ?? DEFAULT_RUN_MEMORY_CAPABILITIES;
@@ -697,8 +730,8 @@ export function createRunMemoryAuthority(
       : deployment.filter((capability) => requested.includes(capability));
   return createMemoryAuthority({
     principal: { kind: 'run', id: run.runId },
-    tenantId: requestContext.authority.tenantId,
-    ownerId: requestContext.authority.ownerId,
+    tenantId: run.tenantId,
+    ownerId: run.ownerId,
     purpose: options.purpose ?? 'conversation-memory',
     capabilities: granted,
     policyRevision: requestContext.authority.authorizationRevision,
@@ -1155,7 +1188,7 @@ function redactProvider(provider: ProviderConfiguration): RedactedProviderConfig
 export function createMemoryRecallHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
-  sessionId: string,
+  target: RunMemoryTarget,
 ): PrepareStepHook {
   return async (context) => {
     if (context.step !== 0) {
@@ -1173,7 +1206,7 @@ export function createMemoryRecallHook(
     }
 
     const bundle = await memory.recallForModel(authority, query, {
-      collection: sessionId,
+      collection: target.collection,
       limit: 5,
       contextId: authority.principal.id,
     });
@@ -1183,8 +1216,8 @@ export function createMemoryRecallHook(
     }
 
     context.conversation.appendSystemMessage(bundle.rendered, {
-      memoryEvidence: {
-        sessionId,
+      [MEMORY_EVIDENCE_METADATA_KEY]: {
+        sessionId: target.sessionId,
         recordIds: bundle.evidence.map((item) => item.id),
         withheld: bundle.withheld,
       },
@@ -1226,8 +1259,14 @@ export function createMemoryRecallHook(
 export function createMemoryPersistHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
-  sessionId: string,
+  target: RunMemoryTarget,
   runId?: string,
+  /**
+   * Told of a write governed memory rejected (a quota, a content rule, a missing capability), which
+   * stores no record and so leaves nothing else to say the answer was not remembered (COR-1546).
+   * Receives the receipt, which names a reason and never the content.
+   */
+  onRejected?: (receipt: MemoryWriteReceipt) => void,
 ): OnStepHook {
   return async (context) => {
     if (!context.final || !context.content.trim()) {
@@ -1239,16 +1278,23 @@ export function createMemoryPersistHook(
     // produce a second record.
     const dedupeKey = runId === undefined ? undefined : `${runId}:${context.step}`;
 
-    await memory.write(authority, context.content, {
-      collection: sessionId,
+    const receipt = await memory.write(authority, context.content, {
+      collection: target.collection,
       source: 'conversation',
       memoryClass: 'episodic',
       // Replay classification (seam #11): an external write → `effectful`, kept
       // safe across a recovery re-fire by the atomic dedupeKey write. Metadata
-      // only; never gates execution.
-      metadata: { step: context.step, replay: 'effectful' satisfies HookReplayPolicy },
+      // only; never gates execution. The collection is the agent, so no record or
+      // event names the chat that produced it any more (COR-1546): `sessionId` is how
+      // the Memory page shows where a memory came from.
+      metadata: {
+        step: context.step,
+        replay: 'effectful' satisfies HookReplayPolicy,
+        sessionId: target.sessionId,
+      },
       ...(dedupeKey === undefined ? {} : { dedupeKey }),
     });
+    if (receipt.status === 'rejected') onRejected?.(receipt);
   };
 }
 
@@ -2078,6 +2124,8 @@ export interface RuntimeComposition {
        * is composed around them exactly as it is around the Bureau-wide runtime.
        */
       sessionAgent?: SessionAgentRun | undefined;
+      /** COR-1546 — the run's owner of record, which its memory is partitioned under. */
+      memoryOwner?: string | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -2809,6 +2857,12 @@ async function buildRuntimeComposition(
 
   const memory: GovernedMemory | undefined = options.memory;
   await memory?.init();
+  // COR-1546 — the tenant a run's memory is partitioned under. `createBureau` passes its resolved
+  // identifier, so `bureau.memory.*`, which builds its authority from `Bureau.id`, reads what the
+  // runs wrote. A composition built on its own with no identifier gets one of its own.
+  let generatedMemoryTenantId: string | undefined;
+  const memoryTenantId = (): string =>
+    options.id ?? (generatedMemoryTenantId ??= runtimeServices.identifiers.next('bureau'));
 
   // A run's skills come from a catalog revision, and only from one. COR-892 removed Bureau's
   // second path — a provider it read skills out of directly — because a skill admitted that way
@@ -3112,6 +3166,14 @@ async function buildRuntimeComposition(
        * applies.
        */
       sessionAgent?: SessionAgentRun | undefined;
+
+      /**
+       * COR-1546 — the run's owner of record, which its memory is partitioned under: the session's
+       * owner for a chat run, the schedule's for a fire, `anonymous:local` for a run no principal started
+       * (the owner of anything created with none stated). A caller that omits it
+       * gets the request authority's `ownerId`; `createBureau` always states it.
+       */
+      memoryOwner?: string | undefined;
     },
   ) {
     const liveStreaming = runtimeOptions?.liveStreaming ?? true;
@@ -3207,12 +3269,26 @@ async function buildRuntimeComposition(
       memory && requestContext
         ? createRunMemoryAuthority(
             requestContext,
-            { runId: request.runId ?? request.sessionId },
+            {
+              runId: request.runId ?? request.sessionId,
+              tenantId: memoryTenantId(),
+              // A caller that states no owner (a composition used directly) is partitioned by the request
+              // authority's own owner, so two requests never share one partition.
+              ownerId: ownerOrLocal(
+                runtimeOptions?.memoryOwner ?? requestContext.authority.ownerId,
+              ),
+            },
             options.memoryAuthority,
           )
         : undefined;
+    // COR-1546 — an agent remembers across every chat its owner has with it, so the collection is
+    // the agent's identifier and never the session's.
+    const memoryTarget: RunMemoryTarget = {
+      collection: request.agentName ?? requestContext?.agentId ?? defaultBureauAgentName,
+      sessionId: request.sessionId,
+    };
     if (memory && memoryAuthority) {
-      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, request.sessionId), {
+      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, memoryTarget), {
         id: 'bureau:memory-recall',
         // Recall admission records the read and can quarantine a poisoned
         // record; both are idempotent on a replayed step.
@@ -3220,7 +3296,15 @@ async function buildRuntimeComposition(
       });
       hooks.on(
         'onStep',
-        createMemoryPersistHook(memory, memoryAuthority, request.sessionId, request.runId),
+        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
+          diagnose({
+            level: 'warn',
+            scope: 'memory',
+            message:
+              `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
+              `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
+          }),
+        ),
         {
           id: 'bureau:memory-persist',
           // Writes to the memory store, so a replayed step writes again. The
@@ -3560,7 +3644,12 @@ async function buildRuntimeComposition(
         ...(agentName !== undefined ? { agentName } : {}),
         ...(requestContext ? { requestContext } : {}),
       },
-      { liveStreaming: false, initialActiveSkillRecords, sessionAgent },
+      {
+        liveStreaming: false,
+        initialActiveSkillRecords,
+        sessionAgent,
+        memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+      },
     );
 
     // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
@@ -4478,9 +4567,10 @@ async function buildRuntimeComposition(
     );
     const requestContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
 
+    // COR-1546 — the fire's run writes into the schedule owner's memory, not the scheduler's.
     const runRuntime = await createRunRuntime(
       { message: payloadText(scheduledInput.input), sessionId, runId, agentName, requestContext },
-      { liveStreaming: false, initialActiveSkillRecords },
+      { liveStreaming: false, initialActiveSkillRecords, memoryOwner: owner },
     );
 
     // COR-1596: a fire is offered `requestHumanInput` exactly as a `bureau.run()` run is, so a

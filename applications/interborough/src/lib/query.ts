@@ -46,6 +46,14 @@ export const queryKeys = {
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
   },
+  /** What an agent remembers (`bureau.memory.*`), under one agent's identifier. */
+  memory: {
+    /** Every query of one agent's memory, for the invalidation a forget or a correction needs. */
+    all: (agentId: string) => ['memory', agentId] as const,
+    list: (agentId: string) => ['memory', agentId, 'list'] as const,
+    search: (agentId: string, query: string) => ['memory', agentId, 'search', query] as const,
+    detail: (agentId: string, id: string) => ['memory', agentId, 'detail', id] as const,
+  },
   agents: {
     list: () => ['agents', 'list'] as const,
     /** Every agent definition, invalid files included (`bureau.agents.definitions.list`). */
@@ -174,6 +182,32 @@ export const queryKeys = {
       ['catalog', 'diagnostics', name, revision] as const,
   },
 } as const;
+
+/**
+ * The filter for every list and search of one agent's memory, which any change makes stale, and
+ * not the details of one memory: a memory that was forgotten has none to read again, and asking
+ * would answer the page's own outcome with "not found".
+ */
+export function memoryListingsFilter(agentId: string): {
+  readonly queryKey: readonly unknown[];
+  readonly predicate: (query: { readonly queryKey: readonly unknown[] }) => boolean;
+} {
+  return {
+    queryKey: ['memory', agentId],
+    predicate: (query) => query.queryKey[2] !== 'detail',
+  };
+}
+
+/** The route of an agent's memory page, which the Agents view's frame probes differently from the agent's own. */
+export const AGENT_MEMORY_PATTERN = '/agents/:id/memory';
+
+/**
+ * The instance the Agents view's frame keys the memory page's probe under, apart from the agent's
+ * own page's: the two ask different questions about the same `:id`.
+ */
+export function agentMemoryViewInstance(agentId: string): string {
+  return `memory:${agentId}`;
+}
 
 /**
  * The instance a view frame keys its probe under for one workflow type's route, so the page that

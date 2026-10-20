@@ -26,6 +26,7 @@ import {
   mergeAGUIMessages,
 } from 'conversationalist';
 
+import { MEMORY_EVIDENCE_METADATA_KEY } from '../memory-evidence-metadata.ts';
 import { assetPartsOf } from './ag-ui-asset-parts.ts';
 import { ASSET_FILE_PROVIDER, ASSET_PARTS_METADATA_KEY } from './ag-ui-vocabulary.ts';
 
@@ -43,6 +44,27 @@ export function withoutReasoning(history: ConversationHistory): ConversationHist
     messages[id] = kept.length === message.content.length ? message : { ...message, content: kept };
   }
   return { ...history, messages };
+}
+
+/**
+ * A conversation without the rows a run's memory recall appended (COR-1546). Recalled memory is
+ * evidence for the model, labelled as such and wrapped in an envelope, and it is not part of the
+ * thread: a person who reads the transcript is not shown the envelope, and the Memory page is
+ * where what an agent remembers is read. The row stays in the stored conversation, so the next
+ * run's model still sees what the last one recalled.
+ */
+export function withoutMemoryEvidence(history: ConversationHistory): ConversationHistory {
+  const recalled = new Set(
+    history.ids.filter(
+      (id) => history.messages[id]?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] !== undefined,
+    ),
+  );
+  if (recalled.size === 0) return history;
+  const messages: Record<string, Message> = {};
+  for (const [id, message] of Object.entries(history.messages)) {
+    if (!recalled.has(id)) messages[id] = message;
+  }
+  return { ...history, ids: history.ids.filter((id) => !recalled.has(id)), messages };
 }
 
 /**
@@ -118,12 +140,15 @@ function withAssetFileSources(history: ConversationHistory): ConversationHistory
 }
 
 /**
- * The `messages` of a `MESSAGES_SNAPSHOT` for `history`, with no reasoning in it. It never throws
+ * The `messages` of a `MESSAGES_SNAPSHOT` for `history`, with no reasoning in it and none of the
+ * rows a run's memory recall appended. It never throws
  * for a part the AG-UI mapping cannot carry (COR-713): an assistant row keeps its text, and should
  * any other row still be refused, every row is reduced to its text.
  */
 export function snapshotMessages(history: ConversationHistory): AgUiMessage[] {
-  const visible = withAssetFileSources(withoutReasoning(withAssetPartsInMetadata(history)));
+  const visible = withAssetFileSources(
+    withoutReasoning(withAssetPartsInMetadata(withoutMemoryEvidence(history))),
+  );
   try {
     return agUiConversationAdapter.export(textOnly(visible, new Set(['assistant'])));
   } catch {
@@ -164,7 +189,19 @@ export function rowsAddedBy(history: ConversationHistory, messages: ReadonlyArra
   const known = new Set(history.ids);
   return merged.ids
     .filter((id) => !known.has(id))
-    .map((id) => withManagedAssetSources(merged.messages[id]!));
+    .map((id) => withoutReservedMetadata(withManagedAssetSources(merged.messages[id]!)));
+}
+
+/**
+ * The row without the metadata only the server may set. A client's message carries whatever
+ * `metadata` it sends, and `memoryEvidence` marks the row a run's memory recall appended: left on
+ * a client's row, it would hide that row from the thread's snapshot while the model still read it
+ * (COR-1546). Every row that enters from a client comes through here, so only the recall hook sets it.
+ */
+function withoutReservedMetadata(row: Message): Message {
+  if (row.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] === undefined) return row;
+  const { [MEMORY_EVIDENCE_METADATA_KEY]: _reserved, ...metadata } = row.metadata;
+  return { ...row, metadata };
 }
 
 /** The ids of the managed assets `rows` name, in order, each once. */

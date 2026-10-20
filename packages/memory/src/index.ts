@@ -223,6 +223,8 @@ export {
   memoryAuthorityFromToolRequestContext,
   requestPrincipal,
 } from './governance/authority';
+// The deterministic embedder that needs no model, and the dimension it produces.
+export { HASHING_EMBEDDER_DIMENSION, createHashingEmbedder } from './hashing-embedder';
 // Capability, operation, principal-kind, and projection vocabularies are public constants.
 export {
   MEMORY_ADMINISTRATIVE_CAPABILITIES,

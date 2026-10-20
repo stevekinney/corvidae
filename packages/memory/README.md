@@ -1572,7 +1572,7 @@ A record's trust comes from the policy's `sourceTrust` for its source (`MEMORY_T
 | Method | Returns |
 | --- | --- |
 | `get(authority, locator)` | One `GovernedMemoryRecord`, or `undefined`. A `MemoryRecordLocator` is `{ id, collection, visibility?, ownerId? }`; `visibility` defaults to `private` and `ownerId` to the caller's. |
-| `list(authority, { collection, visibility?, limit?, offset? })` | Readable records newest first, 100 by default. `visibility` defaults to `all`: the caller's private collection plus the shared one. |
+| `list(authority, { collection, visibility?, limit?, offset? })` | Readable records newest first, 100 by default. `visibility` defaults to `all`: the caller's private collection plus the shared one. A record that supersession or consolidation took out of active use stays stored and `get` still reads it, but only a caller holding `memory:inspect` sees it listed, as with a quarantined or revoked one. |
 | `search(authority, query, { collection, visibility?, limit?, memoryClass? })` | `{ record, score }` hits, 10 by default, ranked as 0.7 × vector similarity + 0.3 × text score, times the record's retrieval weight. Quarantined, revoked, superseded, and index-invalidated records never rank. |
 | `recallForModel(authority, query, { ...searchOptions, contextId? })` | A `MemoryEvidenceBundle`: `{ operationId, evidence, withheld, rendered }`, 5 records by default. |
 | `export(authority, { collection, visibility? })` | `{ status, exportId, records, recordIds }`: every readable record in the collection. It stores an export manifest in the ledger, then reads every exported record again and leaves out, and scrubs from the manifest, any record a deletion removed or claimed meanwhile. |
@@ -1620,8 +1620,8 @@ A record leaves `active` only once: no transition makes a quarantined or revoked
 | --- | --- | --- |
 | `active-context-eviction` | `memory:search` | Records the listed records as evicted from one `contextId` for the caller's owner. Only `recallForModel()` calls with that `contextId` stop returning them. Nothing is changed for anyone else. |
 | `retrieval-demotion` | `memory:write` | Sets the record's retrieval weight to `weight`, which must be at least 0 and below 1. Any other weight is `rejected` with `invalid-weight`. |
-| `consolidation` | `memory:write` | Admits `content` as a `semantic` summary derived from at least two records. Fewer inputs are `rejected` with `needs-two-inputs`, and a summary that write admission rejects is `rejected` with the write's own reason. When the summary is admitted, the inputs are superseded by it. A quarantined summary stays stored and leaves them in use, and the result is still `applied`, with the quarantined write in `write`. |
-| `supersession` | `memory:write` | Admits the `successor` and then marks the record superseded. It stays stored for history and leaves active use. Supersession starts a retention clock only for a class whose rule is `until-superseded`, which by default covers `semantic` and `procedural` and expires them 90 days later. Every other class keeps its own rule, so an `episodic` record still expires 90 days after `eventAt`. A record already superseded is `rejected` with `superseded`. A successor that write admission does not admit is `rejected` with `successor-not-admitted`, and `write` has its receipt. A quarantined successor is still stored, quarantined, while the original stays active. `consolidation` treats a quarantined summary the same way but reports it `applied`. |
+| `consolidation` | `memory:write` | Admits `content` as a `semantic` summary derived from at least two records. Fewer inputs are `rejected` with `needs-two-inputs`, and a summary that write admission rejects is `rejected` with the write's own reason. When the summary is admitted, the inputs are superseded by it. A quarantined summary stays stored and leaves them in use, and the result is still `applied`, with the quarantined write in `write`. An input already superseded by another caller makes the consolidation `rejected` with `superseded`: it withdraws its summary and gives back the inputs it had marked. |
+| `supersession` | `memory:write` | Admits the `successor` and then marks the record superseded. It stays stored for history and leaves active use. Supersession starts a retention clock only for a class whose rule is `until-superseded`, which by default covers `semantic` and `procedural` and expires them 90 days later. Every other class keeps its own rule, so an `episodic` record still expires 90 days after `eventAt`. A record already superseded is `rejected` with `superseded`. A successor that write admission does not admit is `rejected` with `successor-not-admitted`, and `write` has its receipt. A quarantined successor is still stored, quarantined, while the original stays active. `consolidation` treats a quarantined summary the same way but reports it `applied`. The marking is a compare-and-swap that declines a record already superseded, so of two concurrent supersessions one is `rejected` with `superseded` and withdraws the successor it admitted. |
 | `quarantine` | `memory:quarantine` | The same as `quarantine()`. |
 | `source-deletion` | `memory:delete` | Deletes source evidence and everything derived from it, with a receipt. A derived record is rejected with `not-source-evidence`. |
 | `projection-deletion` | `memory:delete` | Deletes one derived record, with a receipt. Records derived from it are not deleted and keep their lineage, so deleting their source later still reaches them. Only a hold on the record itself holds this deletion. A source record is rejected with `not-a-projection`. |
@@ -1774,6 +1774,14 @@ No `reason` carries a diagnostic, a policy detail, or another principal's data, 
 ## Testing
 
 The root API includes deterministic test helpers and the storage contract harness.
+
+### Hashing embedder
+
+```typescript
+import { createHashingEmbedder, HASHING_EMBEDDER_DIMENSION } from '@lostgradient/memory';
+```
+
+**`createHashingEmbedder()`:** Returns a deterministic `Embedder` that makes no network call and needs no model, so it runs where no model provider is configured. It hashes a text's words and word pairs into `HASHING_EMBEDDER_DIMENSION` (256) dimensions and normalizes the result to unit length, so two texts that share vocabulary have a positive cosine similarity. It is lexical, not semantic: it knows nothing of synonyms, and a deployment that wants meaning supplies a provider-backed embedder instead. An empty text embeds as the zero vector. `createMockEmbedder` is the test helper and stays one.
 
 ### Test utilities
 
