@@ -1,6 +1,6 @@
 /**
  * Contract tests for `fixtures/engine-console.ts` (COR-1461, COR-1462, COR-1463), run against a REAL
- * `Engine`. `tests/e2e/30-run-attributes-streams-updates.spec.ts` assumes the seed produces three
+ * `Engine`. `tests/e2e/32-run-attributes-streams-updates.spec.ts` assumes the seed produces three
  * states: a run whose attributes are of every type the console edits, a run with three stored stream
  * chunks, and a run whose update history holds one completed and one failed update, with a `slow`
  * handler that outlasts a one-second wait. If any of that stops being true the spec fails on a UI

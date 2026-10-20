@@ -1,6 +1,6 @@
 /**
  * `update-desk`'s `slow` update (`fixtures/engine-console.ts`) really takes seconds to answer, which is
- * the point of it: `tests/e2e/30-run-attributes-streams-updates.spec.ts` sends it with a one-second
+ * the point of it: `tests/e2e/32-run-attributes-streams-updates.spec.ts` sends it with a one-second
  * wait, sees the wait end, and then sees the answer land. This pins that behavior against a real
  * `Engine`, in the slow lane, because the handler's delay is real time. Nothing here asserts on how
  * long anything takes.
