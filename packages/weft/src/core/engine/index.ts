@@ -3082,7 +3082,7 @@ export class Engine<
   async listUpdateHistory(
     workflowId: string,
     options?: { limit?: number; cursor?: string },
-  ): Promise<import('../updates.ts').UpdateHistoryPage> {
+  ): Promise<import('../update-history.ts').UpdateHistoryPage> {
     return listUpdateHistoryFromInternals(getInternals(this), workflowId, options);
   }
   async submitCoordinatedUpdate(
