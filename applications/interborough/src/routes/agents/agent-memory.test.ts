@@ -307,6 +307,77 @@ describe('one memory’s lineage', () => {
     expect(loading.getAttribute('aria-busy')).toBe('true');
   });
 
+  test('opens the memory that corrected this one from its “corrected by” link', async () => {
+    const served = bureau({
+      'bureau.memory.get': (params) =>
+        params['id'] === 'memory-aisle'
+          ? {
+              memory: AISLE,
+              lineage: { runId: null, corrects: null, correctedBy: 'memory-window' },
+            }
+          : {
+              memory: WINDOW,
+              lineage: { runId: null, corrects: 'memory-aisle', correctedBy: null },
+            },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    await fireEvent.click(
+      within(
+        within(detail).getByText(MEMORY_COPY.detail.fields.correctedBy, { selector: 'dt' })
+          .nextElementSibling as HTMLElement,
+      ).getByRole('button', { name: MEMORY_COPY.detail.openMemory }),
+    );
+
+    await waitFor(() => {
+      expect(served.callsTo('bureau.memory.get').map((call) => call.params['id'])).toEqual([
+        'memory-aisle',
+        'memory-window',
+      ]);
+    });
+    const opened = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    expect(
+      await within(opened).findByText(WINDOW.content, { selector: 'blockquote' }),
+    ).not.toBeNull();
+  });
+
+  test('follows the chat link inside the app, and leaves a modified click to the browser', async () => {
+    bureau();
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    const link = within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat });
+
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    expect(router.pathname).toBe('/agents/assistant/memory');
+    link.click();
+
+    expect(router.pathname).toBe('/chat/session-1');
+  });
+
+  test('tries a memory that could not be loaded again on request', async () => {
+    let failing = true;
+    const served = bureau({
+      'bureau.memory.get': () => {
+        if (failing) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
+        return { memory: AISLE, lineage: NO_LINEAGE };
+      },
+    });
+    const view = open();
+    await view.findByText(AISLE.content);
+    await fireEvent.click(view.getAllByRole('button', { name: /^Details/ })[0]!);
+    const failed = await view.findByText(MEMORY_COPY.detail.failed);
+    const region = failed.closest('section') as HTMLElement;
+    failing = false;
+
+    await fireEvent.click(within(region).getByRole('button', { name: RETRY_LABEL }));
+
+    expect(
+      await within(region).findByText(AISLE.content, { selector: 'blockquote' }),
+    ).not.toBeNull();
+    expect(served.callsTo('bureau.memory.get')).toHaveLength(2);
+  });
+
   test('says a memory was not found when it is gone, and when it cannot be loaded', async () => {
     bureau({
       'bureau.memory.get': () => {
