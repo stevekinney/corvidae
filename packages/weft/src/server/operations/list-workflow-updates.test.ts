@@ -130,6 +130,15 @@ describe('weft.workflows.updates.list', () => {
     expect(badLimit.status).toBe(400);
   });
 
+  it('says which paths record an update and which do not', () => {
+    const description = listWorkflowUpdatesOperation.description ?? '';
+
+    expect(description).toContain('weft.workflows.update');
+    expect(description).toContain('engine.submitCoordinatedUpdate()');
+    expect(description).toContain('MCP `update_workflow` tool');
+    expect(description).toContain('`engine.update()` or `handle.update()`');
+  });
+
   it('lists nothing for a workflow that has no history', async () => {
     await seed();
 

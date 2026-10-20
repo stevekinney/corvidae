@@ -4,6 +4,7 @@ import type { BatchOperation, Storage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
 import { MemoryStorage } from '../storage/memory.ts';
 import { sleepForTesting, waitForCondition } from '../testing/fake-timers.test-support.ts';
+import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   collectKeys,
   flush,
@@ -150,6 +151,36 @@ describe('UpdateCoordinator update history', () => {
     expect(exact.nextCursor).toBeUndefined();
     const unknown = await coordinator.listHistory('wf-unknown');
     expect(unknown.items).toEqual([]);
+  });
+
+  it('refuses a limit or a cursor the scan cannot honor, before it scans', async () => {
+    const coordinator = new UpdateCoordinator(new MemoryStorage());
+
+    for (const limit of [Number.NaN, 0, -1, 1.5, 201, Number.POSITIVE_INFINITY]) {
+      const refused = await throwingRejectionOf(coordinator.listHistory('wf-1', { limit }));
+      expect(refused).toThrow('options.limit must be an integer from 1 to 200');
+    }
+    const badCursor = await throwingRejectionOf(
+      coordinator.listHistory('wf-1', { cursor: 'not-a-cursor' }),
+    );
+    expect(badCursor).toThrow('options.cursor is not a cursor');
+
+    const engine = new Engine({ storage: new MemoryStorage() });
+    try {
+      const engineLimit = await throwingRejectionOf(
+        engine.listUpdateHistory('wf-1', { limit: Number.NaN }),
+      );
+      expect(engineLimit).toThrow('options.limit');
+      const engineCursor = await throwingRejectionOf(
+        engine.listUpdateHistory('wf-1', { cursor: '1:update-a' }),
+      );
+      expect(engineCursor).toThrow('options.cursor');
+      // The bounds themselves are fine.
+      const page = await engine.listUpdateHistory('wf-1', { limit: 200 });
+      expect(page.items).toEqual([]);
+    } finally {
+      engine[Symbol.dispose]();
+    }
   });
 
   it('recognises only a well-formed cursor', () => {

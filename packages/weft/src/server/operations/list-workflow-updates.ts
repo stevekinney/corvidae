@@ -62,7 +62,11 @@ export const listWorkflowUpdatesOperation = defineOperation({
     'outcome (`pending`, `completed`, or `failed` with the failure message). A result is not ' +
     'listed: read it with `weft.updates.result.get` while it is kept. The history is kept until ' +
     'the workflow is purged. The cursor is opaque; a workflow that is unknown or purged lists no ' +
-    'entries.',
+    'entries. An update is recorded when it is queued as a durable request: every update sent ' +
+    'with `weft.workflows.update` (REST and JSON-RPC) and `engine.submitCoordinatedUpdate()`. ' +
+    'It is not recorded when it is served without a request: the MCP `update_workflow` tool, and ' +
+    'an in-process `engine.update()` or `handle.update()` answered by a live handler or a parked ' +
+    'waiter, mint an id and write no entry.',
   destructive: false,
   tags: ['Updates'],
   inputSchema: listWorkflowUpdatesInput,

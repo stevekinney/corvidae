@@ -98,13 +98,37 @@ export function answeredHistoryOperation(
   };
 }
 
+/**
+ * Reject a limit or cursor the scan cannot honor, before it scans. A `NaN` limit would never equal the
+ * count of entries read, so the page would run to the end of the history; a fraction behaves the
+ * same way; a malformed cursor addresses an arbitrary position. The operation validates both at the
+ * wire, but `Engine.listUpdateHistory` is public.
+ */
+function assertValidHistoryOptions(options: { limit?: number; cursor?: string }): void {
+  const { limit, cursor } = options;
+  if (
+    limit !== undefined &&
+    (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_UPDATE_HISTORY_LIMIT)
+  ) {
+    throw new Error(
+      `listUpdateHistory options.limit must be an integer from 1 to ${MAX_UPDATE_HISTORY_LIMIT}, got ${limit}`,
+    );
+  }
+  if (cursor !== undefined && !isUpdateHistoryCursor(cursor)) {
+    throw new Error(
+      `listUpdateHistory options.cursor is not a cursor this history returned: ${cursor}`,
+    );
+  }
+}
+
 /** List a workflow's update history, newest first. */
 export async function listUpdateHistory(
   storage: Storage,
   workflowId: string,
   options: { limit?: number; cursor?: string } = {},
 ): Promise<UpdateHistoryPage> {
-  const limit = Math.min(options.limit ?? DEFAULT_UPDATE_HISTORY_LIMIT, MAX_UPDATE_HISTORY_LIMIT);
+  assertValidHistoryOptions(options);
+  const limit = options.limit ?? DEFAULT_UPDATE_HISTORY_LIMIT;
   const prefix = KEYS.updateHistoryPrefix(workflowId);
   const items: UpdateHistoryEntry[] = [];
   let lastKey: string | undefined;
