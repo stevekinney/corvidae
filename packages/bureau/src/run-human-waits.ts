@@ -188,7 +188,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   /** The waits {@link derive} read as a schedule fire's, which resolve through the engine. */
   const derivedFireWaits = new WeakSet<object>();
 
-  function reviewId(wait: Wait): string {
+  function reviewIdFor(wait: Wait): string {
     return `human-wait:${wait.runId}:${wait.signalName}:${wait.ordinal}`;
   }
 
@@ -229,7 +229,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   function toReview(wait: Wait): PendingHumanWaitReview {
     return {
       kind: 'human-wait',
-      id: reviewId(wait),
+      id: reviewIdFor(wait),
       runId: wait.runId,
       agentName: wait.agentName,
       ...(wait.sessionId === undefined ? {} : { sessionId: wait.sessionId }),
@@ -242,7 +242,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   }
 
   function pending(): Wait[] {
-    return [...liveWaits(), ...restored.values()].filter((wait) => !resolved.has(reviewId(wait)));
+    return [...liveWaits(), ...restored.values()].filter(
+      (wait) => !resolved.has(reviewIdFor(wait)),
+    );
   }
 
   function list(): PendingHumanWaitReview[] {
@@ -367,6 +369,19 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   ): Promise<void> {
     await restore(runId, target);
     observe(runId, target, services);
+  }
+
+  /**
+   * A review another process closed (COR-1613): this process's copy of the wait, restored or
+   * heard, is stale, and is hidden from its list as one resolved here is.
+   */
+  function closedElsewhere(reviewId: string): void {
+    for (const [runId, wait] of restored) {
+      if (reviewIdFor(wait) === reviewId) {
+        resolved.add(reviewId);
+        restored.delete(runId);
+      }
+    }
   }
 
   /** Drop everything held for a run, once it has settled. */
@@ -523,6 +538,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     has: (id: string) => find(id) !== undefined,
     holds,
     derive,
+    closedElsewhere,
     /** Whether a wait {@link derive} returned is a schedule fire's (COR-1613). */
     isDerivedFire: (review: PendingHumanWaitReview) => derivedFireWaits.has(review),
     attach,

@@ -6,13 +6,12 @@
  * Two Bureaus open one SQLite database under `workflow-lease` ownership, so each holds the fires
  * it started and the other sees them only through durable state.
  */
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
+import { stopWhen } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
   OWNER,
   readFrames,
-  rpc,
   subscribeRequest,
 } from './http/management/management-fixtures.test-support.ts';
 import {
@@ -91,11 +90,77 @@ describe('a peer answers a fire’s human wait', () => {
   }
 });
 
-void chargesOnce;
-void approvalToolbox;
-void handlerOf;
-void rpc;
-void readFrames;
-void subscribeRequest;
-void (undefined as unknown as GenerateFunction);
-void stopAtApproval;
+describe('a peer closing a fire’s last review ends the stream another instance serves', () => {
+  const peerOptions = {
+    generate: chargesOnce,
+    stopWhen: stopAtApproval,
+    durableOwnership: OWNERSHIP,
+    durableBackgroundTasks: 'automatic' as const,
+  };
+
+  /** A fire that settled holding a pending approval, and a peer that restored it from the session. */
+  async function holderAndPeer() {
+    const path = harness.nextDatabasePath();
+    const holderCharges: number[] = [];
+    const holder = await harness.open({
+      ...peerOptions,
+      toolbox: approvalToolbox(holderCharges),
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-stream-session');
+    const review = await reviewOf(holder, fireId);
+    await pollUntil(
+      async () => ((await durableStatus(holder, fireId)) === 'completed' ? true : undefined),
+      'the fire to end at its approval',
+    );
+    const peerCharges: number[] = [];
+    const peer = await harness.open({
+      ...peerOptions,
+      toolbox: approvalToolbox(peerCharges),
+      storage: await harness.sqliteStorage(path),
+    });
+    await reviewOf(peer, fireId);
+    return { holder, peer, fireId, review, holderCharges, peerCharges };
+  }
+
+  it('when the peer decides it, for a subscriber that connected while it waited', async () => {
+    const { holder, peer, fireId, review, peerCharges } = await holderAndPeer();
+    const reading = readFrames(
+      await handlerOf(holder)(
+        subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+      ),
+      { timeoutMs: 10_000 },
+    );
+    await sleep(100);
+
+    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    const frames = await reading;
+
+    expect(frames.map((frame) => (frame.data as { status?: string }).status)).toEqual([
+      'input-required',
+      'completed',
+    ]);
+    expect(peerCharges).toEqual([4242]);
+    // The holder dropped its own copy, so it lists nothing and cannot run the tool again.
+    expect(reviewsOf(holder, fireId)).toEqual([]);
+  });
+
+  it('when the peer’s sweep expires it', async () => {
+    const { holder, peer, fireId } = await holderAndPeer();
+    const reading = readFrames(
+      await handlerOf(holder)(
+        subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+      ),
+      { timeoutMs: 10_000 },
+    );
+    await sleep(100);
+
+    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    const frames = await reading;
+
+    expect(frames.map((frame) => (frame.data as { status?: string }).status)).toEqual([
+      'input-required',
+      'completed',
+    ]);
+  });
+});

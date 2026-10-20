@@ -306,7 +306,10 @@ const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
+  readonly tasks: Pick<
+    TaskRegistry,
+    'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged' | 'reviewClosedElsewhere'
+  >;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -325,6 +328,17 @@ const tasksEventsEnvelope = z.object({ subscriptionId: z.string(), cursor: z.str
 
 /** The cursor of the one element that ends a schedule fire's stream. */
 const FIRE_TERMINAL_CURSOR = encodeCursor(0);
+
+/** The durable event kinds that close a review (COR-1613). */
+const CLOSING_REVIEW_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'review.approved',
+  'review.denied',
+  'review.rejected',
+  'review.expired',
+  'review.revoked',
+  'review.canceled',
+  'review.superseded',
+]);
 
 const isTerminalStatus = (status: TaskView['status']): boolean =>
   status === 'completed' || status === 'failed' || status === 'canceled';
@@ -362,15 +376,22 @@ function followScheduleFire(
         };
   let unsubscribe: (() => void) | undefined;
   let unsubscribeChanged: (() => void) | undefined;
+  let unsubscribeHistory: (() => void) | undefined;
   let ended = false;
-  /** The status the stream last told, so a change is told once (COR-1596). */
-  let toldStatus: TaskView['status'] = task.status;
+  /**
+   * The status the stream last told, so a change is told once (COR-1596). A stream that resumes
+   * with the snapshot's cursor was told nothing by this connection, and may have missed a change
+   * while it was away, so the first status it reads is told (COR-1613).
+   */
+  let toldStatus: TaskView['status'] | undefined =
+    fromCursor === undefined ? task.status : undefined;
 
   const finish = (view: TaskView, settled: TaskRecord['settled']): void => {
     if (ended) return;
     ended = true;
     unsubscribe?.();
     unsubscribeChanged?.();
+    unsubscribeHistory?.();
     queue.push({
       kind: 'task.status',
       taskId,
@@ -432,6 +453,18 @@ function followScheduleFire(
           finish(view, settledRecord.settled);
         });
         unsubscribeChanged = host.tasks.onChanged(taskId, tellChange);
+        // A review another process closes is in the run's durable history, which is shared; this
+        // process drops its own stale copy and re-reads the task, so the end reaches this stream
+        // (COR-1613). The history replays what was closed before, which drops nothing it holds.
+        const subscription = host.taskHistory.subscribeEventHistory(
+          { kind: 'run', id: taskId },
+          (event) => {
+            const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
+            if (typeof reviewId !== 'string' || !CLOSING_REVIEW_EVENT_KINDS.has(event.kind)) return;
+            void host.tasks.reviewClosedElsewhere(taskId, reviewId).catch(() => undefined);
+          },
+        );
+        unsubscribeHistory = () => subscription.unsubscribe();
         const latest = await host.tasks.get(taskId);
         if (latest !== undefined && isTerminalStatus(latest.status)) {
           const latestRecord = await host.tasks.record(taskId);
@@ -455,6 +488,7 @@ function followScheduleFire(
         ended = true;
         unsubscribe?.();
         unsubscribeChanged?.();
+        unsubscribeHistory?.();
         queue.end();
       },
     },

@@ -3969,6 +3969,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
       // task too, so it holds the task at `input-required` and `respond` can answer it.
       pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
+      releaseClosedReview: async (taskId, reviewId) => {
+        // The peer that closed it pruned the session; only this process's copy is left.
+        runHumanWaits.closedElsewhere(reviewId);
+        if (scheduledFireApprovalRuns.has(taskId) && pendingApprovalOverrides.has(reviewId)) {
+          await releaseScheduledFireApproval(taskId, reviewId, 'resolved', { durablyPruned: true });
+        }
+      },
       currentIncarnation: async (contextId) => {
         const session = await runtime.sessionStore?.load(contextId);
         return session?.incarnation;
