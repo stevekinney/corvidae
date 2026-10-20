@@ -147,6 +147,57 @@ describe('StreamChunksView', () => {
     expect(requests).toHaveLength(2);
   });
 
+  test('reads a run that is already terminal when it opens once, and never polls', async () => {
+    jest.useFakeTimers();
+    for (const status of ['completed', 'failed', 'cancelled', 'timed-out'] as const) {
+      const { client, requests } = fakeClient([
+        [{ sequence: 0, value: 'a' }],
+        [{ sequence: 1, value: 'b' }],
+      ]);
+      const { container, unmount } = renderView(client, { status });
+      await settle();
+      await advance(20_000);
+
+      expect(requests).toHaveLength(1);
+      expect(sequences(container)).toEqual([0]);
+      unmount();
+    }
+  });
+
+  test('schedules no further poll when the run turns terminal while a read is in flight', async () => {
+    jest.useFakeTimers();
+    const release: { read: (() => void) | undefined } = { read: undefined };
+    const requests: unknown[] = [];
+    const client: StreamChunksClient = {
+      operations: {
+        'weft.workflows.streams.chunks': (input) => {
+          requests.push(input);
+          return new Promise((resolve) => {
+            release.read = () => resolve({ chunks: [{ sequence: 0, value: 'a' }] });
+          });
+        },
+      },
+    };
+    const { rerender, container } = renderView(client);
+    await settle();
+    expect(requests).toHaveLength(1);
+
+    // The run ends while the first read has not answered yet.
+    await rerender({
+      client,
+      workflowId: 'wf-1',
+      streamKey: 'progress',
+      status: 'completed',
+      onClose: () => {},
+    });
+    release.read?.();
+    await settle();
+    await advance(20_000);
+
+    expect(sequences(container)).toEqual([0]);
+    expect(requests).toHaveLength(1);
+  });
+
   test('stops polling when it is closed', async () => {
     jest.useFakeTimers();
     const { client, requests } = fakeClient([[{ sequence: 0, value: 'a' }], []]);
