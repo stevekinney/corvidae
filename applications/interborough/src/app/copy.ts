@@ -830,6 +830,13 @@ export const REVIEWS_COPY = {
   sendAnswer: 'Send answer',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
+  /** The labels on the parts of what an approval would run. */
+  operation: {
+    command: 'Command',
+    diff: 'Changes',
+    filesTouched: 'Files touched',
+    showWholeDiff: 'Show the whole diff',
+  },
   reasonFact: 'Reason',
   messageFact: 'Message',
   riskFact: 'Risk',
