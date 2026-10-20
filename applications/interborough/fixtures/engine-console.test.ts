@@ -8,7 +8,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { Engine, type WorkflowState } from '@lostgradient/weft';
+import { Engine } from '@lostgradient/weft';
 
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
@@ -18,7 +18,7 @@ import {
 import { ATTRIBUTE_SHOWCASE_ATTRIBUTES, seedEngineConsole } from './engine-console.ts';
 import { workflows } from './workflows.ts';
 
-let engines: Engine[] = [];
+let engines: AsyncDisposable[] = [];
 
 async function seededEngine() {
   const engine = await Engine.create({ workflows });
@@ -27,7 +27,10 @@ async function seededEngine() {
   return engine;
 }
 
-async function runOfType(engine: Engine, type: string): Promise<WorkflowState> {
+type SeededEngine = Awaited<ReturnType<typeof seededEngine>>;
+type Run = Awaited<ReturnType<SeededEngine['list']>>['items'][number];
+
+async function runOfType(engine: SeededEngine, type: string): Promise<Run> {
   const { items } = await engine.list({ type });
   const run = items[0];
   if (items.length !== 1 || run === undefined) {

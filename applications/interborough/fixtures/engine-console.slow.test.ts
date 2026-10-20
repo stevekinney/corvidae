@@ -12,7 +12,7 @@ import { Engine } from '@lostgradient/weft';
 import { seedEngineConsole } from './engine-console.ts';
 import { workflows } from './workflows.ts';
 
-let engines: Engine[] = [];
+let engines: AsyncDisposable[] = [];
 
 afterEach(async () => {
   const pending = engines;
