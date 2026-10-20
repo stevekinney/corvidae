@@ -136,7 +136,11 @@ describe('REST fault shaper regressions', () => {
       },
       { code: 'Unprocessable', message: 'Unprocessable', data: { reason: 'engine detail' } },
       { code: 'PayloadTooLarge', message: 'Too large', data: { maxBytes: 1024 } },
-      { code: 'Timeout', message: 'Timed out', data: { operationName: 'weft.workflows.update' } },
+      {
+        code: 'Timeout',
+        message: 'Timed out',
+        data: { operationName: 'weft.workflows.update', updateId: 'update-1' },
+      },
       { code: 'NotImplemented', message: 'Not implemented', data: {} },
       {
         code: 'UnsupportedTransport',
@@ -175,7 +179,10 @@ describe('REST fault shaper regressions', () => {
       },
       { error: 'Unprocessable' },
       { error: 'Too large', data: { maxBytes: 1024 } },
-      { error: 'Timed out', data: { operationName: 'weft.workflows.update' } },
+      {
+        error: 'Timed out',
+        data: { operationName: 'weft.workflows.update', updateId: 'update-1' },
+      },
       { error: 'Not implemented' },
       {
         error: 'Unsupported transport',

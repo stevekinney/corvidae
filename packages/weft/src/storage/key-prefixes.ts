@@ -69,6 +69,7 @@ export const WEFT_RESERVED_KEY_PREFIXES = [
   'tag:',
   'tool-effect:',
   'upd:',
+  'uph:',
   'upk:',
   'upr:',
   'watch-event:',

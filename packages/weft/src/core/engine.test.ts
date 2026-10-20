@@ -6285,8 +6285,16 @@ describe('Engine', () => {
     // Use the UpdateCoordinator to create a request and response
     const { UpdateCoordinator } = await import('./updates.ts');
     const coordinator = new UpdateCoordinator(storage);
-    const updateId = await coordinator.createRequest('wf-poll', 'setName', { name: 'Alice' });
-    const operations = coordinator.buildResponseOperations(updateId, 'wf-poll', { accepted: true });
+    const request = await coordinator.submitRequest('wf-poll', 'setName', { name: 'Alice' });
+    const { updateId } = request;
+    const operations = coordinator.buildResponseOperations(
+      updateId,
+      'wf-poll',
+      { accepted: true },
+      undefined,
+      undefined,
+      { name: request.name, receivedAt: request.createdAt },
+    );
     await storage.batch(operations);
 
     const result = await engine.getUpdateResult(updateId);
@@ -6318,9 +6326,14 @@ describe('Engine', () => {
       while (control.active) {
         const pending = await coordinator.getPendingUpdates('upd-wf');
         for (const updateRequest of pending) {
-          const operations = coordinator.buildResponseOperations(updateRequest.updateId, 'upd-wf', {
-            processed: true,
-          });
+          const operations = coordinator.buildResponseOperations(
+            updateRequest.updateId,
+            'upd-wf',
+            { processed: true },
+            undefined,
+            undefined,
+            { name: updateRequest.name, receivedAt: updateRequest.createdAt },
+          );
           await storage.batch(operations);
         }
         await sleepForTesting(10);
@@ -6353,7 +6366,7 @@ describe('Engine', () => {
     const coordinator = new UpdateCoordinator(storage);
 
     // Set up a completed update with an idempotency key
-    const updateId = await coordinator.createRequest(
+    const request = await coordinator.submitRequest(
       'idem-wf',
       'setName',
       { name: 'Alice' },
@@ -6361,12 +6374,14 @@ describe('Engine', () => {
         idempotencyKey: 'unique-key',
       },
     );
+    const { updateId } = request;
     const operations = coordinator.buildResponseOperations(
       updateId,
       'idem-wf',
       { accepted: true },
       undefined,
       'unique-key',
+      { name: request.name, receivedAt: request.createdAt },
     );
     await storage.batch(operations);
 

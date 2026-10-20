@@ -49,9 +49,10 @@ describe('weft.updates.result.get', () => {
     const setup = createEngineWithStorage();
     engine = setup.engine;
     const coordinator = new UpdateCoordinator(setup.storage);
-    const updateId = await coordinator.createRequest('wf-update-completed', 'setName', {
+    const request = await coordinator.submitRequest('wf-update-completed', 'setName', {
       name: 'Alice',
     });
+    const { updateId } = request;
 
     await setup.storage.batch(
       coordinator.buildResponseOperations(
@@ -59,6 +60,8 @@ describe('weft.updates.result.get', () => {
         'wf-update-completed',
         { accepted: true },
         'minor issue',
+        undefined,
+        { name: request.name, receivedAt: request.createdAt },
       ),
     );
 

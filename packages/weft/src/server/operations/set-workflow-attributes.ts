@@ -1,11 +1,18 @@
 import { z } from 'zod';
 
+import type { Engine } from '../../core/engine.ts';
+import { StartWorkflowValidationError } from '../../core/start-workflow-validation.ts';
 import type { SearchAttributeValue } from '../../core/types.ts';
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, isOperationFault } from './operation-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  invalidParamsFault,
+  isOperationFault,
+} from './operation-helpers.ts';
+import { normalizeDateTimeSearchAttributes } from './start-workflow-options.ts';
 
 const setWorkflowAttributesInput = z.object({
   workflowId: z.string().min(1),
@@ -31,22 +38,30 @@ export const setWorkflowAttributesOperation = defineOperation({
   outputSchema: setWorkflowAttributesOutput,
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['attributes:write'] } },
   discoverable: true,
+  producibleFaults: ['InvalidParams'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<SetWorkflowAttributesOutput> => {
-    assertOperationEngineMethods(engine, ['setAttributes']);
+    assertOperationEngineMethods(engine, ['setAttributes', 'get', 'getWorkflowDefinition']);
     const e = engine;
 
     try {
       // REST forwards whatever lived under `attributes`
       // directly into `engine.setAttributes`, defaulting only on
-      // null/undefined. Keep that contract intact here.
+      // null/undefined. Keep that contract intact here, except for the ISO strings a JSON
+      // transport carries for `date-time` attributes: they become `Date`s the way a start's do.
       await e.setAttributes(
         input.workflowId,
-        (input.attributes ?? {}) as Record<string, SearchAttributeValue>,
+        (await normalizeAttributeDates(e, input.workflowId, input.attributes ?? {})) as Record<
+          string,
+          SearchAttributeValue
+        >,
       );
       return { ok: true };
     } catch (error) {
+      if (error instanceof StartWorkflowValidationError) {
+        throw invalidParamsFault(error.message);
+      }
       const message = error instanceof Error ? error.message : String(error);
       const fault: OperationFault = {
         code: 'EngineFailure',
@@ -57,6 +72,29 @@ export const setWorkflowAttributesOperation = defineOperation({
     }
   },
 });
+
+/**
+ * Look up the schema the workflow's type declares (the registered definition, which is what a start
+ * validates against) and convert the `date-time` strings in `attributes`. A workflow the engine does
+ * not hold, a type with no schema, or an `attributes` value that is not an object passes through,
+ * leaving the engine to validate or reject it exactly as before.
+ */
+async function normalizeAttributeDates(
+  engine: Pick<Engine, 'get' | 'getWorkflowDefinition'>,
+  workflowId: string,
+  attributes: unknown,
+): Promise<unknown> {
+  if (typeof attributes !== 'object' || attributes === null || Array.isArray(attributes)) {
+    return attributes;
+  }
+  const state = await engine.get(workflowId);
+  if (state === null) return attributes;
+  return normalizeDateTimeSearchAttributes(
+    attributes as Record<string, unknown>,
+    'Field "attributes"',
+    engine.getWorkflowDefinition(state.type)?.searchAttributes,
+  );
+}
 
 export const setWorkflowAttributesRestBinding: UnknownRestBinding = {
   method: 'PATCH',

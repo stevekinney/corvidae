@@ -50,6 +50,7 @@ import { listReviewsOperation } from './list-reviews.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
 import { listWorkflowDefinitionsOperation } from './list-workflow-definitions.ts';
 import { listWorkflowRevisionsOperation } from './list-workflow-revisions.ts';
+import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { listWorkflowsOperation } from './list-workflows.ts';
 import { pauseScheduleOperation } from './pause-schedule.ts';
 import { preloadWorkflowRevisionOperation } from './preload-workflow-revision.ts';
@@ -125,6 +126,7 @@ export const STATIC_OPERATIONS: ReadonlyArray<RegistrableOperation> = [
   forkWorkflowOperation,
   timeoutWorkflowOperation,
   updateWorkflowOperation,
+  listWorkflowUpdatesOperation,
   createScheduleOperation,
   updateScheduleOperation,
   getRegistryOperation,

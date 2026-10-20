@@ -104,7 +104,14 @@ export type OperationFault =
   // legally — the wire serializers strip undefined-valued keys via
   // `filterDefined`. Spelling `| undefined` explicitly accepts that under
   // `exactOptionalPropertyTypes`.
-  | { code: 'Timeout'; message: string; data: { operationName?: string | undefined } }
+  | {
+      code: 'Timeout';
+      message: string;
+      // `updateId` is the id a timed-out `weft.workflows.update` minted before it waited: the
+      // update stays queued, and the caller reads its answer later with `weft.updates.result.get`
+      // or finds it in `weft.workflows.updates.list` (COR-1463).
+      data: { operationName?: string | undefined; updateId?: string | undefined };
+    }
   | { code: 'NotImplemented'; message: string; data: Record<string, never> }
   | {
       code: 'UnsupportedTransport';
@@ -263,7 +270,7 @@ const REST_FAULT_DATA_EXTRACTORS: RestFaultDataExtractors = {
     }),
   Unprocessable: () => NO_REST_FAULT_DATA,
   PayloadTooLarge: (data) => ({ maxBytes: data.maxBytes }),
-  Timeout: (data) => filterDefined({ operationName: data.operationName }),
+  Timeout: (data) => filterDefined({ operationName: data.operationName, updateId: data.updateId }),
   NotImplemented: () => NO_REST_FAULT_DATA,
   UnsupportedTransport: (data) => ({
     transport: data.transport,

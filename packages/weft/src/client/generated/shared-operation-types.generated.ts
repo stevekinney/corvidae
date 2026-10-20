@@ -191,6 +191,11 @@ export type SharedCurrentBuildIdDeployment_d4467560 = {
   readonly rampBasisPoints: number;
   readonly updatedAt: number;
 };
+export type SharedCursorLimitWorkflowId_6c8c3edc = {
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly workflowId: string;
+};
 export type SharedFilterMatchedSampleLimit_d7a67f2a = {
   readonly filter: SharedAttributesLimitOffset_5f765b01;
   readonly matched: number;

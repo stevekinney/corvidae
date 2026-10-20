@@ -44,6 +44,8 @@
   import { Clock, Link, X } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
+  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
+
   import { attachPendingActivitiesToSteps } from './async-activity/async-activity-matching.ts';
   import {
     pendingAsyncActivitiesQueryKey,
@@ -53,6 +55,8 @@
   import AsyncActivityDrawer from './async-activity/async-activity-drawer.svelte';
   import ActivityWorkerProvenance from './async-activity/activity-worker-provenance.svelte';
   import RemoteTaskStep from './remote-task-step.svelte';
+  import StreamChunksView from './streams/stream-chunks-view.svelte';
+  import type { StreamChunksClient } from './streams/stream-chunks-data.ts';
   import FinalizerStrip from './timeline/finalizer-strip.svelte';
   import {
     TIMELINE_QUICK_FILTERS,
@@ -80,16 +84,25 @@
   interface TimelineTabProps {
     readonly client: Pick<HttpClient, 'getTimeline'> & {
       readonly operations: Pick<HttpClient['operations'], typeof PENDING_ASYNC_ACTIVITY_OPERATION> &
-        Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>>;
+        Partial<Pick<HttpClient['operations'], 'weft.tasks.get'>> &
+        Partial<StreamChunksClient['operations']>;
       readonly activity: Pick<WeftClientActivity, 'complete' | 'completeExceptionally'>;
     };
     readonly workflow: WorkflowState;
     readonly liveObservations: WorkflowLiveObservations;
     /** `weft.workflows.finalizer.get` result, fetched once by `workflow-detail.svelte` and shared with the header badge — see `finalizer-strip.svelte`'s module doc. */
     readonly finalizerStatus: WorkflowFinalizerStatus | null | undefined;
+    /** Whether the principal holds `streams:read`, which a stream's chunks need. Without it no stream link renders. */
+    readonly canReadStreams?: boolean | undefined;
   }
 
-  let { client, workflow, liveObservations, finalizerStatus }: TimelineTabProps = $props();
+  let {
+    client,
+    workflow,
+    liveObservations,
+    finalizerStatus,
+    canReadStreams = false,
+  }: TimelineTabProps = $props();
 
   const timelineQuery = createQuery(() => ({
     queryKey: workflowTimelineQueryKey(workflow.id),
@@ -153,6 +166,24 @@
   const unattachedPendingActivities = $derived(
     attachedPendingActivities.filter((activity) => activity.stepId === null),
   );
+
+  // A stream step links to a view of its stored chunks (COR-1462), for a principal who can read them.
+  const streamChunksOperation = $derived(client.operations['weft.workflows.streams.chunks']);
+  const streamsClient = $derived.by((): StreamChunksClient | undefined =>
+    canReadStreams && streamChunksOperation !== undefined
+      ? { operations: { 'weft.workflows.streams.chunks': streamChunksOperation } }
+      : undefined,
+  );
+  let openStreamKey = $state<string | null>(null);
+
+  /** The stream operation behind a top-level mapped step, whose label is the stream's key. */
+  function streamEntryFor(stepId: string): WorkflowTimelineEntry | undefined {
+    const stepNumber = stepNumberFromRunStepId(stepId);
+    if (stepNumber === null || stepId !== timelineStepId(stepNumber)) return undefined;
+    return entries.find(
+      (candidate) => candidate.step === stepNumber && candidate.operationType === 'stream',
+    );
+  }
 
   /** The timeline step whose settled-activity provenance is open. */
   let provenanceStep = $state<number | null>(null);
@@ -328,6 +359,18 @@
               </div>
             {/if}
           {/if}
+          {@const stream = streamsClient === undefined ? undefined : streamEntryFor(step.id)}
+          {#if stream !== undefined}
+            <div class="weft-timeline-tab__step-stream">
+              <Button
+                variant="ghost"
+                size="sm"
+                label={RUN_DETAIL_COPY.streams.viewChunks(stream.operationLabel)}
+                aria-expanded={openStreamKey === stream.operationLabel}
+                onclick={() => (openStreamKey = stream.operationLabel)}
+              />
+            </div>
+          {/if}
           {@const remote = readTask === undefined ? undefined : remoteTaskFor(step.id)}
           {#if remote !== undefined && readTask !== undefined}
             {#key remote.operationId}
@@ -358,6 +401,18 @@
         {/snippet}
       </RunStepTimeline>
     {/if}
+  {/if}
+
+  {#if streamsClient !== undefined && openStreamKey !== null}
+    {#key openStreamKey}
+      <StreamChunksView
+        client={streamsClient}
+        workflowId={workflow.id}
+        streamKey={openStreamKey}
+        status={workflow.status}
+        onClose={() => (openStreamKey = null)}
+      />
+    {/key}
   {/if}
 
   {#if selection.selectedStepId !== null}
@@ -444,6 +499,10 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+    margin-top: 6px;
+  }
+
+  .weft-timeline-tab__step-stream {
     margin-top: 6px;
   }
 
