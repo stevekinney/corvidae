@@ -247,6 +247,7 @@ import {
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
   isScheduledFireAuthority,
+  isSkillActivationRecordArray,
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
@@ -5727,8 +5728,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         agentName: recoveredAgentName,
         requestContext,
       },
-      { liveStreaming: false, sessionAgent: recoveredSessionAgent },
+      {
+        liveStreaming: false,
+        sessionAgent: recoveredSessionAgent,
+        // COR-1613: the approval is decided under the skills that were active when the call was
+        // requested, as the run that raised it would have decided it. A fire's are the ones its
+        // committed steps recorded; a session run's are the last snapshot of its session.
+        initialActiveSkillRecords: scheduledFire
+          ? await runtime.loadCommittedScheduledActiveSkills(session, runId, true)
+          : isSkillActivationRecordArray(session.metadata['activeSkillRecords'])
+            ? session.metadata['activeSkillRecords']
+            : undefined,
+      },
     );
+    // The skills must be back before a call is decided under their policy.
+    await runRuntime.skillsRecovered;
     const terminalReviewSession = terminalReviewSessions.get(runId);
     if (terminalReviewSession) {
       terminalReviewSessions.set(runId, {
@@ -11054,6 +11068,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
+        // COR-1613 — expired reviews go without a host calling `sweepExpiredReviews`: a fire's
+        // or a session run's approval whose binding ran out is expired, and its state released.
+        // Ahead of task retention, which holds a task open for a review it still lists.
+        try {
+          await sweepExpiredReviews();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic expired-review sweep failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
         // COR-1477 — before the receipt prune: a task leaves only once its
         // binding is gone, so a binding the prune below deletes releases its
         // task in the next pass.
@@ -13756,6 +13783,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 'approvalSecret configured, so its pendingApproval was never signed.',
               'NOT_CONFIGURED',
               'approval',
+            );
+          }
+          // COR-1613: the call is decided under the skills active now, which a restored approval
+          // has again: a tool they no longer permit is not run, as a step would not run it.
+          if (!approvalToolbox.tools().some((tool) => tool.name === approval.toolName)) {
+            throw new BureauError(
+              `Cannot approve: tool "${approval.toolName}" is not permitted by the run's active skills.`,
+              'CONFLICT',
             );
           }
           const approvalRequestContext = runRequestContexts.get(review.runId);
