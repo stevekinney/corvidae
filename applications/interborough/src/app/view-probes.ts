@@ -212,8 +212,11 @@ export function probeFor(
     case 'reviews':
       // The Bureau's list is what the view can be refused, and nothing else it says is the view's
       // to report: the page reads the engine's reviews itself, when the principal may, and shows the
-      // Bureau's own failure in a banner beside them. So the probe lets a refusal through and swallows
-      // any other failure, and a view with reviews of either kind is never empty here.
+      // Bureau's own failure in a banner beside them. So the probe lets through the two answers that
+      // mean the caller may not see the list: a 403, which the frame shows as forbidden, and a 401
+      // (the Bureau does not know the caller), which the frame shows as an error with Retry, as it
+      // does for every other view's probe. It swallows any other failure (a 5xx, an unreachable
+      // Bureau), and a view with reviews of either kind is never empty here.
       return async () => {
         try {
           await listBureauReviews();

@@ -796,6 +796,7 @@ export const REVIEWS_COPY = {
     command: 'Command',
     diff: 'Changes',
     filesTouched: 'Files touched',
+    showWholeDiff: 'Show the whole diff',
   },
   reasonFact: 'Reason',
   messageFact: 'Message',

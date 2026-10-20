@@ -79,6 +79,31 @@ describe('the tasks of a chat session', () => {
     expect(queryByRole('button', { name: 'Load more' })).toBeNull();
   });
 
+  test('do not repeat a task that arrived after the first page, when Load more reads the next', async () => {
+    const world = emptyBureauWorld({
+      tasks: Array.from({ length: 51 }, (_, index) =>
+        taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
+      ),
+    });
+    stub = installBureauWorld(world);
+    const { container, getByRole } = render(QueryPage, {
+      props: { page: SessionTasks, pageProps: { sessionId: 'session-1', streaming: false } },
+    } as never);
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
+
+    // A run starts in the session: the list is newest first, so every row moves down one place and
+    // offset 50 now begins with the row the first page ended with.
+    world.tasks = [taskFixture({ id: 'run-new', contextId: 'session-1' }), ...world.tasks];
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
+    expect(container.textContent).not.toContain('Something went wrong');
+    const ids = [...container.querySelectorAll('li code')].map((code) =>
+      code.getAttribute('title'),
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   test('are the Bureau’s tasks of that session, each linking to its page', async () => {
     const { container } = mount('session-1', [
       taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' }),

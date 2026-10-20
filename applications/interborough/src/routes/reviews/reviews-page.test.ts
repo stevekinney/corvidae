@@ -230,6 +230,30 @@ describe('the approval pane', () => {
     expect(container.textContent).toContain('dist/app.js');
     expect(container.textContent).toContain(REVIEWS_COPY.operation.command);
   });
+
+  test('keeps the inbox usable when the operation lists one path twice', async () => {
+    const approval = toolApprovalFixture({
+      requestedAt: Date.now() - 120_000,
+      approval: {
+        ...toolApprovalFixture().approval,
+        action: {
+          type: 'approval',
+          message: 'Run it?',
+          risk: 'high',
+          operation: {
+            kind: 'patch',
+            command: 'bun run deploy',
+            filesTouched: ['dist/app.js', 'dist/app.js'],
+          },
+        },
+      },
+    });
+    const { container, findByText } = open({ reviews: [approval] });
+    await findByText('bun run deploy');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.textContent).toContain('dist/app.js');
+    expect(container.querySelectorAll('.weft-bureau-review-operation__files li').length).toBe(1);
+  });
 });
 
 describe('a decision that took effect', () => {

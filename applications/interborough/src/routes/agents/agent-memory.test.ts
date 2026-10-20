@@ -174,6 +174,28 @@ describe('the list and the search', () => {
     expect(queryByRole('button', { name: MEMORY_COPY.loadMore })).toBeNull();
   });
 
+  test('does not repeat a memory the next page gives again, and stays', async () => {
+    // A memory was recorded after the first page was read, so offset 1 starts with its last row.
+    bureau({
+      'bureau.memory.list': (params) =>
+        params['offset'] === 0
+          ? { memories: [AISLE], nextOffset: 1 }
+          : { memories: [AISLE, WINDOW], nextOffset: null },
+    });
+    const { container, findByText, getByRole } = open();
+    await findByText(AISLE.content);
+
+    await fireEvent.click(getByRole('button', { name: MEMORY_COPY.loadMore }));
+
+    await findByText(WINDOW.content);
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(
+      [...container.querySelectorAll('[data-memory]')].map((row) =>
+        row.getAttribute('data-memory'),
+      ),
+    ).toEqual(['memory-aisle', 'memory-window']);
+  });
+
   test('says the list could not be loaded, and tries again on request', async () => {
     let failing = true;
     bureau({

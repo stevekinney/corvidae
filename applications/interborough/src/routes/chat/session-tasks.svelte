@@ -12,6 +12,7 @@
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { listTasks } from '../../lib/bureau-tasks.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -38,7 +39,15 @@
     }),
     undefined,
   );
-  const rows = $derived((tasks.data?.pages ?? []).flatMap((page) => page.tasks));
+  // A run that starts after the first page loaded moves the next page's offset onto a row the first
+  // page ended with, so the pages are joined with each task once.
+  const rows = $derived(
+    combinePages(
+      tasks.data?.pages,
+      (page) => page.tasks,
+      (task) => task.id,
+    ),
+  );
 
   let wasStreaming = untrack(() => streaming);
   $effect(() => {
