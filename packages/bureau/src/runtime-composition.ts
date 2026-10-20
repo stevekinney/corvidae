@@ -3163,8 +3163,9 @@ async function buildRuntimeComposition(
 
       /**
        * COR-1546 — the run's owner of record, which its memory is partitioned under: the session's
-       * owner for a chat run, the schedule's for a fire. Omitted for a run no principal started, which
-       * is `anonymous:local`, the owner of anything created with none stated.
+       * owner for a chat run, the schedule's for a fire, `anonymous:local` for a run no principal started
+       * (the owner of anything created with none stated). A caller that omits it
+       * gets the request authority's `ownerId`; `createBureau` always states it.
        */
       memoryOwner?: string | undefined;
     },
@@ -3265,7 +3266,11 @@ async function buildRuntimeComposition(
             {
               runId: request.runId ?? request.sessionId,
               tenantId: memoryTenantId(),
-              ownerId: ownerOrLocal(runtimeOptions?.memoryOwner),
+              // A caller that states no owner (a composition used directly) is partitioned by the request
+              // authority's own owner, so two requests never share one partition.
+              ownerId: ownerOrLocal(
+                runtimeOptions?.memoryOwner ?? requestContext.authority.ownerId,
+              ),
             },
             options.memoryAuthority,
           )

@@ -189,7 +189,19 @@ export function rowsAddedBy(history: ConversationHistory, messages: ReadonlyArra
   const known = new Set(history.ids);
   return merged.ids
     .filter((id) => !known.has(id))
-    .map((id) => withManagedAssetSources(merged.messages[id]!));
+    .map((id) => withoutReservedMetadata(withManagedAssetSources(merged.messages[id]!)));
+}
+
+/**
+ * The row without the metadata only the server may set. A client's message carries whatever
+ * `metadata` it sends, and `memoryEvidence` marks the row a run's memory recall appended: left on
+ * a client's row, it would hide that row from the thread's snapshot while the model still read it
+ * (COR-1546). Every row that enters from a client comes through here, so only the recall hook sets it.
+ */
+function withoutReservedMetadata(row: Message): Message {
+  if (row.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] === undefined) return row;
+  const { [MEMORY_EVIDENCE_METADATA_KEY]: _reserved, ...metadata } = row.metadata;
+  return { ...row, metadata };
 }
 
 /** The ids of the managed assets `rows` name, in order, each once. */

@@ -1415,6 +1415,62 @@ describe('Bureau hook tier composition (COR-1265)', () => {
   });
 });
 
+describe('a composition built without a memory owner (COR-1546)', () => {
+  const stepOf = (content: string) => ({
+    parts: [],
+    messageId: undefined,
+    step: 0,
+    conversation: new Conversation(),
+    content,
+    toolCalls: [],
+    results: [],
+    final: true,
+  });
+  const listerFor = (ownerId: string) =>
+    createMemoryAuthority({
+      principal: { kind: 'governance', id: 'governance:test' },
+      tenantId: 'bureau',
+      ownerId,
+      purpose: 'test-inspection',
+      capabilities: ['memory:list', 'memory:inspect'],
+      policyRevision: 'bureau:1',
+      projection: 'audit',
+    });
+
+  it('keeps each request authority’s owner apart, not one shared anonymous:local partition', async () => {
+    const { memory } = createGovernedMemoryFixture();
+    const runtime = await createRuntimeComposition({
+      id: 'bureau',
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory,
+    });
+    const requestFor = (ownerId: string): ToolRequestContext => ({
+      authority: { ...defaultRunRequestContext.authority, principalId: `user:${ownerId}`, ownerId },
+    });
+    for (const ownerId of ['owner-a', 'owner-b']) {
+      const runRuntime = await runtime.createRunRuntime({
+        message: 'test',
+        sessionId: `session-${ownerId}`,
+        runId: `run-${ownerId}`,
+        agentName: 'agent',
+        requestContext: requestFor(ownerId),
+      });
+      const entry = runRuntime.hooks
+        .getHandlers('onStep')
+        .find((candidate) => candidate.id === 'bureau:memory-persist');
+      await entry?.handler(stepOf(`${ownerId} remembers this`));
+    }
+
+    const contentsOf = async (ownerId: string) =>
+      (await memory.list(listerFor(ownerId), { collection: 'agent' })).map(
+        (record) => record.content,
+      );
+    expect(await contentsOf('owner-a')).toEqual(['owner-a remembers this']);
+    expect(await contentsOf('owner-b')).toEqual(['owner-b remembers this']);
+    expect(await contentsOf('anonymous:local')).toEqual([]);
+  });
+});
+
 describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   // COR-567 classifies these `effectful`: a crashed in-flight step re-runs,
   // so they fire again, and the mitigation the decision chose is that each

@@ -8293,7 +8293,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             runId: taskId,
             requestContext: createSchedulerServiceRequestContext(taskId, agentName, taskId),
           },
-          { liveStreaming: false },
+          // A scheduler task has no principal, so its memory is `anonymous:local`'s (COR-1546), not
+          // the request authority's owner, which for a task is the agent's name.
+          { liveStreaming: false, memoryOwner: ownerOrLocal(undefined) },
         );
 
         const conversation = new Conversation(createConversationHistory({ id: taskId }));
