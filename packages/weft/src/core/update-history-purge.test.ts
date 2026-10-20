@@ -142,7 +142,7 @@ describe('A purge that stops partway', () => {
       },
       conditionalBatch: async (conditions, operations) => {
         guard(operations);
-        return backing.conditionalBatch!(conditions, operations);
+        return backing.conditionalBatch(conditions, operations);
       },
       [Symbol.dispose]: () => backing[Symbol.dispose](),
     };
@@ -159,7 +159,8 @@ describe('A purge that stops partway', () => {
     const firstAttempt = await rejectionOf(engine.purge({ status: 'completed' }));
     expect(String(firstAttempt)).toContain('storage went away');
     // It removed some of the history and left the run in place.
-    expect((await engine.get(handle.id))?.status).toBe('completed');
+    const stillThere = await engine.get(handle.id);
+    expect(stillThere?.status).toBe('completed');
     const remaining = await collectKeys(backing, 'uph:');
     expect(remaining.length).toBeGreaterThan(0);
     expect(remaining.length).toBeLessThan(3_000);

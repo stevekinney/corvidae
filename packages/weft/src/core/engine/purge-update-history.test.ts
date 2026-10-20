@@ -101,7 +101,7 @@ describe('drainUpdateHistory', () => {
       batch: (operations) => backing.batch(operations),
       // The record changed between the read and the chunk: the fence refuses.
       conditionalBatch: async (conditions, operations) =>
-        fenceLost ? false : backing.conditionalBatch!(conditions, operations),
+        fenceLost ? false : backing.conditionalBatch(conditions, operations),
       [Symbol.dispose]: () => backing[Symbol.dispose](),
     };
     const run = await completedRunWithHistory(storage, 3);
