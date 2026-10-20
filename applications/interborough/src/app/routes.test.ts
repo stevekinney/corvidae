@@ -138,12 +138,12 @@ describe('the route table', () => {
     expect(matchRoute('/workflows/runs')?.pattern).toBe('/workflows/:type');
   });
 
-  test('names the routes the sidebar links to, and no route the old navigation had', () => {
+  test('names the routes the sidebar links to', () => {
     const patterns = routes.map((route) => route.pattern);
     for (const path of [
       '/agents',
       '/schedules',
-      '/inbox',
+      '/reviews',
       '/workers',
       '/storage',
       '/system',
@@ -152,7 +152,24 @@ describe('the route table', () => {
     ]) {
       expect(patterns).toContain(path);
     }
-    expect(matchRoute('/reviews')).toBeNull();
+  });
+});
+
+describe('the Tasks routes', () => {
+  test('are /tasks and /tasks/:id, both in the tasks view, and /tasks is not in the navigation', () => {
+    expect(matchRoute('/tasks')).toEqual({ pattern: '/tasks', params: {} });
+    expect(matchRoute('/tasks/run-1')).toEqual({ pattern: '/tasks/:id', params: { id: 'run-1' } });
+    for (const pattern of ['/tasks', '/tasks/:id']) {
+      expect(routes.find((candidate) => candidate.pattern === pattern)?.view, pattern).toBe(
+        'tasks',
+      );
+    }
+  });
+
+  test('load one component, which both routes render', async () => {
+    const page = await defaultOf(import('../routes/tasks/index.svelte'));
+    expect(await componentOf('/tasks')).toBe(page);
+    expect(await componentOf('/tasks/:id')).toBe(page);
   });
 });
 

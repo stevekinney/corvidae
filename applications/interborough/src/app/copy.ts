@@ -498,6 +498,7 @@ export const CHAT_COPY = {
   agentRevision: 'Revision',
   noneListed: 'None',
   agentsTitle: 'Agents',
+  tasksTitle: 'Tasks in this chat',
   agentSessions: 'Chats with this agent',
   approvalTitle: 'Needs your approval',
   humanRequestTitle: 'The agent is asking',
@@ -509,6 +510,134 @@ export const CHAT_COPY = {
   dismiss: 'Dismiss',
   /** The accessible name of the transcript and composer region. */
   regionLabel: 'Conversation',
+} as const;
+
+/** The words the Tasks view uses outside its states. */
+export const TASK_COPY = {
+  listHeading: 'Tasks',
+  filtersLabel: 'Filter tasks',
+  agentLabel: 'Agent',
+  statusLabel: 'Status',
+  sessionLabel: 'Session',
+  anyStatus: 'Any status',
+  filterAction: 'Filter',
+  clearAction: 'Clear filters',
+  noMatch: {
+    title: 'No task matches these filters',
+    description: 'Change the filters, or clear them to see every task.',
+  },
+  loadMore: 'Load more',
+  columns: {
+    status: 'Status',
+    agent: 'Agent',
+    task: 'Task',
+    session: 'Session',
+    updated: 'Updated',
+  },
+  openWaits: (count: number): string => `${String(count)} open ${count === 1 ? 'wait' : 'waits'}`,
+  /** What each state a task can be in is called. */
+  states: {
+    submitted: 'Submitted',
+    working: 'Working',
+    'input-required': 'Waiting for input',
+    completed: 'Completed',
+    failed: 'Failed',
+    canceled: 'Canceled',
+  },
+  detailTitle: (agent: string | null): string => (agent === null ? 'Task' : `${agent} task`),
+  idLabel: 'Task identifier',
+  statusFact: 'Status',
+  agentFact: 'Agent',
+  sessionFact: 'Session',
+  finishReasonFact: 'Finish reason',
+  statusMessageFact: 'Status message',
+  createdFact: 'Started',
+  updatedFact: 'Updated',
+  openChat: 'Open the chat',
+  /** The link on a run's page to the task the run is, when it is one. */
+  viewTask: 'View the task',
+  answerHeading: 'Answer',
+  answerTruncated: 'The answer was cut short.',
+  followUnavailable:
+    'This Bureau cannot follow a task live, so its answer and live updates are not shown here.',
+  followReconnecting: 'The connection dropped. Reconnecting.',
+  waitsHeading: 'Waiting on you',
+  waitGone: 'This wait is no longer open.',
+  waitLoadFailed: 'The wait could not be read.',
+  humanWaitFallback: 'The agent is waiting for your answer.',
+  approvalHeading: 'Tool approval',
+  approvalReason: 'Reason',
+  approvalMessage: 'Message',
+  decideInReviews: 'Decide in Reviews',
+  answerLabel: 'Your answer',
+  sendAnswer: 'Send answer',
+  respondFailed: 'The answer was not sent',
+  cancelHeading: 'Cancellation',
+  cancelAction: 'Cancel task',
+  cancelFailed: 'The task was not canceled',
+  /**
+   * How often the page reads a task again while its stream has ended and the task has not. A task
+   * the Bureau started with `bureau.run()` streams one snapshot and ends, so its state is read.
+   */
+  endedPollMilliseconds: 5_000,
+  /** How often the page reads a task again while its cancellation is still being carried out. */
+  cleanupPollMilliseconds: 1_000,
+  /** What each answer to a cancel says. A receipt is one of the states a cleanup can be in, or `rejected`. */
+  cancel: {
+    'cancel-requested': 'Cancellation requested. The task has not stopped yet.',
+    canceled: 'Canceled. The task stopped, and reported no cleanup to wait for.',
+    'cleanup-pending': 'Canceled. Cleanup is still running.',
+    'cleaned-up': 'Canceled and cleaned up.',
+    'cleanup-failed': 'Canceled, but cleanup failed.',
+    'cleanup-unresolved':
+      'Canceled, but cleanup could not be confirmed and may still be running. Nothing is promised about its effects outside this system.',
+    'unknown-outcome': 'An effect outside this system may or may not have happened.',
+    rejected: 'Not canceled. The task had already finished.',
+  },
+} as const;
+
+/** The words `/reviews` uses outside its states. */
+export const REVIEWS_COPY = {
+  heading: 'Reviews',
+  /** The label for a review that asks to approve a tool call. */
+  toolApproval: 'Tool approval',
+  /** The label for a review that asks a question. */
+  humanWait: 'Question',
+  openChat: 'Open chat',
+  openTask: 'Open task',
+  openRun: 'Open run',
+  approve: 'Approve',
+  deny: 'Deny',
+  reject: 'Reject',
+  reasonLabel: 'Reason (required to reject)',
+  reasonDescription: 'Sent with the decision. A rejection cannot be sent without one.',
+  answerLabel: 'Your answer',
+  sendAnswer: 'Send answer',
+  toolLabel: 'Tool',
+  argumentsLabel: 'Arguments',
+  reasonFact: 'Reason',
+  messageFact: 'Message',
+  riskFact: 'Risk',
+  requestedFact: 'Requested',
+  agentFact: 'Agent',
+  noReviewSelected: 'No review selected',
+  chooseReview: 'Choose a review from the list.',
+  allCaughtUp: 'All caught up',
+  nothingWaiting: 'No reviews are waiting on a decision.',
+  decisionFailed: 'The decision was not recorded',
+  /**
+   * The Bureau's answer when a decision took effect and only its write into the conversation
+   * failed (`APPROVAL_OUTCOME_NOT_WRITTEN`). It is not a lost race, so it does not say the decision
+   * was not recorded.
+   */
+  outcomeNotWritten: {
+    title: 'The decision took effect',
+    message:
+      'The tool ran or was refused as you decided, but its outcome could not be written into the conversation. The chat may show the approval as pending until it is reloaded. Do not decide it again.',
+  },
+  answerFailed: 'The answer was not sent',
+  superseded:
+    'The approval was gated again, so the tool did not run. A replacement approval is waiting.',
 } as const;
 
 /**
@@ -653,19 +782,36 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     },
     forbidden: { title: 'Schedules are locked' },
   },
-  inbox: {
-    label: 'Inbox',
-    loading: { title: 'Loading the inbox', description: 'Reading the reviews waiting for you.' },
+  tasks: {
+    label: 'Tasks',
+    loading: { title: 'Loading tasks', description: 'Reading the tasks your agents have started.' },
     empty: {
-      title: 'The inbox is empty',
-      description:
-        'Nothing is waiting for a decision. Reviews appear here when a run asks for one.',
+      title: 'No tasks yet',
+      description: 'A task is one run of an agent. Start a chat and its tasks are listed here.',
+      action: { label: 'New chat', href: '/chat/new' },
     },
     error: {
-      title: 'The inbox is unavailable',
-      description: 'The engine did not answer. Check that the host is running, then try again.',
+      title: 'Tasks are unavailable',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
     },
-    forbidden: { title: 'The inbox is locked' },
+    forbidden: { title: 'Tasks are locked' },
+    notFound: {
+      title: 'This task was not found',
+      description:
+        'It may have been removed, or it may belong to someone else. Open a task from the list.',
+    },
+  },
+  reviews: {
+    label: 'Reviews',
+    loading: {
+      title: 'Loading reviews',
+      description: 'Reading what is waiting for your decision.',
+    },
+    error: {
+      title: 'Reviews are unavailable',
+      description: 'The Bureau did not answer. Check that the host is running, then try again.',
+    },
+    forbidden: { title: 'Reviews are locked' },
   },
   workers: {
     label: 'Workers',

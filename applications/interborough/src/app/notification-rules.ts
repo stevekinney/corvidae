@@ -59,7 +59,7 @@ export const NOTIFICATION_RULES: Readonly<Record<string, NotificationRule>> = {
     title: (frame) =>
       `Human review requested · ${stringField(frame.payload, 'reviewType') ?? 'review'}`,
     body: (frame) => workflowBody(frame, 'Waiting on reviewers'),
-    href: () => '/inbox',
+    href: () => '/reviews',
   },
   'alert:resolved': {
     tier: 'info',
@@ -248,6 +248,6 @@ export const NOTIFICATION_RULES: Readonly<Record<string, NotificationRule>> = {
     icon: 'circle-check',
     title: () => 'Review completed',
     body: (frame) => workflowBody(frame, 'A human review was decided'),
-    href: () => '/inbox',
+    href: () => '/reviews',
   },
 };

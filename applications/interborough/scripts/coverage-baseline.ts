@@ -98,18 +98,19 @@ export function coverageMeasurementPlatform(): CoverageMeasurementPlatform | nul
 }
 
 const DARWIN_BASELINE: CoverageBaseline = {
-  // Re-measured for COR-1493 and COR-1494, which add `src/routes/audit` (the audit search) and
-  // `src/routes/goals`, and rework `src/routes/schedules` (what each schedule starts, and the
-  // service that writes it). The areas those touch are re-measured on darwin with the command in
-  // `run-coverage.ts`; the rest keep the counts the last measurement recorded.
-  measuredAt: '2026-10-19T21:00:00.000Z',
-  overall: { linesFound: 66632, linesHit: 64770, functionsFound: 13198, functionsHit: 12829 },
+  // Re-measured for COR-1491 and COR-1492, which add `src/routes/tasks` (the Tasks view) and the
+  // Bureau's reviews in `src/routes/reviews`, on top of COR-1493 and COR-1494 (`src/routes/audit`,
+  // `src/routes/goals`, and `src/routes/schedules`). Every area is re-measured on darwin with the
+  // command in `run-coverage.ts`. The Linux baseline below is not re-measured: it needs a Linux
+  // host, so `src/routes/tasks` has no Linux floor yet.
+  measuredAt: '2026-10-19T23:30:00.000Z',
+  overall: { linesFound: 70108, linesHit: 68247, functionsFound: 13855, functionsHit: 13479 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 965, linesHit: 965, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3446, linesHit: 3379, functionsFound: 640, functionsHit: 622 },
-    'src/lib': { linesFound: 3318, linesHit: 3302, functionsFound: 523, functionsHit: 519 },
+    'src/app': { linesFound: 3604, linesHit: 3537, functionsFound: 652, functionsHit: 634 },
+    'src/lib': { linesFound: 3838, linesHit: 3821, functionsFound: 594, functionsHit: 590 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1448,
@@ -120,7 +121,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
     'src/routes/agents': { linesFound: 639, linesHit: 639, functionsFound: 139, functionsHit: 138 },
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
-    'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
+    'src/routes/chat': { linesFound: 1444, linesHit: 1435, functionsFound: 297, functionsHit: 292 },
     'src/routes/dashboard': {
       linesFound: 1472,
       linesHit: 1236,
@@ -136,10 +137,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2204,
-      linesHit: 2060,
-      functionsFound: 440,
-      functionsHit: 421,
+      linesFound: 2918,
+      linesHit: 2864,
+      functionsFound: 610,
+      functionsHit: 593,
     },
     // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
@@ -160,6 +161,13 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 2106,
       functionsHit: 2076,
     },
+    // COR-1491, measured on darwin: the Tasks view.
+    'src/routes/tasks': {
+      linesFound: 1836,
+      linesHit: 1727,
+      functionsFound: 355,
+      functionsHit: 341,
+    },
     'src/routes/workers': {
       linesFound: 12913,
       linesHit: 12778,
@@ -168,16 +176,16 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1533, measured on darwin: the Workflows area's catalog, a type's page, its runs, and its editor.
     'src/routes/workflow-definitions': {
-      linesFound: 2517,
-      linesHit: 2506,
+      linesFound: 2522,
+      linesHit: 2511,
       functionsFound: 524,
       functionsHit: 520,
     },
     'src/routes/workflows': {
-      linesFound: 14860,
-      linesHit: 14188,
-      functionsFound: 3028,
-      functionsHit: 2886,
+      linesFound: 14966,
+      linesHit: 14294,
+      functionsFound: 3045,
+      functionsHit: 2903,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
     tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },

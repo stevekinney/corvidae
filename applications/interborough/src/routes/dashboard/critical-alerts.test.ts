@@ -186,7 +186,7 @@ describe('buildReviewsNearTimeoutChip', () => {
     const chip = buildReviewsNearTimeoutChip(reviews, 900_000);
     expect(chip).not.toBeNull();
     expect(chip?.label).toBe('2 reviews near timeout');
-    expect(chip?.href).toBe('/inbox');
+    expect(chip?.href).toBe('/reviews');
   });
 
   test('singular label for exactly one qualifying review', () => {

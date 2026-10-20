@@ -188,7 +188,7 @@ describe('CriticalAlertsBand', () => {
     }
   });
 
-  test('renders a reviews-near-timeout chip that deep-links to /inbox', async () => {
+  test('renders a reviews-near-timeout chip that deep-links to /reviews', async () => {
     const now = Date.now();
     const client = alertClient({
       diagnostics: { items: [], summary: EMPTY_DIAGNOSTICS_SUMMARY, limit: 50 },
@@ -214,7 +214,7 @@ describe('CriticalAlertsBand', () => {
       WAIT_FOR_TWO_QUERIES,
     );
     const link = getByText('1 review near timeout').closest('a');
-    expect(link?.getAttribute('href')).toBe('/inbox');
+    expect(link?.getAttribute('href')).toBe('/reviews');
   });
 
   test('shows a lock notice instead of chips when both scopes are denied', async () => {

@@ -270,6 +270,18 @@ export interface TaskRegistry {
    */
   onSettled(taskId: string, listener: (view: TaskView, record: TaskRecord) => void): () => void;
   /**
+   * Calls `listener` with the task's view each time {@link announceChanged} finds it changed, for
+   * as long as it listens (COR-1596). Returns the function that stops listening.
+   */
+  onChanged(taskId: string, listener: (view: TaskView) => void): () => void;
+  /**
+   * Tells the task's listeners that a review of it opened or closed, which changes what its view
+   * says without a write to its record. Those waiting for it to settle are told too, once the
+   * closing of its last review is what lets a settled task read as over. Does nothing when no one
+   * listens.
+   */
+  announceChanged(taskId: string): Promise<void>;
+  /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
    */
@@ -305,9 +317,15 @@ export interface TaskRegistry {
    * this process no longer holds, except the ids in `keep` and the tasks with a review
    * still pending. A run the Bureau still
    * holds is deleted through `deleteRun`, which removes its record. Resolves how
-   * many records it removed.
+   * many records it removed. `onRemoved` hears each record it removed, once it is gone, so
+   * state kept for a task past its settling can end with it; a listener that throws is its own
+   * failure, never the removal's.
    */
-  expire(cutoffMs: number, keep: ReadonlySet<string>): Promise<number>;
+  expire(
+    cutoffMs: number,
+    keep: ReadonlySet<string>,
+    onRemoved?: (record: TaskRecord) => Promise<void> | void,
+  ): Promise<number>;
   /**
    * Empties the history of every task of one incarnation of a context, keeping
    * its status and cleanup. Resolves how many records it changed.
@@ -555,6 +573,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
   const observed = new Map<string, TaskCleanupState>();
   /** Who is waiting to be told a task has settled (COR-1482). */
   const settledListeners = new Map<string, Set<(view: TaskView, record: TaskRecord) => void>>();
+  /** Who is waiting to be told a task's view changed (COR-1596). */
+  const changedListeners = new Map<string, Set<(view: TaskView) => void>>();
 
   /**
    * The record at `key`, or `undefined` when its value cannot be read: another version, or
@@ -870,6 +890,34 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       };
     },
 
+    onChanged(taskId, listener) {
+      const waiting = changedListeners.get(taskId) ?? new Set();
+      waiting.add(listener);
+      changedListeners.set(taskId, waiting);
+      return () => {
+        const held = changedListeners.get(taskId);
+        held?.delete(listener);
+        if (held?.size === 0) changedListeners.delete(taskId);
+      };
+    },
+
+    async announceChanged(taskId) {
+      const waiting = changedListeners.get(taskId);
+      if (waiting !== undefined && waiting.size > 0) {
+        const view = await getView(taskId);
+        if (view !== undefined) {
+          for (const listener of waiting) {
+            try {
+              listener(view);
+            } catch (error) {
+              diagnose(`A listener of task "${taskId}" failed`, error);
+            }
+          }
+        }
+      }
+      await announceSettled(taskId);
+    },
+
     async idle(maximumTurns = IDLE_MAXIMUM_TURNS) {
       // Wait, by event-loop turn rather than by clock, for every cleanup acknowledgement being
       // followed to arrive. One that has not arrived after `maximumTurns` is abandoned, as a
@@ -906,7 +954,7 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       );
     },
 
-    async expire(cutoffMs, keep) {
+    async expire(cutoffMs, keep, onRemoved) {
       let removed = 0;
       // A review still open holds its task: it is waiting on its requester, and removing the
       // record would make `get` and `respond` not-found while the review holds the context open.
@@ -918,6 +966,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         if (host.liveTask(record.taskId) !== undefined) continue;
         await this.remove(record.taskId);
         removed += 1;
+        try {
+          await onRemoved?.(record);
+        } catch (error) {
+          diagnose(`A listener of the removal of task "${record.taskId}" failed`, error);
+        }
       }
       return removed;
     },
