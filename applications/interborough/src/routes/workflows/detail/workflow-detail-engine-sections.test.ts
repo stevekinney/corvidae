@@ -58,6 +58,9 @@ beforeEach(() => {
 
 afterEach(() => {
   fetchScript.restore();
+  // The address is shared with every test that runs after this file: leave it at the root, since a
+  // `?tab=` left behind changes what the list views render.
+  resetLocation('/');
 });
 
 function jsonRpcMethodsCalled(): string[] {
