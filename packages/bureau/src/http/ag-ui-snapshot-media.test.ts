@@ -9,7 +9,7 @@ import { EventSchemas } from '@ag-ui/core/schemas';
 import { describe, expect, it } from 'bun:test';
 import { appendMessages, createConversationHistory } from 'conversationalist';
 
-import { snapshotMessages } from './ag-ui-messages.ts';
+import { rowsAddedBy, snapshotMessages } from './ag-ui-messages.ts';
 
 const managedImage = {
   type: 'image',
@@ -79,5 +79,70 @@ describe('a user row with a part AG-UI cannot carry', () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe('recalled memory in the messages snapshot (COR-1546)', () => {
+  const history = appendMessages(
+    createConversationHistory({ id: 'thread-1' }),
+    { id: 'user-1', role: 'user', content: 'Which seats do I like?' },
+    {
+      id: 'recall-1',
+      role: 'system',
+      content: '<memory-evidence>\nThe user prefers aisle seats.\n</memory-evidence>',
+      metadata: { memoryEvidence: { sessionId: 'thread-1', recordIds: ['memory-1'], withheld: 0 } },
+    },
+    { id: 'assistant-1', role: 'assistant', content: 'Aisle seats.' },
+  );
+
+  it('leaves out the system row a recall appended, and keeps every other row in order', () => {
+    const messages = snapshotMessages(history);
+
+    expect(messages.map((message) => message.id)).toEqual(['user-1', 'assistant-1']);
+    expect(JSON.stringify(messages)).not.toContain('memory-evidence');
+  });
+
+  it('keeps a system row that is not a recall', () => {
+    const withPrompt = appendMessages(history, {
+      id: 'system-1',
+      role: 'system',
+      content: 'You are brief.',
+    });
+
+    expect(snapshotMessages(withPrompt).map((message) => message.id)).toEqual([
+      'user-1',
+      'assistant-1',
+      'system-1',
+    ]);
+  });
+
+  it('leaves the stored conversation as it was, so the next run still sees what was recalled', () => {
+    snapshotMessages(history);
+
+    expect(history.ids).toEqual(['user-1', 'recall-1', 'assistant-1']);
+  });
+});
+
+describe('a client row that claims to be recalled memory (COR-1546)', () => {
+  const claiming = [
+    {
+      id: 'user-1',
+      role: 'user',
+      content: 'Which seats do I like?',
+      metadata: { memoryEvidence: { recordIds: ['x'] }, source: 'web' },
+    } as never,
+  ];
+
+  it('is stored without the reserved key, keeping the client’s other metadata', () => {
+    const [row] = rowsAddedBy(createConversationHistory({ id: 'thread-1' }), claiming);
+
+    expect(row?.metadata).toEqual({ source: 'web' });
+  });
+
+  it('therefore appears in the next messages snapshot, as any client row does', () => {
+    const rows = rowsAddedBy(createConversationHistory({ id: 'thread-1' }), claiming);
+    const history = appendMessages(createConversationHistory({ id: 'thread-1' }), ...rows);
+
+    expect(snapshotMessages(history).map((message) => message.id)).toEqual(['user-1']);
   });
 });

@@ -63,16 +63,24 @@ export function requestContext(): ToolRequestContext {
   };
 }
 
-/** An inspector authority that can list the run-written records. */
-export const inspector = createMemoryAuthority({
-  principal: { kind: 'governance', id: 'governance:auditor' },
-  tenantId: TENANT_ID,
-  ownerId: OWNER_ID,
-  purpose: 'audit',
-  capabilities: ['memory:get', 'memory:list', 'memory:inspect'],
-  policyRevision: 'gateway:1',
-  projection: 'audit',
-});
+/**
+ * An inspector authority that can list the run-written records. A run's memory is partitioned by
+ * the Bureau's identifier (`TENANT_ID`, the `id` every process of the harness shares) and the run's
+ * owner of record, which is the `principal` its scenario names (COR-1546).
+ */
+export function inspectorFor(ownerId: string) {
+  return createMemoryAuthority({
+    principal: { kind: 'governance', id: 'governance:auditor' },
+    tenantId: TENANT_ID,
+    ownerId,
+    purpose: 'audit',
+    capabilities: ['memory:get', 'memory:list', 'memory:inspect'],
+    policyRevision: 'gateway:1',
+    projection: 'audit',
+  });
+}
+
+export const inspector = inspectorFor('alice');
 
 export function effectsLogPath(directory: string): string {
   return join(directory, 'effects.log');
@@ -201,6 +209,8 @@ export interface HarnessBureauOptions {
 /** The durable, `workflow-lease` Bureau every child and the recoverer share. */
 export function createHarnessBureau(options: HarnessBureauOptions): Promise<Bureau> {
   return createBureau({
+    // The identifier is the memory tenant, so every process of a scenario must share it.
+    id: TENANT_ID,
     agents: {},
     generate: options.generate,
     toolbox: options.toolbox,

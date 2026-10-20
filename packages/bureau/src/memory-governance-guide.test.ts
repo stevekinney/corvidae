@@ -37,6 +37,15 @@ import { z } from 'zod';
 
 import { createBureau, type SubmitSchedulerTaskResponse } from './index';
 
+/**
+ * Where a run's memory lives (COR-1546): the Bureau's identifier is the tenant, the run's owner of
+ * record is the owner (`anonymous:local` when a run names none), and the agent is the collection.
+ * Every Bureau below is created with this identifier.
+ */
+const BUREAU_ID = 'bureau';
+const LOCAL_OWNER = 'anonymous:local';
+const DEFAULT_AGENT = 'bureau';
+
 const databasePath = join(tmpdir(), `bureau-memory-governance-guide-${process.pid}.sqlite`);
 
 afterEach(async () => {
@@ -116,6 +125,7 @@ async function preemptAfterFirstAnswer(
     }
   });
   const bureau = await createBureau({
+    id: BUREAU_ID,
     agents: {},
     generate: () => Promise.resolve(respond(++calls)),
     toolbox: createToolbox([lookup]),
@@ -136,14 +146,18 @@ async function preemptAfterFirstAnswer(
       'both tasks did not complete',
       500,
     );
-    const auditor = auditorFor('bureau', 'bureau');
+    const auditor = auditorFor(BUREAU_ID, LOCAL_OWNER);
     const { taskId: preemptingTaskId } = await preempting!;
+    // Both tasks write into the default agent's collection; each record names its task.
+    const everything = await memory.list(auditor, { collection: DEFAULT_AGENT });
+    const writtenBy = (id: string) =>
+      everything.filter((record) => record.metadata['sessionId'] === id);
     return {
       taskId,
       calls,
       preemptedCount: bureau.scheduler?.getState().preemptedCount,
-      stored: await memory.list(auditor, { collection: taskId }),
-      preemptingStored: await memory.list(auditor, { collection: preemptingTaskId }),
+      stored: writtenBy(taskId),
+      preemptingStored: writtenBy(preemptingTaskId),
     };
   } finally {
     await bureau.dispose();
@@ -161,6 +175,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
     });
 
     const bureau = await createBureau({
+      id: 'acme', // the tenant: memory is partitioned by the Bureau's identifier
       agents: {},
       generate: createMockGenerate([{ content: 'Booked seat 14C for Alice.', toolCalls: [] }]),
       stopWhen: stopWhen.noToolCalls(),
@@ -171,7 +186,8 @@ describe('packages/bureau/README.md — Governed memory', () => {
 
     const run = await bureau.createRun({
       message: 'Book the 9:40 to Denver.',
-      sessionId: 'session-42', // the memory collection this run recalls from and writes to
+      principal: 'alice', // the run's owner of record, whose partition its memory is written to
+      sessionId: 'session-42', // the memory belongs to the agent, so every chat of Alice's shares it
       requestContext: {
         authority: {
           principalId: 'user:alice',
@@ -194,7 +210,7 @@ describe('packages/bureau/README.md — Governed memory', () => {
       policyRevision: 'authorization:7',
       projection: 'audit',
     });
-    const [stored] = await bureau.memory!.list(auditor, { collection: 'session-42' });
+    const [stored] = await bureau.memory!.list(auditor, { collection: 'bureau' }); // the agent's name
     expect(stored?.content).toBe('Booked seat 14C for Alice.'); // 'Booked seat 14C for Alice.'
     expect(stored?.source).toBe('conversation'); // 'conversation'
     expect(stored?.trust).toBe('untrusted'); // 'untrusted'
@@ -207,9 +223,10 @@ describe('packages/bureau/README.md — Governed memory', () => {
 });
 
 describe('documented Bureau memory limits', () => {
-  it('gives a run without a request authority the default bureau partition', async () => {
+  it('partitions a run’s memory by the Bureau’s identifier and its owner of record, in its agent’s collection', async () => {
     const { memory } = governedMemory();
     const bureau = await createBureau({
+      id: BUREAU_ID,
       agents: {},
       generate: createMockGenerate([{ content: 'Noted.', toolCalls: [] }]),
       stopWhen: stopWhen.noToolCalls(),
@@ -218,14 +235,16 @@ describe('documented Bureau memory limits', () => {
     try {
       const run = await bureau.createRun({ message: 'Remember this.', sessionId: 'session-1' });
       await waitForRunState(bureau, run.id);
-      const [stored] = await memory.list(auditorFor('bureau', 'bureau'), {
-        collection: 'session-1',
+      const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
+        collection: DEFAULT_AGENT,
       });
       expect(stored?.governance?.attribution).toMatchObject({
         principal: { kind: 'run', id: run.id },
-        tenantId: 'bureau',
-        ownerId: 'bureau',
+        tenantId: BUREAU_ID,
+        ownerId: LOCAL_OWNER,
       });
+      // The collection is the agent, so the chat that wrote the record is named in its metadata.
+      expect(stored?.metadata['sessionId']).toBe('session-1');
     } finally {
       await bureau.dispose();
     }
@@ -234,6 +253,7 @@ describe('documented Bureau memory limits', () => {
   it('writes a createRun answer with a <runId>:<step> dedupe key under a service principal with id bureau', async () => {
     const { memory } = governedMemory();
     const bureau = await createBureau({
+      id: BUREAU_ID,
       agents: {},
       generate: createMockGenerate([{ content: 'Noted.', toolCalls: [] }]),
       stopWhen: stopWhen.noToolCalls(),
@@ -242,12 +262,13 @@ describe('documented Bureau memory limits', () => {
     try {
       const run = await bureau.createRun({ message: 'Remember this.', sessionId: 'session-1' });
       await waitForRunState(bureau, run.id);
-      const [stored] = await memory.list(auditorFor('bureau', 'bureau'), {
-        collection: 'session-1',
+      const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
+        collection: DEFAULT_AGENT,
       });
       expect(stored?.metadata).toEqual({
         step: 0,
         replay: 'effectful',
+        sessionId: 'session-1',
         dedupeKey: `${run.id}:0`,
       });
       expect(stored?.governance?.attribution.delegationChain.map((link) => link.principal)).toEqual(
@@ -262,9 +283,10 @@ describe('documented Bureau memory limits', () => {
     }
   });
 
-  it('writes a submitSchedulerTask answer with a <taskId>:<step> dedupe key, as the task id, into the task id collection', async () => {
+  it('writes a submitSchedulerTask answer with a <taskId>:<step> dedupe key, as the task id, into its agent’s collection, naming the task as its session', async () => {
     const { memory } = governedMemory();
     const bureau = await createBureau({
+      id: BUREAU_ID,
       agents: {},
       generate: createMockGenerate([{ content: 'Scheduled answer.', toolCalls: [] }]),
       stopWhen: stopWhen.noToolCalls(),
@@ -277,9 +299,16 @@ describe('documented Bureau memory limits', () => {
         () => bureau.scheduler?.getState().completedCount === 1,
         'scheduled task did not complete',
       );
-      const [stored] = await memory.list(auditorFor('bureau', 'bureau'), { collection: taskId });
+      const [stored] = await memory.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
+        collection: DEFAULT_AGENT,
+      });
       expect(stored?.content).toBe('Scheduled answer.');
-      expect(stored?.metadata).toEqual({ step: 0, replay: 'effectful', dedupeKey: `${taskId}:0` });
+      expect(stored?.metadata).toEqual({
+        step: 0,
+        replay: 'effectful',
+        sessionId: taskId,
+        dedupeKey: `${taskId}:0`,
+      });
       expect(stored?.governance?.attribution.delegationChain.map((link) => link.principal)).toEqual(
         [
           { kind: 'service', id: 'bureau' },
@@ -302,7 +331,15 @@ describe('documented Bureau memory limits', () => {
       expect(outcome.preemptedCount).toBe(1);
       expect(outcome.calls).toBe(3);
       expect(outcome.stored.map((record) => [record.content, record.metadata])).toEqual([
-        ['Answer 1.', { step: 0, replay: 'effectful', dedupeKey: `${outcome.taskId}:0` }],
+        [
+          'Answer 1.',
+          {
+            step: 0,
+            replay: 'effectful',
+            sessionId: outcome.taskId,
+            dedupeKey: `${outcome.taskId}:0`,
+          },
+        ],
       ]);
       expect(outcome.preemptingStored.map((record) => record.content)).toEqual(['Answer 2.']);
     });
@@ -342,6 +379,7 @@ describe('documented Bureau memory limits', () => {
         },
       });
       const bureau = await createBureau({
+        id: BUREAU_ID,
         agents: {},
         generate: createMockGenerate([{ content: 'Noted.', toolCalls: [] }]),
         stopWhen: stopWhen.noToolCalls(),
@@ -357,8 +395,8 @@ describe('documented Bureau memory limits', () => {
           embedder: createMockEmbedder(64),
           policy: createMemoryGovernancePolicy({ revision: 'governance:1' }),
         });
-        const stored = await reader.list(auditorFor('bureau', 'bureau'), {
-          collection: 'session-1',
+        const stored = await reader.list(auditorFor(BUREAU_ID, LOCAL_OWNER), {
+          collection: DEFAULT_AGENT,
         });
         outcomes[failOn] = {
           error: JSON.parse(settled.error!),
@@ -415,6 +453,7 @@ describe('documented Bureau memory limits', () => {
           },
         });
         const bureau = await createBureau({
+          id: BUREAU_ID,
           agents: {},
           generate: createMockGenerate([{ content: 'Noted.', toolCalls: [] }]),
           stopWhen: stopWhen.noToolCalls(),
@@ -445,8 +484,8 @@ describe('documented Bureau memory limits', () => {
           outcomes[sink] = { status: settled.status, events: [...events] };
           if (sink === 'collecting') {
             // Nothing was written, and the ledger holds both refusals.
-            const auditor = auditorFor('bureau', 'bureau');
-            expect(await memory.list(auditor, { collection: 'session-1' })).toEqual([]);
+            const auditor = auditorFor(BUREAU_ID, LOCAL_OWNER);
+            expect(await memory.list(auditor, { collection: DEFAULT_AGENT })).toEqual([]);
             const denials = await memory.listEvents(auditor, { type: 'memory.access.denied' });
             expect(denials.map((event) => event.reason)).toEqual([
               'missing-capability',
@@ -478,6 +517,7 @@ describe('documented Bureau memory limits', () => {
         generate: createMockGenerate([{ content: 'Catalog answer.', toolCalls: [] }]),
       });
       const bureau = await createBureau({
+        id: BUREAU_ID,
         agents: { assistant },
         memory,
         ...(durability === 'durable'
