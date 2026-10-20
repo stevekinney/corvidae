@@ -4,8 +4,9 @@ import { workflow } from '@lostgradient/weft';
 import type { Scheduler } from '../scheduler/create-scheduler';
 import type { SchedulerPriority, SchedulerRunOptions, SchedulerTask } from '../scheduler/types';
 import type { RunResult } from '../types';
+import { RUN_ENGINE_WORKFLOW_TYPE } from './run-engine-workflow-types';
 
-export const DURABLE_HEARTBEAT_TICK_WORKFLOW_TYPE = 'durableHeartbeatTick' as const;
+export const DURABLE_HEARTBEAT_TICK_WORKFLOW_TYPE = RUN_ENGINE_WORKFLOW_TYPE.durableHeartbeatTick;
 
 export type DurableHeartbeatTickStatus = 'completed' | 'failed' | 'preempted';
 

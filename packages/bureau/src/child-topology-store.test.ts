@@ -268,6 +268,25 @@ describe('createChildTopologyStore — child records', () => {
     expect(await store.get('child-1')).toEqual(settled);
   });
 
+  it('reports a record whose outcome parts hold a null element as corrupt and unreadable', async () => {
+    const kv = createKv();
+    const corrupt: string[] = [];
+    const store = createChildTopologyStore(kv, { onCorrupt: (key) => corrupt.push(key) });
+    await kv.set(
+      `${CHILD_RECORD_KEY_PREFIX}child-1`,
+      JSON.stringify(
+        childRecord({
+          status: 'completed',
+          settledAt: 30,
+          outcome: { finishReason: 'stop-condition', content: '', parts: [null] as never },
+        }),
+      ),
+    );
+
+    expect(await store.get('child-1')).toBeUndefined();
+    expect(corrupt).toEqual([`${CHILD_RECORD_KEY_PREFIX}child-1`]);
+  });
+
   it('treats a record whose outcome parts carry inline bytes as unreadable', async () => {
     const kv = createKv();
     const corrupt: string[] = [];

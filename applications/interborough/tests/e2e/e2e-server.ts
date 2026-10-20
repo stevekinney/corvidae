@@ -37,6 +37,7 @@ import {
 } from './barrier-agent.ts';
 import {
   E2E_BARRIER_PORT,
+  E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
   E2E_LONG_POLL_BUILD_ID,
@@ -46,8 +47,15 @@ import {
   E2E_RECONNECT_GRACE_PERIOD_MS,
   E2E_TASK_OPERATION_ID,
 } from './e2e-constants.ts';
+import { createEchoAgents, ECHO_AGENT_NAME } from './echo-agent.ts';
+import { createFireQuestionGenerate } from './fire-question.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
+import {
+  createTextEchoAgents,
+  TEXT_ECHO_AGENT_NAME,
+  TEXT_ECHO_SOLO_AGENT_NAME,
+} from './text-echo-agent.ts';
 import { seedVersionedRuns } from './versioned-run-seed.ts';
 
 const scratch = await mkdtemp(join(tmpdir(), 'interborough-e2e-'));
@@ -85,12 +93,23 @@ function createFixtureEngine() {
 // The host takes any engine; the fixtures want the typed one, so it is kept as it is created.
 let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // Two agents whose first step waits until a spec releases it (`barrier-agent.ts`), published
-// beside the seeded ones. Every chat case that needs a run still in progress uses them.
+// beside the seeded ones. Every chat case that needs a run still in progress uses them. A third,
+// the echo (`echo-agent.ts`), takes an attached image and sends it back. Two more, the text echoes
+// (`text-echo-agent.ts`), answer with what they were sent, so a memory spec can store a memory that
+// is its own.
 const barrier = createBarrier();
 const host = await startHost({
+  // A schedule's fire runs this, not its agent's script: it asks a question for one input.
+  generate: createFireQuestionGenerate(),
   extraAgents: {
-    agents: createBarrierAgents(barrier),
-    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME],
+    agents: { ...createBarrierAgents(barrier), ...createEchoAgents(), ...createTextEchoAgents() },
+    published: [
+      BARRIER_AGENT_NAME,
+      BARRIER_SHORT_AGENT_NAME,
+      ECHO_AGENT_NAME,
+      TEXT_ECHO_AGENT_NAME,
+      TEXT_ECHO_SOLO_AGENT_NAME,
+    ],
   },
   environment: { INTERBOROUGH_HOME: home },
   resolveProviderGenerate: provider.resolver,
@@ -205,6 +224,23 @@ const ledgerWorkers = await seedLedgerEvidence(server);
 // finished run of each, plus a held run still bound to the first build. See `versioned-run-seed.ts`.
 const versionedWorkers = await seedVersionedRuns(engine, host.url.origin);
 
+// The second host, whose console runs on the Bureau's own engine (the default), so the schedules the
+// Bureau holds are listed with the engine's (`28-schedule-owners.spec.ts`). It has a home of its own,
+// because a home is locked by the host that holds it, and one workflow file whose trigger is a
+// schedule, so the seeded agent run is not the only schedule it has.
+const bureauHome = join(scratch, 'bureau-home');
+const bureauWorkflowDirectory = join(bureauHome, 'workflows');
+await mkdir(bureauWorkflowDirectory, { recursive: true });
+await writeFile(
+  join(bureauWorkflowDirectory, 'e2e-digest.json'),
+  `${JSON.stringify(SEEDED_WORKFLOW_FILES['e2e-digest'], null, 2)}\n`,
+);
+const bureauHost = await startHost({
+  environment: { INTERBOROUGH_HOME: bureauHome },
+  port: E2E_BUREAU_PORT,
+  buildDirectory,
+});
+
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host.
 const barrierControl = Bun.serve({
@@ -224,6 +260,7 @@ const barrierControl = Bun.serve({
 process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
+    `Interborough E2E Bureau host listening on ${bureauHost.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Seeded COR-281 cross-build retry storm',
@@ -239,6 +276,7 @@ async function shutDown(): Promise<void> {
   for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();
   await fleetWorker.disconnect();
+  await bureauHost.close();
   await host.close();
   await rm(scratch, { recursive: true, force: true });
   process.exit(0);

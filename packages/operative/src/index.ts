@@ -214,6 +214,7 @@ export type {
   GeneratedMediaSettlement,
   InlineMediaContent,
   ManagedAssetReference,
+  SeededInputRetentionRequest,
   StepGeneratedMediaAdmitter,
   StepMediaAdmissionRequest,
 } from './generated-media';
@@ -522,6 +523,7 @@ export type { EventDispatcher } from './loop';
 export * from './providers';
 export * from './retry';
 export * from './run-envelope';
+export { validateStoredResponseParts, type StoredResponsePartsValidation } from './stored-parts';
 /*
  * `operative.runs.events`, declared with Weft's `defineOperation` so a client
  * subscribing to a run speaks the same dialect and obeys the same access

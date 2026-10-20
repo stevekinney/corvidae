@@ -1145,8 +1145,15 @@ describe('memory hook registration (COR-41)', () => {
 
   it('writes non-deduplicated conversation memory for a run without a run id', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
-    const authority = createRunMemoryAuthority(defaultRunRequestContext, { runId: 'hook-run' });
-    const hook = createMemoryPersistHook(memory, authority, 'session-memory');
+    const authority = createRunMemoryAuthority(defaultRunRequestContext, {
+      runId: 'hook-run',
+      tenantId: 'bureau',
+      ownerId: 'bureau',
+    });
+    const hook = createMemoryPersistHook(memory, authority, {
+      collection: 'session-memory',
+      sessionId: 'session-memory-chat',
+    });
     await hook({
       parts: [],
       messageId: undefined,
@@ -1408,6 +1415,62 @@ describe('Bureau hook tier composition (COR-1265)', () => {
   });
 });
 
+describe('a composition built without a memory owner (COR-1546)', () => {
+  const stepOf = (content: string) => ({
+    parts: [],
+    messageId: undefined,
+    step: 0,
+    conversation: new Conversation(),
+    content,
+    toolCalls: [],
+    results: [],
+    final: true,
+  });
+  const listerFor = (ownerId: string) =>
+    createMemoryAuthority({
+      principal: { kind: 'governance', id: 'governance:test' },
+      tenantId: 'bureau',
+      ownerId,
+      purpose: 'test-inspection',
+      capabilities: ['memory:list', 'memory:inspect'],
+      policyRevision: 'bureau:1',
+      projection: 'audit',
+    });
+
+  it('keeps each request authority’s owner apart, not one shared anonymous:local partition', async () => {
+    const { memory } = createGovernedMemoryFixture();
+    const runtime = await createRuntimeComposition({
+      id: 'bureau',
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory,
+    });
+    const requestFor = (ownerId: string): ToolRequestContext => ({
+      authority: { ...defaultRunRequestContext.authority, principalId: `user:${ownerId}`, ownerId },
+    });
+    for (const ownerId of ['owner-a', 'owner-b']) {
+      const runRuntime = await runtime.createRunRuntime({
+        message: 'test',
+        sessionId: `session-${ownerId}`,
+        runId: `run-${ownerId}`,
+        agentName: 'agent',
+        requestContext: requestFor(ownerId),
+      });
+      const entry = runRuntime.hooks
+        .getHandlers('onStep')
+        .find((candidate) => candidate.id === 'bureau:memory-persist');
+      await entry?.handler(stepOf(`${ownerId} remembers this`));
+    }
+
+    const contentsOf = async (ownerId: string) => {
+      const records = await memory.list(listerFor(ownerId), { collection: 'agent' });
+      return records.map((record) => record.content);
+    };
+    expect(await contentsOf('owner-a')).toEqual(['owner-a remembers this']);
+    expect(await contentsOf('owner-b')).toEqual(['owner-b remembers this']);
+    expect(await contentsOf('anonymous:local')).toEqual([]);
+  });
+});
+
 describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   // COR-567 classifies these `effectful`: a crashed in-flight step re-runs,
   // so they fire again, and the mitigation the decision chose is that each
@@ -1444,16 +1507,23 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   it('bureau:memory-persist writes one memory when the same step replays', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
 
+    // COR-1546: the memory a run writes is partitioned by the composition's identifier and the
+    // run's owner of record, into its agent's collection.
     const runtime = await createRuntimeComposition({
+      id: 'bureau',
       generate: async () => ({ content: 'x', toolCalls: [] }),
       memory,
     });
-    const runRuntime = await runtime.createRunRuntime({
-      message: 'test',
-      sessionId: 'idempotency-session',
-      runId: 'idempotency-run',
-      requestContext: defaultRunRequestContext,
-    });
+    const runRuntime = await runtime.createRunRuntime(
+      {
+        message: 'test',
+        sessionId: 'idempotency-session',
+        runId: 'idempotency-run',
+        agentName: 'idempotency-agent',
+        requestContext: defaultRunRequestContext,
+      },
+      { memoryOwner: 'bureau' },
+    );
 
     const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
     expect(entry.options.replay).toBe('effectful');
@@ -1467,7 +1537,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
 
     // One dedupe key derived from run + step, not content, so the replay is a
     // no-op at the store and the original write survives.
-    const records = await memory.list(inspector, { collection: 'idempotency-session' });
+    const records = await memory.list(inspector, { collection: 'idempotency-agent' });
     expect(records.map((record) => [record.content, record.metadata['dedupeKey']])).toEqual([
       ['a durable thought', 'idempotency-run:3'],
     ]);
@@ -1476,16 +1546,23 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
   it('bureau:memory-persist keys by step, so two different steps are two records', async () => {
     const { memory, inspector } = createGovernedMemoryFixture();
 
+    // COR-1546: the memory a run writes is partitioned by the composition's identifier and the
+    // run's owner of record, into its agent's collection.
     const runtime = await createRuntimeComposition({
+      id: 'bureau',
       generate: async () => ({ content: 'x', toolCalls: [] }),
       memory,
     });
-    const runRuntime = await runtime.createRunRuntime({
-      message: 'test',
-      sessionId: 'idempotency-session',
-      runId: 'idempotency-run',
-      requestContext: defaultRunRequestContext,
-    });
+    const runRuntime = await runtime.createRunRuntime(
+      {
+        message: 'test',
+        sessionId: 'idempotency-session',
+        runId: 'idempotency-run',
+        agentName: 'idempotency-agent',
+        requestContext: defaultRunRequestContext,
+      },
+      { memoryOwner: 'bureau' },
+    );
     const entry = handlerById(runRuntime.hooks, 'onStep', 'bureau:memory-persist');
 
     const conversation = new Conversation();
@@ -1495,7 +1572,7 @@ describe('effectful hook idempotency under crash replay (COR-1267)', () => {
     // The control for the test above: the key collapses a REPLAY, not two
     // genuinely distinct steps. Without this, a hook that returned one
     // constant key would pass the idempotency test and silently lose writes.
-    const records = await memory.list(inspector, { collection: 'idempotency-session' });
+    const records = await memory.list(inspector, { collection: 'idempotency-agent' });
     const keys = records.map((record) => String(record.metadata['dedupeKey']));
     expect(keys.toSorted((left, right) => left.localeCompare(right))).toEqual([
       'idempotency-run:0',
@@ -7200,7 +7277,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       durableExecution: true,
     });
     try {
-      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({});
+      expect(runtime.mediaOptionsFor('api-key:alice', 'session')).toEqual({});
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
@@ -7215,7 +7292,7 @@ describe('content source resolver on a scheduled fire and a recovered run (COR-7
       durableExecution: true,
     });
     try {
-      expect(runtime.mediaOptionsFor('api-key:alice')).toEqual({
+      expect(runtime.mediaOptionsFor('api-key:alice', 'session')).toEqual({
         assetSafety: { unknown: 'block' },
       });
 

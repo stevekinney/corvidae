@@ -8,6 +8,8 @@ The browser suite writes and reads baselines at `scripts/browser-fixtures/snapsh
 
 `provenance.json` records how the set was rendered: the source commit (`renderedSourceSha`), the Playwright version, the operating system codename, the architecture, the renderer image tag, and the suite's exit code (`suiteExitCode`: 0 when every case passed, 1 when the run completed with failures). Only the update tooling writes it; never edit it by hand.
 
+The top-level record always describes the last full run, so its `componentScope` is `"all"`. A refresh scoped by `CINDER_TEST_COMPONENTS` keeps that record and adds one entry per rendered component under `componentRenders`, keyed by slug, with that render's `renderedSourceSha` and `suiteExitCode` (COR-1574). The wrapper refuses a scoped render whose Playwright version, codename, architecture, or image tag differ from the full-run record's, because one record could not describe both; refresh the full set instead. The next full run writes a record without `componentRenders`. `baseline-provenance.test.ts` checks the top-level record and every component render against the lockfile's renderer.
+
 The comparison tolerance is `maxDiffPixels: 2` at `threshold: 0.1`, declared once as `SNAPSHOT_DIFF_OPTIONS` in `testing/testing/src/helpers/screenshot.ts`. Changing it is out of scope for a baseline refresh.
 
 ## The authoritative renderer
@@ -50,15 +52,17 @@ Both accept `--source <ref>` (default `HEAD`) and forward any other arguments to
 - The only mount is an empty output directory under the temporary directory. The container copies the Linux baselines, the list of regenerated files, the fixture manifest, the JSON report, and Playwright's `test-results` into it, owned by the host user (`BASELINE_HOST_UID` and `BASELINE_HOST_GID`). The commit is passed as `BASELINE_SOURCE_SHA`, since the archive has no `.git`.
 - The container runs as `corvidae-baselines-<run id>` with `--rm` and `--init`. On SIGINT or SIGTERM the wrapper runs `docker kill` on that name, waits for it to exit, and exits `128 + signal`.
 
-`test:browser:visual:docker` runs the whole suite in block mode, exits with the suite's status, and writes `suite-results.json` (every failing test, screenshot or behavioural) into its run directory. There is no screenshot-only filter. Failure artefacts stay in the printed output directory. A visual run that did not complete normally (see below) prints why on standard error and never exits 0.
+`test:browser:visual:docker` runs the whole suite in block mode, exits with the suite's status (except for the scoped terminal-guard case below), and writes `suite-results.json` (every failing test, screenshot or behavioural) into its run directory. There is no screenshot-only filter. Failure artefacts stay in the printed output directory. A visual run that did not complete normally (see below) prints why on standard error and never exits 0.
 
 `test:browser:update:docker` first deletes every Linux baseline inside the container, because `--update-snapshots=all` does not rewrite a baseline that already matches within tolerance; every baseline a test uses is then written fresh. After the run it:
 
 - extracts the committed baselines from `git archive <sha>` (never the working tree) and compares them with the regenerated set;
 - writes the review report described below into the run directory and prints its path;
-- copies into the working tree only the baselines whose pixels changed, those whose dimensions changed, those that were added or renamed, and `provenance.json`, and deletes every orphan. A baseline the update rewrote with identical pixels keeps its committed bytes, so history does not take a copy of unchanged images. `git status` then shows exactly what a refresh commits.
+- copies into the working tree only the baselines whose pixels changed, those whose dimensions changed, those that were added or renamed, and `provenance.json` (a full run's own record, or a scoped run's component renders merged into the working tree's record), and, after a full, unfiltered run, removes every orphan. A baseline the update rewrote with identical pixels keeps its committed bytes, so history does not take a copy of unchanged images. `git status` then shows exactly what a refresh commits.
 
 A suite that completed with behavioural failures is applied only with `--accept-behavioural-failures`, after confirming each failure also occurs on an `origin/main` control. A screenshot failure is never accepted, and a run that crashed or was interrupted is never applied. The report records the suite's exit code and every failing test either way.
+
+One failure is expected rather than accepted. `terminal-visual.playwright.ts` holds a guard, "the screenshot scope includes the terminal, so every cell captures an image", that fails whenever `CINDER_TEST_COMPONENTS` leaves the terminal out, so a leftover variable cannot silently skip the terminal's images. On a run scoped by `CINDER_TEST_COMPONENTS`, a suite whose only failure is that guard (matched by its file and exact title) is applied without `--accept-behavioural-failures` (COR-1574), and a scoped `test:browser:visual:docker` run in the same state exits 0 and prints why (COR-1575). Both read the one predicate, `onlyTerminalScopeGuardFailed` in `suite-results.ts`. On a full run, or next to any other failure, it blocks like every other failure.
 
 ### Incomplete runs fail closed
 
@@ -69,7 +73,7 @@ Because the container deletes every Linux baseline before the suite runs, a run 
 - Playwright selected no tests, or no selected test executed;
 - any selected test never ran. This uses Playwright's own "did not run": a test with no result, an interrupted result, or a skipped result on a test that did not skip itself. Tests that call `test.skip()` are not counted. The check is exact rather than a ratio, so one unreached test is enough to refuse.
 
-Two further guards apply to a run that did complete. If it regenerated no baseline at all, the wrapper deletes nothing and exits 1. And orphans are deleted only after a full, unfiltered run: when `CINDER_TEST_COMPONENTS` scoped the run or any Playwright argument was forwarded (for example `--grep`), the wrapper still writes the changed baselines and provenance, but keeps every orphan and says how many it kept, because such a run never selected the tests that own them.
+Two further guards apply to a run that did complete. If it regenerated no baseline at all, the wrapper deletes nothing and exits 1. And orphans are deleted only after a full, unfiltered run: when `CINDER_TEST_COMPONENTS` scoped the run or any Playwright argument was forwarded (for example `--grep`), the wrapper still writes the changed baselines and provenance, but keeps every orphan and says how many it kept, because such a run never selected the tests that own them. Its report and summary then say "Kept orphans" and `kept N orphans`, never that orphans were deleted.
 
 The stability comparison follows the same rule. `suite-results.ts compare` fails when either the run or the control did not complete normally, and lists why, because a run that executed nothing has no failures to compare.
 
@@ -96,7 +100,7 @@ After the pull request merges, run the same visual command against the merged co
 - a dimension change is reported as such, with no ratio;
 - added baselines (no committed counterpart) are listed;
 - a committed baseline that was not regenerated, but belongs to a test that failed or was skipped in the run, is restored: it keeps its committed bytes and is listed as "restored, not regenerated" with the failure reason, because that test may never have reached its screenshot. A sweep test owns the images its title names (and their `-resting` partners); any other spec owns the screenshot names it quotes;
-- orphans (committed, regenerated by no test in a full, unfiltered run, and owned by no failing or skipped test) are deleted, because no test can ever compare against them. A scoped run keeps them, and an incomplete run is refused before any report is written. A cinder-era `<theme>-<viewport>-default.png` whose `-assertion.png` counterpart was added is a rename: the report compares the pair pixel by pixel and lists it with its partner. Every other orphan is listed with the evidence that no current fixture or spec names it;
+- orphans (committed, regenerated by no test in a full, unfiltered run, and owned by no failing or skipped test) are deleted, because no test can ever compare against them. A scoped run keeps them and reports them under "Kept orphans" headings, and an incomplete run is refused before any report is written. A cinder-era `<theme>-<viewport>-default.png` whose `-assertion.png` counterpart was added is a rename: the report compares the pair pixel by pixel and lists it with its partner. Every other orphan is listed with the evidence that no current fixture or spec names it;
 - the suite's exit code, every failing test, and the host load.
 
 Every changed or renamed image above 1%, and every dimension change, gets one line in the pull request with one of three classifications:

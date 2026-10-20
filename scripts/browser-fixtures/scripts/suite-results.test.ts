@@ -6,14 +6,19 @@ import { join } from 'node:path';
 import {
   WEB_SERVER_TIMEOUT,
   WEB_SERVER_TIMEOUT_REPORT,
+  failedTerminalScopeGuard,
   passed,
   playwrightReport,
 } from './playwright-report.test-support.ts';
 import {
+  TERMINAL_SCOPE_GUARD_FILE,
+  TERMINAL_SCOPE_GUARD_TITLE,
   compareWithControl,
   decideApply,
+  decideVisualExit,
   incompleteRunReasons,
   isScreenshotFailure,
+  isTerminalScopeGuard,
   nonPassingTests,
   renderControlComparison,
   runCompareCommand,
@@ -196,31 +201,156 @@ const screenshot: SuiteResults = {
 
 describe('decideApply', () => {
   it('applies a passing suite', () => {
-    expect(decideApply(0, { ...behavioural, unexpected: 0, failures: [] }, false).apply).toBe(true);
+    expect(
+      decideApply(0, { ...behavioural, unexpected: 0, failures: [] }, false, 'all').apply,
+    ).toBe(true);
   });
 
   it('never applies a run without a Playwright report, even one that exited 0', () => {
-    const decision = decideApply(0, undefined, true);
+    const decision = decideApply(0, undefined, true, 'all');
     expect(decision.apply).toBe(false);
     expect(decision.reason).toContain('no Playwright report');
   });
 
   it('refuses behavioural failures without the explicit flag, and names the flag', () => {
-    const decision = decideApply(1, behavioural, false);
+    const decision = decideApply(1, behavioural, false, 'all');
     expect(decision.apply).toBe(false);
     expect(decision.reason).toContain('--accept-behavioural-failures');
-    expect(decideApply(1, behavioural, true).apply).toBe(true);
+    expect(decideApply(1, behavioural, true, 'all').apply).toBe(true);
   });
 
   it('never accepts a screenshot failure, even with the flag', () => {
-    const decision = decideApply(1, screenshot, true);
+    const decision = decideApply(1, screenshot, true, 'all');
     expect(decision.apply).toBe(false);
     expect(decision.reason).toContain('never accepted');
   });
 
   it('never applies a run that did not complete', () => {
-    expect(decideApply(1, undefined, true).apply).toBe(false);
-    expect(decideApply(130, behavioural, true).apply).toBe(false);
+    expect(decideApply(1, undefined, true, 'all').apply).toBe(false);
+    expect(decideApply(130, behavioural, true, 'all').apply).toBe(false);
+  });
+});
+
+describe('decideApply with a component scope (COR-1574)', () => {
+  // The failure Playwright reports when CINDER_TEST_COMPONENTS leaves the terminal out.
+  const guard = {
+    title: `${TERMINAL_SCOPE_GUARD_FILE} › ${TERMINAL_SCOPE_GUARD_TITLE}`,
+    file: TERMINAL_SCOPE_GUARD_FILE,
+    line: 23,
+    status: 'failed',
+    errors: ['Error: expect(received).toBe(expected) // Object.is equality'],
+    screenshot: false,
+  };
+  const withFailures = (...failures: SuiteResults['failures']): SuiteResults => ({
+    ...behavioural,
+    unexpected: failures.length,
+    failures,
+  });
+  const otherFailure = behavioural.failures[0]!;
+
+  it('blocks the terminal guard failure on a full run', () => {
+    const decision = decideApply(1, withFailures(guard), false, 'all');
+    expect(decision.apply).toBe(false);
+    expect(decision.reason).toContain('--accept-behavioural-failures');
+  });
+
+  it('applies a scoped run whose only failure is the terminal guard', () => {
+    const decision = decideApply(1, withFailures(guard), false, ['chat-conversation-list']);
+    expect(decision.apply).toBe(true);
+    expect(decision.reason).toContain('terminal scope guard');
+  });
+
+  it('blocks a scoped run with the terminal guard failure and any other failure', () => {
+    for (const other of [otherFailure, screenshot.failures[0]!]) {
+      expect(decideApply(1, withFailures(guard, other), false, ['button']).apply).toBe(false);
+    }
+  });
+
+  it('blocks a scoped run with any other single failure', () => {
+    for (const other of [otherFailure, screenshot.failures[0]!]) {
+      expect(decideApply(1, withFailures(other), false, ['button']).apply).toBe(false);
+    }
+  });
+
+  it('identifies the guard by its file and its exact title', () => {
+    expect(isTerminalScopeGuard(guard)).toBe(true);
+    expect(isTerminalScopeGuard({ ...guard, file: 'components.playwright.ts' })).toBe(false);
+    expect(isTerminalScopeGuard({ ...guard, title: `${guard.title} again` })).toBe(false);
+    expect(
+      isTerminalScopeGuard({
+        file: TERMINAL_SCOPE_GUARD_FILE,
+        title: `${TERMINAL_SCOPE_GUARD_FILE} › terminal › ${TERMINAL_SCOPE_GUARD_TITLE}`,
+      }),
+    ).toBe(false);
+  });
+
+  it('reads the guard from a real report shape and still refuses an incomplete scoped run', () => {
+    const results = summarizePlaywrightResults(
+      playwrightReport([passed('button › light-desktop-primary'), failedTerminalScopeGuard]),
+    );
+    expect(results.failures.map(isTerminalScopeGuard)).toEqual([true]);
+    expect(decideApply(1, results, false, ['button']).apply).toBe(true);
+    expect(decideApply(1, results, false, 'all').apply).toBe(false);
+    const incomplete = { ...results, notRun: ['components.playwright.ts › never ran'] };
+    expect(decideApply(1, incomplete, true, ['button']).apply).toBe(false);
+  });
+});
+
+describe('decideVisualExit with a component scope (COR-1575)', () => {
+  const guard = {
+    title: `${TERMINAL_SCOPE_GUARD_FILE} › ${TERMINAL_SCOPE_GUARD_TITLE}`,
+    file: TERMINAL_SCOPE_GUARD_FILE,
+    line: 23,
+    status: 'failed',
+    errors: ['Error: expect(received).toBe(expected) // Object.is equality'],
+    screenshot: false,
+  };
+  const withFailures = (...failures: SuiteResults['failures']): SuiteResults => ({
+    ...behavioural,
+    unexpected: failures.length,
+    failures,
+  });
+  const otherFailure = behavioural.failures[0]!;
+
+  it('fails a full run whose only failure is the terminal guard', () => {
+    expect(decideVisualExit(1, withFailures(guard), 'all')).toEqual({
+      exitCode: 1,
+      reason: undefined,
+    });
+  });
+
+  it('passes a scoped run whose only failure is the terminal guard, and says why', () => {
+    const decision = decideVisualExit(1, withFailures(guard), ['audio-player', 'text']);
+    expect(decision.exitCode).toBe(0);
+    expect(decision.reason).toContain('terminal scope guard');
+    expect(decision.reason).toContain('audio-player, text');
+  });
+
+  it('fails a scoped run with the terminal guard failure and any other failure', () => {
+    for (const other of [otherFailure, screenshot.failures[0]!]) {
+      expect(decideVisualExit(1, withFailures(guard, other), ['button']).exitCode).toBe(1);
+    }
+  });
+
+  it('fails a scoped run with any other single failure', () => {
+    for (const other of [otherFailure, screenshot.failures[0]!]) {
+      expect(decideVisualExit(1, withFailures(other), ['button']).exitCode).toBe(1);
+    }
+  });
+
+  it('never passes an incomplete or reportless run, scoped or not', () => {
+    const incomplete = {
+      ...withFailures(guard),
+      notRun: ['components.playwright.ts › never ran'],
+    };
+    expect(decideVisualExit(1, incomplete, ['button']).exitCode).toBe(1);
+    expect(decideVisualExit(0, undefined, ['button']).exitCode).toBe(1);
+    expect(decideVisualExit(0, undefined, 'all').reason).toContain('did not complete normally');
+    expect(decideVisualExit(130, withFailures(guard), ['button']).exitCode).toBe(130);
+  });
+
+  it('passes a passing suite through', () => {
+    expect(decideVisualExit(0, withFailures(), 'all')).toEqual({ exitCode: 0, reason: undefined });
   });
 });
 
@@ -242,7 +372,7 @@ describe('a run that did not complete normally (COR-1537)', () => {
     const results = summarizePlaywrightResults(WEB_SERVER_TIMEOUT_REPORT);
     for (const exitCode of [0, 1]) {
       for (const accept of [false, true]) {
-        const decision = decideApply(exitCode, results, accept);
+        const decision = decideApply(exitCode, results, accept, 'all');
         expect(decision.apply).toBe(false);
         expect(decision.reason).toContain('did not complete normally');
         expect(decision.reason).toContain('config.webServer');
@@ -259,7 +389,7 @@ describe('a run that did not complete normally (COR-1537)', () => {
     );
     expect(results.selected).toBe(2);
     expect(results.executed).toBe(0);
-    const decision = decideApply(1, results, true);
+    const decision = decideApply(1, results, true, 'all');
     expect(decision.apply).toBe(false);
     expect(decision.reason).toContain('No test executed.');
     expect(decision.reason).toContain('2 of 2 selected tests never ran');
@@ -280,7 +410,7 @@ describe('a run that did not complete normally (COR-1537)', () => {
       'components.playwright.ts › interrupted',
       'components.playwright.ts › never started',
     ]);
-    const decision = decideApply(0, results, true);
+    const decision = decideApply(0, results, true, 'all');
     expect(decision.apply).toBe(false);
     expect(decision.reason).toContain('3 of 4 selected tests never ran');
     expect(decision.reason).toContain('components.playwright.ts › never started');
@@ -298,7 +428,10 @@ describe('a run that did not complete normally (COR-1537)', () => {
       ]),
     );
     expect(incompleteRunReasons(results)).toEqual([]);
-    expect(decideApply(0, results, false)).toEqual({ apply: true, reason: 'The suite passed.' });
+    expect(decideApply(0, results, false, 'all')).toEqual({
+      apply: true,
+      reason: 'The suite passed.',
+    });
   });
 
   it('never lets an incomplete visual run or control pass the stability rule', () => {

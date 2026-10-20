@@ -12,7 +12,8 @@
   import { ChatConversationList } from '@lostgradient/chat';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, CHAT_COPY, MEMORY_COPY } from '../../app/copy.ts';
+  import { agentEditPath, agentMemoryPath } from '../../lib/agent-paths.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -57,7 +58,8 @@
       .map((context) => sessionSummary(context, agentsByName(agents.data ?? []))),
   );
 
-  const editPath = `/agents/${encodeURIComponent(id)}/edit`;
+  const editPath = agentEditPath(id);
+  const memoryPath = agentMemoryPath(id);
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -89,6 +91,12 @@
             onclick={(event) => goTo(event, editPath)}>{AGENT_EDITOR_COPY.editAction}</Button
           >
         {/if}
+        <Button
+          href={router.href(memoryPath)}
+          variant="secondary"
+          size="sm"
+          onclick={(event) => goTo(event, memoryPath)}>{MEMORY_COPY.link}</Button
+        >
         {#if canChat(agent)}
           <Button
             href={router.href(newChatPath(id))}

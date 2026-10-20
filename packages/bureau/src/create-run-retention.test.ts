@@ -45,7 +45,10 @@ type FixtureFactory = (runtime: RuntimeServices) => BureauStorageFixture;
 
 const BACKENDS: readonly (readonly [string, FixtureFactory])[] = [
   ['sqlite', (runtime) => createSqliteStorageFixture({ runtime })],
-  ['lmdb', (runtime) => createLmdbStorageFixture({ runtime })],
+  // Relaxed durability drops LMDB's per-commit sync, which cost each case here more than a second
+  // on a quiet host (COR-1576). The window is read from the injected clock and nothing restarts, so
+  // no case depends on a commit surviving a crash.
+  ['lmdb', (runtime) => createLmdbStorageFixture({ runtime, durability: 'relaxed' })],
 ];
 
 const finishes: GenerateFunction = async () => ({ content: 'done', toolCalls: [] });

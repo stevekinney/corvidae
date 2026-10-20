@@ -22,6 +22,7 @@ import type { GeneratedMediaAdmitter } from './generated-media';
 import type { AgentGenerationProfile, AgentPreferences } from './generation-profile';
 import type { AssetSafetyPolicy, GuardrailsOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
+import { inputMessageIdentifier } from './message-identifiers';
 import { readBackendDescriptors } from './providers/backend-descriptor-attachment';
 import type { ProviderName } from './providers/types';
 import type { AgentInput, AgentRunContext, DefinitionResolvingAgent } from './runnable-agent';
@@ -831,8 +832,10 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
           }
           // A string or an ordered list of parts becomes exactly one user
           // message; a part list is cloned so the run and the caller's array
-          // are independent from the moment `run()` is called.
-          appendAgentInput(fresh, input);
+          // are independent from the moment `run()` is called. The row's id comes from the
+          // run's id: a durable run's options are rebuilt when it is replayed or recovered, and a
+          // row minted at random would get a new id each time (COR-1581).
+          appendAgentInput(fresh, input, undefined, inputMessageIdentifier(context?.runId));
           return fresh;
         })()
       : // Snapshot semantics: CLONE the supplied history before wrapping it

@@ -55,15 +55,27 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** Install the stub. `hostPaths: null` makes `/host/paths` fail, as a host that does not say would. */
+/**
+ * Install the stub. `hostPaths: null` makes `/host/paths` fail, as a host that does not say would.
+ * With `passThrough`, a request for anything but the Bureau and the host's paths goes to the
+ * `fetch` that was installed before, such as a test that reaches a real engine over the network.
+ */
 export function installBureauStub(
   handlers: Record<string, BureauHandler>,
-  options: { readonly hostPaths?: string | null } = {},
+  options: { readonly hostPaths?: string | null; readonly passThrough?: boolean } = {},
 ): BureauStub {
   const table = new Map(Object.entries(handlers));
   const calls: BureauCall[] = [];
+  const before = globalThis.fetch;
   const restoreFetch = installFetchImplementation(async (input, init) => {
     const url = new URL(urlOf(input), 'http://localhost');
+    if (
+      options.passThrough === true &&
+      url.pathname !== '/host/paths' &&
+      url.pathname !== '/bureau/jsonrpc'
+    ) {
+      return before(input, init);
+    }
     if (url.pathname === '/host/paths') {
       const directory = options.hostPaths === undefined ? STUB_AGENT_DIRECTORY : options.hostPaths;
       return directory === null

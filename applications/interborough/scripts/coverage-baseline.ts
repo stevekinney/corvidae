@@ -98,45 +98,67 @@ export function coverageMeasurementPlatform(): CoverageMeasurementPlatform | nul
 }
 
 const DARWIN_BASELINE: CoverageBaseline = {
-  // Re-measured for COR-1533, which adds `src/routes/workflow-definitions` (the Workflows area:
-  // the catalog, a type's page, its runs, and its editor) and a scoped mode in the runs list
-  // (`src/routes/workflows/list`). Every area is re-measured on darwin with the command in
-  // `run-coverage.ts`, so the floors also rise to the code that arrived since the last measurement.
-  measuredAt: '2026-10-19T18:00:00.000Z',
-  overall: { linesFound: 62656, linesHit: 60795, functionsFound: 12349, functionsHit: 11984 },
+  // Re-measured for COR-1491 and COR-1492, which add `src/routes/tasks` (the Tasks view) and the
+  // Bureau's reviews in `src/routes/reviews`, on top of COR-1493 and COR-1494 (`src/routes/audit`,
+  // `src/routes/goals`, and `src/routes/schedules`). Every area is re-measured on darwin with the
+  // command in `run-coverage.ts`. The Linux baseline below is not re-measured: it needs a Linux
+  // host, so `src/routes/tasks` has no Linux floor yet.
+  //
+  // COR-1546 adds the Memory page to `src/routes/agents`, its client and query keys to `src/lib`,
+  // and the view frame's per-pattern words to `src/app`, and re-measures those areas and the
+  // overall counts on darwin. `src/routes/agents` is 100% of lines. Two of its 402 functions are
+  // still unhit, one in `agent-detail.svelte` and one in `agent-memory.svelte`; the floor is
+  // 400/402, above the 138/139 it held before the Memory page.
+  measuredAt: '2026-10-20T02:00:00.000Z',
+  overall: { linesFound: 71718, linesHit: 69857, functionsFound: 14144, functionsHit: 13767 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 954, linesHit: 954, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 965, linesHit: 965, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3273, linesHit: 3206, functionsFound: 630, functionsHit: 612 },
-    'src/lib': { linesFound: 2777, linesHit: 2762, functionsFound: 463, functionsHit: 459 },
+    'src/app': { linesFound: 3809, linesHit: 3742, functionsFound: 655, functionsHit: 637 },
+    'src/lib': { linesFound: 3971, linesHit: 3954, functionsFound: 616, functionsHit: 612 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
-      linesFound: 1447,
-      linesHit: 1433,
+      linesFound: 1448,
+      linesHit: 1434,
       functionsFound: 332,
       functionsHit: 327,
     },
-    'src/routes/agents': { linesFound: 641, linesHit: 641, functionsFound: 139, functionsHit: 138 },
-    'src/routes/chat': { linesFound: 1306, linesHit: 1276, functionsFound: 265, functionsHit: 255 },
+    'src/routes/agents': {
+      linesFound: 1900,
+      linesHit: 1900,
+      functionsFound: 402,
+      functionsHit: 400,
+    },
+    // COR-1493, measured on darwin: the audit search.
+    'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
+    'src/routes/chat': { linesFound: 1444, linesHit: 1435, functionsFound: 297, functionsHit: 292 },
     'src/routes/dashboard': {
       linesFound: 1472,
       linesHit: 1236,
       functionsFound: 254,
       functionsHit: 230,
     },
+    // COR-1494, measured on darwin: the goals list, its create drawer, and its cancel.
+    'src/routes/goals': {
+      linesFound: 1222,
+      linesHit: 1218,
+      functionsFound: 310,
+      functionsHit: 306,
+    },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2204,
-      linesHit: 2060,
-      functionsFound: 440,
-      functionsHit: 421,
+      linesFound: 2918,
+      linesHit: 2864,
+      functionsFound: 610,
+      functionsHit: 593,
     },
+    // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
-      linesFound: 3678,
-      linesHit: 3600,
-      functionsFound: 791,
-      functionsHit: 768,
+      linesFound: 5065,
+      linesHit: 4991,
+      functionsFound: 1108,
+      functionsHit: 1085,
     },
     'src/routes/storage': {
       linesFound: 2660,
@@ -150,6 +172,13 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsFound: 2106,
       functionsHit: 2076,
     },
+    // COR-1491, measured on darwin: the Tasks view.
+    'src/routes/tasks': {
+      linesFound: 1836,
+      linesHit: 1727,
+      functionsFound: 355,
+      functionsHit: 341,
+    },
     'src/routes/workers': {
       linesFound: 12913,
       linesHit: 12778,
@@ -158,16 +187,16 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1533, measured on darwin: the Workflows area's catalog, a type's page, its runs, and its editor.
     'src/routes/workflow-definitions': {
-      linesFound: 2517,
-      linesHit: 2506,
+      linesFound: 2522,
+      linesHit: 2511,
       functionsFound: 524,
       functionsHit: 520,
     },
     'src/routes/workflows': {
-      linesFound: 14860,
-      linesHit: 14188,
-      functionsFound: 3028,
-      functionsHit: 2886,
+      linesFound: 14966,
+      linesHit: 14294,
+      functionsFound: 3045,
+      functionsHit: 2903,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
     tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },

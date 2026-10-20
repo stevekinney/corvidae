@@ -1,5 +1,7 @@
 import { type JSONValue, sessionOwnerOf } from '@lostgradient/operative';
 
+import { ownerOrLocal } from './owner-of-record';
+
 /** Whether `value` is a plain object, the shape every persisted authority and owner map decodes as. */
 export function isPlainAuthorityRecord(
   value: JSONValue | undefined,
@@ -113,6 +115,18 @@ export function resolvePersistedRunOwningPrincipal(
   if (!isPlainAuthorityRecord(owners)) return undefined;
   const principal = owners[runId];
   return typeof principal === 'string' ? principal : undefined;
+}
+
+/**
+ * The owner of record whose memory a run writes under (COR-1546): the owner persisted for the run,
+ * else the session's, else `anonymous:local`, which is what anything created with no stated
+ * principal is owned by. The one rule every path that rebuilds a run from its session shares, so a
+ * recovered run writes where the live one did.
+ */
+export function resolveRunMemoryOwner(metadata: Record<string, JSONValue>, runId?: string): string {
+  const persisted =
+    runId === undefined ? undefined : resolvePersistedRunOwningPrincipal(metadata, runId);
+  return ownerOrLocal(persisted ?? resolveSessionOwner(metadata));
 }
 
 /**

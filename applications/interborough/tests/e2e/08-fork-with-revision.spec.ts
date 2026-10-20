@@ -103,7 +103,7 @@ test('operator inspects revision bindings, attempts a rejected explicit-revision
   await drawer.getByRole('button', { name: 'Create schedule' }).click();
   await expect(drawer).not.toBeVisible();
 
-  await expect(page).toHaveURL(/\/schedules\?id=/);
+  await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
   await expect(page.getByText(/^Pinned \(/)).toBeVisible();
   await checkA11y('schedule detail — pinned revision policy shown');
 });

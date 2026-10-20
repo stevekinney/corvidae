@@ -1,4 +1,4 @@
-import type { MediaContent, MultiModalContent } from 'conversationalist';
+import type { MediaContent, Message, MultiModalContent } from 'conversationalist';
 
 import { GeneratedMediaNotAdmittedError } from './errors';
 import { type InlineMediaContent, inlineMediaParts } from './response-parts';
@@ -75,6 +75,15 @@ export interface GeneratedMediaAdmitter {
    * step: the row points at an asset nothing is keeping.
    */
   retainCommitted?(request: GeneratedMediaRetentionRequest): Promise<void>;
+  /**
+   * Called once a run's input row is seeded, before the run takes its first step, with the row's id
+   * and the `managed-asset` parts it carries (COR-1581). A run with no session has nothing else
+   * holding its input, so a port that keeps assets under a retention policy registers its claim
+   * here, as it does for a committed row. The durable workflow and the in-process loop both call it,
+   * and a durable run calls it again when it replays, so it must be idempotent. A rejection fails
+   * the run: the input points at an asset nothing is keeping.
+   */
+  retainSeededInput?(request: SeededInputRetentionRequest): Promise<void>;
 }
 
 /** What {@link GeneratedMediaAdmitter.retainCommitted} is told about one committed row. */
@@ -85,6 +94,36 @@ export interface GeneratedMediaRetentionRequest {
   readonly messageId: string;
   /** The row's media parts whose source is a managed asset. */
   readonly parts: readonly MediaContent[];
+}
+
+/** What {@link GeneratedMediaAdmitter.retainSeededInput} is told about a run's input row. */
+export interface SeededInputRetentionRequest {
+  /** The run whose input row this is; `undefined` for a run with no id. */
+  readonly runId: string | undefined;
+  /** The id of the seeded input row. */
+  readonly messageId: string;
+  /** The row's media parts whose source is a managed asset. */
+  readonly parts: readonly MediaContent[];
+}
+
+/**
+ * Tells the port about the input row a run was seeded with: the last row of the seeded
+ * conversation, when it is a `user` row carrying managed-asset media. A row without managed assets,
+ * and a port without the call, are left alone. Rejects when the port does.
+ */
+export async function retainSeededInput(
+  port: GeneratedMediaAdmitter | undefined,
+  runId: string | undefined,
+  messages: readonly Message[],
+): Promise<void> {
+  const retain = port?.retainSeededInput?.bind(port);
+  const row = messages.at(-1);
+  if (retain === undefined || row?.role !== 'user' || typeof row.content === 'string') return;
+  const managed = row.content.filter(
+    (part): part is MediaContent => 'source' in part && part.source.kind === 'managed-asset',
+  );
+  if (managed.length === 0) return;
+  await retain({ runId, messageId: row.id, parts: managed });
 }
 
 /** What a hook, adapter or streaming wrapper passes in: the step supplies the rest. */

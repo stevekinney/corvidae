@@ -13,6 +13,7 @@ import { createBureau } from '../create-bureau.ts';
 import { as, attachRunRequest, authentication } from './ag-ui-fixtures.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { FrameReader, readAgUiStream } from './ag-ui-stream.test-support.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 describe('attaching by run to a bureau.run() run of a hand-written agent', () => {
   it('streams it to its owner, and answers another owner as a missing run', async () => {
@@ -31,6 +32,7 @@ describe('attaching by run to a bureau.run() run of a hand-written agent', () =>
       run: (input, context) => createAgent({ generate }).run(input, context),
     };
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'ag-ui-run-owner',
       agents: { plain: handWritten },
       storage: { type: 'memory' },

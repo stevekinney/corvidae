@@ -21,20 +21,22 @@
  */
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
-import {
-  type Event,
-  EventType,
-  type Interrupt,
-  type RunFinishedOutcome,
-  type TokenUsage,
-} from '@ag-ui/core';
+import { type Event, EventType, type Interrupt, type RunFinishedOutcome } from '@ag-ui/core';
 import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conversationalist';
 
 import type { BureauChildRecord } from '../child-topology-store.ts';
 import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { snapshotMessages } from './ag-ui-messages.ts';
-import { type NativeTerminal, RECORDED, RunProjector, stepName } from './ag-ui-projection.ts';
+import { openPeerStream } from './ag-ui-peer-stream.ts';
+import {
+  errorOf,
+  type NativeTerminal,
+  RECORDED,
+  RunProjector,
+  stepName,
+  usageOf,
+} from './ag-ui-projection.ts';
 import { readSessionOwnedBy, runIsOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiSink, createAgUiSink } from './ag-ui-sink.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
@@ -47,7 +49,10 @@ export type AgUiStreamBureau = Pick<
   | 'subscribeLiveFrames'
   | 'subscribeRunSnapshot'
   | 'listPendingReviews'
+  | 'pendingHumanWaitsOfRun'
   | 'eventHistory'
+  | 'subscribeEventHistory'
+  | 'waitForDurableRun'
   | 'children'
   | 'getDurableRun'
   | 'whenRunRecorded'
@@ -98,6 +103,12 @@ export type OpenRunStream = {
    */
   readonly answerRows?:
     ReadonlyArray<{ readonly id: string; readonly content: string }> | undefined;
+  /**
+   * The interrupts the resume that opened this stream answered. A process that does not hold the
+   * run reads its human waits from durable state, which can still show an answered one pending
+   * until the run consumes the answer, so the stream does not end on one of these.
+   */
+  readonly answered?: ReadonlyArray<string> | undefined;
 };
 
 /** The message a mount-minted `RUN_ERROR` carries, by code. */
@@ -158,53 +169,6 @@ async function readRunHistory(bureau: AgUiStreamBureau, nativeRunId: string): Pr
     since = page.nextCursor;
   }
   return { fence, lastCursorByKind, terminal };
-}
-
-function usageOf(detail: unknown): TokenUsage[] {
-  const usage = (detail as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
-  const count = (value: unknown): number | undefined =>
-    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
-  const prompt = count(usage['prompt']);
-  const completion = count(usage['completion']);
-  const total = count(usage['total']);
-  const entry: TokenUsage = {
-    ...(prompt === undefined ? {} : { inputTokens: prompt }),
-    ...(completion === undefined ? {} : { outputTokens: completion }),
-    ...(total === undefined ? {} : { totalTokens: total }),
-  };
-  return [entry];
-}
-
-/**
- * The code and message a failed run's terminal record carries. The record holds
- * the error serialized to a string (name, message, kind, code, and a cause that
- * can hold a provider's response); only the code and message are read, so
- * nothing else reaches the wire.
- */
-function errorOf(detail: unknown): { code: string; message: string } {
-  let error = (detail as { error?: unknown } | undefined)?.error;
-  if (typeof error === 'string') {
-    try {
-      error = JSON.parse(error) as unknown;
-    } catch {
-      // Not JSON: the string is the message.
-    }
-  }
-  const record =
-    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
-  const message =
-    typeof record['message'] === 'string'
-      ? record['message']
-      : typeof error === 'string'
-        ? error
-        : 'The run failed';
-  return {
-    code:
-      typeof record['code'] === 'string' && record['code'].length > 0
-        ? record['code']
-        : 'RUN_FAILED',
-    message,
-  };
 }
 
 function pendingFor(bureau: AgUiStreamBureau, nativeRunId: string): PendingReview[] {
@@ -345,10 +309,12 @@ export function openRunStream(
   let lastRevision = 0;
   let tail: Promise<void> = Promise.resolve();
   const childWait = new AbortController();
+  const cleanups: Array<() => void> = [];
 
   const dispose = (): void => {
     ended = true;
     childWait.abort();
+    for (const cleanup of cleanups.splice(0)) cleanup();
     unsubscribeFrames?.();
     unsubscribeFrames = undefined;
     unsubscribeSnapshots?.();
@@ -704,6 +670,35 @@ export function openRunStream(
     sink.finish(last);
   };
 
+  const peerContext = (): Parameters<typeof openPeerStream>[0] => ({
+    bureau,
+    timers: runtime.timers,
+    stampContext,
+    threadId: request.threadId,
+    runId: request.runId,
+    nativeRunId: request.nativeRunId,
+    owner: request.owner,
+    answered: new Set(request.answered ?? []),
+    answerRows: request.answerRows ?? [],
+    preludeEvents: () => request.preludeEvents?.() ?? [],
+    replayCall: (history, callId) => replayCall(history, callId, stampContext),
+    writeEvents,
+    isEnded: () => ended,
+    markOpened: () => {
+      opened = true;
+    },
+    onDispose: (cleanup) => {
+      if (ended) cleanup();
+      else cleanups.push(cleanup);
+    },
+    interruptNow,
+    fail,
+    finish: (last, cursor) => {
+      dispose();
+      sink.finish(last, cursor);
+    },
+  });
+
   const open = async (): Promise<void> => {
     if (request.child !== undefined) {
       // The route authorized the run id on the owner `getOwner` reports, which reads run attribution
@@ -724,6 +719,15 @@ export function openRunStream(
     if (detail !== undefined && !runIsOwnedBy(detail, request.owner)) {
       fail('RUN_NOT_FOUND', `Run "${request.nativeRunId}" was not found`);
       return;
+    }
+    // A run no process-local state names, held by another process or settled with an approval no
+    // process restored, is streamed from its durable state.
+    if (detail === undefined && pendingFor(bureau, request.nativeRunId).length === 0) {
+      const durable = await bureau.getDurableRun(request.nativeRunId).catch(() => undefined);
+      if (durable !== undefined && durable !== null) {
+        await openPeerStream(peerContext(), durable, history?.fence);
+        return;
+      }
     }
     const conversation: ConversationHistory | undefined =
       detail?.transcript ?? session?.conversationHistory;

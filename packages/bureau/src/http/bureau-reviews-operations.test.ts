@@ -11,7 +11,7 @@ import { z } from 'zod';
 
 import { ApprovalOutcomeNotWrittenError, BureauError, createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
-import type { PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
+import type { Bureau, PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
 import {
   type BureauReviewsOperationHost,
   bureauReviewSchema,
@@ -21,6 +21,7 @@ import {
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
 import { mayAccessOwnedResource, ownerOfPrincipal } from './owner-predicate.ts';
+import { createMemoryAssetStorage } from '../assets/storage';
 
 const silent = () => undefined;
 const API_KEY = 'reviews-test-key';
@@ -122,6 +123,55 @@ function runHumanWaitReview(overrides: Partial<PendingReview> = {}): PendingRevi
     ...overrides,
   } as PendingReview;
 }
+
+describe('the parks of runs another process holds (COR-1579)', () => {
+  it('lists every page of running agent runs, by what each page reports, with the local entry winning', async () => {
+    const runIds = ['run-1', 'run-2', 'run-3'];
+    const offsets: Array<number | undefined> = [];
+    // An engine that caps every page at one run, whatever limit it is asked for.
+    const engine = {
+      list: async (filter: { offset?: number }) => {
+        offsets.push(filter.offset);
+        const offset = filter.offset ?? 0;
+        return {
+          items: runIds.slice(offset, offset + 1).map((id) => ({ id })),
+          total: runIds.length,
+          offset,
+          limit: 1,
+        };
+      },
+    };
+    const local = runHumanWaitReview({ id: 'human-wait:run-1:answer:0', runId: 'run-1' });
+    const { reviews } = stubHost({
+      listPendingReviews: () => [local],
+      pendingHumanWaitsOfRun: async (runId: string) => [
+        {
+          ...(runHumanWaitReview({ id: `human-wait:${runId}:answer:0`, runId }) as Extract<
+            PendingReview,
+            { kind: 'human-wait' }
+          >),
+          prompt: 'derived',
+        },
+      ],
+      durableEngine: () => engine as unknown as ReturnType<Bureau['durableEngine']>,
+    });
+    const host = {
+      reviews,
+      ownership: { runOwner: async () => 'api-key:tester', mayAccess: mayAccessOwnedResource },
+    };
+
+    const body = await call(serve(host), 'bureau.reviews.list', {});
+
+    const listed = (body.result?.['reviews'] ?? []) as Array<{ id: string; prompt?: string }>;
+    expect(listed.map(({ id }) => id)).toEqual([
+      'human-wait:run-1:answer:0',
+      'human-wait:run-2:answer:0',
+      'human-wait:run-3:answer:0',
+    ]);
+    expect(listed[0]?.prompt).toBe('Which environment?');
+    expect(offsets).toEqual([0, 1, 2]);
+  });
+});
 
 describe('a human wait of a run with no session (COR-1577)', () => {
   it('projects without a sessionId key, and a session’s human wait keeps its sessionId', () => {
@@ -579,6 +629,7 @@ describe('the reviews operations against a real Bureau', () => {
       return { content: 'approved and processed', toolCalls: [] };
     };
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-bureau',
       agents: {},
       generate,
@@ -685,6 +736,7 @@ describe('the reviews operations against a real Bureau', () => {
       },
     ) as unknown as Toolbox;
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'reviews-tool-approval-bureau',
       agents: {},
       generate: async () => {
@@ -798,6 +850,7 @@ describe('who reaches the human wait of a bureau.run() run, through a real Burea
           }
         : { content: 'thanks', toolCalls: [] };
     const bureau = await createBureau({
+      assets: { storage: createMemoryAssetStorage() },
       id: 'catalog-reviews-bureau',
       agents: {
         asker: createAgent({

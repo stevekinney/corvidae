@@ -66,9 +66,7 @@ describe('the command palette', () => {
 
   test('opens the selected schedule, not the list of schedules', async () => {
     await choose('schedule-7', /schedule-7/);
-    await waitFor(() =>
-      expect(router.pathname + '?' + router.search.toString()).toBe(schedulePath('schedule-7')),
-    );
+    await waitFor(() => expect(router.pathname).toBe(schedulePath('schedule-7')));
   });
 
   test('opens the selected worker, not the list of workers', async () => {
@@ -78,9 +76,9 @@ describe('the command palette', () => {
     );
   });
 
-  test('opens the inbox for a review, which has no page of its own', async () => {
+  test('opens the reviews page for a review, which has no page of its own', async () => {
     await choose('review-7', /review-7/);
-    await waitFor(() => expect(router.pathname).toBe('/inbox'));
+    await waitFor(() => expect(router.pathname).toBe('/reviews'));
   });
 });
 
@@ -102,7 +100,7 @@ describe('the palette shortcut', () => {
 
 describe('the paths of a record', () => {
   test('encode the identifier', () => {
-    expect(schedulePath('a b/c')).toBe('/schedules?id=a%20b%2Fc');
+    expect(schedulePath('a b/c')).toBe('/schedules/a%20b%2Fc');
     expect(workerPath('a&b')).toBe('/workers?tab=list&worker=a%26b');
   });
 });

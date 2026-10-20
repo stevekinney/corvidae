@@ -16,7 +16,7 @@ import type {
 } from './governed-memory-types';
 import { evictionContext } from './governed-reads';
 import { quarantineRecord } from './governed-transitions';
-import { admitWrite, stampInvalidated } from './governed-writes';
+import { admitWrite, withdrawAdmitted } from './governed-writes';
 import { resolveTenantPolicy } from './policy';
 import { decideMemoryAccess } from './predicate';
 import { retentionExpiry } from './retention';
@@ -116,9 +116,26 @@ async function consolidate(
     return { mode: request.mode, operationId, status: 'rejected', reason: write.reason!, write };
   }
   if (write.status === 'admitted') {
+    // Each input leaves active use through a swap that declines one already replaced. When another
+    // consolidation or correction got to an input first, this one withdraws the summary it admitted
+    // and gives back the inputs it had already taken, so an input is replaced once.
+    const taken: ResolvedRecord[] = [];
     for (const locator of request.locators) {
       const input = await context.resolve(authority, locator);
-      if (input !== undefined) await stampInvalidated(context, input, write.recordId!);
+      if (input === undefined) continue;
+      const outcome = await context.invalidate(input, write.recordId!);
+      if (outcome === 'stamped') taken.push(input);
+      if (outcome !== 'declined') continue;
+      for (const held of taken) await context.releaseInvalidation(held, write.recordId!);
+      await withdrawAdmitted(
+        context,
+        authority,
+        operationId,
+        context.scope(authority.tenantId, 'private', authority.ownerId, request.collection),
+        write.recordId!,
+        request.locators.map((entry) => entry.id),
+      );
+      return { mode: request.mode, operationId, status: 'rejected', reason: 'superseded' };
     }
   }
   await recordForgetting(context, authority, operationId, request.mode, [
@@ -157,7 +174,23 @@ async function supersede(
       write,
     };
   }
-  await stampInvalidated(context, located.resolved, write.recordId!);
+  // The check above and this stamp are not one step: another correction may have replaced the
+  // record while the successor was admitted. The stamp is the swap that decides, and a loser
+  // withdraws the successor it admitted.
+  const stamped = await context.invalidate(located.resolved, write.recordId!);
+  if (stamped !== 'stamped') {
+    await withdrawAdmitted(
+      context,
+      authority,
+      operationId,
+      context.scope(authority.tenantId, 'private', authority.ownerId, options.collection),
+      write.recordId!,
+      [request.locator.id],
+    );
+    return stamped === 'declined'
+      ? { mode: request.mode, operationId, status: 'rejected', reason: 'superseded' }
+      : { mode: request.mode, operationId, status: 'not-found' };
+  }
   await recordForgetting(context, authority, operationId, request.mode, [
     request.locator.id,
     write.recordId!,

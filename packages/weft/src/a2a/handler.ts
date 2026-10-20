@@ -43,9 +43,11 @@ import {
   type A2AStreamTimerScheduler,
   createA2AEventStreamResponse,
   type JsonRpcResponseEnvelope,
+  REQUEST_SIGNAL_STATE_KEY,
   scheduleWithTimeout,
 } from './sse-response.ts';
 import { recordStreamCursors, type StreamCursorEntry } from './stream-cursors.ts';
+import { requireTimerDelayMs } from './timer-delay.ts';
 
 /**
  * Authenticate one JSON-RPC request. Return the SDK `User` the request handler sees
@@ -81,12 +83,12 @@ export type A2AHandlerOptions = {
   readonly authenticate?: A2AAuthenticate;
   /** Sign the Agent Card and serve its public key at `/.well-known/jwks.json`. */
   readonly signing?: A2ASigningOptions;
-  /** Largest accepted JSON-RPC body. Defaults to 1 MiB; larger bodies get `413`. */
+  /** Largest accepted JSON-RPC body: a positive safe integer. Defaults to 1 MiB; larger bodies get `413`. */
   readonly maxRequestBodyBytes?: number;
   /**
    * How long an SSE response stays open before the kit closes it with a final comment
    * line, so a long-lived stream authenticates again on reconnect. Defaults to
-   * 900 000 ms (fifteen minutes).
+   * 900 000 ms (fifteen minutes). Must be an integer from 1 to 2 147 483 647.
    */
   readonly maxStreamDurationMs?: number;
 };
@@ -242,8 +244,16 @@ export function createA2AHandlerWithScheduler(
   schedule: A2AStreamTimerScheduler,
 ): A2AHandler {
   const tenant = options.tenant;
-  const maxStreamDurationMs = options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS;
+  const maxStreamDurationMs = requireTimerDelayMs(
+    'maxStreamDurationMs',
+    options.maxStreamDurationMs ?? DEFAULT_MAX_STREAM_DURATION_MS,
+  );
   const maxBodyBytes = options.maxRequestBodyBytes ?? DEFAULT_REST_MAX_BODY_BYTES;
+  if (!Number.isSafeInteger(maxBodyBytes) || maxBodyBytes < 1) {
+    throw new RangeError(
+      `maxRequestBodyBytes must be a positive safe integer; received ${maxBodyBytes}.`,
+    );
+  }
   const discovery = createAgentCardRoutes({
     agentCard: options.agentCard,
     publicUrl: options.publicUrl,
@@ -278,6 +288,9 @@ export function createA2AHandlerWithScheduler(
       requestedVersion: A2A_PROTOCOL_VERSION,
       ...(tenant === undefined ? {} : { tenant }),
     });
+    // Ends with the request: its client going away, or its stream closing.
+    const ended = new AbortController();
+    context.state.set(REQUEST_SIGNAL_STATE_KEY, AbortSignal.any([request.signal, ended.signal]));
     const cursors: StreamCursorEntry[] = [];
     const transport = new JsonRpcTransportHandler(
       recordStreamCursors(options.requestHandler, cursors),
@@ -300,6 +313,9 @@ export function createA2AHandlerWithScheduler(
       maxStreamDurationMs,
       schedule,
       headers: rpcHeaders(context),
+      onClose: () => {
+        ended.abort();
+      },
     });
   }
 

@@ -21,11 +21,13 @@ const PATHS: Readonly<Record<ViewName, string>> = {
   workflows: '/workflows',
   runs: '/runs',
   schedules: '/schedules',
-  inbox: '/inbox',
+  tasks: '/tasks',
+  reviews: '/reviews',
   workers: '/workers',
   storage: '/storage',
   system: '/system',
   audit: '/audit',
+  goals: '/goals',
   engine: '/engine',
 };
 
@@ -58,7 +60,8 @@ function bureauProbe(method: string, empty: unknown): ProbeRoute {
 const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
   chat: bureauProbe('bureau.contexts.list', { contexts: [], nextOffset: null }),
   agents: bureauProbe('bureau.agents.list', { agents: [] }),
-  audit: { matches: (url) => url.pathname === '/bureau/v1/health', empty: { status: 'ok' } },
+  audit: bureauProbe('bureau.audit.query', { records: [], nextCursor: null }),
+  goals: bureauProbe('bureau.goals.list', { goals: [], nextOffset: null }),
   'agent-editor': jsonRpcProbe('bureau.agents.catalog'),
   // The list joins the engine's definitions with the Bureau's files, so it asks both, and it is
   // empty only when neither lists anything.
@@ -77,7 +80,8 @@ const PROBES: Readonly<Record<ViewName, ProbeRoute>> = {
     empty: { items: [], total: 0 },
   },
   schedules: { matches: (url) => url.pathname === '/v1/schedules', empty: { items: [], total: 0 } },
-  inbox: { matches: (url) => url.pathname === '/v1/reviews', empty: { items: [] } },
+  tasks: bureauProbe('bureau.tasks.list', { tasks: [], nextOffset: null }),
+  reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
   system: jsonRpcProbe('weft.system.registry'),
@@ -127,7 +131,7 @@ function jsonRpcBody(post: string | null, result: unknown): unknown {
 function statesOf(view: ViewName): Outcome[] {
   const states: Outcome[] = ['loading', 'error', 'forbidden'];
   if (VIEWS[view].canBeEmpty) states.push('empty');
-  if (!VIEWS[view].placeholder) states.push('ready');
+  states.push('ready');
   return states;
 }
 
@@ -140,8 +144,9 @@ for (const view of VIEW_NAMES) {
         checkA11y,
       }) => {
         await page.setViewportSize({ width, height: 900 });
-        // The chat list has something to show once the caller has a session.
-        if (view === 'chat' && outcome === 'ready') {
+        // The chat list and the task list have something to show once the caller has a session,
+        // whose run is a task.
+        if ((view === 'chat' || view === 'tasks') && outcome === 'ready') {
           await runToEnd(request, 'assistant', newThreadId('states'), 'Hello');
         }
         await drive(page, view, outcome);

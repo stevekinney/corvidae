@@ -6,10 +6,16 @@
  * The stream closes after `maxStreamDurationMs` with a final comment line, so a
  * long-lived subscription reconnects and is authenticated again.
  *
+ * Closing the stream, by the client going away or by that timer, cannot stop a request
+ * handler that is waiting for its next event: an async generator's `return()` waits
+ * for the generator's next `yield`. So the handler aborts the request's signal, which
+ * it carries in the call context's state under {@link REQUEST_SIGNAL_STATE_KEY}, and a
+ * request handler that waits passes {@link requestSignalOf} to what it waits on.
+ *
  * @module a2a/sse-response
  */
 
-import { JsonRpcTransportHandler } from '@a2a-js/sdk/server';
+import { JsonRpcTransportHandler, type ServerCallContext } from '@a2a-js/sdk/server';
 
 import { formatServerSentEvent } from '../server/operations/sse-stream.ts';
 import type { StreamCursorEntry } from './stream-cursors.ts';
@@ -27,6 +33,18 @@ export type JsonRpcResponseEnvelope = {
  * kit uses `setTimeout`; tests substitute a manual clock.
  */
 export type A2AStreamTimerScheduler = (callback: () => void, delayMs: number) => () => void;
+
+/** The call-context state key under which the handler stores the request's abort signal. */
+export const REQUEST_SIGNAL_STATE_KEY = 'weft.a2a.requestSignal';
+
+/**
+ * The signal that aborts when the request `context` belongs to ends: its client went
+ * away or its stream closed. `undefined` for a context the A2A handler did not build.
+ */
+export function requestSignalOf(context: ServerCallContext): AbortSignal | undefined {
+  const signal = context.state.get(REQUEST_SIGNAL_STATE_KEY);
+  return signal instanceof AbortSignal ? signal : undefined;
+}
 
 export const scheduleWithTimeout: A2AStreamTimerScheduler = (callback, delayMs) => {
   const timer = setTimeout(callback, delayMs);
@@ -47,6 +65,8 @@ export type A2AEventStreamOptions = {
   readonly maxStreamDurationMs: number;
   readonly schedule: A2AStreamTimerScheduler;
   readonly headers: Headers;
+  /** Called once when the stream closes early, by the client or the duration timer. */
+  readonly onClose?: () => void;
 };
 
 const textEncoder = new TextEncoder();
@@ -83,6 +103,7 @@ export function createA2AEventStreamResponse(options: A2AEventStreamOptions): Re
   function stopUpstream(): void {
     closed = true;
     cancelTimer?.();
+    options.onClose?.();
     // Settles once any pending `next()` does; nothing waits on it.
     void settleQuietly(iterator.return?.());
   }

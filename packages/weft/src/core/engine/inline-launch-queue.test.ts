@@ -229,5 +229,64 @@ describe('inline launch queue', () => {
       expect(onStarted).toHaveBeenCalledTimes(1);
       expect(internals.queuedInlineWorkflowStartIds.has('wf-replaced-run')).toBe(false);
     });
+
+    it('discards a queued pre-token start once a token-bearing replacement holds the id (COR-1604)', async () => {
+      await using storage = new MemoryStorage();
+      await using engine = await Engine.create({
+        storage,
+        workflows: { 'inline-launch-queue-ownership-parked': parkOnSignal },
+      });
+      let startedCount = 0;
+      engine.addEventListener('workflow:started', () => {
+        startedCount += 1;
+      });
+      const onStarted = mock(() => {});
+      const internals = getInternals(engine);
+
+      // The token-bearing replacement that now holds the id.
+      await engine.start('inline-launch-queue-ownership-parked', null, {
+        id: 'wf-pre-token-replaced',
+        defer: false,
+      });
+      expect(startedCount).toBe(1);
+
+      // A launch queued for the pre-token run the replacement superseded carries no
+      // token, which identifies that run rather than matching every later one.
+      const callbacks = {
+        processPendingUpdatesAfterInlineAdvance: async () => {},
+        swallowPromiseRejection: async (promise: Promise<unknown> | undefined) => {
+          await promise;
+        },
+      };
+      queueInlineWorkflowExecutionStart(
+        internals,
+        {
+          workflowId: 'wf-pre-token-replaced',
+          workflowType: 'inline-launch-queue-ownership-parked',
+          revision: undefined,
+          input: null,
+          checkpoint: {
+            workflowId: 'wf-pre-token-replaced',
+            step: 0,
+            locals: {},
+            accumulatedResults: [],
+            searchAttributes: {},
+            version: '1',
+            schemaVersion: CURRENT_CHECKPOINT_SCHEMA_VERSION,
+            createdAt: 0,
+          },
+          nestingDepth: 0,
+          executionDeadline: undefined,
+          executionStateOwnerId: 'wf-pre-token-replaced-owner',
+          onStarted,
+        },
+        callbacks,
+      );
+      await flushQueuedInlineWorkflowStartsDirectly(internals, callbacks);
+
+      expect(startedCount).toBe(1);
+      expect(onStarted).toHaveBeenCalledTimes(1);
+      expect(internals.queuedInlineWorkflowStartIds.has('wf-pre-token-replaced')).toBe(false);
+    });
   });
 });

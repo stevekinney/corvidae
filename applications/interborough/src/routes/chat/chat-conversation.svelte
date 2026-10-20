@@ -6,6 +6,12 @@
    * follow-up and a decision on an approval continues the run. A question the run is waiting on a
    * person to answer is shown above the transcript, and the next message answers it.
    *
+   * What a person may attach comes from the selected agent's model (`bureau.agents.list`'s `media`):
+   * the file picker is on for an agent whose model takes media and off for one that names no model,
+   * and off while a run streams or waits on the person's answer, because a follow-up and an answer
+   * carry text only. Files upload as they are attached (`../../lib/chat-attachments.ts`), and the
+   * assets a row carries, returned by the agent or attached by the person, are shown under it.
+   *
    * A new chat (`isNew`, at `/chat/new`) has no session yet. The client names the thread, the agent
    * is chosen above the composer, and the first message starts the run. When the run has started
    * the address becomes `/chat/:sessionId` by replacing the history entry, with this page kept
@@ -19,10 +25,19 @@
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { getContext, listAgents, type AgentSummary } from '../../lib/bureau-client.ts';
+  import {
+    attachmentSettings,
+    chatAttachmentErrorMessage,
+    createAttachmentUpload,
+  } from '../../lib/chat-attachments.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ApprovalAlert from './approval-alert.svelte';
+  import ChatAssets from './chat-assets.svelte';
+  import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
+  import SessionTasks from './session-tasks.svelte';
 
   interface ChatConversationProps {
     sessionId: string;
@@ -56,7 +71,6 @@
     () => ({
       queryKey: queryKeys.agents.list(),
       queryFn: ({ signal }) => listAgents({ signal }),
-      enabled: choosing,
     }),
     undefined,
   );
@@ -68,6 +82,23 @@
         label: entry.displayName,
         ...(entry.description === null ? {} : { description: entry.description }),
       })),
+  );
+
+  // What the selected agent's model lets a person attach. An agent the Bureau has not listed yet,
+  // or one that names no model, takes no attachment.
+  const settings = $derived(
+    attachmentSettings(agents.data?.find((entry) => entry.name === agent)?.media),
+  );
+  const upload = $derived(settings === null ? undefined : createAttachmentUpload(settings));
+  // A follow-up and an answer to the run's question carry text only, so a file attached then
+  // would be dropped without a word. The picker is off for both, and while the page is still
+  // finding out whether the session has a run going, which would make the next message a
+  // follow-up.
+  const attachable = $derived(
+    settings !== null &&
+      !session.attaching &&
+      !session.streaming &&
+      session.humanRequests.length === 0,
   );
 
   // Once the session exists its title comes from the Bureau, and it is read again when a run ends.
@@ -90,6 +121,10 @@
     agent = value;
     router.navigate(`/chat/new?agent=${encodeURIComponent(value)}`, { replace: true });
   }
+
+  // Chat lays out the conversation without the Bureau's files in it; they are shown under their
+  // rows (`chat-assets.svelte`).
+  const shown = $derived(withoutAssetParts(session.conversation));
 
   let deciding = $state(false);
 
@@ -123,6 +158,9 @@
       // The controller reported it, and the approval is still pending for another try.
     } finally {
       deciding = false;
+      // Whether it took effect or not, the approval is not what `/reviews` last listed, so the
+      // inbox and the count in the navigation read again at once and do not wait for their poll.
+      void invalidateReviewQueries(queryClient);
     }
   }
 
@@ -140,6 +178,10 @@
       <p class="weft-chat-header__agent">{agent}</p>
     {/if}
   </header>
+
+  {#if !choosing}
+    <SessionTasks {sessionId} streaming={session.streaming} />
+  {/if}
 
   <!-- A decision continues the run, which the controller refuses while another turn is going. -->
   <ApprovalAlert {approvals} deciding={deciding || session.streaming} onDecide={decide} />
@@ -179,11 +221,23 @@
   <div class="weft-chat-surface">
     <Chat
       id={`chat-${sessionId}`}
-      conversation={session.conversation}
+      conversation={shown}
       adapter={session.adapter}
       streaming={session.streaming}
-      capabilities={{ attachments: false, editing: false, quote: false }}
+      capabilities={{ attachments: attachable, editing: false, quote: false }}
+      uploadAttachment={upload}
+      acceptedTypes={settings?.acceptedTypes ?? []}
+      maxFileSize={settings?.maxFileSize}
+      formatAttachmentError={chatAttachmentErrorMessage}
     >
+      {#snippet row({ message }, renderDefault)}
+        {@const assets = assetsOf(session.conversation.messages[message.id] ?? message)}
+        <!-- A message of only files has no bubble to show. A row with no file is Chat's own. -->
+        {#if assets.length === 0 || hasContent(message)}
+          {@render renderDefault()}
+        {/if}
+        <ChatAssets {assets} role={message.role === 'user' ? 'user' : 'assistant'} />
+      {/snippet}
       {#snippet messagePart(part, renderDefault)}
         {#if part.type !== 'tool-approval'}
           {@render renderDefault(part)}

@@ -8,6 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
@@ -62,6 +63,37 @@ function codeSummary() {
   return summary;
 }
 
+const GOAL = {
+  goalRunId: 'goal-1',
+  owner: 'anonymous:local',
+  agentName: 'assistant',
+  status: 'running',
+  terminalReason: null,
+  revision: 1,
+  createdAt: '2026-10-19T08:00:00.000Z',
+  updatedAt: '2026-10-19T08:00:00.000Z',
+  closedAt: null,
+  cancellation: null,
+  bounds: {
+    maximumAttempts: 3,
+    maximumTotalDurationMs: null,
+    maximumTotalSteps: null,
+    maximumTotalTokens: null,
+    maximumTotalCostUsd: null,
+  },
+  usage: { attempts: 0, steps: 0, tokens: 0, costUsd: null, durationMs: 0 },
+  attempts: [],
+};
+
+const AUDIT_RECORD = {
+  sequence: 1,
+  timestamp: '2026-10-19T08:00:00.000Z',
+  type: 'run.completed',
+  resource: 'run-1',
+  principal: null,
+  detail: null,
+};
+
 function requestUrl(input: RequestInfo | URL): URL {
   const text = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
   return new URL(text, 'http://localhost');
@@ -82,6 +114,14 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
   const empty = outcome === 'empty';
   const url = requestUrl(input);
   const call = operationOf(init?.body);
+  if (call !== undefined && call.method === 'bureau.audit.query') {
+    const records = empty ? [] : [AUDIT_RECORD];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { records, nextCursor: null } });
+  }
+  if (call !== undefined && call.method === 'bureau.goals.list') {
+    const goals = empty ? [] : [GOAL];
+    return Response.json({ jsonrpc: '2.0', id: call.id, result: { goals, nextOffset: null } });
+  }
   if (call !== undefined) {
     // The Bureau's list operations answer their own shapes, and an empty one has nothing in it.
     const result =
@@ -92,15 +132,18 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
           : call.method === 'bureau.agents.catalog'
             ? // The agent editor's probe parses the catalog, so it answers one.
               { models: [], tools: [] }
-            : call.method === 'weft.workflows.definitions.list'
-              ? // The Workflows list joins the engine's definitions with the Bureau's files.
-                { definitions: empty ? [] : [codeSummary()] }
-              : call.method === 'bureau.workflows.list'
-                ? { workflows: [], nextOffset: null }
-                : { items: [] };
+            : call.method === 'bureau.tasks.list'
+              ? { tasks: empty ? [] : [taskFixture()], nextOffset: null }
+              : call.method === 'bureau.reviews.list'
+                ? { reviews: empty ? [] : [toolApprovalFixture()] }
+                : call.method === 'weft.workflows.definitions.list'
+                  ? // The Workflows list joins the engine's definitions with the Bureau's files.
+                    { definitions: empty ? [] : [codeSummary()] }
+                  : call.method === 'bureau.workflows.list'
+                    ? { workflows: [], nextOffset: null }
+                    : { items: [] };
     return Response.json({ jsonrpc: '2.0', id: call.id, result });
   }
-  if (url.pathname === '/bureau/v1/health') return Response.json({ status: 'ok' });
   if (url.pathname.endsWith('/schedules')) {
     return Response.json({ items: empty ? [] : [{ id: 'schedule-1' }], total: empty ? 0 : 1 });
   }
@@ -208,8 +251,7 @@ describe('every view, in every state', () => {
 });
 
 describe('a view that finds something to show', () => {
-  const populated = VIEW_NAMES.filter((view) => !VIEWS[view].placeholder);
-  for (const view of populated) {
+  for (const view of VIEW_NAMES) {
     test(`${view} renders its content`, async () => {
       stub(view, 'content');
       const { container, findByTestId } = mount(view);
@@ -217,14 +259,6 @@ describe('a view that finds something to show', () => {
       expect(frame(container).dataset['state']).toBe('ready');
     });
   }
-
-  test('a placeholder view is empty even when its service answers', async () => {
-    stub('audit', 'content');
-    const { container, findByRole } = mount('audit');
-    const title = VIEW_COPY.audit.empty?.title ?? '';
-    expect(await findByRole('heading', { level: 1, name: title })).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('empty');
-  });
 
   test('one run’s page has no probe and shows its content once its scope is held', async () => {
     const { requests } = stub('runs', 'content');
@@ -237,10 +271,10 @@ describe('a view that finds something to show', () => {
 
 describe('a refused probe', () => {
   test('tells the principal store the scope is gone', async () => {
-    stub('inbox', 'forbidden');
-    const { store, findByRole } = mount('inbox');
-    await findByRole('heading', { level: 1, name: VIEW_COPY.inbox.forbidden.title });
-    await waitFor(() => expect(store()?.hasScope('reviews:read')).toBe(false));
+    stub('schedules', 'forbidden');
+    const { store, findByRole } = mount('schedules');
+    await findByRole('heading', { level: 1, name: VIEW_COPY.schedules.forbidden.title });
+    await waitFor(() => expect(store()?.hasScope('schedules:read')).toBe(false));
   });
 
   test('is not retried automatically, and retrying asks again', async () => {
@@ -421,6 +455,108 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 });
 
+describe('an agent’s memory page, under the Agents view', () => {
+  const PATTERN = '/agents/:id/memory';
+  const rpc = (method: string, result: unknown) =>
+    Response.json({ jsonrpc: '2.0', id: method, result });
+  const fault = (status: number, code: string) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+  const MEMORY = {
+    id: 'memory-1',
+    content: 'The user prefers aisle seats.',
+    memoryClass: 'episodic',
+    source: 'conversation',
+    trust: 'untrusted',
+    createdAt: '2026-10-19T08:00:00.000Z',
+    sessionId: 'session-1',
+  };
+  const copy = VIEW_COPY.agents;
+
+  /** Answers the two operations the memory page's probe asks, by name. */
+  function stubBureau(memories: () => Response): void {
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      if (method === 'bureau.agents.list') return rpc(method, { agents: [{ ...AGENT }] });
+      if (method === 'bureau.memory.list') return memories();
+      throw new Error(`Unexpected request: ${method}`);
+    });
+  }
+
+  const mountMemory = () => mount('agents', { pattern: PATTERN, parameters: { id: 'assistant' } });
+
+  test('is loading, with the memory words, while the Bureau is asked', async () => {
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { container, findByRole } = mountMemory();
+    const words = copy.loadingByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('loading');
+    expect(words?.title).not.toBe(copy.loading.title);
+  });
+
+  test('is empty when the agent has no memory, which is the only empty state a search can have', async () => {
+    stubBureau(() => rpc('bureau.memory.list', { memories: [], nextOffset: null }));
+    const { container, findByRole } = mountMemory();
+    const words = copy.emptyByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('empty');
+  });
+
+  test('is failing, with a retry, when the Bureau cannot answer', async () => {
+    stubBureau(() => fault(500, 'EngineFailure'));
+    const { container, findByRole, getByRole } = mountMemory();
+    const words = copy.errorByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('error');
+    expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+  });
+
+  test('is forbidden, in the words that name the scope, when the Bureau refuses the caller the memory', async () => {
+    stubBureau(() => fault(403, 'Forbidden'));
+    const { container, findByRole } = mountMemory();
+    const words = copy.forbiddenByPattern?.[PATTERN];
+
+    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
+    expect(container.textContent).toContain('bureau.memory:read');
+    expect(container.textContent).toContain(words?.description ?? '');
+    expect(frame(container).dataset['state']).toBe('forbidden');
+    expect(words?.title).not.toBe(copy.forbidden.title);
+  });
+
+  test('is ready when the agent remembers something', async () => {
+    stubBureau(() => rpc('bureau.memory.list', { memories: [MEMORY], nextOffset: null }));
+    const { container, findByTestId } = mountMemory();
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('is not found for an agent the Bureau does not list, before the memory is asked for', async () => {
+    const asked: string[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      asked.push(method);
+      return rpc(method, { agents: [{ ...AGENT, name: 'other' }] });
+    });
+    const { container, findByRole } = mountMemory();
+
+    expect(
+      await findByRole('heading', { level: 1, name: copy.notFound?.title ?? '' }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
+    expect(asked).toEqual(['bureau.agents.list']);
+  });
+});
+
 describe('the Workflows area', () => {
   const ROUTES = [
     { pattern: '/workflows', parameters: {} },
@@ -441,9 +577,8 @@ describe('the Workflows area', () => {
     return stub;
   }
 
-  test('is not a placeholder, is gated on the engine’s workflows:read, and says whether it can be empty', () => {
+  test('is gated on the engine’s workflows:read, and says whether it can be empty', () => {
     const view = VIEWS.workflows;
-    expect(view.placeholder).toBe(false);
     expect(view.scopes).toEqual(['workflows:read']);
     expect(view.canBeEmpty).toBe(true);
     // A view that can be empty has the words for it, and one for a type with no runs.
@@ -601,5 +736,149 @@ describe('the Workflows area', () => {
     expect(await some.findByTestId('content')).not.toBeNull();
     // The probe asks for this type's runs, and only the first.
     expect(stub.callsTo('GET /workflows')[0]?.params).toMatchObject({ type: 'order-processing' });
+  });
+});
+
+describe('the Tasks view', () => {
+  const rpc = (method: string, result: unknown) =>
+    Response.json({ jsonrpc: '2.0', id: method, result });
+  const fault = (status: number, code: string) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
+    });
+
+  function stubBureau(answers: Record<string, () => Response>): { methods: string[] } {
+    const methods: string[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      const method = operationOf(init?.body)?.method ?? '';
+      methods.push(method);
+      const answer = answers[method];
+      if (answer === undefined) throw new Error(`Unexpected request: ${method}`);
+      return answer();
+    });
+    return { methods };
+  }
+
+  test('holds no console scope, because the Bureau shows each caller its own tasks', () => {
+    expect(VIEWS.tasks.scopes).toEqual([]);
+  });
+
+  test('the list is forbidden when the Bureau refuses the caller its tasks', async () => {
+    stubBureau({ 'bureau.tasks.list': () => fault(403, 'Forbidden') });
+    const { container, findByRole } = mount('tasks', { pattern: '/tasks' });
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('the list is empty, in the words copy.ts holds, when the caller has no task', async () => {
+    const { methods } = stubBureau({
+      'bureau.tasks.list': () => rpc('bureau.tasks.list', { tasks: [], nextOffset: null }),
+    });
+    const { container, findByRole } = mount('tasks', { pattern: '/tasks' });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.empty?.title ?? '' });
+    expect(frame(container).dataset['state']).toBe('empty');
+    expect(methods).toEqual(['bureau.tasks.list']);
+  });
+
+  test('one task’s page is not found when the Bureau answers NotFound for it', async () => {
+    const { methods } = stubBureau({ 'bureau.tasks.get': () => fault(404, 'NotFound') });
+    const { container, findByRole } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-9' },
+    });
+    const notFound = VIEW_COPY.tasks.notFound;
+    expect(await findByRole('heading', { level: 1, name: notFound?.title ?? '' })).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
+    expect(container.textContent).toContain(notFound?.description ?? '');
+    expect(methods).toEqual(['bureau.tasks.get']);
+  });
+
+  test('one task’s page is ready when the Bureau has the task, and asks for that task alone', async () => {
+    const requests: unknown[] = [];
+    restore = installFetchImplementation(async (_input, init) => {
+      requests.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+      return rpc('bureau.tasks.get', taskFixture({ id: 'run-1' }));
+    });
+    const { container, findByTestId } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-1' },
+    });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(requests).toMatchObject([{ method: 'bureau.tasks.get', params: { taskId: 'run-1' } }]);
+  });
+
+  test('one task’s page is failing, not not-found, when the Bureau breaks', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({ error: 'The server broke.' }, { status: 500 }),
+    );
+    const { container, findByRole } = mount('tasks', {
+      pattern: '/tasks/:id',
+      parameters: { id: 'run-1' },
+    });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.error.title });
+    expect(frame(container).dataset['state']).toBe('error');
+  });
+
+  test('two tasks do not share one answer', async () => {
+    stubBureau({ 'bureau.tasks.get': () => fault(404, 'NotFound') });
+    const first = mount('tasks', { pattern: '/tasks/:id', parameters: { id: 'run-1' } });
+    await first.findByRole('heading', { level: 1, name: VIEW_COPY.tasks.notFound?.title ?? '' });
+    first.unmount();
+    restore?.();
+
+    stubBureau({ 'bureau.tasks.get': () => rpc('bureau.tasks.get', taskFixture({ id: 'run-2' })) });
+    const second = mount('tasks', { pattern: '/tasks/:id', parameters: { id: 'run-2' } });
+    expect(await second.findByTestId('content')).not.toBeNull();
+  });
+});
+
+describe('the Reviews view', () => {
+  test('holds no console scope, because the console drops the Bureau’s and the Bureau gates its own list', () => {
+    expect(VIEWS.reviews.scopes).toEqual([]);
+  });
+
+  test('is forbidden when the Bureau refuses the caller the list of reviews, with data-state forbidden', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32000,
+          message: 'No',
+          data: { weftCode: 'Forbidden', httpStatus: 403 },
+        },
+      }),
+    );
+    const { container, findByRole } = mount('reviews', { pattern: '/reviews' });
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.reviews.forbidden.title }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('forbidden');
+  });
+
+  test('asks the Bureau for its list and nothing of the engine, because the page reads the engine itself', async () => {
+    const methods: string[] = [];
+    const paths: string[] = [];
+    restore = installFetchImplementation(async (input, init) => {
+      paths.push(requestUrl(input).pathname);
+      methods.push(operationOf(init?.body)?.method ?? '');
+      return Response.json({ jsonrpc: '2.0', id: 1, result: { reviews: [] } });
+    });
+    const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
+    // The page shows its own empty state, so the frame is ready even when nothing is waiting.
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(methods).toEqual(['bureau.reviews.list']);
+    expect(paths).toEqual(['/bureau/jsonrpc']);
+  });
+
+  test('has no empty state of its own, so a page with nothing waiting says so itself', () => {
+    expect(VIEWS.reviews.canBeEmpty).toBe(false);
+    expect(VIEW_COPY.reviews.empty).toBeUndefined();
   });
 });

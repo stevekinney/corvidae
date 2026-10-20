@@ -26,6 +26,7 @@ import type { ReviewListFilter, ScheduleFilter } from '@lostgradient/weft';
 import { keepPreviousData, QueryClient, type QueryKey } from '@tanstack/svelte-query';
 
 import { showFault } from '../app/toast-host.svelte';
+import type { AuditFilter } from './bureau-audit.ts';
 import { classifyFault, faultTreatment } from './faults.ts';
 import type { WorkflowListQuery } from './filters.ts';
 
@@ -44,6 +45,14 @@ export const queryKeys = {
     detail: (contextId: string) => ['contexts', 'detail', contextId] as const,
     /** The caller's sessions, all of them or one agent's. */
     list: (agentName: string | null) => ['contexts', 'list', agentName] as const,
+  },
+  /** What an agent remembers (`bureau.memory.*`), under one agent's identifier. */
+  memory: {
+    /** Every query of one agent's memory, for the invalidation a forget or a correction needs. */
+    all: (agentId: string) => ['memory', agentId] as const,
+    list: (agentId: string) => ['memory', agentId, 'list'] as const,
+    search: (agentId: string, query: string) => ['memory', agentId, 'search', query] as const,
+    detail: (agentId: string, id: string) => ['memory', agentId, 'detail', id] as const,
   },
   agents: {
     list: () => ['agents', 'list'] as const,
@@ -68,6 +77,14 @@ export const queryKeys = {
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
   },
+  /** The caller's goals (`bureau.goals.list`). */
+  goals: {
+    list: () => ['goals', 'list'] as const,
+  },
+  /** The audit trail, narrowed by a search (`bureau.audit.query`). */
+  audit: {
+    list: (filter: AuditFilter) => ['audit', 'list', filter] as const,
+  },
   workflows: {
     list: (filter: WorkflowListQuery) => ['workflows', 'list', filter] as const,
     detail: (id: string) => ['workflows', 'detail', id] as const,
@@ -77,6 +94,8 @@ export const queryKeys = {
   },
   schedules: {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,
+    /** What the Bureau knows of the engine's schedules: the agent each runs, and the workflow files (`lib/schedule-kinds.ts`). */
+    overlay: () => ['schedules', 'overlay'] as const,
   },
   workers: {
     list: () => ['workers', 'list'] as const,
@@ -106,6 +125,20 @@ export const queryKeys = {
   },
   reviews: {
     list: (filter: ReviewListFilter) => ['reviews', 'list', filter] as const,
+  },
+  /** The Bureau's tasks (`bureau.tasks.*`), apart from `tasks`, which is the engine's task ledger. */
+  bureauTasks: {
+    /** One list: a filter and no page, because the page is the infinite query's own. */
+    list: (filter: { agentName?: string; status?: string; contextId?: string }) =>
+      ['bureau-tasks', 'list', filter] as const,
+    detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
+    /** The tasks of one chat session, read whole. It is apart from `list`, which pages. */
+    ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
+  },
+  /** The Bureau's reviews (`bureau.reviews.*`), apart from `reviews`, which is the engine's. */
+  bureauReviews: {
+    list: () => ['bureau-reviews', 'list'] as const,
+    detail: (reviewId: string) => ['bureau-reviews', 'detail', reviewId] as const,
   },
   /** Raw `weft.system.registry` response (and projections of it) for consumers that read it unvalidated. */
   registry: () => ['registry'] as const,
@@ -149,6 +182,32 @@ export const queryKeys = {
       ['catalog', 'diagnostics', name, revision] as const,
   },
 } as const;
+
+/**
+ * The filter for every list and search of one agent's memory, which any change makes stale, and
+ * not the details of one memory: a memory that was forgotten has none to read again, and asking
+ * would answer the page's own outcome with "not found".
+ */
+export function memoryListingsFilter(agentId: string): {
+  readonly queryKey: readonly unknown[];
+  readonly predicate: (query: { readonly queryKey: readonly unknown[] }) => boolean;
+} {
+  return {
+    queryKey: ['memory', agentId],
+    predicate: (query) => query.queryKey[2] !== 'detail',
+  };
+}
+
+/** The route of an agent's memory page, which the Agents view's frame probes differently from the agent's own. */
+export const AGENT_MEMORY_PATTERN = '/agents/:id/memory';
+
+/**
+ * The instance the Agents view's frame keys the memory page's probe under, apart from the agent's
+ * own page's: the two ask different questions about the same `:id`.
+ */
+export function agentMemoryViewInstance(agentId: string): string {
+  return `memory:${agentId}`;
+}
 
 /**
  * The instance a view frame keys its probe under for one workflow type's route, so the page that

@@ -1,7 +1,7 @@
 import { isToolboxBudgetExceededToolError } from 'armorer';
 import { type core, ZodError } from 'zod';
 
-import type { UnadmittedMediaCost } from './context/types';
+import type { MediaPartPosition, UnadmittedMediaCost } from './context/types';
 import { isToolCallParseError } from './providers/errors.ts';
 import type { SelectionPlan } from './providers/selection.ts';
 import type { RunResult, TokenUsage } from './types';
@@ -98,7 +98,8 @@ export type AgentRunErrorCode =
   | 'SELECTION_REVALIDATION_FAILED'
   | 'SUBAGENT_RUN_FAILED'
   | 'TRIPWIRE'
-  | 'UNKNOWN';
+  | 'UNKNOWN'
+  | 'UNSUPPORTED_MEDIA_TYPE';
 
 export class AgentRunError extends Error {
   readonly kind: AgentRunErrorKind;
@@ -288,19 +289,49 @@ export class AgentContractError extends AgentRunError {
   }
 }
 
+/** Whether `outcome` refuses its part because the model does not take that kind of media. */
+function isNotAccepted(outcome: UnadmittedMediaCost): boolean {
+  return (
+    outcome.outcome === 'unsupported' &&
+    (outcome.reason === 'modality-not-accepted' || outcome.reason === 'mime-family-not-accepted')
+  );
+}
+
 /**
  * Raised before generation when a step's conversation holds a media part that
  * cannot be admitted to the context window: the backend does not accept it, or
  * its cost cannot be bounded. Carries one typed outcome per refused part. The
  * run fails here rather than sending the part as free or dropping it.
+ *
+ * Its code is `UNSUPPORTED_MEDIA_TYPE` only when the model does not take the media: every media
+ * part of the message is refused, and each refusal is `modality-not-accepted` or
+ * `mime-family-not-accepted`. A client can act on that by sending something else. Any other
+ * refusal (a flagged or unverified asset, a count or budget limit, a source form, an unbounded
+ * cost), any mix of them, and any message with an admitted part keeps `MEDIA_NOT_ADMITTED`.
  */
 export class MediaAdmissionError extends AgentRunError {
   readonly outcomes: readonly UnadmittedMediaCost[];
 
-  constructor(outcomes: readonly UnadmittedMediaCost[]) {
+  /**
+   * @param outcomes One outcome for each refused part.
+   * @param options `admitted` is where every admitted media part sits. Only those in a message that
+   *   holds a refused part count against `UNSUPPORTED_MEDIA_TYPE`: an attachment a thread admitted
+   *   in an earlier message says nothing about the one refused now.
+   */
+  constructor(
+    outcomes: readonly UnadmittedMediaCost[],
+    options: { readonly admitted?: readonly MediaPartPosition[] } = {},
+  ) {
+    const refusedMessages = new Set(outcomes.map((outcome) => outcome.messageId));
+    const admittedBeside = (options.admitted ?? []).filter((position) =>
+      refusedMessages.has(position.messageId),
+    ).length;
     super(`${outcomes.length} media part(s) cannot be admitted to the context window`, {
       kind: 'policy',
-      code: 'MEDIA_NOT_ADMITTED',
+      code:
+        admittedBeside === 0 && outcomes.length > 0 && outcomes.every(isNotAccepted)
+          ? 'UNSUPPORTED_MEDIA_TYPE'
+          : 'MEDIA_NOT_ADMITTED',
     });
     this.name = 'MediaAdmissionError';
     this.outcomes = outcomes;

@@ -112,6 +112,15 @@ export async function listContexts(
   return contextPageSchema.parse(await callBureau('bureau.contexts.list', input, options));
 }
 
+/** What an agent's model takes in the way of media (`bureau.agents.list`'s `media`). */
+export const agentMediaSchema = z.object({
+  modalities: z.record(z.string(), z.object({ input: z.boolean(), output: z.boolean() })),
+  mimeFamilies: z.array(z.string()),
+  mediaLimits: z.array(
+    z.object({ modality: z.string(), maxBytes: z.number().int().nonnegative() }),
+  ),
+});
+
 /** An agent as `bureau.agents.list` shows it. */
 export const agentSummarySchema = z.object({
   name: z.string(),
@@ -120,6 +129,8 @@ export const agentSummarySchema = z.object({
   definitionRevision: z.number(),
   kind: z.enum(['code', 'file']),
   publishState: z.enum(['published', 'withdrawn', 'unpublished']),
+  /** `null` for an agent that names no model, which can take no attachment. */
+  media: agentMediaSchema.nullable().default(null),
 });
 
 export type AgentSummary = z.infer<typeof agentSummarySchema>;
@@ -150,4 +161,15 @@ export async function getThreadMessages(
     throw new HttpClientError(response.status, `The thread answered ${response.status}.`);
   }
   return threadMessagesSchema.parse(await response.json()).messages;
+}
+
+/**
+ * The wire fault code a Bureau answer carried (`NotFound`, `Unprocessable`, and so on), or
+ * `undefined` for an error that did not come from the Bureau. The status says only what kind of fault
+ * it was; the code says which.
+ */
+export function wireCodeOf(error: unknown): string | undefined {
+  if (!(error instanceof HttpClientError)) return undefined;
+  const code = error.data?.['weftCode'];
+  return typeof code === 'string' ? code : undefined;
 }

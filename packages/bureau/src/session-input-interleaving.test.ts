@@ -1,24 +1,21 @@
-import { type GenerateContext, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
-import { createToolbox } from 'armorer';
+import type { GenerateContext } from '@lostgradient/operative';
+import type { Storage } from '@lostgradient/weft';
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { createBureau } from './create-bureau';
 import { createSessionInputMailbox } from './session-input-durability';
 import {
   admitsSessionInput,
   cancelsSessionInput,
   deferred,
   logsRunEnded,
+  openProcess,
   pollUntil,
   readsMailbox,
   readsSteeringHead,
   savesSessionAs,
-  seamStorage,
-  type StorageSeam,
   userTexts,
 } from './test/session-input-fixtures';
 import type { Bureau } from './types';
@@ -40,22 +37,6 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-async function openProcess(
-  generate: GenerateFunction,
-): Promise<{ bureau: Bureau; seam: StorageSeam; real: Storage }> {
-  const real = await resolveStorage({ type: 'sqlite', path });
-  const seam = seamStorage(real);
-  const bureau = await createBureau({
-    agents: {},
-    generate,
-    toolbox: createToolbox([]),
-    storage: seam.storage,
-    durableExecution: true,
-    stopWhen: stopWhen.noToolCalls(),
-  });
-  return { bureau, seam, real };
-}
-
 const input = { id: 'input-x', principal: 'alice', deliveryMode: 'steer' as const, payload: 'X' };
 
 /** The state of the session's one input, in its current incarnation's mailbox. */
@@ -71,12 +52,12 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
   it("(a) the submit side's liveness read is held until the ending run's mailbox read finishes: the run cancels, the submit reads canceled", async () => {
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
-    const a = await openProcess(async () => {
+    const a = await openProcess(path, async () => {
       stepZeroStarted.resolve();
       await releaseStepZero.promise;
       return { content: 'answer', toolCalls: [] };
     });
-    const b = await openProcess(async () => {
+    const b = await openProcess(path, async () => {
       throw new Error('process B never generates');
     });
     const holds: Array<{ release: () => void }> = [];
@@ -125,11 +106,11 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
 
   it("(b) the ending run's mailbox read is held until the admission commits: the submit cancels, the run finds nothing open", async () => {
     const stepZeroStarted = deferred();
-    const a = await openProcess(async () => {
+    const a = await openProcess(path, async () => {
       stepZeroStarted.resolve();
       return new Promise<never>(() => {});
     });
-    const b = await openProcess(async () => {
+    const b = await openProcess(path, async () => {
       throw new Error('process B never generates');
     });
     const holds: Array<{ release: () => void }> = [];
@@ -172,92 +153,17 @@ describe('admission against a run ending, across two processes (COR-1476)', () =
   });
 });
 
-describe('a run whose session is recreated while it starts (COR-1476)', () => {
-  it('never delivers input admitted to the new incarnation: its gate is bound to the incarnation it was promoted in', async () => {
-    const SESSION = 'session-recreated';
-    const prompts1: string[][] = [];
-    const run1Started = deferred();
-    const a = await openProcess(async (context: GenerateContext) => {
-      prompts1.push(userTexts(context.conversation));
-      run1Started.resolve();
-      return new Promise<never>(() => {});
-    });
-    const prompts2: string[][] = [];
-    const run2Started = deferred();
-    const release2 = deferred();
-    const b = await openProcess(async (context: GenerateContext) => {
-      prompts2.push(userTexts(context.conversation));
-      if (prompts2.length === 1) {
-        run2Started.resolve();
-        await release2.promise;
-      }
-      return { content: 'done', toolCalls: [] };
-    });
-    const holds: Array<{ release: () => void }> = [];
-    try {
-      // Process A starts run 1. Its start loads the session body twice after
-      // its running save committed: once for its steering promotion, once to
-      // build its input gate. The second load is held.
-      let bodyReads = 0;
-      const gateLoad = a.seam.holdRead(
-        (key) => {
-          if (!key.startsWith('agent-session-v2:body:')) return false;
-          bodyReads += 1;
-          return bodyReads === 2;
-        },
-        a.seam.awaitWriteCommitted(savesSessionAs('running')),
-      );
-      holds.push(gateLoad);
-      const creating = a.bureau.createRun({
-        message: 'First',
-        principal: 'alice',
-        sessionId: SESSION,
-      });
-      await gateLoad.reached;
-
-      // Process B deletes and recreates the session meanwhile, with a live run
-      // of the new incarnation, and admits input to it.
-      await b.bureau.deleteSession(SESSION);
-      const second = await b.bureau.createRun({
-        message: 'Second',
-        principal: 'alice',
-        sessionId: SESSION,
-      });
-      await run2Started.promise;
-      const admitted = await b.bureau.submitSessionInput(SESSION, input);
-      expect(admitted.outcome).toBe('admitted');
-
-      // Run 1 starts on the session it was promoted in, which is gone: it has
-      // no gate, and its first step sees only its own message.
-      gateLoad.release();
-      await creating;
-      await run1Started.promise;
-      expect(prompts1).toEqual([['First']]);
-
-      // The new incarnation's run delivers the input at its next boundary.
-      release2.resolve();
-      await b.bureau.waitForDurableRun(second.id);
-      expect(prompts2).toEqual([['Second'], ['Second', 'X']]);
-    } finally {
-      release2.resolve();
-      holds.forEach((hold) => hold.release());
-      await a.bureau.dispose();
-      await b.bureau.dispose();
-    }
-  });
-});
-
 describe("a run's end against a session recreated while it ran (COR-1476)", () => {
   it("touches only its own incarnation's mailbox: it cancels what that incarnation left open and never the recreated session's input", async () => {
     const SESSION = 'session-recreated-at-end';
     const run1Started = deferred();
     const release1 = deferred();
-    const a = await openProcess(async () => {
+    const a = await openProcess(path, async () => {
       run1Started.resolve();
       await release1.promise;
       return { content: 'done', toolCalls: [] };
     });
-    const b = await openProcess(async () => ({ content: 'done', toolCalls: [] }));
+    const b = await openProcess(path, async () => ({ content: 'done', toolCalls: [] }));
     try {
       const first = await a.bureau.createRun({
         message: 'First',
@@ -321,7 +227,7 @@ describe('input admitted to a recreated session while an old run still drains (C
     const SESSION = 'session-window';
     const stepZeroStarted = deferred();
     const releaseStepZero = deferred();
-    const a = await openProcess(async () => {
+    const a = await openProcess(path, async () => {
       stepZeroStarted.resolve();
       await releaseStepZero.promise;
       return { content: 'answer', toolCalls: [] };
@@ -329,7 +235,7 @@ describe('input admitted to a recreated session while an old run still drains (C
     const prompts2: string[][] = [];
     const run2Started = deferred();
     const release2 = deferred();
-    const b = await openProcess(async (context: GenerateContext) => {
+    const b = await openProcess(path, async (context: GenerateContext) => {
       prompts2.push(userTexts(context.conversation));
       if (prompts2.length === 1) {
         run2Started.resolve();

@@ -14,18 +14,29 @@
  * events carry them, are ordered by the store's own sequence, and are the same
  * records on a replay as live.
  *
- * What it does not emit: `STATE_DELTA`, `ACTIVITY_*`, `REASONING_*`, `CUSTOM`,
+ * The one `CUSTOM` event it emits is `bureau.asset-part`, once for each managed asset a step's
+ * response carries, in ascending part index, inside the step's text message (after its start,
+ * before its end). A step with assets and no text gets a message of its own to hold them.
+ *
+ * What it does not emit: `STATE_DELTA`, `ACTIVITY_*`, `REASONING_*`, any other `CUSTOM`,
  * `RAW`, `SUBAGENT_*`, and the `*_CHUNK` forms. Reasoning in particular never
  * reaches the wire.
  *
  * @module ag-ui-projection
  */
 
-import { type Event, EventType } from '@ag-ui/core';
+import { type Event, EventType, type TokenUsage } from '@ag-ui/core';
 import { materializeToolResult, toAGUIToolMessage } from 'conversationalist';
 import { assistantMessageIdentifier, toolResultMessageIdentifier } from '@lostgradient/operative';
 
-import { type EventStamp, stamp } from './ag-ui-vocabulary.ts';
+import { assetPartsOf } from './ag-ui-asset-parts.ts';
+import {
+  ASSET_PART_EVENT_NAME,
+  type AssetPartAnnouncement,
+  type AssetPartReference,
+  type EventStamp,
+  stamp,
+} from './ag-ui-vocabulary.ts';
 
 /** The terminal fact of a native run, before it is turned into the event that ends the AG-UI run. */
 export type NativeTerminal = {
@@ -138,8 +149,16 @@ export class RunProjector {
     switch (name) {
       case RECORDED.stepStarted:
         return { events: this.startStep(stepOf(data)) };
-      case RECORDED.generateCompleted:
-        return { events: this.completeText(stepOf(data), record(data['response'])['content']) };
+      case RECORDED.generateCompleted: {
+        const response = record(data['response']);
+        return {
+          events: this.completeText(
+            stepOf(data),
+            response['content'],
+            assetPartsOf(response['parts']),
+          ),
+        };
+      }
       case RECORDED.toolsExecuting:
         return { events: this.announceCalls(stepOf(data), toolCallsOf(data['toolCalls'])) };
       case RECORDED.toolsExecuted:
@@ -257,8 +276,15 @@ export class RunProjector {
     return events;
   }
 
-  /** Ends the step's text message, with the whole of it when no delta announced any. */
-  private completeText(step: number | undefined, final: unknown): Event[] {
+  /**
+   * Ends the step's text message, with the whole of it when no delta announced any. The step's
+   * assets are announced inside it, so a step with assets and no text still gets a message.
+   */
+  private completeText(
+    step: number | undefined,
+    final: unknown,
+    assets: readonly AssetPartReference[] = [],
+  ): Event[] {
     const text = this.text;
     if (step === undefined || text === undefined || text.step !== step || text.ended) return [];
     const content = typeof final === 'string' ? final : '';
@@ -266,13 +292,14 @@ export class RunProjector {
     const events: Event[] = [];
     if (!text.started) {
       text.ended = true;
-      if (content.length === 0) return [];
+      if (content.length === 0 && assets.length === 0) return [];
       text.started = true;
-      events.push(
-        this.live({ type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' }),
-        this.live({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: content }),
-        this.live({ type: EventType.TEXT_MESSAGE_END, messageId }),
-      );
+      events.push(this.live({ type: EventType.TEXT_MESSAGE_START, messageId, role: 'assistant' }));
+      if (content.length > 0) {
+        events.push(this.live({ type: EventType.TEXT_MESSAGE_CONTENT, messageId, delta: content }));
+      }
+      events.push(...this.announceAssets(messageId, assets));
+      events.push(this.live({ type: EventType.TEXT_MESSAGE_END, messageId }));
       return events;
     }
     // The deltas streamed so far may stop short of the text the guardrails left.
@@ -286,8 +313,17 @@ export class RunProjector {
       );
     }
     text.ended = true;
+    events.push(...this.announceAssets(messageId, assets));
     events.push(this.live({ type: EventType.TEXT_MESSAGE_END, messageId }));
     return events;
+  }
+
+  /** One `bureau.asset-part` event for each asset, in the order given (ascending part index). */
+  private announceAssets(messageId: string, assets: readonly AssetPartReference[]): Event[] {
+    return assets.map((asset) => {
+      const value: AssetPartAnnouncement = { messageId, ...asset };
+      return this.live({ type: EventType.CUSTOM, name: ASSET_PART_EVENT_NAME, value });
+    });
   }
 
   private announceCalls(step: number | undefined, calls: ToolCallDetail[]): Event[] {
@@ -353,4 +389,51 @@ export class RunProjector {
 
 export function stepName(step: number): string {
   return `step-${step}`;
+}
+
+export function usageOf(detail: unknown): TokenUsage[] {
+  const usage = (detail as { usage?: Record<string, unknown> } | undefined)?.usage ?? {};
+  const count = (value: unknown): number | undefined =>
+    typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+  const prompt = count(usage['prompt']);
+  const completion = count(usage['completion']);
+  const total = count(usage['total']);
+  const entry: TokenUsage = {
+    ...(prompt === undefined ? {} : { inputTokens: prompt }),
+    ...(completion === undefined ? {} : { outputTokens: completion }),
+    ...(total === undefined ? {} : { totalTokens: total }),
+  };
+  return [entry];
+}
+
+/**
+ * The code and message a failed run's terminal record carries. The record holds
+ * the error serialized to a string (name, message, kind, code, and a cause that
+ * can hold a provider's response); only the code and message are read, so
+ * nothing else reaches the wire.
+ */
+export function errorOf(detail: unknown): { code: string; message: string } {
+  let error = (detail as { error?: unknown } | undefined)?.error;
+  if (typeof error === 'string') {
+    try {
+      error = JSON.parse(error) as unknown;
+    } catch {
+      // Not JSON: the string is the message.
+    }
+  }
+  const fields =
+    typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  const message =
+    typeof fields['message'] === 'string'
+      ? fields['message']
+      : typeof error === 'string'
+        ? error
+        : 'The run failed';
+  return {
+    code:
+      typeof fields['code'] === 'string' && fields['code'].length > 0
+        ? fields['code']
+        : 'RUN_FAILED',
+    message,
+  };
 }

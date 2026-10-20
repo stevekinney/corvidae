@@ -5,7 +5,12 @@ import {
   mergeHookRegistries,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
-import type { GovernedMemory, MemoryAuthority, MemoryCapability } from '@lostgradient/memory';
+import type {
+  GovernedMemory,
+  MemoryAuthority,
+  MemoryCapability,
+  MemoryWriteReceipt,
+} from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
 import type {
   AgentInput,
@@ -142,14 +147,17 @@ import {
   type GoalAttemptCostEstimation,
   isGoalAttemptCostEstimation,
 } from './goal-cost-estimation';
+import { MEMORY_EVIDENCE_METADATA_KEY } from './memory-evidence-metadata';
 import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
+  resolveRunMemoryOwner,
   resolveSessionOwner,
   SessionOwnerConflictError,
 } from './session-authority';
+import { committedFireApprovalIds } from './scheduled-fire-review-state';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import type {
   BureauMemoryAuthorityOptions,
@@ -673,6 +681,32 @@ export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Obje
 ]);
 
 /**
+ * COR-1546 — who a run's memory belongs to. Memory is partitioned by the Bureau's deployment
+ * (`tenantId`) and the run's owner of record (`ownerId`), the same pair `bureau.memory.*` builds
+ * its authority from, so what a chat run remembers is what its owner's own operations list. It is
+ * never the request authority's `tenantId` and `ownerId`: those are the tool-execution authority,
+ * and a run that states none gets the agent's name as its owner (`normalizeRunRequestContext`).
+ */
+export type RunMemoryIdentity = {
+  readonly runId: string;
+  /** The Bureau's identifier, which is the tenant memory is partitioned under. */
+  readonly tenantId: string;
+  /** The run's owner of record: `anonymous:local` when none was recorded. */
+  readonly ownerId: string;
+};
+
+/**
+ * COR-1546 — where a run's memory is kept: the agent's identifier is the collection, so an agent
+ * remembers across every chat its owner has with it, and the session that produced a record is
+ * written into the record's `metadata`.
+ */
+export type RunMemoryTarget = {
+  /** The agent's identifier. */
+  readonly collection: string;
+  readonly sessionId: string;
+};
+
+/**
  * COR-41 — the memory authority a run acts under, derived from its persisted
  * request authority. The delegation chain runs from Bureau (holding the
  * deployment's `runCapabilities`) through the request principal to the run, so
@@ -682,7 +716,7 @@ export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Obje
  */
 export function createRunMemoryAuthority(
   requestContext: ToolRequestContext,
-  run: { readonly runId: string },
+  run: RunMemoryIdentity,
   options: BureauMemoryAuthorityOptions = {},
 ): MemoryAuthority {
   const deployment = options.runCapabilities ?? DEFAULT_RUN_MEMORY_CAPABILITIES;
@@ -696,8 +730,8 @@ export function createRunMemoryAuthority(
       : deployment.filter((capability) => requested.includes(capability));
   return createMemoryAuthority({
     principal: { kind: 'run', id: run.runId },
-    tenantId: requestContext.authority.tenantId,
-    ownerId: requestContext.authority.ownerId,
+    tenantId: run.tenantId,
+    ownerId: run.ownerId,
     purpose: options.purpose ?? 'conversation-memory',
     capabilities: granted,
     policyRevision: requestContext.authority.authorizationRevision,
@@ -1154,7 +1188,7 @@ function redactProvider(provider: ProviderConfiguration): RedactedProviderConfig
 export function createMemoryRecallHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
-  sessionId: string,
+  target: RunMemoryTarget,
 ): PrepareStepHook {
   return async (context) => {
     if (context.step !== 0) {
@@ -1172,7 +1206,7 @@ export function createMemoryRecallHook(
     }
 
     const bundle = await memory.recallForModel(authority, query, {
-      collection: sessionId,
+      collection: target.collection,
       limit: 5,
       contextId: authority.principal.id,
     });
@@ -1182,8 +1216,8 @@ export function createMemoryRecallHook(
     }
 
     context.conversation.appendSystemMessage(bundle.rendered, {
-      memoryEvidence: {
-        sessionId,
+      [MEMORY_EVIDENCE_METADATA_KEY]: {
+        sessionId: target.sessionId,
         recordIds: bundle.evidence.map((item) => item.id),
         withheld: bundle.withheld,
       },
@@ -1225,8 +1259,14 @@ export function createMemoryRecallHook(
 export function createMemoryPersistHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
-  sessionId: string,
+  target: RunMemoryTarget,
   runId?: string,
+  /**
+   * Told of a write governed memory rejected (a quota, a content rule, a missing capability), which
+   * stores no record and so leaves nothing else to say the answer was not remembered (COR-1546).
+   * Receives the receipt, which names a reason and never the content.
+   */
+  onRejected?: (receipt: MemoryWriteReceipt) => void,
 ): OnStepHook {
   return async (context) => {
     if (!context.final || !context.content.trim()) {
@@ -1238,16 +1278,23 @@ export function createMemoryPersistHook(
     // produce a second record.
     const dedupeKey = runId === undefined ? undefined : `${runId}:${context.step}`;
 
-    await memory.write(authority, context.content, {
-      collection: sessionId,
+    const receipt = await memory.write(authority, context.content, {
+      collection: target.collection,
       source: 'conversation',
       memoryClass: 'episodic',
       // Replay classification (seam #11): an external write → `effectful`, kept
       // safe across a recovery re-fire by the atomic dedupeKey write. Metadata
-      // only; never gates execution.
-      metadata: { step: context.step, replay: 'effectful' satisfies HookReplayPolicy },
+      // only; never gates execution. The collection is the agent, so no record or
+      // event names the chat that produced it any more (COR-1546): `sessionId` is how
+      // the Memory page shows where a memory came from.
+      metadata: {
+        step: context.step,
+        replay: 'effectful' satisfies HookReplayPolicy,
+        sessionId: target.sessionId,
+      },
       ...(dedupeKey === undefined ? {} : { dedupeKey }),
     });
+    if (receipt.status === 'rejected') onRejected?.(receipt);
   };
 }
 
@@ -1391,6 +1438,12 @@ export function applyCache(
   });
 }
 
+/**
+ * Who keeps the managed assets a run's rows reference (COR-1581): the session the run writes into,
+ * or, for a run with no session, the run itself.
+ */
+export type MediaRowHolder = 'session' | 'run';
+
 export type RuntimeCompositionDependencies = {
   resolveProviderGenerate: typeof resolveProviderGenerate;
   /**
@@ -1465,6 +1518,17 @@ export type RuntimeCompositionDependencies = {
    */
   onScheduledSessionKnown?: (session: ScheduledSessionNotice) => void | Promise<void>;
   /**
+   * COR-1596 — called once a schedule fire's services are built and before the fire runs, with
+   * the services themselves: on a live tick and on a recovered fire alike, because the engine
+   * rebuilds a fire's services the same way for both. `createBureau` registers the fire's human
+   * waits and tool approvals as pending reviews here, which needs the services' emitter and
+   * toolbox. A host that cannot register them is diagnosed and the fire still runs.
+   */
+  onScheduledFireServices?: (
+    fire: ScheduledFireServicesNotice,
+    services: DurableRunDeps,
+  ) => void | Promise<void>;
+  /**
    * COR-1527 — whether `type` is a workflow Bureau registered from a workflow file. An instance of
    * one needs no services: its steps are the host's activities, and its fire or its recovery must
    * not be answered "unrecognized workflow type". Late-bound by the caller, since the workflow
@@ -1487,6 +1551,7 @@ export type RuntimeCompositionDependencies = {
    */
   generatedMediaAdmitterFor?: (
     principalId: string | undefined,
+    rowHolder: MediaRowHolder,
   ) => GeneratedMediaAdmitter | undefined;
 };
 
@@ -1511,6 +1576,15 @@ export type ScheduledFireSettlement = {
   readonly error: string | undefined;
   /** The fire's answer, when it completed with one. */
   readonly content: string | undefined;
+};
+
+/** What {@link RuntimeCompositionDependencies.onScheduledFireServices} is told about one fire. */
+export type ScheduledFireServicesNotice = {
+  readonly runId: string;
+  readonly sessionId: string;
+  readonly agentName: string;
+  /** The request context the fire runs under, which a later approval of its tool resumes under. */
+  readonly requestContext: ReturnType<typeof createSchedulerServiceRequestContext>;
 };
 
 /** What {@link RuntimeCompositionDependencies.onScheduledSessionKnown} is told. */
@@ -2019,8 +2093,13 @@ export interface RuntimeComposition {
    * taken from this bureau's input guardrail. Every path that starts or resumes a run
    * spreads it into the run's options, so a managed-asset part resolves, and is judged,
    * the same on a fresh start, a recovery, and a scheduled fire.
+   *
+   * `rowHolder` says who keeps the managed assets the run's rows reference (COR-1581): `'session'`
+   * for a run that writes into a session, whose claim pass takes them, and `'run'` for a run with
+   * no session, which holds them itself. A catalog dispatch (`bureau.run()`, a child, a goal
+   * attempt, a workflow step) and its recovery have no session.
    */
-  mediaOptionsFor(principalId: string | undefined): MediaRunOptions;
+  mediaOptionsFor(principalId: string | undefined, rowHolder: MediaRowHolder): MediaRunOptions;
   ready: boolean;
   provider: RedactedProviderConfiguration | undefined;
   providers: RedactedProviderRouteConfiguration[];
@@ -2045,6 +2124,8 @@ export interface RuntimeComposition {
        * is composed around them exactly as it is around the Bureau-wide runtime.
        */
       sessionAgent?: SessionAgentRun | undefined;
+      /** COR-1546 — the run's owner of record, which its memory is partitioned under. */
+      memoryOwner?: string | undefined;
     },
   ): Promise<{
     generate: GenerateFunction;
@@ -2258,6 +2339,101 @@ export function registerTrailingOnStep(
   return hooks;
 }
 
+/**
+ * COR-1596 — the field of a persisted request authority that says it is a schedule fire's.
+ */
+export const SCHEDULED_FIRE_AUTHORITY_MARKER = 'scheduledFire';
+
+/**
+ * COR-1596 — whether the authority a session recorded for `runId` is a schedule fire's. A fire
+ * runs on the Bureau-wide runtime and its agent name is a label, not a catalog entry, so what
+ * resumes its approval after a restart must not look the name up in the catalog the way a session
+ * run's does.
+ */
+export function isScheduledFireAuthority(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+): boolean {
+  const authorities = metadata['lastRequestAuthorities'];
+  if (!isPlainAuthorityRecord(authorities)) return false;
+  const authority = authorities[runId];
+  return isPlainAuthorityRecord(authority) && authority[SCHEDULED_FIRE_AUTHORITY_MARKER] === true;
+}
+
+/**
+ * COR-1596 — what a schedule fire's session records for a tool call its step left awaiting
+ * approval: the pending approval under its review id, its supersession round (0, or the round
+ * already recorded), and the request authority the fire ran under. These are the keys a session
+ * run's approvals are recorded under, so the boot restore of a terminal run's approvals finds a
+ * fire's too. Idempotent by key: a replayed step writes the same entries.
+ *
+ * `committed`, given for a fire that is replaying after a crash, names the review ids of the
+ * approvals the run's checkpoint holds. A fire writes its session as each step completes and
+ * commits the step after, so a crash between the two leaves an approval in the session that the
+ * run never committed; the replay may not make that call again. Every approval of this run that
+ * is neither committed nor this step's is dropped from the write, and the authority with the last
+ * of them.
+ */
+export function scheduledFireApprovalMetadata(
+  metadata: Record<string, JSONValue>,
+  runId: string,
+  results: readonly { readonly outcome: string; readonly pendingApproval?: unknown }[],
+  requestContext: ToolRequestContext,
+  committed?: ReadonlySet<string>,
+): Record<string, JSONValue> {
+  const prefix = `approval:${runId}:`;
+  // A review the session records as decided is not recorded as pending again: a replay that
+  // makes the same call under the same id would list it for ever, with nothing to decide.
+  const decided = new Set(
+    Array.isArray(metadata['resolvedReviewIds']) ? metadata['resolvedReviewIds'] : [],
+  );
+  const approvals: Array<[string, JSONValue]> = [];
+  for (const result of results) {
+    if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
+    const approval = JSON.parse(JSON.stringify(result.pendingApproval)) as JSONValue;
+    const callId = isPlainAuthorityRecord(approval) ? approval['callId'] : undefined;
+    if (typeof callId !== 'string' || decided.has(`${prefix}${callId}`)) continue;
+    approvals.push([`${prefix}${callId}`, approval]);
+  }
+  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
+    isPlainAuthorityRecord(value) ? value : {};
+  const stepIds = new Set(approvals.map(([id]) => id));
+  const existingOverrides = recordOf(metadata['pendingApprovalOverrides']);
+  const abandoned = new Set(
+    committed === undefined
+      ? []
+      : Object.keys(existingOverrides).filter(
+          (id) => id.startsWith(prefix) && !committed.has(id) && !stepIds.has(id),
+        ),
+  );
+  if (approvals.length === 0 && abandoned.size === 0) return {};
+  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
+    Object.fromEntries(Object.entries(record).filter(([id]) => !abandoned.has(id)));
+  const overrides = { ...without(existingOverrides), ...Object.fromEntries(approvals) };
+  const rounds = recordOf(metadata['pendingApprovalRounds']);
+  const authorities = recordOf(metadata['lastRequestAuthorities']);
+  const authority = JSON.parse(
+    JSON.stringify({
+      ...requestContext.authority,
+      ...(requestContext.audience === undefined ? {} : { audience: requestContext.audience }),
+      ...(requestContext.agentId === undefined ? {} : { agentId: requestContext.agentId }),
+      [SCHEDULED_FIRE_AUTHORITY_MARKER]: true,
+    }),
+  ) as JSONValue;
+  const { [runId]: _ended, ...otherAuthorities } = authorities;
+  const holdsApproval = Object.keys(overrides).some((id) => id.startsWith(prefix));
+  return {
+    pendingApprovalOverrides: overrides,
+    pendingApprovalRounds: {
+      ...without(rounds),
+      ...Object.fromEntries(approvals.map(([id]) => [id, rounds[id] ?? 0])),
+    },
+    lastRequestAuthorities: holdsApproval
+      ? { ...authorities, [runId]: authority }
+      : otherAuthorities,
+  };
+}
+
 export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'>;
 
 export async function createRuntimeComposition(
@@ -2351,6 +2527,26 @@ async function buildRuntimeComposition(
         level: 'error',
         scope: 'task-registry',
         message: `[bureau] Could not bind the task of schedule fire "${notice.runId}" to its session: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * COR-1596: hands the host a fire's services so it can register the fire's reviews. Registering
+   * them is a record about the fire, so a host that cannot is diagnosed and the fire still runs.
+   */
+  async function reportScheduledServices(
+    notice: ScheduledFireServicesNotice,
+    services: DurableRunDeps,
+  ): Promise<void> {
+    try {
+      await dependencies.onScheduledFireServices?.(notice, services);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'task-registry',
+        message: `[bureau] Could not register the reviews of schedule fire "${notice.runId}": ${serializeUnknownError(error)}`,
         cause: error,
       });
     }
@@ -2655,6 +2851,12 @@ async function buildRuntimeComposition(
 
   const memory: GovernedMemory | undefined = options.memory;
   await memory?.init();
+  // COR-1546 — the tenant a run's memory is partitioned under. `createBureau` passes its resolved
+  // identifier, so `bureau.memory.*`, which builds its authority from `Bureau.id`, reads what the
+  // runs wrote. A composition built on its own with no identifier gets one of its own.
+  let generatedMemoryTenantId: string | undefined;
+  const memoryTenantId = (): string =>
+    options.id ?? (generatedMemoryTenantId ??= runtimeServices.identifiers.next('bureau'));
 
   // A run's skills come from a catalog revision, and only from one. COR-892 removed Bureau's
   // second path — a provider it read skills out of directly — because a skill admitted that way
@@ -2856,9 +3058,12 @@ async function buildRuntimeComposition(
   }
 
   /** {@link RuntimeComposition.mediaOptionsFor}. */
-  function mediaOptionsFor(principalId: string | undefined): MediaRunOptions {
+  function mediaOptionsFor(
+    principalId: string | undefined,
+    rowHolder: MediaRowHolder,
+  ): MediaRunOptions {
     const resolver = dependencies.contentSourceResolverFor?.(principalId);
-    const admitter = dependencies.generatedMediaAdmitterFor?.(principalId);
+    const admitter = dependencies.generatedMediaAdmitterFor?.(principalId, rowHolder);
     const assetSafety = resolveGuardrailsConfiguration()?.input?.assetSafety;
     return {
       ...(resolver === undefined ? {} : { contentSourceResolver: resolver }),
@@ -2955,6 +3160,14 @@ async function buildRuntimeComposition(
        * applies.
        */
       sessionAgent?: SessionAgentRun | undefined;
+
+      /**
+       * COR-1546 — the run's owner of record, which its memory is partitioned under: the session's
+       * owner for a chat run, the schedule's for a fire, `anonymous:local` for a run no principal started
+       * (the owner of anything created with none stated). A caller that omits it
+       * gets the request authority's `ownerId`; `createBureau` always states it.
+       */
+      memoryOwner?: string | undefined;
     },
   ) {
     const liveStreaming = runtimeOptions?.liveStreaming ?? true;
@@ -3050,12 +3263,26 @@ async function buildRuntimeComposition(
       memory && requestContext
         ? createRunMemoryAuthority(
             requestContext,
-            { runId: request.runId ?? request.sessionId },
+            {
+              runId: request.runId ?? request.sessionId,
+              tenantId: memoryTenantId(),
+              // A caller that states no owner (a composition used directly) is partitioned by the request
+              // authority's own owner, so two requests never share one partition.
+              ownerId: ownerOrLocal(
+                runtimeOptions?.memoryOwner ?? requestContext.authority.ownerId,
+              ),
+            },
             options.memoryAuthority,
           )
         : undefined;
+    // COR-1546 — an agent remembers across every chat its owner has with it, so the collection is
+    // the agent's identifier and never the session's.
+    const memoryTarget: RunMemoryTarget = {
+      collection: request.agentName ?? requestContext?.agentId ?? defaultBureauAgentName,
+      sessionId: request.sessionId,
+    };
     if (memory && memoryAuthority) {
-      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, request.sessionId), {
+      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, memoryTarget), {
         id: 'bureau:memory-recall',
         // Recall admission records the read and can quarantine a poisoned
         // record; both are idempotent on a replayed step.
@@ -3063,7 +3290,15 @@ async function buildRuntimeComposition(
       });
       hooks.on(
         'onStep',
-        createMemoryPersistHook(memory, memoryAuthority, request.sessionId, request.runId),
+        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
+          diagnose({
+            level: 'warn',
+            scope: 'memory',
+            message:
+              `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
+              `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
+          }),
+        ),
         {
           id: 'bureau:memory-persist',
           // Writes to the memory store, so a replayed step writes again. The
@@ -3402,7 +3637,12 @@ async function buildRuntimeComposition(
         ...(agentName !== undefined ? { agentName } : {}),
         ...(requestContext ? { requestContext } : {}),
       },
-      { liveStreaming: false, initialActiveSkillRecords, sessionAgent },
+      {
+        liveStreaming: false,
+        initialActiveSkillRecords,
+        sessionAgent,
+        memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+      },
     );
 
     // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
@@ -3462,7 +3702,7 @@ async function buildRuntimeComposition(
         // resolves for whoever owns the session, as it did before the crash.
         ...sessionRunMediaOptions(
           sessionAgent,
-          mediaOptionsFor(resolveSessionOwner(session.metadata)),
+          mediaOptionsFor(resolveSessionOwner(session.metadata), 'session'),
         ),
         maximumSteps:
           typeof maximumStepsRaw === 'number'
@@ -3585,9 +3825,33 @@ async function buildRuntimeComposition(
     replaceCurrentFireTranscript: boolean,
     getActiveSkillRecords: () => readonly SkillActivationRecord[],
     owner: string,
+    requestContext: ToolRequestContext,
   ): OnStepHook {
     let bound = false;
     return async (context) => {
+      // COR-1596: a fire replaying after a crash may have left an approval in its session that
+      // its checkpoint never held; only a replay can find one, so only a replay reads the
+      // checkpoint, and reads it before the atomic update, which cannot wait on a read.
+      let committedApprovals: ReadonlySet<string> | undefined;
+      if (replaceCurrentFireTranscript && durable !== undefined) {
+        try {
+          // Strict, as every reader of the checkpoint for this is: a step record skipped is a
+          // committed approval taken for an abandoned one.
+          committedApprovals = committedFireApprovalIds(
+            runId,
+            await durable.checkpointStore.loadSteps(runId, { strict: true }),
+          );
+        } catch (error) {
+          // A checkpoint that cannot be read drops nothing, and does not fail the fire's step:
+          // the approvals it holds are checked at the next boot and when the fire settles.
+          diagnose({
+            level: 'error',
+            scope: 'recovery',
+            message: `[bureau] Could not read the checkpoint of replaying schedule fire "${runId}", so its session keeps the approvals it holds: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+      }
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
@@ -3629,6 +3893,15 @@ async function buildRuntimeComposition(
             ...(sessionOwnedByAnotherRunningRun
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
+            // COR-1596 — a tool call this step left awaiting approval is recorded with the
+            // conversation, so a restart can list it again.
+            ...scheduledFireApprovalMetadata(
+              next.metadata,
+              runId,
+              context.results,
+              requestContext,
+              committedApprovals,
+            ),
           },
           conversationHistory: existingConversationHistory
             ? appendConversationMessages(
@@ -3903,6 +4176,9 @@ async function buildRuntimeComposition(
       record.input,
       {
         agentName: record.agentName,
+        // The run's own id, as its first dispatch carried, so a row the agent seeds from `input`
+        // gets the id it had then (COR-1581) and the options carry the run's id.
+        runId,
         // AB-241 review finding: without this, a recovered catalog agent's
         // re-invoked `OPERATIVE_RESOLVE_RUN_OPTIONS` rebuilt `RunOptions` with
         // no `principal` at all, so a resumed run silently lost attribution
@@ -4000,7 +4276,10 @@ async function buildRuntimeComposition(
         ...resolution.options,
         // The run's owner of record resolves its assets and holds the same
         // unverified-asset policy as on a fresh dispatch, unless the agent set its own.
-        ...unsetMediaOptions(resolution.options, mediaOptionsFor(ownerOrLocal(record.principal))),
+        ...unsetMediaOptions(
+          resolution.options,
+          mediaOptionsFor(ownerOrLocal(record.principal), 'run'),
+        ),
         toolbox,
         hooks: mergeHookRegistries(invariants, resolution.options.hooks),
       },
@@ -4281,21 +4560,41 @@ async function buildRuntimeComposition(
     );
     const requestContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
 
+    // COR-1546 — the fire's run writes into the schedule owner's memory, not the scheduler's.
     const runRuntime = await createRunRuntime(
       { message: payloadText(scheduledInput.input), sessionId, runId, agentName, requestContext },
-      { liveStreaming: false, initialActiveSkillRecords },
+      { liveStreaming: false, initialActiveSkillRecords, memoryOwner: owner },
     );
 
+    // COR-1596: a fire is offered `requestHumanInput` exactly as a `bureau.run()` run is, so a
+    // scheduled agent can ask for an answer it will wait for. The tool parks through the services
+    // object returned below, so that object is captured once it exists, as the recovery of a
+    // catalog run captures it.
+    const humanInputServices: { current?: DurableRunDeps } = {};
+    const fireToolbox =
+      options.humanInput === true && durable !== undefined
+        ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
+            humanInput: true,
+            wakeup: false,
+            runId,
+            humanInputEmitter: {
+              dispatchEvent: (event: Event) => {
+                const target = humanInputServices.current?.emitter;
+                return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
+              },
+            },
+          })
+        : runRuntime.toolbox;
     const services: DurableRunDeps = {
-      toolbox: runRuntime.toolbox,
+      toolbox: fireToolbox,
       getStepMetadata: () => ({
         [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(runRuntime.getActiveSkillRecords()),
       }),
       options: {
         generate: runRuntime.generate,
-        toolbox: runRuntime.toolbox,
+        toolbox: fireToolbox,
         conversation,
-        ...mediaOptionsFor(owner),
+        ...mediaOptionsFor(owner, 'session'),
         maximumSteps,
         stopWhen: options.stopWhen,
         // AB-260: the bureau's single composed RuntimeServices instance,
@@ -4322,6 +4621,7 @@ async function buildRuntimeComposition(
               isRecoveredFireReplay,
               runRuntime.getActiveSkillRecords,
               owner,
+              requestContext,
             ),
           ),
         ),
@@ -4331,8 +4631,10 @@ async function buildRuntimeComposition(
       },
     };
 
+    humanInputServices.current = services;
     // Scheduled fires have no interactive ActiveRun surface. The recovery hook
     // monitors them without attaching live event forwarding.
+    await reportScheduledServices({ runId, sessionId, agentName, requestContext }, services);
     return { status: 'available', services };
   }
 

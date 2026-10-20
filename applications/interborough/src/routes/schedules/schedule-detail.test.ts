@@ -83,12 +83,14 @@ describe('ScheduleDetail', () => {
     const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
 
     try {
-      const { getByText } = render(ScheduleDetailHarness, {
+      const { getByText, getByTestId } = render(ScheduleDetailHarness, {
         props: { client, id: 'nightly-rollup' },
       });
 
       await waitFor(() => expect(getByText('0 2 * * *')).not.toBeNull());
-      expect(getByText('inventory-sync-sweep · Every day at 02:00')).not.toBeNull();
+      // What it starts, labelled and linked, then the cadence.
+      expect(getByTestId('schedule-target').textContent).toContain('inventory-sync-sweep');
+      expect(getByText(/Every day at 02:00/)).not.toBeNull();
       expect(getByText('Overlap policy: Queue')).not.toBeNull();
       expect(getByText(/Queue can grow unbounded during outages/)).not.toBeNull();
       // COR-164: the scheduled-run worker rule, worded once in worker-inheritance-rules.ts.

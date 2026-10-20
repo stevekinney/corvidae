@@ -68,6 +68,7 @@ export {
   AssetHeldError,
   AssetIntegrityError,
   AssetNotFoundError,
+  AssetRecordCorruptError,
   AssetServiceClosedError,
   AssetStorageCapacityError,
   AssetUnavailableError,

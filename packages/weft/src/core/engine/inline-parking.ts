@@ -8,7 +8,7 @@ import {
   resumeWorkflowFromStorage as resumeWorkflowFromStorageFromLifecycle,
   type LifecycleCallbacks,
 } from './lifecycle.ts';
-import { recordSignalWaitBegan } from './signal-wait-tracking.ts';
+import { captureSignalWaitRun, recordSignalWaitBegan } from './signal-wait-tracking.ts';
 import { notifySignalWaitReadyForTesting } from './signals.ts';
 import {
   recordDurableInlineOperation,
@@ -67,6 +67,12 @@ export async function parkInlineWorkflowAfterCheckpoint(
     return false;
   }
 
+  // The run this park belongs to, captured before the first await (COR-1604). A
+  // cancel and a `start-new` replacement that parks can all land during either
+  // buffered-signal read below, and the replacement's parked marker then makes
+  // `parkedInlineWorkflows` say this id is still waiting.
+  const run = captureSignalWaitRun(internals, workflowId);
+
   if (await callbacks.hasBufferedSignal(workflowId, operation.signalName)) {
     return false;
   }
@@ -111,7 +117,7 @@ export async function parkInlineWorkflowAfterCheckpoint(
   // No signal was waiting, so the wait has begun. A delivery that resumes the
   // run before this record is written drops the parked marker first, and the
   // record then leaves the name out.
-  await recordSignalWaitBegan(internals, workflowId, operation.signalName, () =>
+  await recordSignalWaitBegan(internals, workflowId, run, operation.signalName, () =>
     internals.parkedInlineWorkflows.has(workflowId),
   );
   return true;

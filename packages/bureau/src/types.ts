@@ -348,6 +348,12 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * Defaults to a runtime-generated identifier, which is fine for a single
    * in-process bureau. A host serving several needs ids it can hand a client,
    * so it supplies them.
+   *
+   * It is also the tenant of the memory every run writes (COR-1546), so a Bureau with
+   * persistent {@link BureauOptions.memory} needs a stable `id`: the generated default changes
+   * on every restart, and a restarted Bureau would then read and write a partition that holds
+   * none of what it remembered before. Nothing refuses or warns; the memory is simply not
+   * found.
    */
   id?: string;
   /**
@@ -1516,6 +1522,15 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getOwner(resource: OwnedResource): Promise<string | undefined>;
 
   /**
+   * The name of the catalog agent an agent schedule runs, or `undefined` when there is no such
+   * schedule, when it is a workflow file's schedule (which runs no agent of its own), or when no
+   * durable engine is composed. It is read from the schedule's stored input and is the only part
+   * of that input this returns: never its text or its session. It does not check who may see the
+   * schedule, so a caller answers to {@link Bureau.getOwner} first.
+   */
+  getScheduleAgentName(scheduleId: string): Promise<string | undefined>;
+
+  /**
    * Subscribes to live liveness updates for a run (AB-88/AB-214),
    * delegating to the underlying `ActiveRun`'s `subscribeSnapshot`. Delivers
    * the current snapshot synchronously before returning, then a new
@@ -1913,6 +1928,19 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
   getReview(
     id: string,
   ): Promise<(PendingReview & { status: ReviewStatus; resolvedBy?: string }) | undefined>;
+
+  /**
+   * The human waits a run is still parked on, read from durable state (COR-1579), so a process
+   * that shares a durable store with the one holding the run can list, read and resolve its park.
+   * When this process holds the run it returns the run's entries from
+   * {@link Bureau.listPendingReviews}. Otherwise it derives the park as recovery does: the park,
+   * its ordinal and its prompt from the run's checkpoint, still pending while the engine's
+   * `waitingForSignals` names its signal. A session run's review carries the session from the
+   * durable run input; a `bureau.run()` run's carries none. Empty for a run that is not parked on
+   * a human wait, or that this Bureau has no durable engine to read. Pending tool approvals are
+   * not derived.
+   */
+  pendingHumanWaitsOfRun(runId: string): Promise<PendingHumanWaitReview[]>;
 
   /**
    * Approve, deny, or reject a pending review (AB-46). Approve resumes the

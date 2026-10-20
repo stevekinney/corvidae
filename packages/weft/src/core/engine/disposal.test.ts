@@ -152,7 +152,7 @@ describe('disposeEngine', () => {
     // termination. Without the dispose fix this promise is cleared but never
     // settled, so an awaiting caller hangs forever.
     const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-    internals.resultResolvers.set('wf-pending', { promise, resolve, reject });
+    internals.resultResolvers.set('wf-pending', { promise, resolve, reject, boundToRun: false });
 
     disposeEngine(internals);
 
@@ -192,7 +192,7 @@ describe('disposeEngine', () => {
     // momentarily unhandled and could trip an unhandled-rejection warning.
     const outcomes = ['wf-1', 'wf-2', 'wf-3'].map((workflowId) => {
       const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-      internals.resultResolvers.set(workflowId, { promise, resolve, reject });
+      internals.resultResolvers.set(workflowId, { promise, resolve, reject, boundToRun: false });
       return promise.then(
         () => ({ rejected: false as const, error: undefined as unknown }),
         (error: unknown) => ({ rejected: true as const, error }),

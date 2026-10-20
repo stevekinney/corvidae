@@ -16,16 +16,22 @@
  * reuses the same key from recreating the task in their own scope.
  *
  * Live delivery is in-process: a commit notifies the followers of the same log object.
- * A follower that falls behind reads the gap back from storage.
+ * A follower that falls behind reads the gap back from storage. When another process
+ * can commit to the same storage (an engine under an ownership lease), a log created
+ * with `recheck` also has each idle follower re-read the task record on that interval
+ * and replay any events another process appended. Storage has no change feed, so this
+ * is the same wait-for-local-commit-or-poll shape as Weft's durable fleet feed.
  *
  * @module a2a/task-event-log
  */
 
 import { StreamResponse, Task } from '@a2a-js/sdk';
 
-import type { BatchOperation, Storage } from '../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition, Storage } from '../storage/interface.ts';
+import type { A2AStreamTimerScheduler } from './sse-response.ts';
 import {
   type A2ACallerScope,
+  type A2ACompareAndSwapAttempt,
   decodeRecord,
   encodeRecord,
   scopedKey,
@@ -74,11 +80,18 @@ export type TaskEventLog = {
    * writing nothing, when the scope already holds a task with this identifier, and
    * `'foreign'`, writing nothing, when another owner's task has (or had) it. The same
    * owner may create a task again after its record was pruned.
+   *
+   * `alongside`, when given, plans more writes for the same conditional batch. It runs
+   * inside each attempt, once the owner is known to be free, so a lost compare-and-swap
+   * plans again from what is stored then. Its records commit with the task or not at
+   * all: an outcome other than a commit, a failed batch, or a crash before the batch
+   * leaves none of them behind.
    */
   create(
     scope: A2ACallerScope,
     owner: TaskOwner,
     mutation: TaskMutation,
+    alongside?: () => Promise<A2ACompareAndSwapAttempt<unknown>>,
   ): Promise<TaskCommit | 'foreign' | undefined>;
   /**
    * Apply `mutate` to the stored task and append its events atomically. `mutate` may
@@ -90,11 +103,17 @@ export type TaskEventLog = {
     taskId: string,
     mutate: (stored: StoredWorkflowTask) => TaskMutation | undefined,
   ): Promise<TaskCommit | undefined>;
-  /** Every event after `afterSequence`, then each new one as it is committed. */
+  /**
+   * Every event after `afterSequence`, then each new one as it is committed. The
+   * generator returns once `signal` aborts, even while it waits for a commit: a
+   * generator's own `return()` cannot interrupt that wait, so the request that follows
+   * the log passes the signal that ends with it.
+   */
   follow(
     scope: A2ACallerScope,
     taskId: string,
     afterSequence: number,
+    signal?: AbortSignal,
   ): AsyncGenerator<TaskEventEntry, void, undefined>;
   /** The owner a task's record names, or `undefined` for an identifier no task has. */
   findOwner(taskId: string): Promise<TaskOwner | undefined>;
@@ -153,16 +172,27 @@ function readEntry(key: string, bytes: Uint8Array): TaskEventEntry {
 
 type EventListener = (entries: readonly TaskEventEntry[]) => void;
 
+/** How an idle follower re-reads storage for events another process committed. */
+export type TaskEventRecheck = {
+  /** The time between re-reads, in milliseconds. */
+  readonly intervalMs: number;
+  /** Arms each re-read; returns a function that cancels it. */
+  readonly schedule: A2AStreamTimerScheduler;
+};
+
 /**
  * Create the event log of one workflow agent over `storage`, under `namespace`.
- * `now` stamps each saved record, as the task store does.
+ * `now` stamps each saved record, as the task store does. With `recheck`, a follower
+ * waiting for a commit also re-reads storage on that interval; without it, only
+ * commits through this log object wake a follower.
  */
 export function createTaskEventLog(options: {
   readonly storage: Storage;
   readonly namespace: string;
   readonly now: () => number;
+  readonly recheck?: TaskEventRecheck;
 }): TaskEventLog {
-  const { storage, namespace, now } = options;
+  const { storage, namespace, now, recheck } = options;
   const listeners = new Map<string, Set<EventListener>>();
 
   function notify(key: string, entries: readonly TaskEventEntry[]): void {
@@ -206,6 +236,84 @@ export function createTaskEventLog(options: {
     }
   }
 
+  /**
+   * Every event after `afterSequence`, read only when the task record names one. The
+   * record is saved in the same batch as its events, so one read answers whether to
+   * scan the log.
+   */
+  async function* storedAfter(key: string, afterSequence: number): AsyncGenerator<TaskEventEntry> {
+    const bytes = await storage.get(key);
+    if (bytes === null) return;
+    const sequence = decodeRecord(key, bytes)['sequence'];
+    if (typeof sequence === 'number' && sequence > afterSequence) {
+      yield* replay(key, afterSequence);
+    }
+  }
+
+  /**
+   * Listen for this log's commits to `key`. `wait` resolves `'commit'` once a commit
+   * queued entries in `pending`, `'recheck'` when a `recheck` re-read is due and none
+   * did, and `'aborted'` once `signal` aborts.
+   */
+  function subscribe(
+    key: string,
+    signal: AbortSignal | undefined,
+  ): {
+    readonly pending: TaskEventEntry[];
+    wait(): Promise<'commit' | 'recheck' | 'aborted'>;
+    close(): void;
+  } {
+    const pending: TaskEventEntry[] = [];
+    let wake: (() => void) | undefined;
+    let cancelRecheck: (() => void) | undefined;
+    let onAbort: (() => void) | undefined;
+    const listener: EventListener = (entries) => {
+      pending.push(...entries);
+      wake?.();
+    };
+    const keyListeners = listeners.get(key) ?? new Set<EventListener>();
+    keyListeners.add(listener);
+    listeners.set(key, keyListeners);
+    const settle = (): void => {
+      wake = undefined;
+      cancelRecheck?.();
+      cancelRecheck = undefined;
+      if (onAbort !== undefined) signal?.removeEventListener('abort', onAbort);
+      onAbort = undefined;
+    };
+    return {
+      pending,
+      async wait() {
+        if (signal?.aborted === true) return 'aborted';
+        const woken = await new Promise<'commit' | 'recheck' | 'aborted'>((resolve) => {
+          wake = () => {
+            resolve('commit');
+          };
+          if (signal !== undefined) {
+            // Settled at once, so an aborted request leaves no re-read armed.
+            onAbort = () => {
+              settle();
+              resolve('aborted');
+            };
+            signal.addEventListener('abort', onAbort, { once: true });
+          }
+          if (recheck !== undefined) {
+            cancelRecheck = recheck.schedule(() => {
+              resolve('recheck');
+            }, recheck.intervalMs);
+          }
+        });
+        settle();
+        return woken === 'recheck' && pending.length > 0 ? 'commit' : woken;
+      },
+      close() {
+        settle();
+        keyListeners.delete(listener);
+        if (keyListeners.size === 0) listeners.delete(key);
+      },
+    };
+  }
+
   return {
     async read(scope, taskId) {
       const key = scopedKey('task', scope, taskId);
@@ -213,7 +321,7 @@ export function createTaskEventLog(options: {
       return bytes === null ? undefined : readStored(decodeRecord(key, bytes));
     },
 
-    async create(scope, owner, mutation) {
+    async create(scope, owner, mutation, alongside) {
       const key = scopedKey('task', scope, mutation.task.id);
       const ownerKey = workflowTaskKey(namespace, mutation.task.id);
       const created = await withCompareAndSwap<TaskCommit | 'foreign' | undefined>(
@@ -228,16 +336,18 @@ export function createTaskEventLog(options: {
               return { result: 'foreign' as const };
             }
           }
+          const extra = await alongside?.();
           const { operations, commit } = writeMutation(key, -1, mutation);
           operations.push({ type: 'put', key: ownerKey, value: encodeRecord({ ...owner }) });
-          return {
-            conditions: [
-              { key, expectedValue: null },
-              { key: ownerKey, expectedValue: existingOwner },
-            ],
-            operations,
-            result: commit,
-          };
+          const conditions: ConditionalBatchCondition[] = [
+            { key, expectedValue: null },
+            { key: ownerKey, expectedValue: existingOwner },
+          ];
+          if (extra !== undefined && 'operations' in extra) {
+            conditions.push(...extra.conditions);
+            operations.push(...extra.operations);
+          }
+          return { conditions, operations, result: commit };
         },
       );
       if (created !== undefined && created !== 'foreign') notify(key, created.appended);
@@ -259,17 +369,9 @@ export function createTaskEventLog(options: {
       return committed;
     },
 
-    async *follow(scope, taskId, afterSequence) {
+    async *follow(scope, taskId, afterSequence, signal) {
       const key = scopedKey('task', scope, taskId);
-      const pending: TaskEventEntry[] = [];
-      let wake: (() => void) | undefined;
-      const listener: EventListener = (entries) => {
-        pending.push(...entries);
-        wake?.();
-      };
-      const keyListeners = listeners.get(key) ?? new Set<EventListener>();
-      keyListeners.add(listener);
-      listeners.set(key, keyListeners);
+      const subscription = subscribe(key, signal);
       let last = afterSequence;
       try {
         // Listening before replaying means no commit can fall between the two.
@@ -278,26 +380,26 @@ export function createTaskEventLog(options: {
           yield entry;
         }
         while (true) {
-          const entry = pending.shift();
+          const entry = subscription.pending.shift();
+          let next: AsyncIterable<TaskEventEntry> | readonly TaskEventEntry[] = [];
           if (entry === undefined) {
-            await new Promise<void>((resolve) => {
-              wake = resolve;
-            });
-            wake = undefined;
+            const woken = await subscription.wait();
+            if (woken === 'aborted') return;
+            // A due re-read looks for what another process committed, only in storage.
+            if (woken === 'recheck') next = storedAfter(key, last);
           } else if (entry.sequence === last + 1) {
-            last = entry.sequence;
-            yield entry;
+            next = [entry];
           } else if (entry.sequence > last + 1) {
             // Notifications of concurrent commits can arrive out of order; read the gap.
-            for await (const missed of replay(key, last)) {
-              last = missed.sequence;
-              yield missed;
-            }
+            next = replay(key, last);
+          }
+          for await (const delivered of next) {
+            last = delivered.sequence;
+            yield delivered;
           }
         }
       } finally {
-        keyListeners.delete(listener);
-        if (keyListeners.size === 0) listeners.delete(key);
+        subscription.close();
       }
     },
 

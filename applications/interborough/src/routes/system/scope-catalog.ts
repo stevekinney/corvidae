@@ -64,7 +64,7 @@ const SCOPE_DESCRIPTIONS: Readonly<Record<AuthorizationScope, ScopeCatalogEntry>
   'reviews:read': {
     scope: 'reviews:read',
     description: 'View pending and completed human review requests.',
-    unlocks: 'The Reviews inbox and archive',
+    unlocks: 'The engine’s reviews in the Reviews inbox, and their count',
   },
   'reviews:write': {
     scope: 'reviews:write',

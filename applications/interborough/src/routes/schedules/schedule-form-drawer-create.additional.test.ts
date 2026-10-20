@@ -52,6 +52,10 @@ describe('ScheduleFormDrawer — create', () => {
       const idInput = getByRole('textbox', { name: 'Schedule ID' });
       await fireEvent.input(idInput, { target: { value: 'test-created-schedule' } });
 
+      // Create waits for the Bureau to say which workflows are agent-authored.
+      await waitFor(() =>
+        expect(getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
+      );
       await fireEvent.click(getByRole('button', { name: 'Create schedule' }));
 
       await waitFor(() => expect(closed).toBe(true));
@@ -81,6 +85,10 @@ describe('ScheduleFormDrawer — create', () => {
       await fireEvent.input(idInput, { target: { value: 'test-paused-schedule' } });
 
       await fireEvent.click(getByRole('switch', { name: 'Start paused' }));
+      // Create waits for the Bureau to say which workflows are agent-authored.
+      await waitFor(() =>
+        expect(getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
+      );
       await fireEvent.click(getByRole('button', { name: 'Create schedule' }));
 
       await waitFor(() => expect(closed).toBe(true));

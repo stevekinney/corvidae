@@ -1,12 +1,11 @@
 /**
  * Component tests for `ReviewsInbox`'s query-fault handling (plan §10.4).
- * `index.test.ts` covers the route-level `reviews:read` scope gate;
- * `reviews.integration.test.ts` covers the full data flow against a real
- * engine. This file targets the gap those two leave: a non-403 query error
- * (401, 500, network) on the active tab's query must render the same
- * six-treatment fault banner every other route surfaces, not the misleading
- * "all caught up" / "no decisions yet" empty state a failed fetch would
- * otherwise fall through to via `?? []`.
+ * `reviews-page.test.ts` covers the merged list and the decisions over a stubbed Bureau;
+ * `reviews.integration.test.ts` covers the engine's data flow against a real engine. This file
+ * targets the gap those leave: a non-403 query error (401, 500, network) on the active tab's
+ * query must render the same six-treatment fault banner every other route surfaces, not the
+ * misleading "all caught up" / "no decisions yet" empty state a failed fetch would otherwise fall
+ * through to via `?? []`, and one source failing must not hide the other's reviews.
  */
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
@@ -18,6 +17,7 @@ import {
   type ReviewListEntry,
 } from '@lostgradient/weft';
 
+import { toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import type { ReviewQuery } from './review-domain.ts';
 import ReviewsInboxTestHarness from './reviews-inbox-test-harness.test-harness.svelte';
 
@@ -146,5 +146,67 @@ describe('ReviewsInbox', () => {
     expect(queryByText('No review selected')).toBeNull();
     expect(getByText('Approve')).not.toBeNull();
     expect(getByText('Reject')).not.toBeNull();
+  });
+
+  test('shows the Bureau’s reviews beside a fault of the engine’s, and the engine’s beside the Bureau’s', async () => {
+    const approval = toolApprovalFixture();
+    const { getByText, getAllByText, queryByText } = render(ReviewsInboxTestHarness, {
+      props: {
+        client: fakeClient(),
+        bureauQuery: {
+          data: [approval],
+          isPending: false,
+          isError: false,
+          error: undefined,
+          refetch: () => {},
+        },
+        pendingQuery: fakeQuery({
+          isPending: false,
+          isError: true,
+          error: new HttpClientError(500, 'the engine broke'),
+        }),
+        completedQuery: fakeQuery({ data: [], isPending: false }),
+      },
+    });
+
+    expect(getByText('the engine broke')).not.toBeNull();
+    expect(getAllByText('issue-refund').length).toBeGreaterThan(0);
+    expect(queryByText('All caught up')).toBeNull();
+  });
+
+  test('shows the engine’s reviews beside a fault of the Bureau’s', async () => {
+    const { getByText, getAllByText } = render(ReviewsInboxTestHarness, {
+      props: {
+        client: fakeClient(),
+        bureauQuery: {
+          data: undefined,
+          isPending: false,
+          isError: true,
+          error: new HttpClientError(500, 'the Bureau broke'),
+          refetch: () => {},
+        },
+        pendingQuery: fakeQuery({ data: [pendingEntry()], isPending: false }),
+        completedQuery: fakeQuery({ data: [], isPending: false }),
+      },
+    });
+
+    expect(getByText('the Bureau broke')).not.toBeNull();
+    expect(getAllByText('Contract approval').length).toBeGreaterThan(0);
+  });
+
+  test('reads nothing of the engine’s while it is not enabled, and is not left loading by it', async () => {
+    const { getByText, queryByText } = render(ReviewsInboxTestHarness, {
+      props: {
+        client: fakeClient(),
+        weftEnabled: false,
+        // A disabled query is pending for ever, and has data from an earlier principal.
+        pendingQuery: fakeQuery({ data: [pendingEntry()], isPending: true }),
+        completedQuery: fakeQuery({ data: [], isPending: true }),
+      },
+    });
+
+    expect(getByText('All caught up')).not.toBeNull();
+    expect(queryByText('Contract approval')).toBeNull();
+    expect(queryByText('Loading reviews')).toBeNull();
   });
 });

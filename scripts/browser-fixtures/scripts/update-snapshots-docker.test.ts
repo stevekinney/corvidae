@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -8,10 +8,17 @@ import { PNG } from 'pngjs';
 import {
   LINUX_BASELINE_DIRECTORY,
   PROVENANCE_FILE_NAME,
+  REQUIRED_BASELINE_ARCHITECTURE,
+  REQUIRED_OS_CODENAME,
+  committedProvenanceProblems,
   createBaselineProvenance,
+  dockerImageTagForPlaywrightVersion,
+  parseBaselineProvenance,
+  readRepositoryPins,
 } from './baseline-provenance.ts';
 import {
   WEB_SERVER_TIMEOUT_REPORT,
+  failedTerminalScopeGuard,
   passed,
   playwrightReport,
 } from './playwright-report.test-support.ts';
@@ -70,6 +77,20 @@ describe('update-snapshots-docker helpers', () => {
 });
 
 const SHA = 'a'.repeat(40);
+const { playwrightVersion } = readRepositoryPins();
+/** The renderer the lockfile pins, so the committed-provenance check accepts these records. */
+const RENDERER = {
+  playwrightVersion,
+  osCodename: REQUIRED_OS_CODENAME,
+  architecture: REQUIRED_BASELINE_ARCHITECTURE,
+  dockerImageTag: dockerImageTagForPlaywrightVersion(playwrightVersion),
+};
+const COMMITTED_PROVENANCE = createBaselineProvenance({
+  ...RENDERER,
+  componentScope: 'all',
+  renderedSourceSha: 'f'.repeat(40),
+  suiteExitCode: 0,
+});
 
 /** A 10x10 PNG filled with one grey level. */
 function png(level: number): Buffer {
@@ -120,21 +141,13 @@ function fixtureRun(options: {
       .join(''),
   );
   // Provenance as the in-container writer would have recorded it.
-  write(
-    join(outputDirectory, 'linux'),
-    PROVENANCE_FILE_NAME,
-    JSON.stringify(
-      createBaselineProvenance({
-        componentScope: options.componentScope ?? 'all',
-        renderedSourceSha: SHA,
-        playwrightVersion: '1.63.0',
-        osCodename: 'jammy',
-        architecture: 'arm64',
-        dockerImageTag: 'corvidae-browser-fixtures:1.63.0-jammy-arm64',
-        suiteExitCode: options.exitCode,
-      }),
-    ),
-  );
+  const rendered = createBaselineProvenance({
+    ...RENDERER,
+    componentScope: options.componentScope ?? 'all',
+    renderedSourceSha: SHA,
+    suiteExitCode: options.exitCode,
+  });
+  write(join(outputDirectory, 'linux'), PROVENANCE_FILE_NAME, JSON.stringify(rendered));
 
   const committed = {
     'chip/light-desktop-primary.png': png(255),
@@ -142,6 +155,12 @@ function fixtureRun(options: {
   };
   const baselineDirectory = join(root, 'working-tree');
   for (const [path, bytes] of Object.entries(committed)) write(baselineDirectory, path, bytes);
+  // The working tree's full-run record, as the last full refresh committed it.
+  write(
+    baselineDirectory,
+    PROVENANCE_FILE_NAME,
+    `${JSON.stringify(COMMITTED_PROVENANCE, null, 2)}\n`,
+  );
 
   const lines: string[] = [];
   return {
@@ -151,6 +170,7 @@ function fixtureRun(options: {
       runDirectory,
       acceptBehaviouralFailures: options.accept ?? false,
       forwarded: options.forwarded ?? [],
+      componentScope: rendered.componentScope,
       results: readSuiteResults(outputDirectory),
       hostLoad: {
         start: { oneMinuteLoad: 80, logicalCpus: 12 },
@@ -182,6 +202,26 @@ function baseline(fixture: Fixture, path: string): Buffer | undefined {
   return existsSync(target) ? readFileSync(target) : undefined;
 }
 
+function provenance(fixture: Fixture) {
+  return parseBaselineProvenance(
+    readFileSync(join(fixture.baselineDirectory, PROVENANCE_FILE_NAME), 'utf8'),
+  );
+}
+
+const DELETION_WORDING = /delet\w*.*orphan|orphan.*delet/i;
+
+/** A scoped run never says it deleted an orphan, in its report or on stdout (COR-1574). */
+function expectNoDeletionWording(fixture: Fixture): void {
+  const report = readFileSync(
+    join(fixture.run.runDirectory, 'report', 'baseline-diff-report.md'),
+    'utf8',
+  );
+  for (const text of [report, fixture.printed()]) {
+    expect(text.split('\n').filter((line) => DELETION_WORDING.test(line))).toEqual([]);
+  }
+  expect(report).toContain('## Kept orphans without a rename partner');
+}
+
 describe('applying an update run (COR-1537)', () => {
   it('writes nothing and deletes nothing after a webServer timeout, even with the flag', async () => {
     // The 2026-10-15 run: exit 1, a report with no suites and one top-level error, nothing
@@ -195,7 +235,7 @@ describe('applying an update run (COR-1537)', () => {
     expect(await apply(fixture)).not.toBe(0);
     expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(255));
     expect(baseline(fixture, 'chip/light-desktop-orphan.png')).toEqual(png(0));
-    expect(baseline(fixture, PROVENANCE_FILE_NAME)).toBeUndefined();
+    expect(provenance(fixture)).toEqual(COMMITTED_PROVENANCE);
     expect(fixture.printed()).toContain('did not complete normally');
     expect(fixture.printed()).toContain('config.webServer');
   });
@@ -247,6 +287,7 @@ describe('applying an update run (COR-1537)', () => {
       expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(128));
       expect(baseline(fixture, 'chip/light-desktop-orphan.png')).toEqual(png(0));
       expect(fixture.printed()).toContain('kept 1 orphan');
+      expectNoDeletionWording(fixture);
     }
   });
 
@@ -263,5 +304,65 @@ describe('applying an update run (COR-1537)', () => {
     expect(fixture.printed()).toContain(
       'Applied 1 baselines and provenance.json; deleted 1 orphans',
     );
+  });
+});
+
+describe('a component-scoped refresh (COR-1574)', () => {
+  const scopedGuardRun = () =>
+    fixtureRun({
+      report: playwrightReport([passed('chip › light-desktop-primary'), failedTerminalScopeGuard]),
+      exitCode: 1,
+      regenerated: { 'chip/light-desktop-primary.png': png(128) },
+      componentScope: 'chip',
+    });
+
+  it('applies a scoped run whose only failure is the terminal guard, then passes the provenance check', async () => {
+    const fixture = scopedGuardRun();
+    expect(await apply(fixture)).toBe(0);
+    expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(128));
+    expect(baseline(fixture, 'chip/light-desktop-orphan.png')).toEqual(png(0));
+    expect(fixture.printed()).toContain('terminal scope guard');
+    expect(fixture.printed()).toContain(
+      'Applied 1 baselines and provenance.json (component renders for chip); kept 1 orphans',
+    );
+    expectNoDeletionWording(fixture);
+
+    // The full-run record stays; the scoped render is added beside it.
+    const applied = provenance(fixture);
+    expect(applied).toEqual({
+      ...COMMITTED_PROVENANCE,
+      componentRenders: { chip: { renderedSourceSha: SHA, suiteExitCode: 1 } },
+    });
+    // The same check `baseline-provenance.test.ts` runs on the committed record.
+    expect(committedProvenanceProblems(applied, playwrightVersion)).toEqual([]);
+  });
+
+  it('still blocks the terminal guard failure on a full run', async () => {
+    const fixture = fixtureRun({
+      report: playwrightReport([passed('chip › light-desktop-primary'), failedTerminalScopeGuard]),
+      exitCode: 1,
+      regenerated: { 'chip/light-desktop-primary.png': png(128) },
+    });
+    expect(await apply(fixture)).toBe(1);
+    expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(255));
+    expect(baseline(fixture, 'chip/light-desktop-orphan.png')).toEqual(png(0));
+    expect(provenance(fixture)).toEqual(COMMITTED_PROVENANCE);
+    expect(fixture.printed()).toContain('--accept-behavioural-failures');
+  });
+
+  it('refuses a scoped render onto a working tree with no full-run provenance', async () => {
+    const fixture = scopedGuardRun();
+    rmSync(join(fixture.baselineDirectory, PROVENANCE_FILE_NAME));
+    expect(await apply(fixture)).toBe(1);
+    expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(255));
+    expect(fixture.printed()).toContain('does not exist');
+  });
+
+  it('refuses a run whose provenance records a different component scope', async () => {
+    const fixture = scopedGuardRun();
+    fixture.run = { ...fixture.run, componentScope: ['button'] };
+    expect(await apply(fixture)).toBe(1);
+    expect(baseline(fixture, 'chip/light-desktop-primary.png')).toEqual(png(255));
+    expect(fixture.printed()).toContain('was not written by this run');
   });
 });
