@@ -326,16 +326,17 @@ async function prepareToSettleTerminalWaiter(
   workflowId: string,
   waiter: WorkflowResultWaiter,
 ): Promise<'proceed' | ResultResolutionOutcome> {
-  // A terminated run's result waits for the activity it still has in flight (COR-1597). The
-  // claim has been released by now, so the deferral below would not hold it back. Asked again
-  // after that deferral, because the terminal commit can land while it yields.
-  if (pendingTerminalSettlementFor(internals, workflowId, waiter) !== undefined) {
-    return 'pending';
-  }
+  // A terminated run's result waits for the activity it still has in flight (COR-1597). Asked
+  // after the deferral below rather than before it, because the terminal commit can land while
+  // that deferral yields; the claim has been released by now, so it would not hold the waiter.
   if (await deferToLocalTerminalDeliveryIfPending(internals, workflowId, waiter)) {
     return 'settled';
   }
-  if (pendingTerminalSettlementFor(internals, workflowId, waiter) !== undefined) {
+  const pending = pendingTerminalSettlementFor(internals, workflowId, waiter);
+  if (pending !== undefined) {
+    // A read that found no record (a purge removed it) left the waiter unbound. Bind it to the
+    // run being settled, so the settlement finds and rejects it when the activity lands.
+    bindResultWaiterToRun(waiter, pending.workflowExecutionToken);
     return 'pending';
   }
   return 'proceed';

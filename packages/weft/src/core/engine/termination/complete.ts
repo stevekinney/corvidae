@@ -229,7 +229,8 @@ export async function terminateWorkflow(
     const { previousState, updatedAt, fence } = terminationResult;
     const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
     const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
-    // Set in the same synchronous step as the commit, so no reader sees the terminal state without it.
+    // Set as soon as the commit's batch resolves, before any further I/O: only a microtask-level
+    // race remains for a first `result()` whose read resolves in the same few hops.
     pendingSettlement = beginPendingTerminalSettlement(
       internals,
       { workflowId, workflowExecutionToken: previousState.workflowExecutionToken },

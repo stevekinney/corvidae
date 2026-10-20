@@ -24,6 +24,8 @@ import type { EngineInternals } from './internals.ts';
 export type InFlightOperation = {
   readonly token: symbol;
   readonly operation: ContextOperationRequest;
+  /** Called when the operation defers to an out-of-band completion; see `captureInFlightActivityTurn`. */
+  readonly deferralListeners: Array<() => void>;
 };
 
 /** Record `operation` as the one this workflow's turn is processing, and return its record. */
@@ -32,7 +34,11 @@ export function beginInFlightOperation(
   workflowId: string,
   operation: ContextOperationRequest,
 ): InFlightOperation {
-  const record: InFlightOperation = { token: Symbol('in-flight-operation'), operation };
+  const record: InFlightOperation = {
+    token: Symbol('in-flight-operation'),
+    operation,
+    deferralListeners: [],
+  };
   internals.inFlightOperations.set(workflowId, record);
   return record;
 }
@@ -59,22 +65,30 @@ export function clearDeferredInFlightOperation(
   operationId: string,
 ): void {
   const record = internals.inFlightOperations.get(workflowId);
-  if (record?.operation.type === 'activity' && record.operation.operationId === operationId) {
-    internals.inFlightOperations.delete(workflowId);
-  }
+  if (record?.operation.type !== 'activity' || record.operation.operationId !== operationId) return;
+  internals.inFlightOperations.delete(workflowId);
+  // A termination that already captured this turn is waiting on a turn that now never settles.
+  for (const listener of record.deferralListeners) listener();
 }
 
 /**
- * The handler turn that is running the workflow's in-flight top-level activity, if any. A
- * termination captures it before it evicts the run's turn tracking, because the result settles
- * after this turn ends (see `terminal-settlement-pending.ts`).
+ * The handler turn that is running the workflow's in-flight top-level activity, if any, for a
+ * termination to settle the result after (see `terminal-settlement-pending.ts`). Captured before
+ * the termination evicts the run's turn tracking.
+ *
+ * The turn ends when the activity does, except for an activity that defers to out-of-band
+ * completion: its turn never settles. The returned promise therefore also settles when the
+ * activity defers, whether that happened before or after the capture, so a deferring activity
+ * never holds the result.
  */
 export function captureInFlightActivityTurn(
   internals: EngineInternals,
   workflowId: string,
 ): Promise<void> | undefined {
-  if (internals.inFlightOperations.get(workflowId)?.operation.type !== 'activity') {
-    return undefined;
-  }
-  return internals.inlineStrategy?.waitForWorkflowTurn(workflowId);
+  const record = internals.inFlightOperations.get(workflowId);
+  if (record?.operation.type !== 'activity') return undefined;
+  const turn = internals.inlineStrategy?.waitForWorkflowTurn(workflowId);
+  if (turn === undefined) return undefined;
+  const deferred = new Promise<void>((resolve) => record.deferralListeners.push(resolve));
+  return Promise.race([turn, deferred]);
 }

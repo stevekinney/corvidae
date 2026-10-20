@@ -14,7 +14,10 @@ import { describe, expect, it } from 'bun:test';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
-import { createDeferred, sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import {
+  createDeferred,
+  waitForRealTimersForTesting,
+} from '../../testing/fake-timers.test-support.ts';
 import { encode } from '../codec.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
@@ -23,66 +26,14 @@ import { bootstrapWorkflowResultResolver, createWorkflowResultWaiter } from './h
 import { Engine } from './index.ts';
 import type { EngineInternals } from './internals.ts';
 import { getInternals } from './internals.ts';
+import {
+  heldActivity,
+  macrotasks,
+  nextId,
+  observe,
+  statusOf,
+} from './terminal-in-flight-activity.test-support.ts';
 import { beginPendingTerminalSettlement } from './terminal-settlement-pending.ts';
-
-type Observed = {
-  state: 'pending' | 'resolved' | 'rejected';
-  reason: unknown;
-  settled: Promise<void>;
-};
-
-/** Watch a promise without awaiting it: its state and reason are read when the test asks. */
-function observe(promise: Promise<unknown>): Observed {
-  const observed: Observed = { state: 'pending', reason: undefined, settled: Promise.resolve() };
-  observed.settled = promise.then(
-    () => {
-      observed.state = 'resolved';
-    },
-    (reason: unknown) => {
-      observed.state = 'rejected';
-      observed.reason = reason;
-    },
-  );
-  return observed;
-}
-
-async function statusOf(engine: Engine, id: string): Promise<string | undefined> {
-  const state = await engine.get(id);
-  return state?.status;
-}
-
-async function macrotasks(count: number): Promise<void> {
-  for (let index = 0; index < count; index += 1) await sleepForTesting(0);
-}
-
-let invocation = 0;
-const nextId = (label: string): string => `terminal-in-flight-${label}-${(invocation += 1)}`;
-
-/** A held top-level activity: it records that it ran, then waits for the test to release it. */
-function heldActivity(options: { readonly afterQuickActivity?: boolean } = {}) {
-  const started = createDeferred();
-  const gate = createDeferred();
-  const record = { ran: 0, completed: 0, signalAbortedInside: undefined as boolean | undefined };
-  const held = activity({
-    name: 'held',
-    execute: async (_input?: unknown, context?: ActivityContext) => {
-      record.ran += 1;
-      started.resolve();
-      await gate.promise;
-      record.signalAbortedInside = context?.signal.aborted;
-      record.completed += 1;
-      return 'held-done';
-    },
-  });
-  const quick = activity({ name: 'quick', execute: async () => 'quick-done' });
-  const heldWorkflow = workflow({ name: 'held-workflow' })
-    .activities({ quick, held })
-    .execute(async function* (ctx: WorkflowContext) {
-      if (options.afterQuickActivity) yield* ctx.run(quick);
-      return yield* ctx.run(held);
-    });
-  return { held, heldWorkflow, started, gate, record };
-}
 
 describe('a terminated run settles its result after its in-flight inline activity (COR-1597)', () => {
   it("a cancelled run's result stays pending until its in-flight inline activity settles", async () => {
@@ -202,7 +153,8 @@ describe('a terminated run settles its result after its in-flight inline activit
       const result = observe(handle.result());
       await macrotasks(5);
       if (variant.poll) await engine.runMaintenance();
-      await sleepForTesting(80);
+      // Real time: three renew intervals, so the automatic poll runs several times while held.
+      await waitForRealTimersForTesting(60);
       if (variant.poll) await engine.runMaintenance();
       expect(result.state, variant.label).toBe('pending');
 

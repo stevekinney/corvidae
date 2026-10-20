@@ -25,6 +25,7 @@ import {
   buildExternalTerminalRotationFragment,
   deriveWorkflowResultFromState,
 } from './storage-io.ts';
+import { pendingTerminalSettlementFor } from './terminal-settlement-pending.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';
@@ -262,6 +263,9 @@ function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: Wo
   // Bound to a different run than the one purged: it is the replacement's (or an older run's
   // that the result poll retires), so this record's outcome is not its to receive.
   if (!waiterBelongsToRun(waiter, state.workflowExecutionToken)) return;
+  // A terminated run's result is held for its in-flight activity (COR-1597): the settlement that
+  // holds it rejects it, with the same terminal error, once the activity has landed.
+  if (pendingTerminalSettlementFor(internals, state.id, waiter) !== undefined) return;
   internals.resultResolvers.delete(state.id);
   recordResultCommitter(waiter, state.terminalCommittedBy);
   try {
