@@ -11,14 +11,19 @@
  */
 import { describe, expect, it } from 'bun:test';
 
+import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { nextAsyncPendingToken } from '../../testing/async-activity.test-support.ts';
 import { createDeferred, sleepForTesting } from '../../testing/fake-timers.test-support.ts';
+import { encode } from '../codec.ts';
 import { WorkflowTimeoutError } from '../timeouts.ts';
 import type { ActivityContext, WorkflowContext } from '../types.ts';
 import { activity, HISTORY_CIRCUIT_BREAKER_REASON, workflow } from '../types.ts';
+import { bootstrapWorkflowResultResolver, createWorkflowResultWaiter } from './handle-result.ts';
 import { Engine } from './index.ts';
+import type { EngineInternals } from './internals.ts';
 import { getInternals } from './internals.ts';
+import { beginPendingTerminalSettlement } from './terminal-settlement-pending.ts';
 
 type Observed = {
   state: 'pending' | 'resolved' | 'rejected';
@@ -397,5 +402,47 @@ describe('a terminated run settles its result after its in-flight inline activit
     await engine.signal(id, 'go', null);
     await secondResult.settled;
     expect(secondResult.state).toBe('resolved');
+  });
+});
+
+describe('a terminal commit that lands while a result read yields (COR-1597)', () => {
+  it('holds the waiter that a pending settlement claims during the read', async () => {
+    // A claim this engine holds makes the read yield a macrotask before it settles. The commit,
+    // and so the pending settlement, can land in that gap, and the read must look again.
+    const storage = new MemoryStorage();
+    await storage.put(
+      KEYS.workflow('yielded-read'),
+      encode({
+        id: 'yielded-read',
+        type: 'held-workflow',
+        status: 'cancelled',
+        workflowExecutionToken: 'run-a',
+        createdAt: 1,
+        updatedAt: 2,
+      }),
+    );
+    const internals = {
+      storage,
+      workflowClaimRegistry: { engineId: 'engine-a', currentEpoch: () => 1 },
+      resultResolvers: new Map(),
+      pendingTerminalSettlements: new Set(),
+      disposed: false,
+    } as never as EngineInternals;
+    const waiter = createWorkflowResultWaiter(internals, 'yielded-read');
+    void waiter.promise.catch(() => {});
+
+    const outcome = bootstrapWorkflowResultResolver(internals, 'yielded-read', waiter);
+    // Scheduled before the read's own yield, so it runs first and lands inside the gap.
+    setTimeout(() => {
+      beginPendingTerminalSettlement(
+        internals,
+        { workflowId: 'yielded-read', workflowExecutionToken: 'run-a' },
+        Promise.resolve(),
+        new Error('Workflow cancelled'),
+      );
+    }, 0);
+
+    expect(await outcome).toBe('pending');
+    expect(internals.resultResolvers.get('yielded-read')).toBe(waiter);
   });
 });

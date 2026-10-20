@@ -87,15 +87,11 @@ export function pendingTerminalSettlementFor(
   workflowId: string,
   waiter: WorkflowResultWaiter,
 ): PendingTerminalSettlement | undefined {
-  for (const settlement of internals.pendingTerminalSettlements) {
-    if (
+  return [...internals.pendingTerminalSettlements].find(
+    (settlement) =>
       settlement.workflowId === workflowId &&
-      waiterBelongsToRun(waiter, settlement.workflowExecutionToken)
-    ) {
-      return settlement;
-    }
-  }
-  return undefined;
+      waiterBelongsToRun(waiter, settlement.workflowExecutionToken),
+  );
 }
 
 /** The waiter a released settlement rejects: the one it captured, else the run's registered one. */

@@ -28,7 +28,6 @@ import {
   parkDeferredAsyncActivity,
 } from './async-activity-completion.ts';
 import { deriveAsyncActivityToken } from './async-activity-records.ts';
-import { clearDeferredInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callActivityFunction } from './state-utilities.ts';
@@ -607,9 +606,6 @@ export async function processActivityOperation(
       return await executeActivityOperationResult(internals, workflowId, operation, callbacks);
     } catch (error) {
       if (error instanceof AsyncActivityDeferral) {
-        // The turn is about to hand the router a promise that never settles, so a termination
-        // must not wait for it (COR-1597).
-        clearDeferredInFlightOperation(internals, workflowId, operation);
         return parkDeferredAsyncActivity(
           internals,
           error,

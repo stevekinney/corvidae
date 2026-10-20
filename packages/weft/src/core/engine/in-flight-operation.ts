@@ -49,16 +49,17 @@ export function endInFlightOperation(
 }
 
 /**
- * Clear the record of an operation that deferred to an out-of-band completion. Its turn hands the
+ * Clear the record of an activity that deferred to an out-of-band completion. Its turn hands the
  * router a promise that never settles, so a termination must not wait for it. Cleared only if the
  * record still names this operation.
  */
 export function clearDeferredInFlightOperation(
   internals: EngineInternals,
   workflowId: string,
-  operation: ContextOperationRequest,
+  operationId: string,
 ): void {
-  if (internals.inFlightOperations.get(workflowId)?.operation === operation) {
+  const record = internals.inFlightOperations.get(workflowId);
+  if (record?.operation.type === 'activity' && record.operation.operationId === operationId) {
     internals.inFlightOperations.delete(workflowId);
   }
 }
