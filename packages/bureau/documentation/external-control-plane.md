@@ -1,6 +1,6 @@
 # External control plane
 
-> [!NOTE] As built on 2026-10-20 (`e1bb7730`)
+> [!NOTE] As built on 2026-10-20 (`main` at `d2972c064`)
 >
 > This document began as the COR-901 decision record, accepted on 2026-10-13, and it keeps that history. The management plane, the owner of record, command receipts, and the AG-UI mount shipped. A2A, outbound notifications, and the deliveries operations did not, and A2A is outside the first version of Interborough. [As built](#as-built) says what shipped and lists the unsupported behavior and limits, each in its own entry. The rulings below stay as written, because they are decisions.
 
@@ -36,7 +36,7 @@ These follow from the rulings and from the code, so they were decided rather tha
 
 ## As built
 
-This section says what `createBureauHandler` served at `e1bb7730` on 2026-10-20. Where it and a later section disagree about what exists, this section is right and the later one is the decision. The [README](../README.md#external-control-plane) has a worked example of the path an outside consumer takes, which runs as `src/external-control-plane-guide.test.ts`.
+This section says what `createBureauHandler` serves on `main` at `d2972c064`, on 2026-10-20, with the schedule-fire review work (COR-1613) merged. `e1bb7730` is the commit the documentation issue was scoped against, and nothing here is described as of that commit. Where it and a later section disagree about what exists, this section is right and the later one is the decision. The [README](../README.md#external-control-plane) has a worked example of the path an outside consumer takes, which runs as `src/external-control-plane-guide.test.ts`.
 
 ### What the handler serves
 
@@ -62,18 +62,22 @@ This section says what `createBureauHandler` served at `e1bb7730` on 2026-10-20.
 
 ### Unsupported behavior and limits
 
-Each limit below is a fact of the code at `e1bb7730`. Nothing here is a guarantee the implementation does not provide, and a section that implies one is describing a decision.
+Each limit below is a fact of the code at `d2972c064`. Nothing here is a guarantee the implementation does not provide, and a section that implies one is describing a decision.
 
 - **`updateSession` and `querySession`**: `Bureau.updateSession` and `Bureau.querySession` throw `BureauError('UNSUPPORTED_CAPABILITY')` once a durable engine is configured and the session has an active run, because the built-in `agentRun` workflow registers no `ctx.onUpdate` or `ctx.onQuery` handler. Without a durable engine they throw `NOT_CONFIGURED`. `bureau.sessionVerbCapabilities` reports both as unsupported, and no management operation exposes either.
 - **`bureau.tasks.events` without persistent storage**: a Bureau with no durable event history answers the subscription with the `UnsupportedCapability` fault, whose `data.capability` is `event-history`, before it opens a stream. The task is still read with `bureau.tasks.get`, and a catalog run, which records no durable `run.*` events, streams its snapshot alone even with storage.
 - **`bureau.contexts.input` without a durable mailbox**: a Bureau that cannot take input, meaning one with no durable engine or a session identifier longer than 256 bytes, answers with the `Unavailable` fault and `data.reason` `unsupported-capability`. A Bureau with no session store answers `UnsupportedCapability` with `data.capability` `session-store`. An input that a run ends without delivering is cancelled, and the client sends it again.
 - **`expectedRevision` is a per-process guarantee**: `bureau.schedules.pause`, `resume`, `cancel`, and `update` hand `expectedRevision` to Weft, which compares it inside its serialized write. That serialization is per engine process, so within one process exactly one of two writes that name the same revision wins and the other is `StaleRevision`, and two processes sharing a store can both pass it. The goal and workflow guards (`expectedRevision` on `bureau.goals.cancel`, `expectedHash` on the workflow and agent writes) are a different mechanism and are not part of this limit.
 - **A2A**: Bureau serves nothing over A2A. The handler mounts no Agent Card route, and it registers no JSON-RPC method named `SendMessage`, `SendStreamingMessage`, `GetTask`, `ListTasks`, `CancelTask`, `SubscribeToTask`, or `GetExtendedAgentCard`. It stores no push notification configuration, and it serves none of the A2A extensions. `bureau.agents.list` carries no Agent Card URL. What exists is the seam and the pieces beside it: `mounts` accepts an adapter, `@lostgradient/weft/a2a` ships Weft's protocol kit, and `bureau.tasks.respond` answers a wait as an A2A continuation would. The handler also serves no `bureau.run`, `getRun`, or `abortRun`: a run starts through the AG-UI mount, or in the host's own process.
-- **Schedule-fire reviews are per-process**: a schedule fire's human wait or tool approval is a review of the fire (COR-1596, #383). Its state is in the maps of the process that runs the fire (`scheduled-fire-review-state.ts`) and in the fire's session, and a restart restores it from the run's checkpoint. What the process that settles a fire tells is therefore that process's: the end of the fire's `bureau.tasks.events` stream comes from it, so a subscriber attached through another process sharing the store receives the snapshot but not the end, and a process that did not run the fire does not list its approval until a restart restores it. COR-1613 is the work that carries these guarantees across processes.
+- **Schedule-fire reviews across instances**: a schedule fire's human wait or tool approval is a review of the fire (COR-1596, #383), and COR-1613 (#404) made those reviews the same on every Bureau that shares the stores. A review another instance closes, decided or expired, reaches the instance that holds the fire through the run's shared durable history, and the fire's `bureau.tasks.events` stream ends when the last review closes on any instance. What stays open is tracked in three issues:
+  - COR-1621: an instance drops its copy of a review a peer closed only while a `bureau.tasks.events` stream for that fire is open on it, so with none open it keeps reporting input required. An instance that restored an approval at round 0 can still approve it after a peer re-gated it, because a decision names no round. Two instances that see one cancel can each record `review.canceled`. A failed release of a peer's closure is discarded after the subscription has moved past the event.
+  - COR-1620: a restored approval is decided under the skills the run has active now, and when those cannot be verified (an unreadable checkpoint or snapshot, a different fire on a recurring schedule, a refused recovery) the policy is not applied and the call stays approvable.
+  - COR-1622: a close can precede the `review.requested` it closes, a `review.canceled` that fails to write is not retried, a fire's seed state is not pruned, and the expiry sweep runs only on the durable or audit-retention maintenance timer.
+- **A peer answers a fire's human wait**: another instance answers a fire's `requestHumanInput` park, through `bureau.tasks.respond` or `resolveReview`, by delivering the signal through the engine by run id, without holding the fire, and the fire completes on its holder. A tool approval a peer restored is decided on that peer under the same rules, with the gaps COR-1620 and COR-1621 name. The answer is fenced by the durable decision record, so two instances deciding one park decide it once.
 
 ## What exists today
 
-At `e1bb7730`, Bureau has an external surface: `createBureauHandler` (COR-1300) serves it over Weft's engine-independent handler (COR-1299), and Interborough, the first consumer, imports `@lostgradient/bureau` and runs it. [As built](#as-built) describes that surface. The pieces it builds on:
+At `d2972c064`, Bureau has an external surface: `createBureauHandler` (COR-1300) serves it over Weft's engine-independent handler (COR-1299), and Interborough, the first consumer, imports `@lostgradient/bureau` and runs it. [As built](#as-built) describes that surface. The pieces it builds on:
 
 - **Weft's operation catalog.** `defineOperation` operations with zod input, output, and event schemas, an access policy, an optional `authorize` hook, and a transports matrix (`packages/weft/src/server/operation-catalog/types.ts:178-303`). One pipeline, `executeOperation`, serves every transport (`packages/weft/src/server/operation-catalog/pipeline.ts:14-43`), and discovery documents are generated from the registry (`packages/weft/src/server/openapi.ts`, `openrpc.ts`, `asyncapi.ts`).
 - **Weft's authentication plumbing.** API keys compared in constant time, JWT, mTLS, a principal with a closed set of 21 scopes (`packages/weft/src/server/authorization-scope.ts`), audit of authentication decisions, redaction, opt-in CORS, and body limits. There is no tenant concept anywhere in Weft.
@@ -482,12 +486,12 @@ Weft is a public package. To make it a good base for anyone implementing A2A, no
 - **A workflow reference backend.** Weft workflows served as A2A agents: a workflow run is a task, `waitForSignal` is `TASK_STATE_INPUT_REQUIRED`, cancellation is `CancelTask`, workflow output is artifacts, and history is the fleet feed. It is also the conformance fixture for the A2A test kit, proving the kit independent of Bureau.
 - **Durable stores** over Weft storage for backends that have no task records of their own. The workflow backend uses the task store; Bureau uses only the push-configuration store, because a Bureau run already is the task.
 - **Security scheme derivation.** Card `securitySchemes` generated from Weft's `AuthConfig`.
-- **Foreign subscriptions over Server-Sent Events.** The generic subscription route COR-1299 adds, which no transport reaches today.
+- **Foreign subscriptions over Server-Sent Events.** The generic subscription route COR-1299 adds. It is built: `createBureauHandler` serves it at `/v1/subscriptions/<name>`, and `bureau.tasks.events`, `bureau.events`, and `operative.runs.events` are read through it.
 - **Fault codes.** `StaleRevision`, `RateLimited`, `Unavailable`, and `UnsupportedCapability` added to `FaultCode`.
 
 An Agent Card's `version` is the agent's version, `definitionRevision` for Bureau and the definition's `version` for workflows, so Weft adds no server version. Rate limiting of a fetch handler, which cannot see the client address, stays with COR-718's limits criterion.
 
-- **Package-registered scopes.** Weft's scope list is closed today (`packages/weft/src/server/authorization-scope.ts`); a package must be able to register its own namespaced scopes, such as Bureau's operator scopes.
+- **Package-registered scopes.** Weft's built-in scope list is closed, and a package registers its own namespaced scopes through the handler's `additionalScopes` (`packages/weft/src/server/authorization-scope.ts`). It is built: `createBureauHandler` registers `BUREAU_SCOPES` that way.
 
 The Conversationalist-to-A2A part mapping (COR-1303) stays in Conversationalist with its own hand-written types for the pinned proto, as that issue specifies, so Conversationalist gains no dependency on Weft. A Bureau test, where both packages are available, proves that the mapping's output is accepted by `@a2a-js/sdk`'s types and request handler, so the two definitions cannot drift.
 

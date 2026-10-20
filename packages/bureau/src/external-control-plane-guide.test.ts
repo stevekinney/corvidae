@@ -163,9 +163,21 @@ async function readmeExample(): Promise<string> {
   return readme.slice(open + '```typescript\n'.length, close);
 }
 
-/** Code with its whitespace and the commas before a closer removed, which a formatter may add or move. */
+/**
+ * Code reduced to what a formatter cannot change: whitespace outside string literals is removed,
+ * as are the commas before a closer that a formatter adds when it wraps a line, and whitespace
+ * runs in a comment become one space. A string literal is compared exactly.
+ */
 function normalized(code: string): string {
-  return code.replace(/\s+/g, '').replace(/,([)\]}])/g, '$1');
+  const tokens =
+    /('(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\/\/[^\n]*)|([^'"`/]+|\/)/g;
+  let result = '';
+  for (const [, quoted, comment, other] of code.matchAll(tokens)) {
+    if (quoted !== undefined) result += quoted;
+    else if (comment !== undefined) result += `${comment.replace(/\s+/g, ' ')}\n`;
+    else result += (other ?? '').replace(/\s+/g, '').replace(/,(?=[)\]}])/g, '');
+  }
+  return result;
 }
 
 describe('the external consumer example', () => {
@@ -258,7 +270,11 @@ const A2A_METHODS = [
 ];
 
 const answers: GenerateFunction = async () => ({ content: 'Done.', toolCalls: [] });
-const never: GenerateFunction = () => new Promise<never>(() => {});
+/** A model that never answers, and stops waiting when its run is aborted, so shutdown is not held up. */
+const never: GenerateFunction = ({ signal }) =>
+  new Promise<never>((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  });
 
 describe('the limits the documentation names', () => {
   it('refuses updateSession and querySession whatever a durable engine could do', async () => {

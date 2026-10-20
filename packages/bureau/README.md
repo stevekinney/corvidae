@@ -541,7 +541,7 @@ console.log(calls); // 2: the retry did not run the agent a third time
 await bureau.dispose();
 ```
 
-The handler has no run-starting operation of its own, so the host starts the run above with `createRun`. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
+The handler has no run-starting operation of its own, so the host starts the run above with `createRun`, which is deprecated but is the call that makes a session run. A run started with `bureau.run()` is a catalog run, which records no durable `run.*` events, so its `bureau.tasks.events` stream is its snapshot alone and the example would have nothing to await. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
 
 ### Owner of record (COR-718)
 
