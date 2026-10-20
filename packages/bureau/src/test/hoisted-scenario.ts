@@ -138,11 +138,27 @@ export async function settleScenario(
         : `finished phases: ${finishedPhases.map((phase) => `${phase.label} (${phase.milliseconds}ms)`).join(', ')}`;
     return `${base}; ${where}; ${finished}`;
   };
+  // Start every release, last registered first, without waiting for any to finish: a release
+  // can itself be stuck (a shutdown awaiting the very thing that hung), and waiting on it would
+  // block module initialization again. Each starts synchronously, so a child is killed at
+  // once; a failing release is swallowed so it cannot hide the hang it cleans up after.
+  const startReleases = (): void => {
+    for (const release of releases.toReversed()) {
+      try {
+        void Promise.resolve(release()).catch(() => {});
+      } catch {
+        // A release that throws synchronously is as best effort as one that rejects.
+      }
+    }
+  };
   let cancel: (() => void) | undefined;
   let hung = false;
   const hang = new Promise<ScenarioOutcome>((resolve) => {
     cancel = afterAwakeTime(hangGuardMilliseconds, () => {
       hung = true;
+      // The releases start here, as the guard fires, before the hang is described: describing
+      // can take up to `DESCRIBE_MILLISECONDS`, and a hung child must not outlive the guard by that.
+      startReleases();
       void describeHang().then(
         (message) => resolve({ failed: true, error: new Error(message) }),
         (error: unknown) => resolve({ failed: true, error }),
@@ -159,23 +175,10 @@ export async function settleScenario(
   })();
   try {
     let outcome = await Promise.race([finished, hang]);
-    if (hung) {
-      // Start every release, last registered first, without waiting for any to finish: a release
-      // can itself be stuck (a shutdown awaiting the very thing that hung), and waiting on it would
-      // block module initialization again. Each starts synchronously, so a child is killed at
-      // once; a failing release is swallowed so it cannot hide the hang it cleans up after.
-      for (const release of releases.toReversed()) {
-        try {
-          void Promise.resolve(release()).catch(() => {});
-        } catch {
-          // A release that throws synchronously is as best effort as one that rejects.
-        }
-      }
-      // The guard fired, so the scenario failed, even when it finished while the hang's description
-      // was still being read. The releases have already started; the report is bounded by
-      // `DESCRIBE_MILLISECONDS`.
-      if (!outcome.failed) outcome = await hang;
-    }
+    // The guard fired, so the scenario failed, even when it finished while the hang's description
+    // was still being read. The releases started when the guard fired; the report is bounded by
+    // `DESCRIBE_MILLISECONDS`.
+    if (hung && !outcome.failed) outcome = await hang;
     return outcome;
   } finally {
     cancel?.();

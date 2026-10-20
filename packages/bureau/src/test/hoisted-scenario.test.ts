@@ -153,3 +153,25 @@ it('reports the hang when the stalled phase finishes while its description is be
   expect(outcome.failed).toBe(true);
   expect((outcome.error as Error).message).toMatch(/stalled in phase "slow"/);
 });
+
+it('starts the releases when the guard fires, before the hang has been described', async () => {
+  const order: string[] = [];
+  const outcome = await settleScenario(async (scope) => {
+    scope.onHang(() => order.push('released'));
+    await scope.phase('stuck', async () => {
+      scope.observe(
+        () =>
+          new Promise<string>((resolve) =>
+            setTimeout(() => {
+              order.push('described');
+              resolve('described late');
+            }, 60),
+          ),
+      );
+      await new Promise<never>(() => {});
+    });
+  }, 10);
+
+  expect(outcome.failed).toBe(true);
+  expect(order).toEqual(['released', 'described']);
+});
