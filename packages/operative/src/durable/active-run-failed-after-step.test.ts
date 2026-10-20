@@ -180,11 +180,14 @@ describe('a durable run that fails after a committed step', () => {
       expect((result.error as Error).message).toContain('history circuit breaker');
       expect(result.steps).toHaveLength(1);
       expect(result.usage.total).toBe(15);
+      // The breaker ends the run at step 1's checkpoint, and Weft settles the run only after that
+      // step's activity has landed (COR-1597), so the reply it wrote is in the transcript.
       expect(result.conversation.getMessages().map((message) => message.role)).toEqual([
         'user',
         'assistant',
         'tool-call',
         'tool-result',
+        'assistant',
       ]);
       expect(errorSteps).toEqual([1]);
     } finally {
