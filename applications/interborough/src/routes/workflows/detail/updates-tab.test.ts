@@ -22,6 +22,11 @@ function workflow(overrides: Partial<WorkflowState> = {}): WorkflowState {
   };
 }
 
+/** The entry's place in the history, as the real key tail orders it. */
+function positionKey(item: UpdateHistoryEntry): string {
+  return `${String(item.receivedAt).padStart(16, '0')}:${item.updateId}`;
+}
+
 type Stored = { result: unknown } | 'swept';
 
 /**
@@ -64,12 +69,26 @@ function fakeServer(initial: UpdateHistoryEntry[] = [], pageSize = 50) {
           answers.set(updateId, { result: { echoed: input.payload ?? null } });
           return { updateId, result: { echoed: input.payload ?? null } };
         },
+        // Pages by position, as `weft.workflows.updates.list` does: the cursor is the key of the last entry a
+        // page returned (`<receivedAt>:<updateId>`), and the next page is what sorts strictly before it. A fake that
+        // paged by offset could not show an entry falling between two pages.
         'weft.workflows.updates.list': async (input: { cursor?: string }) => {
           calls.list.push(input.cursor === undefined ? {} : { cursor: input.cursor });
-          const start = input.cursor === undefined ? 0 : Number(input.cursor);
-          const items = entries.slice(start, start + pageSize);
-          const next = start + pageSize;
-          return { items, ...(next < entries.length ? { nextCursor: String(next) } : {}) };
+          const sorted = entries.toSorted((left, right) =>
+            positionKey(right).localeCompare(positionKey(left)),
+          );
+          const older =
+            input.cursor === undefined
+              ? sorted
+              : sorted.filter((item) => positionKey(item) < (input.cursor ?? ''));
+          const items = older.slice(0, pageSize);
+          const last = items.at(-1);
+          return {
+            items,
+            ...(older.length > pageSize && last !== undefined
+              ? { nextCursor: positionKey(last) }
+              : {}),
+          };
         },
         'weft.updates.result.get': async (input: { updateId: string }) => {
           calls.result.push(input.updateId);
@@ -241,12 +260,95 @@ describe('UpdatesTab history', () => {
     await fireEvent.click(getByRole('button', { name: RUN_DETAIL_COPY.updates.loadMore }));
 
     await findByText('first');
-    expect(server.calls.list).toEqual([{}, { cursor: '2' }]);
+    // The first read, then both pages again: the newest from the start, the next from the cursor it returned.
+    expect(server.calls.list).toEqual([{}, {}, { cursor: '0000000000002000:u-2' }]);
     expect(queryByRole('button', { name: RUN_DETAIL_COPY.updates.loadMore })).toBeNull();
     const ids = [...container.querySelectorAll<HTMLElement>('[data-update-id]')].map(
       (row) => row.dataset['updateId'],
     );
     expect(ids).toEqual(['u-3', 'u-2', 'u-1']);
+  });
+
+  test('chains the pages by cursor, so sending an update after loading older ones loses none', async () => {
+    const server = fakeServer(
+      [1, 2, 3, 4, 5].map((n) =>
+        entry({ updateId: `u-${n}`, name: `update-${n}`, receivedAt: n * 1_000 }),
+      ),
+      3,
+    );
+    for (const n of [1, 2, 3, 4, 5]) server.answers.set(`u-${n}`, { result: n });
+    const { container, findByText, getByRole, getByLabelText } = renderTab(server);
+    const listed = () =>
+      [...container.querySelectorAll<HTMLElement>('[data-update-id]')].map(
+        (row) => row.dataset['updateId'],
+      );
+
+    await findByText('update-3');
+    await fireEvent.click(getByRole('button', { name: RUN_DETAIL_COPY.updates.loadMore }));
+    await findByText('update-1');
+    expect(listed()).toEqual(['u-5', 'u-4', 'u-3', 'u-2', 'u-1']);
+
+    // One more update shifts the newest page by one; the entry it pushes out must not fall between the
+    // newest page and the older one already loaded.
+    await fireEvent.input(getByLabelText('Update name'), { target: { value: 'update-6' } });
+    await fireEvent.click(getByRole('button', { name: 'Send update' }));
+
+    await waitFor(() => expect(listed()).toEqual(['u-6', 'u-5', 'u-4', 'u-3', 'u-2', 'u-1']));
+  });
+
+  test('refreshes a pending update that sits on an older page', async () => {
+    jest.useFakeTimers();
+    const server = fakeServer(
+      [
+        entry({ updateId: 'u-1', name: 'update-1', receivedAt: 1_000, outcome: 'pending' }),
+        ...[2, 3, 4, 5].map((n) =>
+          entry({ updateId: `u-${n}`, name: `update-${n}`, receivedAt: n * 1_000 }),
+        ),
+      ],
+      3,
+    );
+    delete (server.entries[0] as { completedAt?: number }).completedAt;
+    for (const n of [2, 3, 4, 5]) server.answers.set(`u-${n}`, { result: n });
+    const { container, findByText, getByRole } = renderTab(server);
+
+    await findByText('update-3');
+    await fireEvent.click(getByRole('button', { name: RUN_DETAIL_COPY.updates.loadMore }));
+    await findByText(RUN_DETAIL_COPY.updates.awaiting);
+
+    // The handler answers: the entry and the stored result change together, as the server writes them.
+    server.entries[0] = entry({ updateId: 'u-1', name: 'update-1', receivedAt: 1_000 });
+    server.answers.set('u-1', { result: 'late' });
+    jest.advanceTimersByTime(2_000);
+    for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
+
+    await findByText(/late/);
+    expect(container.textContent).not.toContain(RUN_DETAIL_COPY.updates.awaiting);
+  });
+
+  test('keeps the pages it has, and says why, when loading older updates fails', async () => {
+    const server = fakeServer(
+      [1, 2, 3, 4].map((n) =>
+        entry({ updateId: `u-${n}`, name: `update-${n}`, receivedAt: n * 1_000 }),
+      ),
+      3,
+    );
+    for (const n of [1, 2, 3, 4]) server.answers.set(`u-${n}`, { result: n });
+    const read = server.client.operations['weft.workflows.updates.list'];
+    server.client.operations['weft.workflows.updates.list'] = async (input: {
+      cursor?: string;
+    }) => {
+      if (input.cursor !== undefined) throw new HttpClientError(500, 'Internal server error');
+      return read(input);
+    };
+    const { container, findByText, getByRole } = renderTab(server);
+
+    await findByText('update-4');
+    await fireEvent.click(getByRole('button', { name: RUN_DETAIL_COPY.updates.loadMore }));
+
+    const banner = await faultBanner(container);
+    expect(banner.textContent).toContain('Internal server error');
+    expect(container.textContent).toContain('update-4');
+    expect(container.textContent).toContain('update-2');
   });
 
   test('shows a fault reading the history in the fault banner', async () => {

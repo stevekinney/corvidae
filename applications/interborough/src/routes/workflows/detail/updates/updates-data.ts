@@ -69,6 +69,29 @@ export async function readUpdateHistory(
   return { items: page.items, nextCursor: page.nextCursor };
 }
 
+/**
+ * The newest `pageCount` pages of the history as one list, each page read with the cursor the
+ * page before it just returned. Chaining by that cursor, not by the cursors of an earlier read, is
+ * what keeps the list whole: a newer update shifts where the first page ends, and a page fetched
+ * with a stale cursor would start after an entry the new first page no longer reaches. Reading every
+ * loaded page again also refreshes a still-pending update that sits on an older page.
+ */
+export async function readUpdateHistoryPages(
+  client: UpdatesClient,
+  workflowId: string,
+  pageCount: number,
+): Promise<UpdateHistoryPage> {
+  const items: UpdateHistoryEntry[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < pageCount; page += 1) {
+    const read = await readUpdateHistory(client, workflowId, cursor);
+    items.push(...read.items);
+    cursor = read.nextCursor;
+    if (cursor === undefined) break;
+  }
+  return { items, nextCursor: cursor };
+}
+
 export type UpdateResultReading =
   | { readonly status: 'pending' }
   | { readonly status: 'completed'; readonly result: unknown; readonly error: string | undefined };

@@ -19,7 +19,7 @@
    */
   import { Button, Input, JsonEditor, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 
   import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
@@ -29,7 +29,7 @@
   import UpdateHistoryRow from './updates/update-history-row.svelte';
   import {
     isSubmissionTimeout,
-    readUpdateHistory,
+    readUpdateHistoryPages,
     sendUpdate,
     UPDATE_HISTORY_POLL_INTERVAL_MS,
     updateHistoryQueryKey,
@@ -54,45 +54,38 @@
 
   const runIsTerminal = $derived(isTerminalStatus(workflow.status));
 
+  // How many pages of the history are showing. "Load older updates" adds one. Every read (a poll, or the
+  // refresh after a send) reads all of them again, each from the cursor the one before returned
+  // (`readUpdateHistoryPages`), so no update falls between two pages and a pending update on an older
+  // page is refreshed with the rest.
+  let pageCount = $state(1);
+
   const historyQuery = createQuery(() => ({
-    queryKey: updateHistoryQueryKey(workflow.id),
-    queryFn: () => readUpdateHistory(client, workflow.id),
+    queryKey: [...updateHistoryQueryKey(workflow.id), pageCount],
+    queryFn: () => readUpdateHistoryPages(client, workflow.id, pageCount),
+    placeholderData: keepPreviousData,
     refetchInterval: (query) =>
       !runIsTerminal && query.state.data?.items.some((item) => item.outcome === 'pending')
         ? UPDATE_HISTORY_POLL_INTERVAL_MS
         : false,
   }));
 
-  // Pages after the first, loaded on request. Cursors are positions in the run's history, so a page
-  // fetched earlier stays valid as newer updates arrive; an entry seen twice is shown once.
-  let olderEntries = $state<readonly UpdateHistoryEntry[]>([]);
-  let olderCursor = $state<string | undefined>(undefined);
-  let olderLoaded = $state(false);
-  let loadingOlder = $state(false);
+  const entries = $derived(historyQuery.data?.items ?? []);
+  const nextCursor = $derived(historyQuery.data?.nextCursor);
+  const loadingOlder = $derived(historyQuery.isPlaceholderData);
+
+  // A read of more pages that fails goes back to the pages that read fine, and says why.
   let olderFault = $state<FaultTreatment | null>(null);
-
-  const entries = $derived.by((): readonly UpdateHistoryEntry[] => {
-    const first = historyQuery.data?.items ?? [];
-    const seen = new Set(first.map((item) => item.updateId));
-    return [...first, ...olderEntries.filter((item) => !seen.has(item.updateId))];
-  });
-  const nextCursor = $derived(olderLoaded ? olderCursor : historyQuery.data?.nextCursor);
-
-  async function loadOlder(): Promise<void> {
-    const cursor = nextCursor;
-    if (cursor === undefined) return;
-    loadingOlder = true;
-    olderFault = null;
-    try {
-      const page = await readUpdateHistory(client, workflow.id, cursor);
-      olderEntries = [...olderEntries, ...page.items];
-      olderCursor = page.nextCursor;
-      olderLoaded = true;
-    } catch (error) {
-      olderFault = faultTreatment(error);
-    } finally {
-      loadingOlder = false;
+  $effect(() => {
+    if (historyQuery.isError && pageCount > 1) {
+      olderFault = faultTreatment(historyQuery.error);
+      pageCount -= 1;
     }
+  });
+
+  function loadOlder(): void {
+    olderFault = null;
+    pageCount += 1;
   }
 
   let updateName = $state('');
@@ -194,7 +187,7 @@
             label={copy.loadMore}
             loading={loadingOlder}
             disabled={loadingOlder}
-            onclick={() => void loadOlder()}
+            onclick={loadOlder}
           />
         </div>
       {/if}
