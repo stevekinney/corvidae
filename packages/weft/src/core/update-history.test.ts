@@ -202,6 +202,34 @@ for (const backend of storageBackends) {
       return { timedOutUpdateId: (timedOut as UpdateTimeoutError).updateId };
     }
 
+    it('pages the history newest first, with no entry repeated or skipped, on every backend', async () => {
+      const result = backend.factory();
+      cleanup = result.cleanup;
+      engine = new Engine({ storage: result.storage });
+      for (const [index, id] of ['a', 'b', 'c', 'd', 'e'].entries()) {
+        const [key, value] = seedEntry('wf-paged', 1_000 + index, `update-${id}`);
+        await result.storage.put(key, value);
+      }
+      const [otherKey, otherValue] = seedEntry('wf-other', 9_000, 'other-workflow');
+      await result.storage.put(otherKey, otherValue);
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      let pages = 0;
+      do {
+        const page = await engine.listUpdateHistory('wf-paged', {
+          limit: 2,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        seen.push(...page.items.map((entry) => entry.updateId));
+        cursor = page.nextCursor;
+        pages += 1;
+      } while (cursor !== undefined && pages < 10);
+
+      expect(pages).toBe(3);
+      expect(seen).toEqual(['update-e', 'update-d', 'update-c', 'update-b', 'update-a']);
+    });
+
     it('records a pending, a completed, and a failed update with the failure message', async () => {
       const { id } = await startWorkflow();
       const { timedOutUpdateId } = await submitThree(id);

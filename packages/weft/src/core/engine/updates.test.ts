@@ -34,7 +34,7 @@ describe('engine update helpers', () => {
     // The request's `createdAt` is part of its update-history key: a delivered copy with its own
     // timestamp would be answered under a different key and leave the pending entry behind.
     const persisted = createUpdateRequest({ updateId: 'update-persisted', createdAt: 1_000 });
-    const deliver = mock(async () => false);
+    const deliver = mock(async (_workflowId: string, _request: UpdateRequest) => false);
     const internals = {
       inlineStrategy: null,
       workflowClaimRegistry: null,
