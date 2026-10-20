@@ -42,24 +42,30 @@ export async function drainUpdateHistory(
     : [];
 
   const prefix = KEYS.updateHistoryPrefix(state.id);
-  for (;;) {
-    const operations: BatchOperation[] = [];
-    for await (const [key] of internals.storage.scan(prefix, {
-      limit: UPDATE_HISTORY_PURGE_CHUNK,
-    })) {
-      operations.push({ type: 'delete', key });
-      // `<receivedAt>:<updateId>`: an update id is a UUID, so it holds no colon.
-      const updateId = key.slice(key.lastIndexOf(':') + 1);
-      if (updateId.length > 0)
-        operations.push({ type: 'delete', key: KEYS.updateResponse(updateId) });
-    }
-    if (operations.length === 0) return;
-    const committed = await commitFencedEngineWriteAllowingPreconditionFailure(
-      internals,
-      null,
-      operations,
-      conditions,
-    );
-    if (!committed) return;
+  let more = true;
+  while (more) {
+    const operations = await nextChunk(internals, prefix);
+    // An empty chunk is the end; a chunk the fence refused ends it too.
+    more =
+      operations.length > 0 &&
+      (await commitFencedEngineWriteAllowingPreconditionFailure(
+        internals,
+        null,
+        operations,
+        conditions,
+      ));
   }
+}
+
+/** The deletes for the next {@link UPDATE_HISTORY_PURGE_CHUNK} entries that remain, and the responses they name. */
+async function nextChunk(internals: EngineInternals, prefix: string): Promise<BatchOperation[]> {
+  const operations: BatchOperation[] = [];
+  for await (const [key] of internals.storage.scan(prefix, { limit: UPDATE_HISTORY_PURGE_CHUNK })) {
+    operations.push({ type: 'delete', key });
+    // `<receivedAt>:<updateId>`: an update id is a UUID, so it holds no colon.
+    const updateId = key.slice(key.lastIndexOf(':') + 1);
+    if (updateId.length > 0)
+      operations.push({ type: 'delete', key: KEYS.updateResponse(updateId) });
+  }
+  return operations;
 }

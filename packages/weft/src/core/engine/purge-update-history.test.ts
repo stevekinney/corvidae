@@ -15,6 +15,7 @@ import { workflow } from '../types.ts';
 import type { UpdateHistoryEntry } from '../update-history.ts';
 import { getInternals } from './internals.ts';
 import { drainUpdateHistory, UPDATE_HISTORY_PURGE_CHUNK } from './purge-update-history.ts';
+import { addUpdateDeleteKeys } from './purge-update-keys.ts';
 
 const parked = workflow({ name: 'drain-subject' }).execute(async function* (ctx: WorkflowContext) {
   yield* ctx.waitForSignal('finish');
@@ -111,5 +112,31 @@ describe('drainUpdateHistory', () => {
     await drainUpdateHistory(getInternals(engine), state!);
 
     expect(await collectKeys(backing, 'uph:')).toHaveLength(3);
+  });
+});
+
+describe('addUpdateDeleteKeys', () => {
+  let engine: Engine | undefined;
+
+  afterEach(async () => {
+    engine?.[Symbol.dispose]();
+    await flush();
+  });
+
+  it('still names whatever history is left when the purge batch is built, and the responses it names', async () => {
+    const storage = new MemoryStorage();
+    const run = await completedRunWithHistory(storage, 2);
+    engine = run.engine;
+
+    const keys = new Set<string>();
+    await addUpdateDeleteKeys(storage, keys, run.workflowId);
+
+    expect([...keys].toSorted()).toEqual(
+      [
+        ...(await collectKeys(storage, 'uph:')),
+        KEYS.updateResponse('drain-update-0'),
+        KEYS.updateResponse('drain-update-1'),
+      ].toSorted(),
+    );
   });
 });
