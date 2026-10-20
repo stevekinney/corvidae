@@ -13,7 +13,7 @@
  * @module scheduled-fire-review-state
  */
 
-import type { JSONValue } from '@lostgradient/operative';
+import { type JSONValue, parkedSignalName } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition';
@@ -235,4 +235,33 @@ export function withoutFireApprovals(
     pendingApprovalRounds: without(recordOf(metadata['pendingApprovalRounds'])),
     lastRequestAuthorities: holdsApproval ? authorities : otherAuthorities,
   };
+}
+
+/**
+ * The review ids a run's checkpoint commits, approvals and human waits both: the ones a fire can
+ * still own. A park's id carries its ordinal, the count of parks the run made before it. A request
+ * the history holds for any other id was made by an attempt that never committed.
+ */
+export function committedFireReviewIds(
+  runId: string,
+  steps: readonly {
+    readonly results: readonly {
+      readonly outcome: string;
+      readonly pendingApproval?: unknown;
+      readonly toolName: string;
+      readonly result: unknown;
+    }[];
+  }[],
+): Set<string> {
+  const committed = committedFireApprovalIds(runId, steps);
+  let ordinal = 0;
+  for (const step of steps) {
+    for (const result of step.results) {
+      const signalName = parkedSignalName(result);
+      if (signalName === undefined) continue;
+      committed.add(`human-wait:${runId}:${signalName}:${ordinal}`);
+      ordinal += 1;
+    }
+  }
+  return committed;
 }

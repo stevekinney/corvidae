@@ -13,7 +13,7 @@ import {
   stopWhen,
   type Toolbox,
 } from '@lostgradient/operative';
-import { yieldToPortableEventLoop } from '@lostgradient/weft';
+import { resolveStorage, type Storage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
@@ -40,10 +40,18 @@ export async function pollUntil<T>(
 export function createScheduleFireHarness() {
   const bureaus: Bureau[] = [];
   const databasePaths: string[] = [];
+  const openedStorages: Storage[] = [];
+  const beforeDispose: Array<() => void> = [];
   let databaseCounter = 0;
   return {
+    /** Runs `action` ahead of the next `dispose`, ahead of closing any Bureau. */
+    onDispose(action: () => void): void {
+      beforeDispose.push(action);
+    },
     async dispose(): Promise<void> {
+      for (const action of beforeDispose.splice(0)) action();
       for (const bureau of bureaus.splice(0)) await bureau.dispose();
+      for (const storage of openedStorages.splice(0)) storage[Symbol.dispose]();
       for (const path of databasePaths.splice(0)) {
         await rm(path, { force: true });
         await rm(`${path}-wal`, { force: true });
@@ -57,6 +65,19 @@ export function createScheduleFireHarness() {
       );
       databasePaths.push(path);
       return path;
+    },
+    /**
+     * A SQLite database opened as a `Storage` instance, which a test can wrap to hold a write
+     * (a crash at that write) and which, being persistent, keeps the durable event history. Each
+     * call is one process's handle on the file; the harness closes it.
+     */
+    async sqliteStorage(
+      path: string,
+      wrap: (storage: Storage) => Storage = (storage) => storage,
+    ): Promise<Storage> {
+      const raw = await resolveStorage({ type: 'sqlite', path });
+      openedStorages.push(raw);
+      return wrap(raw);
     },
     async open(options: Partial<BureauOptions> = {}): Promise<Bureau> {
       const bureau = await createBureau({
@@ -223,4 +244,119 @@ export async function durableStatus(bureau: Bureau, runId: string): Promise<stri
 
 export function handlerOf(bureau: Bureau) {
   return createBureauHandler(bureau, { authentication });
+}
+
+const textDecoder = new TextDecoder();
+
+/** The text a storage call carries, whichever of strings and bytes its keys and values are. */
+export function storedText(value: unknown): string {
+  if (value instanceof Uint8Array) return textDecoder.decode(value);
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) return value.map(storedText).join(' ');
+  if (typeof value === 'object' && value !== null) {
+    return Object.values(value).map(storedText).join(' ');
+  }
+  return '';
+}
+
+/**
+ * Wraps a storage so that the first write after `arm()` that carries `marker` never completes:
+ * the process is dead at that write. `reached` resolves when it is held.
+ */
+export function holdingWrites(marker: string) {
+  let armed = false;
+  let held = false;
+  let release: (() => void) | undefined;
+  const reached = Promise.withResolvers<void>();
+  return {
+    /** Lets the held write through, so a Bureau whose write was held can be disposed. */
+    release(): void {
+      release?.();
+    },
+    arm(): void {
+      armed = true;
+    },
+    reached: reached.promise,
+    get held(): boolean {
+      return held;
+    },
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (!armed || held || !['conditionalBatch', 'put', 'batch'].includes(property)) {
+              return call();
+            }
+            if (!storedText(args).includes(marker)) return call();
+            held = true;
+            reached.resolve();
+            return new Promise((resolve) => {
+              release = () => resolve(call());
+            });
+          };
+        },
+      });
+    },
+  };
+}
+
+/**
+ * A storage whose process dies between a fire step's session write, which records an approval, and
+ * the step's commit: the journal write of the step is held for good, so the hook has run and the
+ * request has been announced, and the step never commits. `reached` resolves at the hold.
+ */
+export function crashAfterApprovalWrite() {
+  let armed = false;
+  let held = false;
+  const reached = Promise.withResolvers<void>();
+  return {
+    reached: reached.promise,
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (property !== 'conditionalBatch' || held) return call();
+            const text = storedText(args);
+            if (armed && /wf:[^ ]+:ckpt/.test(text)) {
+              held = true;
+              reached.resolve();
+              // Never completes: that process is dead. Releasing it would make Weft warn that the
+              // write lost a checkpoint compare-and-swap.
+              return new Promise(() => {});
+            }
+            if (text.includes('pendingApprovalOverrides')) armed = true;
+            return call();
+          };
+        },
+      });
+    },
+  };
+}
+
+/** The audit records of `type` that a run has, narrowed to one review by its id when given. */
+export async function auditRecordsOf(
+  bureau: Bureau,
+  runId: string,
+  type: string,
+  reviewId?: string,
+) {
+  const records = (await bureau.auditTrail?.query({ runId, type })) ?? [];
+  return records.filter((record) => {
+    if (reviewId === undefined) return true;
+    const detail = record.detail as { review?: { id?: string } } | undefined;
+    return detail?.review?.id === reviewId;
+  });
+}
+
+/** The `review.*` kinds a run's durable history holds, oldest first. */
+export async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
+  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  if (!('events' in page)) return [];
+  return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
 }
