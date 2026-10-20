@@ -22,9 +22,12 @@
 
   import { RETRY_LABEL, TASK_COPY } from '../../app/copy.ts';
   import { listTasks } from '../../lib/bureau-tasks.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import QueryFaultBanner from '../reviews/query-fault-banner.svelte';
+  import { REVIEW_POLL_MILLISECONDS } from '../reviews/reviews-data.ts';
   import TaskSession from './task-session.svelte';
   import { hasTaskFilter, parseTaskFilter, serializeTaskFilter } from './task-filter.ts';
   import { TASK_STATE_ORDER, taskStatePresentation } from './task-presentation.ts';
@@ -40,12 +43,23 @@
         listTasks({ ...filter, limit: PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
+      // The list is kept current while it is open, as `/reviews` is. A background refetch of an
+      // infinite query reads every loaded page again, so a person who paged keeps their place.
+      refetchInterval: REVIEW_POLL_MILLISECONDS,
       retry: false,
     }),
     undefined,
   );
 
-  const rows = $derived((tasks.data?.pages ?? []).flatMap((page) => page.tasks));
+  // A task created while the pages are being read moves the next page's offset onto a row the last
+  // page ended with, so the pages are joined with each task once.
+  const rows = $derived(
+    combinePages(
+      tasks.data?.pages,
+      (page) => page.tasks,
+      (task) => task.id,
+    ),
+  );
 
   // The form edits a draft, and the address changes only when it is submitted. A change of the
   // address from elsewhere, such as Back, replaces the draft.
@@ -120,7 +134,7 @@
       <Skeleton height="2.5rem" />
       <Skeleton height="2.5rem" />
     </div>
-  {:else if tasks.isError}
+  {:else if tasks.isError && tasks.data === undefined}
     <ErrorState
       title="The tasks could not be loaded"
       description="The Bureau did not answer. Check that the host is running, then try again."
@@ -128,63 +142,70 @@
       retryLabel={RETRY_LABEL}
       onRetry={() => void tasks.refetch()}
     />
-  {:else if rows.length === 0}
-    <EmptyState
-      title={TASK_COPY.noMatch.title}
-      description={TASK_COPY.noMatch.description}
-      headingLevel={2}
-    />
   {:else}
-    <Table caption={TASK_COPY.listHeading} scrollable class="weft-tasks__table">
-      <Table.Header>
-        <Table.Row>
-          <Table.HeaderCell>{TASK_COPY.columns.status}</Table.HeaderCell>
-          <Table.HeaderCell>{TASK_COPY.columns.agent}</Table.HeaderCell>
-          <Table.HeaderCell>{TASK_COPY.columns.task}</Table.HeaderCell>
-          <Table.HeaderCell>{TASK_COPY.columns.session}</Table.HeaderCell>
-          <Table.HeaderCell align="right">{TASK_COPY.columns.updated}</Table.HeaderCell>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each rows as task (task.id)}
-          {@const presentation = taskStatePresentation(task.status)}
+    {#if tasks.isError}
+      <!-- A read that fails after the rows loaded leaves them where they are, with the fault above. -->
+      <QueryFaultBanner error={tasks.error} onRetry={() => void tasks.refetch()} />
+    {/if}
+    {#if rows.length === 0}
+      <EmptyState
+        title={TASK_COPY.noMatch.title}
+        description={TASK_COPY.noMatch.description}
+        headingLevel={2}
+      />
+    {:else}
+      <Table caption={TASK_COPY.listHeading} scrollable class="weft-tasks__table">
+        <Table.Header>
           <Table.Row>
-            <Table.Cell>
-              <Badge variant={presentation.variant}>{presentation.label}</Badge>
-              {#if task.openWaits.length > 0}
-                <span class="weft-tasks__waits">{TASK_COPY.openWaits(task.openWaits.length)}</span>
-              {/if}
-            </Table.Cell>
-            <Table.Cell>{task.agentName ?? ''}</Table.Cell>
-            <Table.Cell as="th">
-              <a
-                class="weft-tasks__link"
-                href={router.href(`/tasks/${encodeURIComponent(task.id)}`)}
-                onclick={(event) => open(event, `/tasks/${encodeURIComponent(task.id)}`)}
-                ><code title={task.id}>{truncateId(task.id)}</code></a
-              >
-            </Table.Cell>
-            <Table.Cell>
-              <TaskSession contextId={task.contextId} />
-            </Table.Cell>
-            <Table.Cell align="right">
-              <span title={task.updatedAt}
-                >{formatRelativeTime(Date.parse(task.updatedAt), Date.now())}</span
-              >
-            </Table.Cell>
+            <Table.HeaderCell>{TASK_COPY.columns.status}</Table.HeaderCell>
+            <Table.HeaderCell>{TASK_COPY.columns.agent}</Table.HeaderCell>
+            <Table.HeaderCell>{TASK_COPY.columns.task}</Table.HeaderCell>
+            <Table.HeaderCell>{TASK_COPY.columns.session}</Table.HeaderCell>
+            <Table.HeaderCell align="right">{TASK_COPY.columns.updated}</Table.HeaderCell>
           </Table.Row>
-        {/each}
-      </Table.Body>
-    </Table>
-    {#if tasks.hasNextPage}
-      <div class="weft-tasks__more">
-        <Button
-          variant="secondary"
-          label={TASK_COPY.loadMore}
-          loading={tasks.isFetchingNextPage}
-          onclick={() => void tasks.fetchNextPage()}
-        />
-      </div>
+        </Table.Header>
+        <Table.Body>
+          {#each rows as task (task.id)}
+            {@const presentation = taskStatePresentation(task.status)}
+            <Table.Row>
+              <Table.Cell>
+                <Badge variant={presentation.variant}>{presentation.label}</Badge>
+                {#if task.openWaits.length > 0}
+                  <span class="weft-tasks__waits">{TASK_COPY.openWaits(task.openWaits.length)}</span
+                  >
+                {/if}
+              </Table.Cell>
+              <Table.Cell>{task.agentName ?? ''}</Table.Cell>
+              <Table.Cell as="th">
+                <a
+                  class="weft-tasks__link"
+                  href={router.href(`/tasks/${encodeURIComponent(task.id)}`)}
+                  onclick={(event) => open(event, `/tasks/${encodeURIComponent(task.id)}`)}
+                  ><code title={task.id}>{truncateId(task.id)}</code></a
+                >
+              </Table.Cell>
+              <Table.Cell>
+                <TaskSession contextId={task.contextId} />
+              </Table.Cell>
+              <Table.Cell align="right">
+                <span title={task.updatedAt}
+                  >{formatRelativeTime(Date.parse(task.updatedAt), Date.now())}</span
+                >
+              </Table.Cell>
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table>
+      {#if tasks.hasNextPage}
+        <div class="weft-tasks__more">
+          <Button
+            variant="secondary"
+            label={TASK_COPY.loadMore}
+            loading={tasks.isFetchingNextPage}
+            onclick={() => void tasks.fetchNextPage()}
+          />
+        </div>
+      {/if}
     {/if}
   {/if}
 </section>

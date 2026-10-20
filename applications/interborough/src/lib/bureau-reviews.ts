@@ -35,7 +35,16 @@ const toolActionSchema = z.discriminatedUnion('type', [
     type: z.literal('approval'),
     message: z.string().optional(),
     risk: z.enum(['low', 'medium', 'high']),
-    operation: z.object({ kind: z.string() }).loose(),
+    // What the policy evaluated, as the server declares it: a command, a patch, and the files
+    // either touches. Each is there only for the kinds that carry it.
+    operation: z
+      .object({
+        kind: z.string(),
+        command: z.string().optional(),
+        diff: z.string().optional(),
+        filesTouched: z.array(z.string()).optional(),
+      })
+      .loose(),
     expiresAt: z.string().optional(),
   }),
 ]);

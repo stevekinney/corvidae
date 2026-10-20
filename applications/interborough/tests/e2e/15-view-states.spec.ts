@@ -129,7 +129,11 @@ function jsonRpcBody(post: string | null, result: unknown): unknown {
 }
 
 function statesOf(view: ViewName): Outcome[] {
-  const states: Outcome[] = ['loading', 'error', 'forbidden'];
+  // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
+  // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
+  // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").
+  const states: Outcome[] =
+    view === 'reviews' ? ['loading', 'forbidden'] : ['loading', 'error', 'forbidden'];
   if (VIEWS[view].canBeEmpty) states.push('empty');
   states.push('ready');
   return states;

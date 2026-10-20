@@ -11,6 +11,7 @@
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from './session-summary.ts';
@@ -35,9 +36,11 @@
 
   const names = $derived(agentsByName(agents.data ?? []));
   const rows = $derived(
-    (sessions.data?.pages ?? [])
-      .flatMap((page) => page.contexts)
-      .map((context) => sessionSummary(context, names)),
+    combinePages(
+      sessions.data?.pages,
+      (page) => page.contexts,
+      (context) => context.id,
+    ).map((context) => sessionSummary(context, names)),
   );
 
   function openNewChat(event: MouseEvent): void {

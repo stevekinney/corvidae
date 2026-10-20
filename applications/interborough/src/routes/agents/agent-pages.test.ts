@@ -179,6 +179,10 @@ describe('one agent’s page', () => {
   function serve(
     agent: Record<string, unknown>,
     definition: Record<string, unknown> | null = null,
+    contexts: (params: Record<string, unknown>) => unknown = () => ({
+      contexts: [{ ...CONTEXT, agentName: agent['name'] }],
+      nextOffset: null,
+    }),
   ) {
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [agent] }),
@@ -197,14 +201,36 @@ describe('one agent’s page', () => {
             ? null
             : { name: agent['displayName'], description: null, published: true, ...definition },
       }),
-      'bureau.contexts.list': () => ({
-        contexts: [{ ...CONTEXT, agentName: agent['name'] }],
-        nextOffset: null,
-      }),
+      'bureau.contexts.list': contexts,
     });
     restore = served.restore;
     return served;
   }
+
+  test('does not repeat a chat that the next page gives again, and stays', async () => {
+    const chat = (index: number) => ({
+      ...CONTEXT,
+      id: `session-${index}`,
+      title: `Chat ${index}`,
+      agentName: 'researcher',
+    });
+    // A chat began after the first page was read, so offset 1 starts with the row page 0 ended on.
+    serve(FILE_AGENT, null, (params) =>
+      params['offset'] === 0
+        ? { contexts: [chat(0), chat(1)], nextOffset: 2 }
+        : { contexts: [chat(1), chat(2)], nextOffset: null },
+    );
+    landAt('/agents/researcher');
+    const { container, findByRole, findByText } = mount(AgentDetail);
+    await findByText('Chat 1');
+
+    const more = await findByRole('button', { name: 'Load more' });
+    more.click();
+
+    await findByText('Chat 2');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.textContent?.match(/Chat 1/g)).toHaveLength(1);
+  });
 
   test('shows a file agent’s model, tools and skills from its definition, and its chats', async () => {
     const served = serve(FILE_AGENT, {
