@@ -240,6 +240,7 @@ import type {
   ScheduledFireSettlement,
   ScheduledSessionNotice,
   SessionAgentRun,
+  SkillSnapshot,
 } from './runtime-composition';
 import {
   createRuntimeComposition,
@@ -251,7 +252,6 @@ import {
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
-  type SkillSnapshot,
   sessionRunMediaOptions,
   wireDurableOptInTools,
 } from './runtime-composition';

@@ -34,7 +34,8 @@ afterEach(async () => {
 afterAll(removeSkillRoots);
 
 async function lockingCatalog() {
-  return (await skillCatalogOnDisk()).discover();
+  const catalog = await skillCatalogOnDisk();
+  return catalog.discover();
 }
 
 describe('a restored approval keeps the skill policy it was requested under', () => {
