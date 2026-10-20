@@ -5,7 +5,16 @@
  */
 import { EventType, type ResumeEntry } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import {
+  createGovernedMemory,
+  createInMemoryMemoryRecordStorage,
+  createMemoryAuthority,
+  createMemoryGovernanceLedger,
+  createMemoryGovernancePolicy,
+  createMockEmbedder,
+} from '@lostgradient/memory';
 import { type InputDetector, stopWhen, type Toolbox } from '@lostgradient/operative';
+import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
@@ -869,5 +878,72 @@ describe('resume on a peer', () => {
         expect(lastRequestText(harness)).not.toContain('production');
       });
     });
+  });
+});
+
+describe('recalled memory in a peer’s snapshots (COR-1546)', () => {
+  /** A governed memory holding one fact for the local caller's `assistant`, the memory a run will recall. */
+  async function memoryWithAFact() {
+    const memory = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage(),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      embedder: createMockEmbedder(64),
+      policy: createMemoryGovernancePolicy({ revision: 'governance:peer-snapshots' }),
+    });
+    await memory.init();
+    const owner = createMemoryAuthority({
+      principal: { kind: 'user', id: 'anonymous:local' },
+      tenantId: 'ag-ui-fixture',
+      ownerId: 'anonymous:local',
+      purpose: 'test',
+      capabilities: ['memory:write'],
+      policyRevision: 'test:1',
+      projection: 'bureau',
+    });
+    await memory.write(owner, 'The user prefers aisle seats.', {
+      collection: 'assistant',
+      source: 'conversation',
+    });
+    return memory;
+  }
+
+  const showsEvidence = (frame: ReceivedFrame | undefined) =>
+    messageTexts(frame).some((text) => text.includes('memory-evidence'));
+
+  it('leaves the recall row out of the snapshot a peer opens with and the one it ends with', async () => {
+    const memory = await memoryWithAFact();
+    await withPeers(
+      { script: [say('First.'), hold('second-generating'), say('Second.')], memory },
+      async (harness) => {
+        await withPeer(harness, async (peer) => {
+          // The first turn recalls and finishes, so the thread holds its recall row when the second starts.
+          const first = await startOn(harness.handler, {}, 'client-run-1', 'hello');
+          await first.reader.rest();
+          const session = await harness.bureau.getSession(THREAD);
+          const stored = session?.conversationHistory;
+          expect(
+            Object.values(stored?.messages ?? {}).some(
+              (message) => message.metadata?.['memoryEvidence'] !== undefined,
+            ),
+          ).toBe(true);
+
+          const second = await startOn(harness.handler, {}, 'client-run-2', 'again');
+          await harness.generate.reached('second-generating');
+          const attached = new FrameReader(await peer.handler(attachThreadRequest(THREAD)));
+          const opened = await opening(attached);
+          harness.generate.release('second-generating');
+          const rest = await attached.rest();
+          await second.reader.rest();
+
+          // The snapshot the peer opens with, and the one that ends its stream.
+          expect(typesOf(opened)[1]).toBe(EventType.MESSAGES_SNAPSHOT);
+          expect(messageTexts(opened[1])).toContain('First.');
+          expect(showsEvidence(opened[1])).toBe(false);
+          expect(typesOf(rest)[0]).toBe(EventType.MESSAGES_SNAPSHOT);
+          expect(messageTexts(rest[0])).toContain('Second.');
+          expect(showsEvidence(rest[0])).toBe(false);
+        });
+      },
+    );
   });
 });

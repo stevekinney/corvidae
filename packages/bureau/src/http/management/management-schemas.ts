@@ -84,7 +84,16 @@ export const waitMillisecondsField = z.number().int().min(0).max(MAX_WAIT_MILLIS
 /** The fault a missing resource, and a resource the caller may not see, both answer with. */
 export function resourceNotFound(
   resource:
-    'task' | 'context' | 'agent' | 'workflow' | 'run' | 'schedule' | 'goal' | 'asset' | 'upload',
+    | 'task'
+    | 'context'
+    | 'agent'
+    | 'workflow'
+    | 'run'
+    | 'schedule'
+    | 'goal'
+    | 'asset'
+    | 'upload'
+    | 'memory',
   identifier: string,
 ): OperationFault {
   return {

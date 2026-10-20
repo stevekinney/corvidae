@@ -191,7 +191,14 @@ export async function listRecords(
 ): Promise<GovernedMemoryRecord[]> {
   const operationId = context.operationId();
   if (!(await capabilityAllowed(context, authority, 'list', operationId))) return [];
-  const listed = await candidatesFor(context, authority, 'list', options);
+  // A record taken out of active use by supersession or consolidation stays stored for history
+  // and stays readable by `get`, but a listing shows it only to a privileged (`memory:inspect`)
+  // caller, as it does a quarantined or revoked one (COR-1546).
+  const readable = await candidatesFor(context, authority, 'list', options);
+  const listed = readable.filter(
+    (candidate) =>
+      candidate.redaction === 'privileged' || candidate.read.governance.invalidatedAt === undefined,
+  );
   const candidates = listed.toSorted(
     (left, right) => right.record.createdAt - left.record.createdAt,
   );

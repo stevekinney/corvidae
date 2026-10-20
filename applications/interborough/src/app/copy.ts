@@ -26,6 +26,15 @@ export type ViewCopy = {
   readonly notFoundByPattern?: Readonly<Record<string, ViewStateCopy>>;
   /** The words for a route of the view whose nothing is not the one `empty` names. */
   readonly emptyByPattern?: Readonly<Record<string, ViewEmptyCopy>>;
+  /** The words for a route of the view whose loading is not the one `loading` names. */
+  readonly loadingByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  /** The words for a route of the view whose failure is not the one `error` names. */
+  readonly errorByPattern?: Readonly<Record<string, ViewStateCopy>>;
+  /**
+   * The words for a route of the view whose lock is not a scope the principal lacks: the server
+   * said no, and says in these words why.
+   */
+  readonly forbiddenByPattern?: Readonly<Record<string, ViewStateCopy>>;
 };
 
 /** The words the run detail page (`/runs/:id`) uses for its attributes, streams and updates. */
@@ -542,6 +551,182 @@ export const CHAT_COPY = {
   },
 } as const;
 
+/** The deletion states `bureau.memory.forget` answers with, in the receipt's own vocabulary. */
+export type MemoryDeletionState = 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
+
+/**
+ * The words the Memory page uses outside its view states (`/agents/:id/memory`): the list, the
+ * search, one memory's lineage, and what forgetting and correcting answer. The page's loading,
+ * empty, error, forbidden, and not-found states are the Agents view's (`VIEW_COPY.agents`).
+ */
+export const MEMORY_COPY = {
+  /** The link on an agent's page that opens its memory. */
+  link: 'Memory',
+  heading: 'Memory',
+  backToAgent: (name: string): string => `Back to ${name}`,
+  listLabel: 'What this agent remembers',
+  searchLabel: 'Search this agent’s memory',
+  searchPlaceholder: 'Search memory…',
+  searchAction: 'Search',
+  clearSearch: 'Clear search',
+  loadMore: 'Load more',
+  loading: 'Loading memories',
+  /** Shown when forgetting leaves the agent with nothing, while the receipt is still on the screen. */
+  nothingLeft: 'This agent remembers nothing now.',
+  listFailed: 'The memories could not be loaded.',
+  /** The label on a row's action that opens one memory's details. */
+  openDetails: 'Details',
+  noContent: 'This memory has no text.',
+  relevance: 'Relevance',
+  detail: {
+    heading: 'Memory details',
+    loading: 'Loading this memory',
+    failed: 'This memory could not be loaded.',
+    notFound: {
+      title: 'This memory was not found',
+      description: 'It may have been forgotten, or it may not be yours.',
+    },
+    close: 'Close details',
+    lineage: 'Where this memory came from',
+    content: 'Memory',
+    fields: {
+      source: 'Source',
+      trust: 'Trust',
+      memoryClass: 'Class',
+      created: 'Created',
+      session: 'Chat',
+      run: 'Run',
+      corrects: 'Corrects',
+      correctedBy: 'Corrected by',
+      legalHold: 'Legal hold',
+    },
+    /** What a field says when the Bureau recorded nothing for it. */
+    notRecorded: 'Not recorded',
+    /** The legal hold is learned only from a forget attempt: no read says it. */
+    legalHold: {
+      unknown: 'Not known until you try to forget this memory',
+      held: 'Held: this memory stays stored',
+    },
+    openChat: 'Open the chat',
+    openMemory: 'Open that memory',
+  },
+  source: {
+    conversation: 'An agent’s answer in a chat',
+    'model-tool': 'A tool the model called',
+    'tool-result': 'A tool’s result',
+    'ingested-document': 'An ingested document',
+    derived: 'Derived from other memories',
+    operator: 'Written by a person',
+    system: 'Written by the system',
+  },
+  trust: {
+    untrusted: 'Untrusted',
+    verified: 'Verified',
+    system: 'System',
+  },
+  memoryClass: {
+    working: 'Working',
+    episodic: 'Episodic',
+    semantic: 'Semantic',
+    procedural: 'Procedural',
+    identity: 'Identity',
+    resource: 'Resource',
+  },
+  forget: {
+    action: 'Forget',
+    dialog: {
+      title: 'Forget this memory?',
+      description:
+        'The agent stops recalling it, and it leaves this list and search. A copy of it that a chat already saved is not scrubbed.',
+      confirm: 'Forget memory',
+    },
+    /** The words for each state the deletion can answer with. */
+    outcome: {
+      completed: {
+        title: 'Memory forgotten',
+        description:
+          'It no longer appears in this list, in search, or in what the agent recalls. A copy of it that a chat already saved is not scrubbed.',
+      },
+      exempt: {
+        title: 'This memory is under a legal hold',
+        description: 'It stays stored and listed. Forgetting it resumes when the hold is released.',
+      },
+      pending: {
+        title: 'Forgetting has not finished',
+        description:
+          'The Bureau started removing this memory and has not confirmed it. Check again shortly.',
+      },
+      failed: {
+        title: 'The memory was not removed',
+        description:
+          'The step that removes it failed, so it is still stored. Forget it again to retry.',
+      },
+      unknown: {
+        title: 'The result could not be confirmed',
+        description:
+          'The Bureau could not say whether this memory was removed. Check the list, and forget it again if it is still there.',
+      },
+    } satisfies Record<MemoryDeletionState, { title: string; description: string }>,
+    receiptLabel: 'What the deletion reached',
+    targets: {
+      'source-evidence': 'The memory itself',
+      'canonical-projections': 'Projections of it',
+      'identity-views': 'Identity views',
+      'managed-asset-record': 'Managed asset record',
+      indexes: 'The search index',
+      caches: 'Caches',
+      summaries: 'Summaries made from it',
+      'managed-asset-bytes': 'Managed asset files',
+      'durable-snapshots': 'Chats that saved a copy',
+      exports: 'Exports',
+      'external-processors': 'Outside processors',
+    },
+    targetStatus: {
+      completed: 'Done',
+      pending: 'Waiting',
+      exempt: 'Held',
+      failed: 'Failed',
+      unknown: 'Unknown',
+    } satisfies Record<MemoryDeletionState, string>,
+    failed: 'The memory was not forgotten',
+  },
+  correct: {
+    action: 'Correct',
+    dialog: {
+      title: 'Correct this memory',
+      description:
+        'Your words become a new memory that replaces this one. The agent recalls only the correction; this one is kept and linked from it.',
+      label: 'Corrected memory',
+      submit: 'Save correction',
+      cancel: 'Cancel',
+    },
+    saved: {
+      title: 'Memory corrected',
+      description: 'The agent now recalls your correction in place of the old memory.',
+    },
+    refusal: {
+      superseded: {
+        title: 'This memory was already corrected',
+        description: 'Open its correction from the list to change it again.',
+      },
+      'successor-not-admitted': {
+        title: 'The correction was not accepted',
+        description:
+          'The Bureau’s content rules or this agent’s memory limit refused it, so nothing changed. Reword it and try again.',
+      },
+      forbidden: {
+        title: 'Changing memory is locked',
+        description: 'Correcting or forgetting a memory needs the bureau.memory:write scope.',
+      },
+      'not-found': {
+        title: 'This memory was not found',
+        description: 'It may have been forgotten, or it may not be yours.',
+      },
+      other: { title: 'The correction was not saved', description: '' },
+    },
+  },
+} as const;
+
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {
   listHeading: 'Tasks',
@@ -728,6 +913,34 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     notFound: {
       title: 'This agent was not found',
       description: 'It may have been deleted, or it may not be published. Open one from the list.',
+    },
+    // An agent's memory page (`/agents/:id/memory`) asks the Bureau for what the agent remembers.
+    loadingByPattern: {
+      '/agents/:id/memory': {
+        title: 'Loading memory',
+        description: 'Asking the Bureau what this agent remembers of your chats.',
+      },
+    },
+    emptyByPattern: {
+      '/agents/:id/memory': {
+        title: 'This agent remembers nothing yet',
+        description:
+          'A memory is saved when the agent answers in a chat. Start a chat with it, then come back.',
+      },
+    },
+    errorByPattern: {
+      '/agents/:id/memory': {
+        title: 'Memory is unavailable',
+        description:
+          'The Bureau did not answer, or it keeps no memory. Check that the host is running, then try again.',
+      },
+    },
+    forbiddenByPattern: {
+      '/agents/:id/memory': {
+        title: 'Memory is locked',
+        description:
+          'Reading what an agent remembers needs the bureau.memory:read scope, even for your own chats. Ask whoever runs this installation to grant it.',
+      },
     },
   },
   'agent-editor': {

@@ -86,6 +86,9 @@ export type GovernanceChange =
  */
 const ENVELOPE_WRITE_ATTEMPTS = 8;
 
+/** What {@link GovernanceContext.invalidate} came to. */
+export type InvalidationOutcome = 'stamped' | 'declined' | 'missing';
+
 export type AuthorizationOutcome =
   | { readonly allowed: true; readonly decision: Extract<MemoryAccessDecision, { allowed: true }> }
   | { readonly allowed: false; readonly result: MemoryOperationResult };
@@ -128,6 +131,18 @@ export interface GovernanceContext {
    * record no longer exists.
    */
   updateGovernance(resolved: ResolvedRecord, change: GovernanceChange): Promise<boolean>;
+  /**
+   * The one transition that takes a record out of active use because `replacementId` replaces
+   * it, with the same merge and compare-and-swap. The check that the record is still in use is
+   * part of that swap: `declined` means another replacement stamped it first, and nothing was
+   * written. `missing` means the record no longer exists.
+   */
+  invalidate(resolved: ResolvedRecord, replacementId: string): Promise<InvalidationOutcome>;
+  /**
+   * Gives a record back to active use, only if `replacementId` is the replacement that took it
+   * out: the way a caller that lost a race withdraws the stamps it already made.
+   */
+  releaseInvalidation(resolved: ResolvedRecord, replacementId: string): Promise<boolean>;
   /** The one transition that sets a record's legal hold, with the same merge and compare-and-swap. */
   updateLegalHold(resolved: ResolvedRecord, legalHold: LegalHoldState): Promise<boolean>;
   /**
@@ -271,6 +286,26 @@ export function createGovernanceContext(input: CreateGovernanceContextInput): Go
       return transition(resolved, (current) => {
         const patch = patchFor(current);
         return patch === undefined ? undefined : { ...current, ...patch };
+      });
+    },
+
+    async invalidate(resolved, replacementId) {
+      let declined = false;
+      const stored = await transition(resolved, (current) => {
+        declined = current.invalidatedAt !== undefined;
+        return declined
+          ? undefined
+          : { ...current, invalidatedAt: runtime.clock.now(), supersededBy: replacementId };
+      });
+      if (!stored) return 'missing';
+      return declined ? 'declined' : 'stamped';
+    },
+
+    releaseInvalidation(resolved, replacementId) {
+      return transition(resolved, (current) => {
+        if (current.supersededBy !== replacementId) return undefined;
+        const { invalidatedAt: _at, supersededBy: _by, ...released } = current;
+        return released;
       });
     },
 

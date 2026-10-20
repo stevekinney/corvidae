@@ -28,6 +28,8 @@ import { createToolbox, type Toolbox } from 'armorer';
 import type { RunAgentInput } from '@ag-ui/core';
 
 import { createMemoryAssetStorage } from '../assets/storage';
+import type { GovernedMemory } from '@lostgradient/memory';
+
 import { createBureau } from '../create-bureau.ts';
 import { seamStorage, type StorageSeam } from '../test/session-input-fixtures.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
@@ -89,6 +91,8 @@ export type HarnessOptions = {
   readonly authentication?: AuthConfig;
   /** Receives the Bureau's diagnostics. */
   readonly onDiagnostic?: (diagnostic: BureauDiagnostic) => void;
+  /** Governed memory, shared by this Bureau and every peer of it, so a run recalls (COR-1546). */
+  readonly memory?: GovernedMemory;
   /**
    * With `storage: 'sqlite'`, each Bureau opens its own connection to the file through a
    * {@link seamStorage}, exposed as `harness.seam`, so a test can hold or watch one Bureau's writes.
@@ -190,6 +194,7 @@ async function build(
       : { durableBackgroundTasks: options.durableBackgroundTasks }),
     ...(options.humanInput === true ? { humanInput: true } : {}),
     ...(options.onDiagnostic === undefined ? {} : { onDiagnostic: options.onDiagnostic }),
+    ...(options.memory === undefined ? {} : { memory: options.memory }),
     ...(options.durableOwnership === undefined
       ? {}
       : { durableOwnership: options.durableOwnership }),

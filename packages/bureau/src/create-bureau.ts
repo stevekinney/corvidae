@@ -331,6 +331,7 @@ import {
   isSessionAuthorityAuthorized,
   isSessionHistoryReadAuthorized,
   resolvePersistedRunOwningPrincipal,
+  resolveRunMemoryOwner,
   resolveSessionOwner,
   resolveSessionPreAdmission,
   SessionAgentConflictError,
@@ -1678,6 +1679,38 @@ export function createScheduledFireApprovalHook(
   };
 }
 
+/**
+ * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
+ * memory (COR-1546, whose deletions advance only when asked to), or terminal tasks it removed.
+ * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
+ */
+function hasMaintenanceSurface(surface: {
+  readonly durableEngine: boolean;
+  readonly auditTrail: boolean;
+  readonly memory: boolean;
+  readonly tasksRemoved: number;
+}): boolean {
+  return surface.durableEngine || surface.auditTrail || surface.memory || surface.tasksRemoved > 0;
+}
+
+/**
+ * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
+ * with a deletion to advance (COR-1546), or a key-value store whose audit trail has a retention
+ * policy to apply. A key-value store with no retention has nothing for the timer to do.
+ */
+function needsAutomaticMaintenance(composed: {
+  readonly durableEngine: boolean;
+  readonly memory: boolean;
+  readonly keyValueStore: boolean;
+  readonly activeAuditRetention: boolean;
+}): boolean {
+  return (
+    composed.durableEngine ||
+    composed.memory ||
+    (composed.keyValueStore && composed.activeAuditRetention)
+  );
+}
+
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
@@ -1910,7 +1943,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   const runSessionIncarnations = new Map<string, string>();
   const runtime = await createRuntimeComposition(
-    { ...options, runtime: runtimeServices },
+    // COR-1546: the resolved identifier, so the memory tenant a run writes under is `Bureau.id`.
+    { ...options, id: bureauId, runtime: runtimeServices },
     {
       contentSourceResolverFor: (principalId) =>
         assetServiceHolder.current === undefined
@@ -5606,7 +5640,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         agentName: recoveredAgentName,
         requestContext,
       },
-      { liveStreaming: false, sessionAgent: recoveredSessionAgent },
+      {
+        liveStreaming: false,
+        sessionAgent: recoveredSessionAgent,
+        memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+      },
     );
     const terminalReviewSession = terminalReviewSessions.get(runId);
     if (terminalReviewSession) {
@@ -5888,7 +5926,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           runId,
           requestContext,
         },
-        { sessionAgent },
+        { sessionAgent, memoryOwner: owner },
       );
       runRequestContexts.set(runId, requestContext);
 
@@ -7995,7 +8033,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                     agentName: recoveredAgentName,
                     requestContext,
                   },
-                  { liveStreaming: false, sessionAgent: reattachedSessionAgent },
+                  {
+                    liveStreaming: false,
+                    sessionAgent: reattachedSessionAgent,
+                    memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
+                  },
                 );
                 recoveredServices = {
                   toolbox: runRuntime.toolbox,
@@ -8251,7 +8293,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             runId: taskId,
             requestContext: createSchedulerServiceRequestContext(taskId, agentName, taskId),
           },
-          { liveStreaming: false },
+          // A scheduler task has no principal, so its memory is `anonymous:local`'s (COR-1546), not
+          // the request authority's owner, which for a task is the agent's name.
+          { liveStreaming: false, memoryOwner: ownerOrLocal(undefined) },
         );
 
         const conversation = new Conversation(createConversationHistory({ id: taskId }));
@@ -10597,6 +10641,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return 'continue';
   }
 
+  /**
+   * COR-1546 — advances every open governed-memory deletion: resumes an interrupted synchronous
+   * lane and settles the bounded-async targets, which stay pending until something asks. Governed
+   * memory runs nothing on a timer of its own, so a record forgotten through `bureau.memory.forget`
+   * reports its other targets settled only because each maintenance pass calls this.
+   */
+  async function propagateMemoryDeletions(): Promise<void> {
+    await runtime.memory?.processDeletionPropagation();
+  }
+
   async function runDurableMaintenance(now?: number): Promise<true | undefined> {
     if (maintenanceAdmissionClosed) {
       throw new BureauError('Cannot run durable maintenance: bureau is shutting down', 'CONFLICT');
@@ -10719,6 +10773,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-1546 — governed memory's deletions advance only when asked to.
+      try {
+        await propagateMemoryDeletions();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual memory deletion propagation pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
     })();
 
     manualDurableMaintenancePasses.add(pass);
@@ -10742,7 +10807,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // this function's pre-existing "nothing here" contract for a bureau
     // with no persistence at all. COR-1477: a pass that removed terminal tasks
     // did maintain something, so it reports `true` even there.
-    return hasDurableEngine || auditTrailInstance || tasksRemoved > 0 ? true : undefined;
+    return hasMaintenanceSurface({
+      durableEngine: hasDurableEngine,
+      auditTrail: Boolean(auditTrailInstance),
+      memory: runtime.memory !== undefined,
+      tasksRemoved,
+    })
+      ? true
+      : undefined;
   }
 
   // AB-363 — Codex review PR #568, "Run ownership pruning in the automatic
@@ -10843,7 +10915,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.auditRetention && options.auditRetention !== 'forever',
   );
   if (
-    (runtime.durable || (runtime.kv && hasActiveAuditRetention)) &&
+    needsAutomaticMaintenance({
+      durableEngine: Boolean(runtime.durable),
+      memory: runtime.memory !== undefined,
+      keyValueStore: Boolean(runtime.kv),
+      activeAuditRetention: hasActiveAuditRetention,
+    }) &&
     options.durableBackgroundTasks !== 'manual'
   ) {
     automaticRunOwnershipPruneTimerStarted = true;
@@ -10955,6 +11032,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic run-creation receipt pruning pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // COR-1546 — governed memory's deletions advance only when asked to.
+        try {
+          await propagateMemoryDeletions();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic memory deletion propagation pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
