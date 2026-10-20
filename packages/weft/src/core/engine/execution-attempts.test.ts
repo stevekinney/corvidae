@@ -29,6 +29,7 @@ import {
   currentExecutionAttempt,
   isGenerationAbandoned,
   isHeldGenerationAbandoned,
+  isLaunchedUnderClaim,
   retireAllExecutionAttempts,
   retireExecutionAttempt,
 } from './execution-attempts.ts';
@@ -45,13 +46,51 @@ describe('the execution attempt registry', () => {
 
     beginExecutionAttempt(internals, 'run', 'generation-1');
     const first = currentExecutionAttempt(internals, 'run');
-    expect(first).toEqual({ workflowExecutionToken: 'generation-1', abandoned: false });
+    expect(first).toEqual({
+      workflowExecutionToken: 'generation-1',
+      abandoned: false,
+      claimEpoch: null,
+      identity: undefined,
+      pendingIdentity: undefined,
+    });
 
     // The same generation launched again is a different attempt, and the earlier one is gone.
     beginExecutionAttempt(internals, 'run', 'generation-1');
     const second = currentExecutionAttempt(internals, 'run');
     expect(second).not.toBe(first);
     expect(currentExecutionAttempt(internals, 'other-run')).toBeUndefined();
+  });
+
+  it('knows the claim an attempt launched under, and whether it still holds that generation', async () => {
+    await using engine = await Engine.create({
+      storage: new MemoryStorage(),
+      ownership: 'workflow-lease',
+      backgroundTasks: 'manual',
+      startScheduler: false,
+      recover: false,
+    });
+    const internals = getInternals(engine);
+    const registry = internals.workflowClaimRegistry!;
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+
+    // A launch before the engine holds the claim is under no claim.
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    expect(currentExecutionAttempt(internals, 'run')?.claimEpoch).toBeNull();
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+
+    expect(await registry.acquire('run')).toMatchObject({ status: 'acquired', epoch: 1 });
+    beginExecutionAttempt(internals, 'run', 'generation-1');
+    expect(currentExecutionAttempt(internals, 'run')?.claimEpoch).toBe(1);
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(true);
+    expect(isLaunchedUnderClaim(internals, 'run', 1, 'generation-1')).toBe(true);
+    // A claim taken after the launch is not the claim it launched under, nor is another generation's.
+    expect(isLaunchedUnderClaim(internals, 'run', 2)).toBe(false);
+    expect(isLaunchedUnderClaim(internals, 'run', 1, 'generation-2')).toBe(false);
+    expect(isLaunchedUnderClaim(internals, 'other-run', 1)).toBe(false);
+
+    // A generation this engine lost is the winner's, whatever claim it launched under.
+    abandonExecutionAttempt(internals, 'run', 'generation-1');
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
   });
 
   it('abandons only the attempt that launched the named generation, and only once', async () => {

@@ -15,6 +15,7 @@ import type { Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
+  type Deferred,
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
@@ -32,7 +33,7 @@ const EXPIRED_AFTER_MS =
 type ActivityProbe = {
   runs: number;
   /** While set, an activity that has started waits here, so the drive stays "running". */
-  hold: ReturnType<typeof createDeferred<void>> | null;
+  hold: Deferred | null;
 };
 
 const probes = new WeakMap<Storage, ActivityProbe>();
@@ -87,7 +88,7 @@ type Recovering = {
   engine: Engine<{ counted: ReturnType<typeof countingWorkflow> }, object>;
   setNow: (value: number) => void;
   /** Calls to `resolveWorkflowServices`, and the deferred that holds the first one. */
-  resolver: { calls: number; hold: ReturnType<typeof createDeferred<void>> | null };
+  resolver: { calls: number; hold: Deferred | null };
 };
 
 async function createRecoveringEngine(
@@ -98,7 +99,7 @@ async function createRecoveringEngine(
   let now = startNow;
   const resolver: Recovering['resolver'] = {
     calls: 0,
-    hold: holdFirstResolve ? createDeferred<void>() : null,
+    hold: holdFirstResolve ? createDeferred() : null,
   };
   const engine = await Engine.create({
     storage,
@@ -162,7 +163,7 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
       const startNow = 5_000_000;
       await strandWorkflow(storage, () => startNow, 'raced-run', false);
       const probe = probeFor(storage);
-      if (interleaving.holdActivity) probe.hold = createDeferred<void>();
+      if (interleaving.holdActivity) probe.hold = createDeferred();
 
       const recovering = await createRecoveringEngine(
         storage,
@@ -172,8 +173,8 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
       await using engine = recovering.engine;
       const internals = getInternals(engine);
 
-      const reclaimGate = createDeferred<void>();
-      const reclaimReachedGate = createDeferred<void>();
+      const reclaimGate = createDeferred();
+      const reclaimReachedGate = createDeferred();
       internals.reclaimReplayGateForTesting = () => {
         reclaimReachedGate.resolve();
         return reclaimGate.promise;
@@ -219,8 +220,8 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
  * collected, so a test can run `recoverAll()` between the listing and the attempts.
  */
 class ListingGatedStorage extends MemoryStorage {
-  gate: ReturnType<typeof createDeferred<void>> | null = null;
-  readonly reachedGate = createDeferred<void>();
+  gate: Deferred | null = null;
+  readonly reachedGate = createDeferred();
 
   override async *scan(
     prefix: string,
@@ -256,7 +257,7 @@ describe('a held claim reaches attemptWorkflowClaimTakeover between listing and 
       const startNow = 6_000_000;
       await strandWorkflow(storage, () => startNow, 'sibling-run', true);
       const probe = probeFor(storage);
-      if (claimLandsAs === 'running-drive') probe.hold = createDeferred<void>();
+      if (claimLandsAs === 'running-drive') probe.hold = createDeferred();
 
       const recovering = await createRecoveringEngine(
         storage,
@@ -269,7 +270,7 @@ describe('a held claim reaches attemptWorkflowClaimTakeover between listing and 
       expect(registry.currentEpoch('sibling-run')).toBeNull();
 
       // The candidate is listed while this engine does not hold it.
-      storage.gate = createDeferred<void>();
+      storage.gate = createDeferred();
       const reclaimPass = internals.workflowClaimRenewalTask!.runOnce();
       await storage.reachedGate.promise;
       expect(registry.currentEpoch('sibling-run')).toBeNull();

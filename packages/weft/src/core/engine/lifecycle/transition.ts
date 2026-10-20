@@ -37,7 +37,7 @@ import {
   classifyRevisionGroups,
   createRecoveryScopedRevisionCallbacks,
 } from './recovery-revision-groups.ts';
-import { resumeWorkflowFromStorage, type FreshResumeClaimTracker } from './resume.ts';
+import { resumeStoredWorkflow, type FreshResumeClaimTracker } from './resume.ts';
 import {
   enforceHistoryPolicyBeforeReplayById,
   loadWorkflowStartHeaders,
@@ -293,12 +293,7 @@ export type ResumeOptions = {
    */
   readonly deferClaimReleaseOnRejection?: boolean;
   readonly freshClaimTracker?: FreshResumeClaimTracker;
-  /**
-   * With `forceReplayFromStorage`: skip the replay when this engine already launched the
-   * generation under the claim at this epoch. A reclaim's forced replay exists to restart a run
-   * the engine drove under an earlier claim, and must not start a second drive of one that began
-   * under the claim it just took. See `ResumeFromStorageOptions.skipIfLaunchedUnderClaimEpoch`.
-   */
+  /** Forwarded to `ResumeFromStorageOptions.skipIfLaunchedUnderClaimEpoch`; set by a claim reclaim's replay only. */
   readonly skipIfLaunchedUnderClaimEpoch?: number;
 };
 
@@ -328,17 +323,7 @@ export async function resume(
     }
   }
 
-  return resumeWorkflowFromStorage(internals, workflowId, true, callbacks, onRecoveredWorkflow, {
-    ...(options?.deferClaimReleaseOnRejection !== undefined && {
-      deferClaimReleaseOnRejection: options.deferClaimReleaseOnRejection,
-    }),
-    ...(options?.freshClaimTracker !== undefined && {
-      freshClaimTracker: options.freshClaimTracker,
-    }),
-    ...(options?.skipIfLaunchedUnderClaimEpoch !== undefined && {
-      skipIfLaunchedUnderClaimEpoch: options.skipIfLaunchedUnderClaimEpoch,
-    }),
-  });
+  return resumeStoredWorkflow(internals, workflowId, callbacks, onRecoveredWorkflow, options);
 }
 
 export async function fork(

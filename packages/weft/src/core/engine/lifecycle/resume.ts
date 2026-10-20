@@ -73,6 +73,28 @@ export type ResumeFromStorageOptions = {
   skipIfLaunchedUnderClaimEpoch?: number;
 };
 
+/**
+ * `resume()`'s replay from storage: `resumeWorkflowFromStorage` with the caller's options, less
+ * `forceReplayFromStorage`, which only decides whether `resume()` reaches it at all.
+ */
+export function resumeStoredWorkflow(
+  internals: EngineInternals,
+  workflowId: string,
+  callbacks: LifecycleCallbacks,
+  onRecoveredWorkflow: RecoverAllOptions['onRecoveredWorkflow'] | undefined,
+  options: (ResumeFromStorageOptions & { readonly forceReplayFromStorage?: boolean }) | undefined,
+): Promise<WorkflowHandle> {
+  const { forceReplayFromStorage: _decidesWhetherToReplay, ...forwarded } = options ?? {};
+  return resumeWorkflowFromStorage(
+    internals,
+    workflowId,
+    true,
+    callbacks,
+    onRecoveredWorkflow,
+    forwarded,
+  );
+}
+
 /** Populate `tracker.epoch` from a fresh acquisition — split out to keep `resumeWorkflowFromStorage`'s complexity under this repository's ceiling. */
 function recordFreshClaimEpoch(
   acquireResult: StandaloneClaimAcquireResult,
