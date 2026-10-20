@@ -1679,6 +1679,38 @@ export function createScheduledFireApprovalHook(
   };
 }
 
+/**
+ * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
+ * memory (COR-1546, whose deletions advance only when asked to), or terminal tasks it removed.
+ * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
+ */
+function hasMaintenanceSurface(surface: {
+  readonly durableEngine: boolean;
+  readonly auditTrail: boolean;
+  readonly memory: boolean;
+  readonly tasksRemoved: number;
+}): boolean {
+  return surface.durableEngine || surface.auditTrail || surface.memory || surface.tasksRemoved > 0;
+}
+
+/**
+ * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
+ * with a deletion to advance (COR-1546), or a key-value store whose audit trail has a retention
+ * policy to apply. A key-value store with no retention has nothing for the timer to do.
+ */
+function needsAutomaticMaintenance(composed: {
+  readonly durableEngine: boolean;
+  readonly memory: boolean;
+  readonly keyValueStore: boolean;
+  readonly activeAuditRetention: boolean;
+}): boolean {
+  return (
+    composed.durableEngine ||
+    composed.memory ||
+    (composed.keyValueStore && composed.activeAuditRetention)
+  );
+}
+
 export async function createBureau<const D extends AgentDefinitions = AgentDefinitions>(
   options: BureauOptions<D>,
 ): Promise<Bureau<D>> {
@@ -10773,10 +10805,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // this function's pre-existing "nothing here" contract for a bureau
     // with no persistence at all. COR-1477: a pass that removed terminal tasks
     // did maintain something, so it reports `true` even there.
-    return hasDurableEngine ||
-      auditTrailInstance ||
-      runtime.memory !== undefined ||
-      tasksRemoved > 0
+    return hasMaintenanceSurface({
+      durableEngine: hasDurableEngine,
+      auditTrail: Boolean(auditTrailInstance),
+      memory: runtime.memory !== undefined,
+      tasksRemoved,
+    })
       ? true
       : undefined;
   }
@@ -10879,8 +10913,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     options.auditRetention && options.auditRetention !== 'forever',
   );
   if (
-    // COR-1546: governed memory has a deletion to advance whatever else is composed.
-    (runtime.durable || runtime.memory !== undefined || (runtime.kv && hasActiveAuditRetention)) &&
+    needsAutomaticMaintenance({
+      durableEngine: Boolean(runtime.durable),
+      memory: runtime.memory !== undefined,
+      keyValueStore: Boolean(runtime.kv),
+      activeAuditRetention: hasActiveAuditRetention,
+    }) &&
     options.durableBackgroundTasks !== 'manual'
   ) {
     automaticRunOwnershipPruneTimerStarted = true;

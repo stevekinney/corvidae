@@ -919,7 +919,8 @@ describe('recalled memory in a peer’s snapshots (COR-1546)', () => {
           // The first turn recalls and finishes, so the thread holds its recall row when the second starts.
           const first = await startOn(harness.handler, {}, 'client-run-1', 'hello');
           await first.reader.rest();
-          const stored = (await harness.bureau.getSession(THREAD))?.conversationHistory;
+          const session = await harness.bureau.getSession(THREAD);
+          const stored = session?.conversationHistory;
           expect(
             Object.values(stored?.messages ?? {}).some(
               (message) => message.metadata?.['memoryEvidence'] !== undefined,
