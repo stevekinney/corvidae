@@ -2,8 +2,8 @@ import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { currentExecutionAttempt } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import { recordResultCommitter } from '../result-committer.ts';
+import { pendingTerminalSettlementFor } from '../result-waiter-run.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from '../storage-io.ts';
-import { pendingTerminalSettlementFor } from '../terminal-settlement-pending.ts';
 import {
   cleanupTerminalWorkflowImmediately,
   TERMINAL_WORKFLOW_STATUSES,

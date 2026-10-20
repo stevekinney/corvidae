@@ -78,22 +78,6 @@ export function startPendingTerminalSettlement(
   void settlement.turn.then(settle, settle);
 }
 
-/**
- * The pending settlement holding back `waiter`, if the run it belongs to has one. A waiter that
- * belongs to a different run, such as a `start-new` replacement's, is never held.
- */
-export function pendingTerminalSettlementFor(
-  internals: EngineInternals,
-  workflowId: string,
-  waiter: WorkflowResultWaiter,
-): PendingTerminalSettlement | undefined {
-  return [...internals.pendingTerminalSettlements].find(
-    (settlement) =>
-      settlement.workflowId === workflowId &&
-      waiterBelongsToRun(waiter, settlement.workflowExecutionToken),
-  );
-}
-
 /** The waiter a released settlement rejects: the one it captured, else the run's registered one. */
 function waiterToReject(
   internals: EngineInternals,

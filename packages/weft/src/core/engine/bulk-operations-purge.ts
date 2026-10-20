@@ -17,7 +17,7 @@ import { streamWorkflowStates } from './listing.ts';
 import { commitPurgeOrExplainLoss, isScannedRun } from './purge-supersession.ts';
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { recordResultCommitter } from './result-committer.ts';
-import { waiterBelongsToRun } from './result-waiter-run.ts';
+import { pendingTerminalSettlementFor, waiterBelongsToRun } from './result-waiter-run.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
@@ -25,7 +25,6 @@ import {
   buildExternalTerminalRotationFragment,
   deriveWorkflowResultFromState,
 } from './storage-io.ts';
-import { pendingTerminalSettlementFor } from './terminal-settlement-pending.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { foldWorkflowGenerationBumpForPurge } from './workflow-generation-fence.ts';
 import { getWorkflowRetentionDeadline } from './workflow-retention-deadline.ts';

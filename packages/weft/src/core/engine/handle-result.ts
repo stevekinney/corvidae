@@ -8,12 +8,12 @@ import { copyResultCommitter, recordResultCommitter } from './result-committer.t
 import {
   bindResultWaiterToRun,
   heldRunForResultWaiter,
+  pendingTerminalSettlementFor,
   rejectReplacedResultWaiter,
   waiterBelongsToRun,
   waitersBelongToSameRun,
 } from './result-waiter-run.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
-import { pendingTerminalSettlementFor } from './terminal-settlement-pending.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 
 /** What a result waiter rejects with for a workflow that is not (or no longer) in storage. */

@@ -345,9 +345,17 @@ describe('a terminated run settles its result after its in-flight inline activit
     const replacementWaiter = getInternals(engine).resultResolvers.get(id);
     expect(replacementWaiter).toBeDefined();
 
-    gate.resolve();
-    await macrotasks(5);
+    // The replaced run's result is still held for its activity: the replacement path leaves it to
+    // the pending settlement rather than retiring it as replaced.
+    await macrotasks(3);
+    expect(firstResult.state).toBe('pending');
 
+    gate.resolve();
+    await firstResult.settled;
+    await macrotasks(3);
+
+    expect(firstResult.state).toBe('rejected');
+    expect(firstResult.reason).toEqual(new Error('Workflow cancelled'));
     expect(getInternals(engine).resultResolvers.get(id)).toBe(replacementWaiter);
     expect(secondResult.state).toBe('pending');
 
