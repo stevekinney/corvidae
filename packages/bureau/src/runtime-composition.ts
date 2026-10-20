@@ -1764,6 +1764,44 @@ function activeSkillSessionMetadataForStep(
   };
 }
 
+/**
+ * What the active-skill snapshot of a run says (COR-1620). `verified` with no records is a
+ * verified absence of skills. `unverifiable` is the snapshot failing to be read or deserialized,
+ * or naming another run: the policy that governed the run is not known.
+ */
+export type SkillSnapshot =
+  | { readonly status: 'verified'; readonly records: SkillActivationRecord[] | undefined }
+  | { readonly status: 'unverifiable'; readonly reason: string };
+
+/** The outcome of re-validating stored skill records against the live catalog. */
+export interface SkillRecoveryOutcome {
+  readonly recovered: readonly string[];
+  readonly refused: readonly string[];
+}
+
+/**
+ * COR-1620 — the active-skill snapshot of a session run, from its session. Absent or cleared
+ * records are a verified absence of skills; records that do not deserialize, or that a different
+ * run wrote, are unverifiable.
+ */
+export function readSessionSkillSnapshot(
+  session: { readonly metadata: Record<string, JSONValue> } | undefined,
+  runId: string,
+): SkillSnapshot {
+  if (session === undefined) return { status: 'unverifiable', reason: 'its session is not found' };
+  const metadata = session.metadata;
+  const recordsRunId = metadata['activeSkillRecordsRunId'];
+  if (typeof recordsRunId === 'string' && recordsRunId !== runId) {
+    return { status: 'unverifiable', reason: `its snapshot names another run, "${recordsRunId}"` };
+  }
+  const raw = metadata['activeSkillRecords'];
+  if (raw === undefined || raw === null) return { status: 'verified', records: undefined };
+  if (!isSkillActivationRecordArray(raw)) {
+    return { status: 'unverifiable', reason: 'its stored skill records do not deserialize' };
+  }
+  return { status: 'verified', records: raw };
+}
+
 export function recordedAgentStep(value: unknown): StepRecord | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
   const candidate = value as Record<string, unknown>;
@@ -2148,7 +2186,7 @@ export interface RuntimeComposition {
      * catalog (COR-1613). A run waits for it before its first step; a caller that decides a tool
      * call outside a step, as the restore of a pending approval does, waits for it itself.
      */
-    skillsRecovered: Promise<unknown>;
+    skillsRecovered: Promise<SkillRecoveryOutcome>;
   }>;
   /**
    * AB-260 — folded onto this interface directly rather than reached through
@@ -2186,6 +2224,16 @@ export interface RuntimeComposition {
     runId: string,
     recovering: boolean,
   ): Promise<SkillActivationRecord[] | undefined>;
+  /**
+   * COR-1620 — the same snapshot as {@link loadCommittedScheduledActiveSkills}, but telling a
+   * verified absence of skills from a snapshot that cannot be verified: a restored approval is
+   * decided under it, and is refused when it cannot be.
+   */
+  readCommittedScheduledSkillSnapshot(
+    session: { readonly metadata: Record<string, JSONValue> } | undefined,
+    runId: string,
+    recovering: boolean,
+  ): Promise<SkillSnapshot>;
   /**
    * COR-1265 criterion 3b — a fresh registry holding only the Bureau invariants
    * that close over nothing run-specific, for a dispatch path that resolves its
@@ -3338,7 +3386,7 @@ async function buildRuntimeComposition(
         ? createSkillGuardrailOptions(guardrailsConfig, guardrails)
         : undefined;
 
-    let skillRecovery: Promise<unknown> | undefined;
+    let skillRecovery: Promise<SkillRecoveryOutcome> | undefined;
     if (options.skills && skillCatalog !== undefined) {
       // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
       // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
@@ -3492,7 +3540,13 @@ async function buildRuntimeComposition(
       hooks,
       streamEventTarget,
       getActiveSkillRecords,
-      skillsRecovered: skillRecovery ?? Promise.resolve(),
+      // Records the run was given but no skill client is configured to enforce: all are refused.
+      skillsRecovered:
+        skillRecovery ??
+        Promise.resolve({
+          recovered: [],
+          refused: (runtimeOptions?.initialActiveSkillRecords ?? []).map((record) => record.name),
+        }),
     });
   }
 
@@ -4335,24 +4389,33 @@ async function buildRuntimeComposition(
     return loadExistingStatelessScheduledSessionId(store, runId);
   }
 
-  async function loadCommittedScheduledActiveSkills(
+  async function readCommittedScheduledSkillSnapshot(
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     recovering: boolean,
-  ): Promise<SkillActivationRecord[] | undefined> {
-    if (!recovering || !session) return undefined;
+  ): Promise<SkillSnapshot> {
+    const none: SkillSnapshot = { status: 'verified', records: undefined };
+    if (!recovering || !session) return none;
 
     const metadata = session.metadata;
+    const lastFireRunId = metadata['lastScheduledFireRunId'];
+    const recordsRunId = metadata['activeSkillRecordsRunId'];
+    // A session that names another fire, as a recurring schedule's newer fire leaves it, holds
+    // that fire's snapshot, not this one's: whether this fire had skills is not known.
+    for (const named of [lastFireRunId, recordsRunId]) {
+      if (typeof named === 'string' && named !== runId) {
+        return { status: 'unverifiable', reason: `its session names another fire, "${named}"` };
+      }
+    }
     const activeSkillRecordsRaw = metadata['activeSkillRecords'];
     const activeSkillRecordsStep = metadata['activeSkillRecordsStep'];
+    if (lastFireRunId !== runId || recordsRunId !== runId) return none;
     if (
-      metadata['lastScheduledFireRunId'] !== runId ||
-      metadata['activeSkillRecordsRunId'] !== runId ||
       typeof activeSkillRecordsStep !== 'number' ||
       !Number.isInteger(activeSkillRecordsStep) ||
       activeSkillRecordsStep < 0
     ) {
-      return undefined;
+      return { status: 'unverifiable', reason: 'its snapshot step does not deserialize' };
     }
 
     try {
@@ -4374,17 +4437,23 @@ async function buildRuntimeComposition(
         .find((step) => activeSkillsFromStepMetadata(step.metadata) !== undefined);
 
       if (latestCommittedStep !== undefined) {
-        return activeSkillsFromStepMetadata(latestCommittedStep.metadata);
+        return {
+          status: 'verified',
+          records: activeSkillsFromStepMetadata(latestCommittedStep.metadata),
+        };
       }
 
-      if (
-        committedStepRecords.some((step) => step.step === activeSkillRecordsStep) &&
-        isSkillActivationRecordArray(activeSkillRecordsRaw)
-      ) {
-        return activeSkillRecordsRaw;
+      if (committedStepRecords.some((step) => step.step === activeSkillRecordsStep)) {
+        if (isSkillActivationRecordArray(activeSkillRecordsRaw)) {
+          return { status: 'verified', records: activeSkillRecordsRaw };
+        }
+        if (activeSkillRecordsRaw !== undefined && activeSkillRecordsRaw !== null) {
+          return { status: 'unverifiable', reason: 'its stored skill records do not deserialize' };
+        }
       }
 
-      return undefined;
+      // No committed step activated a skill: a verified absence.
+      return none;
     } catch (error) {
       options.onLog?.({
         workflowId: runId,
@@ -4393,8 +4462,20 @@ async function buildRuntimeComposition(
         level: 'warn',
         message: `Unable to verify scheduled fire skill snapshot checkpoint for run "${runId}": ${serializeUnknownError(error)}`,
       });
-      return undefined;
+      return {
+        status: 'unverifiable',
+        reason: `its checkpoint could not be read: ${serializeUnknownError(error)}`,
+      };
     }
+  }
+
+  async function loadCommittedScheduledActiveSkills(
+    session: { readonly metadata: Record<string, JSONValue> } | undefined,
+    runId: string,
+    recovering: boolean,
+  ): Promise<SkillActivationRecord[] | undefined> {
+    const snapshot = await readCommittedScheduledSkillSnapshot(session, runId, recovering);
+    return snapshot.status === 'verified' ? snapshot.records : undefined;
   }
 
   /**
@@ -4967,6 +5048,7 @@ async function buildRuntimeComposition(
     resolveRunServices,
     buildScheduledRunServices,
     loadCommittedScheduledActiveSkills,
+    readCommittedScheduledSkillSnapshot,
     createBureauInvariantHooks,
     resolveSessionAgentRun,
   };

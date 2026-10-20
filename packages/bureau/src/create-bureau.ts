@@ -247,10 +247,11 @@ import {
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
   isScheduledFireAuthority,
-  isSkillActivationRecordArray,
+  readSessionSkillSnapshot,
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
+  type SkillSnapshot,
   sessionRunMediaOptions,
   wireDurableOptInTools,
 } from './runtime-composition';
@@ -5829,6 +5830,97 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * agent, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
    * thrown so one run's lost agent never stops the rest of recovery.
    */
+  /** What a restored approval's run was rebuilt with, kept with the toolbox that was built. */
+  const restoredSkillPolicies = new WeakMap<
+    object,
+    {
+      readonly scheduledFire: boolean;
+      readonly agentName: string;
+      readonly sessionAgent: SessionAgentRun | undefined;
+      readonly recordsKey: string;
+      /** Whether the snapshot was verified and every stored skill recovered. */
+      readonly recoveredCleanly: boolean;
+    }
+  >();
+
+  /** COR-1620 — the active-skill snapshot of a restored run, read from its session. */
+  function readRestoredSkillSnapshot(
+    session: { readonly metadata: Record<string, JSONValue> } | undefined,
+    runId: string,
+    scheduledFire: boolean,
+  ): Promise<SkillSnapshot> {
+    return scheduledFire
+      ? runtime.readCommittedScheduledSkillSnapshot(session, runId, true)
+      : Promise.resolve(readSessionSkillSnapshot(session, runId));
+  }
+
+  /**
+   * COR-1620 — the toolbox whose tools decide whether a restored approval's call is permitted
+   * by the run's active skills. A live run's own toolbox is it. A restored one is decided under
+   * the snapshot read again now, so a failure that has cleared is not held against it: the same
+   * toolbox when the snapshot is what it was built with, and one built with the snapshot read now
+   * otherwise. When the snapshot cannot be verified, or a stored skill was refused on recovery,
+   * or the run has no toolbox of its own and the base toolbox carries no skills, the approval is
+   * refused with `CONFLICT`: it never runs without the policy that governed it.
+   */
+  async function skillPolicyToolboxOf(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    registered: BureauToolbox | undefined,
+  ): Promise<BureauToolbox> {
+    const restored = registered === undefined ? undefined : restoredSkillPolicies.get(registered);
+    if (registered !== undefined && restored === undefined) return registered;
+    if (review.sessionId === undefined) return registered ?? runtime.baseToolbox;
+    const refuse = (reason: string): never => {
+      throw new BureauError(
+        `Cannot approve: the skill policy that governed this call could not be verified (${reason}).`,
+        'CONFLICT',
+      );
+    };
+    const scheduledFire = restored?.scheduledFire ?? scheduledFireApprovalRuns.has(review.runId);
+    let snapshot: SkillSnapshot;
+    let session: Awaited<ReturnType<NonNullable<typeof runtime.sessionStore>['load']>>;
+    try {
+      session = await runtime.sessionStore?.load(review.sessionId);
+      snapshot = await readRestoredSkillSnapshot(session, review.runId, scheduledFire);
+    } catch (error) {
+      return refuse(`its snapshot could not be read: ${serializeUnknownError(error)}`);
+    }
+    if (snapshot.status === 'unverifiable') return refuse(snapshot.reason);
+    const records = snapshot.records ?? [];
+    if (registered === undefined || restored === undefined) {
+      if (records.length > 0) {
+        return refuse('the run has no toolbox of its own to enforce its active skills');
+      }
+      return runtime.baseToolbox;
+    }
+    if (restored.recoveredCleanly && JSON.stringify(records) === restored.recordsKey) {
+      return registered;
+    }
+    const policyRuntime = await runtime.createRunRuntime(
+      {
+        message:
+          typeof session?.metadata['lastUserMessage'] === 'string'
+            ? session.metadata['lastUserMessage']
+            : '',
+        sessionId: review.sessionId,
+        runId: review.runId,
+        agentName: restored.agentName,
+        requestContext: runRequestContexts.get(review.runId),
+      },
+      {
+        liveStreaming: false,
+        sessionAgent: restored.sessionAgent,
+        initialActiveSkillRecords: records,
+        memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
+      },
+    );
+    const recovery = await policyRuntime.skillsRecovered;
+    if (recovery.refused.length > 0) {
+      return refuse(`a stored skill was refused on recovery: ${recovery.refused.join(', ')}`);
+    }
+    return policyRuntime.toolbox;
+  }
+
   async function resolveRecoveredSessionAgent(
     agentName: string,
     runId: string,
@@ -5914,6 +6006,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       terminalReviewSessions.delete(runId);
       return;
     }
+    // COR-1613: the approval is decided under the run's active skills as of its last committed
+    // snapshot, as the run that raised it would decide it now. A fire's are the ones its
+    // committed steps recorded; a session run's are the last snapshot of its session. COR-1620:
+    // a snapshot that cannot be verified restores no skills, and each approve reads it again.
+    const skillSnapshot = await readRestoredSkillSnapshot(session, runId, scheduledFire);
+    const initialActiveSkillRecords =
+      skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
     const runRuntime = await runtime.createRunRuntime(
       {
         message:
@@ -5928,19 +6027,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       {
         liveStreaming: false,
         sessionAgent: recoveredSessionAgent,
-        // COR-1613: the approval is decided under the run's active skills as of its last
-        // committed snapshot, as the run that raised it would decide it now. A fire's are the
-        // ones its committed steps recorded; a session run's are the last snapshot of its session.
-        initialActiveSkillRecords: scheduledFire
-          ? await runtime.loadCommittedScheduledActiveSkills(session, runId, true)
-          : isSkillActivationRecordArray(session.metadata['activeSkillRecords'])
-            ? session.metadata['activeSkillRecords']
-            : undefined,
+        initialActiveSkillRecords,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
       },
     );
     // The skills must be back before a call is decided under their policy.
-    await runRuntime.skillsRecovered;
+    const skillRecovery = await runRuntime.skillsRecovered;
+    restoredSkillPolicies.set(runRuntime.toolbox, {
+      scheduledFire,
+      agentName: recoveredAgentName,
+      sessionAgent: recoveredSessionAgent,
+      recordsKey: JSON.stringify(initialActiveSkillRecords ?? []),
+      recoveredCleanly: skillSnapshot.status === 'verified' && skillRecovery.refused.length === 0,
+    });
     const terminalReviewSession = terminalReviewSessions.get(runId);
     if (terminalReviewSession) {
       terminalReviewSessions.set(runId, {
@@ -14035,7 +14134,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           }
           // COR-1613: the call is decided under the skills active now, which a restored approval
           // has again: a tool they no longer permit is not run, as a step would not run it.
-          if (!approvalToolbox.tools().some((tool) => tool.name === approval.toolName)) {
+          // COR-1620: under a snapshot read again now, and never without one that verifies.
+          const policyToolbox = await skillPolicyToolboxOf(
+            review,
+            runToolboxesByRunId.get(review.runId),
+          );
+          if (!policyToolbox.tools().some((tool) => tool.name === approval.toolName)) {
             throw new BureauError(
               `Cannot approve: tool "${approval.toolName}" is not permitted by the run's active skills.`,
               'CONFLICT',
