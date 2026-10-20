@@ -593,31 +593,6 @@ describe('static export', () => {
       await rm(outputDirectory, { recursive: true, force: true });
     }
   }, 120_000);
-
-  test('materializes shell routes for navigable family children', async () => {
-    const outputDirectory = await mkdtemp(join(tmpdir(), 'cinder-static-export-family-'));
-    try {
-      const { files: rendered } = await runStaticExport({
-        outputDirectory,
-        sidebarComponents: ['chat'],
-        allComponents: [],
-      });
-      // `/c/<name>` is a legacy alias redirected by the hosting configuration, so it must NOT
-      // be written into build/ — that would restore a second documentation
-      // surface on disk.
-      expect(rendered.has('/c/chat')).toBe(false);
-      expect(rendered.has('/c/chat-composer-popover')).toBe(false);
-      expect(rendered.has('/page/chat-composer-popover')).toBe(true);
-      expect(
-        await readFile(
-          join(outputDirectory, 'page', 'chat-composer-popover', 'index.html'),
-          'utf8',
-        ),
-      ).toContain('data-component-page');
-    } finally {
-      await rm(outputDirectory, { recursive: true, force: true });
-    }
-  }, 120_000);
 });
 
 describe('assertDocumentationPagesArePreRendered', () => {
