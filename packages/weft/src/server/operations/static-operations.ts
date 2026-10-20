@@ -34,7 +34,6 @@ import {
 } from './get-task-deliveries.ts';
 import { getTaskDetailOperation } from './get-task-detail.ts';
 import { getUpdateResultOperation } from './get-update-result.ts';
-import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { getWorkflowAttributesOperation } from './get-workflow-attributes.ts';
 import { getWorkflowDefinitionOperation } from './get-workflow-definition.ts';
 import { getWorkflowEventsOperation } from './get-workflow-events.ts';
@@ -51,6 +50,7 @@ import { listReviewsOperation } from './list-reviews.ts';
 import { listSchedulesOperation } from './list-schedules.ts';
 import { listWorkflowDefinitionsOperation } from './list-workflow-definitions.ts';
 import { listWorkflowRevisionsOperation } from './list-workflow-revisions.ts';
+import { listWorkflowUpdatesOperation } from './list-workflow-updates.ts';
 import { listWorkflowsOperation } from './list-workflows.ts';
 import { pauseScheduleOperation } from './pause-schedule.ts';
 import { preloadWorkflowRevisionOperation } from './preload-workflow-revision.ts';

@@ -34,7 +34,6 @@ import {
 import { getTaskDetailRestBinding } from './get-task-detail.ts';
 import { getTaskDiagnosticsRestBinding } from './get-task-diagnostics.ts';
 import { getUpdateResultRestBinding } from './get-update-result.ts';
-import { listWorkflowUpdatesRestBinding } from './list-workflow-updates.ts';
 import { getWorkflowAttributesRestBinding } from './get-workflow-attributes.ts';
 import { getWorkflowDefinitionRestBinding } from './get-workflow-definition.ts';
 import { getWorkflowEventsRestBinding } from './get-workflow-events.ts';
@@ -51,6 +50,7 @@ import { listReviewsRestBinding } from './list-reviews.ts';
 import { listSchedulesRestBinding } from './list-schedules.ts';
 import { listWorkflowDefinitionsRestBinding } from './list-workflow-definitions.ts';
 import { listWorkflowRevisionsRestBinding } from './list-workflow-revisions.ts';
+import { listWorkflowUpdatesRestBinding } from './list-workflow-updates.ts';
 import { listWorkflowsRestBinding } from './list-workflows.ts';
 import { pauseScheduleRestBinding } from './pause-schedule.ts';
 import { preloadWorkflowRevisionRestBinding } from './preload-workflow-revision.ts';

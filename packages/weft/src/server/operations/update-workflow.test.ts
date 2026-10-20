@@ -9,8 +9,8 @@ import {
   WorkflowTerminalError,
 } from '../../core/updates.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { dispatchJsonRpc } from '../json-rpc-dispatch.ts';
+import { handleRequestAsLocalUser as handleRequest } from '../local-user-request.test-support.ts';
 import { createOperationRegistry } from '../operation-catalog.ts';
 import { principalFromApiKey } from '../principal.ts';
 import { invalidJsonRequest, jsonRequest } from './operation-test-helpers.test-support.ts';
