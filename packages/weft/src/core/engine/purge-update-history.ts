@@ -1,0 +1,65 @@
+import type { BatchOperation, ConditionalBatchCondition } from '../../storage/interface.ts';
+import { KEYS } from '../../storage/interface.ts';
+import type { WorkflowState } from '../types.ts';
+import { commitFencedEngineWriteAllowingPreconditionFailure } from './fenced-write.ts';
+import type { EngineInternals } from './internals.ts';
+import { isScannedRun } from './purge-supersession.ts';
+
+/**
+ * Entries removed per batch. Each costs two deletes (the entry, and the response it names), so a
+ * chunk is 2,000 operations, a fifth of `MAX_BATCH_OPERATIONS`.
+ */
+export const UPDATE_HISTORY_PURGE_CHUNK = 1_000;
+
+/**
+ * Remove a run's update history (`uph:`), and the answered responses (`upr:`) it names, in batches of
+ * {@link UPDATE_HISTORY_PURGE_CHUNK} entries, before the purge's one atomic batch is built.
+ *
+ * The history has no bound: a long-lived entity workflow can receive thousands of updates. Folded into
+ * the purge batch, each entry would add two operations to a batch that holds at most 10,000, so a
+ * large enough history would make the run impossible to purge, and the history is removed by purge
+ * alone (terminal cleanup keeps it by design).
+ *
+ * It is safe to stop partway and to run again. Each chunk is one atomic batch that removes an entry
+ * together with the response it names, so what remains always names the responses still to remove.
+ * A purge that fails partway leaves the run in place with a shorter history, and the next purge
+ * finishes the job; a response left behind could only be one the five-minute sweep removes anyway.
+ *
+ * Each chunk is fenced on the run record the purge observed, where the storage can fence: a
+ * same-id `start-new` replacement changes those bytes, and a chunk that lost to it removes nothing, so
+ * the replacement's own history (it shares the key prefix) is never touched. A lost fence ends the
+ * drain quietly; the purge's own commit, fenced the same way, reports the loss.
+ */
+export async function drainUpdateHistory(
+  internals: EngineInternals,
+  state: WorkflowState,
+): Promise<void> {
+  const workflowKey = KEYS.workflow(state.id);
+  const observedWorkflowBytes = await internals.storage.get(workflowKey);
+  if (!isScannedRun(observedWorkflowBytes, state)) return;
+  const conditions: ConditionalBatchCondition[] = internals.storage.capabilities().conditionalBatch
+    ? [{ key: workflowKey, expectedValue: observedWorkflowBytes }]
+    : [];
+
+  const prefix = KEYS.updateHistoryPrefix(state.id);
+  for (;;) {
+    const operations: BatchOperation[] = [];
+    for await (const [key] of internals.storage.scan(prefix, {
+      limit: UPDATE_HISTORY_PURGE_CHUNK,
+    })) {
+      operations.push({ type: 'delete', key });
+      // `<receivedAt>:<updateId>`: an update id is a UUID, so it holds no colon.
+      const updateId = key.slice(key.lastIndexOf(':') + 1);
+      if (updateId.length > 0)
+        operations.push({ type: 'delete', key: KEYS.updateResponse(updateId) });
+    }
+    if (operations.length === 0) return;
+    const committed = await commitFencedEngineWriteAllowingPreconditionFailure(
+      internals,
+      null,
+      operations,
+      conditions,
+    );
+    if (!committed) return;
+  }
+}

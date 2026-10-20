@@ -15,6 +15,7 @@ import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
 import { commitPurgeOrExplainLoss, isScannedRun } from './purge-supersession.ts';
+import { drainUpdateHistory } from './purge-update-history.ts';
 import { addUpdateDeleteKeys } from './purge-update-keys.ts';
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { recordResultCommitter } from './result-committer.ts';
@@ -178,7 +179,8 @@ export async function purgeWorkflow(
  * index deletes (search attributes + tags), the explicit key set (state,
  * checkpoint, headers, services marker, update requests/responses, and the
  * `wf:`/`ev:`/`sig:`/... prefix sweeps), and the visibility-index transition to
- * `null`. Pure: it reads storage to discover keys but writes nothing, so a caller
+ * `null`. It reads storage to discover keys and writes nothing but the run's update history
+ * (removed in bounded batches first, {@link drainUpdateHistory}), so a caller
  * can fold the returned ops into a larger atomic batch instead of committing them
  * standalone. {@link purgeWorkflow} commits them on their own; the
  * `onTerminalConflict: 'start-new'` restart path prepends them to the create batch
@@ -191,6 +193,9 @@ export async function collectWorkflowPurgeDeleteOperations(
   state: WorkflowState,
 ): Promise<BatchOperation[]> {
   const workflowId = state.id;
+  // The one thing this does write: the update history has no bound, so it is removed in batches of its
+  // own first (see `drainUpdateHistory`), and what is left folds into the atomic batch below.
+  await drainUpdateHistory(internals, state);
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const deleteOperations = buildWorkflowIndexDeleteOperations(state, attributeBytes);
   const deleteKeys = await collectWorkflowPurgeDeleteKeys(internals, state);
