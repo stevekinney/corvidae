@@ -249,7 +249,8 @@ describe('the automatic sweep and a decision in flight', () => {
       .map((record) => record.type)
       .filter((type) => type !== 'review.tool-approval.requested');
     expect(terminal).toEqual(['review.tool-approval.approved']);
-    expect((await bureau.getReview(review.id))?.status).toBe('approved');
+    const decided = await bureau.getReview(review.id);
+    expect(decided?.status).toBe('approved');
   });
 });
 
