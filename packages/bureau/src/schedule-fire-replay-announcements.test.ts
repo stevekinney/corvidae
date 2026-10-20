@@ -78,7 +78,8 @@ async function crashThenRecover(callIds: (attempt: number) => string) {
   // Let the first process's announcement reach the history before it is considered dead.
   await pollUntil(async () => {
     await new Promise((resolve) => setTimeout(resolve, 5));
-    return (await reviewEvents(first, fireId)).length > 0 ? true : undefined;
+    const events = await reviewEvents(first, fireId);
+    return events.length > 0 ? true : undefined;
   }, 'the first attempt’s request to reach the history');
 
   const recovered = await harness.open({

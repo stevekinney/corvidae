@@ -10,8 +10,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { type Toolbox } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';

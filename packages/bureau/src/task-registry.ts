@@ -1060,7 +1060,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         const fires = await this.unsettledFiresOfContext(contextId, incarnation);
         // A fire whose run settled while a review of it is still open reads as input-required in
         // its task view, so the context agrees with it: the review holds the fire open (COR-1613).
-        const reviewHeld = (await recordsOfContext(contextId)).filter(
+        const contextRecords = await recordsOfContext(contextId);
+        const reviewHeld = contextRecords.filter(
           (record) =>
             record.kind === 'schedule-fire' &&
             record.settled !== undefined &&

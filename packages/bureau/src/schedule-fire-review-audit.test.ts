@@ -114,7 +114,8 @@ describe('a fire canceled with a committed approval, then a crash before the can
       expect(
         await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id),
       ).toHaveLength(1);
-      expect((await restarted.getReview(review.id))?.status).toBe('canceled');
+      const closed = await restarted.getReview(review.id);
+      expect(closed?.status).toBe('canceled');
       await pollUntil(async () => {
         const kinds = await historyKinds(restarted, fireId);
         return kinds.includes('review.canceled') ? true : undefined;
@@ -133,9 +134,8 @@ describe('a fire canceled with a committed approval, then a crash before the can
       expect(
         await auditRecordsOf(again, fireId, 'review.tool-approval.canceled', review.id),
       ).toHaveLength(1);
-      expect(
-        (await historyKinds(again, fireId)).filter((kind) => kind === 'review.canceled'),
-      ).toHaveLength(1);
+      const againKinds = await historyKinds(again, fireId);
+      expect(againKinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
     });
   }
 });
@@ -166,7 +166,8 @@ describe('a fire canceled while parked on a human wait', () => {
     expect(
       await auditRecordsOf(bureau, fireId, 'review.human-wait.canceled', review.id),
     ).toHaveLength(1);
-    expect((await bureau.getReview(review.id))?.status).toBe('canceled');
+    const closed = await bureau.getReview(review.id);
+    expect(closed?.status).toBe('canceled');
   });
 
   it('closes the wait exactly once when the process dies before the record, and restarts', async () => {
