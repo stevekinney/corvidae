@@ -1,0 +1,425 @@
+/**
+ * The journey (COR-1496): one person, signed in as nobody because the host asks for no sign-in,
+ * goes through the whole application in the order a first day would. The file is serial and holds
+ * one `test()` per stage, so each stage has its own timeout and a failure names the stage. A stage
+ * builds on the ones before it, so a run that is cut short fails at the first stage it cannot do.
+ *
+ * It opens the journey's own host (`e2e-server.ts`): the Bureau's engine is its console, which the
+ * Workflows area needs to show a schedule's fire, and its agents and barrier are its own. Every
+ * model is scripted, so no provider key is read: the human-input agent, the barrier, and the echoes
+ * are the seeded and extra agents, the author the journey defines in the editor runs through the
+ * scripted provider resolver (`journey-agent.ts`), and the workflow it writes runs `assistant`.
+ *
+ * Nothing waits on a clock. A wait is for something the page shows, or for a route of the harness
+ * (the barrier's), and the only one that waits on time at all is the run of a 5 second schedule,
+ * which is waited for by polling the page that lists runs until one is there.
+ */
+import type { APIRequestContext, Page } from '@playwright/test';
+
+import {
+  AGENT_EDITOR_COPY,
+  MEMORY_COPY,
+  SCHEDULE_COPY,
+  TASK_COPY,
+  WORKFLOW_COPY,
+} from '../../src/app/copy.ts';
+import { describeCadence } from '../../src/routes/schedules/cadence.ts';
+import { bureau, removeAgent } from './agent-support.ts';
+import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
+import { ECHO_AGENT_NAME } from './echo-agent.ts';
+import { expect, test } from './fixtures.ts';
+import {
+  JOURNEY_AUTHOR_REPLY,
+  JOURNEY_MARKER,
+  JOURNEY_TOOL_NAME,
+  JOURNEY_WORKFLOW_CADENCE,
+  JOURNEY_WORKFLOW_ID,
+  RECALL_AGENT_NAME,
+} from './journey-agent.ts';
+import { listWorkflowRuns, removeWorkflow } from './workflow-support.ts';
+
+test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
+test.describe.configure({ mode: 'serial' });
+
+const AUTHOR_ID = 'journey-author';
+const AUTHOR_NAME = 'Journey author';
+const BARRIER_REPLY = 'The barrier opened.';
+const FOLLOW_UP_REPLY = 'The follow-up was delivered.';
+const QUESTION = 'Which environment should the release go to?';
+const THANKS = 'Thanks, the release will go to the environment you named.';
+
+/** A 1 x 1 PNG: real bytes, so the Bureau detects its type and a browser decodes it. */
+const PIXEL = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** A token no other run of the journey uses, so a reused server never answers one run with another's. */
+const RUN = crypto.randomUUID().slice(0, 8);
+
+/** A row of the transcript the agent wrote. */
+const ASSISTANT_ROW = '.chat-message-wrapper[data-role="assistant"]';
+
+const composer = (page: Page) => page.getByRole('textbox');
+
+async function send(page: Page, text: string): Promise<void> {
+  await composer(page).fill(text);
+  await composer(page).press('Enter');
+}
+
+/** The session the address names. */
+function sessionOf(page: Page): string {
+  return decodeURIComponent(new URL(page.url()).pathname.split('/').at(-1) ?? '');
+}
+
+const sessionAddress = /\/chat\/(?!new(?:$|\?))[^/?]+$/;
+
+/** Sends a follow-up and waits for the Bureau to answer it, so what follows acts on an admitted input. */
+async function sendFollowUp(page: Page, text: string): Promise<void> {
+  const answered = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/bureau/jsonrpc') &&
+      (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
+  );
+  await send(page, text);
+  await answered;
+}
+
+/** The journey host's barrier: how many runs are held on it, and a release of all of them. */
+async function waitingOnBarrier(request: APIRequestContext): Promise<number> {
+  const response = await request.get(`${E2E_BARRIER_URL}/journey/waiting`);
+  return ((await response.json()) as { waiting: number }).waiting;
+}
+
+async function expectWaiting(request: APIRequestContext, count: number): Promise<void> {
+  await expect.poll(() => waitingOnBarrier(request)).toBe(count);
+}
+
+async function releaseBarrier(request: APIRequestContext): Promise<void> {
+  const response = await request.post(`${E2E_BARRIER_URL}/journey/release`);
+  expect(response.ok()).toBe(true);
+}
+
+/** The transcript's text, so the order of what it shows can be asserted. */
+async function transcriptText(page: Page): Promise<string> {
+  return (await page.locator('[data-session]').textContent()) ?? '';
+}
+
+/** The sessions this run of the journey makes, in the order it makes them. */
+const sessions: { followUp?: string; second?: string } = {};
+
+/** Forgets what `echo-recall` remembers, so a run recalls only what it stored itself. */
+async function forgetEverythingRecalled(request: APIRequestContext): Promise<void> {
+  const listed = await bureau(request, 'bureau.memory.list', {
+    agentId: RECALL_AGENT_NAME,
+    limit: 100,
+  });
+  const { memories } = (listed.result ?? { memories: [] }) as { memories: Array<{ id: string }> };
+  for (const { id } of memories) {
+    await bureau(request, 'bureau.memory.forget', { agentId: RECALL_AGENT_NAME, id });
+  }
+}
+
+test.beforeAll(async ({ playwright }) => {
+  // A server that is already running may hold what an earlier run of the journey wrote.
+  const request = await playwright.request.newContext({ baseURL: E2E_JOURNEY_URL });
+  try {
+    await removeAgent(request, AUTHOR_ID);
+    await removeWorkflow(request, JOURNEY_WORKFLOW_ID);
+    await forgetEverythingRecalled(request);
+  } finally {
+    await request.dispose();
+  }
+});
+
+test.afterAll(async ({ playwright }) => {
+  // Whatever a failed stage left held on the barrier ends with the run.
+  const request = await playwright.request.newContext();
+  try {
+    await request.post(`${E2E_BARRIER_URL}/journey/release`);
+  } finally {
+    await request.dispose();
+  }
+});
+
+test('chats with the barrier agent, sends a follow-up while it works, and sees it delivered', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/agents/barrier');
+  await page.getByRole('link', { name: 'New chat' }).first().click();
+  await expect(page).toHaveURL(/\/chat\/new\?agent=barrier$/);
+
+  await send(page, 'Start the journey');
+  await expect(page).toHaveURL(sessionAddress);
+  sessions.followUp = sessionOf(page);
+  await expectWaiting(request, 1);
+
+  await sendFollowUp(page, 'Also this');
+  await releaseBarrier(request);
+
+  // The same run answers the follow-up after the reply it arrived during.
+  await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
+  const text = await transcriptText(page);
+  expect(text.indexOf(BARRIER_REPLY)).toBeLessThan(text.indexOf('Also this'));
+  expect(text.indexOf('Also this')).toBeLessThan(text.indexOf(FOLLOW_UP_REPLY));
+  await expect(page.getByText('Also this')).toHaveCount(1);
+  await expectWaiting(request, 0);
+});
+
+test('lands in the session it just made when it starts from /', async ({ page }) => {
+  await page.goto('/');
+
+  await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Start the journey');
+});
+
+test('starts a second session with the same agent from the agent’s page, and returns to the first from /chat', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/agents/barrier');
+  await page.getByRole('link', { name: 'New chat' }).first().click();
+  await send(page, 'A second journey');
+  await expect(page).toHaveURL(sessionAddress);
+  sessions.second = sessionOf(page);
+  expect(sessions.second).not.toBe(sessions.followUp);
+  await expectWaiting(request, 1);
+  await releaseBarrier(request);
+  await expect(page.getByText(BARRIER_REPLY)).toBeVisible();
+
+  await page.goto('/chat');
+  await page
+    .getByRole('navigation', { name: 'Chats' })
+    .getByRole('button', { name: /Start the journey/ })
+    .click();
+
+  await expect(page).toHaveURL(new RegExp(`/chat/${sessions.followUp}$`));
+  await expect(page.getByText(FOLLOW_UP_REPLY)).toBeVisible();
+  await expect(page.getByText('Also this')).toHaveCount(1);
+});
+
+test('reloads while an agent waits on a question, and answers it from the reviews inbox', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.goto('/chat/new?agent=request-human-input');
+  await send(page, 'Ship it');
+  await expect(page).toHaveURL(sessionAddress);
+  const threadId = sessionOf(page);
+  const question = page.getByRole('alert').filter({ hasText: QUESTION });
+  await expect(question).toBeVisible();
+
+  await page.reload();
+  await expect(question).toBeVisible();
+
+  await page.goto('/reviews');
+  const row = page.locator('.weft-reviews-inbox__list > li').filter({
+    has: page.locator(`a[href="/chat/${threadId}"]`),
+  });
+  await expect(row).toContainText(QUESTION);
+  await row.getByRole('button').click();
+  await checkA11y('the question in the reviews inbox');
+  await page.getByLabel('Your answer').fill('staging');
+  await page.getByRole('button', { name: 'Send answer' }).click();
+  await expect(row).toHaveCount(0);
+
+  // The run went on with the answer: its session ends on the thanks.
+  await page.goto(`/chat/${threadId}`);
+  await expect(page.getByText(THANKS)).toBeVisible();
+  await expect(question).toHaveCount(0);
+});
+
+test('defines an agent in the editor with the workflow tool, and chats with it until it writes a scheduled workflow', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/agents/new');
+  await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
+  await page.getByRole('textbox', { name: /^Name/ }).fill(AUTHOR_NAME);
+  await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue(AUTHOR_ID);
+  await page
+    .getByRole('textbox', { name: /^Instructions/ })
+    .fill('Write the workflows a person asks for, with the workflow tools.');
+  await page.getByRole('checkbox', { name: new RegExp(JOURNEY_TOOL_NAME) }).check();
+  await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
+  await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
+
+  // A new agent is not published, so the editor's own switch is what lets a person chat with it.
+  await page.getByRole('link', { name: AGENT_EDITOR_COPY.editAction }).click();
+  await page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }).click();
+  await expect(
+    page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await page.goto(`/agents/${AUTHOR_ID}`);
+  await page.getByRole('link', { name: 'New chat' }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/chat/new\\?agent=${AUTHOR_ID}$`));
+
+  await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
+
+  await expect(page.getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
+  await expect(page.getByText(JOURNEY_TOOL_NAME).first()).toBeVisible();
+  // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
+  const written = await bureau(request, 'bureau.workflows.get', { id: JOURNEY_WORKFLOW_ID });
+  expect(written.fault).toBeUndefined();
+  expect(written.result).toMatchObject({
+    id: JOURNEY_WORKFLOW_ID,
+    state: 'ready',
+    agent: AUTHOR_ID,
+  });
+});
+
+test('opens the workflow from /workflows, waits for the schedule’s fire to be listed as a run, and opens that run', async ({
+  page,
+  request,
+}) => {
+  await page.goto('/workflows');
+  const row = page.locator(`[data-workflow="${JOURNEY_WORKFLOW_ID}"]`);
+  await expect(row).toHaveAttribute('data-kind', 'agent-authored');
+  await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID }).click();
+  await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
+  const detail = page.locator('[data-page="workflow-detail"]');
+  await expect(detail.getByTestId('workflow-trigger')).toContainText(JOURNEY_WORKFLOW_CADENCE);
+  await expect(detail.getByTestId('workflow-agent')).toContainText(AUTHOR_ID);
+
+  // The schedule fires every few seconds. A runs page that opened before the first fire says there
+  // are none and does not look again, so wait until the Bureau lists a run, then open the page.
+  const runCount = async () => {
+    const listed = await listWorkflowRuns(request, JOURNEY_WORKFLOW_ID);
+    return listed.length;
+  };
+  await expect.poll(runCount, { timeout: 30_000 }).toBeGreaterThan(0);
+  await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction }).click();
+  await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
+  const runs = page.locator('tbody tr');
+  await expect(runs.first()).toBeVisible();
+  for (const text of await runs.allTextContents()) expect(text).toContain(JOURNEY_WORKFLOW_ID);
+
+  await runs.first().getByRole('link').first().click();
+  await expect(page).toHaveURL(/\/runs\/[^/]+$/);
+  await expect(page.getByRole('link', { name: JOURNEY_WORKFLOW_ID })).toHaveAttribute(
+    'href',
+    `/workflows/${JOURNEY_WORKFLOW_ID}`,
+  );
+});
+
+test('follows the schedule’s link to the workflow editor, changes its cadence to one hour, and sees it on /schedules', async ({
+  page,
+}) => {
+  await page.goto('/schedules');
+  const file = page
+    .locator('tr[data-kind="workflow-file"]')
+    .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
+  await expect(file).toContainText(describeCadence({ intervalMs: 5_000 }));
+  // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file.
+  await file.getByRole('button', { name: /^Actions for / }).click();
+  await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
+  await page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction }).click();
+  await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
+
+  const root = page.locator('[data-page="workflow-editor"]');
+  const editor = root.getByRole('textbox', { name: WORKFLOW_COPY.editor.textLabel });
+  const document = JSON.parse(await editor.inputValue()) as Record<string, unknown>;
+  expect(document['trigger']).toEqual({ kind: 'schedule', spec: JOURNEY_WORKFLOW_CADENCE });
+  document['trigger'] = { kind: 'schedule', spec: '1h' };
+  await editor.fill(JSON.stringify(document, null, 2));
+  await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
+  await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
+
+  // The schedule follows the file, which also ends the fire every few seconds.
+  await page.goto('/schedules');
+  const hourly = page
+    .locator('tr[data-kind="workflow-file"]')
+    .filter({ has: page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }) });
+  await expect(hourly).toContainText(describeCadence({ intervalMs: 3_600_000 }));
+  await expect(hourly).not.toContainText(describeCadence({ intervalMs: 5_000 }));
+});
+
+test('attaches an image to the echo agent and sees the image it returns', async ({ page }) => {
+  await page.goto(`/chat/new?agent=${ECHO_AGENT_NAME}`);
+  await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+  await page
+    .locator('input[type="file"]')
+    .setInputFiles({ name: 'pixel.png', mimeType: 'image/png', buffer: PIXEL });
+  await expect(page.locator('.chat-attachment-preview')).toHaveAttribute('data-state', 'ready');
+
+  await send(page, 'Say it back');
+
+  await expect(page.getByText('Echoed 1 image.')).toBeVisible();
+  const returned = page.locator('ul.weft-chat-assets[data-role="assistant"] img');
+  await expect(returned).toHaveAttribute('src', /\/bureau\/assets\/[^/]+\/content$/);
+  await expect
+    .poll(() => returned.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
+});
+
+test('corrects what an agent remembers, and a new chat recalls the correction and not the original', async ({
+  page,
+}) => {
+  const original = `Original ${RUN} seat 12A`;
+  const correction = `Corrected ${RUN} seat 14C`;
+  const memoryAddress = `/agents/${RECALL_AGENT_NAME}/memory`;
+
+  // With nothing recalled the agent echoes the label, and the chat stores that answer.
+  await page.goto(`/chat/new?agent=${RECALL_AGENT_NAME}`);
+  await send(page, original);
+  await expect(page).toHaveURL(sessionAddress);
+  await expect(page.locator(ASSISTANT_ROW).last()).toContainText(original);
+
+  await page.goto(memoryAddress);
+  const stored = page.locator('.weft-memory__content', { hasText: original });
+  await expect(stored).toHaveText(original);
+  await page
+    .locator('[data-memory]', { hasText: original })
+    .getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) })
+    .click();
+  const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
+  await detail.getByRole('button', { name: MEMORY_COPY.correct.action }).click();
+  const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
+  await dialog.getByLabel(MEMORY_COPY.correct.dialog.label).fill(correction);
+  await dialog.getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }).click();
+  await expect(page.getByText(MEMORY_COPY.correct.saved.title, { exact: true })).toBeVisible();
+  await expect(page.locator('.weft-memory__content', { hasText: correction })).toHaveText(
+    correction,
+  );
+  await expect(page.locator('.weft-memory__content', { hasText: original })).toHaveCount(0);
+
+  // A new chat that names the label is answered with what the agent remembers now.
+  await page.goto(`/chat/new?agent=${RECALL_AGENT_NAME}`);
+  await send(page, `Recall ${RUN}`);
+  await expect(page).toHaveURL(sessionAddress);
+  const reply = page.locator(ASSISTANT_ROW).last();
+  await expect(reply).toContainText(correction);
+  await expect(reply).not.toContainText(original);
+});
+
+test('starts a task it does not release, reaches it from the chat’s task link, and cancels it', async ({
+  page,
+  request,
+}) => {
+  await page.goto(`/chat/new?agent=barrier`);
+  await send(page, 'Hold this task');
+  await expect(page).toHaveURL(sessionAddress);
+  await expectWaiting(request, 1);
+
+  const tasks = page.getByRole('region', { name: 'Tasks in this chat' });
+  await tasks.getByRole('link').first().click();
+  await expect(page).toHaveURL(/\/tasks\/[^/]+$/);
+  await expect(page.getByText('Working', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel task' }).click();
+
+  await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
+  await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel task' })).toHaveCount(0);
+  // Cancelling ended the run that was held, so nothing is left on the barrier.
+  await expectWaiting(request, 0);
+});
+
+test('opens the workers screen from the sidebar’s Engine group', async ({ page }) => {
+  await page.goto('/agents');
+  const views = page.getByRole('navigation', { name: 'Views' });
+  await views.getByRole('link', { name: /^Workers/ }).click();
+
+  await expect(page).toHaveURL(/\/workers$/);
+  await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
+});

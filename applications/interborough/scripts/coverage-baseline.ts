@@ -110,7 +110,7 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // still unhit, one in `agent-detail.svelte` and one in `agent-memory.svelte`; the floor is
   // 400/402, above the 138/139 it held before the Memory page.
   measuredAt: '2026-10-20T02:00:00.000Z',
-  overall: { linesFound: 71718, linesHit: 69857, functionsFound: 14144, functionsHit: 13767 },
+  overall: { linesFound: 72419, linesHit: 70556, functionsFound: 14278, functionsHit: 13901 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
     scripts: { linesFound: 965, linesHit: 965, functionsFound: 68, functionsHit: 68 },
@@ -199,7 +199,8 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 2903,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
-    tests: { linesFound: 173, linesHit: 149, functionsFound: 24, functionsHit: 23 },
+    // COR-1496, measured on darwin: the journey's test models (`tests/e2e/journey-agent.ts`).
+    tests: { linesFound: 246, linesHit: 222, functionsFound: 36, functionsHit: 35 },
   },
 };
 
