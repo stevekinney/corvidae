@@ -9,14 +9,31 @@
 
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { createQueryClient } from '../../lib/query.ts';
+  import {
+    AUTHORIZATION_SCOPES,
+    providePrincipalStore,
+    type AuthorizationScope,
+  } from '../../lib/scopes.svelte.ts';
   import Sidebar from './sidebar.svelte';
 
   interface SidebarHarnessProps {
     client: HttpClient;
     engineStatus?: LiveSourceStatus;
+    /** The scopes the principal holds; every scope by default. */
+    scopes?: readonly AuthorizationScope[];
   }
 
-  let { client, engineStatus = 'live' }: SidebarHarnessProps = $props();
+  let {
+    client,
+    engineStatus = 'live',
+    scopes = AUTHORIZATION_SCOPES,
+  }: SidebarHarnessProps = $props();
+
+  providePrincipalStore().setPrincipal({
+    scopes: untrack(() => scopes),
+    subject: 'tester',
+    unauthenticatedAccess: null,
+  });
 
   const initialClient = untrack(() => client);
   const queryClient = createQueryClient();

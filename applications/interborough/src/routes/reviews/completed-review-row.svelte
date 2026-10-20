@@ -1,8 +1,7 @@
 <script lang="ts">
   /**
-   * One row for a completed review — used by both the Inbox "Decided" state
-   * and the flat Archive table (plan §9.5, plan Appendix B "Review …
-   * completed / archive").
+   * One row for a completed review of the engine's, in the inbox's "Decided" state (plan §9.5,
+   * plan Appendix B "Review … completed").
    */
   import { Badge } from '@lostgradient/cinder';
   import CircleCheck from '@lucide/svelte/icons/circle-check';

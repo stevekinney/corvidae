@@ -14,6 +14,7 @@
   import type { CompletedReviewEntry, PendingReviewEntry } from '@lostgradient/weft';
 
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
+  import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
   import ArtifactView from './artifact-view.svelte';
   import {
     extractReviewMetadataEntries,
@@ -38,6 +39,15 @@
   const sections = $derived(extractReviewSections(entry.artifact));
   const metadataEntries = $derived(extractReviewMetadataEntries(entry.artifact));
   const timedOut = $derived(entry.status === 'pending' ? isReviewTimedOut(entry, now) : false);
+
+  /** The run this review is of, opened in place; a modified click is left to the browser. */
+  function openRun(event: MouseEvent): void {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+      return;
+    }
+    event.preventDefault();
+    router.navigate(workflowDetailPath(entry.workflowId));
+  }
 </script>
 
 <div class="weft-review-detail">
@@ -45,8 +55,11 @@
     <h2 class="weft-review-detail__title">{entry.reviewType}</h2>
     <p class="weft-review-detail__meta">
       Workflow
-      <span class="weft-review-detail__id" title={entry.workflowId}
-        >{truncateId(entry.workflowId)}</span
+      <a
+        class="weft-review-detail__id"
+        href={router.href(workflowDetailPath(entry.workflowId))}
+        title={entry.workflowId}
+        onclick={openRun}>{truncateId(entry.workflowId)}</a
       >
       · requested {formatRelativeTime(entry.createdAt, now)}
     </p>

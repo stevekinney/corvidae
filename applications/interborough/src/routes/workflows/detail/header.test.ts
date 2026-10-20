@@ -68,6 +68,10 @@ describe('WorkflowDetailHeader', () => {
   test('links the workflow type back to its page, and leaves a modified click to the browser', async () => {
     if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
     window.happyDOM.setURL('http://localhost/');
+    // The router reads `window.location` live until something has called `navigate()`, and the
+    // browser's own navigation on a modified click would then be what it reads. Priming it pins the
+    // location the router reports, so this file does not depend on the files that ran before it.
+    router.navigate('/', { replace: true });
     const { getByRole } = renderHeader();
 
     const link = getByRole('link', { name: 'order-fulfillment' });

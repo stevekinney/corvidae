@@ -44,6 +44,16 @@
 
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import {
+    partitionPendingReviews,
+    pendingEntriesOnly,
+  } from '../../routes/reviews/review-domain.ts';
+  import {
+    REVIEW_POLL_MILLISECONDS,
+    bureauReviewsQuery,
+    weftReviewsQueryOptions,
+  } from '../../routes/reviews/reviews-data.ts';
   import type { LiveSourceStatus } from '../../lib/live-source/index.ts';
   import { VIEW_COPY } from '../copy.ts';
   import type { ViewName } from '../views.ts';
@@ -79,12 +89,12 @@
 
   const STALE_HEARTBEAT_MS = 30_000;
 
-  const reviewsQuery = createQuery(
-    () => ({
-      queryKey: queryKeys.reviews.list({}),
-      queryFn: () => client.listReviews({}),
-      staleTime: 15_000,
-    }),
+  // What is waiting on the caller: the Bureau's reviews, and the engine's when the principal may
+  // read them. They are the entries `/reviews` reads, so the count and the list change together.
+  const principalStore = getPrincipalStore();
+  const bureauReviews = bureauReviewsQuery();
+  const engineReviews = createQuery(
+    () => weftReviewsQueryOptions(client, 'pending', principalStore.hasScope('reviews:read')),
     undefined,
   );
 
@@ -97,7 +107,27 @@
     undefined,
   );
 
-  const reviewsPendingCount = $derived(reviewsQuery.data?.length);
+  // One number from whichever sources answered; none while neither has.
+  // The engine's reviews are counted as the page files them: one past its deadline is under Timed
+  // out, not pending, so the badge and the page's count agree. The deadline is checked as often as
+  // the list is read.
+  let reviewsNow = $state(Date.now());
+  $effect(() => {
+    const timer = setInterval(() => {
+      reviewsNow = Date.now();
+    }, REVIEW_POLL_MILLISECONDS);
+    return () => clearInterval(timer);
+  });
+  const enginePending = $derived(
+    partitionPendingReviews(pendingEntriesOnly(engineReviews.data ?? []), reviewsNow).pending
+      .length,
+  );
+  const reviewsPendingCount = $derived(
+    bureauReviews.data === undefined && engineReviews.data === undefined
+      ? undefined
+      : (bureauReviews.data?.length ?? 0) +
+          (principalStore.hasScope('reviews:read') ? enginePending : 0),
+  );
   const workersUnhealthyCount = $derived(
     workersQuery.data?.items.filter(
       (worker) => worker.health === 'drained' || worker.heartbeatAgeMs > STALE_HEARTBEAT_MS,
@@ -150,8 +180,8 @@
           badgeVariant: 'warning',
         },
         {
-          view: 'inbox',
-          path: '/inbox',
+          view: 'reviews',
+          path: '/reviews',
           icon: Inbox,
           badge: reviewsPendingCount,
           badgeVariant: 'warning',
