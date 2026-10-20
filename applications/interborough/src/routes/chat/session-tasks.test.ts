@@ -57,6 +57,28 @@ describe('the tasks of a chat session', () => {
     await waitFor(() => expect(view.container.querySelectorAll('li').length).toBe(2));
   });
 
+  test('page past fifty with Load more, as the task list does', async () => {
+    const many = Array.from({ length: 51 }, (_, index) =>
+      taskFixture({ id: `run-${String(index).padStart(2, '0')}`, contextId: 'session-1' }),
+    );
+    const { container, getByRole, queryByRole } = mount('session-1', many);
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(50));
+    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
+      contextId: 'session-1',
+      limit: 50,
+      offset: 0,
+    });
+
+    await fireEvent.click(getByRole('button', { name: 'Load more' }));
+    await waitFor(() => expect(container.querySelectorAll('li').length).toBe(51));
+    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
+      contextId: 'session-1',
+      limit: 50,
+      offset: 50,
+    });
+    expect(queryByRole('button', { name: 'Load more' })).toBeNull();
+  });
+
   test('are the Bureau’s tasks of that session, each linking to its page', async () => {
     const { container } = mount('session-1', [
       taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' }),
@@ -64,7 +86,11 @@ describe('the tasks of a chat session', () => {
       taskFixture({ id: 'run-3', contextId: 'session-other' }),
     ]);
     await waitFor(() => expect(container.querySelectorAll('li').length).toBe(2));
-    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({ contextId: 'session-1' });
+    expect(stub?.callsTo('bureau.tasks.list').at(-1)?.params).toEqual({
+      contextId: 'session-1',
+      limit: 50,
+      offset: 0,
+    });
     const links = [...container.querySelectorAll<HTMLAnchorElement>('li a')];
     expect(links.map((link) => link.getAttribute('href'))).toEqual([
       '/tasks/run-1',

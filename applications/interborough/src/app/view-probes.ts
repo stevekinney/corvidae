@@ -8,6 +8,7 @@ import { listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getTask, listTasks } from '../lib/bureau-tasks.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
+import { classifyFault } from '../lib/faults.ts';
 import { queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
@@ -202,10 +203,16 @@ export function probeFor(
         return { empty: page.tasks.length === 0 };
       };
     case 'reviews':
-      // The Bureau's list is what the view can be refused. The page reads the engine's reviews
-      // itself, when the principal may, so a view with reviews of either kind is never empty here.
+      // The Bureau's list is what the view can be refused, and nothing else it says is the view's
+      // to report: the page reads the engine's reviews itself, when the principal may, and shows the
+      // Bureau's own failure in a banner beside them. So the probe lets a refusal through and swallows
+      // any other failure, and a view with reviews of either kind is never empty here.
       return async () => {
-        await listBureauReviews();
+        try {
+          await listBureauReviews();
+        } catch (error) {
+          if (classifyFault(error)?.kind === 'unauthorized') throw error;
+        }
         return { empty: false };
       };
     case 'workers':

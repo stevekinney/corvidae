@@ -212,6 +212,9 @@ describe('every view, in every state', () => {
     });
 
     test(`${view} is failing when its probe fails`, async () => {
+      // The reviews probe lets every failure but a refusal through: the page shows the Bureau's
+      // failure in a banner beside the engine's reviews (see "the Reviews view").
+      if (view === 'reviews') return;
       stub(view, 'error');
       const { container, findByRole, getByRole } = mount(view);
       expect(await findByRole('heading', { level: 1, name: copy.error.title })).not.toBeNull();
@@ -773,6 +776,32 @@ describe('the Reviews view', () => {
     expect(frame(container).dataset['state']).toBe('ready');
     expect(methods).toEqual(['bureau.reviews.list']);
     expect(paths).toEqual(['/bureau/jsonrpc']);
+  });
+
+  test('is ready when the Bureau fails with a 5xx, because the page shows what its other source can', async () => {
+    restore = installFetchImplementation(async () =>
+      Response.json({
+        jsonrpc: '2.0',
+        id: 1,
+        error: {
+          code: -32000,
+          message: 'The Bureau broke.',
+          data: { weftCode: 'EngineFailure', httpStatus: 500 },
+        },
+      }),
+    );
+    const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('is ready when the Bureau cannot be reached at all', async () => {
+    restore = installFetchImplementation(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const { container, findByTestId } = mount('reviews', { pattern: '/reviews' });
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
   });
 
   test('has no empty state of its own, so a page with nothing waiting says so itself', () => {

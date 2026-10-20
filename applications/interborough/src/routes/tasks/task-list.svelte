@@ -25,6 +25,7 @@
   import { formatRelativeTime, truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { REVIEW_POLL_MILLISECONDS } from '../reviews/reviews-data.ts';
   import TaskSession from './task-session.svelte';
   import { hasTaskFilter, parseTaskFilter, serializeTaskFilter } from './task-filter.ts';
   import { TASK_STATE_ORDER, taskStatePresentation } from './task-presentation.ts';
@@ -40,6 +41,9 @@
         listTasks({ ...filter, limit: PAGE_SIZE, offset: pageParam }, { signal }),
       initialPageParam: 0,
       getNextPageParam: (last) => last.nextOffset ?? undefined,
+      // The list is kept current while it is open, as `/reviews` is. A background refetch of an
+      // infinite query reads every loaded page again, so a person who paged keeps their place.
+      refetchInterval: REVIEW_POLL_MILLISECONDS,
       retry: false,
     }),
     undefined,
