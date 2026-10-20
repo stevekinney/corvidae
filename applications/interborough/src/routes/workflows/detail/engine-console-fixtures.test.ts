@@ -14,9 +14,12 @@ import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
   UPDATE_DESK_RUN_ID,
-} from './engine-console-ids.ts';
-import { ATTRIBUTE_SHOWCASE_ATTRIBUTES, seedEngineConsole } from './engine-console.ts';
-import { workflows } from './workflows.ts';
+} from '../../../../fixtures/engine-console-ids.ts';
+import {
+  ATTRIBUTE_SHOWCASE_ATTRIBUTES,
+  seedEngineConsole,
+} from '../../../../fixtures/engine-console.ts';
+import { workflows } from '../../../../fixtures/workflows.ts';
 
 let engines: AsyncDisposable[] = [];
 
@@ -75,6 +78,26 @@ describe('seedEngineConsole', () => {
       { sequence: 1, value: { stage: 'running' } },
       { sequence: 2, value: { stage: 'verifying' } },
     ]);
+  });
+
+  it('lets each run end on its own signal, so none stays parked for good', async () => {
+    const engine = await seededEngine();
+
+    for (const [type, signal] of [
+      ['attribute-showcase', 'finish'],
+      ['chunk-streamer', 'finish'],
+      ['update-desk', 'close'],
+    ] as const) {
+      const run = await runOfType(engine, type);
+      await engine.signal(run.id, signal);
+      const deadline = Date.now() + 2_000;
+      let status = (await engine.get(run.id))?.status;
+      while (status !== 'completed' && Date.now() < deadline) {
+        await Bun.sleep(5);
+        status = (await engine.get(run.id))?.status;
+      }
+      expect(status).toBe('completed');
+    }
   });
 
   it('starts a run whose history holds one completed and one failed update', async () => {
