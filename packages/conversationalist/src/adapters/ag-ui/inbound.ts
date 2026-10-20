@@ -62,8 +62,12 @@ function toAssistantInputs(
 
   toolCalls.forEach((toolCall, index) => {
     const parsed = parseJSONValue(toolCall.function.arguments);
+    // With no content row, the first call's row takes the message's id, and with it the message's
+    // own metadata, which would otherwise have no row to stand on (a step that returns assets and
+    // only calls tools). The call's own metadata wins on a clash.
+    const takesMessage = index === 0 && !hasContentRow;
     inputs.push({
-      id: index === 0 && !hasContentRow ? message.id : callRowId(message.id, toolCall.id),
+      id: takesMessage ? message.id : callRowId(message.id, toolCall.id),
       role: 'tool-call',
       content: '',
       toolCall: {
@@ -72,7 +76,11 @@ function toAssistantInputs(
         // `null` is valid JSON; only text that does not parse stays as written.
         arguments: parsed === undefined ? toolCall.function.arguments : parsed,
       },
-      ...toMetadata(toolCall.metadata),
+      ...toMetadata(
+        takesMessage
+          ? { ...withoutTextParts(message.metadata), ...toolCall.metadata }
+          : toolCall.metadata,
+      ),
     });
   });
 

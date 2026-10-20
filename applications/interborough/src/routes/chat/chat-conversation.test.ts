@@ -412,3 +412,695 @@ describe('what went wrong', () => {
     expect(await findByText('The thread is busy.')).not.toBeNull();
   });
 });
+
+describe('attachments', () => {
+  const MIB = 1024 * 1024;
+  const MODEL_MEDIA = {
+    modalities: {
+      text: { input: true, output: true },
+      image: { input: true, output: false },
+      document: { input: true, output: false },
+    },
+    mimeFamilies: ['text', 'image', 'document'],
+    mediaLimits: [{ modality: 'image', maxBytes: 10 * MIB }],
+  };
+  const SEER = { ...AGENT, name: 'seer', displayName: 'Seer', media: MODEL_MEDIA };
+
+  const jsonRpcFault = (httpStatus: number, weftCode: string, data: object = {}) =>
+    Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      error: { code: -32000, message: 'No.', data: { weftCode, httpStatus, ...data } },
+    });
+  const session = {
+    uploadId: 'upload-1',
+    declaredMediaType: null,
+    declaredByteLength: 4,
+    receivedBytes: 0,
+    state: 'open',
+    createdAt: '2026-10-19T00:00:00.000Z',
+    expiresAt: '2026-10-19T01:00:00.000Z',
+  };
+
+  type Served = {
+    runs: Array<{ messages: Array<{ content: unknown }> }>;
+    methods: string[];
+    uploadFault: { current: ((method: string) => Response | undefined) | undefined };
+  };
+
+  /** A session of `seer`, over a Bureau whose run answers with `reply`. */
+  function served(
+    agents: unknown[],
+    reply: () => Response = () =>
+      sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: 'run-1',
+          outcome: { type: 'success' },
+        },
+      ]),
+    history: unknown[] = [],
+  ): Served {
+    const state: Served = { runs: [], methods: [], uploadFault: { current: undefined } };
+    const answered = bureau(
+      {
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'seer' }),
+        'bureau.agents.list': () => ({ agents }),
+        'bureau.assets.uploads.create': () => session,
+        'bureau.assets.uploads.append': () => session,
+        'bureau.assets.uploads.complete': () => ({
+          assetId: 'asset-1',
+          state: 'available',
+          mediaType: 'image/png',
+        }),
+      },
+      (url, init) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({ threadId: 'session-1', messages: history });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (url.includes('/agents/')) {
+          state.runs.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+          return reply();
+        }
+        const method = (
+          JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as { method?: string }
+        ).method;
+        if (method?.startsWith('bureau.assets.')) {
+          state.methods.push(method);
+          return state.uploadFault.current?.(method);
+        }
+        return undefined;
+      },
+    );
+    restore = answered.restore;
+    return state;
+  }
+
+  const open = () => {
+    landAt('/chat/session-1');
+    return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
+  };
+
+  const picker = (container: HTMLElement) =>
+    container.querySelector<HTMLInputElement>('input[type="file"]');
+
+  async function attach(container: HTMLElement, ...files: File[]): Promise<void> {
+    const input = await waitFor(() => {
+      const found = picker(container);
+      if (found === null) throw new Error('The file picker did not render.');
+      return found;
+    });
+    await fireEvent.change(input, { target: { files } });
+  }
+
+  const states = (container: HTMLElement) =>
+    [...container.querySelectorAll('.chat-attachment-preview')].map((node) =>
+      node.getAttribute('data-state'),
+    );
+  const png = (size = 4) => new File([new Uint8Array(size)], 'photo.png', { type: 'image/png' });
+
+  test('turns the composer’s file picker on for an agent whose model takes media, accepting what it takes', async () => {
+    const state = served([SEER]);
+    const { container } = open();
+
+    await waitFor(() => expect(picker(container)).not.toBeNull());
+
+    expect(picker(container)?.getAttribute('accept')).toBe('text/*,image/*,application/pdf');
+    expect(state.runs).toEqual([]);
+  });
+
+  test('offers no file picker for an agent that names no model, or while the agents are not known', async () => {
+    served([{ ...SEER, media: null }]);
+    const { container, findByText } = open();
+    await findByText('Plan the week');
+
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    expect(picker(container)).toBeNull();
+  });
+
+  test('uploads an attached file through the three upload operations and shows it ready', async () => {
+    const state = served([SEER]);
+    const { container } = open();
+
+    await attach(container, png());
+
+    await waitFor(() => expect(states(container)).toEqual(['ready']));
+    expect(state.methods).toEqual([
+      'bureau.assets.uploads.create',
+      'bureau.assets.uploads.append',
+      'bureau.assets.uploads.complete',
+    ]);
+  });
+
+  test('sends the message with the uploaded asset as a file part, and clears the composer', async () => {
+    const state = served([SEER]);
+    const { container } = open();
+    await attach(container, png());
+    await waitFor(() => expect(states(container)).toEqual(['ready']));
+
+    await sendMessage(container, 'What is this?');
+
+    await waitFor(() => expect(state.runs).toHaveLength(1));
+    expect(state.runs[0]?.messages[0]?.content).toEqual([
+      { type: 'text', text: 'What is this?' },
+      {
+        type: 'image',
+        source: { type: 'file', provider: 'bureau', value: 'asset-1', mimeType: 'image/png' },
+      },
+    ]);
+    await waitFor(() => expect(states(container)).toEqual([]));
+  });
+
+  test('refuses a file over the limit for its type without uploading it, in the page’s words', async () => {
+    const state = served([SEER]);
+    const { container, findByText } = open();
+    const big = png();
+    Object.defineProperty(big, 'size', { value: 10 * MIB + 1 });
+
+    await attach(container, big);
+
+    await waitFor(() => expect(states(container)).toEqual(['error']));
+    expect(await findByText(/larger than the 10 MB this agent accepts/)).not.toBeNull();
+    expect(state.methods).toEqual([]);
+  });
+
+  test('refuses a file larger than any limit of the model, and one of a type it does not take, without uploading', async () => {
+    const state = served([
+      {
+        ...SEER,
+        media: {
+          ...MODEL_MEDIA,
+          mimeFamilies: ['image'],
+          mediaLimits: [{ modality: 'image', maxBytes: 3 * MIB }],
+        },
+      },
+    ]);
+    const { container, findByText } = open();
+    const big = png();
+    Object.defineProperty(big, 'size', { value: 4 * MIB });
+
+    await attach(container, big, new File(['zip'], 'a.zip', { type: 'application/zip' }));
+
+    await waitFor(() => expect(states(container)).toEqual(['error', 'error']));
+    expect(await findByText(/larger than the 3\.0 MB this agent accepts/)).not.toBeNull();
+    expect(await findByText(/does not accept that type of file/)).not.toBeNull();
+    expect(state.methods).toEqual([]);
+  });
+
+  test.each([
+    ['bureau.assets.uploads.append', () => jsonRpcFault(404, 'NotFound'), /upload expired/],
+    [
+      'bureau.assets.uploads.complete',
+      () => jsonRpcFault(422, 'Unprocessable', { reason: 'safety-gate-flagged' }),
+      /would not accept this file/,
+    ],
+    [
+      'bureau.assets.uploads.complete',
+      () => jsonRpcFault(422, 'Unprocessable', { reason: 'upload-incomplete' }),
+      /could not be uploaded/,
+    ],
+    [
+      'bureau.assets.uploads.append',
+      () => new Response('Too large', { status: 413 }),
+      /could not be uploaded/,
+    ],
+  ] as const)(
+    'shows an upload fault from %s on the attachment as an error',
+    async (failing, answer, words) => {
+      const state = served([SEER]);
+      state.uploadFault.current = (method) => (method === failing ? answer() : undefined);
+      const { container, findByText } = open();
+
+      await attach(container, png());
+
+      await waitFor(() => expect(states(container)).toEqual(['error']));
+      expect(await findByText(words)).not.toBeNull();
+    },
+  );
+
+  test('refuses, without sending, a file already attached when the agent is switched to one that takes none', async () => {
+    const plain = { ...AGENT, name: 'plain', displayName: 'Plain', media: null };
+    const state = served([SEER, plain]);
+    landAt('/chat/new?agent=seer');
+    const { container, findByRole, findByText } = mount({
+      sessionId: 'thread-1',
+      title: null,
+      agentName: 'seer',
+      isNew: true,
+    });
+    await attach(container, png());
+    await waitFor(() => expect(states(container)).toEqual(['ready']));
+
+    const chooser = await findByRole('combobox', { name: 'Agent' });
+    await fireEvent.input(chooser, { target: { value: '' } });
+    await fireEvent.focus(chooser);
+    const listbox = await findByRole('listbox');
+    const option = [...listbox.querySelectorAll('[role="option"]')].find((entry) =>
+      (entry.textContent ?? '').includes('Plain'),
+    );
+    if (option === undefined) throw new Error('Expected the plain agent to be offered.');
+    await fireEvent.mouseDown(option);
+
+    await waitFor(() => expect(states(container)).toEqual(['error']));
+    expect(await findByText(/does not accept that type of file/)).not.toBeNull();
+    await sendMessage(container, 'Hello');
+    await waitFor(() => expect(state.runs).toHaveLength(1));
+    expect(state.runs[0]?.messages[0]?.content).toBe('Hello');
+  });
+
+  test('offers no file picker while the page is still joining the session’s run', async () => {
+    // The attach never answers, so the page is still joining when the picker would otherwise show.
+    restore = bureau(
+      {
+        'bureau.contexts.get': () => ({ ...CONTEXT, agentName: 'seer' }),
+        'bureau.agents.list': () => ({ agents: [SEER] }),
+      },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/') && url.endsWith('/run')) {
+          return new Response(new ReadableStream({ start() {} }), {
+            headers: { 'content-type': 'text/event-stream' },
+          });
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'seer',
+    });
+    await findByText('Plan the week');
+    // The agents are known by now, which is what would turn the picker on.
+    await waitFor(() => expect(container.querySelector('textarea')).not.toBeNull());
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(picker(container)).toBeNull();
+  });
+
+  test('turns the picker off while a run is going', async () => {
+    served(
+      [SEER],
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  `data: ${JSON.stringify({ type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' })}\n\n`,
+                ),
+              );
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    );
+    const { container } = open();
+    await waitFor(() => expect(picker(container)).not.toBeNull());
+
+    await sendMessage(container, 'Hello');
+
+    await waitFor(() => expect(picker(container)).toBeNull());
+  });
+
+  test('turns the picker off while the run waits on a person’s answer', async () => {
+    served([SEER], () =>
+      sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: 'run-1',
+          outcome: {
+            type: 'interrupt',
+            interrupts: [
+              { id: 'human-wait:native-1:q:0', reason: 'human-wait', message: 'Which one?' },
+            ],
+          },
+        },
+      ]),
+    );
+    const { container, findByText } = open();
+    await waitFor(() => expect(picker(container)).not.toBeNull());
+
+    await sendMessage(container, 'Ship it');
+
+    expect(await findByText('Which one?')).not.toBeNull();
+    expect(picker(container)).toBeNull();
+  });
+
+  test.each(['UNSUPPORTED_MEDIA_TYPE', 'MEDIA_NOT_ADMITTED', 'INVALID_INPUT'])(
+    'tells a run refused with %s over an attachment in the page’s words, never the raw message',
+    async (code) => {
+      served([SEER], () =>
+        sse([{ type: 'RUN_ERROR', message: 'Asset "asset-1" is deleted', code }]),
+      );
+      const { container, findByText, queryByText } = open();
+      await attach(container, png());
+      await waitFor(() => expect(states(container)).toEqual(['ready']));
+
+      await sendMessage(container, 'Look');
+
+      expect(await findByText(/model could not take an attached file/)).not.toBeNull();
+      expect(queryByText(/asset-1/)).toBeNull();
+    },
+  );
+
+  test('keeps the raw message for an INVALID_INPUT on a turn with no attachment', async () => {
+    served([SEER], () =>
+      sse([{ type: 'RUN_ERROR', message: 'The input is not valid.', code: 'INVALID_INPUT' }]),
+    );
+    const { container, findByText } = open();
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Hello');
+
+    expect(await findByText('The input is not valid.')).not.toBeNull();
+  });
+});
+
+describe('the files on a row', () => {
+  const SEER = { ...AGENT, name: 'seer', displayName: 'Seer', media: null };
+  const reload = (history: unknown[]) => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages')) {
+          return Response.json({ threadId: 'session-1', messages: history });
+        }
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        return undefined;
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
+  };
+
+  test('shows an image a run announces on the assistant row it ends with', async () => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Here it is.' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'reply', index: 1, assetId: 'returned-1', mediaType: 'image/png' },
+          },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: 'run-1',
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'seer',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    await findByText('Here it is.');
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/returned-1/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('shows the same assistant row after a reload, from the snapshot', async () => {
+    const { container, findByText } = reload([
+      { id: 'u1', role: 'user', content: 'Draw it' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'Here it is.',
+        metadata: {
+          'bureau:assetParts': [{ index: 1, assetId: 'returned-1', mediaType: 'image/png' }],
+        },
+      },
+    ]);
+
+    await findByText('Here it is.');
+
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/returned-1/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('still shows a row that has no text of its own and no file, such as a tool call', async () => {
+    const { findByText } = reload([
+      { id: 'u1', role: 'user', content: 'Look it up' },
+      {
+        id: 'a1',
+        role: 'assistant',
+        toolCalls: [
+          {
+            id: 'call-1',
+            type: 'function',
+            function: { name: 'lookup-order', arguments: '{"id":"order-1"}' },
+          },
+        ],
+      },
+      { id: 't1', role: 'tool', toolCallId: 'call-1', content: 'found' },
+      { id: 'a2', role: 'assistant', content: 'Done.' },
+    ]);
+
+    expect(await findByText('lookup-order')).not.toBeNull();
+  });
+
+  test('shows only the files of a message that is only files, with no empty bubble', async () => {
+    const { container, findByText } = reload([
+      {
+        id: 'u1',
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'file', provider: 'bureau', value: 'mine-1', mimeType: 'image/png' },
+          },
+        ],
+      },
+      { id: 'a1', role: 'assistant', content: 'Seen.' },
+    ]);
+
+    await findByText('Seen.');
+
+    await waitFor(() =>
+      expect(container.querySelector('img[src="/bureau/assets/mine-1/content"]')).not.toBeNull(),
+    );
+    expect(container.querySelectorAll('.chat-message-wrapper[data-role="user"]')).toHaveLength(0);
+  });
+
+  const TOOL_STEP_ASSET = { index: 0, assetId: 'step-image', mediaType: 'image/png' };
+
+  test('shows an asset a step with tool calls and no text returned, after a reload, and keeps the tool call', async () => {
+    const { container, findByText } = reload([
+      { id: 'u1', role: 'user', content: 'Draw it' },
+      {
+        id: 'step-0',
+        role: 'assistant',
+        toolCalls: [
+          { id: 'call-1', type: 'function', function: { name: 'lookup-order', arguments: '{}' } },
+        ],
+        metadata: { 'bureau:assetParts': [TOOL_STEP_ASSET] },
+      },
+      { id: 't1', role: 'tool', toolCallId: 'call-1', content: 'found' },
+      { id: 'a2', role: 'assistant', content: 'Done.' },
+    ]);
+
+    expect(await findByText('lookup-order')).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/step-image/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('shows an asset a step with tool calls and no text returned, live, and keeps the tool call', async () => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          {
+            type: 'TOOL_CALL_START',
+            toolCallId: 'call-1',
+            toolCallName: 'lookup-order',
+            parentMessageId: 'step-0',
+          },
+          { type: 'TOOL_CALL_ARGS', toolCallId: 'call-1', delta: '{}' },
+          { type: 'TOOL_CALL_END', toolCallId: 'call-1' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'step-0', ...TOOL_STEP_ASSET },
+          },
+          {
+            type: 'TOOL_CALL_RESULT',
+            messageId: 'r1',
+            toolCallId: 'call-1',
+            content: 'found',
+            role: 'tool',
+          },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Done.' },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+          {
+            type: 'RUN_FINISHED',
+            threadId: 'session-1',
+            runId: 'run-1',
+            outcome: { type: 'success' },
+          },
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    const { container, findByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'seer',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    expect(await findByText('lookup-order')).not.toBeNull();
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/step-image/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  /** A session of `seer` whose run announces an image in a reply, then ends as `ending`. */
+  const endingRun = (ending: unknown) => {
+    restore = bureau(
+      { 'bureau.contexts.get': () => CONTEXT, 'bureau.agents.list': () => ({ agents: [SEER] }) },
+      (url) => {
+        if (url.endsWith('/messages'))
+          return Response.json({ threadId: 'session-1', messages: [] });
+        if (url.includes('/threads/')) {
+          return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+        }
+        if (!url.includes('/agents/')) return undefined;
+        return sse([
+          { type: 'RUN_STARTED', threadId: 'session-1', runId: 'run-1' },
+          { type: 'TEXT_MESSAGE_START', messageId: 'reply', role: 'assistant' },
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'reply', delta: 'Here it is.' },
+          {
+            type: 'CUSTOM',
+            name: 'bureau.asset-part',
+            value: { messageId: 'reply', index: 1, assetId: 'returned-1', mediaType: 'image/png' },
+          },
+          { type: 'TEXT_MESSAGE_END', messageId: 'reply' },
+          ending,
+        ]);
+      },
+    ).restore;
+    landAt('/chat/session-1');
+    return mount({ sessionId: 'session-1', title: 'Plan the week', agentName: 'seer' });
+  };
+
+  test('shows the assets a run announced when it is stopped, on the row the stop leaves', async () => {
+    const { container, findByText } = endingRun({
+      type: 'RUN_FINISHED',
+      threadId: 'session-1',
+      runId: 'run-1',
+      outcome: { type: 'cancelled' },
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    await findByText('Here it is.');
+    await waitFor(() =>
+      expect(
+        container.querySelector('img[src="/bureau/assets/returned-1/content"]'),
+      ).not.toBeNull(),
+    );
+  });
+
+  test('shows no asset for a run that ends in an error, whose rows the chat rolls back, and says it failed', async () => {
+    const { container, findByText, queryByText } = endingRun({
+      type: 'RUN_ERROR',
+      message: 'The model failed.',
+      code: 'UNKNOWN',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Draw it');
+
+    expect(await findByText('The model failed.')).not.toBeNull();
+    expect(queryByText('Here it is.')).toBeNull();
+    expect(container.querySelector('img[src="/bureau/assets/returned-1/content"]')).toBeNull();
+  });
+
+  test('shows the person’s own attachments on their row after a reload, by kind', async () => {
+    const { container, findByText } = reload([
+      {
+        id: 'u1',
+        role: 'user',
+        content: [
+          { type: 'text', text: 'Look at these' },
+          {
+            type: 'image',
+            source: { type: 'file', provider: 'bureau', value: 'mine-1', mimeType: 'image/png' },
+          },
+          {
+            type: 'document',
+            source: {
+              type: 'file',
+              provider: 'bureau',
+              value: 'mine-2',
+              mimeType: 'application/pdf',
+            },
+          },
+        ],
+      },
+      { id: 'a1', role: 'assistant', content: 'Seen.' },
+    ]);
+
+    await findByText('Seen.');
+
+    await waitFor(() => {
+      expect(container.querySelector('img[src="/bureau/assets/mine-1/content"]')).not.toBeNull();
+      expect(
+        container.querySelector('a[href="/bureau/assets/mine-2/content"][download]'),
+      ).not.toBeNull();
+    });
+    expect(container.textContent).toContain('Look at these');
+  });
+});

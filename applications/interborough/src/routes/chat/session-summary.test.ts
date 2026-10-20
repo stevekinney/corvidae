@@ -22,6 +22,7 @@ const agent: AgentSummary = {
   definitionRevision: 1,
   kind: 'code',
   publishState: 'published',
+  media: null,
 };
 
 describe('a session as a row of the list', () => {
