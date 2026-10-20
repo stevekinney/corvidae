@@ -105,9 +105,6 @@
           error={invalid ?? ''}
         />
       {/if}
-      {#if invalid !== null && entry.kind !== 'number' && entry.kind !== 'date' && entry.kind !== 'string'}
-        <p class="weft-attribute-row__invalid">{invalid}</p>
-      {/if}
       <div class="weft-attribute-row__actions">
         <Button
           variant="primary"
@@ -182,11 +179,5 @@
   .weft-attribute-row__actions {
     display: flex;
     gap: 8px;
-  }
-
-  .weft-attribute-row__invalid {
-    margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-status-danger-text);
   }
 </style>
