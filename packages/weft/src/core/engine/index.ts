@@ -198,6 +198,7 @@ import {
   EngineDisposedError,
   StartOrSignalConflictError,
 } from './errors.ts';
+import { isLaunchedUnderClaim } from './execution-attempts.ts';
 import { assertLeaseHeldForEngineWork, commitFencedEngineWrite } from './fenced-write.ts';
 import { recordFinalizerState } from './finalizer-state.ts';
 import { getFinalizerStatus as getFinalizerStatusFromInternals } from './finalizer-status.ts';
@@ -1242,6 +1243,16 @@ export class Engine<
         // driving the workflow it sits idle while this engine's renewal keeps
         // the claim alive, shielding it from any engine that would resume it.
         onWorkflowClaimReclaimed: async (workflowId: string) => {
+          // A drive that began under the claim just taken is this reclaim's to leave alone: the
+          // eviction and replay below restart a run driven under an EARLIER claim (this engine
+          // lost it, then took it back), and a launch under this very claim began after that.
+          // `recoverAll()` landing between the takeover and this call, or between a reclaim
+          // listing and its attempt, is one. Evicting or replaying it would drive the generation
+          // a second time (COR-1618).
+          const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
+          if (claimEpoch !== null && isLaunchedUnderClaim(internals, workflowId, claimEpoch)) {
+            return;
+          }
           // Same-engine reclaim (this engine held the claim, was deposed, and
           // later reclaimed it): deposition drops only the registry's claim
           // entry, so this engine's OLD in-memory context/generator/abort
@@ -1273,6 +1284,7 @@ export class Engine<
           // deterministic token and wait forever for a delivery the completion
           // caller was already told had succeeded.
           await recoverPendingAsyncActivities(internals, workflowId);
+          await internals.reclaimReplayGateForTesting?.(workflowId);
           // Disposal can land while the reload above was in flight — recheck
           // rather than replay against a torn-down host. `markDisposing()` on
           // the reclaim target (see `ownership-bootstrap.ts`) closes the
@@ -1284,7 +1296,12 @@ export class Engine<
             workflowId,
             this.#createLifecycleCallbacks(),
             internals.onRecoveredWorkflowHook,
-            { forceReplayFromStorage: true },
+            {
+              forceReplayFromStorage: true,
+              // The gate above and the reload before it are awaits, so a drive may have begun
+              // under this claim since the check on entry; the replay re-checks as it registers.
+              ...(claimEpoch !== null && { skipIfLaunchedUnderClaimEpoch: claimEpoch }),
+            },
           );
         },
         // Owner-side signal polling (ADR 0002): without this, a signal

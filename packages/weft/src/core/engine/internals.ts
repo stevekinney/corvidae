@@ -151,6 +151,12 @@ export interface EngineInternals {
   /** Test-only event waiters notified when an inline workflow parks. */
   parkedWorkflowReadyWaitersForTesting?: Map<string, Set<() => void>>;
   /**
+   * Test-only gate `onWorkflowClaimReclaimed` awaits after reloading the workflow's pending async
+   * activities and before it replays the workflow from storage, so a test can hold a reclaim in
+   * that window and run `recoverAll()` against it. Unset in production, where nothing waits.
+   */
+  reclaimReplayGateForTesting?: (workflowId: string) => Promise<void>;
+  /**
    * Fired sleep timers awaiting proof that the awakened inline workflow reached
    * its next durable checkpoint or terminal state. External schedulers must not
    * delete a timer before these waiters settle, or a Service Worker eviction can

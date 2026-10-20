@@ -16,7 +16,11 @@
 
 import { KEYS } from '../../../storage/interface.ts';
 import type { WorkflowState } from '../../types.ts';
-import { abandonExecutionAttempt, isGenerationAbandoned } from '../execution-attempts.ts';
+import {
+  abandonExecutionAttempt,
+  isGenerationAbandoned,
+  isLaunchedUnderClaim,
+} from '../execution-attempts.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import type { ResumeAwaitingAdoption } from '../resume-awaiting-adoption.ts';
@@ -60,6 +64,13 @@ export type ResumeFromStorageOptions = {
    * eager-type recovery revision check, which belongs to the recovery entry points.
    */
   skipEagerRevisionCheck?: boolean;
+  /**
+   * Set only by a claim reclaim's forced replay, to the epoch of the claim it took. When this
+   * engine already launched the generation under that claim, the replay returns the running
+   * handle instead of driving the generation a second time. The check shares its synchronous turn
+   * with the in-flight registration below, so no launch can land between them.
+   */
+  skipIfLaunchedUnderClaimEpoch?: number;
 };
 
 /** Populate `tracker.epoch` from a fresh acquisition — split out to keep `resumeWorkflowFromStorage`'s complexity under this repository's ceiling. */
@@ -114,6 +125,13 @@ export async function resumeWorkflowFromStorage(
   options?: ResumeFromStorageOptions,
 ): Promise<WorkflowHandle> {
   const state = resumableState(workflowId, await internals.storage.get(KEYS.workflow(workflowId)));
+  const claimEpoch = options?.skipIfLaunchedUnderClaimEpoch;
+  if (
+    claimEpoch !== undefined &&
+    isLaunchedUnderClaim(internals, workflowId, claimEpoch, state.workflowExecutionToken)
+  ) {
+    return callbacks.getHandle(workflowId);
+  }
   const decision = joinOrRegisterResume(
     internals,
     workflowId,
@@ -230,6 +248,8 @@ export const RESUME_OPTION_JOIN_POLICY = {
   deferClaimReleaseOnRejection: 'carried over: the joined resume then defers its release too',
   freshClaimTracker: "carried over: filled with the joined resume's freshly acquired epoch",
   skipEagerRevisionCheck: 'required: a joiner that checks joins only a resume that checks',
+  skipIfLaunchedUnderClaimEpoch:
+    'decided before joining: a replay that finds the generation launched under its claim returns, and one that does not may join',
 } as const satisfies Record<keyof ResumeFromStorageOptions, string>;
 
 /** Hand the epoch of a claim this resume freshly acquired to the joiners' trackers. */

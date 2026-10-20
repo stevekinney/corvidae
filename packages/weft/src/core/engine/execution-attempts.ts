@@ -73,6 +73,11 @@ export type ExecutionAttempt = {
   readonly workflowExecutionToken: string | undefined;
   /** This engine lost the generation's checkpoint compare-and-swap race, so it is the winner's. */
   readonly abandoned: boolean;
+  /**
+   * The epoch of the workflow claim this engine held when it launched the attempt, or `null` when
+   * it held none (no per-workflow claims, or a launch that had not taken its claim yet).
+   */
+  readonly claimEpoch: number | null;
   /** What the engine knows of the run's durable identity; `undefined` until it is known. */
   readonly identity?: RunIdentity | undefined;
   /**
@@ -102,6 +107,7 @@ export type RunIdentity = {
 type ExecutionAttemptRecord = {
   readonly workflowExecutionToken: string | undefined;
   abandoned: boolean;
+  readonly claimEpoch: number | null;
   identity: RunIdentity | undefined;
   pendingIdentity: Promise<RunIdentity | undefined> | undefined;
 };
@@ -136,6 +142,7 @@ export function beginExecutionAttempt(
   attempts.set(workflowId, {
     workflowExecutionToken,
     abandoned: false,
+    claimEpoch: internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null,
     identity,
     pendingIdentity: undefined,
   });
@@ -199,6 +206,34 @@ export function currentExecutionAttempt(
   workflowId: string,
 ): ExecutionAttempt | undefined {
   return attemptsByEngine.get(internals)?.get(workflowId);
+}
+
+/**
+ * Whether this engine already launched the workflow under the claim it holds at `claimEpoch`, and
+ * has not lost the generation it launched since. `workflowExecutionToken` narrows the answer to
+ * one generation when the caller knows which it is resuming; omit it to ask about whatever
+ * generation the claim covers.
+ *
+ * A reclaim's replay asks this before it evicts or restarts the workflow. The replay exists to
+ * restart a run the engine drove under an *earlier* claim, one it lost and later took back, whose
+ * in-memory drive no longer has the claim behind it. A launch under this very claim is not that
+ * run: it started after the engine took the claim, so replaying it would drive the generation a
+ * second time.
+ */
+export function isLaunchedUnderClaim(
+  internals: EngineInternals,
+  workflowId: string,
+  claimEpoch: number,
+  workflowExecutionToken?: string,
+): boolean {
+  const attempt = attemptsByEngine.get(internals)?.get(workflowId);
+  return (
+    attempt !== undefined &&
+    !attempt.abandoned &&
+    attempt.claimEpoch === claimEpoch &&
+    (workflowExecutionToken === undefined ||
+      attempt.workflowExecutionToken === workflowExecutionToken)
+  );
 }
 
 /**

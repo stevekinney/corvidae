@@ -293,6 +293,13 @@ export type ResumeOptions = {
    */
   readonly deferClaimReleaseOnRejection?: boolean;
   readonly freshClaimTracker?: FreshResumeClaimTracker;
+  /**
+   * With `forceReplayFromStorage`: skip the replay when this engine already launched the
+   * generation under the claim at this epoch. A reclaim's forced replay exists to restart a run
+   * the engine drove under an earlier claim, and must not start a second drive of one that began
+   * under the claim it just took. See `ResumeFromStorageOptions.skipIfLaunchedUnderClaimEpoch`.
+   */
+  readonly skipIfLaunchedUnderClaimEpoch?: number;
 };
 
 export async function resume(
@@ -327,6 +334,9 @@ export async function resume(
     }),
     ...(options?.freshClaimTracker !== undefined && {
       freshClaimTracker: options.freshClaimTracker,
+    }),
+    ...(options?.skipIfLaunchedUnderClaimEpoch !== undefined && {
+      skipIfLaunchedUnderClaimEpoch: options.skipIfLaunchedUnderClaimEpoch,
     }),
   });
 }
