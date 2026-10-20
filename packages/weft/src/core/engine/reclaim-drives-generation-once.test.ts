@@ -13,18 +13,14 @@ import { describe, expect, it } from 'bun:test';
 
 import type { Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
-import {
-  createDeferred,
-  waitForCondition,
-  yieldToEventLoop,
-} from '../../testing/fake-timers.test-support.ts';
+import { waitForCondition, yieldToEventLoop } from '../../testing/fake-timers.test-support.ts';
 import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { WORKFLOW_CLAIM_TAKEOVER_GRACE_MULTIPLIER } from './workflow-claim-transitions.ts';
 
 /** A promise a test settles, to hold something until it chooses. */
-type Hold = ReturnType<typeof createDeferred>;
+type Hold = PromiseWithResolvers<void>;
 
 const CLAIM_RENEW_INTERVAL_MS = 1_000;
 const CLAIM_TTL_MS = 3_000;
@@ -86,22 +82,11 @@ async function strandWorkflow(
   if (dispose) await previousOwner[Symbol.asyncDispose]();
 }
 
-type Recovering = {
-  engine: Engine<{ counted: ReturnType<typeof countingWorkflow> }, object>;
-  setNow: (value: number) => void;
-  /** Calls to `resolveWorkflowServices`, and the deferred that holds the first one. */
-  resolver: { calls: number; hold: Hold | null };
-};
-
-async function createRecoveringEngine(
-  storage: Storage,
-  startNow: number,
-  holdFirstResolve: boolean,
-): Promise<Recovering> {
-  let now = startNow;
-  const resolver: Recovering['resolver'] = {
+async function createRecoveringEngine(storage: Storage, now: number, holdFirstResolve: boolean) {
+  // Calls to `resolveWorkflowServices`, and the hold on the first one.
+  const resolver = {
     calls: 0,
-    hold: holdFirstResolve ? createDeferred() : null,
+    hold: holdFirstResolve ? Promise.withResolvers<void>() : null,
   };
   const engine = await Engine.create({
     storage,
@@ -119,7 +104,7 @@ async function createRecoveringEngine(
       return { status: 'available', services: { owner: 'recovered' } };
     },
   });
-  return { engine, setNow: (value) => void (now = value), resolver };
+  return { engine, resolver };
 }
 
 /** Let every other task queued on the event loop run, so a drive that is going to start has. */
@@ -165,7 +150,7 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
       const startNow = 5_000_000;
       await strandWorkflow(storage, () => startNow, 'raced-run', false);
       const probe = probeFor(storage);
-      if (interleaving.holdActivity) probe.hold = createDeferred();
+      if (interleaving.holdActivity) probe.hold = Promise.withResolvers<void>();
 
       const recovering = await createRecoveringEngine(
         storage,
@@ -175,8 +160,8 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
       await using engine = recovering.engine;
       const internals = getInternals(engine);
 
-      const reclaimGate = createDeferred();
-      const reclaimReachedGate = createDeferred();
+      const reclaimGate = Promise.withResolvers<void>();
+      const reclaimReachedGate = Promise.withResolvers<void>();
       internals.reclaimReplayGateForTesting = () => {
         reclaimReachedGate.resolve();
         return reclaimGate.promise;
@@ -223,7 +208,7 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
  */
 class ListingGatedStorage extends MemoryStorage {
   gate: Hold | null = null;
-  readonly reachedGate = createDeferred();
+  readonly reachedGate = Promise.withResolvers<void>();
 
   override async *scan(
     prefix: string,
@@ -259,7 +244,7 @@ describe('a held claim reaches attemptWorkflowClaimTakeover between listing and 
       const startNow = 6_000_000;
       await strandWorkflow(storage, () => startNow, 'sibling-run', true);
       const probe = probeFor(storage);
-      if (claimLandsAs === 'running-drive') probe.hold = createDeferred();
+      if (claimLandsAs === 'running-drive') probe.hold = Promise.withResolvers<void>();
 
       const recovering = await createRecoveringEngine(
         storage,
@@ -272,7 +257,7 @@ describe('a held claim reaches attemptWorkflowClaimTakeover between listing and 
       expect(registry.currentEpoch('sibling-run')).toBeNull();
 
       // The candidate is listed while this engine does not hold it.
-      storage.gate = createDeferred();
+      storage.gate = Promise.withResolvers<void>();
       const reclaimPass = internals.workflowClaimRenewalTask!.runOnce();
       await storage.reachedGate.promise;
       expect(registry.currentEpoch('sibling-run')).toBeNull();
