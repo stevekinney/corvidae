@@ -91,12 +91,12 @@ describe('seedEngineConsole', () => {
       const run = await runOfType(engine, type);
       await engine.signal(run.id, signal);
       const deadline = Date.now() + 2_000;
-      let status = (await engine.get(run.id))?.status;
-      while (status !== 'completed' && Date.now() < deadline) {
+      let state = await engine.get(run.id);
+      while (state?.status !== 'completed' && Date.now() < deadline) {
         await Bun.sleep(5);
-        status = (await engine.get(run.id))?.status;
+        state = await engine.get(run.id);
       }
-      expect(status).toBe('completed');
+      expect(state?.status).toBe('completed');
     }
   });
 
