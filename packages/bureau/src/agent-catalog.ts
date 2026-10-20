@@ -12,7 +12,12 @@
  * `revisions`, and the file write API. The `D`-typed accessors stay the code-defined map's.
  */
 
-import type { AgentGenerationProfile, AgentRun, RunnableAgent } from '@lostgradient/operative';
+import type {
+  AgentGenerationProfile,
+  AgentRun,
+  BackendDescriptor,
+  RunnableAgent,
+} from '@lostgradient/operative';
 import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
 
 import { AgentFileError } from './agent-file';
@@ -422,4 +427,62 @@ function buildCatalogGenerationProfile(
     descriptors,
     selector,
   });
+}
+
+/**
+ * What an agent's model takes in the way of media, as `bureau.agents.list` serves it (COR-1548).
+ * A client reads it to decide which files to offer, before any file is uploaded.
+ */
+export type AgentMediaCapabilities = {
+  /** For each modality, whether the model takes it as input and whether it puts it out. */
+  readonly modalities: Record<string, { input: boolean; output: boolean }>;
+  /** The MIME families the model takes (`image`, `audio`, `video`, `document`, `text`, ...). */
+  readonly mimeFamilies: string[];
+  /** The per-part byte limits the model states. A modality absent here states none. */
+  readonly mediaLimits: { modality: string; maxBytes: number }[];
+};
+
+/**
+ * The media capabilities the model descriptors behind an agent state, or `null` when there are
+ * none (an opaque generate the catalog cannot look inside, so it claims nothing). Several
+ * descriptors, as a routed agent has, collapse to what every one of them takes and the smallest
+ * limit any of them states, because a client cannot know which route a run will take and must not
+ * offer a file one of them would refuse. Only per-part byte limits are carried; an aggregate or
+ * duration limit has no use before the file exists.
+ */
+export function mediaCapabilitiesOf(
+  descriptors: readonly BackendDescriptor[],
+): AgentMediaCapabilities | null {
+  const [first, ...rest] = descriptors;
+  if (first === undefined) return null;
+  const modalities: Record<string, { input: boolean; output: boolean }> = {};
+  for (const modality of Object.keys(first.modalities)) {
+    const every = (pick: 'input' | 'output') =>
+      descriptors.every(
+        (descriptor) =>
+          (descriptor.modalities as Record<string, { input: boolean; output: boolean }>)[
+            modality
+          ]?.[pick] === true,
+      );
+    modalities[modality] = { input: every('input'), output: every('output') };
+  }
+  const mimeFamilies = first.mimeFamilies.filter((family) =>
+    rest.every((descriptor) => descriptor.mimeFamilies.includes(family)),
+  );
+  const smallest = new Map<string, number>();
+  for (const descriptor of descriptors) {
+    for (const limit of descriptor.mediaLimits) {
+      if (limit.scope !== 'per-part' || typeof limit.maxBytes !== 'number') continue;
+      const known = smallest.get(limit.modality);
+      smallest.set(
+        limit.modality,
+        known === undefined ? limit.maxBytes : Math.min(known, limit.maxBytes),
+      );
+    }
+  }
+  return {
+    modalities,
+    mimeFamilies,
+    mediaLimits: [...smallest].map(([modality, maxBytes]) => ({ modality, maxBytes })),
+  };
 }

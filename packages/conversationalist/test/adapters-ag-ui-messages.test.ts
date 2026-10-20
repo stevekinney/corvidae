@@ -790,3 +790,49 @@ describe('AG-UI adapter: citations', () => {
     ]);
   });
 });
+
+describe('an assistant message that carries metadata and tool calls but no text (COR-1548)', () => {
+  const message = (): AGUIMessage[] => [
+    {
+      id: 'step-0',
+      role: 'assistant',
+      toolCalls: [
+        { id: 'call-1', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+        { id: 'call-2', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+      ],
+      metadata: { 'bureau:assets': [{ assetId: 'asset-1' }] },
+    },
+  ];
+
+  it('keeps the message metadata on the first tool-call row, which takes the message id', () => {
+    const rows = getOrderedMessages(fromAGUIMessages(message()));
+
+    expect(rows[0]?.id).toBe('step-0');
+    expect(rows[0]?.metadata).toEqual({ 'bureau:assets': [{ assetId: 'asset-1' }] });
+  });
+
+  it('puts it on that one row only, and the row’s own call metadata wins on a clash', () => {
+    const rows = getOrderedMessages(fromAGUIMessages(message()));
+
+    expect(rows[1]?.metadata).toEqual({});
+  });
+
+  it('leaves an assistant message that has text exactly as it was: the metadata stays on the text row', () => {
+    const rows = getOrderedMessages(
+      fromAGUIMessages([
+        {
+          id: 'step-0',
+          role: 'assistant',
+          content: 'Here.',
+          toolCalls: [
+            { id: 'call-1', type: 'function', function: { name: 'lookup', arguments: '{}' } },
+          ],
+          metadata: { 'bureau:assets': [{ assetId: 'asset-1' }] },
+        },
+      ]),
+    );
+
+    expect(rows[0]?.metadata).toEqual({ 'bureau:assets': [{ assetId: 'asset-1' }] });
+    expect(rows[1]?.metadata).toEqual({});
+  });
+});

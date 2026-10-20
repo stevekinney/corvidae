@@ -146,6 +146,10 @@
     onScrollStateChange,
     onUnreadIndicatorChange,
     onExpandedChange,
+    uploadAttachment,
+    maxFileSize,
+    acceptedTypes,
+    formatAttachmentError,
     onAttachmentAdd,
     onAttachmentRemove,
     onAttachmentFailure,
@@ -1903,6 +1907,10 @@
           {composerAriaControls}
           {composerAriaActiveDescendant}
           {composerAriaAutocomplete}
+          {uploadAttachment}
+          {maxFileSize}
+          {acceptedTypes}
+          {formatAttachmentError}
           {onAttachmentAdd}
           {onAttachmentRemove}
           {onAttachmentFailure}

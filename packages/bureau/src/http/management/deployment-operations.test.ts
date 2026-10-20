@@ -191,6 +191,7 @@ describe('bureau.agents.list', () => {
               definitionRevision: expect.any(Number) as unknown,
               kind: 'code',
               publishState: 'published',
+              media: null,
             },
             {
               name: 'plain-agent',
@@ -199,6 +200,7 @@ describe('bureau.agents.list', () => {
               definitionRevision: expect.any(Number) as unknown,
               kind: 'code',
               publishState: 'published',
+              media: null,
             },
           ],
         });
