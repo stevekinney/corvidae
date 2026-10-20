@@ -175,10 +175,11 @@ export async function settleScenario(
   })();
   try {
     let outcome = await Promise.race([finished, hang]);
-    // The guard fired, so the scenario failed, even when it finished while the hang's description
-    // was still being read. The releases started when the guard fired; the report is bounded by
+    // Once the guard has fired, the outcome is the hang's, whatever the scenario did meanwhile: it
+    // may have finished while the description was read, or a release may have made the stalled
+    // operation reject. The hang always resolves, and its report is bounded by
     // `DESCRIBE_MILLISECONDS`.
-    if (hung && !outcome.failed) outcome = await hang;
+    if (hung) outcome = await hang;
     return outcome;
   } finally {
     cancel?.();

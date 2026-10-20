@@ -175,3 +175,23 @@ it('starts the releases when the guard fires, before the hang has been described
   expect(outcome.failed).toBe(true);
   expect(order).toEqual(['released', 'described']);
 });
+
+it('reports the hang, not the error a release causes, once the guard has fired', async () => {
+  const outcome = await settleScenario(async (scope) => {
+    let rejectStalled!: (error: Error) => void;
+    scope.onHang(() => rejectStalled(new Error('closed by the release')));
+    await scope.phase('stuck', async () => {
+      scope.observe(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve('described late'), 60)),
+      );
+      await new Promise<never>((_resolve, reject) => {
+        rejectStalled = reject;
+      });
+    });
+  }, 10);
+
+  expect(outcome.failed).toBe(true);
+  const message = (outcome.error as Error).message;
+  expect(message).toContain('hang guard');
+  expect(message).toMatch(/stalled in phase "stuck"/);
+});
