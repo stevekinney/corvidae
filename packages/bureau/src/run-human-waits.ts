@@ -32,6 +32,7 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import {
   type CombinedOperativeEventMap,
+  isScheduledAgentRunInput,
   type DurableRunDeps,
   HumanWaitParkedEvent,
 } from '@lostgradient/operative';
@@ -184,8 +185,10 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   /** Reviews resolved in this process: the run may still be going, so the store would still show them. */
   const resolved = new Set<string>();
   const resolving = new Set<string>();
+  /** The waits {@link derive} read as a schedule fire's, which resolve through the engine. */
+  const derivedFireWaits = new WeakSet<object>();
 
-  function reviewId(wait: Wait): string {
+  function reviewIdFor(wait: Wait): string {
     return `human-wait:${wait.runId}:${wait.signalName}:${wait.ordinal}`;
   }
 
@@ -226,7 +229,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   function toReview(wait: Wait): PendingHumanWaitReview {
     return {
       kind: 'human-wait',
-      id: reviewId(wait),
+      id: reviewIdFor(wait),
       runId: wait.runId,
       agentName: wait.agentName,
       ...(wait.sessionId === undefined ? {} : { sessionId: wait.sessionId }),
@@ -239,7 +242,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   }
 
   function pending(): Wait[] {
-    return [...liveWaits(), ...restored.values()].filter((wait) => !resolved.has(reviewId(wait)));
+    return [...liveWaits(), ...restored.values()].filter(
+      (wait) => !resolved.has(reviewIdFor(wait)),
+    );
   }
 
   function list(): PendingHumanWaitReview[] {
@@ -366,6 +371,19 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     observe(runId, target, services);
   }
 
+  /**
+   * A review another process closed (COR-1613): this process's copy of the wait, restored or
+   * heard, is stale, and is hidden from its list as one resolved here is.
+   */
+  function closedElsewhere(reviewId: string): void {
+    for (const [runId, wait] of restored) {
+      if (reviewIdFor(wait) === reviewId) {
+        resolved.add(reviewId);
+        restored.delete(runId);
+      }
+    }
+  }
+
   /** Drop everything held for a run, once it has settled. */
   function forget(runId: string): void {
     restored.delete(runId);
@@ -399,6 +417,27 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       state.input !== null && typeof state.input === 'object'
         ? (state.input as Record<string, unknown>)
         : {};
+    // COR-1613: a schedule fire's wait is a run's, resolved through the engine by run id, whatever
+    // session it runs in. Its durable input is a scheduled agent run's, which a session run's and
+    // a catalog run's are not.
+    if (isScheduledAgentRunInput(input)) {
+      const scheduleId = typeof input.scheduleId === 'string' ? input.scheduleId.trim() : '';
+      const fireSessionId =
+        input.sessionId ?? (scheduleId === '' ? undefined : `sched-${scheduleId}-${runId}`);
+      const fireReview: PendingHumanWaitReview = {
+        ...toReview({
+          runId,
+          signalName: outstanding.signalName,
+          prompt: outstanding.prompt,
+          ordinal: outstanding.ordinal,
+          requestedAt: state.updatedAt,
+          agentName: input.agentName,
+          sessionId: fireSessionId,
+        }),
+      };
+      derivedFireWaits.add(fireReview);
+      return fireReview;
+    }
     const classification = await classifyRun(runId);
     const sessionId = input['sessionId'];
     if (!classification.isCatalogRun && typeof sessionId !== 'string') return undefined;
@@ -499,6 +538,9 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     has: (id: string) => find(id) !== undefined,
     holds,
     derive,
+    closedElsewhere,
+    /** Whether a wait {@link derive} returned is a schedule fire's (COR-1613). */
+    isDerivedFire: (review: PendingHumanWaitReview) => derivedFireWaits.has(review),
     attach,
     forget,
     resolve,
