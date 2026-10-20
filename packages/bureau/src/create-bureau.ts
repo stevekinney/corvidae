@@ -612,6 +612,15 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
  * from either package, since neither exposes the underlying constant for
  * `bureau` to import.
  */
+/** The review statuses after which a review is closed (COR-1613); `superseded` is not one. */
+const TERMINAL_REVIEW_STATUSES: ReadonlySet<string> = new Set([
+  'approved',
+  'denied',
+  'rejected',
+  'expired',
+  'revoked',
+  'canceled',
+]);
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
 /**
@@ -5175,6 +5184,109 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /**
+   * COR-1613 — whether a review already has a terminal record in the audit trail: approved,
+   * denied, rejected, expired, revoked or canceled. `superseded` is not terminal, because a
+   * re-gated approval keeps its id across rounds. Without an audit trail there is nothing to
+   * read, and a closing is written.
+   */
+  async function reviewHasTerminalRecord(runId: string, reviewId: string): Promise<boolean> {
+    if (auditTrailInstance === undefined) return false;
+    const records = await auditTrailInstance.query({ runId });
+    return records.some((record) => {
+      if (!record.type.startsWith('review.')) return false;
+      if (!TERMINAL_REVIEW_STATUSES.has(record.type.split('.').pop() ?? '')) return false;
+      const detail = record.detail;
+      if (detail === null || typeof detail !== 'object') return false;
+      const reviewDetail = (detail as Record<string, unknown>)['review'];
+      return (
+        reviewDetail !== null &&
+        typeof reviewDetail === 'object' &&
+        (reviewDetail as Record<string, unknown>)['id'] === reviewId
+      );
+    });
+  }
+
+  /**
+   * COR-1613 — closes a canceled fire's review, an approval or a human wait, in the audit trail
+   * and the durable history, at most once: it writes only when the review has no terminal record
+   * yet. A process that died after the engine recorded the cancel and before this write leaves
+   * the review open, and the next boot closes it here, so the guarantee holds across sequential
+   * restarts (two peers booting at the same moment are out of scope).
+   */
+  async function closeCanceledFireReview(review: PendingReview, principal: string): Promise<void> {
+    if (await reviewHasTerminalRecord(review.runId, review.id)) return;
+    await recordReviewStatusTransition(review, 'canceled', principal);
+  }
+
+  /** COR-1613 — a canceled fire's parked human waits, read before they are forgotten. */
+  async function closeCanceledFireHumanWaits(runId: string, principal: string): Promise<void> {
+    for (const review of runHumanWaits.list()) {
+      if (review.runId === runId) await closeCanceledFireReview(review, principal);
+    }
+  }
+
+  /**
+   * COR-1613 — the human wait a canceled fire was parked on, derived from its checkpoint (the
+   * park the last committed step ended on), and closed once. A task of another kind has none.
+   */
+  async function closeCanceledFireWaitFromCheckpoint(taskId: string): Promise<void> {
+    const record = await tasks.record(taskId);
+    const durable = runtime.durable;
+    if (record === undefined || record.kind !== 'schedule-fire' || durable === undefined) return;
+    const outstanding = countCheckpointParks(
+      await durable.checkpointStore.loadSteps(taskId),
+    ).outstanding;
+    if (outstanding === undefined) return;
+    await closeCanceledFireReview(
+      {
+        kind: 'human-wait',
+        id: `human-wait:${taskId}:${outstanding.signalName}:${outstanding.ordinal}`,
+        runId: taskId,
+        sessionId: record.contextId,
+        agentName: record.agentName ?? undefined,
+        signalName: outstanding.signalName,
+        prompt: outstanding.prompt,
+        requestedAt: Date.parse(record.createdAt) || 0,
+        ageMilliseconds: 0,
+        status: 'pending',
+      },
+      'system:run-abort',
+    );
+  }
+
+  /**
+   * COR-1613 — the review a fire's persisted approval stands for, built from the session's own
+   * record in the shape the live revoke builds, for the boot that has nothing in memory.
+   */
+  async function persistedFireApprovalReview(
+    runId: string,
+    sessionId: string,
+    reviewId: string,
+  ): Promise<Extract<PendingReview, { kind: 'tool-approval' }> | undefined> {
+    const session = await runtime.sessionStore?.load(sessionId);
+    const persisted = session?.metadata['pendingApprovalOverrides'];
+    const approval = isJsonObject(persisted) ? persisted[reviewId] : undefined;
+    if (session === undefined || !isJsonObject(approval)) return undefined;
+    const rounds = session.metadata['pendingApprovalRounds'];
+    const round = isJsonObject(rounds) ? rounds[reviewId] : undefined;
+    return {
+      kind: 'tool-approval',
+      id: reviewId,
+      runId,
+      sessionId,
+      agentName: session.agentName,
+      approval: approval as unknown as Extract<
+        PendingReview,
+        { kind: 'tool-approval' }
+      >['approval'],
+      requestedAt: 0,
+      ageMilliseconds: 0,
+      status: 'pending',
+      round: typeof round === 'number' ? round : 0,
+    };
+  }
+
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
   function holdsFireApproval(runId: string): boolean {
     for (const id of pendingApprovalOverrides.keys()) {
@@ -5255,16 +5367,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     const sessionId = scope.sessionId ?? terminalReviewSessions.get(runId)?.sessionId;
     const heldHere = pendingApprovalOverrides.has(reviewId) || scheduledFireApprovalRuns.has(runId);
+    // Hidden from the list first, so the approval is not offered while the prune is in flight or
+    // after it fails.
     if (ending === 'invalid') invalidApprovalReviewIds.add(reviewId);
     else if (ending !== 'abandoned' && heldHere) resolvedReviewIds.add(reviewId);
-    dropPendingApprovalOverride(reviewId);
-    try {
-      if (scope.durablyPruned !== true && sessionId !== undefined) {
-        await pruneFireApprovalsFromSession(sessionId, runId, (id) => id === reviewId);
-      }
-    } finally {
-      endScheduledFireWhenNoApprovalRemains(runId);
+    // The in-memory override is dropped, and the fire ended, only once the session prune has
+    // committed. A prune that fails leaves the override in memory and in the session, and the
+    // fire's next release finds it through `fireApprovalIds` and retries (COR-1613).
+    if (scope.durablyPruned !== true && sessionId !== undefined) {
+      await pruneFireApprovalsFromSession(sessionId, runId, (id) => id === reviewId);
     }
+    dropPendingApprovalOverride(reviewId);
+    endScheduledFireWhenNoApprovalRemains(runId);
   }
 
   /** The review ids of a fire's approvals this process holds or its session records. */
@@ -5321,6 +5435,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // whatever revoked it first.
     endContinuingScheduledFire(scheduledFireReviewState, runId);
     for (const id of await fireApprovalIds(runId, sessionId)) {
+      // COR-1613: an approval only the session still records (a boot found it) is closed before
+      // it is released, so its request does not stay open in the history.
+      if (ending === 'canceled' && sessionId !== undefined && !resolvedReviewIds.has(id)) {
+        const review = await persistedFireApprovalReview(runId, sessionId, id);
+        if (review !== undefined) await closeCanceledFireReview(review, 'system:run-abort');
+      }
       await releaseScheduledFireApproval(
         runId,
         id,
@@ -5357,8 +5477,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
     if (engineStatus === 'cancelled') {
       // The prune lands through the session's own record of the fire's approvals; none was ever
-      // restored here, so there is no binding to revoke, and the audit entry of the cancel was
-      // written by the process that took it.
+      // restored here, so there is no binding to revoke. The process that took the cancel may
+      // have died before it wrote the review's `canceled` record, so the release closes each
+      // approval it finds, once, from the session's own record of it (COR-1613).
       await releaseScheduledFire(runId, 'canceled', { sessionId });
       return 'none';
     }
@@ -7570,6 +7691,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             ? 'canceled'
             : 'failed';
       const content = typeof result['content'] === 'string' ? result['content'] : '';
+      // COR-1613: a fire canceled while parked on a human wait, whose process died before it
+      // wrote the wait's `canceled` record, has its wait closed here, from the checkpoint.
+      if (state.status === 'cancelled') await closeCanceledFireWaitFromCheckpoint(taskId);
       await tasks.recordSettled(taskId, {
         at: runtimeServices.clock.nowISO(),
         status,
@@ -8733,7 +8857,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         }
       }
       resolvedReviewIds.add(review.id);
-      await recordReviewStatusTransition(review, outcome.status, outcome.principal);
+      // COR-1613: a canceled fire's review is closed once, whichever process or boot gets to it
+      // first; every other transition is written as it always was.
+      if (outcome.status === 'canceled' && scheduledFireApprovalRuns.has(runId)) {
+        await closeCanceledFireReview(review, outcome.principal);
+      } else {
+        await recordReviewStatusTransition(review, outcome.status, outcome.principal);
+      }
       // COR-1596: a fire's approval is revoked in both homes, or a restart brings it back to run
       // a tool for a run that was canceled.
       if (scheduledFireApprovalRuns.has(runId)) {
@@ -8746,6 +8876,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       resolvedReviewIds.add(review.id);
       await recordReviewStatusTransition(review, outcome.status, outcome.principal);
     }
+    // COR-1613: a fire's parked human wait is not in the session list, and is closed with it.
+    if (outcome.status === 'canceled') await closeCanceledFireHumanWaits(runId, outcome.principal);
   }
 
   async function deleteRun(id: string): Promise<void> {
@@ -16399,6 +16531,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // COR-1482: how a fire's task ends, from the engine's own terminal event for its run, and which
   // session incarnation it ran in.
   scheduledFireSettledHandler.resolve(async (settlement) => {
+    // COR-1613: a canceled fire's parked wait is closed in the audit trail and the history before
+    // it is forgotten, because fire waits are not in the session list the revoke scans.
+    if (settlement.status === 'canceled') {
+      try {
+        await closeCanceledFireHumanWaits(settlement.runId, 'system:run-abort');
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record the canceled wait of schedule fire "${settlement.runId}": ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    }
     // COR-1596: a settled fire has no wait left to answer, and announces nothing more.
     runHumanWaits.forget(settlement.runId);
     announcedReviewRequests.delete(settlement.runId);
