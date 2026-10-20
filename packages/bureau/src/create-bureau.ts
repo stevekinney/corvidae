@@ -13396,9 +13396,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         for (const result of step.results) {
           if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
           const id = `approval:${runId}:${result.pendingApproval.callId}`;
-          // A decision in flight owns the review: the next tick expires it if it lets go.
           if (resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id)) continue;
-          if (resolvingReviewIds.has(id)) continue;
           const approval = pendingApprovalOverrides.get(id) ?? result.pendingApproval;
           // AB-46 read-time filter: a tool-approval review past its binding's
           // `expiresAt` is excluded here with no write — `sweepExpiredReviews`
