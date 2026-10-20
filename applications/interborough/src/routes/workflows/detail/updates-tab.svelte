@@ -33,7 +33,6 @@
     sendUpdate,
     UPDATE_HISTORY_POLL_INTERVAL_MS,
     updateHistoryQueryKey,
-    type UpdateHistoryEntry,
     type UpdatesClient,
   } from './updates/updates-data.ts';
   import { isTerminalStatus } from './workflow-status.ts';
