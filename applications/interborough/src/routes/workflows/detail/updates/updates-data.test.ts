@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { throwingRejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 
 import {
@@ -111,12 +112,12 @@ describe('readUpdateResult', () => {
   });
 
   test('refuses a shape or a status it does not know', async () => {
-    await expect(readUpdateResult(clientAnswering(null), 'u-1')).rejects.toThrow(
-      'unexpected shape',
+    const noShape = await throwingRejectionOf(readUpdateResult(clientAnswering(null), 'u-1'));
+    expect(noShape).toThrow('unexpected shape');
+    const noStatus = await throwingRejectionOf(
+      readUpdateResult(clientAnswering({ status: 'gone' }), 'u-1'),
     );
-    await expect(readUpdateResult(clientAnswering({ status: 'gone' }), 'u-1')).rejects.toThrow(
-      'unexpected status',
-    );
+    expect(noStatus).toThrow('unexpected status');
   });
 });
 

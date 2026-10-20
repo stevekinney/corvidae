@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 
 import {
@@ -106,20 +107,22 @@ describe('readAttributes', () => {
 
   test('throws any other fault, and a shape that is not a record', async () => {
     const fault = new HttpClientError(500, 'Internal server error');
-    await expect(
+    const thrown = await rejectionOf(
       readAttributes(
         clientAnswering(async () => {
           throw fault;
         }),
         'wf-1',
       ),
-    ).rejects.toBe(fault);
-    await expect(
+    );
+    expect(thrown).toBe(fault);
+    const malformed = await throwingRejectionOf(
       readAttributes(
         clientAnswering(async () => ['x']),
         'wf-1',
       ),
-    ).rejects.toThrow('unexpected shape');
+    );
+    expect(malformed).toThrow('unexpected shape');
   });
 });
 
