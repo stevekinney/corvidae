@@ -2143,6 +2143,12 @@ export interface RuntimeComposition {
     hooks: HookRegistry<OperativeHookMap>;
     streamEventTarget: TypedEventTarget<StreamEventMap> | undefined;
     getActiveSkillRecords: () => readonly SkillActivationRecord[];
+    /**
+     * Settles once the active skills the run was given have been re-validated against the live
+     * catalog (COR-1613). A run waits for it before its first step; a caller that decides a tool
+     * call outside a step, as the restore of a pending approval does, waits for it itself.
+     */
+    skillsRecovered: Promise<unknown>;
   }>;
   /**
    * AB-260 — folded onto this interface directly rather than reached through
@@ -2176,7 +2182,7 @@ export interface RuntimeComposition {
    * test-only introspection hook.
    */
   loadCommittedScheduledActiveSkills(
-    session: Awaited<ReturnType<SessionStore['load']>> | undefined,
+    session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     recovering: boolean,
   ): Promise<SkillActivationRecord[] | undefined>;
@@ -3486,6 +3492,7 @@ async function buildRuntimeComposition(
       hooks,
       streamEventTarget,
       getActiveSkillRecords,
+      skillsRecovered: skillRecovery ?? Promise.resolve(),
     });
   }
 
@@ -4329,7 +4336,7 @@ async function buildRuntimeComposition(
   }
 
   async function loadCommittedScheduledActiveSkills(
-    session: Awaited<ReturnType<SessionStore['load']>> | undefined,
+    session: { readonly metadata: Record<string, JSONValue> } | undefined,
     runId: string,
     recovering: boolean,
   ): Promise<SkillActivationRecord[] | undefined> {
