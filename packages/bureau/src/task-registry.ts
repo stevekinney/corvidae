@@ -206,6 +206,12 @@ export interface TaskRegistryHost {
   readonly abort: (taskId: string) => 'requested' | 'already-terminal' | 'not-found';
   /** Cancels a durable run this process holds no live run for. */
   readonly cancelDurable: (taskId: string) => Promise<CancelDurableRunOutcome>;
+  /**
+   * Drops this process's own copy of a review another process closed (COR-1613): the durable
+   * history says it was decided or expired, so what this process still lists for it is stale.
+   */
+  readonly releaseClosedReview?:
+    ((taskId: string, reviewId: string, eventKind: string) => Promise<void>) | undefined;
   /** Resolves after `milliseconds` on the Bureau's runtime timers. */
   readonly sleep: (milliseconds: number) => Promise<void>;
 }
@@ -281,6 +287,12 @@ export interface TaskRegistry {
    * listens.
    */
   announceChanged(taskId: string): Promise<void>;
+  /**
+   * Tells the registry that a review of the task was closed by another process (COR-1613): its
+   * stale copy here is dropped, then those following the task are told, as for a review closed
+   * here, so the task's end reaches a stream this process serves.
+   */
+  reviewClosedElsewhere(taskId: string, reviewId: string, eventKind: string): Promise<void>;
   /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
@@ -901,6 +913,11 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       };
     },
 
+    async reviewClosedElsewhere(taskId, reviewId, eventKind) {
+      await host.releaseClosedReview?.(taskId, reviewId, eventKind);
+      await this.announceChanged(taskId);
+    },
+
     async announceChanged(taskId) {
       const waiting = changedListeners.get(taskId);
       if (waiting !== undefined && waiting.size > 0) {
@@ -1042,9 +1059,22 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
           incarnations?.get(contextId) ?? (await host.currentIncarnation(contextId));
         // A schedule fire is live while it is unsettled, though it holds no run in the run store.
         const fires = await this.unsettledFiresOfContext(contextId, incarnation);
+        // A fire whose run settled while a review of it is still open reads as input-required in
+        // its task view, so the context agrees with it: the review holds the fire open (COR-1613).
+        const contextRecords = await recordsOfContext(contextId);
+        const reviewHeld = contextRecords.filter(
+          (record) =>
+            record.kind === 'schedule-fire' &&
+            record.settled !== undefined &&
+            waiting.has(record.taskId) &&
+            (record.incarnation === '' || belongsToIncarnation(record, incarnation)),
+        );
         const held = [
           ...(live.get(contextId) ?? []),
-          ...fires.map((record) => ({ taskId: record.taskId, phase: 'running' as const })),
+          ...[...fires, ...reviewHeld].map((record) => ({
+            taskId: record.taskId,
+            phase: 'running' as const,
+          })),
         ];
         if (held.length === 0) {
           activity.set(contextId, 'idle');
