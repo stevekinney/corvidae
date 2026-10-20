@@ -315,6 +315,7 @@ import {
 import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
+  committedFireReviewIds,
   endContinuingScheduledFire,
   registerScheduledFireApproval,
   releaseScheduledFireReviews,
@@ -621,6 +622,16 @@ const TERMINAL_REVIEW_STATUSES: ReadonlySet<string> = new Set([
   'expired',
   'revoked',
   'canceled',
+]);
+/** The durable event kinds that close a review's request (COR-1613). */
+const REVIEW_CLOSING_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'review.approved',
+  'review.denied',
+  'review.rejected',
+  'review.expired',
+  'review.revoked',
+  'review.canceled',
+  'review.superseded',
 ]);
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
@@ -4106,6 +4117,92 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * COR-1596: a schedule fire is not on the store, so its reviews are announced from where they
    * are registered, not from the store's action stream.
    */
+  /**
+   * COR-1613 — what a fire's durable history already says of its reviews, read once per run per
+   * process: the ids requested, and the ids since closed. A process that replays a step finds the
+   * dead one's requests here, which its own memory cannot hold.
+   */
+  async function readFireReviewHistory(
+    runId: string,
+  ): Promise<{ requested: Set<string>; closed: Set<string> }> {
+    const requested = new Set<string>();
+    const closed = new Set<string>();
+    if (eventHistoryInstance === undefined) return { requested, closed };
+    // The events this process dispatched are written asynchronously: wait for them first.
+    await durableEventProducerInstance?.waitForActiveWrites({ kind: 'run', id: runId });
+    let since: string | undefined;
+    for (;;) {
+      const page = await eventHistoryInstance.page(
+        { kind: 'run', id: runId },
+        { limit: 500, ...(since === undefined ? {} : { since }) },
+      );
+      if (!('events' in page)) break;
+      for (const event of page.events) {
+        const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
+        if (typeof reviewId !== 'string') continue;
+        if (event.kind === 'review.requested') requested.add(reviewId);
+        else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) closed.add(reviewId);
+      }
+      if (!page.hasMore || page.nextCursor === undefined) break;
+      since = page.nextCursor;
+    }
+    return { requested, closed };
+  }
+
+  const fireHistorySeeded = new Set<string>();
+
+  /**
+   * COR-1613 — announces a fire's review once across processes. A replay that makes the same call
+   * under the same id finds the dead process's request in the history and does not announce it
+   * again; the in-memory set alone is lost with the process.
+   */
+  async function announceFireReview(
+    runId: string,
+    reviewId: string,
+    kind: 'human-wait' | 'tool-approval',
+    target: { signalName?: string; callId?: string },
+  ): Promise<void> {
+    if (!fireHistorySeeded.has(runId)) {
+      fireHistorySeeded.add(runId);
+      try {
+        const history = await readFireReviewHistory(runId);
+        const announced = announcedReviewRequests.get(runId) ?? new Set<string>();
+        announcedReviewRequests.set(runId, announced);
+        for (const id of history.requested) announced.add(id);
+      } catch (error) {
+        fireHistorySeeded.delete(runId);
+        diagnose({
+          level: 'error',
+          scope: 'durable-event-history',
+          message: `[bureau] Could not read the review history of schedule fire "${runId}", so a replayed request may be announced again: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    }
+    announceReview(runId, reviewId, kind, target);
+  }
+
+  /**
+   * COR-1613 — closes, with `review.superseded`, each request a fire's history holds that its
+   * checkpoint never committed and nothing closed: the request of an attempt that died between
+   * announcing it and committing its step, whose replay made the call under another id. A review
+   * the run still owns, or already closed, is left alone.
+   */
+  async function closeAbandonedFireRequests(runId: string): Promise<void> {
+    const durable = runtime.durable;
+    if (durable === undefined || eventHistoryInstance === undefined) return;
+    const history = await readFireReviewHistory(runId);
+    const committed = committedFireReviewIds(
+      runId,
+      await durable.checkpointStore.loadSteps(runId, { strict: true }),
+    );
+    for (const reviewId of history.requested) {
+      if (history.closed.has(reviewId) || committed.has(reviewId)) continue;
+      const kind = reviewId.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
+      emitter.dispatch(new ReviewSupersededEvent(reviewId, runId, 'system:replay', kind));
+    }
+  }
+
   function announceReview(
     runId: string,
     reviewId: string,
@@ -5417,6 +5514,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await revokePendingApprovalsForRun(runId, {
         status: 'canceled',
         principal: 'system:run-abort',
+      });
+    }
+    // COR-1613: a request an attempt that never committed announced is closed.
+    try {
+      await closeAbandonedFireRequests(runId);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-event-history',
+        message: `[bureau] Could not close the abandoned review requests of schedule fire "${runId}": ${serializeUnknownError(error)}`,
+        cause: error,
       });
     }
     if (ending === 'settled') {
@@ -15877,8 +15985,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         agentName: fire.agentName,
         sessionId: fire.sessionId,
         announce: (reviewId, signalName) => {
-          announceReview(fire.runId, reviewId, 'human-wait', { signalName });
-          detachBestEffortPromise(tasks.announceChanged(fire.runId));
+          detachBestEffortPromise(
+            announceFireReview(fire.runId, reviewId, 'human-wait', { signalName }).then(() =>
+              tasks.announceChanged(fire.runId),
+            ),
+          );
         },
       },
       services,
@@ -15912,7 +16023,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           approval,
           stepWasFinal,
         );
-        announceReview(fire.runId, reviewId, 'tool-approval', { callId: approval.callId });
+        await announceFireReview(fire.runId, reviewId, 'tool-approval', {
+          callId: approval.callId,
+        });
         detachBestEffortPromise(tasks.announceChanged(fire.runId));
       }),
     );

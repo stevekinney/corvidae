@@ -302,3 +302,39 @@ export function holdingWrites(marker: string) {
     },
   };
 }
+
+/**
+ * A storage whose process dies between a fire step's session write, which records an approval, and
+ * the step's commit: the journal write of the step is held for good, so the hook has run and the
+ * request has been announced, and the step never commits. `reached` resolves at the hold.
+ */
+export function crashAfterApprovalWrite() {
+  let armed = false;
+  let held = false;
+  const reached = Promise.withResolvers<void>();
+  return {
+    reached: reached.promise,
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (property !== 'conditionalBatch' || held) return call();
+            const text = storedText(args);
+            if (armed && /wf:[^ ]+:ckpt/.test(text)) {
+              held = true;
+              reached.resolve();
+              // Never completes: that process is dead. Releasing it would make Weft warn that the
+              // write lost a checkpoint compare-and-swap.
+              return new Promise(() => {});
+            }
+            if (text.includes('pendingApprovalOverrides')) armed = true;
+            return call();
+          };
+        },
+      });
+    },
+  };
+}
