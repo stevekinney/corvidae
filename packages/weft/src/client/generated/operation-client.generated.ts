@@ -133,6 +133,7 @@ export const CATALOG_OPERATION_NAMES = [
   'weft.workflows.timeline.get',
   'weft.workflows.timeout',
   'weft.workflows.update',
+  'weft.workflows.updates.list',
 ] as const;
 
 /**
@@ -262,6 +263,7 @@ export const CLIENT_OPERATION_NAMES = [
   'weft.workflows.timeline.get',
   'weft.workflows.timeout',
   'weft.workflows.update',
+  'weft.workflows.updates.list',
 ] as const;
 
 /**

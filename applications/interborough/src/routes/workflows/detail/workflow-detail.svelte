@@ -94,9 +94,17 @@
   const actionGate = $derived(scopeGate(principalStore, [ACTION_REQUIRED_SCOPE]));
   // `weft.workflows.{signal,update,query}` and tag writes each require their own scope.
   const signalGate = $derived(scopeGate(principalStore, ['signals:write']));
-  const updateGate = $derived(scopeGate(principalStore, ['updates:write']));
+  // Without `updates:write` the Updates tab draws no send form (COR-1463).
+  const canSendUpdates = $derived(principalStore.hasScope('updates:write'));
   const queryGate = $derived(scopeGate(principalStore, ['queries:read']));
   const tagGate = $derived(scopeGate(principalStore, ['tags:write']));
+  // The run's search attributes (COR-1461): with no `attributes:read` the section is not drawn, and
+  // with no `attributes:write` it offers no edit.
+  const canReadStreams = $derived(principalStore.hasScope('streams:read'));
+  const attributeAccess = $derived({
+    canRead: principalStore.hasScope('attributes:read'),
+    canWrite: principalStore.hasScope('attributes:write'),
+  });
   const clock = new TickingClock();
   onDestroy(() => clock.dispose());
 
@@ -328,6 +336,7 @@
               {workflow}
               activeRevision={resolvedActiveRevision}
               {tagGate}
+              {attributeAccess}
             /></Tabs.Panel
           >
           <Tabs.Panel value="timeline"
@@ -336,6 +345,7 @@
               {workflow}
               {liveObservations}
               finalizerStatus={finalizerQuery.data}
+              {canReadStreams}
             /></Tabs.Panel
           >
           <Tabs.Panel value="events"><EventsTab {client} {workflow} /></Tabs.Panel>
@@ -352,7 +362,7 @@
             ><SignalsTab {client} {workflow} sendGate={signalGate} /></Tabs.Panel
           >
           <Tabs.Panel value="updates"
-            ><UpdatesTab {client} {workflow} sendGate={updateGate} /></Tabs.Panel
+            ><UpdatesTab {client} {workflow} canSend={canSendUpdates} /></Tabs.Panel
           >
           <Tabs.Panel value="children"><ChildrenTab {client} {workflow} /></Tabs.Panel>
         </div>

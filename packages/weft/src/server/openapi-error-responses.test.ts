@@ -63,6 +63,7 @@ describe('OpenAPI error responses', () => {
             samplesTruncated: { type: 'boolean' },
             maxBytes: { type: 'integer', minimum: 0 },
             operationName: { type: 'string' },
+            updateId: { type: 'string' },
             transport: { type: 'string' },
             supported: { type: 'array', items: { type: 'string' } },
             droppedCount: { type: 'integer', minimum: 0 },
