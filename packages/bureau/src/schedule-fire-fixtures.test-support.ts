@@ -338,3 +338,25 @@ export function crashAfterApprovalWrite() {
     },
   };
 }
+
+/** The audit records of `type` that a run has, narrowed to one review by its id when given. */
+export async function auditRecordsOf(
+  bureau: Bureau,
+  runId: string,
+  type: string,
+  reviewId?: string,
+) {
+  const records = (await bureau.auditTrail?.query({ runId, type })) ?? [];
+  return records.filter((record) => {
+    if (reviewId === undefined) return true;
+    const detail = record.detail as { review?: { id?: string } } | undefined;
+    return detail?.review?.id === reviewId;
+  });
+}
+
+/** The `review.*` kinds a run's durable history holds, oldest first. */
+export async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
+  const page = await bureau.eventHistory({ kind: 'run', id: runId });
+  if (!('events' in page)) return [];
+  return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
+}

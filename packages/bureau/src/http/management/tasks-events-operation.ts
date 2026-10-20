@@ -40,6 +40,7 @@ import {
 import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
+import { REVIEW_CLOSING_EVENT_KINDS } from '../../review-closing-events.ts';
 import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
@@ -329,17 +330,6 @@ const tasksEventsEnvelope = z.object({ subscriptionId: z.string(), cursor: z.str
 /** The cursor of the one element that ends a schedule fire's stream. */
 const FIRE_TERMINAL_CURSOR = encodeCursor(0);
 
-/** The durable event kinds that close a review (COR-1613). */
-const CLOSING_REVIEW_EVENT_KINDS: ReadonlySet<string> = new Set([
-  'review.approved',
-  'review.denied',
-  'review.rejected',
-  'review.expired',
-  'review.revoked',
-  'review.canceled',
-  'review.superseded',
-]);
-
 const isTerminalStatus = (status: TaskView['status']): boolean =>
   status === 'completed' || status === 'failed' || status === 'canceled';
 
@@ -460,8 +450,10 @@ function followScheduleFire(
           { kind: 'run', id: taskId },
           (event) => {
             const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
-            if (typeof reviewId !== 'string' || !CLOSING_REVIEW_EVENT_KINDS.has(event.kind)) return;
-            void host.tasks.reviewClosedElsewhere(taskId, reviewId).catch(() => undefined);
+            if (typeof reviewId !== 'string' || !REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) return;
+            void host.tasks
+              .reviewClosedElsewhere(taskId, reviewId, event.kind)
+              .catch(() => undefined);
           },
         );
         unsubscribeHistory = () => subscription.unsubscribe();

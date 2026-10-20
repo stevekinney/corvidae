@@ -354,6 +354,11 @@ import {
   countCheckpointParks,
   humanWaitParkOrdinal as sharedHumanWaitParkOrdinal,
 } from './park-ordinals';
+import {
+  REVIEW_CLOSING_EVENT_KINDS,
+  REVIEW_SUPERSEDED_EVENT_KIND,
+  TERMINAL_REVIEW_STATUSES,
+} from './review-closing-events';
 import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
@@ -615,25 +620,30 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
  * from either package, since neither exposes the underlying constant for
  * `bureau` to import.
  */
-/** The review statuses after which a review is closed (COR-1613); `superseded` is not one. */
-const TERMINAL_REVIEW_STATUSES: ReadonlySet<string> = new Set([
-  'approved',
-  'denied',
-  'rejected',
-  'expired',
-  'revoked',
-  'canceled',
-]);
-/** The durable event kinds that close a review's request (COR-1613). */
-const REVIEW_CLOSING_EVENT_KINDS: ReadonlySet<string> = new Set([
-  'review.approved',
-  'review.denied',
-  'review.rejected',
-  'review.expired',
-  'review.revoked',
-  'review.canceled',
-  'review.superseded',
-]);
+/** How many audit records one page of a review-closing check reads (COR-1613). */
+const AUDIT_PAGE_SIZE = 500;
+
+/**
+ * Whether an audit record is a terminal record of a review at a round (COR-1613). A record that
+ * names no round is round 0, and a review with no round, a human wait, matches any.
+ */
+function closesReviewRound(
+  record: { readonly type: string; readonly detail: unknown },
+  reviewId: string,
+  round: number | undefined,
+): boolean {
+  if (!record.type.startsWith('review.')) return false;
+  if (!TERMINAL_REVIEW_STATUSES.has(record.type.split('.').pop() ?? '')) return false;
+  const detail = record.detail;
+  if (detail === null || typeof detail !== 'object') return false;
+  const reviewDetail = (detail as Record<string, unknown>)['review'];
+  if (reviewDetail === null || typeof reviewDetail !== 'object') return false;
+  const fields = reviewDetail as Record<string, unknown>;
+  if (fields['id'] !== reviewId) return false;
+  if (round === undefined) return true;
+  const recorded = fields['round'];
+  return (typeof recorded === 'number' ? recorded : 0) === round;
+}
 const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
 
 /**
@@ -4003,7 +4013,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       // The public list: a `bureau.run()` run's human wait (COR-1577) is a review of its
       // task too, so it holds the task at `input-required` and `respond` can answer it.
       pendingReviews: () => [...listPendingReviews(), ...runHumanWaits.list()],
-      releaseClosedReview: async (taskId, reviewId) => {
+      releaseClosedReview: async (taskId, reviewId, eventKind) => {
+        // A review this process closed itself is finished by its own release, which prunes the
+        // session before it drops the override: this event is that close read back.
+        if (resolvedReviewIds.has(reviewId)) return;
+        // A re-gate records the round's approval and keeps the review pending under its id at
+        // the next round, so a session that still holds the override has not lost the review.
+        if (eventKind === 'review.approved' && (await sessionHoldsFireApproval(taskId, reviewId))) {
+          return;
+        }
         // The peer that closed it pruned the session; only this process's copy is left.
         runHumanWaits.closedElsewhere(reviewId);
         if (scheduledFireApprovalRuns.has(taskId) && pendingApprovalOverrides.has(reviewId)) {
@@ -4182,7 +4200,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
         if (typeof reviewId !== 'string') continue;
         if (event.kind === 'review.requested') requested.add(reviewId);
-        else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) closed.add(reviewId);
+        else if (
+          REVIEW_CLOSING_EVENT_KINDS.has(event.kind) ||
+          event.kind === REVIEW_SUPERSEDED_EVENT_KIND
+        ) {
+          closed.add(reviewId);
+        }
       }
       if (!page.hasMore || page.nextCursor === undefined) break;
       since = page.nextCursor;
@@ -5324,38 +5347,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1613 — whether a review already has a terminal record in the audit trail: approved,
-   * denied, rejected, expired, revoked or canceled. `superseded` is not terminal, because a
-   * re-gated approval keeps its id across rounds. Without an audit trail there is nothing to
-   * read, and a closing is written.
+   * COR-1613 — whether a review already has a terminal record in the audit trail for its round:
+   * approved, denied, rejected, expired, revoked or canceled. A re-gated approval keeps its id
+   * across rounds and each round it leaves is recorded, so a round's record closes that round
+   * alone; `superseded` is not terminal. The whole trail of the run is read, a page at a time.
+   * Without an audit trail there is nothing to read, and a closing is written.
    */
-  async function reviewHasTerminalRecord(runId: string, reviewId: string): Promise<boolean> {
+  async function reviewHasTerminalRecord(review: PendingReview): Promise<boolean> {
     if (auditTrailInstance === undefined) return false;
-    const records = await auditTrailInstance.query({ runId });
-    return records.some((record) => {
-      if (!record.type.startsWith('review.')) return false;
-      if (!TERMINAL_REVIEW_STATUSES.has(record.type.split('.').pop() ?? '')) return false;
-      const detail = record.detail;
-      if (detail === null || typeof detail !== 'object') return false;
-      const reviewDetail = (detail as Record<string, unknown>)['review'];
-      return (
-        reviewDetail !== null &&
-        typeof reviewDetail === 'object' &&
-        (reviewDetail as Record<string, unknown>)['id'] === reviewId
-      );
-    });
+    const round = review.kind === 'tool-approval' ? review.round : undefined;
+    let after: { timestampMs: number; sequence: number } | undefined;
+    for (;;) {
+      const page = await auditTrailInstance.query({
+        runId: review.runId,
+        limit: AUDIT_PAGE_SIZE,
+        ...(after === undefined ? {} : { after }),
+      });
+      if (page.some((record) => closesReviewRound(record, review.id, round))) return true;
+      const last = page.at(-1);
+      if (last === undefined || page.length < AUDIT_PAGE_SIZE) return false;
+      after = { timestampMs: last.timestampMs, sequence: last.sequence ?? -1 };
+    }
   }
+
+  /** The canceled closings in flight in this process, by review and round (COR-1613). */
+  const closingCanceledReviews = new Map<string, Promise<void>>();
 
   /**
    * COR-1613 — closes a canceled fire's review, an approval or a human wait, in the audit trail
    * and the durable history, at most once: it writes only when the review has no terminal record
-   * yet. A process that died after the engine recorded the cancel and before this write leaves
-   * the review open, and the next boot closes it here, so the guarantee holds across sequential
-   * restarts (two peers booting at the same moment are out of scope).
+   * yet for its round. A process that died after the engine recorded the cancel and before this
+   * write leaves the review open, and the next boot closes it here, so the guarantee holds across
+   * sequential restarts (two peers booting at the same moment are out of scope). Within this
+   * process the closing is fenced: a second caller for the same review, such as the cancel and
+   * the settlement that follows it, waits for the first instead of reading the trail before the
+   * first has written.
    */
-  async function closeCanceledFireReview(review: PendingReview, principal: string): Promise<void> {
-    if (await reviewHasTerminalRecord(review.runId, review.id)) return;
-    await recordReviewStatusTransition(review, 'canceled', principal);
+  function closeCanceledFireReview(review: PendingReview, principal: string): Promise<void> {
+    const key = `${review.id}:${review.kind === 'tool-approval' ? review.round : 0}`;
+    const inFlight = closingCanceledReviews.get(key);
+    if (inFlight !== undefined) return inFlight;
+    const closing = (async () => {
+      if (await reviewHasTerminalRecord(review)) return;
+      await recordReviewStatusTransition(review, 'canceled', principal);
+    })().finally(() => {
+      closingCanceledReviews.delete(key);
+    });
+    closingCanceledReviews.set(key, closing);
+    return closing;
   }
 
   /** COR-1613 — a canceled fire's parked human waits, read before they are forgotten. */
@@ -5424,6 +5463,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       status: 'pending',
       round: typeof round === 'number' ? round : 0,
     };
+  }
+
+  /** Whether the fire's session still records the approval as pending (the session decides). */
+  async function sessionHoldsFireApproval(runId: string, reviewId: string): Promise<boolean> {
+    const sessionId = terminalReviewSessions.get(runId)?.sessionId;
+    if (sessionId === undefined) return false;
+    const session = await runtime.sessionStore?.load(sessionId);
+    const persisted = session?.metadata['pendingApprovalOverrides'];
+    return isJsonObject(persisted) && persisted[reviewId] !== undefined;
   }
 
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
@@ -13348,7 +13396,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         for (const result of step.results) {
           if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
           const id = `approval:${runId}:${result.pendingApproval.callId}`;
+          // A decision in flight owns the review: the next tick expires it if it lets go.
           if (resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id)) continue;
+          if (resolvingReviewIds.has(id)) continue;
           const approval = pendingApprovalOverrides.get(id) ?? result.pendingApproval;
           // AB-46 read-time filter: a tool-approval review past its binding's
           // `expiresAt` is excluded here with no write — `sweepExpiredReviews`
@@ -14567,7 +14617,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         for (const result of step.results) {
           if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
           const id = `approval:${runId}:${result.pendingApproval.callId}`;
+          // A decision in flight owns the review: the next tick expires it if it lets go.
           if (resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id)) continue;
+          if (resolvingReviewIds.has(id)) continue;
           const approval = pendingApprovalOverrides.get(id) ?? result.pendingApproval;
           if (approval.approvalBinding === undefined) continue;
           if (approval.approvalBinding.expiresAt > effectiveNow) continue;
@@ -14598,6 +14650,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       for (const [id, approval] of pendingApprovalOverrides) {
         if (!id.startsWith(`approval:${runId}:`)) continue;
         if (resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id)) continue;
+        if (resolvingReviewIds.has(id)) continue;
         if (approval.approvalBinding === undefined) continue;
         if (approval.approvalBinding.expiresAt > effectiveNow) continue;
 

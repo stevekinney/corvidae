@@ -210,7 +210,8 @@ export interface TaskRegistryHost {
    * Drops this process's own copy of a review another process closed (COR-1613): the durable
    * history says it was decided or expired, so what this process still lists for it is stale.
    */
-  readonly releaseClosedReview?: ((taskId: string, reviewId: string) => Promise<void>) | undefined;
+  readonly releaseClosedReview?:
+    ((taskId: string, reviewId: string, eventKind: string) => Promise<void>) | undefined;
   /** Resolves after `milliseconds` on the Bureau's runtime timers. */
   readonly sleep: (milliseconds: number) => Promise<void>;
 }
@@ -291,7 +292,7 @@ export interface TaskRegistry {
    * stale copy here is dropped, then those following the task are told, as for a review closed
    * here, so the task's end reaches a stream this process serves.
    */
-  reviewClosedElsewhere(taskId: string, reviewId: string): Promise<void>;
+  reviewClosedElsewhere(taskId: string, reviewId: string, eventKind: string): Promise<void>;
   /**
    * Records how a task ended. The latest settlement wins, with the answer kept. Resolves
    * `false`, writing nothing, when the task has no record.
@@ -912,8 +913,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       };
     },
 
-    async reviewClosedElsewhere(taskId, reviewId) {
-      await host.releaseClosedReview?.(taskId, reviewId);
+    async reviewClosedElsewhere(taskId, reviewId, eventKind) {
+      await host.releaseClosedReview?.(taskId, reviewId, eventKind);
       await this.announceChanged(taskId);
     },
 

@@ -11,11 +11,13 @@ import { OWNER, rpc } from './http/management/management-fixtures.test-support.t
 import {
   approvalToolbox,
   askingGenerate,
+  auditRecordsOf,
   chargesOnce,
   createScheduleFireHarness,
   durableStatus,
   fireOnce,
   handlerOf,
+  historyKinds,
   holdingWrites,
   pollUntil,
   reviewOf,
@@ -47,22 +49,6 @@ const continuingGenerate: GenerateFunction = async (context) => {
     context.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
   });
 };
-
-async function auditRecordsOf(bureau: Bureau, runId: string, type: string, reviewId?: string) {
-  const records = (await bureau.auditTrail?.query({ runId })) ?? [];
-  return records.filter((record) => {
-    if (record.type !== type) return false;
-    if (reviewId === undefined) return true;
-    const detail = record.detail as { review?: { id?: string } } | undefined;
-    return detail?.review?.id === reviewId;
-  });
-}
-
-async function historyKinds(bureau: Bureau, runId: string): Promise<string[]> {
-  const page = await bureau.eventHistory({ kind: 'run', id: runId });
-  if (!('events' in page)) return [];
-  return page.events.filter((event) => event.kind.startsWith('review.')).map((event) => event.kind);
-}
 
 const cancelRoutes = {
   'in the engine': (bureau: Bureau, fireId: string) => {
