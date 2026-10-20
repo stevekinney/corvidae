@@ -6123,7 +6123,7 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
 describe('createBureau effectful hook idempotency (#27)', () => {
   // A governed memory plus an inspecting authority that reads back every
   // record the Bureau hooks wrote, whatever its state.
-  function governedMemory() {
+  function governedMemory(partition = { tenantId: 'bureau', ownerId: 'bureau' }) {
     const memory = createGovernedMemory({
       storage: createInMemoryMemoryRecordStorage(),
       ledger: createMemoryGovernanceLedger(new MemoryStorage()),
@@ -6132,8 +6132,8 @@ describe('createBureau effectful hook idempotency (#27)', () => {
     });
     const inspector = createMemoryAuthority({
       principal: { kind: 'governance', id: 'governance:test' },
-      tenantId: 'bureau',
-      ownerId: 'bureau',
+      tenantId: partition.tenantId,
+      ownerId: partition.ownerId,
       purpose: 'test-inspection',
       capabilities: ['memory:list', 'memory:inspect', 'memory:write'],
       policyRevision: 'bureau:1',
@@ -6170,15 +6170,21 @@ describe('createBureau effectful hook idempotency (#27)', () => {
           authorizationRevision: 'bureau:1',
         },
       },
-      { runId },
+      { runId, tenantId: 'bureau', ownerId: 'bureau' },
     );
 
   it('persists conversation memory tagged with a deterministic (runId:step) dedupeKey + effectful replay', async () => {
-    const { memory, inspector } = governedMemory();
+    // COR-1546: a run writes under the Bureau's identifier and its owner of record, into its
+    // agent's collection. A run that names no agent is the house default, `bureau`.
+    const { memory, inspector } = governedMemory({
+      tenantId: 'memory-idempotency-bureau',
+      ownerId: 'anonymous:local',
+    });
     await memory.init();
 
     const sessionId = 'memory-idempotency-session';
     const bureau = await createBureau({
+      id: 'memory-idempotency-bureau',
       agents: {},
       generate: async () => ({ content: 'the stable remembered fact', toolCalls: [] }),
       toolbox: createEmptyToolbox(),
@@ -6190,8 +6196,9 @@ describe('createBureau effectful hook idempotency (#27)', () => {
     try {
       const run = await bureau.createRun({ message: 'remember this', sessionId });
       await waitForRunCompletion(bureau, run.id);
-      const persisted = await listConversation(memory, inspector, sessionId);
+      const persisted = await listConversation(memory, inspector, 'bureau');
       expect(persisted.length).toBe(1);
+      expect(persisted[0]!.metadata['sessionId']).toBe(sessionId);
       // The dedupeKey is the durable operation's identity — runId:step — NOT a
       // content hash, so a divergent regenerate on replay still maps to one record.
       expect(persisted[0]!.metadata['dedupeKey']).toBe(`${run.id}:0`);
@@ -6216,7 +6223,12 @@ describe('createBureau effectful hook idempotency (#27)', () => {
 
     const collection = 'hook-idempotency-collection';
     const runId = 'run-fixed-id';
-    const hook = createMemoryPersistHook(memory, runAuthority(runId), collection, runId);
+    const hook = createMemoryPersistHook(
+      memory,
+      runAuthority(runId),
+      { collection, sessionId: 'hook-session' },
+      runId,
+    );
     for (let i = 0; i < 125; i++) {
       await memory.write(inspector, `seed memory ${i} with unique content ${i * 7919}`, {
         collection,
@@ -6274,13 +6286,13 @@ describe('createBureau effectful hook idempotency (#27)', () => {
     await createMemoryPersistHook(
       memory,
       runAuthority('run-A'),
-      collection,
+      { collection, sessionId: 'session-A' },
       'run-A',
     )(stepResult(0, 'fact from run A'));
     await createMemoryPersistHook(
       memory,
       runAuthority('run-B'),
-      collection,
+      { collection, sessionId: 'session-B' },
       'run-B',
     )(stepResult(0, 'a wholly separate fact from run B'));
 

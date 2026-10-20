@@ -365,17 +365,28 @@ export async function admitWrite(
 }
 
 /**
- * Stamps supersession onto a record: it stays for history but leaves active
- * use. The stamp merges onto the record as it is now, so a revocation or legal
- * hold that landed while the successor was admitted survives it.
+ * Removes a record this operation just admitted and now cannot keep, because the record it was to
+ * replace was replaced first (COR-1546). Nothing else has seen it: it was admitted moments ago
+ * under this caller's own partition, and only the replacement's stamp, which declined, would have
+ * made it part of anyone's history. The ledger keeps the write's admission event and gains a
+ * withdrawal event beside it, so the history still says what happened.
  */
-export async function stampInvalidated(
+export async function withdrawAdmitted(
   context: GovernanceContext,
-  resolved: ResolvedRecord,
-  successorId: string,
+  authority: MemoryAuthority,
+  operationId: string,
+  scope: TenantScope,
+  recordId: string,
+  replaced: readonly string[],
 ): Promise<void> {
-  await context.updateGovernance(resolved, {
-    invalidatedAt: context.now(),
-    supersededBy: successorId,
+  await context.deleteMany([{ id: recordId, scope }]);
+  await context.textSearchProvider?.remove(recordId);
+  await context.recordEvent({
+    tenantId: authority.tenantId,
+    type: 'memory.write.withdrawn',
+    outcome: 'withdrawn',
+    attribution: context.attribution(authority, operationId),
+    recordIds: [recordId, ...replaced],
+    details: { reason: 'superseded' },
   });
 }

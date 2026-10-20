@@ -142,6 +142,14 @@ const GOAL_PARAMETERS = {
   bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
 } as const;
 
+/** What the memory operations need beside the identifier a probe varies. */
+const MEMORY_PARAMETERS = {
+  agentId: 'support',
+  id: 'memory-1',
+  query: 'x',
+  content: 'x',
+} as const;
+
 /**
  * What the asset operations need to reach their own check: identifiers nothing holds, a chunk that
  * is base64, and a length.
@@ -648,6 +656,10 @@ describe('credentials', () => {
           bureauId: bureau.id,
           decision: 'approve',
           input: { id: 'input-1', payload: 'hello' },
+          // The memory operations name the agent whose memory they read, and what to search or write.
+          agentId: 'x',
+          query: 'x',
+          content: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
@@ -770,6 +782,10 @@ describe('identifiers grant nothing', () => {
           const send = async (requested: string) => {
             const params = paramsFor(operation, {
               messageId: 'message-1',
+              // A memory operation names an agent and a record; the other is held fixed while one
+              // is probed. Neither scope is held by `alice-key`, so every probe is `Forbidden`: the
+              // two-owner proof for memory is `memory-operations.test.ts`.
+              ...(operation.name.startsWith('bureau.memory.') ? MEMORY_PARAMETERS : {}),
               [parameter]: requested,
               decision: 'approve',
               input: { id: 'input-1', payload: 'hello' },
@@ -928,6 +944,10 @@ describe('transcripts stay inside the Bureau', () => {
           bureauId: bureau.id,
           decision: 'approve',
           input: { id: 'input-1', payload: 'hello' },
+          // The memory operations name the agent whose memory they read, and what to search or write.
+          agentId: 'x',
+          query: 'x',
+          content: 'x',
           ...definitionParameters(operation),
         });
         const response = operation.transports.jsonRpcHttp
