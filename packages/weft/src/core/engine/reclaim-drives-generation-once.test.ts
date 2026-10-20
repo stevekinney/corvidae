@@ -15,7 +15,6 @@ import type { Storage } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import {
   createDeferred,
-  type Deferred,
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
@@ -23,6 +22,9 @@ import { workflow, type WorkflowContext } from '../types.ts';
 import { Engine } from './index.ts';
 import { getInternals } from './internals.ts';
 import { WORKFLOW_CLAIM_TAKEOVER_GRACE_MULTIPLIER } from './workflow-claim-transitions.ts';
+
+/** A promise a test settles, to hold something until it chooses. */
+type Hold = ReturnType<typeof createDeferred>;
 
 const CLAIM_RENEW_INTERVAL_MS = 1_000;
 const CLAIM_TTL_MS = 3_000;
@@ -33,7 +35,7 @@ const EXPIRED_AFTER_MS =
 type ActivityProbe = {
   runs: number;
   /** While set, an activity that has started waits here, so the drive stays "running". */
-  hold: Deferred | null;
+  hold: Hold | null;
 };
 
 const probes = new WeakMap<Storage, ActivityProbe>();
@@ -88,7 +90,7 @@ type Recovering = {
   engine: Engine<{ counted: ReturnType<typeof countingWorkflow> }, object>;
   setNow: (value: number) => void;
   /** Calls to `resolveWorkflowServices`, and the deferred that holds the first one. */
-  resolver: { calls: number; hold: Deferred | null };
+  resolver: { calls: number; hold: Hold | null };
 };
 
 async function createRecoveringEngine(
@@ -220,7 +222,7 @@ describe('a claim takeover that races recoverAll() drives the generation once', 
  * collected, so a test can run `recoverAll()` between the listing and the attempts.
  */
 class ListingGatedStorage extends MemoryStorage {
-  gate: Deferred | null = null;
+  gate: Hold | null = null;
   readonly reachedGate = createDeferred();
 
   override async *scan(
