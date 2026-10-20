@@ -164,6 +164,26 @@ describe('weft.workflows.attributes.set', () => {
       }
     });
 
+    it('leaves a value that is not an object for the engine to refuse, as it did before', async () => {
+      const { engine, storage, id } = await startScheduled();
+      try {
+        const response = await handleRequest(
+          request('PATCH', `/v1/workflows/${id}/attributes`, {
+            attributes: ['2026-06-15T12:30:00.000Z'],
+          }),
+          engine,
+          { operationRegistry: registry, restBindings: bindings },
+        );
+
+        // The engine rejects the "0" key the array spreads into, which is masked as a server error.
+        expect(response.status).toBe(500);
+        const stored = decode((await storage.get(KEYS.attribute(id)))!) as Record<string, unknown>;
+        expect(Object.keys(stored).toSorted()).toEqual(['label', 'runAfter']);
+      } finally {
+        engine[Symbol.dispose]();
+      }
+    });
+
     it('refuses a string that is not a date-time as invalid parameters, leaving the stored value', async () => {
       const { engine, storage, id } = await startScheduled();
       try {

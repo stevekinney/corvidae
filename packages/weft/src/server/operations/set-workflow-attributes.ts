@@ -62,7 +62,6 @@ export const setWorkflowAttributesOperation = defineOperation({
       if (error instanceof StartWorkflowValidationError) {
         throw invalidParamsFault(error.message);
       }
-      if (isOperationFault(error)) throw error;
       const message = error instanceof Error ? error.message : String(error);
       const fault: OperationFault = {
         code: 'EngineFailure',
