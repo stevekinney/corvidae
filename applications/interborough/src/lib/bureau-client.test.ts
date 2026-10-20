@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -217,8 +218,52 @@ describe('the lists and details the chat and agents views read', () => {
 
     const agents = await withStub(stub.fetch, () => listAgents());
 
-    expect(agents).toEqual([agent as never]);
+    // An answer with no `media` is an agent that names no model, which can take no attachment.
+    expect(agents).toEqual([{ ...agent, media: null } as never]);
     expect(stub.calls[0]?.body.method).toBe('bureau.agents.list');
+  });
+
+  test.each([-1, 1.5])('listAgents refuses a per-part byte limit of %s', async (maxBytes) => {
+    const agent = {
+      name: 'seer',
+      displayName: 'Seer',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+      media: {
+        modalities: {},
+        mimeFamilies: [],
+        mediaLimits: [{ modality: 'image', maxBytes }],
+      },
+    };
+
+    const refusal = await rejectionOf(
+      withStub(answering(result({ agents: [agent] })).fetch, () => listAgents()),
+    );
+
+    expect(refusal).toBeInstanceOf(Error);
+  });
+
+  test('listAgents carries what each agent’s model takes in the way of media', async () => {
+    const media = {
+      modalities: { image: { input: true, output: false } },
+      mimeFamilies: ['image'],
+      mediaLimits: [{ modality: 'image', maxBytes: 1024 }],
+    };
+    const agent = {
+      name: 'seer',
+      displayName: 'Seer',
+      description: null,
+      definitionRevision: 1,
+      kind: 'code',
+      publishState: 'published',
+      media,
+    };
+
+    const agents = await withStub(answering(result({ agents: [agent] })).fetch, () => listAgents());
+
+    expect(agents[0]?.media).toEqual(media);
   });
 
   test('getThreadMessages returns the messages the mount gives for a thread', async () => {

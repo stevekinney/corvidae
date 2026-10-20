@@ -2,7 +2,12 @@
   import type { Snippet } from 'svelte';
   import type { HTMLFormAttributes } from 'svelte/elements';
   import type { MessageInput } from '../conversation-model.ts';
-  import type { ChatAttachment } from './chat-attachment.ts';
+  import type {
+    ChatAttachment,
+    ChatAttachmentErrorFormatter,
+    ChatAttachmentFailure,
+    ChatAttachmentUpload,
+  } from './chat-attachment.ts';
   import type { AttachmentKind } from './attachment-kind.ts';
 
   export type { ChatAttachment } from './chat-attachment.ts';
@@ -57,11 +62,20 @@
     /** Enable file attachments (default: true) */
     allowAttachments?: boolean;
     /** Maximum file size in bytes (default: 10MB) */
-    maxFileSize?: number;
+    maxFileSize?: number | undefined;
     /** Accepted MIME types (default: ['image/*']) */
-    acceptedTypes?: string[];
+    acceptedTypes?: string[] | undefined;
     /** Plain-text paste length promoted to a reversible attachment. Default `8000`. */
     largePasteThreshold?: number;
+    /**
+     * Uploads each attached file as soon as it is added. The attachment is `uploading` until the
+     * hook settles, then `ready` carrying the hook's reference, or `error`; Send waits for every
+     * upload. A file the composer refuses (too large, or a type it does not accept) never reaches
+     * the hook. A promoted text paste is sent inline and is not uploaded.
+     */
+    uploadAttachment?: ChatAttachmentUpload | undefined;
+    /** The words shown for an attachment in the `error` state. Defaults to a plain English message. */
+    formatAttachmentError?: ChatAttachmentErrorFormatter | undefined;
 
     // Events
     /** Called when the message is submitted */
@@ -167,6 +181,8 @@
       'application/toml',
     ],
     largePasteThreshold = 8_000,
+    uploadAttachment,
+    formatAttachmentError,
     onsubmit,
     onstop,
     onComposerInput,
@@ -292,29 +308,8 @@
     document: 'Document',
   };
 
-  function addAttachment(
-    file: File,
-    restoreText: string | undefined = undefined,
-    restoreRange: { start: number; end: number } | undefined = undefined,
-  ): ChatAttachment | null {
-    // Type validation
-    if (!isValidType(file)) {
-      onAttachmentFailure?.(
-        file,
-        `Invalid file type: ${file.type}. Accepted types: ${acceptedTypes.join(', ')}.`,
-      );
-      return null;
-    }
-
-    // Size validation
-    if (file.size > maxFileSize) {
-      const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-      onAttachmentFailure?.(file, `File exceeds ${maxSizeMB}MB limit`);
-      return null;
-    }
-
-    const kind = deriveAttachmentKind(file.type);
-
+  /** Names an attachment's file the way the composer keys its rows and its announcements. */
+  function newAttachmentId(file: File): string {
     // Derive a stable ID from the file's identity metadata so repeated snapshot
     // renders of the same attachment produce the same DOM ID. Fall back to the
     // per-instance counter when lastModified is absent (e.g. synthetic File objects
@@ -329,13 +324,103 @@
       attachmentId = `${attachmentId}-${attachmentIdFactory.next()}`;
     }
     usedAttachmentIds.add(attachmentId);
+    return attachmentId;
+  }
+
+  function describeFailure(failure: ChatAttachmentFailure): string {
+    if (formatAttachmentError) return formatAttachmentError(failure);
+    if (failure.kind === 'type-not-accepted') {
+      return `Invalid file type: ${failure.file.type}. Accepted types: ${failure.acceptedTypes.join(', ')}.`;
+    }
+    if (failure.kind === 'too-large') {
+      return `File exceeds ${Math.round(failure.maxFileSize / (1024 * 1024))}MB limit`;
+    }
+    return 'Upload failed';
+  }
+
+  /** Why the composer refuses `file` before reading or uploading it, or `undefined` to take it. */
+  function refusalOf(file: File): ChatAttachmentFailure | undefined {
+    if (!isValidType(file)) {
+      return { kind: 'type-not-accepted', file, acceptedTypes };
+    }
+    if (file.size > maxFileSize) return { kind: 'too-large', file, maxFileSize };
+    return undefined;
+  }
+
+  /** `attachment` as an `error` row: its upload reference is dropped, so it can never be sent. */
+  function refused(attachment: ChatAttachment, message: string): ChatAttachment {
+    const { reference: _reference, ...others } = attachment;
+    return { ...others, status: 'error', error: message };
+  }
+
+  /**
+   * The limits are the host's to change after files are in the composer (it changes the agent a
+   * person writes to, and the agent's model decides what it takes). A file the new limits refuse
+   * is stopped, shown as an `error` row with the reason, and never sent, as one refused when it
+   * was added is. A file the limits still take is left alone.
+   */
+  $effect(() => {
+    // Only a change to the limits runs this; the attachments are read without being tracked.
+    void acceptedTypes;
+    void maxFileSize;
+    untrack(() => {
+      for (const attachment of attachments) {
+        if (attachment.status === 'error' || attachment.restoreText !== undefined) continue;
+        const refusal = refusalOf(attachment.file);
+        if (refusal === undefined) continue;
+        abortUploads([attachment.id]);
+        const message = describeFailure(refusal);
+        attachments = attachments.map((entry) =>
+          entry.id === attachment.id ? refused(entry, message) : entry,
+        );
+        onAttachmentFailure?.(attachment.file, message);
+        announcer.announce(`${attachment.file.name} was not attached: ${message}`);
+      }
+    });
+  });
+
+  function addAttachment(
+    file: File,
+    restoreText: string | undefined = undefined,
+    restoreRange: { start: number; end: number } | undefined = undefined,
+  ): ChatAttachment | null {
+    const refusal = refusalOf(file);
+    if (refusal) {
+      const message = describeFailure(refusal);
+      onAttachmentFailure?.(file, message);
+      // A promoted paste that is refused simply pastes as text. A file the person chose is shown
+      // as an error row, so they see which one was left out and why.
+      if (restoreText === undefined) {
+        const kind = deriveAttachmentKind(file.type);
+        attachments = [
+          ...attachments,
+          {
+            id: newAttachmentId(file),
+            file,
+            previewUrl: URL.createObjectURL(file),
+            kind,
+            status: 'error',
+            error: message,
+          },
+        ];
+        announcer.announce(`${file.name} was not attached: ${message}`);
+      }
+      return null;
+    }
+
+    const kind = deriveAttachmentKind(file.type);
+    const uploads = uploadAttachment !== undefined && restoreText === undefined;
 
     const attachment: ChatAttachment = {
-      id: attachmentId,
+      id: newAttachmentId(file),
       file,
       previewUrl: URL.createObjectURL(file),
       kind,
-      status: kind === 'code' && restoreText === undefined ? 'pending' : 'ready',
+      status: uploads
+        ? 'uploading'
+        : kind === 'code' && restoreText === undefined
+          ? 'pending'
+          : 'ready',
       ...(restoreText === undefined ? {} : { textContent: restoreText }),
       ...(restoreText === undefined ? {} : { restoreText }),
       ...(restoreRange === undefined ? {} : { restoreRange }),
@@ -344,6 +429,11 @@
     attachments = [...attachments, attachment];
     onAttachmentAdd?.(attachment);
     announcer.announce(`${KIND_LABELS[kind]} attached: ${file.name}`);
+
+    if (uploads) {
+      startUpload(attachment, uploadAttachment);
+      return attachment;
+    }
 
     // Fire-and-forget text extraction for code files
     if (kind === 'code' && restoreText === undefined) {
@@ -367,9 +457,48 @@
     return attachment;
   }
 
+  /** The uploads still going, by attachment, so removing an attachment can stop its upload. */
+  const uploadControllers = new Map<string, AbortController>();
+
+  function startUpload(attachment: ChatAttachment, upload: ChatAttachmentUpload): void {
+    const controller = new AbortController();
+    uploadControllers.set(attachment.id, controller);
+    const settle = (changes: Partial<ChatAttachment>): void => {
+      // An attachment removed or cleared meanwhile is gone, and what the upload answers is moot.
+      if (controller.signal.aborted) return;
+      attachments = attachments.map((a) => (a.id === attachment.id ? { ...a, ...changes } : a));
+    };
+    void (async () => {
+      try {
+        const reference = await upload(attachment.file, { signal: controller.signal });
+        settle({ status: 'ready', reference });
+        if (!controller.signal.aborted) announcer.announce(`${attachment.file.name} is ready`);
+      } catch (failure) {
+        // Removing the attachment aborts the upload, and the rejection that follows is not a failure.
+        if (controller.signal.aborted) return;
+        const message = describeFailure({
+          kind: 'upload-failed',
+          file: attachment.file,
+          error: failure,
+        });
+        settle({ status: 'error', error: message });
+        announcer.announce(`${attachment.file.name} could not be uploaded: ${message}`);
+      } finally {
+        uploadControllers.delete(attachment.id);
+      }
+    })();
+  }
+
+  function abortUploads(ids?: readonly string[]): void {
+    for (const [attachmentId, controller] of uploadControllers) {
+      if (ids === undefined || ids.includes(attachmentId)) controller.abort();
+    }
+  }
+
   function removeAttachment(attachmentId: string): void {
     const attachment = attachments.find((a) => a.id === attachmentId);
     if (attachment) {
+      abortUploads([attachmentId]);
       URL.revokeObjectURL(attachment.previewUrl);
       attachments = attachments.filter((a) => a.id !== attachmentId);
       if (attachment.restoreText) {
@@ -572,6 +701,7 @@
         // Clear state
         value = '';
         previousComposerValue = '';
+        abortUploads();
         attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
         attachments = [];
       }
@@ -741,6 +871,7 @@
   export function clear(): void {
     value = '';
     previousComposerValue = '';
+    abortUploads();
     attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
     attachments = [];
   }
@@ -805,6 +936,7 @@
   function revokeAttachmentPreviewsOnDestroy(_form: HTMLFormElement): { destroy(): void } {
     return {
       destroy() {
+        abortUploads();
         attachments.forEach((attachment) => URL.revokeObjectURL(attachment.previewUrl));
       },
     };
@@ -857,6 +989,11 @@
         </div>
       {/each}
     </div>
+    {#each attachments.filter((a) => a.status === 'error' && a.error) as failed (failed.id)}
+      <p class="chat-input-attachment-error" data-attachment-error={failed.id}>
+        {failed.file.name}: {failed.error}
+      </p>
+    {/each}
   {/if}
 
   <!-- Editor area -->
@@ -1277,6 +1414,13 @@
   }
 
   /* Error */
+  .chat-input-attachment-error {
+    margin: 0;
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    color: var(--cinder-status-danger-text);
+    overflow-wrap: anywhere;
+  }
+
   .chat-input-error {
     margin: 0;
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
