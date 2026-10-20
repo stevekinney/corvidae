@@ -24,7 +24,12 @@
 
   import { getClient } from '../lib/client.ts';
   import { classifyFault } from '../lib/faults.ts';
-  import { queryKeys, workflowViewInstance } from '../lib/query.ts';
+  import {
+    AGENT_MEMORY_PATTERN,
+    agentMemoryViewInstance,
+    queryKeys,
+    workflowViewInstance,
+  } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
@@ -57,6 +62,9 @@
   const copy = VIEW_COPY[initial.view];
   const notFoundCopy = copy.notFoundByPattern?.[initial.pattern ?? ''] ?? copy.notFound;
   const emptyCopy = copy.emptyByPattern?.[initial.pattern ?? ''] ?? copy.empty;
+  const loadingCopy = copy.loadingByPattern?.[initial.pattern ?? ''] ?? copy.loading;
+  const errorCopy = copy.errorByPattern?.[initial.pattern ?? ''] ?? copy.error;
+  const forbiddenCopy = copy.forbiddenByPattern?.[initial.pattern ?? ''];
   const definition = VIEWS[initial.view];
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
@@ -69,7 +77,9 @@
     () => ({
       queryKey: queryKeys.view(
         initial.view,
-        initial.parameters['id'] ??
+        (initial.pattern === AGENT_MEMORY_PATTERN && initial.parameters['id'] !== undefined
+          ? agentMemoryViewInstance(initial.parameters['id'])
+          : initial.parameters['id']) ??
           initial.parameters['sessionId'] ??
           // A type's page, runs, and editor ask different questions about one type.
           (initial.parameters['type'] === undefined
@@ -134,10 +144,13 @@
   });
 
   const forbiddenDescription = $derived(
-    definition.scopes.length > 0
-      ? scopeReason(...definition.scopes)
-      : 'This view is not available to the current principal.',
+    forbiddenCopy !== undefined
+      ? forbiddenCopy.description
+      : definition.scopes.length > 0
+        ? scopeReason(...definition.scopes)
+        : 'This view is not available to the current principal.',
   );
+  const forbiddenTitle = $derived(forbiddenCopy?.title ?? copy.forbidden.title);
 
   function navigateTo(event: MouseEvent, href: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0)
@@ -152,8 +165,8 @@
     {@render children()}
   {:else if state === 'loading'}
     <div class="weft-view__loading" role="status" aria-busy="true">
-      <h1 class="weft-view__loading-title">{copy.loading.title}</h1>
-      <p class="weft-view__loading-description">{copy.loading.description}</p>
+      <h1 class="weft-view__loading-title">{loadingCopy.title}</h1>
+      <p class="weft-view__loading-description">{loadingCopy.description}</p>
       <Skeleton height="1.5rem" width="40%" />
       <Skeleton height="10rem" />
     </div>
@@ -177,14 +190,14 @@
     </EmptyState>
   {:else if state === 'error'}
     <ErrorState
-      title={copy.error.title}
-      description={copy.error.description}
+      title={errorCopy.title}
+      description={errorCopy.description}
       headingLevel={1}
       retryLabel={RETRY_LABEL}
       onRetry={() => void probeQuery.refetch()}
     />
   {:else}
-    <EmptyState title={copy.forbidden.title} description={forbiddenDescription} headingLevel={1}>
+    <EmptyState title={forbiddenTitle} description={forbiddenDescription} headingLevel={1}>
       {#snippet icon()}<Lock size={28} aria-hidden="true" />{/snippet}
     </EmptyState>
   {/if}

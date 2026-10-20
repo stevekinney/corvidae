@@ -43,6 +43,7 @@
         "@lostgradient/chat": "workspace:*",
         "@lostgradient/cinder": "workspace:*",
         "@lostgradient/markdown": "workspace:*",
+        "@lostgradient/memory": "workspace:*",
         "@lostgradient/operative": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/weft": "workspace:*",
