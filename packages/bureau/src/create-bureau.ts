@@ -14393,7 +14393,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   async function resolveAnyReview(input: ResolveReviewInput): Promise<ResolveReviewResult> {
     if (runHumanWaits.has(input.id)) return runHumanWaits.resolve(input);
     const derived = await derivedHumanWait(input.id);
-    if (derived !== undefined && derived.sessionId === undefined) {
+    // COR-1613: a schedule fire's wait goes through the engine by run id, as a catalog run's does,
+    // though it names the session the fire runs in; a session run's keeps the session path.
+    if (
+      derived !== undefined &&
+      (derived.sessionId === undefined || runHumanWaits.isDerivedFire(derived))
+    ) {
       return runHumanWaits.resolve(input, derived);
     }
     return resolveReview(

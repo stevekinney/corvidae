@@ -32,6 +32,7 @@
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import {
   type CombinedOperativeEventMap,
+  isScheduledAgentRunInput,
   type DurableRunDeps,
   HumanWaitParkedEvent,
 } from '@lostgradient/operative';
@@ -184,6 +185,8 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   /** Reviews resolved in this process: the run may still be going, so the store would still show them. */
   const resolved = new Set<string>();
   const resolving = new Set<string>();
+  /** The waits {@link derive} read as a schedule fire's, which resolve through the engine. */
+  const derivedFireWaits = new WeakSet<object>();
 
   function reviewId(wait: Wait): string {
     return `human-wait:${wait.runId}:${wait.signalName}:${wait.ordinal}`;
@@ -399,6 +402,27 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       state.input !== null && typeof state.input === 'object'
         ? (state.input as Record<string, unknown>)
         : {};
+    // COR-1613: a schedule fire's wait is a run's, resolved through the engine by run id, whatever
+    // session it runs in. Its durable input is a scheduled agent run's, which a session run's and
+    // a catalog run's are not.
+    if (isScheduledAgentRunInput(input)) {
+      const scheduleId = typeof input.scheduleId === 'string' ? input.scheduleId.trim() : '';
+      const fireSessionId =
+        input.sessionId ?? (scheduleId === '' ? undefined : `sched-${scheduleId}-${runId}`);
+      const fireReview: PendingHumanWaitReview = {
+        ...toReview({
+          runId,
+          signalName: outstanding.signalName,
+          prompt: outstanding.prompt,
+          ordinal: outstanding.ordinal,
+          requestedAt: state.updatedAt,
+          agentName: input.agentName,
+          sessionId: fireSessionId,
+        }),
+      };
+      derivedFireWaits.add(fireReview);
+      return fireReview;
+    }
     const classification = await classifyRun(runId);
     const sessionId = input['sessionId'];
     if (!classification.isCatalogRun && typeof sessionId !== 'string') return undefined;
@@ -499,6 +523,8 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     has: (id: string) => find(id) !== undefined,
     holds,
     derive,
+    /** Whether a wait {@link derive} returned is a schedule fire's (COR-1613). */
+    isDerivedFire: (review: PendingHumanWaitReview) => derivedFireWaits.has(review),
     attach,
     forget,
     resolve,
