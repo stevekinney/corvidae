@@ -138,3 +138,18 @@ it('reads an asynchronous description of the wait when it reports the hang', asy
     await bureau.shutdown();
   }
 });
+
+it('reports the hang when the stalled phase finishes while its description is being read', async () => {
+  const outcome = await settleScenario(async (scope) => {
+    await scope.phase('slow', async () => {
+      // The description settles after the guard fires and after the phase itself has finished.
+      scope.observe(
+        () => new Promise<string>((resolve) => setTimeout(() => resolve('described late'), 60)),
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 30));
+    });
+  }, 10);
+
+  expect(outcome.failed).toBe(true);
+  expect((outcome.error as Error).message).toMatch(/stalled in phase "slow"/);
+});

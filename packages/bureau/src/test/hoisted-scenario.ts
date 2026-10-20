@@ -114,16 +114,19 @@ export async function settleScenario(
   const describeHang = async (): Promise<string> => {
     const base = `the scenario made no progress within the ${hangGuardMilliseconds}ms hang guard`;
     let where: string;
-    if (running !== undefined) {
-      const waited = Math.round(performance.now() - running.startedAt);
+    // The phase that was running when the guard fired. It can finish while its description is
+    // read, which clears `running`, so the report keeps its own reference.
+    const stalled = running;
+    if (stalled !== undefined) {
+      const waited = Math.round(performance.now() - stalled.startedAt);
       let detail = '';
       try {
-        const described = await readWithin(running.describe, DESCRIBE_MILLISECONDS);
+        const described = await readWithin(stalled.describe, DESCRIBE_MILLISECONDS);
         if (described !== undefined) detail = ` (${described})`;
       } catch (error) {
         detail = ` (describing the wait failed: ${error instanceof Error ? error.message : String(error)})`;
       }
-      where = `stalled in phase "${running.label}" after ${waited}ms${detail}`;
+      where = `stalled in phase "${stalled.label}" after ${waited}ms${detail}`;
     } else if (lastFinished === undefined) {
       where = 'stalled before its first phase';
     } else {
@@ -140,7 +143,10 @@ export async function settleScenario(
   const hang = new Promise<ScenarioOutcome>((resolve) => {
     cancel = afterAwakeTime(hangGuardMilliseconds, () => {
       hung = true;
-      void describeHang().then((message) => resolve({ failed: true, error: new Error(message) }));
+      void describeHang().then(
+        (message) => resolve({ failed: true, error: new Error(message) }),
+        (error: unknown) => resolve({ failed: true, error }),
+      );
     });
   });
   const finished = (async (): Promise<ScenarioOutcome> => {
@@ -152,7 +158,7 @@ export async function settleScenario(
     }
   })();
   try {
-    const outcome = await Promise.race([finished, hang]);
+    let outcome = await Promise.race([finished, hang]);
     if (hung) {
       // Start every release, last registered first, without waiting for any to finish: a release
       // can itself be stuck (a shutdown awaiting the very thing that hung), and waiting on it would
@@ -165,6 +171,10 @@ export async function settleScenario(
           // A release that throws synchronously is as best effort as one that rejects.
         }
       }
+      // The guard fired, so the scenario failed, even when it finished while the hang's description
+      // was still being read. The releases have already started; the report is bounded by
+      // `DESCRIBE_MILLISECONDS`.
+      if (!outcome.failed) outcome = await hang;
     }
     return outcome;
   } finally {
