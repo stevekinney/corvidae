@@ -6,9 +6,10 @@
  */
 import { HttpClient } from '@lostgradient/weft';
 import { render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
 
 import { taskFixture, toolApprovalFixture } from '../lib/bureau-fixtures.test-support.ts';
+import { settle, until } from '../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../lib/live-source/fetch.test-support.ts';
 import { AUTHORIZATION_SCOPES, type PrincipalStore } from '../lib/scopes.svelte.ts';
 import {
@@ -23,12 +24,14 @@ import {
 } from '../lib/workflow-world.test-support.ts';
 import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
+import { RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
 
 type Outcome = 'content' | 'empty' | 'error' | 'forbidden';
 
 let restore: (() => void) | undefined;
 afterEach(() => {
+  jest.useRealTimers();
   restore?.();
   restore = undefined;
 });
@@ -736,6 +739,56 @@ describe('the Workflows area', () => {
     expect(await some.findByTestId('content')).not.toBeNull();
     // The probe asks for this type's runs, and only the first.
     expect(stub.callsTo('GET /workflows')[0]?.params).toMatchObject({ type: 'order-processing' });
+  });
+
+  test('the runs of a type with none ask again while they are empty, and show a run that starts', async () => {
+    const empty = emptyWorld({
+      definitions: [codeDefinition('order-processing'), sourceDefinition('digest')],
+      files: [readyFile('digest')],
+      runs: [],
+    });
+    const stub = installWorkflowWorld(empty);
+    restore = stub.restore;
+    // The page's own timers are the fake clock's, so the recheck can be advanced.
+    jest.useFakeTimers();
+    const { container } = mount('workflows', {
+      parameters: { type: 'order-processing' },
+      pattern: '/workflows/:type/runs',
+    });
+    await until(() => expect(frame(container).dataset['state']).toBe('empty'));
+    const asked = stub.callsTo('GET /workflows').length;
+
+    // The workflow starts, and the page that is already open finds out by itself.
+    empty.runs.push({
+      id: 'run-1',
+      type: 'order-processing',
+      status: 'completed',
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    jest.advanceTimersByTime(RUNS_RECHECK_MS);
+    await until(() => expect(frame(container).dataset['state']).toBe('ready'));
+    expect(stub.callsTo('GET /workflows').length).toBeGreaterThan(asked);
+
+    // With a run to show it asks no more.
+    const settled = stub.callsTo('GET /workflows').length;
+    jest.advanceTimersByTime(RUNS_RECHECK_MS * 3);
+    await settle();
+    expect(stub.callsTo('GET /workflows').length).toBe(settled);
+  });
+
+  test('a view whose probe sets no recheck is asked once, however long it stays empty', async () => {
+    jest.useFakeTimers();
+    const { requests } = stub('audit', 'empty');
+    const { container } = mount('audit');
+    await until(() => expect(frame(container).dataset['state']).toBe('empty'));
+    const asked = requests.length;
+
+    jest.advanceTimersByTime(60_000);
+    await settle();
+
+    expect(frame(container).dataset['state']).toBe('empty');
+    expect(requests.length).toBe(asked);
   });
 });
 

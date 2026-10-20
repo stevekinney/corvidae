@@ -19,8 +19,16 @@ import {
 import { getWorkflowFile } from '../lib/workflow-files.ts';
 import type { ViewName } from './views.ts';
 
-/** What a view's probe learned: whether the thing the view lists has nothing in it. */
-export type ViewProbeResult = { readonly empty: boolean };
+/**
+ * What a view's probe learned: whether the thing the view lists has nothing in it. A probe whose
+ * empty answer is about to change by itself, such as a workflow's runs before its first fire, sets
+ * `recheckMs`, and the frame asks again that often while the view is empty. Without it an empty
+ * view stays as it is until the person leaves and comes back.
+ */
+export type ViewProbeResult = { readonly empty: boolean; readonly recheckMs?: number };
+
+/** How often an empty runs page asks again, the poll `/tasks/:id` uses for a task that has ended. */
+export const RUNS_RECHECK_MS = 5_000;
 
 /** A failure with an HTTP status, for a probe that does not go through Weft's client. */
 export class ViewProbeFault extends Error {
@@ -113,7 +121,7 @@ async function probeWorkflowType(
   if ((await resolveWorkflow(client, type)) === undefined) throw notFound('workflow');
   if (pattern === '/workflows/:type/runs') {
     const page = await client.list({ type, limit: 1 });
-    return { empty: page.items.length === 0 };
+    return page.items.length === 0 ? { empty: true, recheckMs: RUNS_RECHECK_MS } : { empty: false };
   }
   return { empty: false };
 }

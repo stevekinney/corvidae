@@ -11,8 +11,9 @@
  * scripted provider resolver (`journey-agent.ts`), and the workflow it writes runs `assistant`.
  *
  * Nothing waits on a clock. A wait is for something the page shows, or for a route of the harness
- * (the barrier's), and the only one that waits on time at all is the run of a 5 second schedule,
- * which is waited for by polling the page that lists runs until one is there.
+ * (the barrier's), and the only one that waits on time at all is the run of a 5 second schedule:
+ * the runs page opened before the first fire shows no runs, asks again every few seconds, and the
+ * journey waits for its first row.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -36,7 +37,7 @@ import {
   JOURNEY_WORKFLOW_ID,
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
-import { listWorkflowRuns, removeWorkflow } from './workflow-support.ts';
+import { removeWorkflow } from './workflow-support.ts';
 
 test.use({ baseURL: E2E_JOURNEY_URL, viewport: { width: 1280, height: 900 } });
 test.describe.configure({ mode: 'serial' });
@@ -46,6 +47,8 @@ const AUTHOR_NAME = 'Journey author';
 const BARRIER_REPLY = 'The barrier opened.';
 const FOLLOW_UP_REPLY = 'The follow-up was delivered.';
 const QUESTION = 'Which environment should the release go to?';
+/** What the person types into the inbox, and so what the run must be given. */
+const ENVIRONMENT_ANSWER = 'staging';
 const THANKS = 'Thanks, the release will go to the environment you named.';
 
 /** A 1 x 1 PNG: real bytes, so the Bureau detects its type and a browser decodes it. */
@@ -54,7 +57,7 @@ const PIXEL = Buffer.from(
   'base64',
 );
 
-/** A token no other run of the journey uses, so a reused server never answers one run with another's. */
+/** A token no other run of the journey uses, so the labels it stores are its own. */
 const RUN = crypto.randomUUID().slice(0, 8);
 
 /** A row of the transcript the agent wrote. */
@@ -121,7 +124,8 @@ async function forgetEverythingRecalled(request: APIRequestContext): Promise<voi
 }
 
 test.beforeAll(async ({ playwright }) => {
-  // A server that is already running may hold what an earlier run of the journey wrote.
+  // Playwright starts its own host for every run, so nothing is left over; this keeps a run that
+  // is pointed at a host which was used before from tripping over what that host holds.
   const request = await playwright.request.newContext({ baseURL: E2E_JOURNEY_URL });
   try {
     await removeAgent(request, AUTHOR_ID);
@@ -201,6 +205,7 @@ test('starts a second session with the same agent from the agent’s page, and r
 
 test('reloads while an agent waits on a question, and answers it from the reviews inbox', async ({
   page,
+  request,
   checkA11y,
 }) => {
   await page.goto('/chat/new?agent=request-human-input');
@@ -220,14 +225,24 @@ test('reloads while an agent waits on a question, and answers it from the review
   await expect(row).toContainText(QUESTION);
   await row.getByRole('button').click();
   await checkA11y('the question in the reviews inbox');
-  await page.getByLabel('Your answer').fill('staging');
-  await page.getByRole('button', { name: 'Send answer' }).click();
+  await page.getByLabel('Your answer').fill(ENVIRONMENT_ANSWER);
+  await page.getByRole('button', { name: 'Send answer', exact: true }).click();
   await expect(row).toHaveCount(0);
 
-  // The run went on with the answer: its session ends on the thanks.
+  // The run went on with the answer: its session ends on the thanks, and the answer it was given
+  // is the one typed, as the run's conversation holds it.
   await page.goto(`/chat/${threadId}`);
   await expect(page.getByText(THANKS)).toBeVisible();
   await expect(question).toHaveCount(0);
+  const thread = await request.get(
+    `/bureau/ag-ui/threads/${encodeURIComponent(threadId)}/messages`,
+  );
+  expect(thread.ok()).toBe(true);
+  const { messages } = (await thread.json()) as { messages: Array<{ content?: string }> };
+  const answers = messages.filter((message) => message.content?.startsWith('[signal:environment]'));
+  expect(answers.map((message) => message.content)).toEqual([
+    `[signal:environment] ${JSON.stringify(ENVIRONMENT_ANSWER)}`,
+  ]);
 });
 
 test('defines an agent in the editor with the workflow tool, and chats with it until it writes a scheduled workflow', async ({
@@ -246,7 +261,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await expect(page).toHaveURL(new RegExp(`/agents/${AUTHOR_ID}$`));
 
   // A new agent is not published, so the editor's own switch is what lets a person chat with it.
-  await page.getByRole('link', { name: AGENT_EDITOR_COPY.editAction }).click();
+  await page.getByRole('link', { name: AGENT_EDITOR_COPY.editAction, exact: true }).click();
   await page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }).click();
   await expect(
     page.getByRole('switch', { name: AGENT_EDITOR_COPY.publishedLabel }),
@@ -271,33 +286,29 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
 
 test('opens the workflow from /workflows, waits for the schedule’s fire to be listed as a run, and opens that run', async ({
   page,
-  request,
 }) => {
   await page.goto('/workflows');
   const row = page.locator(`[data-workflow="${JOURNEY_WORKFLOW_ID}"]`);
   await expect(row).toHaveAttribute('data-kind', 'agent-authored');
-  await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID }).click();
+  await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
   const detail = page.locator('[data-page="workflow-detail"]');
   await expect(detail.getByTestId('workflow-trigger')).toContainText(JOURNEY_WORKFLOW_CADENCE);
   await expect(detail.getByTestId('workflow-agent')).toContainText(AUTHOR_ID);
 
-  // The schedule fires every few seconds. A runs page that opened before the first fire says there
-  // are none and does not look again, so wait until the Bureau lists a run, then open the page.
-  const runCount = async () => {
-    const listed = await listWorkflowRuns(request, JOURNEY_WORKFLOW_ID);
-    return listed.length;
-  };
-  await expect.poll(runCount, { timeout: 30_000 }).toBeGreaterThan(0);
-  await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction }).click();
+  // The schedule fires every few seconds. This page may open before the first fire, says there are
+  // no runs, and asks again until there is one, so the wait is for its first row.
+  await detail.getByRole('link', { name: WORKFLOW_COPY.runsAction, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/runs$`));
   const runs = page.locator('tbody tr');
-  await expect(runs.first()).toBeVisible();
+  await expect(runs.first()).toBeVisible({ timeout: 30_000 });
   for (const text of await runs.allTextContents()) expect(text).toContain(JOURNEY_WORKFLOW_ID);
 
   await runs.first().getByRole('link').first().click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
-  await expect(page.getByRole('link', { name: JOURNEY_WORKFLOW_ID })).toHaveAttribute(
+  // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, so the
+  // type's link is the one named exactly.
+  await expect(page.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true })).toHaveAttribute(
     'href',
     `/workflows/${JOURNEY_WORKFLOW_ID}`,
   );
@@ -313,8 +324,10 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   await expect(file).toContainText(describeCadence({ intervalMs: 5_000 }));
   // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file.
   await file.getByRole('button', { name: /^Actions for / }).click();
+  const workflowEditor = page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction });
+  await expect(workflowEditor).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'Edit', exact: true })).toHaveCount(0);
-  await page.getByRole('menuitem', { name: SCHEDULE_COPY.editWorkflowAction }).click();
+  await workflowEditor.click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
   const root = page.locator('[data-page="workflow-editor"]');
@@ -374,7 +387,7 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
     .getByRole('button', { name: new RegExp(MEMORY_COPY.openDetails) })
     .click();
   const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
-  await detail.getByRole('button', { name: MEMORY_COPY.correct.action }).click();
+  await detail.getByRole('button', { name: MEMORY_COPY.correct.action, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: MEMORY_COPY.correct.dialog.title });
   await dialog.getByLabel(MEMORY_COPY.correct.dialog.label).fill(correction);
   await dialog.getByRole('button', { name: MEMORY_COPY.correct.dialog.submit }).click();
@@ -406,7 +419,7 @@ test('starts a task it does not release, reaches it from the chat’s task link,
   await tasks.getByRole('link').first().click();
   await expect(page).toHaveURL(/\/tasks\/[^/]+$/);
   await expect(page.getByText('Working', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Cancel task' }).click();
+  await page.getByRole('button', { name: 'Cancel task', exact: true }).click();
 
   await expect(page.getByText(TASK_COPY.cancel['cleaned-up'])).toBeVisible();
   await expect(page.getByText('Canceled', { exact: true })).toBeVisible();
@@ -417,8 +430,10 @@ test('starts a task it does not release, reaches it from the chat’s task link,
 
 test('opens the workers screen from the sidebar’s Engine group', async ({ page }) => {
   await page.goto('/agents');
-  const views = page.getByRole('navigation', { name: 'Views' });
-  await views.getByRole('link', { name: /^Workers/ }).click();
+  const engine = page.getByRole('navigation', { name: 'Views' }).getByRole('list', {
+    name: 'Engine',
+  });
+  await engine.getByRole('link', { name: /^Workers/ }).click();
 
   await expect(page).toHaveURL(/\/workers$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
