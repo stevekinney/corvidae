@@ -3,6 +3,7 @@ import { currentExecutionAttempt } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import { recordResultCommitter } from '../result-committer.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from '../storage-io.ts';
+import { pendingTerminalSettlementFor } from '../terminal-settlement-pending.ts';
 import {
   cleanupTerminalWorkflowImmediately,
   TERMINAL_WORKFLOW_STATUSES,
@@ -54,6 +55,9 @@ export async function settleTerminatedRunAfterRefusal(
 ): Promise<void> {
   const waiter = run.waiter;
   if (waiter === undefined) return;
+  // A terminated run's result is held for its in-flight activity (COR-1597). A second terminate,
+  // or the failure that activity's late result raises, must not release or replace it early.
+  if (pendingTerminalSettlementFor(internals, workflowId, waiter) !== undefined) return;
   const state = await loadWorkflowState(internals, workflowId);
   if (state !== null && state.workflowExecutionToken === run.workflowExecutionToken) {
     if (!TERMINAL_WORKFLOW_STATUSES.has(state.status)) return;

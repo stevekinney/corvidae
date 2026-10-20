@@ -12,6 +12,7 @@
  * open is caught by the test's own timeout.
  */
 import { EventType } from '@ag-ui/core';
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
   createScriptedGenerate,
@@ -24,7 +25,7 @@ import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createBureau } from '../create-bureau.ts';
+import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS, createBureau } from '../create-bureau.ts';
 import { runAgentInput, startRequest } from './ag-ui-fixtures.test-support.ts';
 import { FrameReader, typesOf } from './ag-ui-stream.test-support.ts';
 import { createBureauHandler } from './create-bureau-handler.ts';
@@ -93,6 +94,7 @@ async function openBureau(options: {
   readonly storage: Storage;
   readonly toolbox?: ReturnType<typeof createToolbox<readonly Tool[]>>;
   readonly maximumHistoryEvents?: number;
+  readonly runtime?: ReturnType<typeof createManualRuntimeServices>;
 }) {
   const bureau = await createBureau({
     assets: { storage: createMemoryAssetStorage() },
@@ -106,6 +108,7 @@ async function openBureau(options: {
     },
     generate: options.generate,
     ...(options.toolbox === undefined ? {} : { toolbox: options.toolbox }),
+    ...(options.runtime === undefined ? {} : { runtime: options.runtime }),
     storage: options.storage,
     durableExecution: true,
     ...(options.maximumHistoryEvents === undefined
@@ -316,13 +319,195 @@ describe('a durable run that fails after it committed a step (COR-1587)', () => 
       await bureau.whenRunRecorded(summary.id);
 
       expect(bureau.listRuns().find((run) => run.id === summary.id)?.status).toBe('error');
+      // The breaker ends the run at step 1's checkpoint, and the engine settles the run only after
+      // that step's activity has landed (COR-1597), so the reply it wrote is part of what the
+      // session keeps. The run was never cut short of a write the session then missed.
       expect(await transcriptOf(bureau)).toEqual([
         'user:Go.',
         'assistant:Calling the tool.',
         expect.stringContaining('tool-call'),
         expect.stringContaining('tool-result'),
+        'assistant:Answer.',
       ]);
     } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+/**
+ * A memory storage that can hold one atomic write of the session transcript, the write that also
+ * promotes a follow-up the run delivered. Armed, it stops that write before it lands, and the
+ * test releases it once the run has been ended.
+ */
+function holdingTranscriptStorage() {
+  const memory = new MemoryStorage();
+  let armed = false;
+  let releaseHeld: (() => void) | undefined;
+  let markHeld!: () => void;
+  const held = new Promise<void>((resolve) => (markHeld = resolve));
+  const proxy = new Proxy(memory, {
+    get(target, property, receiver) {
+      const member: unknown = Reflect.get(target, property, receiver);
+      if (typeof member !== 'function') return member;
+      const name = String(property);
+      const call = (...args: unknown[]) =>
+        (member as (...rest: unknown[]) => unknown).apply(target, args);
+      if (name !== 'conditionalBatch') return call.bind(null);
+      return async (...args: unknown[]) => {
+        const writesTranscript = keysOf(name, args).some((key) =>
+          /^durable-run:.*:transcript$/.test(key),
+        );
+        if (armed && writesTranscript) {
+          armed = false;
+          markHeld();
+          await new Promise<void>((resolve) => (releaseHeld = resolve));
+        }
+        return call(...args);
+      };
+    },
+  });
+  return {
+    storage: proxy as unknown as Storage,
+    arm() {
+      armed = true;
+    },
+    held,
+    release: () => releaseHeld?.(),
+  };
+}
+
+async function macrotasks(count: number): Promise<void> {
+  for (let turn = 0; turn < count; turn += 1)
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+describe('a durable run ended while its step is being committed (COR-1597)', () => {
+  /** A run that holds at step 0 until the test has admitted a steered follow-up. */
+  function holdAtStepZero() {
+    return createScriptedGenerate([
+      { kind: 'block', barrier: 'hold' },
+      say('First.'),
+      say('Answer.'),
+      say('Spare.'),
+    ]);
+  }
+
+  async function admitFollowUp(bureau: Opened['bureau']): Promise<void> {
+    const admitted = await bureau.submitSessionInput('thread-1', {
+      id: 'follow-up-1',
+      principal: 'anonymous:local',
+      deliveryMode: 'steer',
+      payload: 'One more thing',
+    });
+    expect(admitted.outcome).toBe('admitted');
+  }
+
+  it('keeps a delivered follow-up when the history cap ends the run at the transcript write', async () => {
+    const generate = holdAtStepZero();
+    const opened = await openBureau({
+      generate,
+      storage: new MemoryStorage(),
+      maximumHistoryEvents: 2,
+    });
+    const { bureau } = opened;
+    const stream = await startStream(opened);
+    try {
+      await generate.reached('hold');
+      await admitFollowUp(bureau);
+      generate.release('hold');
+
+      await stream.rest();
+
+      const runId = bureau.listRuns()[0]!.id;
+      expect(await bureau.sessionInputsDeliveredBy(runId, 'thread-1')).toEqual(['follow-up-1']);
+      expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['user:One more thing']));
+      expect(typesOf(stream.received).slice(-2)).toEqual([
+        EventType.MESSAGES_SNAPSHOT,
+        EventType.RUN_ERROR,
+      ]);
+    } finally {
+      await stream.cancel().catch(() => undefined);
+      await bureau.dispose();
+    }
+  });
+
+  it('keeps the committed step when abortRun lands while its transcript write is in flight', async () => {
+    const generate = holdAtStepZero();
+    const holding = holdingTranscriptStorage();
+    const opened = await openBureau({ generate, storage: holding.storage });
+    const { bureau } = opened;
+    const stream = await startStream(opened);
+    try {
+      await generate.reached('hold');
+      await admitFollowUp(bureau);
+      holding.arm();
+      generate.release('hold');
+      await holding.held;
+      const runId = bureau.listRuns()[0]!.id;
+
+      bureau.abortRun(runId);
+      // The cancel is committed and the settle has had every chance to read: the write is still held.
+      await macrotasks(50);
+      holding.release();
+      await bureau.whenRunRecorded(runId);
+      await stream.rest();
+
+      expect(await transcriptOf(bureau)).toEqual(expect.arrayContaining(['assistant:First.']));
+      expect(bureau.listRuns().find((run) => run.id === runId)?.status).toBe('aborted');
+    } finally {
+      holding.release();
+      await stream.cancel().catch(() => undefined);
+      await bureau.dispose();
+    }
+  });
+
+  it("settles the session as aborted when Bureau shuts down while a cancelled run's write is in flight", async () => {
+    const generate = holdAtStepZero();
+    const holding = holdingTranscriptStorage();
+    // Shutdown waits a bounded grace for the aborted run to end before it disposes the engine;
+    // the manual runtime lets the test end that grace without waiting it out.
+    const runtime = createManualRuntimeServices();
+    const opened = await openBureau({ generate, storage: holding.storage, runtime });
+    const { bureau } = opened;
+    const stream = await startStream(opened);
+    try {
+      await generate.reached('hold');
+      await admitFollowUp(bureau);
+      holding.arm();
+      generate.release('hold');
+      await holding.held;
+      const runId = bureau.listRuns()[0]!.id;
+
+      bureau.abortRun(runId);
+      let durableRun = await bureau.getDurableRun(runId);
+      while (durableRun?.status !== 'cancelled') {
+        await macrotasks(1);
+        durableRun = await bureau.getDurableRun(runId);
+      }
+      let shutdownDone = false;
+      const disposing = bureau.dispose().finally(() => (shutdownDone = true));
+      // Where the cancelled run stays unsettled, shutdown waits out a grace and then disposes the
+      // engine while the run's result is held; the write is released only afterwards. A run that
+      // settles at once ends shutdown before any grace is armed.
+      const graceArmed = () =>
+        runtime
+          .pendingTimers()
+          .some(
+            (timer) =>
+              timer.dueAt === runtime.monotonic.now() + ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
+          );
+      while (!shutdownDone && !graceArmed()) await macrotasks(1);
+      if (!shutdownDone) await runtime.advance(ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS);
+      await macrotasks(5);
+      holding.release();
+      await disposing;
+
+      const session = await bureau.getSession('thread-1');
+      expect(session?.metadata['lastRunStatus']).toBe('aborted');
+    } finally {
+      holding.release();
+      await stream.cancel().catch(() => undefined);
       await bureau.dispose();
     }
   });

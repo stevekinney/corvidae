@@ -13,6 +13,7 @@ import {
   waitersBelongToSameRun,
 } from './result-waiter-run.ts';
 import { deriveWorkflowResultFromState, loadWorkflowState } from './storage-io.ts';
+import { pendingTerminalSettlementFor } from './terminal-settlement-pending.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 
 /** What a result waiter rejects with for a workflow that is not (or no longer) in storage. */
@@ -312,9 +313,10 @@ async function deferToLocalTerminalDeliveryIfPending(
 }
 
 /**
- * Combines the two settle-time guards every terminal-outcome branch of
- * {@link bootstrapWorkflowResultResolver} needs (WFT-79 F1 and F2) into one
- * call, keeping that function's cyclomatic complexity down. Returns
+ * Combines the settle-time guards every terminal-outcome branch of
+ * {@link bootstrapWorkflowResultResolver} needs (WFT-79 F1 and F2, and a
+ * terminated run's pending settlement, COR-1597) into one call, keeping that
+ * function's cyclomatic complexity down. Returns
  * `'proceed'` when the caller should go ahead and settle `waiter` itself;
  * otherwise returns the {@link ResultResolutionOutcome} the caller must
  * return immediately without touching `waiter` again.
@@ -323,9 +325,18 @@ async function prepareToSettleTerminalWaiter(
   internals: EngineInternals,
   workflowId: string,
   waiter: WorkflowResultWaiter,
-): Promise<'proceed' | Extract<ResultResolutionOutcome, 'settled'>> {
+): Promise<'proceed' | ResultResolutionOutcome> {
+  // A terminated run's result waits for the activity it still has in flight (COR-1597). The
+  // claim has been released by now, so the deferral below would not hold it back. Asked again
+  // after that deferral, because the terminal commit can land while it yields.
+  if (pendingTerminalSettlementFor(internals, workflowId, waiter) !== undefined) {
+    return 'pending';
+  }
   if (await deferToLocalTerminalDeliveryIfPending(internals, workflowId, waiter)) {
     return 'settled';
+  }
+  if (pendingTerminalSettlementFor(internals, workflowId, waiter) !== undefined) {
+    return 'pending';
   }
   return 'proceed';
 }

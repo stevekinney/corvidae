@@ -28,6 +28,7 @@ import { pendingAtomicWorkflowCommitSideEffectsStagePut } from '../checkpoint-si
 import type { WorkflowResultWaiter } from '../engine-internal-types.ts';
 import { staleFailureGuard, type FailureOrigin } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt } from '../handles.ts';
+import { captureInFlightActivityTurn } from '../in-flight-operation.ts';
 import { dropQueuedInlineWorkflowStart } from '../inline-launch-queue.ts';
 import type { EngineInternals } from '../internals.ts';
 import { EMPTY_STORAGE_VALUE } from '../lifecycle.ts';
@@ -40,6 +41,11 @@ import {
   type TeardownClaim,
 } from '../state-utilities.ts';
 import { isSupersededBySameIdRun } from '../superseded-generation.ts';
+import {
+  beginPendingTerminalSettlement,
+  startPendingTerminalSettlement,
+  type PendingTerminalSettlement,
+} from '../terminal-settlement-pending.ts';
 import { releaseWorkflowConcurrencySlotForRun } from '../workflow-concurrency.ts';
 import { updateWorkflowState } from '../workflow-state-update.ts';
 import {
@@ -122,6 +128,12 @@ export async function terminateWorkflow(
   reason?: TerminationReason,
 ): Promise<void> {
   const terminatedRun = captureTerminatedRun(internals, workflowId);
+  // A run with a top-level activity in flight settles its result only after the handler turn
+  // running that activity ends (COR-1597). The turn is captured before `cancelWorkflow` evicts it
+  // and is awaited from a detached continuation: the history breaker terminates from inside this
+  // very turn, so awaiting it here would deadlock.
+  const inFlightActivityTurn = captureInFlightActivityTurn(internals, workflowId);
+  let pendingSettlement: PendingTerminalSettlement | undefined;
   internals.terminalizingWorkflows.add(workflowId);
   dropQueuedInlineWorkflowStart(internals, workflowId);
   internals.strategy.cancelWorkflow(workflowId);
@@ -214,6 +226,16 @@ export async function terminateWorkflow(
       await settleTerminatedRunAfterRefusal(internals, workflowId, callbacks, terminatedRun);
       return;
     }
+    const { previousState, updatedAt, fence } = terminationResult;
+    const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
+    const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
+    // Set in the same synchronous step as the commit, so no reader sees the terminal state without it.
+    pendingSettlement = beginPendingTerminalSettlement(
+      internals,
+      { workflowId, workflowExecutionToken: previousState.workflowExecutionToken },
+      inFlightActivityTurn,
+      terminalError,
+    );
     // Captured synchronously after the commit — see `releaseWorkflowClaimAfterTerminalSettlement`.
     const claimEpoch = captureCurrentClaimEpoch(internals, workflowId);
     const executionToken = internals.checkpoints.get(workflowId)?.workflowExecutionToken;
@@ -221,11 +243,9 @@ export async function terminateWorkflow(
     // prevents handlers from firing when the workflow was already terminal.
     await runCancellationHandlersForStatus(internals, workflowId, status, callbacks);
     const isSuperseded = () => isSupersededBySameIdRun(internals, workflowId, executionToken);
-    const { previousState, updatedAt, fence } = terminationResult;
     await releaseWorkflowConcurrencySlotForRun(internals, workflowId, fence);
     warnUnknownRunIdentity(fence, workflowId, callbacks.handleCleanupError);
 
-    const elapsed = updatedAt - getWorkflowExecutionStartedAt(previousState);
     // Fenced on this run's committed state: the id's attribute record is the replacement's once one lands.
     const fenced = fencedTeardownCommit(internals, workflowId, fence, isSuperseded);
     await cleanupAttributeIndex(internals, workflowId, attributes, fenced);
@@ -247,7 +267,11 @@ export async function terminateWorkflow(
     const resolver = isSuperseded()
       ? undefined
       : resultWaiterForRun(internals, workflowId, previousState.workflowExecutionToken);
-    const terminalError = buildTerminalError(workflowId, status, elapsed, reason);
+    if (pendingSettlement) pendingSettlement.waiter = resolver;
+    // A held result is rejected, and its entry dropped, by the pending settlement instead.
+    const settleResolver = (): void => {
+      if (resolver && !pendingSettlement) settleRejected(internals, resolver, terminalError);
+    };
     await releaseWorkflowClaimAfterTerminalSettlement(internals, workflowId, claimEpoch);
     const superseded = isSuperseded();
 
@@ -260,18 +284,20 @@ export async function terminateWorkflow(
       callbacks.dispatchEvent(event);
       if (!superseded) callbacks.forwardEventToHandle(workflowId, event);
 
-      if (resolver) settleRejected(internals, resolver, terminalError);
+      settleResolver();
       // Scheduled queue handoff is best-effort cleanup and must not block
       // terminal delivery or handle settlement.
       void finalizeScheduledWorkflowTerminal(internals, workflowId, callbacks);
     } catch (cleanupError) {
-      if (resolver) settleRejected(internals, resolver, terminalError);
+      settleResolver();
       throw cleanupError;
     } finally {
-      if (!superseded) internals.resultResolvers.delete(workflowId);
+      if (!superseded && !pendingSettlement) internals.resultResolvers.delete(workflowId);
     }
   } finally {
     internals.terminalizingWorkflows.delete(workflowId);
+    // After the terminal event is out, and on every path out, so a held result is always released.
+    startPendingTerminalSettlement(internals, pendingSettlement);
   }
 }
 
