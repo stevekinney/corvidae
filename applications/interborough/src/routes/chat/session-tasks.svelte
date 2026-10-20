@@ -1,17 +1,18 @@
 <script lang="ts">
   /**
-   * The tasks of one chat session (`bureau.tasks.list` with the session's `contextId`), each linking
+   * The tasks of one chat session (`bureau.tasks.list` with the session's `contextId`, a page of fifty at a time with Load more), each linking
    * to its page at `/tasks/:id`. A run in the session is a task, so the list is read again when a
    * run ends. A session with no task, and a Bureau that cannot say, show nothing: the conversation
    * does not wait on this.
    */
   import { untrack } from 'svelte';
 
-  import { Badge } from '@lostgradient/cinder';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { Badge, Button } from '@lostgradient/cinder';
+  import { createInfiniteQuery } from '@tanstack/svelte-query';
 
   import { CHAT_COPY } from '../../app/copy.ts';
   import { listTasks } from '../../lib/bureau-tasks.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { truncateId } from '../../lib/format/index.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -25,13 +26,27 @@
 
   let { sessionId, streaming }: SessionTasksProps = $props();
 
-  const tasks = createQuery(
+  const PAGE_SIZE = 50;
+
+  const tasks = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.bureauTasks.ofSession(sessionId),
-      queryFn: ({ signal }) => listTasks({ contextId: sessionId }, { signal }),
+      queryFn: ({ pageParam, signal }) =>
+        listTasks({ contextId: sessionId, limit: PAGE_SIZE, offset: pageParam }, { signal }),
+      initialPageParam: 0,
+      getNextPageParam: (last) => last.nextOffset ?? undefined,
       retry: false,
     }),
     undefined,
+  );
+  // A run that starts after the first page loaded moves the next page's offset onto a row the first
+  // page ended with, so the pages are joined with each task once.
+  const rows = $derived(
+    combinePages(
+      tasks.data?.pages,
+      (page) => page.tasks,
+      (task) => task.id,
+    ),
   );
 
   let wasStreaming = untrack(() => streaming);
@@ -51,11 +66,11 @@
   }
 </script>
 
-{#if tasks.data !== undefined && tasks.data.tasks.length > 0}
+{#if rows.length > 0}
   <section class="weft-chat-tasks" aria-labelledby="weft-chat-tasks-title">
     <h2 id="weft-chat-tasks-title" class="weft-chat-tasks__title">{CHAT_COPY.tasksTitle}</h2>
     <ul class="weft-chat-tasks__list">
-      {#each tasks.data.tasks as task (task.id)}
+      {#each rows as task (task.id)}
         {@const presentation = taskStatePresentation(task.status)}
         <li class="weft-chat-tasks__item">
           <a
@@ -68,5 +83,14 @@
         </li>
       {/each}
     </ul>
+    {#if tasks.hasNextPage}
+      <Button
+        variant="secondary"
+        size="sm"
+        label={CHAT_COPY.loadMore}
+        loading={tasks.isFetchingNextPage}
+        onclick={() => void tasks.fetchNextPage()}
+      />
+    {/if}
   </section>
 {/if}

@@ -68,6 +68,27 @@ describe('the list of sessions', () => {
     );
   });
 
+  test('does not repeat a session the next page gives again, and stays', async () => {
+    const served = bureau({
+      // A session began after the first page was read, so offset 20 starts with its last row.
+      'bureau.contexts.list': (params) =>
+        params['offset'] === 0
+          ? page(0, 20, true)
+          : { contexts: page(19, 2, false).contexts, nextOffset: null },
+      'bureau.agents.list': () => ({ agents: [AGENT] }),
+    });
+    restore = served.restore;
+    landAt('/chat');
+    const { container, findByRole } = mount();
+
+    const more = await findByRole('button', { name: 'Load more' });
+    more.click();
+
+    await waitFor(() => expect(container.textContent).toContain('Chat 20'));
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.textContent?.match(/Chat 19(?!\d)/g)).toHaveLength(1);
+  });
+
   test('opens a session when its row is pressed', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 1, false),
