@@ -109,14 +109,18 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // overall counts on darwin. `src/routes/agents` is 100% of lines. Two of its 402 functions are
   // still unhit, one in `agent-detail.svelte` and one in `agent-memory.svelte`; the floor is
   // 400/402, above the 138/139 it held before the Memory page.
-  measuredAt: '2026-10-20T02:00:00.000Z',
-  overall: { linesFound: 71718, linesHit: 69857, functionsFound: 14144, functionsHit: 13767 },
+  //
+  // COR-1612 re-measures `src/app`, `src/lib`, `src/routes/agents`, `chat`, `reviews`, and `tasks`
+  // (the page-combining helper, the approval pane's file list and diff cap, and the task list's
+  // fault banner). `src/routes/agents` is now 403/404 functions. Every floor rose or held.
+  measuredAt: '2026-10-20T02:29:00.000Z',
+  overall: { linesFound: 72661, linesHit: 70814, functionsFound: 14337, functionsHit: 13961 },
   areas: {
     fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 965, linesHit: 965, functionsFound: 68, functionsHit: 68 },
+    scripts: { linesFound: 970, linesHit: 970, functionsFound: 68, functionsHit: 68 },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3809, linesHit: 3742, functionsFound: 655, functionsHit: 637 },
-    'src/lib': { linesFound: 3971, linesHit: 3954, functionsFound: 616, functionsHit: 612 },
+    'src/app': { linesFound: 3836, linesHit: 3769, functionsFound: 660, functionsHit: 642 },
+    'src/lib': { linesFound: 4193, linesHit: 4176, functionsFound: 643, functionsHit: 639 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
       linesFound: 1448,
@@ -125,14 +129,14 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 327,
     },
     'src/routes/agents': {
-      linesFound: 1900,
-      linesHit: 1900,
-      functionsFound: 402,
-      functionsHit: 400,
+      linesFound: 1902,
+      linesHit: 1902,
+      functionsFound: 404,
+      functionsHit: 403,
     },
     // COR-1493, measured on darwin: the audit search.
     'src/routes/audit': { linesFound: 642, linesHit: 642, functionsFound: 152, functionsHit: 152 },
-    'src/routes/chat': { linesFound: 1444, linesHit: 1435, functionsFound: 297, functionsHit: 292 },
+    'src/routes/chat': { linesFound: 1887, linesHit: 1876, functionsFound: 398, functionsHit: 393 },
     'src/routes/dashboard': {
       linesFound: 1472,
       linesHit: 1236,
@@ -148,10 +152,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     'src/routes/placeholder': { linesFound: 23, linesHit: 23, functionsFound: 4, functionsHit: 4 },
     'src/routes/reviews': {
-      linesFound: 2918,
-      linesHit: 2864,
-      functionsFound: 610,
-      functionsHit: 593,
+      linesFound: 3126,
+      linesHit: 3072,
+      functionsFound: 656,
+      functionsHit: 639,
     },
     // COR-1494, measured on darwin: the kinds, the writes by owner, and the agent-run drawer.
     'src/routes/schedules': {
@@ -174,10 +178,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
     },
     // COR-1491, measured on darwin: the Tasks view.
     'src/routes/tasks': {
-      linesFound: 1836,
-      linesHit: 1727,
-      functionsFound: 355,
-      functionsHit: 341,
+      linesFound: 1883,
+      linesHit: 1790,
+      functionsFound: 368,
+      functionsHit: 354,
     },
     'src/routes/workers': {
       linesFound: 12913,

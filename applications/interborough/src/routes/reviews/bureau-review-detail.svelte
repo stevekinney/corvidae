@@ -10,6 +10,7 @@
   import type { BureauReview, ReviewDecision } from '../../lib/bureau-reviews.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
   import BureauReviewForm from './bureau-review-form.svelte';
+  import BureauReviewOperation from './bureau-review-operation.svelte';
 
   /** A decision or an answer that did not simply take effect, and why. */
   export interface ReviewOutcome {
@@ -95,6 +96,9 @@
         </dd>
       {/if}
     </dl>
+    {#if review.approval.action.type === 'approval'}
+      <BureauReviewOperation operation={review.approval.action.operation} />
+    {/if}
     <div class="weft-bureau-review-arguments">
       <span class="weft-bureau-review-arguments__label">{REVIEWS_COPY.argumentsLabel}</span>
       <pre class="weft-bureau-review-arguments__body">{argumentsText}</pre>
