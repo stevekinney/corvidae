@@ -11,17 +11,25 @@
  * Leaving the page ends the session's streams but not its run: only a stop cancels the run. A
  * message sent while the attach is still opening waits for it, so it goes to the run the attach
  * joins and not to the mount as a second run.
+ *
+ * A run can wait on several things at once, and one resume answers them all. A message typed to
+ * answer a question while others still wait (another question, or a tool approval) is held with the
+ * rest and sends nothing (`run-wiring.ts`). A request the mount refuses is answered by reading
+ * the thread again, through the same attach: what is still pending decides what is still owed.
  */
 import {
+  appendMessages,
   assertRunInputAccepted,
   createChatSessionController,
   createConversationHistory,
   getUnresolvedToolApprovals,
+  removeMessage,
   type ChatSessionController,
   type ConversationHistory,
   type MessageInput,
 } from '@lostgradient/chat';
 
+import { CHAT_COPY } from '../../app/copy.ts';
 import { sendContextInput, type Fetcher } from '../../lib/bureau-client.ts';
 import { messageWithAttachments, runFailureMessage } from '../../lib/chat-attachments.ts';
 import {
@@ -29,6 +37,7 @@ import {
   withAssetParts,
   type ChatRunWiring,
   type HumanRequest,
+  type Refusal,
 } from './run-wiring.ts';
 
 export type ChatSessionOptions = {
@@ -72,6 +81,15 @@ export class ChatSessionState {
   #attachment: Promise<void> = Promise.resolve();
   /** Whether the turn on screen carried files, which decides what the door's `INVALID_INPUT` is about. */
   #turnHadAttachments = false;
+  /**
+   * Whether the person has stopped the turn on screen and it has not ended yet. A Stop before the
+   * run's first event is held until the event names the run (`run-wiring.ts`), so for that while the
+   * page shows the turn as stopped and sends nothing.
+   */
+  stopping = $state(false);
+  /** The refusal an error reported, for the read that follows the turn. */
+  #refused: Refusal | undefined;
+  readonly #stoppingAdapter: ChatSessionController['adapter'];
   readonly #wiring: ChatRunWiring;
   readonly #abort = new AbortController();
   readonly sessionId: string;
@@ -110,16 +128,30 @@ export class ChatSessionState {
           this.#wiring.resolveToolApproval(toolCallId, resolution),
         onStreamingChange: (streaming) => {
           this.streaming = streaming;
-          // A new turn is a new attempt, and what failed before it is not what it will say.
-          if (streaming) this.failure = undefined;
+          // A new turn is a new attempt, and what failed before it is not what it will say. The
+          // turn that reads a run the page joins is nobody's attempt: it is how the page finds out
+          // what to say next, and must not wipe what the refusal before it said.
+          if (streaming) {
+            if (!this.attaching) this.failure = undefined;
+          }
           // A turn that ended in an error or a stop has no history to carry the assets it
           // announced, so they are put on their rows here, as a completed turn's are.
-          else this.#stampAnnouncedAssets();
+          else {
+            this.stopping = false;
+            this.#stampAnnouncedAssets();
+            this.#dropSettledAnswerRows();
+            this.#readAgainAfterRefusal();
+          }
         },
         onError: (error) => {
-          this.failure =
+          const failure =
             runFailureMessage(error, { hadAttachments: this.#turnHadAttachments }) ??
             (error instanceof Error ? error.message : String(error));
+          const refusal = this.#wiring.takeRefusal();
+          if (refusal?.resume === true) this.#refused = refusal;
+          // A busy thread is not told when it refused a resume: the next send repeats it. A start
+          // refused as busy, and every other refusal, is.
+          if (refusal?.resume !== true || !refusal.busy) this.failure = failure;
         },
       },
     });
@@ -129,7 +161,15 @@ export class ChatSessionState {
       sendMessage: async (message, attachments) => {
         this.#turnHadAttachments = attachments.length > 0;
         await this.#attachment;
+        // What a refused resume still owes goes first, so the new message reaches the agent after
+        // it, once, and not as a row of the resume, which the mount never reads.
+        await this.#repeatOwedResume();
+        if (this.#holdsAsAnswer(message)) return;
         return adapter.sendMessage(messageWithAttachments(message, attachments), attachments);
+      },
+      stopGenerating: async (...input: Parameters<NonNullable<typeof adapter.stopGenerating>>) => {
+        if (this.streaming) this.stopping = true;
+        await adapter.stopGenerating?.(...input);
       },
       ...(adapter.sendRunInput === undefined
         ? {}
@@ -142,6 +182,84 @@ export class ChatSessionState {
             },
           }),
     };
+    // A turn that is being stopped takes no follow-up: with no way to send one, the chat disables its
+    // composer.
+    const {
+      sendRunInput: _sendRunInput,
+      ordersRunInput: _ordersRunInput,
+      ...withoutRunInput
+    } = this.adapter;
+    this.#stoppingAdapter = withoutRunInput;
+  }
+
+  /** What the chat is given: the session's adapter, and while a stop is being held, one that sends no follow-up. */
+  get chatAdapter(): ChatSessionController['adapter'] {
+    return this.stopping ? this.#stoppingAdapter : this.adapter;
+  }
+
+  /**
+   * Sends again what a refused resume kept, before the message the person has just typed. The
+   * wiring holds every entry, so the resume is a turn of its own over a hidden row, as the attach
+   * is, and needs no row of the person's to carry it. When what is owed leaves a question without an
+   * answer, nothing is sent here: the message is that answer. A resume that is still refused leaves
+   * the message unsent and says so, so the chat keeps what was typed.
+   */
+  async #repeatOwedResume(): Promise<void> {
+    if (!this.#wiring.owesResume() || this.#wiring.owedResumeIncomplete()) return;
+    await this.controller.adapter
+      .sendMessage({ role: 'user', content: '', hidden: true }, [])
+      .catch(() => undefined);
+    // A refusal is answered by reading the thread again, which decides what is still owed.
+    await this.#attachment;
+    if (this.#wiring.owesResume()) throw new Error(CHAT_COPY.answersNotApplied);
+  }
+
+  /**
+   * Drops the rows that held answers the mount has taken. The run holds each answer as a row of its
+   * own, and a typed row left beside it would show the answer twice and be sent to the agent again
+   * by the next start.
+   */
+  #dropSettledAnswerRows(): void {
+    const settled = this.#wiring.takeSettledAnswerRows();
+    if (settled.length === 0) return;
+    this.conversation = settled.reduce(
+      (current, id) => (current.messages[id] === undefined ? current : removeMessage(current, id)),
+      this.conversation,
+    );
+  }
+
+  /**
+   * Holds `message` as the answer to the next question when it cannot be the last thing a resume
+   * waits for: another question still waits, or a tool approval does. The row is put in the
+   * conversation as a sent one would be, and nothing is sent. Otherwise the controller sends it,
+   * and the wiring finds the answer in it.
+   */
+  #holdsAsAnswer(message: MessageInput): boolean {
+    const waiting = this.humanRequests.length;
+    if (this.streaming || waiting === 0) return false;
+    if (waiting === 1 && this.approvals.length === 0) return false;
+    const next = appendMessages(this.conversation, message);
+    const rowId = next.ids.at(-1);
+    if (rowId === undefined) return false;
+    if (!this.controller.adoptHistory(next, this.controller.captureHistoryToken())) return false;
+    return this.#wiring.holdAnswer(inputPayload(message), rowId);
+  }
+
+  /**
+   * After a resume the mount refused, reads what the thread is waiting on again, through the attach
+   * the page makes when it opens. The entries still owed are kept and the others dropped, and a
+   * question the page did not know is shown.
+   */
+  #readAgainAfterRefusal(): void {
+    const refused = this.#refused ?? this.#wiring.takeRefusal();
+    this.#refused = undefined;
+    if (refused?.resume !== true || this.#abort.signal.aborted) return;
+    void this.#readAgain();
+  }
+
+  async #readAgain(): Promise<void> {
+    await this.attach({ rereading: true });
+    this.#dropSettledAnswerRows();
   }
 
   #stampAnnouncedAssets(): void {
@@ -164,13 +282,17 @@ export class ChatSessionState {
    * controller, under a row the person never sees, so everything a turn does (streaming text,
    * follow-ups, approvals) works on a run the page did not start.
    */
-  attach(): Promise<void> {
-    const attached = this.#attach();
-    this.#attachment = attached;
+  attach(options: { readonly rereading?: boolean } = {}): Promise<boolean> {
+    const attached = this.#attach(options.rereading === true);
+    this.#attachment = attached.then(() => undefined);
     return attached;
   }
 
-  async #attach(): Promise<void> {
+  /**
+   * Whether the thread had a run to join. A thread that could not be read is the session's
+   * failure, unless it is read again after a refusal: that one has a failure of its own to tell.
+   */
+  async #attach(rereading: boolean): Promise<boolean> {
     this.attaching = true;
     try {
       const restored = await this.#wiring.attach(this.sessionId, this.#abort.signal);
@@ -178,7 +300,7 @@ export class ChatSessionState {
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
         const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
         if (history !== undefined) this.restore(history);
-        return;
+        return false;
       }
       // The stream's own events, not this row, are the transcript: the terminal history drops it.
       // Errors are the controller's to report.
@@ -188,10 +310,12 @@ export class ChatSessionState {
       // The run is going, so the transcript is restored now and the person sees it while the run
       // carries on, not at its end. The terminal history replaces each of these rows with its own.
       this.restore(restored);
+      return true;
     } catch (error) {
       // The page opened on a session it could not read: it says so, and it is not an unhandled
       // rejection with an empty transcript.
-      this.failure = error instanceof Error ? error.message : String(error);
+      if (!rereading) this.failure = error instanceof Error ? error.message : String(error);
+      return false;
     } finally {
       this.attaching = false;
     }

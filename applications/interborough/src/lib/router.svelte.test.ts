@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { Window, type DetachedWindowAPI } from 'happy-dom';
 
 import { routes } from '../app/routes.ts';
+import { chatSessionPath } from './identifier-paths.ts';
 import { matchRoute, router, scheduleDetailPath, workflowDetailPath } from './router.svelte.ts';
 
 function happyDomAPI(): DetachedWindowAPI {
@@ -135,6 +136,47 @@ describe('router singleton', () => {
     expect(router.current.params['id']).toBe('_');
     router.navigate('/runs/_?__weft_schedule_id=..');
     expect(router.current.params['id']).toBe('_');
+  });
+
+  test('chat session paths carry the sessions the path cannot: new, and the dot-only identifiers', () => {
+    for (const sessionId of ['new', '.', '..']) {
+      router.navigate(chatSessionPath(sessionId));
+      expect(router.current.route?.pattern).toBe('/chat/:sessionId');
+      expect(router.current.params['sessionId']).toBe(sessionId);
+    }
+    // The static new-chat route is still the one `/chat/new` names.
+    router.navigate('/chat/new');
+    expect(router.current.route?.pattern).toBe('/chat/new');
+  });
+
+  test('chat session paths leave every other identifier as the path segment itself', () => {
+    expect(chatSessionPath('abc-123')).toBe('/chat/abc-123');
+    expect(chatSessionPath('a b/c')).toBe('/chat/a%20b%2Fc');
+    expect(chatSessionPath('news')).toBe('/chat/news');
+    expect(chatSessionPath('_')).toBe('/chat/_');
+    router.navigate(chatSessionPath('_'));
+    expect(router.current.params['sessionId']).toBe('_');
+    router.navigate(chatSessionPath('a b/c'));
+    expect(router.current.params['sessionId']).toBe('a b/c');
+  });
+
+  test('the chat override applies only to the placeholder path, and only to what the builder escapes', () => {
+    router.navigate('/chat/order-123?__weft_session_id=new');
+    expect(router.current.params['sessionId']).toBe('order-123');
+    router.navigate('/chat/_?__weft_session_id=anything-else');
+    expect(router.current.params['sessionId']).toBe('_');
+    router.navigate('/chat/_?__weft_workflow_id=..');
+    expect(router.current.params['sessionId']).toBe('_');
+  });
+
+  test('the sessions a placeholder path stands in for are different pages, with different keys', () => {
+    router.navigate(chatSessionPath('new'));
+    const first = router.viewKey;
+    router.navigate(chatSessionPath('..'));
+
+    expect(router.viewKey).not.toBe(first);
+    router.navigate('/chat/plain');
+    expect(router.viewKey).toBe('/chat/plain');
   });
 
   test('navigate() to an unowned path yields no match', () => {

@@ -36,6 +36,7 @@
     type ForgetResult,
     type MemoryFault,
   } from '../../lib/memory-client.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { memoryListingsFilter, queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { labelFor, lineageFields } from './memory-presentation.ts';
@@ -199,7 +200,7 @@
               : correctedByLink,
     }))}
     {#snippet chatLink()}
-      {@const chatPath = `/chat/${encodeURIComponent(memory.sessionId ?? '')}`}
+      {@const chatPath = chatSessionPath(memory.sessionId ?? '')}
       <a href={router.href(chatPath)} onclick={(event) => goTo(event, chatPath)}
         >{MEMORY_COPY.detail.openChat}</a
       >

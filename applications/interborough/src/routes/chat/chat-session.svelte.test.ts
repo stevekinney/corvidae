@@ -459,29 +459,402 @@ describe('the failure a person is told of', () => {
   test('is cleared when a later turn goes through', async () => {
     let healthy = false;
     const session = open(async () => (healthy ? sse([started, finished]) : fail()));
-    await session.controller.adapter
-      .sendMessage({ role: 'user', content: 'Hi' }, [])
-      .catch(() => undefined);
+    await session.adapter.sendMessage({ role: 'user', content: 'Hi' }, []).catch(() => undefined);
     expect(session.failure).toBe('The thread is busy.');
 
     healthy = true;
-    await session.controller.adapter.sendMessage({ role: 'user', content: 'Again' }, []);
+    await session.adapter.sendMessage({ role: 'user', content: 'Again' }, []);
 
     expect(session.failure).toBeUndefined();
   });
 
   test('is shown again when the same thing fails again after it was dismissed', async () => {
     const session = open(async () => fail());
-    await session.controller.adapter
-      .sendMessage({ role: 'user', content: 'Hi' }, [])
-      .catch(() => undefined);
+    await session.adapter.sendMessage({ role: 'user', content: 'Hi' }, []).catch(() => undefined);
 
     session.dismissFailure();
     expect(session.failure).toBeUndefined();
-    await session.controller.adapter
+    await session.adapter
       .sendMessage({ role: 'user', content: 'Again' }, [])
       .catch(() => undefined);
 
     expect(session.failure).toBe('The thread is busy.');
+  });
+});
+
+/** A fetch over the mount that answers each route as `answers` says, and records what it was asked. */
+function mountOver(answers: {
+  start: Array<() => Response>;
+  attach?: Array<() => Response>;
+  history?: () => Response;
+}) {
+  const requests: string[] = [];
+  const bodies: Array<{ messages: unknown[]; resume?: Array<{ interruptId: string }> }> = [];
+  const fetchStub: Fetcher = async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    requests.push(`${init?.method ?? 'GET'} ${url}`);
+    if (url.endsWith('/messages')) {
+      return answers.history?.() ?? Response.json({ threadId: THREAD, messages: [] });
+    }
+    if (url.includes('/threads/') && url.endsWith('/run')) {
+      return (
+        answers.attach?.shift()?.() ??
+        sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }])
+      );
+    }
+    bodies.push(JSON.parse(bodyText(init)));
+    const answer = answers.start.shift();
+    return answer === undefined ? new Response('', { status: 404 }) : answer();
+  };
+  return { fetch: fetchStub, requests, bodies };
+}
+
+const refusalOf =
+  (code: string, message = 'No.') =>
+  () =>
+    sse([{ type: 'RUN_ERROR', message, code }]);
+const parkedOn =
+  (...interrupts: unknown[]) =>
+  () =>
+    sse([
+      started,
+      { type: 'MESSAGES_SNAPSHOT', messages: [] },
+      { ...finished, outcome: { type: 'interrupt', interrupts } },
+    ]);
+const toolCall = [
+  { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+  { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{}' },
+  { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+  {
+    type: 'TOOL_CALL_RESULT',
+    messageId: 'result-1',
+    toolCallId: 'call-refund',
+    content: 'requires approval',
+    role: 'tool',
+  },
+];
+const approval = {
+  id: 'approval:native-1:call-refund',
+  reason: 'tool-approval',
+  toolCallId: 'call-refund',
+  message: 'Refund order-1001?',
+};
+const environment = {
+  id: 'human-wait:native-1:environment:0',
+  reason: 'human-wait',
+  message: 'Which environment?',
+};
+const region = {
+  id: 'human-wait:native-1:region:0',
+  reason: 'human-wait',
+  message: 'Which region?',
+};
+const second =
+  (events: readonly unknown[] = []) =>
+  () =>
+    sse([{ ...started, runId: 'run-2' }, ...events, { ...finished, runId: 'run-2' }]);
+
+describe('a run that waits on several questions', () => {
+  function sessionWaitingOn(...interrupts: unknown[]) {
+    const mounted = mountOver({
+      start: [
+        () => sse([started, { ...finished, outcome: { type: 'interrupt', interrupts } }]),
+        second(),
+      ],
+    });
+    return { mounted, session: open(mounted.fetch) };
+  }
+
+  test('holds each answer typed, shows the next question, and sends one resume for all of them', async () => {
+    const { mounted, session } = sessionWaitingOn(environment, region);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([
+      environment.id,
+      region.id,
+    ]);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'staging' }, []);
+
+    // The first answer is a row in the transcript, and nothing was sent for it.
+    expect(mounted.bodies).toHaveLength(1);
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([region.id]);
+    const typed = () =>
+      session.conversation.ids
+        .map((id) => session.conversation.messages[id]?.content)
+        .filter((content) => content === 'staging' || content === 'eu');
+    expect(typed()).toEqual(['staging']);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'eu' }, []);
+
+    expect(mounted.bodies).toHaveLength(2);
+    expect(mounted.bodies[1]?.messages).toEqual([]);
+    expect(mounted.bodies[1]?.resume?.map((entry) => entry.interruptId)).toEqual([
+      environment.id,
+      region.id,
+    ]);
+    expect(session.humanRequests).toEqual([]);
+    expect(session.failure).toBeUndefined();
+  });
+});
+
+describe('a run that waits on a question and an approval', () => {
+  const parked =
+    (...interrupts: unknown[]) =>
+    () =>
+      sse([started, ...toolCall, { ...finished, outcome: { type: 'interrupt', interrupts } }]);
+
+  test('holds the answer typed while the approval waits, and one resume carries both once it is decided', async () => {
+    const mounted = mountOver({ start: [parked(environment, approval), second()] });
+    const session = open(mounted.fetch);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+    expect(session.approvals).toHaveLength(1);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'staging' }, []);
+    expect(session.failure).toBeUndefined();
+    expect(mounted.bodies).toHaveLength(1);
+    expect(session.humanRequests).toEqual([]);
+
+    await session.controller.adapter.resolveToolApproval?.('call-refund', {
+      decision: 'approve',
+      remember: false,
+    });
+
+    expect(mounted.bodies).toHaveLength(2);
+    expect(mounted.bodies[1]?.resume?.map((entry) => entry.interruptId)).toEqual([
+      environment.id,
+      approval.id,
+    ]);
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('holds the decision until the question is answered, and the answer then sends both', async () => {
+    const mounted = mountOver({ start: [parked(environment, approval), second()] });
+    const session = open(mounted.fetch);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+
+    await session.controller.adapter.resolveToolApproval?.('call-refund', {
+      decision: 'approve',
+      remember: false,
+    });
+    expect(mounted.bodies).toHaveLength(1);
+    expect(session.streaming).toBe(false);
+    expect(session.failure).toBeUndefined();
+    expect(session.humanRequests.map((request) => request.interruptId)).toEqual([environment.id]);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'staging' }, []);
+
+    expect(mounted.bodies).toHaveLength(2);
+    expect(mounted.bodies[1]?.resume?.map((entry) => entry.interruptId)).toEqual([
+      environment.id,
+      approval.id,
+    ]);
+  });
+});
+
+describe('a resume the mount refused', () => {
+  const parked =
+    (...interrupts: unknown[]) =>
+    () =>
+      sse([started, ...toolCall, { ...finished, outcome: { type: 'interrupt', interrupts } }]);
+
+  /** A session whose run stopped on an approval, and the decision on it, over what the mount answers next. */
+  async function approvedWith(
+    answers: Parameters<typeof mountOver>[0]['start'],
+    attach: Array<() => Response>,
+  ) {
+    const mounted = mountOver({ start: [parked(approval), ...answers], attach });
+    const session = open(mounted.fetch);
+    await session.controller.adapter.sendMessage({ role: 'user', content: 'Refund it' }, []);
+    await session.controller.adapter
+      .resolveToolApproval?.('call-refund', { decision: 'approve', remember: false })
+      .catch(() => undefined);
+    // The refusal is answered by reading the thread again, and a message waits for that.
+    await until(
+      () =>
+        mounted.requests.some((entry) => entry.includes('/threads/')) &&
+        !session.attaching &&
+        !session.streaming,
+    );
+    return { mounted, session };
+  }
+
+  test('for a busy thread shows no failure, keeps the decision, and the next send applies it', async () => {
+    const { mounted, session } = await approvedWith(
+      [refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second(), second()],
+      [parkedOn(approval)],
+    );
+
+    expect(session.failure).toBeUndefined();
+    await session.adapter.sendMessage({ role: 'user', content: 'Go on' }, []);
+
+    // The decision is sent again first, and the message after it as a start of its own.
+    expect(mounted.bodies).toHaveLength(4);
+    expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
+    expect(mounted.bodies[3]?.resume).toBeUndefined();
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('that failed after the approvals were applied tells the person, keeps no decision, and the next send is a plain message', async () => {
+    const { mounted, session } = await approvedWith(
+      [
+        refusalOf('RUN_FAILED', 'The approval was applied, but its outcome was not written'),
+        second(),
+      ],
+      [],
+    );
+
+    expect(session.failure).toBe('The approval was applied, but its outcome was not written');
+    await session.adapter.sendMessage({ role: 'user', content: 'Continue' }, []);
+
+    expect(mounted.bodies[2]?.resume).toBeUndefined();
+    expect(mounted.bodies[2]?.messages.length).toBeGreaterThan(0);
+  });
+
+  test('that failed while an attempt is still applying it shows no failure and keeps the decision', async () => {
+    const { mounted, session } = await approvedWith(
+      [
+        refusalOf(
+          'RUN_FAILED',
+          'An earlier attempt at this resume is still being applied; try again shortly',
+        ),
+        second(),
+        second(),
+      ],
+      [parkedOn(approval)],
+    );
+
+    expect(session.failure).toBeUndefined();
+    await session.adapter.sendMessage({ role: 'user', content: 'Go on' }, []);
+
+    expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
+  });
+
+  test('that left an interrupt unanswered shows the failure and surfaces the question the page lacked', async () => {
+    const { session } = await approvedWith(
+      [
+        refusalOf(
+          'INTERRUPTS_UNADDRESSED',
+          `The resume leaves interrupts unanswered: ${environment.id}`,
+        ),
+      ],
+      [parkedOn(approval, environment)],
+    );
+    await until(() => session.humanRequests.length > 0);
+
+    expect(session.failure).toContain('interrupts unanswered');
+    expect(session.humanRequests).toEqual([
+      { interruptId: environment.id, message: environment.message },
+    ]);
+  });
+});
+
+describe('a stop before the run’s first event', () => {
+  /** A mount that has admitted the start and not yet answered it, until the test lets it. */
+  function heldMount(first: unknown) {
+    const requests: string[] = [];
+    const signals: Array<AbortSignal | null | undefined> = [];
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const fetchStub: Fetcher = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push(`${init?.method ?? 'GET'} ${url}`);
+      if (!url.includes('/agents/')) {
+        return url.includes('/runs/')
+          ? sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }])
+          : sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      signals.push(init?.signal);
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+          await held;
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(first)}\n\n`));
+          if ((first as { type: string }).type === 'RUN_ERROR') controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    };
+    return { fetch: fetchStub, requests, signals, release };
+  }
+
+  const named = {
+    ...started,
+    metadata: { '@lostgradient/bureau': { runId: 'native-1', sessionId: THREAD } },
+  };
+
+  test('keeps the turn going until the first event, then cancels the run it names, with no failure shown', async () => {
+    const mounted = heldMount(named);
+    const session = open(mounted.fetch);
+    const turn = session.adapter
+      .sendMessage({ role: 'user', content: 'Start' }, [])
+      .catch(() => undefined);
+    await until(() => mounted.signals.length === 1);
+
+    const stopped = session.controller.stop();
+    await Bun.sleep(10);
+
+    // The request was not aborted, and the page still holds the turn: nothing can be sent yet.
+    expect(mounted.signals[0]?.aborted).toBe(false);
+    expect(session.streaming).toBe(true);
+    expect(mounted.requests.some((entry) => entry.includes('/cancel'))).toBe(false);
+
+    mounted.release();
+    await stopped;
+    await turn;
+
+    expect(mounted.requests.filter((entry) => entry.includes('/cancel'))).toEqual([
+      'POST /bureau/ag-ui/runs/native-1/cancel',
+    ]);
+    expect(session.streaming).toBe(false);
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('cancels nothing when the first event is a refusal, and the page can send again', async () => {
+    const mounted = heldMount({ type: 'RUN_ERROR', message: 'busy', code: 'THREAD_BUSY' });
+    const session = open(mounted.fetch);
+    const turn = session.adapter
+      .sendMessage({ role: 'user', content: 'Start' }, [])
+      .catch(() => undefined);
+    await until(() => mounted.signals.length === 1);
+
+    const stopped = session.controller.stop();
+    mounted.release();
+    await stopped;
+    await turn;
+
+    expect(mounted.requests.some((entry) => entry.includes('/cancel'))).toBe(false);
+    expect(session.streaming).toBe(false);
+    expect(session.failure).toBeUndefined();
+  });
+
+  test('cancels nothing when the response fails with no event, and leaves the page usable', async () => {
+    let calls = 0;
+    const requests: string[] = [];
+    const session = open(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      requests.push(`${init?.method ?? 'GET'} ${url}`);
+      if (!url.includes('/agents/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      calls += 1;
+      if (calls === 1) throw new TypeError('Failed to fetch');
+      return sse([started, finished]);
+    });
+    const turn = session.adapter
+      .sendMessage({ role: 'user', content: 'Start' }, [])
+      .catch(() => undefined);
+    const stopped = session.controller.stop();
+    await stopped;
+    await turn;
+
+    expect(requests.some((entry) => entry.includes('/cancel'))).toBe(false);
+    expect(session.streaming).toBe(false);
+
+    await session.adapter.sendMessage({ role: 'user', content: 'Again' }, []);
+
+    expect(calls).toBe(2);
+    expect(session.streaming).toBe(false);
   });
 });
