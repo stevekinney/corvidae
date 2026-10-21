@@ -52,6 +52,7 @@ function createInternals(storage: MemoryStorage = new MemoryStorage()) {
     storage,
     workflowClaimRegistry: null,
     resultResolvers: new Map<string, WorkflowResultWaiter>(),
+    pendingTerminalSettlements: new Set(),
     checkpoints: new Map<string, { workflowExecutionToken?: string }>(),
     handleCache: new Map(),
     finalizationRegistry: { unregister: () => {} },

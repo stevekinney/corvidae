@@ -19,7 +19,7 @@ import { drainUpdateHistory } from './purge-update-history.ts';
 import { addUpdateDeleteKeys } from './purge-update-keys.ts';
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { recordResultCommitter } from './result-committer.ts';
-import { waiterBelongsToRun } from './result-waiter-run.ts';
+import { pendingTerminalSettlementFor, waiterBelongsToRun } from './result-waiter-run.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
@@ -268,6 +268,9 @@ function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: Wo
   // Bound to a different run than the one purged: it is the replacement's (or an older run's
   // that the result poll retires), so this record's outcome is not its to receive.
   if (!waiterBelongsToRun(waiter, state.workflowExecutionToken)) return;
+  // A terminated run's result is held for its in-flight activity (COR-1597): the settlement that
+  // holds it rejects it, with the same terminal error, once the activity has landed.
+  if (pendingTerminalSettlementFor(internals, state.id, waiter) !== undefined) return;
   internals.resultResolvers.delete(state.id);
   recordResultCommitter(waiter, state.terminalCommittedBy);
   try {

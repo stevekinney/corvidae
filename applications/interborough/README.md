@@ -22,7 +22,7 @@ bun run --filter=@lostgradient/interborough typecheck
 - `dev` builds the browser application into `build/`, starts the host on `http://127.0.0.1:7234`, and rebuilds when the source changes. `INTERBOROUGH_PORT` picks another port, and `0` asks for a free one.
 - `build` writes the production build into `build/`: `index.html` and content-hashed JavaScript, CSS, and WebAssembly under `build/assets/`. The host serves that directory. A build replaces `build/` only once it succeeds.
 - `test` runs the host's suite under `bunfig.toml`, then the browser application's under `bunfig.ui.toml`, whose preload installs happy-dom, the Svelte compile plugin from `@lostgradient/testing`, and the jest-dom matchers. The browser suite stays serial: under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml` preload on top of the one `--config` names. The tests in a `*.slow.test.ts` file bundle for seconds, so `test:slow` runs them.
-- `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered. The barrier's control listens on the next port. Set `INTERBOROUGH_E2E_PORT` to run the suite beside another checkout's, which holds 7399.
+- `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered. The barrier's control listens on the next port, and the two hosts described under "Schedules, goals, and the audit trail" and "The journey" on the two after it, so the suite holds four consecutive ports. Set `INTERBOROUGH_E2E_PORT` to run the suite beside another checkout's, which holds 7399. `bun run --filter=@lostgradient/interborough test:browser -- tests/e2e/90-journey.spec.ts` runs the journey alone.
 - `test:coverage` runs the browser suite under coverage and compares each area with the floor in `scripts/coverage-baseline.ts`.
 
 ## The host
@@ -142,6 +142,23 @@ A write whose revision or hash is no longer current is refused and nothing is wr
 
 The Playwright suite runs a second host (`E2E_BUREAU_PORT`, `tests/e2e/e2e-server.ts`) whose console is the Bureau's own engine, because the main host's console is the fixtures' engine and cannot see a schedule the Bureau holds. The schedules specs for an agent run and a workflow file's schedule open it, and the specs for an engine schedule open the main host.
 
+## The journey
+
+`tests/e2e/90-journey.spec.ts` is one Playwright journey through the application as the single local principal, with no sign-in. It is serial, with one `test()` per stage, and it runs last because of its number. Each stage builds on the ones before it:
+
+- It chats with the `barrier` agent, sends a follow-up while the run is held, and sees the same run answer it.
+- It starts from `/` and lands in the session it just made, starts a second session with the same agent from the agent's page, and returns to the first from `/chat`.
+- It reloads while `request-human-input` waits on its question and answers it from `/reviews`.
+- It defines an agent in the editor with the `workflows-create` tool, publishes it, and chats with it until it writes `journey-digest`, a workflow with a 5 second schedule.
+- It opens the workflow from `/workflows`, waits until its schedule's fire is listed as a run, and opens that run at `/runs/:id`. A runs page that opens before the first fire says there are none, and asks again every five seconds (`recheckMs` on its view probe) until there is one, so the stage waits for the first row on the page itself.
+- It follows the schedule's "Edit workflow" action from `/schedules`, changes the trigger to `1h` in the editor at `/workflows/journey-digest/edit`, and sees the one-hour cadence on `/schedules`, which also stops the 5 second fires for the rest of the run.
+- It attaches an image to `echo`, sees `Echoed 1 image.` and the returned image decode.
+- It chats with `echo-recall`, which stores the label it is sent as a memory. It sees that text on `/agents/echo-recall/memory`, corrects it, and sees a new chat answered with the correction and not the original.
+- It starts a `barrier` task it never releases, reaches `/tasks/:id` from the chat's task link, cancels it, and sees `TASK_COPY.cancel['cleaned-up']`.
+- It opens `/workers` from the sidebar's Engine group.
+
+It opens a third host (`E2E_JOURNEY_PORT`, `tests/e2e/e2e-server.ts`) of its own, whose console is the Bureau's engine, as the second host's is, because the Workflows area can only show a fire of a workflow the Bureau's engine runs. The journey's host has a home of its own, with one provider so the editor can save an agent, and a barrier of its own, under `/journey` on the barrier's control port, so no run another specification leaves held changes what the journey counts. Every model is scripted and no provider key is read: the agents come in through the host's `extraAgents` (`barrier`, `echo`, `echo-recall`), and `createJourneyProviderResolver` (`tests/e2e/journey-agent.ts`) scripts the one agent the journey defines in the editor, so a first message that carries the journey's marker gets one call to `workflows-create` and then a fixed text, and any other first message gets the provider stub the other specifications use. The journey removes the agent and the workflow it writes, and forgets what `echo-recall` remembers, before it starts.
+
 ## Tasks
 
 `/tasks` lists the caller's tasks (`bureau.tasks.list`), newest first, fifty to a page with Load more, and `/tasks/:id` shows one. `/tasks` is not in the navigation: a task is reached from the chat session it belongs to (the session lists its tasks, `bureau.tasks.list` with the session's `contextId`), from a run's page (which links to `/tasks/:id` only when `bureau.tasks.get` answers for the run's identifier), and from a review. The list filters by agent, status, and session through `?agent=`, `?status=`, and `?session=`. Its code is in `src/routes/tasks/` and its wire shapes in `src/lib/bureau-tasks.ts`.
@@ -170,7 +187,7 @@ The list, and the count in the navigation, ask again every five seconds and at o
 
 The sidebar is Cinder's `SideNavigationGroup` twice: a Primary group (Chat, Agents, Workflows, Runs, Schedules, Reviews) and an Engine group (Workers, Storage, System, Audit). Chat is the home screen, sessions live at `/chat/:sessionId`, and runs live at `/runs` and `/runs/:id`. `/workflows` is the catalog of workflow definitions (see "The Workflows area" above), and `/audit` is the audit trail (see "Schedules, goals, and the audit trail").
 
-Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`.
+Every view renders in a frame (`src/app/view-frame.svelte`) that is loading, empty, failing (Cinder's `ErrorState`, with a retry), forbidden, not found (for a view that opens one item by its address), or showing its content, and says which in `data-state` beside a `data-view` naming the view. Its words are in `src/app/copy.ts`, and its one request is in `src/app/view-probes.ts`. A probe whose empty answer is about to change by itself sets `recheckMs`, and the frame asks again that often while the view is empty and stops when it has something to show; the runs of a workflow type do, so a page opened before the first run shows it without a reload.
 
 ## Chat and agents
 
