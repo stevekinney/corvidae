@@ -51,6 +51,14 @@ export function currentEpochMilliseconds(): number {
   return realRuntime.clock.now();
 }
 
+/**
+ * A placeholder for a suite's module-scope `database` before its first test assigns a real one. It
+ * names no path and makes no directory, so nothing is left behind when no test replaces it.
+ */
+export function createUnsetTestDatabase(): TestDatabase {
+  return { path: '', async remove() {} };
+}
+
 export function createTestDatabase(label: string): TestDatabase {
   const path = createTemporaryPath(`bureau-goals-${label}`, '.sqlite');
   return {
