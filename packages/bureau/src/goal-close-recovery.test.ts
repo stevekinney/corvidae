@@ -9,6 +9,7 @@ import { goalRecordKey, isGoalState } from './goal-state';
 import {
   createCheckValidator,
   createTestDatabase,
+  createUnsetTestDatabase,
   currentIsoTimestamp,
   goalRequest,
   pollUntil,
@@ -18,7 +19,7 @@ import {
 import { bootOver, inspect } from './testing/goal-recovery-fixtures.test-support';
 import { spyOnPrune } from './testing/prune-spy.test-support';
 
-let database: TestDatabase = createTestDatabase('unset');
+let database: TestDatabase = createUnsetTestDatabase();
 const cleanups: Array<() => unknown> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();

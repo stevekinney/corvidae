@@ -1,11 +1,8 @@
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createAgent, stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
@@ -21,7 +18,7 @@ function nextTool() {
 
 describe('a catalog run recovered after a restart (COR-718)', () => {
   it('keeps its owner, anonymous:local when it was dispatched with no principal, readable through event history', async () => {
-    const databasePath = join(tmpdir(), `owner-of-record-catalog-recovery-${process.pid}.sqlite`);
+    const databasePath = createTemporaryPath('owner-of-record-catalog-recovery', '.sqlite');
     let reachedStepOne = 0;
     // A settlement that outlives the Bureau it belongs to writes into a closed database.
     const settlementFailures: string[] = [];
@@ -107,9 +104,7 @@ describe('a catalog run recovered after a restart (COR-718)', () => {
       }
     } finally {
       await first.dispose().catch(() => undefined);
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
     expect(settlementFailures).toEqual([]);
   });

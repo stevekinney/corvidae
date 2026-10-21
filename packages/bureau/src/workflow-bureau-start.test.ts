@@ -3,10 +3,10 @@
  * its durable engine, refuses a configuration that cannot work, and keeps the engine in line with
  * the files as they change.
  */
-import { mkdtemp } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -20,6 +20,7 @@ import {
 
 const harnesses: WorkflowBureauHarness[] = [];
 const fileHarnesses: FileBureauHarness[] = [];
+const fileAgentDirectories: string[] = [];
 
 async function start(options?: Parameters<typeof startWorkflowBureau>[0]) {
   const harness = await startWorkflowBureau(options);
@@ -30,6 +31,7 @@ async function start(options?: Parameters<typeof startWorkflowBureau>[0]) {
 afterEach(async () => {
   for (const harness of harnesses.splice(0)) await harness.dispose();
   for (const harness of fileHarnesses.splice(0)) await harness.dispose();
+  for (const directory of fileAgentDirectories.splice(0)) removeTemporaryPath(directory);
 });
 
 describe('workflowDirectory', () => {
@@ -230,13 +232,13 @@ describe('an agent step that names a file agent', () => {
   );
 
   async function startWithFileAgents() {
+    const workflowDirectory = createTemporaryDirectory('bureau-workflow-file-agents');
+    fileAgentDirectories.push(workflowDirectory);
     const harness = await startFileBureau({
       scripts: {
         'claude-opus-5-5': (observation) => `file agent reply (${observation.tools.join(',')})`,
       },
-      overrides: {
-        workflowDirectory: await mkdtemp(join(tmpdir(), 'bureau-workflow-file-agents-')),
-      },
+      overrides: { workflowDirectory },
     });
     fileHarnesses.push(harness);
     return harness;

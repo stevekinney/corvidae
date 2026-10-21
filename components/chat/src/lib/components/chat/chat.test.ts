@@ -27,6 +27,7 @@ import { afterAll, afterEach, describe, expect, jest, test } from 'bun:test';
 import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
+import { uniqueFileName } from '@lostgradient/testing/temporary-path';
 import { importWithoutDomGlobals } from '../../test/import-without-dom-globals.ts';
 
 // setupHappyDom() MUST run before any `@testing-library/svelte` import.
@@ -1316,7 +1317,7 @@ describe('Chat — SSR safety', () => {
     // Write the SSR module next to the source so its relative imports resolve
     // identically (the `.mjs` extension keeps the preload plugin from
     // recompiling our already-compiled output). Mirrors `test/hydrate.ts`.
-    const ssrFileName = `.cinder-ssr-chat-${process.pid}-${Date.now()}.mjs`;
+    const ssrFileName = uniqueFileName('.cinder-ssr-chat', '.mjs');
     const ssrFile = join(dirname(sourcePath), ssrFileName);
     await writeFile(ssrFile, compiled.js.code, 'utf-8');
 
