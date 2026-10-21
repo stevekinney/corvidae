@@ -40,9 +40,13 @@ const waitOptions = {
   stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
 };
 
-/** Holds every scan of the fleet feed while armed, so a read of the history waits for `release`. */
-function holdingHistoryReads() {
+/**
+ * Holds the first `limit` scans of the fleet feed once armed (all of them by default), so a read of
+ * the history waits for `release`.
+ */
+function holdingHistoryReads(limit = Number.POSITIVE_INFINITY) {
   let armed = false;
+  let holding = 0;
   let held = false;
   const release = Promise.withResolvers<void>();
   const reached = Promise.withResolvers<void>();
@@ -64,9 +68,15 @@ function holdingHistoryReads() {
           if (typeof member !== 'function' || typeof property !== 'string') return member;
           return (...args: unknown[]) => {
             const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
-            if (!armed || property !== 'scan' || !storedText(args).startsWith('fleet-event')) {
+            if (
+              !armed ||
+              property !== 'scan' ||
+              !storedText(args).startsWith('fleet-event') ||
+              holding >= limit
+            ) {
               return call();
             }
+            holding += 1;
             held = true;
             reached.resolve();
             // `scan` answers an async iterable, which starts reading once `release` is called.
@@ -259,7 +269,9 @@ describe('a close that waits for the seed read', () => {
 
 describe('a tool approval’s decision that waits for the seed read', () => {
   it('follows the request it closes in the history', async () => {
-    const hold = holdingHistoryReads();
+    // The fire's seed read and the follower's catch-up are the two reads its first request starts:
+    // holding those two leaves the reads a decision makes of its own free.
+    const hold = holdingHistoryReads(2);
     harness.onDispose(() => hold.release());
     const charges: number[] = [];
     const bureau = await harness.open({
