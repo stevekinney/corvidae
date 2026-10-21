@@ -7,6 +7,7 @@ import {
   type TypedEventTarget,
 } from '@lostgradient/lifecycle';
 import {
+  AbortAgentRunError,
   type ActiveRun,
   AgentContractError,
   type AgentInput,
@@ -916,6 +917,45 @@ export { ApprovalOutcomeNotWrittenError, BureauError };
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
  * end in the session, so no record of it is coming from here.
  */
+/**
+ * COR-1614 — the field that marks a store action ending a run another process ended. Such an
+ * action reaches this process's live frames and nothing else that reads the store's actions.
+ */
+const COMMITTED_ELSEWHERE = 'committedElsewhere';
+
+function isCommittedElsewhere(action: { readonly detail: unknown }): boolean {
+  const detail = action.detail;
+  return typeof detail === 'object' && detail !== null && COMMITTED_ELSEWHERE in detail;
+}
+
+/**
+ * The end a durable run another process cancelled, timed out, or failed stands for on this
+ * process's store; `undefined` for any other state. A completed run is left out: a Bureau run that
+ * is cancelled or times out never completes its workflow, and one that completes was driven by an
+ * engine that reported it.
+ */
+function endedElsewhereAs(
+  state: WorkflowState,
+): { readonly type: 'run.aborted' | 'run.error'; readonly error: Error } | undefined {
+  if (state.status === 'cancelled') {
+    return {
+      type: 'run.aborted',
+      error: new AbortAgentRunError('The run was cancelled by another process'),
+    };
+  }
+  if (state.status === 'timed-out' || state.status === 'failed') {
+    return {
+      type: 'run.error',
+      // Uncoded, so a stream reports it as `RUN_FAILED`, the code a peer streaming the same run
+      // reads from its durable status.
+      error: new Error(
+        state.error ?? (state.status === 'timed-out' ? 'The run timed out' : 'The run failed'),
+      ),
+    };
+  }
+  return undefined;
+}
+
 class TerminalSessionRecordAbandonedError extends Error {
   constructor(runId: string) {
     super(`Run "${runId}" ended without its end being recorded in its session by this process.`);
@@ -3070,6 +3110,54 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * cannot say whether this process still drives it.
    */
   const settledLocalRunIds = new Set<string>();
+
+  /**
+   * A run whose local handle settled with no terminal event while the store still says `running`:
+   * its engine lost a checkpoint race, was disposed, or saw another engine commit the run's
+   * outcome, and `driveDurableRun` stayed write-free in each case. This process no longer drives
+   * the run, so its liveness is the engine's, and it stops keeping the run's input leases alive
+   * (COR-1476); the claims stay, since the owner may yet replay the steps that hold them.
+   *
+   * COR-1614 — when the durable run is already over, the run's record here ends with that outcome
+   * as well ({@link settleRunEndedElsewhere}).
+   */
+  function settleAbandonedRun(sessionId: string, runId: string, activeRun: ActiveRun): void {
+    if (store.getRun(runId)?.status !== 'running') return;
+    settledLocalRunIds.add(runId);
+    releaseSessionSteeringPoll(sessionId, runId);
+    abandonSessionInputGate(runId);
+    detachBestEffortPromise(settleRunEndedElsewhere(runId, activeRun));
+  }
+
+  /**
+   * COR-1614 — ends this process's record of a run another process ended: another Bureau cancelled
+   * it (`cancelDurableRun`) or timed it out (`Engine.timeout`) while this one drove it. The run
+   * ends `aborted` or `error` on the store, so a stream a client opened here ends with the matching
+   * terminal, the run stops counting as live and frees its concurrency slot, and this process stops
+   * holding its `ActiveRun`.
+   *
+   * The end reaches the store only, never the run's emitter, and the store action it records is
+   * marked `committedElsewhere`, which keeps it to this process's live frames. So no run hook,
+   * terminal listener, session save, task record, audit record, or durable history entry comes
+   * from here: the process that committed the outcome publishes what it publishes (a cancel's
+   * session status), and an engine that reclaimed the run and ended it has its own driver for the
+   * rest. A run whose durable state is not over (a lost checkpoint race), or cannot be read (a
+   * disposed engine), stays as it was.
+   */
+  async function settleRunEndedElsewhere(runId: string, activeRun: ActiveRun): Promise<void> {
+    let state: WorkflowState | null | undefined;
+    try {
+      state = await runtime.durable?.engine.get(runId);
+    } catch {
+      return;
+    }
+    const ending = state === null || state === undefined ? undefined : endedElsewhereAs(state);
+    if (ending === undefined || store.getRun(runId)?.status !== 'running') return;
+    store.settleRun(runId, ending.type, { error: ending.error, [COMMITTED_ELSEWHERE]: true });
+    activeRuns.delete(activeRun);
+    flowController?.settle(runId);
+    queueMicrotask(() => releaseTerminalRunReviewState(runId));
+  }
   /** One log operation at a time per session, in this process. */
   const steeringQueues = new Map<string, Promise<unknown>>();
 
@@ -4331,10 +4419,32 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** A store action as the live `event` frame streams read. */
+  function emitActionFrame(action: StoreActionEvent['action']): void {
+    emitLiveFrame({
+      type: 'event',
+      runId: action.runId,
+      event: action.type,
+      detail: serializeActionDetail(action.type, action.detail),
+      sequence: action.sequence,
+      runSeq: nextRunSeq(action.runId),
+      timestamp: action.timestamp,
+    });
+  }
+
   const storeSubscription = store.toObservable().subscribe((event) => {
     switch (event.type) {
       case 'action': {
         const storeActionEvent = event as StoreActionEvent;
+        // COR-1614: the end of a run another process ended reaches this process's streams and
+        // nothing else; every other consumer below records or publishes it.
+        if (isCommittedElsewhere(storeActionEvent.action)) {
+          // COR-1302: a `bureau.run()` run's actions never reach live frames (see below).
+          if (!catalogRunIds.has(storeActionEvent.action.runId)) {
+            emitActionFrame(storeActionEvent.action);
+          }
+          break;
+        }
         recordTaskSettlement(storeActionEvent.action);
         // COR-1302: a `bureau.run()` run is on `store` only so `getRun` and
         // `abortRun` resolve its id. Its actions stay off this bureau's
@@ -4349,18 +4459,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         if (catalogRunIds.has(storeActionEvent.action.runId)) break;
         emitter.dispatch(new ActionEvent(storeActionEvent.action));
         announceReviewRequests(storeActionEvent.action);
-        emitLiveFrame({
-          type: 'event',
-          runId: storeActionEvent.action.runId,
-          event: storeActionEvent.action.type,
-          detail: serializeActionDetail(
-            storeActionEvent.action.type,
-            storeActionEvent.action.detail,
-          ),
-          sequence: storeActionEvent.action.sequence,
-          runSeq: nextRunSeq(storeActionEvent.action.runId),
-          timestamp: storeActionEvent.action.timestamp,
-        });
+        emitActionFrame(storeActionEvent.action);
         break;
       }
       case 'run.registered': {
@@ -6953,18 +7052,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // A result settles after any terminal event it carries has been dispatched, so a run
           // whose save has not started by now will not save: its end is not recorded here.
           abandonTerminalSessionRecord(runId);
-          // A quietly settled run can stay `running` in the store; this
-          // process no longer drives it, so its liveness is the engine's.
-          // Only an abandoned one is kept: a terminal event already left
-          // `running` before the result settled.
-          if (store.getRun(runId)?.status === 'running') {
-            settledLocalRunIds.add(runId);
-            releaseSessionSteeringPoll(sessionId, runId);
-            // COR-1476 — abandoned to whoever owns it: this process stops keeping
-            // its leases alive, but the claims stay, since the owner may yet
-            // replay the steps that hold them.
-            abandonSessionInputGate(runId);
-          }
+          // A quietly settled run can stay `running` in the store. Only an abandoned one is
+          // handled: a terminal event already left `running` before the result settled.
+          settleAbandonedRun(sessionId, runId, activeRun);
         }),
       );
 
@@ -7441,11 +7531,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         .catch(() => undefined)
         .finally(() => {
           abandonTerminalSessionRecord(runId);
-          if (store.getRun(runId)?.status === 'running') {
-            settledLocalRunIds.add(runId);
-            releaseSessionSteeringPoll(sessionId, runId);
-            abandonSessionInputGate(runId);
-          }
+          settleAbandonedRun(sessionId, runId, recoveredRun);
         }),
     );
 

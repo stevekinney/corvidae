@@ -83,6 +83,23 @@ export interface Store {
    */
   recordAction(runId: string, type: string, detail: unknown): void;
 
+  /**
+   * Ends a running run's record that no terminal event will end (COR-1614). Its `ActiveRun`
+   * stopped driving it without one, because another process committed the run's outcome: a
+   * durable run another Bureau cancelled or timed out. Stops observing the run, records `type`
+   * with `detail` in the action log, and moves the run's status to `aborted` or `error` with
+   * `detail.error`, so a reader of `getRun` or of the log sees the run end.
+   *
+   * Nothing reaches the run's own emitter, so no run hook or terminal listener fires for it: the
+   * outcome is the committing process's to publish. A no-op for an unknown run, and for one that
+   * is no longer `running`.
+   */
+  settleRun(
+    runId: string,
+    type: 'run.aborted' | 'run.error',
+    detail: { readonly error: unknown } & Record<string, unknown>,
+  ): void;
+
   /** Convenience subscribe overload: listener receives (state, action) on every action. */
   subscribe(listener: StoreListener): Unsubscribe;
   /** EventTarget-style subscribe for a single event type. */
