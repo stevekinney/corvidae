@@ -14,7 +14,7 @@ import {
   waitForCondition,
   yieldToEventLoop,
 } from '../../testing/fake-timers.test-support.ts';
-import type { Checkpoint } from '../types.ts';
+import { workflow, type Checkpoint, type WorkflowContext } from '../types.ts';
 import {
   adoptLaunchCheckpoint,
   releaseAllCheckpoints,
@@ -26,6 +26,7 @@ import {
   abandonedExecutionAttemptCount,
   abandonExecutionAttempt,
   beginExecutionAttempt,
+  completeExecutionAttemptLaunch,
   currentExecutionAttempt,
   isGenerationAbandoned,
   isHeldGenerationAbandoned,
@@ -49,6 +50,7 @@ describe('the execution attempt registry', () => {
     expect(first).toEqual({
       workflowExecutionToken: 'generation-1',
       abandoned: false,
+      launchCompleted: false,
       claimEpoch: null,
       identity: undefined,
       pendingIdentity: undefined,
@@ -73,14 +75,25 @@ describe('the execution attempt registry', () => {
     const registry = internals.workflowClaimRegistry!;
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
 
-    // A launch before the engine holds the claim is under no claim.
-    beginExecutionAttempt(internals, 'run', 'generation-1');
-    expect(currentExecutionAttempt(internals, 'run')?.claimEpoch).toBeNull();
-    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
-
+    // An attempt whose launch has not completed drives nothing, whatever claim the engine holds.
     expect(await registry.acquire('run')).toMatchObject({ status: 'acquired', epoch: 1 });
     beginExecutionAttempt(internals, 'run', 'generation-1');
-    expect(currentExecutionAttempt(internals, 'run')?.claimEpoch).toBe(1);
+    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({
+      launchCompleted: false,
+      claimEpoch: null,
+    });
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+
+    // Completing the launch of another generation leaves it alone.
+    completeExecutionAttemptLaunch(internals, 'run', 'generation-2');
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+
+    // The epoch is the claim held when the launch completes.
+    completeExecutionAttemptLaunch(internals, 'run', 'generation-1');
+    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({
+      launchCompleted: true,
+      claimEpoch: 1,
+    });
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(true);
     expect(isLaunchedUnderClaim(internals, 'run', 1, 'generation-1')).toBe(true);
     // A claim taken after the launch is not the claim it launched under, nor is another generation's.
@@ -91,6 +104,32 @@ describe('the execution attempt registry', () => {
     // A generation this engine lost is the winner's, whatever claim it launched under.
     abandonExecutionAttempt(internals, 'run', 'generation-1');
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+  });
+
+  it('records the claim a started run holds once its start returns', async () => {
+    await using engine = await Engine.create({
+      storage: new MemoryStorage(),
+      workflows: {
+        parked: workflow({ name: 'parked' }).execute(async function* (ctx: WorkflowContext) {
+          yield* ctx.waitForSignal('go');
+          return 'done';
+        }),
+      },
+      ownership: 'workflow-lease',
+      backgroundTasks: 'manual',
+      startScheduler: false,
+      recover: false,
+      inlineLaunchScheduling: 'manual',
+    });
+    const internals = getInternals(engine);
+    await engine.start('parked', null, { id: 'started-run' });
+
+    // The start folds its claim into the create batch, after it adopted the checkpoint, so the
+    // attempt must carry the epoch the claim holds when the launch completes.
+    const epoch = internals.workflowClaimRegistry!.currentEpoch('started-run');
+    expect(epoch).not.toBeNull();
+    expect(currentExecutionAttempt(internals, 'started-run')?.claimEpoch).toBe(epoch);
+    expect(isLaunchedUnderClaim(internals, 'started-run', epoch!)).toBe(true);
   });
 
   it('abandons only the attempt that launched the named generation, and only once', async () => {

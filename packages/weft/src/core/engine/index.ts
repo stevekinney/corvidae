@@ -1287,13 +1287,17 @@ export class Engine<
           // deterministic token and wait forever for a delivery the completion
           // caller was already told had succeeded.
           await recoverPendingAsyncActivities(internals, workflowId);
-          await internals.reclaimReplayGateForTesting?.(workflowId);
+          const gate = internals.reclaimReplayGateForTesting;
+          if (gate !== undefined) await gate(workflowId);
           // Disposal can land while the reload above was in flight — recheck
           // rather than replay against a torn-down host. `markDisposing()` on
           // the reclaim target (see `ownership-bootstrap.ts`) closes the
           // takeover-CAS side of this race; this closes the drive side for a
           // takeover that had already landed before disposal was signaled.
           if (internals.disposed) return;
+          // The awaits above may have spanned a claim this engine lost and took back, so the
+          // replay is checked against the claim held now, not the one held on entry.
+          const replayEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
           await resumeFromLifecycle(
             internals,
             workflowId,
@@ -1301,9 +1305,9 @@ export class Engine<
             internals.onRecoveredWorkflowHook,
             {
               forceReplayFromStorage: true,
-              // The gate above and the reload before it are awaits, so a drive may have begun
-              // under this claim since the check on entry; the replay re-checks as it registers.
-              ...(claimEpoch !== null && { skipIfLaunchedUnderClaimEpoch: claimEpoch }),
+              // A drive may have begun under that claim during the same awaits; the replay
+              // re-checks as it registers.
+              ...(replayEpoch !== null && { skipIfLaunchedUnderClaimEpoch: replayEpoch }),
             },
           );
         },

@@ -2,6 +2,7 @@ import { serializeCheckpoint } from '../../checkpoint.ts';
 import { WorkflowStartedEvent } from '../../events.ts';
 import { StartWorkflowValidationError } from '../../start-workflow-validation.ts';
 import type { Checkpoint, StartOptions, WorkflowState } from '../../types.ts';
+import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 
@@ -128,6 +129,7 @@ export function beginWorkflowExecution(
       // property, so only include the key when a liveness callback was provided.
       ...(onStarted !== undefined && { onStarted }),
     });
+    completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
     return;
   }
 
@@ -145,6 +147,7 @@ export function beginWorkflowExecution(
     executionStateOwnerId,
     callbacks,
   );
+  completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
   // Worker/non-inline path executes synchronously above, so liveness is already
   // satisfied by the time this returns.
   onStarted?.();

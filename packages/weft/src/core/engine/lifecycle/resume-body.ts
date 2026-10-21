@@ -23,6 +23,7 @@ import { createWorkflowScopedContextCallbacks, resetCancelHandlers } from '../ca
 import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
 import { rehydrateChildCancellationHandlers } from '../child-workflow-cancellation.ts';
 import { resolveExecutableRegistrationOrRenamedNotFound } from '../dynamic-source-execution.ts';
+import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import { commitFencedEngineWrite } from '../fenced-write.ts';
 import { getWorkflowExecutionStartedAt, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
@@ -191,10 +192,8 @@ async function relaunchInlineWorkflowAfterResume(
   >,
 ): Promise<void> {
   const { workflowId, resumeCheckpoint, registration, resolvedRevision, callbacks } = args;
-  // Keep the final running-state check and the re-entry into user code
-  // in the same serialized section so cancel/timeout cannot commit a
-  // terminal state and still let a parked workflow continue.
-  //
+  // Keep the final running-state check and the re-entry into user code in the same serialized
+  // section so cancel/timeout cannot commit a terminal state and still let a parked workflow continue.
   const accumulatedResults = new Map<number, unknown>(resumeCheckpoint.accumulatedResults);
   const workflowAbort = new AbortController();
 
@@ -237,13 +236,12 @@ async function relaunchInlineWorkflowAfterResume(
     // Non-serialized services re-provided by resolveServicesForRecovery (or set
     // at start when resuming in the same process); undefined when none.
     services: internals.workflowServices.get(workflowId),
-    // Carry the host `ctx.log` sink onto the recovered context, mirroring the
-    // fresh-start path (resolveLogSinkOption). Without it, a log at the live frontier
-    // of a recovered run — and any speculative child it parents — reaches the console
-    // but never `EngineOptions.onLog`. Construction normalizes a missing `onLog` to
-    // `null`; use loose `!= null` so the narrowed type drops both `null` and the option's
-    // declared `undefined`, keeping `logSink` assignable under `exactOptionalPropertyTypes`
-    // (the build's stricter tsc enforces this) (#549).
+    // Carry the host `ctx.log` sink onto the recovered context, mirroring the fresh-start path
+    // (resolveLogSinkOption). Without it, a log at the live frontier of a recovered run — and any
+    // speculative child it parents — reaches the console but never `EngineOptions.onLog`.
+    // Construction normalizes a missing `onLog` to `null`; use loose `!= null` so the narrowed type
+    // drops both `null` and the option's declared `undefined`, keeping `logSink` assignable under
+    // `exactOptionalPropertyTypes` (the build's stricter tsc enforces this) (#549).
     ...(internals.options.onLog != null && { logSink: internals.options.onLog }),
   });
   setContextWorkflowInterceptor(context, getComposedWorkflowInterceptor(internals));
@@ -256,6 +254,7 @@ async function relaunchInlineWorkflowAfterResume(
   const inlineStrategy = internals.inlineStrategy!;
   inlineStrategy.adoptWorkflow(workflowId, generator, context, workflowAbort);
   inlineStrategy.continueWorkflow(workflowId, undefined);
+  completeExecutionAttemptLaunch(internals, workflowId, latestState.workflowExecutionToken);
 }
 
 async function relaunchWorkerWorkflowAfterResume(
@@ -295,6 +294,7 @@ async function relaunchWorkerWorkflowAfterResume(
         headers: [...workflowStartHeaders],
       }),
   });
+  completeExecutionAttemptLaunch(internals, workflowId, latestState.workflowExecutionToken);
 }
 
 /**
