@@ -121,6 +121,8 @@ export const CREDENTIALS: Record<
 > = {
   'alice-key': { subject: 'alice', scopes: [] },
   'bob-key': { subject: 'bob', scopes: [] },
+  /** The same owner as `alice-key`, holding the scope an asset reference in a chat start needs. */
+  'alice-assets-key': { subject: 'alice', scopes: ['bureau.assets:read'] },
   'reader-key': { subject: 'reader', scopes: ['bureau.tasks:read'] },
   'writer-key': { subject: 'writer', scopes: ['bureau.tasks:write'] },
   'writer-reader-key': {

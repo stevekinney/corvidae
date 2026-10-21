@@ -520,6 +520,11 @@ export interface AssetService {
       readonly declaredByteLength: number;
     },
   ): Promise<AssetUploadSession>;
+  /**
+   * Adds one chunk to the open session. Each append is one compare-and-swap on the session, so
+   * an append that loses to another (in this process or any process sharing the storage) rejects
+   * with `AssetConflictError` and stores nothing.
+   */
   appendUpload(
     uploadId: string,
     principal: AssetPrincipal,
@@ -532,6 +537,14 @@ export interface AssetService {
    * management plane asks before it admits, so a refused completion starts no admission.
    */
   inspectUpload(uploadId: string, principal: AssetPrincipal): Promise<AssetUploadSession>;
+  /**
+   * The asset a completed upload session admitted (or reused, under the `reuse` duplicate policy),
+   * for a caller retrying a completion whose answer it lost; the session keeps it until its
+   * `expiresAt`. `undefined` while the session is still open. A session whose completion is in
+   * flight rejects with `AssetConflictError`, and one that does not exist, has expired, or belongs
+   * to another principal with `AssetNotFoundError`.
+   */
+  completedUploadAssetId(uploadId: string, principal: AssetPrincipal): Promise<string | undefined>;
   inspect(
     assetId: string,
     principal: AssetPrincipal,

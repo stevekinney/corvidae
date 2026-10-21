@@ -29,7 +29,12 @@ import { sha256BytesHex } from '@lostgradient/cryptography';
 import type { MediaLimits, Modality } from 'conversationalist';
 
 import { decodeBase64, encodeBase64 } from './base64';
-import { AssetAdmissionError, AssetIntegrityError, AssetUnavailableError } from './errors';
+import {
+  AssetAdmissionError,
+  AssetConflictError,
+  AssetIntegrityError,
+  AssetUnavailableError,
+} from './errors';
 import { type AssetInternals, classifyFailure } from './internals';
 import {
   detectMediaType,
@@ -60,6 +65,7 @@ import type {
   AssetRejection,
   AssetSafetyVerdict,
 } from './types';
+import { claimUpload, reopenUpload, type UploadSessionRecord } from './uploads';
 import { checkUrl, fetchWithPolicy, originOf } from './url-policy';
 
 /** The public sources plus the one a transform admits through. */
@@ -338,9 +344,17 @@ export async function beginAdmission(
     providerCopies: [],
   };
   internals.pendingAdmissions.add(assetId);
+  let claimedUploadId: string | undefined;
   try {
+    // An upload session admits one asset: it is claimed before this admission persists anything,
+    // so a completion that loses the claim leaves no rejected record behind.
+    if (request.source.kind === 'upload') {
+      await claimUpload(internals, request.source.uploadId, principal, assetId);
+      claimedUploadId = request.source.uploadId;
+    }
     await createRecord(internals.storage, record);
   } catch (error) {
+    if (claimedUploadId !== undefined) await reopenUpload(internals, claimedUploadId, assetId);
     internals.pendingAdmissions.delete(assetId);
     budget?.skip(slot);
     throw error;
@@ -430,50 +444,45 @@ async function readSourceAsset(
   };
 }
 
-interface UploadSessionRecord {
-  readonly uploadId: string;
-  readonly ownerId: string;
-  readonly declaredMediaType?: string | undefined;
-  readonly declaredByteLength: number;
-  readonly receivedBytes: number;
-  readonly chunkCount: number;
-  /** Only open sessions are ever stored: completion and abort delete the session with its chunks. */
-  readonly state: 'open';
-  readonly createdAt: string;
-  readonly expiresAt: string;
-}
-
-export type { UploadSessionRecord };
-
 /**
  * Completes an upload under the session's lock — the one `appendUpload`,
  * `abortUpload`, and upload collection take — so no chunk can be appended
- * between reading the chunks and retiring the session.
+ * between reading the chunks and retiring them.
  */
 function assembleUpload(
   internals: AssetInternals,
   context: AssetWorkContext,
   uploadId: string,
   principal: AssetPrincipal,
+  assetId: string,
 ): Promise<AcquiredBytes> {
   return internals.withLock(`upload:${uploadId}`, () =>
-    assembleLockedUpload(internals, context, uploadId, principal),
+    assembleLockedUpload(internals, context, uploadId, principal, assetId),
   );
 }
 
+/**
+ * Reads the chunks of a session `beginAdmission` claimed for `assetId` and retires them. The
+ * session is `completing` until here; once the bytes are assembled, one compare-and-swap writes the
+ * terminal `completed` record (keeping the `assetId`) and deletes the chunks together, so no
+ * crash leaves chunks beside a completed session or a completed session without its outcome.
+ */
 async function assembleLockedUpload(
   internals: AssetInternals,
   context: AssetWorkContext,
   uploadId: string,
   principal: AssetPrincipal,
+  assetId: string,
 ): Promise<AcquiredBytes> {
   const { storage } = internals;
   const raw = await context.track(storage.get(KEYS.upload(uploadId)));
   const session = raw === null ? undefined : (JSON.parse(raw) as UploadSessionRecord);
   if (
+    raw === null ||
     !session ||
     session.ownerId !== principal.id ||
-    session.state !== 'open' ||
+    session.state !== 'completing' ||
+    session.assetId !== assetId ||
     Date.parse(session.expiresAt) <= internals.now()
   ) {
     throw new AssetAdmissionError('source-not-available', 'The upload session is not open.');
@@ -497,9 +506,22 @@ async function assembleLockedUpload(
     bytes.set(chunk, offset);
     offset += chunk.byteLength;
   }
-  // Completion retires the session: its chunks are now the asset's bytes.
-  for (const key of keys) await context.track(storage.delete(key));
-  await context.track(storage.delete(KEYS.upload(uploadId)));
+  // Completion consumes the chunks — they are now the asset's bytes — and leaves the terminal record.
+  const sessionKey = KEYS.upload(uploadId);
+  const retired = await context.track(
+    storage.conditionalBatch(
+      [{ key: sessionKey, expectedValue: raw }],
+      [
+        {
+          type: 'set',
+          key: sessionKey,
+          value: JSON.stringify({ ...session, state: 'completed', assetId }),
+        },
+        ...keys.map((key) => ({ type: 'delete' as const, key })),
+      ],
+    ),
+  );
+  if (!retired) throw new AssetConflictError(sessionKey);
   return {
     kind: 'bytes',
     bytes,
@@ -526,7 +548,7 @@ async function acquire(
     case 'upload':
       return context.child(
         'upload',
-        (child) => assembleUpload(internals, child, source.uploadId, plan.principal),
+        (child) => assembleUpload(internals, child, source.uploadId, plan.principal, plan.assetId),
         (error) => classifyFailure(error),
       );
     case 'url': {
@@ -1007,6 +1029,10 @@ async function runAdmission(
       ? { code: 'aborted' as const, message: 'The admission was aborted.' }
       : classifyFailure(error);
     await settleRejected(internals, plan.assetId, rejection);
+    // A claim this admission still holds goes back: the session stays appendable. A session whose
+    // chunks were consumed is `completed` by now, and is left as the outcome a retry replays.
+    if (plan.source.kind === 'upload')
+      await reopenUpload(internals, plan.source.uploadId, plan.assetId);
     throw error;
   } finally {
     plan.budget?.skip(plan.slot);
