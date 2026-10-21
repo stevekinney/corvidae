@@ -105,7 +105,7 @@ export function createFireReviewFollower(
   /** Set by an end the reconciliation has yet to wait out. */
   let endedWithoutWait = false;
   /** Ends the stretch of the current subscription that counts as it staying up. */
-  let stabilityTimer: ReturnType<typeof scheduleTimeout> | undefined;
+  let stabilityTimer: { readonly handle: ReturnType<typeof scheduleTimeout> } | undefined;
 
   /** Waits `milliseconds` on a timer that {@link FireReviewFollower.dispose} clears. */
   function wait(milliseconds: number): Promise<void> {
@@ -305,7 +305,7 @@ export function createFireReviewFollower(
 
   function clearStability(): void {
     if (stabilityTimer === undefined) return;
-    cancelTimeout(stabilityTimer);
+    cancelTimeout(stabilityTimer.handle);
     stabilityTimer = undefined;
   }
 
@@ -326,10 +326,13 @@ export function createFireReviewFollower(
     for (const runId of followedRuns) opened.follow(runOwner(runId));
     subscription = opened;
     clearStability();
-    stabilityTimer = scheduleTimeout(() => {
-      stabilityTimer = undefined;
-      if (subscription === opened && !opened.closed) consecutiveEnds = 0;
-    }, dependencies.maximumRetryDelayMilliseconds);
+    const timer = {
+      handle: scheduleTimeout(() => {
+        if (stabilityTimer === timer) stabilityTimer = undefined;
+        if (subscription === opened && !opened.closed) consecutiveEnds = 0;
+      }, dependencies.maximumRetryDelayMilliseconds),
+    };
+    stabilityTimer = timer;
     return opened;
   }
 

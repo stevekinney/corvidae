@@ -582,7 +582,7 @@ describe('a fire read again with one review that cannot be restored', () => {
 
     expect((failure as Error).message).toContain('unavailable');
     // One approval could not be restored, and the other was refreshed all the same.
-    expect(roundsOf().toSorted()).toEqual([0, 1]);
+    expect(roundsOf().toSorted((left, right) => left - right)).toEqual([0, 1]);
 
     await fireReviewFollowerOf(holder).reread(fireId);
     expect(roundsOf()).toEqual([1, 1]);
