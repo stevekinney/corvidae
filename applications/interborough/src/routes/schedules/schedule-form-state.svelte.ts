@@ -12,10 +12,17 @@ import type { ScheduleValue } from '@lostgradient/cinder';
 import type {
   ScheduleOverlapPolicy,
   ScheduleRevisionPolicy,
+  ScheduleSpec,
   ScheduleUpdateOptions,
 } from '@lostgradient/weft';
 
-import { scheduleValueToWireSpec } from './cadence.ts';
+import {
+  cadenceToWireSpec,
+  describeCadence,
+  isSubMinuteInterval,
+  scheduleValueToWireSpec,
+  type ScheduleCadence,
+} from './cadence.ts';
 import type { CreateScheduleArgs } from './schedule-queries.ts';
 
 const MAX_SCHEDULE_ID_LENGTH = 128;
@@ -75,6 +82,8 @@ export interface ScheduleFormInit {
   readonly description?: string;
   readonly inputText?: string;
   readonly cadence?: ScheduleValue;
+  /** The cadence an edit was built from, exactly as stored. Kept and resent unless the operator changes it, so a value the builder rounds, such as `30s`, is not rounded by an unrelated edit. */
+  readonly originalCadence?: ScheduleCadence;
   readonly overlap?: ScheduleOverlapPolicy;
   readonly jitterText?: string;
   readonly backfill?: boolean;
@@ -118,6 +127,11 @@ export class ScheduleFormState {
   startPaused = $state(false);
   revisionPolicy = $state<ScheduleRevisionPolicy>('active-at-fire');
 
+  /** The cadence an edit was built from, exactly as stored; `undefined` for a new schedule. */
+  readonly originalCadence: ScheduleCadence | undefined;
+  /** Whether the operator changed the cadence. Until then an edit sends `originalCadence`, not the builder's value. */
+  cadenceChanged = $state(false);
+
   /**
    * Workflow types this draft cannot schedule, each with why. A type the engine's schedules do not
    * own, such as an agent-authored workflow, whose schedule is the trigger in its file, is chosen
@@ -155,12 +169,41 @@ export class ScheduleFormState {
     this.backfill = withDefault(init.backfill, this.backfill);
     this.startPaused = withDefault(init.startPaused, this.startPaused);
     this.revisionPolicy = withDefault(init.revisionPolicy, this.revisionPolicy);
+    this.originalCadence = init.originalCadence;
     this.initialRevisionPolicy = this.revisionPolicy;
     this.initialDescription = this.description;
     this.initialOverlap = this.overlap;
     this.initialJitterText = this.jitterText.trim();
     this.initialBackfill = this.backfill;
-    this.initialCadenceSpec = JSON.stringify(scheduleValueToWireSpec(this.cadence));
+    this.initialCadenceSpec = JSON.stringify(this.cadenceSpec);
+  }
+
+  /** The cadence in wire form: what the schedule had, until the operator changes it, and then the builder's value. */
+  get cadenceSpec(): ScheduleSpec {
+    if (!this.cadenceChanged && this.originalCadence !== undefined) {
+      const original = cadenceToWireSpec(this.originalCadence);
+      if (original !== undefined) return original;
+    }
+    return scheduleValueToWireSpec(this.cadence);
+  }
+
+  /** What the edit drawer shows in place of the builder, for a cadence the builder cannot show exactly, until the operator asks to change it. */
+  get exactCadenceText(): string | undefined {
+    if (this.cadenceChanged || this.originalCadence === undefined) return undefined;
+    return isSubMinuteInterval(this.originalCadence)
+      ? describeCadence(this.originalCadence)
+      : undefined;
+  }
+
+  /** Takes the cadence the builder committed. */
+  setCadence(next: ScheduleValue): void {
+    this.cadence = next;
+    this.cadenceChanged = true;
+  }
+
+  /** Replaces the kept cadence with the builder's value, which the operator then edits. */
+  changeCadence(): void {
+    this.cadenceChanged = true;
   }
 
   get errors(): ScheduleFormFieldErrors {
@@ -206,7 +249,7 @@ export class ScheduleFormState {
     return {
       workflowType: this.workflowType,
       input: this.parsedInput,
-      spec: scheduleValueToWireSpec(this.cadence),
+      spec: this.cadenceSpec,
       overlap: this.overlap,
       backfill: this.backfill,
       revisionPolicy: this.revisionPolicy,
@@ -235,7 +278,7 @@ export class ScheduleFormState {
   /** Whether any editable field differs from what the draft was constructed with. Lets the edit drawer keep an operator's unsaved changes when a background refetch delivers newer server data (COR-15). */
   get isDirty(): boolean {
     return (
-      JSON.stringify(scheduleValueToWireSpec(this.cadence)) !== this.initialCadenceSpec ||
+      JSON.stringify(this.cadenceSpec) !== this.initialCadenceSpec ||
       this.description !== this.initialDescription ||
       this.overlap !== this.initialOverlap ||
       this.jitterText.trim() !== this.initialJitterText ||

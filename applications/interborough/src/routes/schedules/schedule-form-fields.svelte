@@ -14,6 +14,7 @@
    * `ScheduleFormState.toUpdateOptions()` sends only the ones that changed.
    */
   import {
+    Button,
     Input,
     JsonEditor,
     RadioGroup,
@@ -27,6 +28,7 @@
 
   import type { ScheduleOverlapPolicy, ScheduleRevisionPolicy } from '@lostgradient/weft';
 
+  import { SCHEDULE_COPY } from '../../app/copy.ts';
   import { computeNextFires } from '../../lib/format/cron-preview.ts';
   import { FRESH_START_REVISION_HEDGE } from '../../lib/workflow-revision.ts';
   import { OVERLAP_POLICIES } from './overlap-policy.ts';
@@ -38,12 +40,23 @@
     mode: 'create' | 'edit';
     /** Registry-driven workflow type options. `undefined` (still loading, errored, or `system:read` unavailable — the create action itself doesn't require it, plan §9.3) or an empty array (the registry resolved successfully but has no registered workflows) both fall back to a free-text field, but with distinct descriptions — "unavailable" vs "no registered workflow types found" — so an authorized schedule creator is never told the server is empty when the lookup merely hasn't settled yet. Only a non-empty array renders the Select. */
     workflowTypeOptions: readonly string[] | undefined;
+    /** How many types the registry holds, before those another owner starts are left out of `workflowTypeOptions`. Tells an empty registry from one whose every type is reserved. */
+    registeredTypeCount?: number;
   }
 
-  let { form, mode, workflowTypeOptions }: Props = $props();
+  let { form, mode, workflowTypeOptions, registeredTypeCount = 0 }: Props = $props();
+
+  /** Why the workflow type is typed, not chosen: the registry could not be read, is empty, or holds only types that are started elsewhere. */
+  const typedTypeDescription = $derived(
+    workflowTypeOptions === undefined
+      ? 'Registry lookup unavailable — enter the workflow type name.'
+      : registeredTypeCount > 0
+        ? SCHEDULE_COPY.form.allTypesReserved
+        : 'No registered workflow types found — enter the workflow type name.',
+  );
 
   function onCadenceChange(next: ScheduleValue): void {
-    form.cadence = next;
+    form.setCadence(next);
   }
 
   const OVERLAP_VALUES: ReadonlySet<string> = new Set(
@@ -135,9 +148,7 @@
       <Input
         id="weft-schedule-form-workflow-type"
         label="Workflow type"
-        description={workflowTypeOptions === undefined
-          ? 'Registry lookup unavailable — enter the workflow type name.'
-          : 'No registered workflow types found — enter the workflow type name.'}
+        description={typedTypeDescription}
         bind:value={form.workflowType}
         error={form.errors.workflowType ?? ''}
       />
@@ -172,13 +183,29 @@
 
   <section class="weft-schedule-form__section">
     <h3 class="weft-schedule-form__section-title">Cadence</h3>
-    <ScheduleBuilder
-      value={form.cadence}
-      onValueChange={onCadenceChange}
-      {computeNextFires}
-      timezoneLabel="UTC"
-      label="Cadence"
-    />
+    {#if form.exactCadenceText !== undefined}
+      <!-- The builder counts in whole minutes, so a cadence below that is shown as it is and kept. -->
+      <Input
+        id="weft-schedule-form-exact-cadence"
+        label={SCHEDULE_COPY.form.cadenceLabel}
+        description={SCHEDULE_COPY.form.exactCadenceDescription}
+        value={form.exactCadenceText}
+        disabled
+      />
+      <div>
+        <Button variant="secondary" size="sm" onclick={() => form.changeCadence()}
+          >{SCHEDULE_COPY.form.changeCadenceAction}</Button
+        >
+      </div>
+    {:else}
+      <ScheduleBuilder
+        value={form.cadence}
+        onValueChange={onCadenceChange}
+        {computeNextFires}
+        timezoneLabel="UTC"
+        label="Cadence"
+      />
+    {/if}
   </section>
 
   <section class="weft-schedule-form__section">
