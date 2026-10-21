@@ -299,6 +299,7 @@ import {
   toScheduleSummary,
   updateSchedule as updateScheduleFromInternals,
 } from './schedules.ts';
+import { assertActivitySchemas } from './schema-policy.ts';
 import {
   createSecondInstanceDetectionTick,
   createSecondInstanceDetector,
@@ -308,7 +309,6 @@ import {
   releaseSignalWaiter,
   signal as signalWorkflow,
 } from './signals.ts';
-import { assertActivitySchemas } from './schema-policy.ts';
 import { registerSource as registerWorkflowSource } from './source-registration.ts';
 import {
   resolveWorkflowSource as resolveWorkflowSourceImpl,
@@ -392,7 +392,6 @@ export type {
   TrackedWaiterKeys,
   WorkflowResultWaiter,
 } from './engine-internal-types.ts';
-export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export {
   ActivityResolutionError,
   BulkDeleteRequiresTerminalWorkflowsError,
@@ -440,6 +439,7 @@ export {
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
 export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
+export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
 export type { WorkflowClaimHolderStatus } from './workflow-claim-registry.ts';
 export type {

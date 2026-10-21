@@ -32,12 +32,12 @@ import type {
 import { copyFinalizerMetadata } from './finalizer-metadata.ts';
 import type { RecoverAllOptions } from './lifecycle.ts';
 import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
-import { resolveSchemaPolicy } from './schema-policy.ts';
 import { EngineOwnedRemoteActivityBroker } from './remote-activity-broker.ts';
 import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
+import { resolveSchemaPolicy } from './schema-policy.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
