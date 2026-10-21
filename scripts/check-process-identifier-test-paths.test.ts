@@ -53,6 +53,26 @@ describe('a path named after the process id', () => {
       'a file-local const read inside a function',
       'const suffix = `-${PID}`;\nfunction pathFor(label: string) {\n  return join(tmpdir(), label + suffix);\n}',
     ],
+    [
+      'a method called on a value that carries the process id',
+      'const path = join(tmpdir(), `bureau-${String(PID).padStart(8, "0")}`);',
+    ],
+    [
+      'a method called on a file-local const that carries the process id',
+      'const identifier = String(PID);\nconst path = join(tmpdir(), identifier.padStart(8, "0"));',
+    ],
+    [
+      'a chain of methods on the process id',
+      'const path = join(tmpdir(), PID.toString(36).toUpperCase());',
+    ],
+    [
+      "a bracket access, process['pid']",
+      "const path = join(tmpdir(), `bureau-${process['pid']}`);",
+    ],
+    [
+      'a globalThis-qualified bracket access',
+      "const path = join(tmpdir(), `bureau-${globalThis.process['pid']}`);",
+    ],
     ['a nested join', 'const path = join(root, join(tmpdir(), `x-${PID}`));'],
   ])('reports %s', (_name, source) => {
     expect(inspect(`${IMPORT}${source}`).length).toBeGreaterThan(0);
@@ -92,6 +112,14 @@ describe('a path named after the process id', () => {
       'a child-process script held in a string literal',
       "const script = 'const file = join(directory, `.ssr-${PID}`);';",
     ],
+    [
+      'a child-process script whose template has a substitution between the call and the process id',
+      'const script = `const file = join(${JSON.stringify(directory)}, \\`.ssr-\\${PID}.mjs\\`);`;',
+    ],
+    [
+      'a child-process script whose template has several substitutions before the process id',
+      'const script = `const a = ${one};\nconst file = join(${two}, ${three}, \\`-\\${PID}\\`);`;',
+    ],
   ])('reports %s, which cannot be parsed', (_name, source) => {
     expect(inspect(source).length).toBe(1);
   });
@@ -130,6 +158,15 @@ describe('a process id that never names a path', () => {
       'a process id read from a call inside the argument',
       'const path = join(tmpdir(), name(PID));',
     ],
+    [
+      'a template whose substitution is followed by a statement end before the process id',
+      'const script = `const file = join(${directory}, name);\nconsole.log(\\`-\\${PID}\\`);`;',
+    ],
+    [
+      'a method called on a value that is not the process id',
+      'const path = join(tmpdir(), String(counter).padStart(8, "0"));',
+    ],
+    ['a bracket access on another object', "const path = join(tmpdir(), String(row['pid']));"],
     [
       'a duration or a counter in a path',
       'const path = join(tmpdir(), `bureau-${counter++}-${Date.now()}.sqlite`);',

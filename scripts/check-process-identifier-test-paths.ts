@@ -14,12 +14,13 @@
  *
  * Definitions, all syntactic and file-local:
  *
- *   - A process-identifier expression is `process.pid` or `globalThis.process.pid`,
- *     optionally wrapped in `String(...)`, `Number(...)` or `.toString()`.
+ *   - A process-identifier expression is `process.pid`, `process['pid']` or either with a
+ *     `globalThis.` prefix, optionally wrapped in `String(...)`, `Number(...)` or `.toString()`.
  *   - An expression carries the process id when it is a process-identifier
  *     expression, a template literal with a span that carries it, a `+`
  *     expression with an operand that carries it, a conditional with a branch
- *     that carries it, or a name bound by a `const` in the file to an
+ *     that carries it, a method called on a value that carries it
+ *     (`String(process.pid).padStart(8, '0')`), or a name bound by a `const` in the file to an
  *     expression that carries it. Parentheses, `as`, `satisfies` and `!` are
  *     transparent. The propagation is by name across the whole file with
  *     scoping ignored, like the wall-clock guard.
@@ -39,7 +40,8 @@
  *     `join` or `resolve` call (`` `${tmpdir()}/x-${process.pid}` ``);
  *   - a process id carried into a path inside a script held in a string or template literal,
  *     except by shape: a literal whose text has a `join(` or `resolve(` call that reads
- *     `process.pid` before the statement ends is reported, with no import to check;
+ *     `process.pid` before the statement ends is reported, with no import to check (a template is
+ *     matched whole, with a placeholder for each `${…}`);
  *   - a process id read through a destructured binding (`const { pid } = process`),
  *     a function parameter, an object property or a helper's return value;
  *   - a name bound with `let` or `var`, or one carried across files.
@@ -81,6 +83,7 @@ const PATH_MODULES = new Set([
 const PATH_FUNCTIONS = new Set(['join', 'resolve']);
 const CONVERSION_FUNCTIONS = new Set(['String', 'Number']);
 // A `join(` or `resolve(` call whose arguments, before the statement ends, read `process.pid`.
+const SUBSTITUTION = '\u0000';
 const EMBEDDED_PATH_CALL = /\b(?:join|resolve)\s*\([^;]*?\bprocess\.pid\b/;
 
 export type ProcessIdentifierPathViolation = { line: number; text: string };
@@ -117,6 +120,14 @@ function dottedName(expression: ts.Expression): string | null {
 function isProcessIdentifier(expression: ts.Expression): boolean {
   const unwrapped = unwrap(expression);
   if (ts.isPropertyAccessExpression(unwrapped)) return dottedName(unwrapped) === 'process.pid';
+  // `process['pid']`
+  if (ts.isElementAccessExpression(unwrapped)) {
+    return (
+      ts.isStringLiteralLike(unwrapped.argumentExpression) &&
+      unwrapped.argumentExpression.text === 'pid' &&
+      dottedName(unwrapped.expression) === 'process'
+    );
+  }
   if (!ts.isCallExpression(unwrapped)) return false;
   const [argument] = unwrapped.arguments;
   const callee = unwrapped.expression;
@@ -166,6 +177,10 @@ function carriesProcessIdentifier(
       carriesProcessIdentifier(unwrapped.whenTrue, tainted) ||
       carriesProcessIdentifier(unwrapped.whenFalse, tainted)
     );
+  }
+  // A method called on a value that carries the process id: `String(process.pid).padStart(8, '0')`.
+  if (ts.isCallExpression(unwrapped) && ts.isPropertyAccessExpression(unwrapped.expression)) {
+    return carriesProcessIdentifier(unwrapped.expression.expression, tainted);
   }
   return (
     ts.isBinaryExpression(unwrapped) &&
@@ -269,13 +284,14 @@ export function findProcessIdentifierPathViolations(
   walk(sourceFile, (node) => {
     // A child-process script written out in a string or template literal: its text is not parsed,
     // so a `join(...process.pid...)` inside it is found by shape instead.
-    if (
-      ts.isStringLiteralLike(node) ||
-      ts.isTemplateHead(node) ||
-      ts.isTemplateMiddle(node) ||
-      ts.isTemplateTail(node)
-    ) {
-      const embedded = EMBEDDED_PATH_CALL.exec(node.text);
+    if (ts.isStringLiteralLike(node) || ts.isTemplateExpression(node)) {
+      // A template is matched whole, with a placeholder for each `${…}`, so a substitution between
+      // `join(` and `process.pid` does not split the match. The placeholder holds no `;`.
+      const text = ts.isTemplateExpression(node)
+        ? node.head.text +
+          node.templateSpans.map((span) => `${SUBSTITUTION}${span.literal.text}`).join('')
+        : node.text;
+      const embedded = EMBEDDED_PATH_CALL.exec(text);
       if (embedded !== null) {
         const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
         violations.push({ line: line + 1, text: embedded[0].trim() });
@@ -359,12 +375,12 @@ async function main(): Promise<void> {
   for (const finding of findings) {
     process.stderr.write(`  ${finding}\n`);
   }
-  process.exit(1);
+  process.exitCode = 1;
 }
 
 if (import.meta.main) {
   main().catch((error: unknown) => {
     console.error('check-process-identifier-test-paths failed:', error);
-    process.exit(1);
+    process.exitCode = 1;
   });
 }
