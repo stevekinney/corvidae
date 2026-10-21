@@ -9,6 +9,7 @@
 
   import { getContext } from '../../lib/bureau-client.ts';
   import { truncateId } from '../../lib/format/index.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
 
@@ -32,14 +33,12 @@
       return;
     }
     event.preventDefault();
-    router.navigate(`/chat/${encodeURIComponent(contextId)}`);
+    router.navigate(chatSessionPath(contextId));
   }
 </script>
 
 {#if session.isSuccess}
-  <a
-    class="weft-tasks__link"
-    href={router.href(`/chat/${encodeURIComponent(contextId)}`)}
-    onclick={open}><code title={contextId}>{truncateId(contextId)}</code></a
+  <a class="weft-tasks__link" href={router.href(chatSessionPath(contextId))} onclick={open}
+    ><code title={contextId}>{truncateId(contextId)}</code></a
   >
 {/if}

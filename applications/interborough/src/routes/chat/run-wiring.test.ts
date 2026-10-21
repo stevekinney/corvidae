@@ -1231,3 +1231,519 @@ describe('the assets of a turn that ends without a terminal history', () => {
     expect(wiring.drainAssets()).toEqual([]);
   });
 });
+
+describe('a run that waits on several things at once', () => {
+  const FIRST = {
+    id: 'human-wait:native-1:environment:0',
+    reason: 'human-wait',
+    message: 'Which environment?',
+  };
+  const SECOND = {
+    id: 'human-wait:native-1:region:0',
+    reason: 'human-wait',
+    message: 'Which region?',
+  };
+  const answerRows = {
+    first: { id: 'native-1:signal:environment:0', content: '[signal:environment] "staging"' },
+    second: { id: 'native-1:signal:region:0', content: '[signal:region] "eu"' },
+  };
+  const toolEvents = [
+    { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
+    { type: 'TOOL_CALL_ARGS', toolCallId: 'call-refund', delta: '{}' },
+    { type: 'TOOL_CALL_END', toolCallId: 'call-refund' },
+  ];
+
+  function over(
+    interruptsOfRun: readonly unknown[],
+    answers: Array<Response | ((init?: RequestInit) => Response)>,
+  ) {
+    const requests: Array<ReadonlyArray<{ interruptId: string; message: string }>> = [];
+    const stubbed = mount([
+      stream([
+        started(),
+        ...toolEvents,
+        finished({ type: 'interrupt', interrupts: interruptsOfRun }),
+      ]),
+      ...answers,
+    ]);
+    let conversation = appendToolCall(appendUserMessage(empty(), 'Ship it'), {
+      id: 'call-refund',
+      name: 'issue-refund',
+      arguments: {},
+    });
+    const wiring = createChatRunWiring({
+      agentName: () => 'two-questions',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+      onHumanRequests: (waits) => requests.push(waits),
+    });
+    return {
+      wiring,
+      sent: stubbed.sent,
+      requests,
+      conversation: () => conversation,
+      /** The row the controller appends when the person sends a message. */
+      type(textOfAnswer: string) {
+        conversation = appendUserMessage(conversation, textOfAnswer);
+        return conversation;
+      },
+    };
+  }
+
+  test('holds each answer, in the order the questions came, and sends nothing until the last', async () => {
+    const run = over([FIRST, SECOND], []);
+    await frames(run.wiring, run.conversation());
+    expect(run.requests.at(-1)?.map((request) => request.interruptId)).toEqual([
+      FIRST.id,
+      SECOND.id,
+    ]);
+
+    expect(run.wiring.holdAnswer('staging', 'row-staging')).toBe(true);
+
+    expect(run.requests.at(-1)?.map((request) => request.interruptId)).toEqual([SECOND.id]);
+    expect(run.sent).toHaveLength(1);
+  });
+
+  test('answers every question in one resume, and the last answer typed is the last entry', async () => {
+    const run = over([FIRST, SECOND], [stream([started('run-2'), finished(undefined, 'run-2')])]);
+    await frames(run.wiring, run.conversation());
+    run.type('staging');
+    run.wiring.holdAnswer('staging', run.conversation().ids.at(-1)!);
+
+    await frames(run.wiring, run.type('eu'));
+
+    expect(run.sent).toHaveLength(2);
+    expect(inputOf(run.sent[1]).messages).toEqual([]);
+    expect(inputOf(run.sent[1]).resume).toEqual([
+      {
+        interruptId: FIRST.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'staging' },
+      },
+      {
+        interruptId: SECOND.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'eu' },
+      },
+    ]);
+  });
+
+  test('leaves every typed answer out of the history the run ends with, which holds the run’s own rows', async () => {
+    const run: ReturnType<typeof over> = over(
+      [FIRST, SECOND],
+      [
+        () =>
+          stream([
+            started('run-2'),
+            {
+              type: 'MESSAGES_SNAPSHOT',
+              messages: [
+                { id: run.conversation().ids[0]!, role: 'user', content: 'Ship it' },
+                { ...answerRows.first, role: 'user' },
+                { ...answerRows.second, role: 'user' },
+              ],
+            },
+            finished(undefined, 'run-2'),
+          ]),
+      ],
+    );
+    await frames(run.wiring, run.conversation());
+    run.type('staging');
+    run.wiring.holdAnswer('staging', run.conversation().ids.at(-1)!);
+
+    const result = await frames(run.wiring, run.type('eu'));
+
+    const terminal = result.at(-1);
+    if (terminal?.type !== 'run.completed') throw new Error('Expected a completed run.');
+    const texts = terminal.conversation.ids.map(
+      (id) => terminal.conversation.messages[id]?.content,
+    );
+    expect(texts).not.toContain('staging');
+    expect(texts).not.toContain('eu');
+    expect(texts.filter((content) => content === answerRows.first.content)).toHaveLength(1);
+    expect(texts.filter((content) => content === answerRows.second.content)).toHaveLength(1);
+  });
+
+  test('holds a decision on an approval until the question beside it is answered, then sends both at once', async () => {
+    const run = over(
+      [FIRST, INTERRUPT],
+      [stream([started('run-2'), finished(undefined, 'run-2')])],
+    );
+    await frames(run.wiring, run.conversation());
+
+    await run.wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+    // The controller starts a turn for the decision at once, and it has nothing to send yet.
+    const held = await frames(run.wiring, run.conversation());
+    expect(held.map((frame) => frame.type)).toEqual(['run.started', 'run.completed']);
+    expect(run.sent).toHaveLength(1);
+
+    await frames(run.wiring, run.type('staging'));
+
+    expect(run.sent).toHaveLength(2);
+    expect(inputOf(run.sent[1]).resume).toEqual([
+      {
+        interruptId: FIRST.id,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: 'staging' },
+      },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+    ]);
+    // The question's answer is the run's to add as a row, and the opening turn is what the
+    // approval continues.
+    expect(inputOf(run.sent[1]).messages.map((message) => message.content)).toEqual(['Ship it']);
+  });
+
+  test('holds an answer until the approval beside it is decided, then sends both at once', async () => {
+    const run = over(
+      [FIRST, INTERRUPT],
+      [stream([started('run-2'), finished(undefined, 'run-2')])],
+    );
+    await frames(run.wiring, run.conversation());
+    run.type('staging');
+    run.wiring.holdAnswer('staging', run.conversation().ids.at(-1)!);
+    expect(run.requests.at(-1)).toEqual([]);
+
+    await run.wiring.resolveToolApproval('call-refund', { decision: 'deny', remember: false });
+    await frames(run.wiring, run.conversation());
+
+    expect(run.sent).toHaveLength(2);
+    expect(inputOf(run.sent[1]).resume?.map((entry) => entry.interruptId)).toEqual([
+      FIRST.id,
+      INTERRUPT.id,
+    ]);
+    expect(inputOf(run.sent[1]).messages.map((message) => message.content)).toEqual(['Ship it']);
+  });
+});
+
+describe('a resume the mount refused', () => {
+  const WAIT = {
+    id: 'human-wait:native-1:environment:0',
+    reason: 'human-wait',
+    message: 'Which environment?',
+  };
+  const NEW_WAIT = {
+    id: 'human-wait:native-1:region:0',
+    reason: 'human-wait',
+    message: 'Which region?',
+  };
+  const snapshot = { type: 'MESSAGES_SNAPSHOT', messages: [] };
+  const refusal = (code: string, message = 'No.') => stream([{ type: 'RUN_ERROR', message, code }]);
+  const parkedOn = (...interrupts: unknown[]) =>
+    stream([started(), snapshot, finished({ type: 'interrupt', interrupts })]);
+  const nothingToAttach = () => refusal('RUN_NOT_FOUND', 'Nothing to attach to.');
+
+  /** A run that stopped on an approval the person has approved, over the answers the mount gives next. */
+  async function approved(answers: Array<Response | ((init?: RequestInit) => Response)>) {
+    const conversation = appendUserMessage(empty(), 'Refund it');
+    const requests: Array<ReadonlyArray<{ interruptId: string; message: string }>> = [];
+    const stubbed = mount([
+      stream([started(), finished({ type: 'interrupt', interrupts: [INTERRUPT] })]),
+      ...answers,
+    ]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'tool-runner',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+      onHumanRequests: (waits) => requests.push(waits),
+    });
+    await frames(wiring, conversation);
+    await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+    return { wiring, sent: stubbed.sent, conversation, requests };
+  }
+
+  test('keeps the decisions the thread still has pending, so the next send applies them', async () => {
+    const { wiring, sent, conversation } = await approved([
+      refusal('THREAD_BUSY', 'Thread has a run in progress'),
+      parkedOn(INTERRUPT),
+      stream([started('run-2'), finished(undefined, 'run-2')]),
+    ]);
+
+    await frames(wiring, conversation);
+    expect(wiring.takeRefusal()).toEqual({
+      code: 'THREAD_BUSY',
+      message: 'Thread has a run in progress',
+      resume: true,
+    });
+    // The page reads again what the thread is waiting on, through the attach it makes on load.
+    await wiring.attach(THREAD);
+    await frames(wiring, conversation);
+    await frames(wiring, conversation);
+
+    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `POST ${AG_UI_PATH}/agents/tool-runner/run`,
+      `POST ${AG_UI_PATH}/agents/tool-runner/run`,
+      `GET ${AG_UI_PATH}/threads/${THREAD}/run`,
+      `POST ${AG_UI_PATH}/agents/tool-runner/run`,
+    ]);
+    expect(inputOf(sent[3]).resume).toEqual(inputOf(sent[1]).resume);
+    expect(inputOf(sent[3]).resume).toEqual([
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+    ]);
+  });
+
+  test('keeps the decision when the request is refused as a refusal and nothing re-reads it', async () => {
+    const { wiring, sent, conversation } = await approved([
+      refusal('THREAD_BUSY'),
+      stream([started('run-2'), finished(undefined, 'run-2')]),
+    ]);
+
+    await frames(wiring, conversation);
+    await frames(wiring, conversation);
+
+    expect(inputOf(sent[2]).resume).toEqual(inputOf(sent[1]).resume);
+  });
+
+  test('keeps none of the decisions when the approvals were applied, and the next send is a plain message', async () => {
+    const { wiring, sent, conversation } = await approved([
+      refusal('RUN_FAILED', 'The approval was applied, but its outcome was not written'),
+      nothingToAttach(),
+      stream([started('run-2'), finished(undefined, 'run-2')]),
+    ]);
+
+    await frames(wiring, conversation);
+    expect(wiring.takeRefusal()).toMatchObject({ code: 'RUN_FAILED' });
+    expect(await wiring.attach(THREAD)).toBeUndefined();
+    await frames(wiring, appendUserMessage(conversation, 'Try again'));
+
+    expect(inputOf(sent[3]).resume).toBeUndefined();
+    expect(inputOf(sent[3]).messages.length).toBeGreaterThan(0);
+  });
+
+  test('surfaces the interrupt the client lacked, and the answer it held stays held', async () => {
+    const requests: Array<ReadonlyArray<{ interruptId: string; message: string }>> = [];
+    let conversation = appendUserMessage(empty(), 'Ship it');
+    const stubbed = mount([
+      parkedOn(WAIT),
+      refusal('INTERRUPTS_UNADDRESSED', `The resume leaves interrupts unanswered: ${NEW_WAIT.id}`),
+      parkedOn(WAIT, NEW_WAIT),
+      stream([started('run-2'), finished(undefined, 'run-2')]),
+    ]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'asks',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+      onHumanRequests: (waits) => requests.push(waits),
+    });
+    await frames(wiring, conversation);
+    conversation = appendUserMessage(conversation, 'staging');
+    await frames(wiring, conversation);
+    expect(wiring.takeRefusal()).toMatchObject({ code: 'INTERRUPTS_UNADDRESSED' });
+    // The answer is still held, so nothing is asked again yet.
+    expect(requests.at(-1)).toEqual([]);
+
+    await wiring.attach(THREAD);
+    await frames(wiring, conversation);
+
+    // The page learns of the second question, and the first is still answered.
+    expect(requests.at(-1)).toEqual([{ interruptId: NEW_WAIT.id, message: NEW_WAIT.message }]);
+    conversation = appendUserMessage(conversation, 'eu');
+    await frames(wiring, conversation);
+    expect(inputOf(stubbed.sent.at(-1)).resume?.map((entry) => entry.interruptId)).toEqual([
+      WAIT.id,
+      NEW_WAIT.id,
+    ]);
+  });
+
+  test('drops an answer whose question is gone from the thread, so it is not sent again', async () => {
+    let conversation = appendUserMessage(empty(), 'Ship it');
+    const stubbed = mount([
+      parkedOn(WAIT),
+      refusal('RUN_FAILED', 'The answers could not be applied'),
+      nothingToAttach(),
+      stream([started('run-3'), finished(undefined, 'run-3')]),
+    ]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'asks',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+    });
+    await frames(wiring, conversation);
+    conversation = appendUserMessage(conversation, 'staging');
+    await frames(wiring, conversation);
+    await wiring.attach(THREAD);
+
+    await frames(wiring, appendUserMessage(conversation, 'Thanks'));
+
+    expect(inputOf(stubbed.sent.at(-1)).resume).toBeUndefined();
+  });
+
+  test('is told apart from the refusal of a start that carried no answers', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const { wiring } = wiringOver([refusal('THREAD_BUSY')], () => conversation);
+
+    await frames(wiring, conversation);
+
+    expect(wiring.takeRefusal()).toMatchObject({ code: 'THREAD_BUSY', resume: false });
+  });
+
+  test('is not a refusal when it is a run that ended in an error', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const { wiring } = wiringOver(
+      [
+        stream([
+          started(),
+          {
+            type: 'RUN_ERROR',
+            message: 'The model failed.',
+            code: 'RUN_FAILED',
+            metadata: { '@lostgradient/bureau': { runId: 'native-1' } },
+          },
+        ]),
+      ],
+      () => conversation,
+    );
+
+    await frames(wiring, conversation).catch(() => undefined);
+
+    expect(wiring.takeRefusal()).toBeUndefined();
+  });
+});
+
+describe('a stop before the run’s first event', () => {
+  /**
+   * A mount that has admitted the request and not yet answered it: the response's body waits until
+   * the test releases it, and fails when the request is aborted, as a real one would.
+   */
+  function heldMount(firstEvents: readonly unknown[]) {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const requestSignals: Array<AbortSignal | null | undefined> = [];
+    const open = (init?: RequestInit): Response => {
+      requestSignals.push(init?.signal);
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          init?.signal?.addEventListener('abort', () => controller.error(new Error('aborted')));
+          await held;
+          for (const event of firstEvents) {
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+          }
+          // A response with events is a run that goes on, until the cancel ends it. One with none
+          // is over.
+          if (firstEvents.length === 0) controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    };
+    return { open, release, requestSignals };
+  }
+
+  test('does not abort the request, and cancels the run the first event names', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const mounted = heldMount([started()]);
+    const { wiring, sent } = wiringOver(
+      [
+        mounted.open,
+        new Response('{"runId":"native-1","status":"aborting"}'),
+        stream([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]),
+      ],
+      () => conversation,
+    );
+    const controller = new AbortController();
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+
+    controller.abort();
+    // The turn is still reading: nothing is cancelled, because nothing has named the run.
+    await Bun.sleep(10);
+    expect(sent).toHaveLength(1);
+    expect(mounted.requestSignals[0]?.aborted).toBe(false);
+    mounted.release();
+    await turn;
+
+    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `POST ${AG_UI_PATH}/agents/assistant/run`,
+      `POST ${AG_UI_PATH}/runs/native-1/cancel`,
+      `GET ${AG_UI_PATH}/runs/native-1`,
+    ]);
+  });
+
+  test('cancels nothing when the first event is a refusal', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const mounted = heldMount([{ type: 'RUN_ERROR', message: 'busy', code: 'THREAD_BUSY' }]);
+    const { wiring, sent } = wiringOver([mounted.open], () => conversation);
+    const controller = new AbortController();
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+
+    controller.abort();
+    mounted.release();
+    await turn;
+
+    expect(sent).toHaveLength(1);
+    expect(wiring.takeRefusal()).toMatchObject({ code: 'THREAD_BUSY' });
+  });
+
+  test('cancels nothing when the response fails with no event, and the next turn is sent', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const { wiring, sent } = wiringOver(
+      [
+        () => {
+          throw new TypeError('Failed to fetch');
+        },
+        stream([started(), finished()]),
+      ],
+      () => conversation,
+    );
+    const controller = new AbortController();
+    controller.abort();
+
+    const failed = await frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await frames(wiring, conversation);
+
+    expect(failed).toBeInstanceOf(Error);
+    expect(sent.map((entry) => `${entry.method} ${entry.url}`)).toEqual([
+      `POST ${AG_UI_PATH}/agents/assistant/run`,
+      `POST ${AG_UI_PATH}/agents/assistant/run`,
+    ]);
+  });
+
+  test('cancels nothing when the response ends with no event', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const mounted = heldMount([]);
+    const { wiring, sent } = wiringOver([mounted.open], () => conversation);
+    const controller = new AbortController();
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+
+    controller.abort();
+    mounted.release();
+    const ended = await turn;
+
+    // The turn ends on a response that said nothing, as a stop does, and cancels nothing.
+    expect(ended).toBeInstanceOf(Error);
+    expect(sent).toHaveLength(1);
+  });
+
+  test('is not waited for when the person leaves the page, which cancels nothing', async () => {
+    const conversation = appendUserMessage(empty(), 'Hello');
+    const mounted = heldMount([started()]);
+    const { wiring, sent } = wiringOver([mounted.open], () => conversation);
+    const controller = new AbortController();
+    const turn = frames(wiring, conversation, controller.signal).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    await expectEventually(() => sent.length === 1);
+
+    wiring.detach();
+    controller.abort();
+    await turn;
+
+    expect(mounted.requestSignals[0]?.aborted).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+});

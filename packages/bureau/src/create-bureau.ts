@@ -168,6 +168,7 @@ import {
 } from './audit-trail';
 import { catalogRunGuardrailsContext, createCatalogDispatcher } from './bureau-catalog-dispatch';
 import { createBureauEventFeed } from './bureau-event-feed.ts';
+import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
 import { createSessionPersistence } from './bureau-session-persistence';
 import {
   type BureauChildren,
@@ -1002,6 +1003,16 @@ function toBadRequest(message: string): never {
  */
 function rejectReservedIdentifier(kind: string, id: string): void {
   const reason = reservedIdentifierReason(kind, id);
+  if (reason !== undefined) toBadRequest(reason);
+}
+
+/**
+ * COR-1590 — `.` and `..` may not name a session that does not exist yet (see
+ * `unopenableNewSessionIdentifierReason`). Refused as `BAD_REQUEST` with a message beginning
+ * `unopenable-session-identifier:`.
+ */
+function rejectUnopenableNewSessionIdentifier(kind: string, id: string, exists: boolean): void {
+  const reason = exists ? undefined : unopenableNewSessionIdentifierReason(kind, id);
   if (reason !== undefined) toBadRequest(reason);
 }
 
@@ -6247,6 +6258,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // default `bureau`. Every refusal here lands before anything is persisted.
     const { session, conversation } = await loadConversation(sessionId);
     const baseConversationHistory = conversation.current;
+    rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
 
     // COR-718 — a session belongs to the owner of the run that created it. A
     // different principal starting a run on it is refused exactly as a session
@@ -14881,6 +14893,13 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
+      // A schedule's session is made by its first fire when none exists yet.
+      const held = await runtime.sessionStore?.load(definition.sessionId.trim());
+      rejectUnopenableNewSessionIdentifier(
+        '"sessionId"',
+        definition.sessionId.trim(),
+        held !== undefined,
+      );
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
     if (!runtime.durable) return undefined;
