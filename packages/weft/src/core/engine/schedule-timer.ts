@@ -13,6 +13,12 @@ import {
   writeScheduleState,
 } from './storage-io.ts';
 
+/**
+ * How far past one poll interval a tick may land before a non-backfill occurrence it reaches
+ * counts as missed. The scheduler only sees an occurrence when a poll tick lands after it, so a
+ * healthy engine reaches it up to a whole poll interval late, plus the tick's own drift
+ * (COR-1616). Only lateness beyond both, such as an engine that was down, is a missed fire.
+ */
 const SCHEDULE_LATE_GRACE_MILLISECONDS = 1000;
 const MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK = 256;
 const MAX_MISSED_FIRE_COUNT_PER_TICK = MAX_SCHEDULE_BACKFILL_OCCURRENCES_PER_TICK;
@@ -162,7 +168,12 @@ async function beginScheduleTimer(
   const progress: ScheduleTimerProgress = { state };
   return guardScheduleTimerSection(internals, progress, async () => {
     const now = internals.options.getNow();
-    const work = planScheduleTimerWork(state, entry, now);
+    const work = planScheduleTimerWork(
+      state,
+      entry,
+      now,
+      internals.options.schedulerPollIntervalMs + SCHEDULE_LATE_GRACE_MILLISECONDS,
+    );
     if (!work) {
       return { kind: 'done' };
     }
@@ -266,6 +277,7 @@ function planScheduleTimerWork(
   state: ActiveScheduleTimerState,
   entry: TimerEntry,
   now: number,
+  lateGraceMilliseconds: number,
 ): ScheduleTimerWork | null {
   const dueOccurrences = collectDueScheduleOccurrences(
     state,
@@ -275,7 +287,7 @@ function planScheduleTimerWork(
   );
   if (dueOccurrences.length === 0) return null;
 
-  if (!state.backfill && now - entry.fireAt > SCHEDULE_LATE_GRACE_MILLISECONDS) {
+  if (!state.backfill && now - entry.fireAt > lateGraceMilliseconds) {
     return {
       dueOccurrences,
       missedOccurrences: countMissedScheduleOccurrences(state, state.nextFireAt, now),
