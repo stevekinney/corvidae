@@ -316,6 +316,11 @@ import {
   WorkflowAgentStepError,
 } from './workflow-host';
 import {
+  createFireReviewFollower,
+  type FireReviewFollower,
+  trackFireReviewFollower,
+} from './fire-review-follower';
+import {
   adoptRestoredScheduledFire,
   committedFireApprovalIds,
   committedFireReviewIds,
@@ -359,6 +364,7 @@ import {
 } from './park-ordinals';
 import {
   REVIEW_CLOSING_EVENT_KINDS,
+  reviewCanceledDedupeKey,
   REVIEW_SUPERSEDED_EVENT_KIND,
   TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
@@ -457,6 +463,8 @@ import { streamEventToFrame } from './websocket-frames';
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
+/** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
+const FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS = 5_000;
 /**
  * COR-1476 — the first wait between attempts to write an ended run's steering
  * `run-ended` entry; each later wait doubles, up to the cap. The write is
@@ -4107,10 +4115,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // A review this process closed itself is finished by its own release, which prunes the
         // session before it drops the override: this event is that close read back.
         if (resolvedReviewIds.has(reviewId)) return;
+        // `REREAD_CLOSURE` (a re-read of durable state, not an event) is not `review.approved`, so
+        // it skips this re-gate check: the re-read has already decided the review is closed.
         // A re-gate records the round's approval and keeps the review pending under its id at
-        // the next round, so a session that still holds the override has not lost the review.
-        if (eventKind === 'review.approved' && (await sessionHoldsFireApproval(taskId, reviewId))) {
-          return;
+        // the next round, so a session that still holds the override has not lost the review. This
+        // process lists the round the session holds (COR-1621), not the one it read before.
+        if (eventKind === 'review.approved') {
+          const sessionId = terminalReviewSessions.get(taskId)?.sessionId;
+          const session =
+            sessionId === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
+          const kept = persistedApprovalOf(session?.metadata, reviewId);
+          if (kept !== undefined) {
+            await adoptPersistedApprovalRound(taskId, reviewId, kept);
+            return;
+          }
         }
         // The peer that closed it pruned the session; only this process's copy is left.
         runHumanWaits.closedElsewhere(reviewId);
@@ -4306,6 +4324,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const fireHistorySeeded = new Set<string>();
 
   /**
+   * COR-1621 — the one subscription this process keeps on the durable history of the fires it
+   * holds a review of, built once the event history exists. `undefined` for a Bureau with no
+   * persistent durable history, which has no peer to follow.
+   */
+  let fireReviewFollower: FireReviewFollower | undefined;
+
+  /** A review of the fire is held here, announced or restored: follow its history. */
+  function followFireReviews(runId: string): void {
+    fireReviewFollower?.follow(runId);
+  }
+
+  /** The fire's last review here was released: stop following its history. */
+  function unfollowFireReviewsWhenNoneRemain(runId: string): void {
+    if (holdsFireApproval(runId) || runHumanWaits.holds(runId)) return;
+    fireReviewFollower?.unfollow(runId);
+  }
+
+  /**
    * COR-1613 — announces a fire's review once across processes. A replay that makes the same call
    * under the same id finds the dead process's request in the history and does not announce it
    * again; the in-memory set alone is lost with the process.
@@ -4316,6 +4352,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     kind: 'human-wait' | 'tool-approval',
     target: { signalName?: string; callId?: string },
   ): Promise<void> {
+    followFireReviews(runId);
     if (!fireHistorySeeded.has(runId)) {
       fireHistorySeeded.add(runId);
       try {
@@ -5566,13 +5603,143 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
-  /** Whether the fire's session still records the approval as pending (the session decides). */
-  async function sessionHoldsFireApproval(runId: string, reviewId: string): Promise<boolean> {
+  /**
+   * The approval a session records as pending for a review, with the round it stands at (the
+   * session decides: COR-1596), or `undefined` when it records none.
+   */
+  function persistedApprovalOf(
+    metadata: Record<string, JSONValue> | undefined,
+    reviewId: string,
+  ):
+    | { approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval']; round: number }
+    | undefined {
+    const persisted = metadata?.['pendingApprovalOverrides'];
+    const approval = isJsonObject(persisted) ? persisted[reviewId] : undefined;
+    if (!isJsonObject(approval)) return undefined;
+    const rounds = metadata?.['pendingApprovalRounds'];
+    const round = isJsonObject(rounds) ? rounds[reviewId] : undefined;
+    return {
+      approval: approval as unknown as Extract<
+        PendingReview,
+        { kind: 'tool-approval' }
+      >['approval'],
+      round: typeof round === 'number' && Number.isInteger(round) && round > 0 ? round : 0,
+    };
+  }
+
+  /**
+   * COR-1621 — takes the approval a peer re-gated into this process's own copy of the review: the
+   * session holds it at a round beyond the one held here, so this process lists the round the
+   * session holds, and its toolbox learns the binding that round was issued under, as a restore
+   * teaches it. Does nothing when this process already holds that round or a later one (its own
+   * re-gate recorded the event it is now hearing back). Returns whether the copy moved.
+   */
+  async function adoptPersistedApprovalRound(
+    runId: string,
+    reviewId: string,
+    persisted: {
+      approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'];
+      round: number;
+    },
+  ): Promise<boolean> {
+    if (persisted.round <= (pendingApprovalRounds.get(reviewId) ?? 0)) return false;
+    const restoreApproval = (
+      runToolboxesByRunId.get(runId) as unknown as
+        { restoreApproval?: (approval: SignedPendingToolApproval) => Promise<void> } | undefined
+    )?.restoreApproval;
+    if (restoreApproval !== undefined && persisted.approval.approvalBinding) {
+      try {
+        await restoreApproval.call(
+          runToolboxesByRunId.get(runId),
+          persisted.approval as SignedPendingToolApproval,
+        );
+      } catch (error) {
+        if (!isTerminalApprovalBindingError(error)) throw error;
+        diagnose({
+          level: 'warn',
+          scope: 'approval-recovery',
+          message:
+            `[bureau] The binding of round ${persisted.round} of approval "${reviewId}" could not be ` +
+            'restored here, so approving it here will be refused.',
+          cause: error,
+        });
+      }
+    }
+    // Moved only once the binding is restored: a restore that throws leaves this copy at the
+    // round it held, so the next read of the session adopts the round again rather than finding
+    // it already held and never restoring the binding.
+    pendingApprovalOverrides.set(reviewId, persisted.approval);
+    pendingApprovalRounds.set(reviewId, persisted.round);
+    return true;
+  }
+
+  /**
+   * COR-1621 — how long an approval or a wait is given to reach durable state before its absence
+   * from it reads as another process having closed it. A review is registered in memory as its
+   * step records it, and the session's own record of it can land a moment later, so a read of
+   * durable state that finds it missing right then proves nothing.
+   */
+  const FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS = 30_000;
+
+  /**
+   * COR-1621 — the `eventKind` a re-read hands `releaseClosedReview` for a review the durable
+   * state says is closed: there is no event, so it is not the name of one. `releaseClosedReview`
+   * reads `review.approved` as a possible re-gate and anything else as a closing, and a re-read
+   * has already settled which of the two the review is, so it must never match that kind.
+   */
+  const REREAD_CLOSURE = 'reread';
+
+  /**
+   * COR-1621 — reads a fire's reviews held here again from durable state, for the cases where
+   * the events that would have said what happened are not to be trusted: the history's retention
+   * overtook the subscription, or a reaction to an event failed past its retries. An approval the
+   * session records as decided, or no longer records and is older than the grace a record needs
+   * to land, is dropped as another process closed it; one the session holds at a later round is
+   * refreshed; a human wait the engine no longer parks on is dropped the same way.
+   */
+  async function rereadFireReviews(runId: string): Promise<void> {
     const sessionId = terminalReviewSessions.get(runId)?.sessionId;
-    if (sessionId === undefined) return false;
-    const session = await runtime.sessionStore?.load(sessionId);
-    const persisted = session?.metadata['pendingApprovalOverrides'];
-    return isJsonObject(persisted) && persisted[reviewId] !== undefined;
+    const heldIds = Array.from(pendingApprovalOverrides.keys()).filter((id) =>
+      id.startsWith(`approval:${runId}:`),
+    );
+    // One review that cannot be read again must not keep the fire's others from being: each is
+    // tried, and the first failure is thrown after them all, so the pass still counts as failed.
+    const failures: unknown[] = [];
+    if (sessionId !== undefined && heldIds.length > 0) {
+      const session = await runtime.sessionStore?.load(sessionId);
+      if (session !== undefined) {
+        const decided = Array.isArray(session.metadata['resolvedReviewIds'])
+          ? new Set(stringValues(session.metadata['resolvedReviewIds']))
+          : new Set<string>();
+        for (const id of heldIds) {
+          try {
+            const persisted = persistedApprovalOf(session.metadata, id);
+            if (persisted !== undefined && !decided.has(id)) {
+              await adoptPersistedApprovalRound(runId, id, persisted);
+              continue;
+            }
+            const age = runtimeServices.clock.now() - (approvalRequestedAt.get(id) ?? 0);
+            if (decided.has(id) || age > FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS) {
+              await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
+            }
+          } catch (error) {
+            failures.push(error);
+          }
+        }
+      }
+    }
+    try {
+      const closedWait = await runHumanWaits.rereadClosed(
+        runId,
+        FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS,
+      );
+      if (closedWait !== undefined) {
+        await tasks.reviewClosedElsewhere(runId, closedWait, REREAD_CLOSURE);
+      }
+    } catch (error) {
+      failures.push(error);
+    }
+    if (failures.length > 0) throw failures[0];
   }
 
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
@@ -5630,6 +5797,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
       detachBestEffortPromise(tasks.announceChanged(runId));
     }
+    unfollowFireReviewsWhenNoneRemain(runId);
   }
 
   /**
@@ -6154,6 +6322,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
       releaseScheduledFireReviews(scheduledFireReviewState, runId);
+      unfollowFireReviewsWhenNoneRemain(runId);
+    } else if (scheduledFire) {
+      // COR-1621: a restored approval of a fire can be closed by a peer, whose closing is in the
+      // fire's history.
+      followFireReviews(runId);
     }
   }
 
@@ -13966,6 +14139,46 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     };
   }
 
+  /**
+   * COR-1621: the check {@link refuseStaleApprovalRound} makes before a decision is claimed, made
+   * again once it is held. A peer re-gates by writing the next round to the session and only then
+   * releasing its claim of the round it left, so a claim of that round can land after this
+   * process read the session and before the peer's release, or just after it. Once this process
+   * holds the claim no one can re-gate the round, so the session read now is final. A refusal
+   * here releases the claim through the failure path of the caller.
+   */
+  async function refuseStaleRoundOfHeldClaim(
+    review: PendingReview,
+    claimHeld: boolean,
+  ): Promise<void> {
+    if (!claimHeld || review.kind !== 'tool-approval') return;
+    const session = await runtime.sessionStore?.load(review.sessionId);
+    await refuseStaleApprovalRound(review, session?.metadata);
+  }
+
+  /**
+   * COR-1621: refuses a decision on a round of an approval that is behind the session's. The round
+   * this process lists can be behind: a peer that re-gated the approval put the next round in the
+   * session, and a decision claim is keyed by review id and round, so a decision on the stale round
+   * would join the peer's claim of the round it left, or claim it afresh, and decide an approval
+   * that is no longer the pending one. The round is read from the session by the caller, not
+   * trusted from memory or from a subscription that may not have delivered the re-gate yet; a
+   * stale round is refused with `CONFLICT` and this process's copy is refreshed.
+   */
+  async function refuseStaleApprovalRound(
+    review: PendingReview,
+    sessionMetadata: Record<string, JSONValue> | undefined,
+  ): Promise<void> {
+    if (review.kind !== 'tool-approval') return;
+    const persisted = persistedApprovalOf(sessionMetadata, review.id);
+    if (persisted === undefined || persisted.round <= review.round) return;
+    await adoptPersistedApprovalRound(review.runId, review.id, persisted);
+    throw new BureauError(
+      `Review "${review.id}" was re-gated since it was listed (round ${review.round}, now ${persisted.round}); read it again before deciding it`,
+      'CONFLICT',
+    );
+  }
+
   async function resolveReview(
     input: ResolveReviewInput,
     // COR-1579: the human wait of a session run another process holds, derived from durable
@@ -14133,6 +14346,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           );
         }
       }
+      await refuseStaleApprovalRound(review, existingSession?.metadata);
     } catch (error) {
       resolvingReviewIds.delete(review.id);
       throw error;
@@ -14173,6 +14387,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let result: unknown;
     let keepPending = false;
     try {
+      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
@@ -14624,12 +14839,27 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // durable write could be coupled to via the outbox — see
     // `recordReviewDecision`'s own doc comment for the transitions that DO.
     // This keeps writing directly, exactly as before.
-    await auditTrailInstance?.record({
-      runId: review.runId,
-      type: `review.${review.kind}.${status}`,
-      detail: { review: { ...review, status }, status },
-      principal,
-    });
+    // COR-1621: a canceled review round is closed once across instances, so its record carries the
+    // key two instances that observe the same cancel of the same round share. Every other status is written as it
+    // was. A keyed write rejects on a storage failure where the unkeyed one never does, so that
+    // rejection is diagnosed here and the closing goes on, as a failed unkeyed write always did.
+    const round = review.kind === 'tool-approval' ? review.round : 0;
+    try {
+      await auditTrailInstance?.record({
+        runId: review.runId,
+        type: `review.${review.kind}.${status}`,
+        detail: { review: { ...review, status }, status },
+        principal,
+        ...(status === 'canceled' ? { dedupeKey: reviewCanceledDedupeKey(review.id, round) } : {}),
+      });
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'audit-trail',
+        message: `[bureau] Could not record the ${status} closing of review "${review.id}": ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
 
     // AB-224: live counterpart, same rationale as `recordReviewDecision`
     // above. `approve`/`deny`/`reject` never reach this function — they
@@ -14643,7 +14873,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         emitter.dispatch(new ReviewRevokedEvent(review.id, review.runId, principal, review.kind));
         break;
       case 'canceled':
-        emitter.dispatch(new ReviewCanceledEvent(review.id, review.runId, principal, review.kind));
+        emitter.dispatch(
+          new ReviewCanceledEvent(review.id, review.runId, principal, review.kind, round),
+        );
         break;
       case 'superseded':
         emitter.dispatch(
@@ -15480,6 +15712,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
                 // BEFORE the store it writes into, so no in-flight
                 // `record()` call can start against an already-disposed
                 // `FleetEventFeed` (AB-311).
+                // The follower's subscription ends before the feed it reads is released.
+                await fireReviewFollower?.dispose();
                 if (durableEventProducer) await durableEventProducer.dispose();
                 await eventHistory.dispose();
               }),
@@ -15728,6 +15962,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const eventHistoryInstance: DurableEventHistory | undefined = persistentDurableStorage
     ? createDurableEventHistory(persistentDurableStorage, runtimeServices, diagnose)
     : undefined;
+  // COR-1621: a review another process closes is read from the shared history by one subscription
+  // per process, whether or not any client follows a task.
+  fireReviewFollower =
+    eventHistoryInstance === undefined
+      ? undefined
+      : createFireReviewFollower({
+          history: eventHistoryInstance,
+          closeReview: (runId, reviewId, eventKind) =>
+            tasks.reviewClosedElsewhere(runId, reviewId, eventKind),
+          reread: rereadFireReviews,
+          timers: runtimeServices.timers,
+          diagnose,
+          attempts: SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
+          // A wait of zero would make a failing store a busy loop, so the backoff has a floor.
+          retryDelayMilliseconds: Math.max(1, sessionPersistenceRetryDelayMilliseconds),
+          maximumRetryDelayMilliseconds: FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS,
+        });
   // The durable event producer (AB-311's coordinator amendment) — sinks
   // `bureau`'s action stream into `eventHistoryInstance.record()`. Wired
   // below, alongside `auditTrailInstance`, once `bureau` itself exists to
@@ -16286,6 +16537,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       await tasks.announceChanged(review.runId);
     },
     decisions: reviewDecisions,
+    released: (runId) => unfollowFireReviewsWhenNoneRemain(runId),
     classifyRun: (runId) => runtime.classifyCatalogRecoveredRun(runId),
     createError: (message, code) => new BureauError(message, code),
     durableNotConfigured: () =>
@@ -16321,6 +16573,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       },
       services,
     );
+    // COR-1621: a park the fire's checkpoint restored is a review held here, which a peer can
+    // answer.
+    if (runHumanWaits.holds(fire.runId)) followFireReviews(fire.runId);
     // A fire's hook registry is built by `buildScheduledRunServices`; one that is missing would
     // leave the fire's approvals unlisted, so it is refused loudly, and the composition
     // diagnoses it.
@@ -17290,5 +17545,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   trackScheduledFireReviewState(bureau, scheduledFireReviewState);
+  if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   return bureau;
 }
