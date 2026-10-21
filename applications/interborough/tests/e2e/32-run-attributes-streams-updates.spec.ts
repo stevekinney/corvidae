@@ -18,6 +18,7 @@ import type { Locator, Page } from '@playwright/test';
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
+  UPDATE_DESK_REPLAY_RUN_ID,
   UPDATE_DESK_RUN_ID,
 } from '../../fixtures/engine-console-ids.ts';
 import { expect, test } from './fixtures.ts';
@@ -157,7 +158,44 @@ test('operator reads a run’s update history, then sends an update that outlast
   await expect(slow).toContainText('slow-done:x', { timeout: 15_000 });
   await expect(slow).not.toContainText('awaiting result');
 
-  // One send is one update. Over REST the timed-out send answers `408`, which a browser replays, so
-  // the form sends over JSON-RPC (`updates/updates-data.ts`); a replay would show here as more rows.
+  // One send is one update: the history holds a single `slow` row.
   await expect(page.locator('[data-update-id]', { hasText: 'slow' })).toHaveCount(1);
+});
+
+test('a browser that sends an update over REST and sees it time out does not send it again', async ({
+  page,
+  request,
+}) => {
+  // The console sends over JSON-RPC, so this goes straight to the REST route with a browser's `fetch`.
+  // A request answered `Request Timeout` is replayed by the browser, each replay a new update; the
+  // route answers a timeout `504`, which no user agent replays.
+  await page.goto(`/runs/${UPDATE_DESK_REPLAY_RUN_ID}?tab=updates`);
+  const outcome = await page.evaluate(async (workflowId) => {
+    try {
+      const response = await fetch(`/v1/workflows/${workflowId}/update/slow`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ payload: 'x', timeout: 1_000 }),
+        // A replayed request does not settle for as long as the replays go on.
+        signal: AbortSignal.timeout(6_000),
+      });
+      return { status: response.status, body: (await response.json()) as unknown };
+    } catch {
+      return { status: -1, body: null };
+    }
+  }, UPDATE_DESK_REPLAY_RUN_ID);
+
+  expect(outcome.status).toBe(504);
+  expect(outcome.body).toMatchObject({ data: { updateId: expect.any(String) } });
+
+  const listed = await request.post('/jsonrpc', {
+    data: {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'weft.workflows.updates.list',
+      params: { workflowId: UPDATE_DESK_REPLAY_RUN_ID },
+    },
+  });
+  const body = (await listed.json()) as { result: { items: Array<{ name: string }> } };
+  expect(body.result.items.filter((item) => item.name === 'slow')).toHaveLength(1);
 });
