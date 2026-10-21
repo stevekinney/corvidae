@@ -205,6 +205,9 @@ const PROJECTIONS: readonly RunEventProjection[] = [
   projection(RunErrorEvent.type, isInstance(RunErrorEvent), (event) => ({
     step: event.step,
     error: projectError(event.error),
+    // Present only when `step` was announced from a terminal result and is a count of recorded
+    // steps, not the failing step, so a subscriber that reads `step` can tell (COR-1598).
+    ...(event.reconstructed === true ? { reconstructed: true } : {}),
   })),
   projection(RunAbortedEvent.type, isInstance(RunAbortedEvent), (event) =>
     withUsage(

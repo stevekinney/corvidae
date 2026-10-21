@@ -189,8 +189,14 @@ describe('a reattached run whose summary carries a failure finish reason', () =>
     });
   }
 
-  it('announces no run.error for a run that stopped without failing', async () => {
-    for (const finishReason of ['stop-condition', 'maximum-steps'] as const) {
+  it('announces no run.error for a run that ended without failing', async () => {
+    // An in-band abort ends with its own `run.aborted`, never `run.completed`.
+    const endings = [
+      ['stop-condition', 'run.completed'],
+      ['maximum-steps', 'run.completed'],
+      ['aborted', 'run.aborted'],
+    ] as const;
+    for (const [finishReason, terminal] of endings) {
       const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
       const observed = observeLifecycle(emitter);
 
@@ -200,10 +206,7 @@ describe('a reattached run whose summary carries a failure finish reason', () =>
       );
 
       expect([finishReason, result.finishReason]).toEqual([finishReason, finishReason]);
-      expect([finishReason, observed.map(({ type }) => type)]).toEqual([
-        finishReason,
-        ['run.completed'],
-      ]);
+      expect([finishReason, observed.map(({ type }) => type)]).toEqual([finishReason, [terminal]]);
     }
   });
 });
