@@ -3100,8 +3100,8 @@ describe('createRuntimeComposition durable execution', () => {
       };
 
       expect(
-        await runtime.loadCommittedScheduledActiveSkills(session, 'scheduled-run', true),
-      ).toBeUndefined();
+        await runtime.readCommittedScheduledSkillSnapshot(session, 'scheduled-run', true),
+      ).toMatchObject({ status: 'unverifiable' });
       expect(
         logs.some((message) => message.includes('Unable to verify scheduled fire skill snapshot')),
       ).toBe(true);
@@ -3178,9 +3178,10 @@ describe('createRuntimeComposition durable execution', () => {
         serializeCheckpoint(checkpoint),
       );
 
-      expect(await runtime.loadCommittedScheduledActiveSkills(session, runId, true)).toEqual(
-        activeSkills,
-      );
+      expect(await runtime.readCommittedScheduledSkillSnapshot(session, runId, true)).toEqual({
+        status: 'verified',
+        records: activeSkills,
+      });
     } finally {
       runtime.durable?.engine[Symbol.dispose]?.();
     }
