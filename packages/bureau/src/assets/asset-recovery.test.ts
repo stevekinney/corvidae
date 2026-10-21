@@ -597,7 +597,7 @@ describe('partial-upload cleanup', () => {
 
     expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
     expect(await racingAppend).toBeInstanceOf(AssetNotFoundError);
-    expect(await opened.storage.list('asset:v1:upload')).toEqual([]);
+    expect(await opened.storage.list('asset:v1:upload-chunk:')).toEqual([]);
     await opened.close();
   });
 
