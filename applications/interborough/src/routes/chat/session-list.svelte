@@ -12,6 +12,7 @@
   import { CHAT_COPY } from '../../app/copy.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from './session-summary.ts';
@@ -68,6 +69,6 @@
     loading={sessions.isFetchingNextPage}
     buttonLabel={CHAT_COPY.loadMore}
     onLoadMore={() => void sessions.fetchNextPage()}
-    onSelectConversation={(id) => router.navigate(`/chat/${encodeURIComponent(id)}`)}
+    onSelectConversation={(id) => router.navigate(chatSessionPath(id))}
   />
 </section>

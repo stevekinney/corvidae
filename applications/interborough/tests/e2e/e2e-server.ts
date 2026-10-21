@@ -56,6 +56,11 @@ import {
   RECALL_AGENT_NAME,
 } from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import {
+  createQuestionAgents,
+  QUESTION_AND_APPROVAL_AGENT_NAME,
+  TWO_QUESTIONS_AGENT_NAME,
+} from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import {
   createTextEchoAgents,
@@ -102,19 +107,26 @@ let fixtureEngine: Awaited<ReturnType<typeof createFixtureEngine>> | undefined;
 // beside the seeded ones. Every chat case that needs a run still in progress uses them. A third,
 // the echo (`echo-agent.ts`), takes an attached image and sends it back. Two more, the text echoes
 // (`text-echo-agent.ts`), answer with what they were sent, so a memory spec can store a memory that
-// is its own.
+// is its own. Two more again (`question-agents.ts`) ask the person more than one thing.
 const barrier = createBarrier();
 const host = await startHost({
   // A schedule's fire runs this, not its agent's script: it asks a question for one input.
   generate: createFireQuestionGenerate(),
   extraAgents: {
-    agents: { ...createBarrierAgents(barrier), ...createEchoAgents(), ...createTextEchoAgents() },
+    agents: {
+      ...createBarrierAgents(barrier),
+      ...createEchoAgents(),
+      ...createTextEchoAgents(),
+      ...createQuestionAgents(),
+    },
     published: [
       BARRIER_AGENT_NAME,
       BARRIER_SHORT_AGENT_NAME,
       ECHO_AGENT_NAME,
       TEXT_ECHO_AGENT_NAME,
       TEXT_ECHO_SOLO_AGENT_NAME,
+      TWO_QUESTIONS_AGENT_NAME,
+      QUESTION_AND_APPROVAL_AGENT_NAME,
     ],
   },
   environment: { INTERBOROUGH_HOME: home },

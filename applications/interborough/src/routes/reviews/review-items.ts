@@ -7,6 +7,7 @@
 import type { CompletedReviewEntry, PendingReviewEntry } from '@lostgradient/weft';
 
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
+import { chatSessionPath } from '../../lib/identifier-paths.ts';
 
 export type ReviewItem =
   | {
@@ -67,7 +68,7 @@ export function bureauReviewTarget(
   taskExists: boolean | undefined,
 ): BureauReviewTarget | undefined {
   if (review.sessionId !== undefined) {
-    return { kind: 'chat', path: `/chat/${encodeURIComponent(review.sessionId)}` };
+    return { kind: 'chat', path: chatSessionPath(review.sessionId) };
   }
   if (taskExists === undefined) return undefined;
   const runId = encodeURIComponent(review.runId);
