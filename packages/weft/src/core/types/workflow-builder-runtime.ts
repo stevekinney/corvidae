@@ -116,6 +116,17 @@ export interface WorkflowBuilderOptions<
 // Builder implementation
 // ---------------------------------------------------------------------------
 
+/**
+ * Entries a builder starts with, already normalised. `createWorkflowFactory`
+ * supplies them; a plain `workflow({ name })` builder starts empty.
+ */
+export interface SharedWorkflowEntries {
+  readonly activities?: Readonly<Record<string, ActivityDefinition>>;
+  readonly signals?: Readonly<Record<string, SignalDefinition<unknown>>>;
+  readonly updates?: Readonly<Record<string, UpdateDefinition>>;
+  readonly queries?: Readonly<Record<string, QueryDefinition>>;
+}
+
 type ChainMethodName =
   'activities' | 'signals' | 'updates' | 'queries' | 'searchAttributes' | 'services';
 
@@ -138,14 +149,34 @@ export class WorkflowBuilderImpl<TName extends string> {
     services: false,
   };
   #executed = false;
-  #activities: Record<string, ActivityDefinition> = {};
-  #signals: Record<string, SignalDefinition<unknown>> = {};
-  #updates: Record<string, UpdateDefinition> = {};
-  #queries: Record<string, QueryDefinition> = {};
+  #activities: Record<string, ActivityDefinition>;
+  #signals: Record<string, SignalDefinition<unknown>>;
+  #updates: Record<string, UpdateDefinition>;
+  #queries: Record<string, QueryDefinition>;
   #searchAttributes: SearchAttributeSchema = {};
 
-  constructor(options: WorkflowBuilderOptions<TName>) {
+  constructor(options: WorkflowBuilderOptions<TName>, shared: SharedWorkflowEntries = {}) {
     this.#options = options;
+    this.#activities = { ...shared.activities };
+    this.#signals = { ...shared.signals };
+    this.#updates = { ...shared.updates };
+    this.#queries = { ...shared.queries };
+  }
+
+  /**
+   * Add a chain method's entries to the ones the builder already carries from
+   * `createWorkflowFactory`. A name the factory already declared is rejected,
+   * not overridden, so a shared entry means the same thing in every workflow.
+   */
+  #merge<T>(method: ChainMethodName, current: Record<string, T>, added: Record<string, T>) {
+    for (const key of Object.keys(added)) {
+      if (Object.hasOwn(current, key)) {
+        throw new WorkflowBuilderError(
+          `workflow("${this.#options.name}"): .${method}() declares "${key}", which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
+        );
+      }
+    }
+    return { ...current, ...added };
   }
 
   #assertOpen(method: ChainMethodName | 'execute'): void {
@@ -168,28 +199,28 @@ export class WorkflowBuilderImpl<TName extends string> {
   activities = (map: ActivityMapInput): this => {
     this.#assertOpen('activities');
     this.#markCalled('activities');
-    this.#activities = normalizeActivityMap(map);
+    this.#activities = this.#merge('activities', this.#activities, normalizeActivityMap(map));
     return this;
   };
 
   signals = (map: SignalMap): this => {
     this.#assertOpen('signals');
     this.#markCalled('signals');
-    this.#signals = { ...(map as Record<string, SignalDefinition<unknown>>) };
+    this.#signals = this.#merge('signals', this.#signals, map);
     return this;
   };
 
   updates = (map: UpdateMap): this => {
     this.#assertOpen('updates');
     this.#markCalled('updates');
-    this.#updates = { ...(map as Record<string, UpdateDefinition>) };
+    this.#updates = this.#merge('updates', this.#updates, map);
     return this;
   };
 
   queries = (map: QueryMap): this => {
     this.#assertOpen('queries');
     this.#markCalled('queries');
-    this.#queries = { ...(map as Record<string, QueryDefinition>) };
+    this.#queries = this.#merge('queries', this.#queries, map);
     return this;
   };
 
@@ -336,7 +367,7 @@ function hasExecuteProperty(
  *   4. Synthesize an `ActivityDefinition` whose `name` is the outer key and
  *      `execute` is the provided function. Object-form options pass through.
  */
-function normalizeActivityMap(map: ActivityMapInput): Record<string, ActivityDefinition> {
+export function normalizeActivityMap(map: ActivityMapInput): Record<string, ActivityDefinition> {
   const out: Record<string, ActivityDefinition> = {};
   for (const key of Object.keys(map)) {
     validateWorkflowOrActivityName(key, 'activity');

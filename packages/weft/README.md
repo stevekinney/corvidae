@@ -115,6 +115,35 @@ When recovery also needs to rebuild live host surfaces such as progress emitters
 
 > [!NOTE] The chained builder also accepts `.signals({...})`, `.updates({...})`, `.queries({...})`, and `.searchAttributes({...})`. Each can be called at most once before `.execute(fn)`; the type system flips a phantom flag so a duplicate call fails to typecheck, and the runtime mirrors the same invariant. These maps don't introduce new runtime gating — they're type hints that thread into `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and friends so your editor autocompletes and your code typechecks. The underlying dispatch paths are unchanged.
 
+When several workflows use the same activities or messages, declare them once with `createWorkflowFactory` and build the workflows from the `workflow` it returns. Every workflow it builds gets typed `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and `ctx.onQuery()` for the shared entries, and can still add its own with `.activities({...})`, `.signals({...})`, `.updates({...})`, and `.queries({...})`, which merge with the shared ones:
+
+```typescript
+import { createWorkflowFactory, Engine, signal } from '@lostgradient/weft';
+
+const { workflow } = createWorkflowFactory({
+  activities: {
+    formatGreeting: async (name: string) => `Hello, ${name}!`,
+  },
+  signals: { approve: signal<{ approverId: string }>('approve') },
+});
+
+const welcome = workflow({ name: 'welcome' })
+  .activities({ shout: async (text: string) => text.toUpperCase() })
+  .execute(async function* (ctx, name: string) {
+    const greeting = yield* ctx.run('formatGreeting', name);
+    const { approverId } = yield* ctx.waitForSignal('approve');
+    return { greeting: yield* ctx.run('shout', greeting), approverId };
+  });
+
+const farewell = workflow({ name: 'farewell' }).execute(async function* (ctx, name: string) {
+  return yield* ctx.run('formatGreeting', name);
+});
+
+const engine = await Engine.create({ workflows: { welcome, farewell } });
+```
+
+A workflow cannot redeclare a name the factory already declares: that is a type error, and `WorkflowBuilderError` at runtime, so a shared entry means the same thing in every workflow. Give a workflow-specific variant its own name. The shared entries become each workflow's own, exactly as if it had declared them, so they appear in that workflow's activity and signal listings and contract, and `Engine.create({ workflows })` registers them with no extra step. This is different from `Engine.create({ activities })`, which puts activities in the engine's global registry: any workflow can reach those by name, but `ctx.run()` cannot type them, because a workflow is defined before the engine exists.
+
 > [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `SQLiteStorage` whenever durability actually matters.
 
 ## How It Works

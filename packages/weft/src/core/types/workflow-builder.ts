@@ -20,6 +20,8 @@ import type { SearchAttributeSchema } from './search-attributes.ts';
 import type {
   ActivityMap,
   ActivityMapInput,
+  DisjointFrom,
+  MergeMaps,
   NormalizeActivities,
   QueryMap,
   SignalMap,
@@ -272,11 +274,11 @@ export interface WorkflowBuilder<
    */
   activities: TState['activities'] extends true
     ? never
-    : <TInput extends ActivityMapInput>(
+    : <TInput extends ActivityMapInput & DisjointFrom<TActivities>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        NormalizeActivities<TInput>,
+        MergeMaps<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -305,12 +307,12 @@ export interface WorkflowBuilder<
    */
   signals: TState['signals'] extends true
     ? never
-    : <TInput extends SignalMap>(
+    : <TInput extends SignalMap & DisjointFrom<TSignals>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
-        TInput,
+        MergeMaps<TSignals, TInput>,
         TUpdates,
         TQueries,
         TSearchAttributes,
@@ -335,13 +337,13 @@ export interface WorkflowBuilder<
    */
   updates: TState['updates'] extends true
     ? never
-    : <TInput extends UpdateMap>(
+    : <TInput extends UpdateMap & DisjointFrom<TUpdates>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
-        TInput,
+        MergeMaps<TUpdates, TInput>,
         TQueries,
         TSearchAttributes,
         MarkBuilderState<TState, 'updates'>,
@@ -365,14 +367,14 @@ export interface WorkflowBuilder<
    */
   queries: TState['queries'] extends true
     ? never
-    : <TInput extends QueryMap>(
+    : <TInput extends QueryMap & DisjointFrom<TQueries>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
         TUpdates,
-        TInput,
+        MergeMaps<TQueries, TInput>,
         TSearchAttributes,
         MarkBuilderState<TState, 'queries'>,
         TServices
