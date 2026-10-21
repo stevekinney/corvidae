@@ -36,6 +36,7 @@ function createDeliveryHarness(registry: unknown) {
   const waiter = mock(() => {});
   const deleteRequest = mock(async () => {});
   const internals = {
+    options: { payloadValidation: 'none' },
     storage: new MemoryStorage(),
     workflowClaimRegistry: registry,
     updateCoordinator: { deleteRequest },
@@ -130,6 +131,7 @@ describe('update() bypasses the in-memory waiter when the workflow is owned else
 
     const waiter = mock(() => {});
     const internals = {
+      options: { payloadValidation: 'none' },
       storage,
       inlineStrategy: null,
       workflowClaimRegistry: { engineId: 'deposed-engine', currentEpoch: () => null },
