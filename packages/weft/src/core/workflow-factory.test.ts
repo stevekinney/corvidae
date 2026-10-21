@@ -222,7 +222,8 @@ describe('createWorkflowFactory() — on an engine', () => {
       activities: { audit, greet },
       recover: false,
     });
-    expect(await (await engine.start('audited', 'Ada')).result()).toBe('Hello, Ada audited');
+    const handle = await engine.start('audited', 'Ada');
+    expect(await handle.result()).toBe('Hello, Ada audited');
   });
 
   it('refuses to create an engine missing an activity a workflow uses', async () => {
@@ -249,7 +250,8 @@ describe('createWorkflowFactory() — on an engine', () => {
 
   it('fails the run clearly when an engine created without the companion lacks a shared activity', async () => {
     await using engine = await Engine.create({ workflows: { farewell }, recover: false });
-    const error = await rejectionOf((await engine.start('farewell', 'Grace')).result());
+    const handle = await engine.start('farewell', 'Grace');
+    const error = await rejectionOf(handle.result());
     expect((error as Error).message).toContain(
       'No activity registered with name "greet" for workflow type "farewell"',
     );
