@@ -40,6 +40,7 @@ import {
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
   E2E_DEPLOYMENT_NAME,
+  E2E_JOURNEY_PORT,
   E2E_LONG_POLL_BUILD_ID,
   E2E_LONG_POLL_DEPLOYMENT_NAME,
   E2E_LONG_POLL_QUEUE,
@@ -49,6 +50,11 @@ import {
 } from './e2e-constants.ts';
 import { createEchoAgents, ECHO_AGENT_NAME } from './echo-agent.ts';
 import { createFireQuestionGenerate } from './fire-question.ts';
+import {
+  createJourneyProviderResolver,
+  createRecallAgents,
+  RECALL_AGENT_NAME,
+} from './journey-agent.ts';
 import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
 import {
@@ -241,8 +247,35 @@ const bureauHost = await startHost({
   buildDirectory,
 });
 
+// The third host, which only the journey opens (`90-journey.spec.ts`). Its console is the Bureau's
+// own engine, because the journey follows an agent-authored workflow's schedule into the Workflows
+// area, and it has a home, agents, and a barrier of its own, so nothing another specification
+// leaves behind changes what the journey counts. Its provider resolver scripts the one agent the
+// journey defines in the editor, and answers every other with the stub the main host uses.
+const journeyHome = join(scratch, 'journey-home');
+await mkdir(journeyHome, { recursive: true });
+await writeProviderHome(journeyHome);
+const journeyBarrier = createBarrier();
+const journeyHost = await startHost({
+  extraAgents: {
+    agents: {
+      ...createBarrierAgents(journeyBarrier),
+      ...createEchoAgents(),
+      ...createRecallAgents(),
+    },
+    published: [BARRIER_AGENT_NAME, BARRIER_SHORT_AGENT_NAME, ECHO_AGENT_NAME, RECALL_AGENT_NAME],
+  },
+  environment: { INTERBOROUGH_HOME: journeyHome },
+  resolveProviderGenerate: createJourneyProviderResolver(
+    fakeProvider('This reply comes from the end-to-end provider stub.').resolver,
+  ),
+  port: E2E_JOURNEY_PORT,
+  buildDirectory,
+});
+
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
-// go. It binds loopback only and exists in this process alone, never in the host.
+// go. It binds loopback only and exists in this process alone, never in the host. The journey's
+// host holds its runs on a barrier of its own, under `/journey`.
 const barrierControl = Bun.serve({
   hostname: '127.0.0.1',
   port: E2E_BARRIER_PORT,
@@ -254,6 +287,13 @@ const barrierControl = Bun.serve({
         return Response.json({ released: true });
       },
     },
+    '/journey/waiting': { GET: () => Response.json({ waiting: journeyBarrier.waiting() }) },
+    '/journey/release': {
+      POST: () => {
+        journeyBarrier.release();
+        return Response.json({ released: true });
+      },
+    },
   },
 });
 
@@ -261,6 +301,7 @@ process.stdout.write(
   [
     `Interborough E2E host listening on ${host.url}`,
     `Interborough E2E Bureau host listening on ${bureauHost.url}`,
+    `Interborough E2E journey host listening on ${journeyHost.url}`,
     `Registered E2E fleet worker under deployment "${E2E_DEPLOYMENT_NAME}"`,
     'Seeded COR-124 attempt, lease, and cancellation evidence',
     'Seeded COR-281 cross-build retry storm',
@@ -276,6 +317,7 @@ async function shutDown(): Promise<void> {
   for (const versionedWorker of versionedWorkers) await versionedWorker.disconnect();
   await longPollWorker.stop();
   await fleetWorker.disconnect();
+  await journeyHost.close();
   await bureauHost.close();
   await host.close();
   await rm(scratch, { recursive: true, force: true });
