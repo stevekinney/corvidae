@@ -9,7 +9,7 @@ export type SignalsOperationTypes = {
       readonly workflowId: string;
     };
     readonly output: { readonly ok: true };
-    readonly faults: 'NotFound';
+    readonly faults: 'NotFound' | 'Unprocessable';
   };
   'weft.workflows.startorsignal': {
     readonly input: {
