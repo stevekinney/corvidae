@@ -2,15 +2,13 @@
  * COR-1613 — expired review state goes without a host calling `sweepExpiredReviews`: the Bureau's
  * own maintenance timer runs the sweep, for a schedule fire's approval and a session run's alike.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -20,21 +18,18 @@ import type { Bureau } from './types';
 
 const bureaus: Bureau[] = [];
 const paths: string[] = [];
-let counter = 0;
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.shutdown();
   for (const path of paths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 });
 
 describe('expired review state under the automatic maintenance profile', () => {
   it('is removed by the Bureau’s own timer, for a fire and a session run, with no host call', async () => {
     const runtime = createManualRuntimeServices();
-    const path = join(tmpdir(), `bureau-expiry-maintenance-${process.pid}-${counter++}.sqlite`);
+    const path = createTemporaryPath('bureau-expiry-maintenance', '.sqlite');
     paths.push(path);
     let calls = 0;
     const generate: GenerateFunction = async (context) => {

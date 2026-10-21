@@ -97,6 +97,7 @@ import {
 import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditRecord } from './audit-trail';
@@ -146,8 +147,6 @@ import {
   type ConfigurationResponse,
   type ServerFrame,
 } from './types';
-
-let recoveryDatabaseCounter = 0;
 
 function createTextStoreProxy(
   backingStore: ConditionalTextValueStore,
@@ -1467,10 +1466,7 @@ describe('createBureau', () => {
     // backend the way two processes would. Bureau A crashes mid-run; bureau B
     // boots on the same file, reconstructs the run's behavior from its own config
     // + the persisted session (NOTHING hand-injected), and resumes to completion.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery', '.sqlite');
 
     try {
       // === Bureau A: step 0 commits a tool call, then step 1's generate HANGS.
@@ -1602,7 +1598,7 @@ describe('createBureau', () => {
         );
         expect(hasBStep1).toBe(true);
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -1610,9 +1606,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -1630,10 +1624,7 @@ describe('createBureau', () => {
     // microtasks BEFORE `engine.start`'s own write — a race that a plain
     // "await createRun() then reopen and check" test cannot reliably catch,
     // since nothing here forces real I/O latency between the two writes).
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durably-started-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durably-started', '.sqlite');
     let releaseStart: (() => void) | undefined;
     const startGate = new Promise<void>((resolve) => {
       releaseStart = resolve;
@@ -1737,9 +1728,7 @@ describe('createBureau', () => {
       releaseStart?.();
       await bureauB?.dispose();
       await bureauA?.dispose();
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -1884,10 +1873,7 @@ describe('createBureau', () => {
     // backend's own declared `capabilities().persistence !== 'ephemeral'`
     // — the in-memory backend the sibling test above uses is ephemeral, so
     // this test needs a genuinely persistent backend to exercise it.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-361-review-attribution-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-361-review-attribution', '.sqlite');
     const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const startFailure = new Error('AB-361 review: durable write persistence failure');
     const gatedStorage = new Proxy(realStorage, {
@@ -1970,9 +1956,7 @@ describe('createBureau', () => {
       expect(report.failed).toBe(0);
     } finally {
       await bureau.dispose().catch(() => {});
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -1987,10 +1971,7 @@ describe('createBureau', () => {
     // reattachment rebuilt deps from the CATALOG AGENT's own resolved run
     // options, never a Bureau default runtime composition (this feature's
     // rollback trigger).
-    const databasePath = join(
-      tmpdir(),
-      `bureau-catalog-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-catalog-recovery', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -2063,9 +2044,7 @@ describe('createBureau', () => {
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -2076,10 +2055,7 @@ describe('createBureau', () => {
     // workflow, discoverable via `listDurableRuns()` (the same surface every
     // other durable-run assertion in this suite uses), never a run that just
     // silently stops advancing with no visible outcome.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-catalog-recovery-missing-agent-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-catalog-recovery-missing-agent', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -2133,9 +2109,7 @@ describe('createBureau', () => {
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -2146,9 +2120,9 @@ describe('createBureau', () => {
     // `OPERATIVE_RESOLVE_RUN_OPTIONS` — proving `createBureau`'s registered
     // catalog resolver returns `'not-durable-capable'`, not the misleading
     // `'missing-agent'`, for this distinct failure mode.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-catalog-recovery-not-durable-capable-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-catalog-recovery-not-durable-capable',
+      '.sqlite',
     );
 
     try {
@@ -2210,9 +2184,7 @@ describe('createBureau', () => {
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -2430,9 +2402,7 @@ describe('createBureau', () => {
   }
 
   async function removeRecoveryDatabase(databasePath: string) {
-    await rm(databasePath, { force: true });
-    await rm(`${databasePath}-wal`, { force: true });
-    await rm(`${databasePath}-shm`, { force: true });
+    removeTemporaryPath(databasePath);
   }
 
   // COR-1421: boots Bureau B over the SQLite file a never-disposed Bureau A
@@ -2445,10 +2415,7 @@ describe('createBureau', () => {
     runCount = 1,
     onEvent?: (event: { type: string; runId?: string }) => void,
   ) {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-boot-frames-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-boot-frames', '.sqlite');
     let bureauAReachedStep1 = false;
     let recoveredRunStepping = false;
     const bureauA = await createBureau({
@@ -2569,10 +2536,7 @@ describe('createBureau', () => {
   });
 
   it("delivers a recovered scheduled fire's boot-time events to a listener registered through onEvent (COR-1421)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-scheduled-frames-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-scheduled-frames', '.sqlite');
     const runId = 'scheduled-fire-boot-frames';
     const scheduleId = 'boot-frames-schedule';
     const sessionId = 'boot-frames-session';
@@ -2800,10 +2764,7 @@ describe('createBureau', () => {
   // cursor (e.g. `since: 25`) would have every post-restart frame filtered
   // out by `getFramesSince` as "already seen" — a silent frame loss.
   it('seeds a recovered run with a runSeq far above its pre-restart high-water mark (AB-15)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-runseq-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-runseq', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -2884,7 +2845,7 @@ describe('createBureau', () => {
         }
       } finally {
         unsubscribeB();
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -2892,9 +2853,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -2904,10 +2863,7 @@ describe('createBureau', () => {
   // that a mismatch is observed (warned + classified) WITHOUT blocking the
   // recovered run's completion.
   it('recovers an in-flight run across a workflowVersion change, warning but not blocking (AB-10)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-version-mismatch-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-version-mismatch', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -2997,7 +2953,7 @@ describe('createBureau', () => {
         expect(session?.metadata['lastRunStatus']).toBe('completed');
       } finally {
         warnSpy.mockRestore();
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3005,9 +2961,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3056,10 +3010,7 @@ describe('createBureau', () => {
   });
 
   it('monitors markerless legacy scheduled fires when Weft has a schedule-run marker', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-legacy-scheduled-fire-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-legacy-scheduled-fire', '.sqlite');
     const runId = 'legacy-scheduled-fire-run';
     const scheduleId = 'legacy-digest-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -3129,12 +3080,10 @@ describe('createBureau', () => {
           ),
         ).toBe(true);
       } finally {
-        bureau.dispose();
+        await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3145,10 +3094,7 @@ describe('createBureau', () => {
     // any non-string marker as missing, so a recovered stateless scheduled fire
     // whose only proof of ownership was this object marker was classified as an
     // unowned foreign run and CANCELLED instead of monitored.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-object-marker-scheduled-fire-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-object-marker-scheduled-fire', '.sqlite');
     const runId = 'object-marker-scheduled-fire-run';
     const scheduleId = 'object-marker-digest-schedule';
     const sessionId = `sched-${scheduleId}-${runId}`;
@@ -3225,12 +3171,10 @@ describe('createBureau', () => {
           ),
         ).toBe(true);
       } finally {
-        bureau.dispose();
+        await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3243,10 +3187,7 @@ describe('createBureau', () => {
     // store and never reach the KV-backed trail. The recovered run then disappears
     // from durable `/api/v1/audit` after a restart. Wiring the trail ahead of
     // recovery guarantees those actions are persisted.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-audit-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-audit', '.sqlite');
 
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash),
@@ -3346,7 +3287,7 @@ describe('createBureau', () => {
         expect(completed.length).toBeGreaterThan(0);
         expect(completed.every((record) => record.runId === run.id)).toBe(true);
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3354,9 +3295,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3365,10 +3304,7 @@ describe('createBureau', () => {
     // per-step toolbox:* actions were silent. The awaited Weft recovery hook now
     // installs and registers the recovered event surface before replay, so a tool
     // executed by the resumed step is observable on bureau B's `action` surface.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery', '.sqlite');
 
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
@@ -3434,7 +3370,7 @@ describe('createBureau', () => {
         // silent on the recovery path. This is the seam-#10/#28 closure.
         expect(actions.some((type) => type.startsWith('toolbox.'))).toBe(true);
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3442,9 +3378,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3456,10 +3390,7 @@ describe('createBureau', () => {
     // run, even though those events already reach the recovered run's plain
     // ActiveRun listeners (see the #28 test above). The fix wires the same
     // forwarder the live-run path uses onto the recovered run.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-envelope-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-envelope', '.sqlite');
 
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
@@ -3530,7 +3461,7 @@ describe('createBureau', () => {
         expect(envelopeFrameTypes).toContain('tool-post');
         expect(envelopeFrameTypes).toContain('run-finished');
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3538,9 +3469,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3549,10 +3478,7 @@ describe('createBureau', () => {
     // C3 stamping block, so tool.* bubble events from a recovered run carried
     // blank ids ({agentName:'', runId:'', step:0}) instead of the agentName and
     // runId from the durable input. The fix adds the C3 block to resolveRunServices.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-c3-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-c3', '.sqlite');
 
     try {
       // Bureau A: step 0 commits a tool call, then step 1's generate hangs (crash).
@@ -3642,7 +3568,7 @@ describe('createBureau', () => {
           expect(stamp.runId).toBe(run.id);
         }
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3650,17 +3576,12 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('persists aborted metadata when a recovered run is aborted after reattach', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-recovery-abort-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-recovery-abort', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -3728,7 +3649,7 @@ describe('createBureau', () => {
         expect(session?.metadata['lastRunStatus']).toBe('aborted');
         expect(session?.metadata['lastFinishReason']).toBe('aborted');
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3736,9 +3657,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3750,10 +3669,7 @@ describe('createBureau', () => {
     // reconstructed. `resolveRunServices` reconciles that owning session to
     // `error` synchronously (it has the sessionId in hand) instead of leaving it
     // stuck `running`, and bureau B still boots cleanly.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-unrecoverable-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-unrecoverable', '.sqlite');
 
     try {
       let bureauAReachedStep1 = false;
@@ -3817,7 +3733,7 @@ describe('createBureau', () => {
         // Bugbot review). It was cancelled, not registered.
         expect(bureauB.getRun(run.id)).toBeUndefined();
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -3825,9 +3741,7 @@ describe('createBureau', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -3876,10 +3790,7 @@ describe('createBureau', () => {
     // Asserting WITHOUT the flag is the whole point: a test that set
     // `durableExecution: true` would retest the old opt-in path and prove nothing
     // about the flip.
-    const databasePath = join(
-      tmpdir(),
-      `default-on-parity-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('default-on-parity', '.sqlite');
     try {
       const bureau = await createBureau({
         agents: {},
@@ -3919,11 +3830,9 @@ describe('createBureau', () => {
       const session = await bureau.getSession(run.sessionId);
       expect(session?.metadata['lastRunStatus']).toBe('completed');
 
-      bureau.dispose();
+      await bureau.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -5472,10 +5381,7 @@ describe('createBureau', () => {
     // The idempotency guard: a persistent bureau owns an engine AND a raw SQLite
     // handle, both released on dispose. A second dispose must NOT re-close the
     // already-closed SQLite connection (runtime-dependent whether that throws).
-    const databasePath = join(
-      tmpdir(),
-      `dispose-twice-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('dispose-twice', '.sqlite');
     try {
       const bureau = await createBureau({
         agents: {},
@@ -5484,13 +5390,11 @@ describe('createBureau', () => {
         storage: { type: 'sqlite', path: databasePath },
         stopWhen: stopWhen.noToolCalls(),
       });
-      bureau.dispose();
+      await bureau.dispose();
       // Second dispose is a no-op (guard short-circuits before re-closing).
       expect(() => bureau.dispose()).not.toThrow();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -5502,10 +5406,7 @@ describe('createBureau', () => {
     // This is a real, public path (`toObservable()` is on the Bureau surface), so
     // pre-teardown is best-effort: dispose must swallow the throw and STILL release
     // the SQLite handle, exactly like the already-best-effort scheduler/memory steps.
-    const databasePath = join(
-      tmpdir(),
-      `dispose-throwing-subscriber-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('dispose-throwing-subscriber', '.sqlite');
     try {
       const bureau = await createBureau({
         agents: {},
@@ -5527,9 +5428,7 @@ describe('createBureau', () => {
       // dispose is a clean no-op rather than a double-close of a live handle.
       expect(() => bureau.dispose()).not.toThrow();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -5999,13 +5898,8 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
 });
 
 describe('createBureau scheduler-origin crash semantics (#25)', () => {
-  let schedulerSweepDatabaseCounter = 0;
-
   it('sweeps a suspended scheduler-origin run left by a crash on the next boot', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-sched-sweep-${process.pid}-${schedulerSweepDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-sched-sweep', '.sqlite');
 
     try {
       // === "Process 1": compose a durable engine over the SQLite file and start a
@@ -6110,12 +6004,10 @@ describe('createBureau scheduler-origin crash semantics (#25)', () => {
         expect(taggedFinal?.status).toBe('cancelled');
         expect(legacyFinal?.status).toBe('cancelled');
       } finally {
-        bureau.dispose();
+        await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -9901,10 +9793,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
 
     it('resolves outcome: "partial" with the corrupted run listed while its sibling recovers', async () => {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-recovery-partial-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-recovery-partial', '.sqlite');
       try {
         // A genuine crashed run (same cross-process proof as the recovery
         // test above), so this test proves the corrupted sibling does not
@@ -9992,9 +9881,7 @@ describe('createBureau review queue (AB-20)', () => {
           await bureauA.dispose();
         }
       } finally {
-        await rm(databasePath, { force: true });
-        await rm(`${databasePath}-wal`, { force: true });
-        await rm(`${databasePath}-shm`, { force: true });
+        removeTemporaryPath(databasePath);
       }
     });
 
@@ -10085,10 +9972,7 @@ describe('createBureau review queue (AB-20)', () => {
     });
 
     it('resolves outcome: "partial" with sweepFailure set and empty perRunFailures when every handle reattaches', async () => {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-recovery-sweep-failure-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-recovery-sweep-failure', '.sqlite');
       try {
         let bureauAReachedStep1 = false;
         const bureauA = await createBureau({
@@ -10160,9 +10044,7 @@ describe('createBureau review queue (AB-20)', () => {
           await bureauA.dispose();
         }
       } finally {
-        await rm(databasePath, { force: true });
-        await rm(`${databasePath}-wal`, { force: true });
-        await rm(`${databasePath}-shm`, { force: true });
+        removeTemporaryPath(databasePath);
       }
     });
 
@@ -10299,10 +10181,7 @@ describe('createBureau review queue (AB-20)', () => {
   });
 
   it('durably prunes approvals and request authority when approval restoration is permanently invalid', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-stale-approval-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-stale-approval-recovery', '.sqlite');
     const approvalSecret = 'expired-recovery-approval-secret';
     const charges: number[] = [];
     try {
@@ -10413,7 +10292,7 @@ describe('createBureau review queue (AB-20)', () => {
         expect(bureauB.listPendingReviews()).toHaveLength(0);
         expect(charges).toEqual([]);
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done (its scheduler would
@@ -10421,9 +10300,7 @@ describe('createBureau review queue (AB-20)', () => {
       // file below).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -13182,10 +13059,7 @@ describe('createBureau requestHumanInput availability across durability configur
   });
 
   it('config 4 — includes requestHumanInput and actually parks over persistent (SQLite) durable storage', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `ab-43-persistent-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab-43-persistent-park', '.sqlite');
 
     try {
       const seenTools: string[] = [];
@@ -13229,12 +13103,10 @@ describe('createBureau requestHumanInput availability across durability configur
         const [review] = bureau.listPendingReviews();
         expect(review?.kind).toBe('human-wait');
       } finally {
-        bureau.dispose();
+        await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -13410,10 +13282,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
   });
 
   it('config 4 — includes scheduleWakeup, genuinely parks over persistent (SQLite) durable storage, and the parked wakeup recovers and fires across a process restart via an explicit tick', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `ab-201-persistent-wakeup-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab-201-persistent-wakeup', '.sqlite');
 
     try {
       // === Bureau A: schedules the wakeup and parks. "Crashes" while parked
@@ -13503,7 +13372,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
         const session = await bureauB.getSession(run.sessionId);
         expect(session?.metadata['lastRunStatus']).toBe('completed');
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       // AB-207: release bureauA's engine now that bureauB's
       // recovery-dependent assertions are done — the same ordering every
@@ -13511,9 +13380,7 @@ describe('createBureau scheduleWakeup wiring (AB-201)', () => {
       // above where bureauA was deliberately left undisposed).
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -13752,10 +13619,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
   });
 
   it('composes and disposes a real event-history store, reporting an event-history owner, for a genuinely persistent SQLite bureau', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history', '.sqlite');
 
     const runtime = createManualRuntimeServices();
 
@@ -13811,9 +13675,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       const after = await runtime.deferred.drain();
       expect(after.outstanding).toEqual([]);
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -13823,10 +13685,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
     // `run.completed` listener, so shutdown has to wait for it — otherwise
     // the save commits after the durable event producer stops, and its
     // `session.saved` outbox entry is left pending with a diagnostic.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-dispose-after-completion-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-dispose-after-completion', '.sqlite');
     const diagnostics: string[] = [];
 
     try {
@@ -13867,9 +13726,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       expect(await verifySessionStore.outbox.pending()).toEqual([]);
       verifyStorage[Symbol.dispose]();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14030,10 +13887,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
   it("policy: 'drain' lands the drained run's terminal session save before closing SQLite storage", async () => {
     // The drained run settles while shutdown is under way, so its terminal
     // session save starts mid-shutdown and has to land before storage closes.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-drain-terminal-save-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-drain-terminal-save', '.sqlite');
     const diagnostics: string[] = [];
     let releaseGenerate!: () => void;
     const generateGate = new Promise<void>((resolve) => {
@@ -14073,9 +13927,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       expect(await verifySessionStore.outbox.pending()).toEqual([]);
       verifyStorage[Symbol.dispose]();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14090,10 +13942,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
       // session-persistence drain alone waits for. Without a wait for the
       // aborted run, storage closed first and the save failed with
       // "Statement has finalized", leaving `lastRunStatus: 'running'`.
-      const databasePath = join(
-        tmpdir(),
-        `bureau-dispose-aborted-save-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-dispose-aborted-save', '.sqlite');
       const diagnostics: string[] = [];
       let resolveEntered!: () => void;
       const generateEntered = new Promise<void>((resolve) => {
@@ -14137,9 +13986,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
         });
         verifyStorage[Symbol.dispose]();
       } finally {
-        await rm(databasePath, { force: true });
-        await rm(`${databasePath}-wal`, { force: true });
-        await rm(`${databasePath}-shm`, { force: true });
+        removeTemporaryPath(databasePath);
       }
     },
   );
@@ -14395,10 +14242,7 @@ describe('Bureau.shutdown() (AB-207)', () => {
 
 describe('createBureau durable event history producer + subscribeEventHistory (AB-311)', () => {
   it("sinks a completed run's terminal transition into the durable event history from the same emitter path the audit trail observes, in the same order", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-producer-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-producer', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14430,17 +14274,12 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('records a session-scoped action under its own owner, filtered from an unrelated session and an unrelated run', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-producer-session-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-producer-session', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14481,9 +14320,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await waitForRunCompletion(bureau, run.id);
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14497,9 +14334,9 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
     // producer's dedicated `sessionCreatedListener`/`sessionSavedListener`
     // read — closing `SESSION_DURABLE_ACTION_TYPES`'s two previously-dead
     // entries for real, not merely in a unit test of the listener alone.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-producer-session-created-saved-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-durable-producer-session-created-saved',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -14546,17 +14383,12 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('drops a session.* action with no string sessionId on its detail, rather than recording under a fabricated owner', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-producer-no-session-id-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-producer-no-session-id', '.sqlite');
     const runtime = createManualRuntimeServices();
     const diagnostics: BureauDiagnostic[] = [];
 
@@ -14590,17 +14422,12 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       await waitForRunCompletion(bureau, run.id);
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('subscribeEventHistory replays a real recorded run.completed from bureau.createRun, then continues live', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-subscribe-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-subscribe', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14631,17 +14458,12 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       subscription.unsubscribe();
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("subscribeEventHistory applies eventHistory's run principal gate: a stranger is delivered nothing, the attributed principal replays (COR-851)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-subscribe-authz-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-subscribe-authz', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14682,9 +14504,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       denied.unsubscribe();
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14718,10 +14538,7 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
   });
 
   it('disposes the producer before the event-history store on shutdown, reporting one event-history owner', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-durable-producer-shutdown-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-durable-producer-shutdown', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14745,19 +14562,14 @@ describe('createBureau durable event history producer + subscribeEventHistory (A
       const after = await runtime.deferred.drain();
       expect(after.outstanding).toEqual([]);
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () => {
   it('returns not-found for a run owned by a different principal, indistinguishable from an unknown run', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-run-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-authz-run', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14805,9 +14617,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14821,10 +14631,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     // so a supplied principal against an unattributed run fails closed.
     // Omitting `principal` (an internal/trusted caller) still bypasses
     // the check entirely, same as every other owner kind.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-open-run-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-authz-open-run', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -14852,17 +14659,12 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("AB-241: a durable bureau.run() catalog dispatch records options.principal in the same runAttribution map eventHistory's principal gate consults, exactly as Bureau.createRun does", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-catalog-run-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-authz-catalog-run', '.sqlite');
 
     try {
       const bureau = await createBureau({
@@ -14900,9 +14702,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -14915,9 +14715,9 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     // is NOT an `AgentContractError` (the one case with its own dedicated
     // fallback-and-delete) must still clean that entry up, or it becomes a
     // permanent phantom keyed to a run that never dispatched anything.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-catalog-run-failure-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-authz-catalog-run-failure',
+      '.sqlite',
     );
     // A manual runtime gives a deterministic identifier sequence, so the
     // durable branch's minted runId is predictable WITHOUT ever going
@@ -14978,17 +14778,12 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('fails closed (not-found) for a DELETED run once a caller supplies a principal — closes the bypass a missing runAttribution entry would otherwise open (copilot review, PR #551)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-deleted-run-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-authz-deleted-run', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15034,17 +14829,12 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('returns not-found for a session an unauthorized principal queries, and admits the recorded authority', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-authz-session-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-authz-session', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15076,17 +14866,12 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('returns deleted-aggregate for a run whose Bureau record was removed, carrying the already-committed events', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-deleted-run-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-deleted-run', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15113,9 +14898,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15131,10 +14914,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
     // detection logic against the event shape a real `'action'`-stream
     // dispatch site would produce; wiring one up here remains a follow-up,
     // out of AB-228's `AUDIT_EVENT_TYPES`-only boundary.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-deleted-session-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-deleted-session', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15167,9 +14947,7 @@ describe('bureau.eventHistory authorization and deleted-aggregate (AB-313)', () 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -15188,9 +14966,9 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
     // queries with a `limit` small enough that the returned page never
     // contains the marker — the outcome must still classify as
     // `deleted-aggregate`.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-run-marker-out-of-window-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-run-marker-out-of-window',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15253,9 +15031,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15264,9 +15040,9 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
     // same supported way the sibling AB-313 session test does
     // (`bureau.store.recordAction`), since nothing durably records
     // `session.deleted` for an id no live session was ever saved under.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-session-marker-out-of-window-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-session-marker-out-of-window',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
     const sessionId = 'sess-out-of-window';
@@ -15324,9 +15100,7 @@ describe('bureau.eventHistory deleted-aggregate detection is independent of the 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -15341,9 +15115,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // AB-372 closes that gap; this proves the real production call site
     // (`Bureau.deleteSession`) reaches `bureau.eventHistory`'s deleted-aggregate
     // detection with no test-only synthesis anywhere in this test.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-real-session-deletion-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-real-session-deletion',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15372,9 +15146,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15390,9 +15162,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // `durable-event-history.test.ts`) is a second, independent line of
     // defense for the documented cross-process race that coalescing cannot
     // cover.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-real-session-deletion-dup-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-real-session-deletion-dup',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15424,9 +15196,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15437,10 +15207,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // identity on `SessionDeletedEvent`, prune it) — `resolveEventHistory`
     // must not let that stale marker outrank the session's CURRENT live
     // record.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-reused-session-live-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-reused-session-live', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15482,9 +15249,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15498,9 +15263,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // override this issue adds must reauthorize against THAT record before
     // returning its page — never fall through to treating the id as still
     // open just because it once had no live record.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-reused-session-reauth-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-reused-session-reauth',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15549,9 +15314,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15565,9 +15328,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // recreated, unauthorized session. Mocking only the FIRST call
     // reproduces this deterministically, without depending on real
     // concurrency timing.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-reused-session-post-page-reauth-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-reused-session-post-page-reauth',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15622,9 +15385,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15634,9 +15395,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // after that marker (or a limit that pages around it) would otherwise
     // let an unauthorized caller read a recreated session's page simply by
     // asking for a page that doesn't include the historical marker.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-reused-session-no-marker-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-reused-session-no-marker',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15694,9 +15455,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15707,10 +15466,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // floor gets back a `DurableEventGap` (with its own retention metadata)
     // instead of the documented not-found-shaped denial every other
     // authorization failure uses.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-session-authz-gap-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-session-authz-gap', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -15750,7 +15506,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
       const adminFeed = createFleetEventFeed(adminStorage);
       await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-      adminFeed.dispose();
+      await adminFeed.dispose();
       adminStorage[Symbol.dispose]();
 
       // An unauthorized principal is denied — never the gap.
@@ -15769,9 +15525,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -15785,9 +15539,9 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
     // deterministically: every subsequent, unmocked call — including the
     // new gap-branch recheck this test targets — observes the REAL,
     // already-recreated, unauthorized session.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-session-authz-post-wait-gap-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-session-authz-post-wait-gap',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -15819,7 +15573,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
       const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
       const adminFeed = createFleetEventFeed(adminStorage);
       await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-      adminFeed.dispose();
+      await adminFeed.dispose();
       adminStorage[Symbol.dispose]();
 
       const sessionStore = bureau.sessionStore;
@@ -15849,9 +15603,7 @@ describe('bureau.eventHistory deleted-aggregate through a real session deletion 
 
       await bureau.shutdown();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -15869,10 +15621,7 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
     // two durable records and two notifications for one real deletion.
     // `SessionStore.delete`'s new atomic `boolean` return closes this: only
     // the call that genuinely removed the live record dispatches.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab371-two-process-delete-race-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab371-two-process-delete-race', '.sqlite');
 
     const bureauA = await createBureau({
       agents: {},
@@ -15939,9 +15688,7 @@ describe('two Bureau processes racing deleteSession over one shared persistent s
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -15966,10 +15713,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
    * instance entirely).
    */
   it('a run dispatched with a principal, recovered over SQLite in a fresh process, is readable by that principal and denied to another', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-owner-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-owner-recovery', '.sqlite');
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau({
@@ -16044,20 +15788,18 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }
         expect(trusted.events.map((event) => event.kind)).toContain('run.completed');
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('a run already TERMINAL before the crash — never reattached, since recoverAll() only surfaces in-flight workflows — is still readable by its owner after restart (chatgpt-codex-connector review, PR #564, P1)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-owner-recovery-terminal-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-owner-recovery-terminal',
+      '.sqlite',
     );
 
     try {
@@ -16120,17 +15862,12 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await bureauB.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('a run dispatched WITHOUT a principal is owned by anonymous:local after recovery, denied to any other principal, and readable to a trusted caller that omits one', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-owner-recovery-open-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-owner-recovery-open', '.sqlite');
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau({
@@ -16192,13 +15929,11 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         }
         expect(trusted.events.map((event) => event.kind)).toContain('run.completed');
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -16303,9 +16038,9 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
     // this shared box, so keeping this to exactly two runs and the four
     // eventHistory reads — no session-metadata drain, no extra polling —
     // is the minimum real disk I/O this specific coverage needs.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-owner-recovery-union-auth-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-event-history-owner-recovery-union-auth',
+      '.sqlite',
     );
 
     try {
@@ -16374,9 +16109,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -16398,10 +16131,7 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
   }
 
   it("lets only the session's owner read the session-scoped eventHistory, however many runs it started (COR-1382, COR-718)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-session-history-co-owners-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-session-history-co-owners', '.sqlite');
 
     try {
       const bureau = await createBureau({
@@ -16435,16 +16165,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("delivers a session-scoped subscription to the session's owner, matching eventHistory (COR-1382, COR-718)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-session-history-co-owners-subscribe-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-session-history-co-owners-subscribe',
+      '.sqlite',
     );
 
     try {
@@ -16496,17 +16224,12 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("lets the session's owner read the session-scoped eventHistory after a concurrent run on the session finishes (COR-1382, COR-718)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-session-history-co-owners-live-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-session-history-co-owners-live', '.sqlite');
     const releaseRunA = Promise.withResolvers<void>();
 
     try {
@@ -16541,18 +16264,14 @@ describe('bureau.eventHistory run ownership survives a process restart (AB-359)'
         await bureau.dispose();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () => {
   async function removeDatabase(databasePath: string): Promise<void> {
-    await rm(databasePath, { force: true });
-    await rm(`${databasePath}-wal`, { force: true });
-    await rm(`${databasePath}-shm`, { force: true });
+    removeTemporaryPath(databasePath);
   }
 
   /**
@@ -16589,10 +16308,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
   }
 
   it("drops a session's lastRunOwningPrincipals entry once its run's entire durable history — including a later deleteRun()'s own run.removed — is below the retention floor, leaves a still-retained run's entry alone, and the pruned run's history now reads back as a gap", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-run-ownership-prune', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -16677,7 +16393,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEventForA.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await bureau.runDurableMaintenance();
@@ -16712,17 +16428,12 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("never prunes a still-running run's ownership entry, even when the fleet feed has no retained event for it yet (the dispatch-vs-event-production race)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-parked-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-run-ownership-prune-parked', '.sqlite');
 
     let parkedRunReachedStep1 = false;
     let generateCalls = 0;
@@ -16772,7 +16483,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
       const adminFeed = createFleetEventFeed(adminStorage);
       await adminFeed.retain({ beforeSequence: lastSequenceForCompleted + 1 });
-      adminFeed.dispose();
+      await adminFeed.dispose();
       adminStorage[Symbol.dispose]();
 
       await bureau.runDurableMaintenance();
@@ -16801,9 +16512,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       // background maintenance timer outlives this test and later trips
       // over the sqlite file this `finally` is about to delete.
       await bureau.dispose();
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -16836,9 +16545,9 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
   });
 
   it('excludes a run still named in lastRequestAuthorities from pruning — live or awaiting a pending-approval decision, either way a future durable write can still arrive (Codex review, PR #568)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-live-authority-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-live-authority',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -16911,7 +16620,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await bureau.runDurableMaintenance();
@@ -16931,16 +16640,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('skips pruning an entire session, not just one run, when its lastRequestAuthorities value is present but malformed (Codex review, PR #568, "Preserve owners when the authority map is malformed")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-malformed-authorities-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-malformed-authorities',
+      '.sqlite',
     );
 
     try {
@@ -16981,7 +16688,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await bureau.runDurableMaintenance();
@@ -16997,17 +16704,12 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('revalidates the retained-owner set immediately before deleting, not against the whole pass\'s initial snapshot (Codex review, PR #568, "Revalidate retained owners before pruning")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-revalidate-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-run-ownership-prune-revalidate', '.sqlite');
 
     try {
       const bureau = await createBureau({
@@ -17057,7 +16759,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await bureau.runDurableMaintenance();
         } finally {
           updateSpy.mockRestore();
-          adminFeed.dispose();
+          await adminFeed.dispose();
           adminStorage[Symbol.dispose]();
         }
 
@@ -17071,16 +16773,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('preserves every ownership entry on a session whose lastRequestAuthorities is present but malformed, rather than treating it as absent (Codex/Copilot review, PR #568, "Preserve owners when the authority map is malformed")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-malformed-authorities-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-malformed-authorities',
+      '.sqlite',
     );
 
     try {
@@ -17122,7 +16822,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await bureau.runDurableMaintenance();
@@ -17139,16 +16839,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('never refreshes a pruned session\'s updatedAt — a maintenance write is not activity (Codex review, PR #568, "Avoid refreshing session activity during retention pruning")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-no-activity-refresh-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-no-activity-refresh',
+      '.sqlite',
     );
 
     try {
@@ -17192,7 +16890,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: removalEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await bureau.runDurableMaintenance();
@@ -17208,16 +16906,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('excludes a run still present in the in-memory run store from pruning — deleteRun() remains callable on it at any point, and would record a brand-new run.removed durable event with no owner left to protect it (Codex review, PR #568, "Preserve ownership for a later run removal event")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-still-in-store-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-still-in-store',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -17287,7 +16983,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
           await adminFeed.retain({ beforeSequence: lastEventAfterDeletion.sequence + 1 });
           await bureau.runDurableMaintenance();
         } finally {
-          adminFeed.dispose();
+          await adminFeed.dispose();
           adminStorage[Symbol.dispose]();
         }
 
@@ -17297,17 +16993,12 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('prunes stale run ownership on its own, on a timer, under the default automatic maintenance profile — never requiring an explicit runDurableMaintenance() call (Codex review, PR #568, "Run ownership pruning in the automatic maintenance profile")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-automatic-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-run-ownership-prune-automatic', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -17351,7 +17042,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         const sessionBeforeAdvance = await bureau.getSession(run.sessionId);
@@ -17383,16 +17074,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('diagnoses, rather than throwing out of, a failed automatic pruning pass — a rejected sessionStore.list() must not crash the interval or the process', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-automatic-failure-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-automatic-failure',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
@@ -17422,7 +17111,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         const sessionStore = bureau.sessionStore;
@@ -17450,16 +17139,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('skips a new automatic pruning pass while the prior one is still in flight, instead of overlapping them (Copilot review, PR #579)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-automatic-overlap-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-automatic-overlap',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -17500,7 +17187,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         // Blocks the FIRST pruning pass's `sessionStore.list()` call
@@ -17552,16 +17239,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('waits for an in-flight automatic pruning pass to finish before shutdown disposes the event history and storage (Codex review, PR #579, "Await running pruning passes before backend teardown")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-automatic-shutdown-race-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-automatic-shutdown-race',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -17598,7 +17283,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
       const adminFeed = createFleetEventFeed(adminStorage);
       await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-      adminFeed.dispose();
+      await adminFeed.dispose();
       adminStorage[Symbol.dispose]();
 
       // Blocks the pruning pass mid-flight, inside its own
@@ -17657,16 +17342,14 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
       expect(session?.metadata['lastRunOwningPrincipals']).toBeUndefined();
       verifyStorage[Symbol.dispose]();
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('never starts the automatic pruning timer under durableBackgroundTasks: "manual" — a manual host drives pruning only through its own runDurableMaintenance() calls', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-ownership-prune-manual-profile-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-run-ownership-prune-manual-profile',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -17709,7 +17392,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEvent.sequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         // Advance far past the automatic profile's own interval — a manual
@@ -17732,9 +17415,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -17759,10 +17440,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
     }
 
     it("leaves a run's ownership entry alone while another instance holds its live workflow claim, and prunes it once the run settles", async () => {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-run-ownership-prune-claim-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-run-ownership-prune-claim', '.sqlite');
       const generateStarted = Promise.withResolvers<void>();
       const releaseGenerate = Promise.withResolvers<void>();
       const claimHolderSpy = spyOn(await engineClaimPrototype(), 'claimHolder');
@@ -17856,10 +17534,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
         diagnostics: string[];
       }) => Promise<void>,
     ): Promise<void> {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-run-ownership-prune-claim-mode-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-run-ownership-prune-claim-mode', '.sqlite');
       const runtime = createManualRuntimeServices();
       const diagnostics: string[] = [];
       try {
@@ -17964,10 +17639,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
   describe('restores a pruned run-ownership entry when a retained event lands (COR-1380)', () => {
     function databasePathFor(label: string): string {
-      return join(
-        tmpdir(),
-        `bureau-run-ownership-restore-${label}-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      return createTemporaryPath(`bureau-run-ownership-restore-${label}`, '.sqlite');
     }
 
     function ownersOf(session: AgentSession | undefined): unknown {
@@ -18638,10 +18310,7 @@ describe('bureau.runDurableMaintenance prunes stale run ownership (AB-363)', () 
 
 describe('Bureau durable audit trail retention (AB-388)', () => {
   it("defaults to 'forever': no record is ever pruned, even across a maintenance pass long after every record's own timestamp", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-forever-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-forever', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -18679,17 +18348,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('with olderThan, prunes a record past the cutoff, keeps one newer than the cutoff, keeps a record the fleet feed retention floor still protects even though it is past the cutoff, and writes exactly one audit.pruned record naming the right count', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-olderthan-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-olderthan', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -18747,7 +18411,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: runAFirstEvent.sequence });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         // Advance well past `olderThan` relative to BOTH seed and run A —
@@ -18783,17 +18447,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('protects a still-retained run\'s own earlier audit record even while the fleet feed retention floor is still 0 (Codex review, PR #597, "Scan retained run owners at floor zero")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-floor-zero-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-floor-zero', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -18857,16 +18516,14 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("survives a candidate run's earlier audit records when a retained run.removed for that SAME run lands after the pass's own protectRunId snapshot but before the pass reaches (deletes) that candidate (AB-393)", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-per-candidate-revalidation-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-audit-retention-per-candidate-revalidation',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
 
@@ -18919,7 +18576,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: runFenceFirstEvent.sequence });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         // Run A is no longer a retained owner (its only durable events
@@ -18981,17 +18638,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('under the default automatic maintenance profile, prunes on its own timer — never requiring an explicit runDurableMaintenance() call', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-automatic-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-automatic', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -19056,7 +18708,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEventSequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await runtime.advance(1_000_000);
@@ -19073,17 +18725,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureau.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it("after pruning and a restart, the next audit record's sequence is greater than every pruned one", async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-restart-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-restart', '.sqlite');
     const runtimeA = createManualRuntimeServices();
 
     try {
@@ -19144,7 +18791,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         const adminStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
         const adminFeed = createFleetEventFeed(adminStorage);
         await adminFeed.retain({ beforeSequence: lastEventSequence + 1 });
-        adminFeed.dispose();
+        await adminFeed.dispose();
         adminStorage[Symbol.dispose]();
 
         await runtimeA.advance(1_000_000);
@@ -19183,9 +18830,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         await bureauB.shutdown();
       }
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -19391,10 +19036,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
   });
 
   it('a shutdown() started while a manual runDurableMaintenance() call is still in flight awaits it before tearing down storage (Codex review, PR #597, "Await manual pruning before storage teardown")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-shutdown-drain-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-shutdown-drain', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -19425,17 +19067,12 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
       // write would throw against a closed backend instead of resolving.
       expect(await maintenance).toBe(true);
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('rejects a runDurableMaintenance() call that arrives once shutdown has started (Codex review, PR #597, "Fence maintenance admission once shutdown starts")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-audit-retention-fence-admission-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-audit-retention-fence-admission', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     try {
@@ -19464,9 +19101,7 @@ describe('Bureau durable audit trail retention (AB-388)', () => {
         'Cannot run durable maintenance: bureau is shutting down',
       );
     } finally {
-      await rm(databasePath, { force: true });
-      await rm(`${databasePath}-wal`, { force: true });
-      await rm(`${databasePath}-shm`, { force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -20648,10 +20283,7 @@ describe('AB-389 — session commit outbox', () => {
     // durable maintenance pass) alive to drain the outbox entry it
     // appends. The entry is left durably pending, exactly as it would be
     // if the real process had crashed right after this commit.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-crash-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-crash-recovery', '.sqlite');
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
@@ -20694,6 +20326,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(await recoveredSessionStore.outbox.pending()).toHaveLength(0);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -20755,10 +20388,7 @@ describe('AB-389 — session commit outbox', () => {
     // dispatch timing) is what durable history sorts by. SQLite, not
     // memory: `bureau.eventHistory()` is unsupported over an ephemeral
     // backend.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-two-instance-ordering-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-two-instance-ordering', '.sqlite');
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
 
@@ -20798,6 +20428,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(page.events[1]!.sequence).toBeGreaterThan(page.events[0]!.sequence);
     } finally {
       await bureauA.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -20808,10 +20439,7 @@ describe('AB-389 — session commit outbox', () => {
     // triggers for the SAME commit and asserts exactly one durable record
     // results, not two. SQLite, not memory: `bureau.eventHistory()` is
     // unsupported over an ephemeral backend.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-overlap-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-overlap', '.sqlite');
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
 
@@ -20845,6 +20473,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -20895,10 +20524,7 @@ describe('AB-389 — session commit outbox', () => {
   });
 
   it('diagnoses (never throws) when the automatic maintenance pass session-outbox drain fails', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-automatic-drain-failure-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-automatic-drain-failure', '.sqlite');
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
     const bureau = await createBureau({
@@ -20930,14 +20556,12 @@ describe('AB-389 — session commit outbox', () => {
       pendingSpy.mockRestore();
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('retains a pending outbox entry, rather than acknowledging it, when its durable write fails (Codex P1 review finding, PR #598)', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-retain-on-write-failure-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-retain-on-write-failure', '.sqlite');
     const realStorage = await resolveStorage({ type: 'sqlite', path: databasePath });
     let failNextFleetEventWrite = false;
     const gatedStorage = new Proxy(realStorage, {
@@ -21015,6 +20639,7 @@ describe('AB-389 — session commit outbox', () => {
       expect(page.events.map((event) => event.kind)).toEqual(['session.created']);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -21142,10 +20767,7 @@ describe('AB-389 — session commit outbox', () => {
     // it — exactly the `hasDeferredGatewayAuthority` branch the finding
     // names. bureauA is deliberately never disposed, simulating a crash
     // with that run still "in flight".
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-389-drain-before-defer-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-389-drain-before-defer', '.sqlite');
     const bureauA = await createBureau({
       agents: {},
       // Hangs forever from step 0 — the run never reaches a terminal
@@ -21241,6 +20863,7 @@ describe('AB-389 — session commit outbox', () => {
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -21253,10 +20876,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
     // window between the two the coordinator ruling closes. Committed
     // through a STANDALONE `SessionStore`, with no `Bureau` alive to drain
     // it, mirroring the AB-389 crash test above.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-391-crash-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-391-crash-recovery', '.sqlite');
     const storage = await resolveStorage({ type: 'sqlite', path: databasePath });
     const runtime = createManualRuntimeServices();
     const kv = textValueStore(storage, { disposeUnderlyingStorage: false });
@@ -21320,6 +20940,7 @@ describe('AB-391 — review-transition audit records ride the session outbox', (
       expect(recordsAfterSecondPass).toHaveLength(1);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -21990,10 +21611,7 @@ describe('AB-390 — outbox claim lease', () => {
     // clock the claim's `until` compares against and keeps
     // `identifiers.next()` producing distinct drain-owner ids for the two
     // bureaus.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-two-instance-claim-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-390-two-instance-claim', '.sqlite');
     const runtime = createManualRuntimeServices();
 
     const bureauA = await createBureau({
@@ -22068,6 +21686,7 @@ describe('AB-390 — outbox claim lease', () => {
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22077,10 +21696,7 @@ describe('AB-390 — outbox claim lease', () => {
     // just calling `outbox.claim()` directly with a lease, the same
     // primitive a real drainer uses, standing in for "a peer already
     // claimed this and is gone".
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-crashed-drainer-reclaim-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-390-crashed-drainer-reclaim', '.sqlite');
     const runtime = createManualRuntimeServices();
     const bureau = await createBureau({
       agents: {},
@@ -22149,6 +21765,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22439,10 +22056,7 @@ describe('AB-390 — outbox claim lease', () => {
   });
 
   it('arms a retry timer at a live peer\'s own claim expiry, rather than depending on an unrelated future trigger, when a claim is refused (Codex P1 review finding, PR #599, "Schedule a retry when a live claim blocks recovery")', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-scheduled-retry-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-390-scheduled-retry', '.sqlite');
     const runtime = createManualRuntimeServices();
     const bureau = await createBureau({
       agents: {},
@@ -22504,6 +22118,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22520,10 +22135,7 @@ describe('AB-390 — outbox claim lease', () => {
     // one-backend race as the "two Bureau instances" test above, just with
     // the identifier collision made real instead of avoided by sharing one
     // runtime.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-owner-collision-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-390-owner-collision', '.sqlite');
     const SAME_SEED = 'ab-390-owner-collision-seed';
     const runtimeA = createManualRuntimeServices({ identifierSeed: SAME_SEED });
     const runtimeB = createManualRuntimeServices({ identifierSeed: SAME_SEED });
@@ -22593,6 +22205,7 @@ describe('AB-390 — outbox claim lease', () => {
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22605,9 +22218,9 @@ describe('AB-390 — outbox claim lease', () => {
     // proceed to abort the durable event producer's signal and tear down
     // storage while that drain is still dispatching the event and writing
     // through it.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-shutdown-awaits-retry-drain-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-ab-390-shutdown-awaits-retry-drain',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
@@ -22679,6 +22292,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(diagnostics).not.toContainEqual(expect.stringContaining('was not durably recorded'));
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22689,10 +22303,7 @@ describe('AB-390 — outbox claim lease', () => {
     // almost immediately, observe the SAME still-live claim, and busy-loop
     // re-arming itself for the entry's entire remaining lease.
     const MAXIMUM_SETTIMEOUT_DELAY_MS = 2_147_483_647;
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-retry-delay-cap-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-ab-390-retry-delay-cap', '.sqlite');
     const runtime = createManualRuntimeServices();
     const recordedDelays: number[] = [];
     // Wraps ONLY `timers.setTimeout` to record the delay each call actually
@@ -22776,6 +22387,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(await sessionStore.outbox.pending()).toHaveLength(0);
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
@@ -22791,9 +22403,9 @@ describe('AB-390 — outbox claim lease', () => {
     // `scheduleOutboxRetry` a second time — precisely the call this
     // fix must refuse once shutdown has begun, since `dispose()` below is
     // invoked before that second drain has necessarily finished.
-    const databasePath = join(
-      tmpdir(),
-      `bureau-ab-390-shutdown-closes-retry-admission-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
+    const databasePath = createTemporaryPath(
+      'bureau-ab-390-shutdown-closes-retry-admission',
+      '.sqlite',
     );
     const runtime = createManualRuntimeServices();
     const diagnostics: string[] = [];
@@ -22888,6 +22500,7 @@ describe('AB-390 — outbox claim lease', () => {
       expect(diagnostics).not.toContainEqual(expect.stringContaining('closed database'));
     } finally {
       await bureau.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });

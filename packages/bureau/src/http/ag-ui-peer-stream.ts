@@ -18,15 +18,19 @@
  * `session.saved`, for at most {@link PEER_SESSION_SETTLE_GRACE_MS} on the mount's clock. It then
  * sends the conversation as it stands, and the terminal event.
  *
- * A run parked on a human wait ends the stream with its interrupt, read from
- * `Bureau.pendingHumanWaitsOfRun`. A run that settled with a tool approval no process restored is
+ * A run parked on a human wait ends the stream with a `STATE_SNAPSHOT` naming its interrupt, and
+ * then the interrupt, read from `Bureau.pendingHumanWaitsOfRun` (COR-1615). Nothing durable that a
+ * peer can tail marks a park: the holder saves no session for it, the run's durable history records
+ * only its terminal events, and Weft's `signal:waiting` fires on the holder's engine alone. So the
+ * stream reads the run's waits again on each durable `session.saved`, and otherwise every
+ * {@link PEER_PARK_RECHECK_INTERVAL_MS} on the mount's clock, until the run parks or ends. A run that settled with a tool approval no process restored is
  * replayed from the session's `pendingApprovalOverrides` and conversation, and ends with the
  * approval's interrupt under its review id.
  *
  * @module ag-ui-peer-stream
  */
 
-import type { RuntimeServices } from '@lostgradient/lifecycle';
+import type { RuntimeServices, RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import type { AgentSession } from '@lostgradient/operative';
 import type { WorkflowState } from '@lostgradient/weft';
 import { type Event, EventType, type Interrupt } from '@ag-ui/core';
@@ -51,6 +55,14 @@ import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.t
  * run's end before it sends the conversation as it stands. Measured on the mount's clock.
  */
 export const PEER_SESSION_SETTLE_GRACE_MS = 2000;
+
+/**
+ * How often a peer's stream reads a run it follows for a human-wait park, between the durable
+ * `session.saved` events that also prompt a read. A park writes nothing a peer can subscribe to, so
+ * this bounds how long after a park the stream ends with its interrupt. Measured on the mount's
+ * clock.
+ */
+export const PEER_PARK_RECHECK_INTERVAL_MS = 500;
 
 /** What a peer's stream reads from the Bureau. */
 export type PeerStreamBureau = Pick<
@@ -318,10 +330,13 @@ async function tail(
 ): Promise<void> {
   const { bureau, nativeRunId } = context;
   const sessionSaves = new Changes();
+  const recheck = new ParkRecheck(context.timers);
   const sessionSubscription = bureau.subscribeEventHistory(
     { kind: 'session', id: context.threadId },
     (event) => {
-      if (event.kind === 'session.saved') sessionSaves.bump();
+      if (event.kind !== 'session.saved') return;
+      sessionSaves.bump();
+      recheck.wake();
     },
   );
   context.onDispose(() => sessionSubscription.unsubscribe());
@@ -334,6 +349,7 @@ async function tail(
   const ending = await new Promise<Ending>((resolve) => {
     const decide = (value: Ending): void => {
       decided = true;
+      recheck.stop();
       resolve(value);
     };
     context.onDispose(() => decide(undefined));
@@ -364,28 +380,101 @@ async function tail(
       bureau.waitForDurableRun(nativeRunId).then(fromStatus, () => undefined);
     }
 
-    // A run that parks while the stream follows it saves its session; each save is a reason to
-    // look again.
+    // A park writes nothing this process can subscribe to (see the module doc), so the waits are
+    // read again on each session save and, between saves, every PEER_PARK_RECHECK_INTERVAL_MS.
     void (async () => {
       for (;;) {
-        const next = sessionSaves.next();
         const waits = await humanWaitsOf(context);
         if (decided) return;
         if (waits.length > 0) {
           decide({ kind: 'parked', waits });
           return;
         }
-        await next;
+        await recheck.due();
         if (decided) return;
       }
     })();
   });
   if (ending === undefined || context.isEnded()) return;
   if (ending.kind === 'parked') {
-    context.interruptNow(ending.waits.map(toInterrupt));
+    await endParked(context, ending.waits);
     return;
   }
   await finishPeer(context, ending.terminal, sessionSaves);
+}
+
+/**
+ * When a peer tail next reads the run's waits. {@link ParkRecheck.due} resolves once
+ * {@link PEER_PARK_RECHECK_INTERVAL_MS} has passed on the mount's clock, on
+ * {@link ParkRecheck.wake} (a session save), or on {@link ParkRecheck.stop}, whichever is first. A
+ * wake that comes while no wait is pending, during a read, makes the next `due` resolve at once.
+ * At most one timer is pending, and none outlives the wait that armed it.
+ */
+class ParkRecheck {
+  private pending:
+    { readonly handle: RuntimeTimeoutHandle; readonly release: () => void } | undefined;
+  private woken = false;
+  private stopped = false;
+
+  constructor(private readonly timers: RuntimeServices['timers']) {}
+
+  async due(): Promise<void> {
+    if (this.stopped) return;
+    if (this.woken) {
+      this.woken = false;
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const handle = this.timers.setTimeout(() => this.clear(), PEER_PARK_RECHECK_INTERVAL_MS);
+      this.pending = { handle, release: resolve };
+    });
+  }
+
+  wake(): void {
+    if (this.pending === undefined) this.woken = true;
+    else this.clear();
+  }
+
+  stop(): void {
+    this.stopped = true;
+    this.clear();
+  }
+
+  private clear(): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    if (pending === undefined) return;
+    this.timers.clearTimeout(pending.handle);
+    pending.release();
+  }
+}
+
+/**
+ * Ends the stream on a run that parked while it followed it: the run's state, whose pending
+ * interrupts the opening snapshot could not name, then the interrupt.
+ */
+async function endParked(
+  context: PeerStreamContext,
+  waits: ReadonlyArray<PendingHumanWaitReview>,
+): Promise<void> {
+  const durable = await context.bureau.getDurableRun(context.nativeRunId).catch(() => undefined);
+  if (context.isEnded()) return;
+  context.writeEvents([
+    stamp(
+      {
+        type: EventType.STATE_SNAPSHOT,
+        snapshot: {
+          revision: 0,
+          status: durable?.status ?? 'running',
+          pendingInterruptIds: waits.map((review) => review.id),
+        },
+      },
+      context.stampContext,
+      { durable: false },
+    ),
+  ]);
+  if (context.isEnded()) return;
+  context.interruptNow(waits.map(toInterrupt));
 }
 
 /** Whether the session has recorded the run's end. */

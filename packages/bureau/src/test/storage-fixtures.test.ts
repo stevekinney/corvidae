@@ -1,8 +1,8 @@
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdir, stat, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
@@ -390,7 +390,7 @@ describe('createMemoryStorageFixture', () => {
 });
 
 describe('createSqliteStorageFixture', () => {
-  it('allocates a unique path derived from the runtime identifier sequence, never Math.random or a wall clock', () => {
+  it('allocates a unique path in a fresh temporary directory, named from the runtime identifier sequence', async () => {
     const runtime = createManualRuntimeServices();
 
     const first = createSqliteStorageFixture({ runtime });
@@ -403,9 +403,13 @@ describe('createSqliteStorageFixture', () => {
     expect(second.path).toContain('storage-fixture-2');
     expect(first.configuration).toEqual({ type: 'sqlite', path: first.path! });
     expect(first.owned).toBe(true);
+    expect(dirname(first.path!)).not.toBe(dirname(second.path!));
+
+    await first.dispose();
+    await second.dispose();
   });
 
-  it('gives two independent runtimes distinct paths despite each identifier sequence starting at 1', () => {
+  it('gives two independent runtimes distinct paths despite each identifier sequence starting at 1', async () => {
     const runtimeA = createManualRuntimeServices();
     const runtimeB = createManualRuntimeServices();
 
@@ -413,6 +417,9 @@ describe('createSqliteStorageFixture', () => {
     const fixtureB = createSqliteStorageFixture({ runtime: runtimeB });
 
     expect(fixtureA.path).not.toBe(fixtureB.path);
+
+    await fixtureA.dispose();
+    await fixtureB.dispose();
   });
 
   it('deletes only a path it allocated itself', async () => {
@@ -421,11 +428,16 @@ describe('createSqliteStorageFixture', () => {
     const path = fixture.path!;
 
     await writeFile(path, '');
+    await writeFile(`${path}-wal`, '');
+    await writeFile(`${path}-shm`, '');
     expect(await pathExists(path)).toBe(true);
 
     await fixture.dispose();
 
     expect(await pathExists(path)).toBe(false);
+    expect(await pathExists(`${path}-wal`)).toBe(false);
+    expect(await pathExists(`${path}-shm`)).toBe(false);
+    expect(await pathExists(dirname(path))).toBe(false);
   });
 
   it('is idempotent: disposing an owned fixture twice does not throw', async () => {
@@ -438,7 +450,7 @@ describe('createSqliteStorageFixture', () => {
 
   it('never deletes a caller-supplied path', async () => {
     const runtime = createManualRuntimeServices();
-    const callerPath = join(tmpdir(), `bureau-caller-owned-sqlite-${process.pid}.sqlite`);
+    const callerPath = createTemporaryPath('bureau-caller-owned-sqlite', '.sqlite');
     await writeFile(callerPath, '');
 
     try {
@@ -452,20 +464,22 @@ describe('createSqliteStorageFixture', () => {
 
       expect(await pathExists(callerPath)).toBe(true);
     } finally {
-      await rm(callerPath, { force: true });
+      removeTemporaryPath(callerPath);
     }
   });
 
-  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', () => {
+  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createSqliteStorageFixture({ runtime });
 
     expect(fixture.openHandles()).toEqual([]);
+
+    await fixture.dispose();
   });
 });
 
 describe('createLmdbStorageFixture', () => {
-  it('allocates a unique directory path derived from the runtime identifier sequence', () => {
+  it('allocates a unique directory path derived from the runtime identifier sequence', async () => {
     const runtime = createManualRuntimeServices();
 
     const first = createLmdbStorageFixture({ runtime });
@@ -478,9 +492,12 @@ describe('createLmdbStorageFixture', () => {
       durability: 'full',
     });
     expect(first.owned).toBe(true);
+
+    await first.dispose();
+    await second.dispose();
   });
 
-  it('allows an isolation test to select relaxed durability explicitly', () => {
+  it('allows an isolation test to select relaxed durability explicitly', async () => {
     const fixture = createLmdbStorageFixture({
       runtime: createManualRuntimeServices(),
       durability: 'relaxed',
@@ -491,6 +508,8 @@ describe('createLmdbStorageFixture', () => {
       path: fixture.path!,
       durability: 'relaxed',
     });
+
+    await fixture.dispose();
   });
 
   it('deletes only a directory it allocated itself', async () => {
@@ -509,7 +528,7 @@ describe('createLmdbStorageFixture', () => {
 
   it('never deletes a caller-supplied directory', async () => {
     const runtime = createManualRuntimeServices();
-    const callerPath = join(tmpdir(), `bureau-caller-owned-lmdb-${process.pid}`);
+    const callerPath = createTemporaryPath('bureau-caller-owned-lmdb');
     await mkdir(callerPath, { recursive: true });
 
     try {
@@ -521,7 +540,7 @@ describe('createLmdbStorageFixture', () => {
 
       expect(await pathExists(callerPath)).toBe(true);
     } finally {
-      await rm(callerPath, { recursive: true, force: true });
+      removeTemporaryPath(callerPath);
     }
   });
 
@@ -533,10 +552,12 @@ describe('createLmdbStorageFixture', () => {
     await fixture.dispose();
   });
 
-  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', () => {
+  it('openHandles() always returns empty — this fixture never opens its own handle (see the module doc)', async () => {
     const runtime = createManualRuntimeServices();
     const fixture = createLmdbStorageFixture({ runtime });
 
     expect(fixture.openHandles()).toEqual([]);
+
+    await fixture.dispose();
   });
 });
