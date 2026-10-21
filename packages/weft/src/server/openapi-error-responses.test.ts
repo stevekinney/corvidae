@@ -105,7 +105,7 @@ describe('OpenAPI error responses', () => {
 
   it('includes operation-specific statuses in addition to universal defaults', () => {
     expect(Object.keys(buildErrorResponses(operation(['Conflict', 'Timeout']))).toSorted()).toEqual(
-      ['400', '401', '403', '408', '409', '500'],
+      ['400', '401', '403', '409', '500', '504'],
     );
   });
 
