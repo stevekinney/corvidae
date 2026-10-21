@@ -393,3 +393,56 @@ export type UpdateMap = Record<string, { readonly name: string }>;
  * ```
  */
 export type QueryMap = Record<string, { readonly name: string }>;
+
+// ---------------------------------------------------------------------------
+// Merging a workflow's own entries onto shared ones (`createWorkflowFactory`)
+// ---------------------------------------------------------------------------
+
+/**
+ * The map a chain method produces when a builder already carries entries, as a
+ * builder from `createWorkflowFactory(...).workflow()` does: the builder's
+ * existing entries plus the ones the call adds. A fresh `workflow({ name })`
+ * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. A builder typed
+ * with a wide `Record<string, ...>` map keeps the old replace semantics, since
+ * there are no known names to merge.
+ *
+ * @example
+ * ```ts
+ * import type { MergeMaps } from '@lostgradient/weft';
+ *
+ * type Merged = MergeMaps<{ shared: 1 }, { own: 2 }>;
+ * const merged: Merged = { shared: 1, own: 2 };
+ * void merged;
+ * ```
+ */
+export type MergeMaps<TBase, TAdded> = string extends keyof TBase
+  ? TAdded
+  : {
+      [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
+        ? TAdded[K]
+        : K extends keyof TBase
+          ? TBase[K]
+          : never;
+    };
+
+/**
+ * Constraint a chain method intersects with its argument so that an entry
+ * whose name the builder already carries fails to compile. Each taken name maps
+ * to a message type no activity, signal, update, or query satisfies, so the
+ * error names the conflict. Resolves to `{}` (no constraint) for a fresh
+ * builder and for one typed with a wide `Record<string, ...>` map.
+ *
+ * @example
+ * ```ts
+ * import type { DisjointFrom } from '@lostgradient/weft';
+ *
+ * type Taken = DisjointFrom<{ greet: unknown }>;
+ * const fine: Taken = {};
+ * void fine;
+ * ```
+ */
+export type DisjointFrom<TTaken> = string extends keyof TTaken
+  ? {}
+  : {
+      readonly [K in keyof TTaken & string]?: `"${K}" is already declared on this workflow`;
+    };

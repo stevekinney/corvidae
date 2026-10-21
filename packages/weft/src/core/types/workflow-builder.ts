@@ -20,6 +20,8 @@ import type { SearchAttributeSchema } from './search-attributes.ts';
 import type {
   ActivityMap,
   ActivityMapInput,
+  DisjointFrom,
+  MergeMaps,
   NormalizeActivities,
   QueryMap,
   SignalMap,
@@ -178,17 +180,6 @@ export type MarkBuilderState<S extends BuilderState, K extends keyof BuilderStat
       readonly [P in keyof S]: P extends K ? true : S[P];
     };
 
-/**
- * Combine the activity tables `.activities()` and `.uses()` each contribute,
- * in either call order. A builder that has not declared any activities yet
- * carries `{}`, which is returned unchanged so a single declaration keeps its
- * exact normalized type.
- */
-type MergeActivities<
-  TExisting extends ActivityMap,
-  TAdded extends ActivityMap,
-> = keyof TExisting extends never ? TAdded : TExisting & TAdded;
-
 // ---------------------------------------------------------------------------
 // Engine name-conflict guard (used by Engine.register's type signature)
 // ---------------------------------------------------------------------------
@@ -285,11 +276,11 @@ export interface WorkflowBuilder<
    */
   activities: TState['activities'] extends true
     ? never
-    : <TInput extends ActivityMapInput>(
+    : <TInput extends ActivityMapInput & DisjointFrom<TActivities>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        MergeActivities<TActivities, NormalizeActivities<TInput>>,
+        MergeMaps<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -324,11 +315,11 @@ export interface WorkflowBuilder<
    */
   uses: TState['uses'] extends true
     ? never
-    : <TInput extends UsesMapInput>(
+    : <TInput extends UsesMapInput & DisjointFrom<TActivities>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
-        MergeActivities<TActivities, NormalizeActivities<TInput>>,
+        MergeMaps<TActivities, NormalizeActivities<TInput>>,
         TSignals,
         TUpdates,
         TQueries,
@@ -359,12 +350,12 @@ export interface WorkflowBuilder<
    */
   signals: TState['signals'] extends true
     ? never
-    : <TInput extends SignalMap>(
+    : <TInput extends SignalMap & DisjointFrom<TSignals>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
-        TInput,
+        MergeMaps<TSignals, TInput>,
         TUpdates,
         TQueries,
         TSearchAttributes,
@@ -391,13 +382,13 @@ export interface WorkflowBuilder<
    */
   updates: TState['updates'] extends true
     ? never
-    : <TInput extends UpdateMap>(
+    : <TInput extends UpdateMap & DisjointFrom<TUpdates>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
-        TInput,
+        MergeMaps<TUpdates, TInput>,
         TQueries,
         TSearchAttributes,
         MarkBuilderState<TState, 'updates'>,
@@ -423,14 +414,14 @@ export interface WorkflowBuilder<
    */
   queries: TState['queries'] extends true
     ? never
-    : <TInput extends QueryMap>(
+    : <TInput extends QueryMap & DisjointFrom<TQueries>>(
         map: TInput,
       ) => WorkflowBuilder<
         TName,
         TActivities,
         TSignals,
         TUpdates,
-        TInput,
+        MergeMaps<TQueries, TInput>,
         TSearchAttributes,
         MarkBuilderState<TState, 'queries'>,
         TServices

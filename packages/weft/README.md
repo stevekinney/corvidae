@@ -117,6 +117,41 @@ When recovery also needs to rebuild live host surfaces such as progress emitters
 
 > [!NOTE] The chained builder also accepts `.uses({...})`, `.signals({...})`, `.updates({...})`, `.queries({...})`, and `.searchAttributes({...})`. Each can be called at most once before `.execute(fn)`; the type system flips a phantom flag so a duplicate call fails to typecheck, and the runtime mirrors the same invariant. These maps thread into `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and friends so your editor autocompletes and your code typechecks, and they put the workflow's full surface in its contract and the registry. `.uses({ greet })` declares an activity the engine provides (registered with `Engine.create({ activities })` or `engine.register(activity)`): dispatch still runs the engine's implementation, the workflow's contract lists it under `usedActivities`, and the registry snapshot names the workflow in that activity's `usedBy`. Declaring signals, updates, or queries closes that set: a message of that kind under any other name is rejected with `UndeclaredWorkflowMessageError` before it is buffered or dispatched. A workflow that declares none of a kind accepts any name of that kind.
 
+When several workflows use the same activities or messages, declare them once with `createWorkflowFactory` and build the workflows from the `workflow` it returns. Every workflow it builds gets typed `ctx.run()`, `ctx.waitForSignal()`, `ctx.waitForUpdate()`, and `ctx.onQuery()` for the shared entries. Shared activities are declared on each workflow as if by `.uses({...})`, so they are engine-provided: create the engine with the factory's `createEngine`, which registers the workflows and the shared activities in one call.
+
+```typescript
+import { activity, createWorkflowFactory, signal } from '@lostgradient/weft';
+
+const formatGreeting = activity({
+  name: 'formatGreeting',
+  execute: async (name: string) => `Hello, ${name}!`,
+});
+
+const { workflow, createEngine } = createWorkflowFactory({
+  activities: { formatGreeting },
+  signals: { approve: signal<{ approverId: string }>('approve') },
+});
+
+const welcome = workflow({ name: 'welcome' })
+  .activities({ shout: async (text: string) => text.toUpperCase() })
+  .execute(async function* (ctx, name: string) {
+    const greeting = yield* ctx.run('formatGreeting', name);
+    const { approverId } = yield* ctx.waitForSignal('approve');
+    return { greeting: yield* ctx.run('shout', greeting), approverId };
+  });
+
+const farewell = workflow({ name: 'farewell' }).execute(async function* (ctx, name: string) {
+  return yield* ctx.run('formatGreeting', name);
+});
+
+const engine = await createEngine({ workflows: { welcome, farewell } });
+```
+
+- A workflow can add its own entries with `.activities({...})` for workflow-scoped activities, `.uses({...})` for more engine-provided ones (pass those to `createEngine` as `activities`), and `.signals({...})`, `.updates({...})`, and `.queries({...})`. They merge with the shared ones.
+- A name the factory already declares cannot be declared again, in any of those methods. That is a type error and a `WorkflowBuilderError` at runtime, so a shared name means the same thing in every workflow. The same holds for any builder: a name declared with `.uses()` cannot also be scoped with `.activities()`.
+- Declared signals, updates, and queries are closed sets, so the factory's declarations close each set for every workflow it builds: a message under a name that neither the factory nor the workflow declares is rejected with `UndeclaredWorkflowMessageError`.
+- `createEngine` accepts everything `Engine.create` does. Before it creates the engine, it checks that every activity any of its workflows declares with `.uses()` is provided, and throws `ActivityResolutionError` if one is not. An engine created another way, such as `Engine.create({ workflows })` without the shared activities, fails each run that reaches a missing activity with `No activity registered with name …`. If you create the engine yourself, pass `activities: factory.activities`.
+
 > [!NOTE] `MemoryStorage` (also exported from `@lostgradient/weft`) is fine for tests and ephemeral scripts, but it lives in process memory—a crash takes the checkpoints with it. Use a persistent backend like `SQLiteStorage` whenever durability actually matters.
 
 ## How It Works

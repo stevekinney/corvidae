@@ -79,7 +79,10 @@ describe('workflow builder .uses()', () => {
   });
 
   it('rejects a name declared in both .activities() and .uses()', () => {
-    const builder = workflow({ name: 'w' }).activities({ greet }).uses({ greet });
+    // A type error too; the cast reaches the runtime check untyped callers hit.
+    const builder = workflow({ name: 'w' })
+      .activities({ greet })
+      .uses({ greet } as never) as unknown as { execute: (body: unknown) => unknown };
     expect(() => builder.execute(welcomeBody())).toThrow(/both \.activities\(\) and \.uses\(\)/);
   });
 
