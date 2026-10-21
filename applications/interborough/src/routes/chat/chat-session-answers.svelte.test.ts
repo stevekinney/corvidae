@@ -6,7 +6,12 @@
  * `renderSignalContinuation` writes. The page then shows each answer once, as it was typed, and
  * sends the agent none of them a second time.
  */
+import {
+  RESUME_ATTEMPT_FAILED_MESSAGES,
+  RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+} from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
+
 import { CHAT_COPY } from '../../app/copy.ts';
 
 import type { Fetcher } from '../../lib/bureau-client.ts';
@@ -320,33 +325,31 @@ describe('a RUN_FAILED refusal of a resume', () => {
     return { mounted, session: open(mounted.fetch) };
   };
 
-  test.each([
-    'The answers could not be applied; answer the interrupts again',
-    'Some of the answers could not be applied; answer the interrupts again',
-    'The approvals were applied, but the run that continues from them could not be started; send a new message to continue the thread',
-  ])('is told when an attempt failed, though the run is still parked: %s', async (message) => {
-    const { mounted, session } = parked(message);
-    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
-    await session.adapter
-      .sendMessage({ role: 'user', content: 'staging' }, [])
-      .catch(() => undefined);
-    await afterReread(session, mounted.requests);
+  test.each(Object.values(RESUME_ATTEMPT_FAILED_MESSAGES))(
+    'is told when an attempt failed, though the run is still parked: %s',
+    async (message) => {
+      const { mounted, session } = parked(message);
+      await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+      await session.adapter
+        .sendMessage({ role: 'user', content: 'staging' }, [])
+        .catch(() => undefined);
+      await afterReread(session, mounted.requests);
 
-    expect(session.failure).toBe(message);
-  });
+      expect(session.failure).toBe(message);
+    },
+  );
 
-  test.each([
-    'An earlier attempt at this resume is still being applied; try again shortly',
-    'Another attempt at this resume is in progress; try again',
-    'This resume lost its lease to another attempt before it finished; try again',
-  ])('is not told while an earlier attempt is still applying it: %s', async (message) => {
-    const { mounted, session } = parked(message);
-    await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
-    await session.adapter
-      .sendMessage({ role: 'user', content: 'staging' }, [])
-      .catch(() => undefined);
-    await afterReread(session, mounted.requests);
+  test.each(Object.values(RESUME_ATTEMPT_STILL_GOING_MESSAGES))(
+    'is not told while an earlier attempt is still applying it: %s',
+    async (message) => {
+      const { mounted, session } = parked(message);
+      await session.adapter.sendMessage({ role: 'user', content: 'Ship it' }, []);
+      await session.adapter
+        .sendMessage({ role: 'user', content: 'staging' }, [])
+        .catch(() => undefined);
+      await afterReread(session, mounted.requests);
 
-    expect(session.failure).toBeUndefined();
-  });
+      expect(session.failure).toBeUndefined();
+    },
+  );
 });

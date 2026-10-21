@@ -198,31 +198,20 @@ export class ChatSessionState {
   }
 
   /**
-   * Sends again what a refused resume kept, before the message the person has just typed, by
-   * retrying the row the refusal marked failed. A resume that is still refused leaves the message
-   * unsent and says so, so the chat keeps what was typed.
+   * Sends again what a refused resume kept, before the message the person has just typed. The
+   * wiring holds every entry, so the resume is a turn of its own over a hidden row, as the attach
+   * is, and needs no row of the person's to carry it. When what is owed leaves a question without an
+   * answer, nothing is sent here: the message is that answer. A resume that is still refused leaves
+   * the message unsent and says so, so the chat keeps what was typed.
    */
   async #repeatOwedResume(): Promise<void> {
-    if (!this.#wiring.owesResume()) return;
-    const failed = this.#failedRow();
-    if (failed !== undefined) {
-      await this.controller.adapter.retryMessage?.(failed).catch(() => undefined);
-      // A refusal is answered by reading the thread again, which decides what is still owed.
-      await this.#attachment;
-    }
+    if (!this.#wiring.owesResume() || this.#wiring.owedResumeIncomplete()) return;
+    await this.controller.adapter
+      .sendMessage({ role: 'user', content: '', hidden: true }, [])
+      .catch(() => undefined);
+    // A refusal is answered by reading the thread again, which decides what is still owed.
+    await this.#attachment;
     if (this.#wiring.owesResume()) throw new Error(CHAT_COPY.answersNotApplied);
-  }
-
-  /** The latest row of the person's that was marked failed, which is the turn a refusal ended. */
-  #failedRow(): string | undefined {
-    const { ids, messages } = this.conversation;
-    for (let index = ids.length - 1; index >= 0; index -= 1) {
-      const message = messages[ids[index]!];
-      if (message?.role === 'user' && message.metadata?.['_deliveryStatus'] === 'failed') {
-        return message.id;
-      }
-    }
-    return undefined;
   }
 
   /**

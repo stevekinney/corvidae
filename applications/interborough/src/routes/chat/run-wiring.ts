@@ -189,6 +189,12 @@ export type ChatRunWiring = {
    */
   owesResume(): boolean;
   /**
+   * Whether what a refused resume still owes leaves an interrupt without an entry, so the person's
+   * next message is the missing answer and completes it. When it is complete, the resume is sent as
+   * a turn of its own, from the entries held, before anything new.
+   */
+  owedResumeIncomplete(): boolean;
+  /**
    * The rows holding answers that no resume owes any longer, once: the mount took them, or the
    * question they answered is gone. The run holds each answer as a row of its own, so the typed
    * rows are dropped from the conversation, and no later start sends one a second time.
@@ -735,6 +741,15 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     if (last?.role === 'user' && !isFollowUp(last) && !held.has(last.id)) {
       if (holdAnswer(textOf(last), last.id)) held.add(last.id);
     }
+    const { entries, incomplete } = entriesOwed();
+    return { entries, answerRowIds: held, incomplete };
+  }
+
+  /** The entries held for the interrupts the run waits on, and whether one of them has none yet. */
+  function entriesOwed(): {
+    readonly entries: readonly ResumeEntry[];
+    readonly incomplete: boolean;
+  } {
     const answerable = interrupts.filter(
       (interrupt) =>
         interrupt.reason === 'human-wait' ||
@@ -743,11 +758,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     const entries = answerable.flatMap(
       (interrupt) => decisions.get(interrupt.id) ?? answers.get(interrupt.id)?.entry ?? [],
     );
-    return {
-      entries,
-      answerRowIds: held,
-      incomplete: entries.length > 0 && entries.length < answerable.length,
-    };
+    return { entries, incomplete: entries.length > 0 && entries.length < answerable.length };
   }
 
   function runInput(
@@ -993,6 +1004,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     holdAnswer,
     owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
+    owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete,
     takeSettledAnswerRows() {
       return settledAnswerRows.splice(0);
     },
