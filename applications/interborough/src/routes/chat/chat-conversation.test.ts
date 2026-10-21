@@ -232,6 +232,8 @@ describe('an existing session', () => {
     await waitFor(() => expect(container.querySelector('a[href="/tasks/run-7"]')).not.toBeNull());
     expect(stub.calls.find((call) => call.method === 'bureau.tasks.list')?.params).toEqual({
       contextId: 'session-1',
+      limit: 50,
+      offset: 0,
     });
   });
 

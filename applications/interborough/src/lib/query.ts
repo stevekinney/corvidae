@@ -132,7 +132,7 @@ export const queryKeys = {
     list: (filter: { agentName?: string; status?: string; contextId?: string }) =>
       ['bureau-tasks', 'list', filter] as const,
     detail: (taskId: string) => ['bureau-tasks', 'detail', taskId] as const,
-    /** The tasks of one chat session, read whole. It is apart from `list`, which pages. */
+    /** The tasks of one chat session, paged like `list` but under the session's own entry. */
     ofSession: (contextId: string) => ['bureau-tasks', 'session', contextId] as const,
   },
   /** The Bureau's reviews (`bureau.reviews.*`), apart from `reviews`, which is the engine's. */

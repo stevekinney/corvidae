@@ -134,7 +134,10 @@ function dataForNotFound(
 function dataForTimeout(
   data: Extract<OperationFault, { code: 'Timeout' }>['data'],
 ): Record<string, unknown> {
-  return data.operationName === undefined ? {} : { operationName: data.operationName };
+  return {
+    ...(data.operationName === undefined ? {} : { operationName: data.operationName }),
+    ...(data.updateId === undefined ? {} : { updateId: data.updateId }),
+  };
 }
 
 function dataForUnsupportedTransport(

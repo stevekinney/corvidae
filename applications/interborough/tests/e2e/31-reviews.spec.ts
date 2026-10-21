@@ -233,6 +233,29 @@ test.describe('a scheduled run’s human wait', () => {
   });
 });
 
+test.describe('a Bureau that fails', () => {
+  test('leaves the engine’s reviews on the page, with the Bureau’s own banner beside them', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.route('**/bureau/jsonrpc', async (route) => {
+      if ((route.request().postData() ?? '').includes('"bureau.reviews.list"')) {
+        await route.fulfill({ status: 500, json: { error: 'The Bureau broke.' } });
+        return;
+      }
+      await route.fallback();
+    });
+
+    await page.goto('/reviews');
+
+    await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
+    await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
+    // The engine's seeded reviews are still listed beside it.
+    await expect(page.locator('.weft-reviews-inbox__list > li').first()).toBeVisible();
+    await checkA11y('the inbox with the Bureau failing');
+  });
+});
+
 /** What is waiting, as the two services say it: the Bureau's reviews and the engine's pending ones. */
 async function waitingCount(request: APIRequestContext): Promise<number> {
   const bureau = (await bureauCall(request, 'bureau.reviews.list', {})) as {

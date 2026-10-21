@@ -111,6 +111,23 @@ export const WORKFLOW_RECORD_KEYS_EXTENDED = {
   update: (workflowId: string, updateId: string) =>
     `upd:${encodeStorageKeyComponent(workflowId)}:${updateId}`,
   updateResponse: (updateId: string) => `upr:${updateId}`,
+  /**
+   * The per-workflow update-history record (COR-1463): one entry per update the
+   * workflow has received through the durable request path, written `pending` in
+   * the same batch as the request and replaced by the outcome in the response's
+   * batch. Unlike `upd:` (deleted on answer) and `upr:` (swept after five
+   * minutes), it outlives both: terminal cleanup never sweeps it and only a
+   * purge removes it.
+   *
+   * The key is `uph:<workflowId>:<receivedAt>:<updateId>`, with `receivedAt` as a
+   * sixteen-digit sortable timestamp, so a reverse scan lists the newest update
+   * first and the `<receivedAt>:<updateId>` suffix is a stable paging cursor.
+   * The answer replaces the entry by minting the identical key, which is why the
+   * response's batch must carry the request's own `receivedAt`.
+   */
+  updateHistoryPrefix: (workflowId: string) => `uph:${encodeStorageKeyComponent(workflowId)}:`,
+  updateHistory: (workflowId: string, receivedAt: number, updateId: string) =>
+    `uph:${encodeStorageKeyComponent(workflowId)}:${formatSortableTimestamp(receivedAt)}:${updateId}`,
   updateIdempotency: (workflowId: string, key: string) =>
     `upk:${encodeStorageKeyComponent(workflowId)}:${key}`,
   /**
