@@ -58,7 +58,7 @@ function openFollower(
   history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
   overrides: {
     closeReview?: (runId: string, reviewId: string, kind: string) => Promise<void>;
-    reread?: (runId: string) => Promise<void>;
+    reread?: (runId: string) => Promise<number | undefined>;
     diagnostics?: BureauDiagnostic[];
     retryDelayMilliseconds?: number;
   } = {},
@@ -76,6 +76,7 @@ function openFollower(
       overrides.reread ??
       (async (runId) => {
         reread.push(runId);
+        return undefined;
       }),
     now: () => Date.now(),
     timers: {
