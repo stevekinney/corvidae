@@ -301,6 +301,12 @@ export interface EngineInternals {
    * `purge-write-tracking.ts`. Never cleared by disposal.
    */
   inFlightPurgeWrites: Set<Promise<unknown>>;
+  /** The top-level operation each inline run's handler turn is processing (COR-1597). */
+  inFlightOperations: Map<string, import('./in-flight-operation.ts').InFlightOperation>;
+  /** Terminated runs whose result waits for their in-flight activity (COR-1597). */
+  pendingTerminalSettlements: Set<
+    import('./terminal-settlement-pending.ts').PendingTerminalSettlement
+  >;
   nextRetentionSweepAt: number | null;
   /** Interval driving the best-effort second-instance detector; `null` when off. */
   secondInstanceDetectionInterval: ReturnType<typeof setInterval> | null;

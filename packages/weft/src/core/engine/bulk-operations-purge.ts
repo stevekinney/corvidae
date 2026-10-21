@@ -15,9 +15,11 @@ import { EngineDisposedError } from './errors.ts';
 import type { EngineInternals } from './internals.ts';
 import { streamWorkflowStates } from './listing.ts';
 import { commitPurgeOrExplainLoss, isScannedRun } from './purge-supersession.ts';
+import { drainUpdateHistory } from './purge-update-history.ts';
+import { addUpdateDeleteKeys } from './purge-update-keys.ts';
 import { markPurgeWriteFailures } from './purge-write-tracking.ts';
 import { recordResultCommitter } from './result-committer.ts';
-import { waiterBelongsToRun } from './result-waiter-run.ts';
+import { pendingTerminalSettlementFor, waiterBelongsToRun } from './result-waiter-run.ts';
 import { streamExpiredRetentionWorkflowStates } from './retention-scan.ts';
 import { decodeScheduleRunMetadata } from './schedule-run-metadata.ts';
 import { createTerminalCleanupTimerId } from './state-utilities.ts';
@@ -177,7 +179,8 @@ export async function purgeWorkflow(
  * index deletes (search attributes + tags), the explicit key set (state,
  * checkpoint, headers, services marker, update requests/responses, and the
  * `wf:`/`ev:`/`sig:`/... prefix sweeps), and the visibility-index transition to
- * `null`. Pure: it reads storage to discover keys but writes nothing, so a caller
+ * `null`. It reads storage to discover keys and writes nothing but the run's update history
+ * (removed in bounded batches first, {@link drainUpdateHistory}), so a caller
  * can fold the returned ops into a larger atomic batch instead of committing them
  * standalone. {@link purgeWorkflow} commits them on their own; the
  * `onTerminalConflict: 'start-new'` restart path prepends them to the create batch
@@ -190,6 +193,9 @@ export async function collectWorkflowPurgeDeleteOperations(
   state: WorkflowState,
 ): Promise<BatchOperation[]> {
   const workflowId = state.id;
+  // The one thing this does write: the update history has no bound, so it is removed in batches of its
+  // own first (see `drainUpdateHistory`), and what is left folds into the atomic batch below.
+  await drainUpdateHistory(internals, state);
   const attributeBytes = await internals.storage.get(KEYS.attribute(workflowId));
   const deleteOperations = buildWorkflowIndexDeleteOperations(state, attributeBytes);
   const deleteKeys = await collectWorkflowPurgeDeleteKeys(internals, state);
@@ -262,6 +268,9 @@ function settleAndForgetPurgedResultWaiter(internals: EngineInternals, state: Wo
   // Bound to a different run than the one purged: it is the replacement's (or an older run's
   // that the result poll retires), so this record's outcome is not its to receive.
   if (!waiterBelongsToRun(waiter, state.workflowExecutionToken)) return;
+  // A terminated run's result is held for its in-flight activity (COR-1597): the settlement that
+  // holds it rejects it, with the same terminal error, once the activity has landed.
+  if (pendingTerminalSettlementFor(internals, state.id, waiter) !== undefined) return;
   internals.resultResolvers.delete(state.id);
   recordResultCommitter(waiter, state.terminalCommittedBy);
   try {
@@ -311,7 +320,7 @@ async function collectWorkflowPurgeDeleteKeys(
   addExecutionDeadlineDeleteKeys(deleteKeys, state);
   addTerminalCleanupDeleteKey(deleteKeys, state);
   await addScheduleRunHistoryDeleteKeys(internals.storage, deleteKeys, workflowId);
-  await addUpdateRequestDeleteKeys(internals.storage, deleteKeys, workflowId);
+  await addUpdateDeleteKeys(internals.storage, deleteKeys, workflowId);
   await addWorkflowPrefixDeleteKeys(internals.storage, deleteKeys, workflowId);
   return deleteKeys;
 }
@@ -392,28 +401,6 @@ function addTerminalCleanupDeleteKey(deleteKeys: Set<string>, state: WorkflowSta
 
 function shouldCleanupTerminalOutputArtifacts(state: WorkflowState): boolean {
   return state.status === 'cancelled' || state.status === 'timed-out';
-}
-
-async function addUpdateRequestDeleteKeys(
-  storage: WeftStorage,
-  deleteKeys: Set<string>,
-  workflowId: string,
-): Promise<void> {
-  const updateRequestPrefix = KEYS.updatePrefix(workflowId);
-  const updateRequestKeys = await collectKeysForPrefix(storage, updateRequestPrefix);
-  for (const key of updateRequestKeys) {
-    deleteKeys.add(key);
-    addUpdateResponseDeleteKey(deleteKeys, updateRequestPrefix, key);
-  }
-}
-
-function addUpdateResponseDeleteKey(
-  deleteKeys: Set<string>,
-  updateRequestPrefix: string,
-  updateRequestKey: string,
-): void {
-  const updateId = updateRequestKey.slice(updateRequestPrefix.length);
-  if (updateId.length > 0) deleteKeys.add(KEYS.updateResponse(updateId));
 }
 
 async function addWorkflowPrefixDeleteKeys(

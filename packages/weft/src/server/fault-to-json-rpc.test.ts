@@ -310,6 +310,16 @@ describe('faultToJsonRpcError', () => {
     expect(error.data['resource']).toBe('workflow');
   });
 
+  it('Timeout carries the update id of a timed-out update', () => {
+    const error = faultToJsonRpcError({
+      code: 'Timeout',
+      message: 'timed out',
+      data: { updateId: 'update-1' },
+    });
+    expect(error.data['updateId']).toBe('update-1');
+    expect('operationName' in error.data).toBe(false);
+  });
+
   it('Timeout with operationName: undefined produces minimal data', () => {
     const fault: OperationFault = {
       code: 'Timeout',

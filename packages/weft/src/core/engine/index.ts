@@ -337,6 +337,7 @@ import {
 import {
   deliverCoordinatedUpdateToWaiterIfAvailable as deliverCoordinatedUpdateToWaiterIfAvailableFromInternals,
   getUpdateResult as getUpdateResultFromInternals,
+  listUpdateHistory as listUpdateHistoryFromInternals,
   submitCoordinatedUpdate as submitCoordinatedUpdateFromInternals,
   update as updateFromInternals,
   type UpdateCallbacks,
@@ -940,6 +941,8 @@ export class Engine<
     getInternals(this).retentionSweepInterval = null;
     getInternals(this).retentionSweepInFlight = null;
     getInternals(this).inFlightPurgeWrites = new Set();
+    getInternals(this).inFlightOperations = new Map();
+    getInternals(this).pendingTerminalSettlements = new Set();
     getInternals(this).nextRetentionSweepAt = null;
     getInternals(this).secondInstanceDetectionInterval = null;
     getInternals(this).secondInstanceDetector = null;
@@ -3073,6 +3076,16 @@ export class Engine<
   }
   async getUpdateResult(updateId: string): Promise<import('../updates.ts').UpdateResponse | null> {
     return getUpdateResultFromInternals(getInternals(this), updateId);
+  }
+  /**
+   * List the updates a workflow has received through the durable request path, newest first,
+   * kept until the workflow is purged. See `UpdateHistoryEntry`.
+   */
+  async listUpdateHistory(
+    workflowId: string,
+    options?: { limit?: number; cursor?: string },
+  ): Promise<import('../update-history.ts').UpdateHistoryPage> {
+    return listUpdateHistoryFromInternals(getInternals(this), workflowId, options);
   }
   async submitCoordinatedUpdate(
     workflowId: string,

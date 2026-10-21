@@ -57,6 +57,7 @@ function createInternals(
     },
     pendingAsyncActivities: new Map(),
     pendingAsyncActivityResolutions: new Map(),
+    pendingTerminalSettlements: new Set(),
     registrations: new Map(),
     resultResolvers: new Map(),
     storage,

@@ -30,6 +30,8 @@
 
   import { queryKeys } from '../../../lib/query.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
+  import AttributesPanel from './attributes/attributes-panel.svelte';
+  import type { AttributesClient } from './attributes/attributes-data.ts';
   import {
     classifyRevisionAgainstActive,
     type WorkflowCatalogActivePointerLike,
@@ -42,7 +44,8 @@
   interface OverviewTabProps {
     readonly client: Pick<HttpClient, 'addTags' | 'removeTags' | 'get' | 'list'> & {
       readonly operations: Pick<HttpClient['operations'], 'weft.workflows.scheduleprovenance.get'> &
-        WorkflowActiveRevisionClient['operations'];
+        WorkflowActiveRevisionClient['operations'] &
+        Partial<AttributesClient['operations']>;
     };
     readonly workflow: WorkflowState;
     /**
@@ -58,6 +61,12 @@
     readonly activeRevision?: WorkflowCatalogActivePointerLike | null | undefined;
     /** Whether the principal holds `tags:write`, which adding and removing tags requires; open when omitted. */
     readonly tagGate?: ScopeGate | undefined;
+    /**
+     * What the principal may do with the run's search attributes (COR-1461). Omitted, the section does
+     * not render; given, it renders only for `canRead`, and offers edits only for `canWrite`.
+     */
+    readonly attributeAccess?:
+      { readonly canRead: boolean; readonly canWrite: boolean } | undefined;
   }
 
   let {
@@ -65,7 +74,21 @@
     workflow,
     activeRevision,
     tagGate = { disabled: false, title: undefined },
+    attributeAccess,
   }: OverviewTabProps = $props();
+
+  const attributesClient = $derived.by((): AttributesClient | undefined => {
+    const get = client.operations['weft.workflows.attributes.get'];
+    const set = client.operations['weft.workflows.attributes.set'];
+    return get === undefined || set === undefined
+      ? undefined
+      : {
+          operations: {
+            'weft.workflows.attributes.get': get,
+            'weft.workflows.attributes.set': set,
+          },
+        };
+  });
 
   const REVISION_COMPARISON_SUFFIX: Readonly<Record<'active' | 'stale' | 'unknown', string>> = {
     active: ' — active',
@@ -236,6 +259,15 @@
         <span class="weft-overview-tab__spinner" aria-hidden="true"></span>
         Result pending — workflow still {workflow.status}.
       </div>
+    {/if}
+
+    {#if attributeAccess !== undefined && attributesClient !== undefined}
+      <AttributesPanel
+        client={attributesClient}
+        workflowId={workflow.id}
+        canRead={attributeAccess.canRead}
+        canWrite={attributeAccess.canWrite}
+      />
     {/if}
 
     <WorkerBindingPanel {workflow} />

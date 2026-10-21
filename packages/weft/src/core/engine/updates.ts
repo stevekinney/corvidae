@@ -1,5 +1,6 @@
 import { UpdateCompletedEvent, UpdateReceivedEvent } from '../events.ts';
 import type { CoordinatedUpdateResult } from '../types.ts';
+import type { UpdateHistoryContext, UpdateHistoryPage } from '../update-history.ts';
 import type { UpdateRequest, UpdateResponse } from '../updates.ts';
 import { notifyConditionWaiters } from './condition-waiters.ts';
 import type { EngineInternals } from './internals.ts';
@@ -27,7 +28,7 @@ export type UpdateCallbacks = {
   ) => Promise<void>;
   persistCoordinatedUpdateResponse: (
     workflowId: string,
-    updateName: string,
+    history: UpdateHistoryContext,
     updateId: string,
     idempotencyKey: string | undefined,
     value: unknown,
@@ -242,17 +243,14 @@ async function runCoordinatedUpdate(
   timeout: number,
   callbacks: UpdateCallbacks,
 ): Promise<unknown> {
-  const updateId = await internals.updateCoordinator.createRequest(workflowId, name, payload);
+  // The persisted request itself is delivered, not a copy with a fresh timestamp: its `createdAt`
+  // is part of the update-history key the response's batch replaces.
+  const updateRequest = await internals.updateCoordinator.submitRequest(workflowId, name, payload);
+  const { updateId } = updateRequest;
   callbacks.schedulePendingInlineUpdateDrain(workflowId);
   await callbacks.guardTerminalWorkflowAfterCoordinatedRequest(workflowId, updateId);
   callbacks.dispatchEvent(new UpdateReceivedEvent(updateId, workflowId, name, payload));
-  await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(workflowId, {
-    updateId,
-    workflowId,
-    name,
-    payload,
-    createdAt: Date.now(),
-  });
+  await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(workflowId, updateRequest);
 
   const response = await internals.updateCoordinator.waitForResponse(updateId, timeout);
   if (response.error) {
@@ -267,6 +265,15 @@ export async function getUpdateResult(
   updateId: string,
 ): Promise<UpdateResponse | null> {
   return internals.updateCoordinator.getResponse(updateId);
+}
+
+/** List a workflow's update history, newest first. */
+export async function listUpdateHistory(
+  internals: EngineInternals,
+  workflowId: string,
+  options?: { limit?: number; cursor?: string },
+): Promise<UpdateHistoryPage> {
+  return internals.updateCoordinator.listHistory(workflowId, options);
 }
 
 /**
@@ -304,27 +311,18 @@ export async function submitCoordinatedUpdate(
     requestOptions.idempotencyKey = idempotencyKey;
   }
 
-  const updateId = await internals.updateCoordinator.createRequest(
+  // Delivered as persisted (see `runCoordinatedUpdate`): `createdAt` keys the update-history entry.
+  const updateRequest = await internals.updateCoordinator.submitRequest(
     workflowId,
     name,
     payload,
     requestOptions,
   );
+  const { updateId } = updateRequest;
   callbacks.schedulePendingInlineUpdateDrain(workflowId);
   await callbacks.guardTerminalWorkflowAfterCoordinatedRequest(workflowId, updateId);
 
-  await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(
-    workflowId,
-    {
-      updateId,
-      workflowId,
-      name,
-      payload,
-      createdAt: Date.now(),
-      idempotencyKey,
-    },
-    true,
-  );
+  await callbacks.deliverCoordinatedUpdateToWaiterIfAvailable(workflowId, updateRequest, true);
 
   const response = await internals.updateCoordinator.waitForResponse(updateId, timeout);
 
@@ -364,7 +362,7 @@ export function createCoordinatedUpdateResponder(
     coordinatedResponded = true;
     void callbacks.persistCoordinatedUpdateResponse(
       workflowId,
-      updateName,
+      { name: updateName, receivedAt: updateRequest.createdAt },
       updateRequest.updateId,
       updateRequest.idempotencyKey,
       value,

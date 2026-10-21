@@ -78,9 +78,16 @@ describe('UpdateCoordinator', () => {
 
   describe('buildResponseOperations', () => {
     it('returns correct batch operations (DELETE request + PUT response)', () => {
-      const operations = coordinator.buildResponseOperations('upd-1', 'wf-1', { answer: 42 });
+      const operations = coordinator.buildResponseOperations(
+        'upd-1',
+        'wf-1',
+        { answer: 42 },
+        undefined,
+        undefined,
+        { name: 'myUpdate', receivedAt: 1_000 },
+      );
 
-      expect(operations).toHaveLength(2);
+      expect(operations).toHaveLength(3);
 
       const deleteOperation = operations.find((operation) => operation.type === 'delete');
       expect(deleteOperation).toBeDefined();
@@ -107,9 +114,10 @@ describe('UpdateCoordinator', () => {
         'result',
         undefined,
         'idem-key-1',
+        { name: 'myUpdate', receivedAt: 1_000 },
       );
 
-      expect(operations).toHaveLength(3);
+      expect(operations).toHaveLength(4);
 
       const idempotencyPut = operations.find(
         (operation) => operation.type === 'put' && operation.key === 'upk:wf-1:idem-key-1',
@@ -300,7 +308,15 @@ describe('UpdateCoordinator', () => {
       expect(pending).toHaveLength(2);
 
       // Complete one update
-      const operations = coordinator.buildResponseOperations(id1, 'wf-1', 'result-a');
+      const first = pending.find((request) => request.updateId === id1)!;
+      const operations = coordinator.buildResponseOperations(
+        id1,
+        'wf-1',
+        'result-a',
+        undefined,
+        undefined,
+        { name: first.name, receivedAt: first.createdAt },
+      );
       await storage.batch(operations);
 
       // The other should still be pending
