@@ -260,6 +260,9 @@ export interface WorkflowBuilder<
    * or an `{ execute, retry?, timeout?, ... }` options object. Calling
    * `.activities` twice before `.execute()` is a type error and throws
    * `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared activities; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -293,6 +296,9 @@ export interface WorkflowBuilder<
    * metadata only — `.signals` does not introduce new runtime gating on top
    * of the existing dispatch path. Calling `.signals` twice before
    * `.execute()` is a type error and throws `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared signals; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -324,6 +330,9 @@ export interface WorkflowBuilder<
    * Declare the request-response update handlers this workflow accepts.
    * Type-safety and introspection metadata only — the update-dispatch path
    * is unchanged. Calling `.updates` twice before `.execute()` is a type
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared updates; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    * error and throws `WorkflowBuilderError` at runtime.
    *
    * @example
@@ -354,6 +363,9 @@ export interface WorkflowBuilder<
    * Declare the read-only query handlers this workflow accepts. Type-safety
    * and introspection metadata only — `.queries` does not introduce new
    * runtime gating. Calling `.queries` twice before `.execute()` is a type
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared queries; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    * error and throws `WorkflowBuilderError` at runtime.
    *
    * @example
