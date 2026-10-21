@@ -682,9 +682,9 @@ describe('a cadence of less than a minute', () => {
     const dialog = within(await drawer('Edit schedule'));
     const description = await dialog.findByLabelText('Description');
 
-    expect((dialog.getByLabelText(SCHEDULE_COPY.form.cadenceLabel) as HTMLInputElement).value).toBe(
-      'Every 90 seconds',
-    );
+    const cadence = dialog.getByLabelText(SCHEDULE_COPY.form.cadenceLabel);
+    expect(cadence).toBeDisabled();
+    expect((cadence as HTMLInputElement).value).toBe('Every 90 seconds');
     await fireEvent.input(description, { target: { value: 'Still ninety seconds' } });
     await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
@@ -781,5 +781,25 @@ describe('a description that is too long', () => {
 
     await dialog.findByText(SCHEDULE_COPY.form.descriptionTooLong(2_000), { exact: false });
     expect(dialog.getByRole('button', { name: 'Create schedule' })).toBeDisabled();
+  });
+});
+
+describe('a code-defined schedule’s cadence changed in the builder', () => {
+  test('sends the cadence chosen in the builder, not the stored one', async () => {
+    open(`/schedules/${CODE_SCHEDULE}?edit=1`);
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+
+    await fireEvent.click(dialog.getByRole('tab', { name: 'Interval' }));
+    const every = dialog.getByLabelText('Every');
+    await fireEvent.input(every, { target: { value: '20' } });
+    await fireEvent.change(every, { target: { value: '20' } });
+    await fireEvent.blur(every);
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
+    const body = stub?.callsTo('PATCH /schedules/:id body')[0]?.params;
+    expect(body).toMatchObject({ every: 1_200_000 });
+    expect(body).not.toHaveProperty('cronExpression');
   });
 });
