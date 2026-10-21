@@ -9,9 +9,6 @@
  * what the documents say Bureau does not do. Change the examples and the
  * documentation together.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   createGovernedMemory,
@@ -32,8 +29,9 @@ import {
 } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau, type SubmitSchedulerTaskResponse } from './index';
 
@@ -46,12 +44,15 @@ const BUREAU_ID = 'bureau';
 const LOCAL_OWNER = 'anonymous:local';
 const DEFAULT_AGENT = 'bureau';
 
-const databasePath = join(tmpdir(), `bureau-memory-governance-guide-${process.pid}.sqlite`);
+let databasePath = '';
 
-afterEach(async () => {
-  for (const suffix of ['', '-wal', '-shm']) {
-    await rm(`${databasePath}${suffix}`, { force: true });
-  }
+beforeEach(() => {
+  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
+  databasePath = createTemporaryPath('bureau-memory-governance-guide', '.sqlite');
+});
+
+afterEach(() => {
+  removeTemporaryPath(databasePath);
 });
 
 /**

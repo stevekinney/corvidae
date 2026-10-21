@@ -11,11 +11,9 @@
  *   reopens the same file, which is what a process restart looks like to the
  *   asset service: nothing in memory survives, everything persisted does.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
 import { BunSQLiteStorage } from '@lostgradient/weft';
 
 import { createDurableAssetStorage, createMemoryAssetStorage } from '../assets/storage';
@@ -35,8 +33,6 @@ export interface DurableAssetStorageFixture extends AssetStorageFixture {
   /** Closes the SQLite handle and returns a fixture over a fresh handle to the same file. */
   restart(): Promise<DurableAssetStorageFixture>;
 }
-
-let fixtureSequence = 0;
 
 const ACCOUNTED_VERBS = ['get', 'set', 'delete', 'list', 'conditionalBatch'] as const;
 
@@ -98,9 +94,7 @@ function openDurableFixture(path: string, owned: boolean): DurableAssetStorageFi
     dispose: async () => {
       close();
       if (owned) {
-        await rm(path, { force: true });
-        await rm(`${path}-wal`, { force: true });
-        await rm(`${path}-shm`, { force: true });
+        removeTemporaryPath(path);
       }
     },
   };
@@ -116,14 +110,9 @@ export function createDurableAssetStorageFixture(options: {
   readonly path?: string | undefined;
 }): DurableAssetStorageFixture {
   if (options.path !== undefined) return openDurableFixture(options.path, false);
-  // Same disambiguation as `storage-fixtures.ts`: two runtimes each start
-  // their identifier counter at 1, so the process id and a process-local
-  // sequence keep their paths apart.
-  fixtureSequence += 1;
+  // Two runtimes each start their identifier counter at 1, so the identifier alone cannot name a
+  // path; the path comes from a fresh `mkdtemp` directory that `dispose()` removes.
   const identifier = options.runtime.identifiers.next('asset-storage-fixture');
-  const path = join(
-    tmpdir(),
-    `bureau-assets-fixture-${process.pid}-${fixtureSequence}-${identifier}.sqlite`,
-  );
+  const path = createTemporaryPath(`bureau-assets-fixture-${identifier}`, '.sqlite');
   return openDurableFixture(path, true);
 }

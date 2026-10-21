@@ -8,18 +8,14 @@
  * LMDB's async completion callbacks, so this test polls with a tiny real
  * delay instead (see `pollUntilWithRealDelay` below).
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
-
-let recoveryDatabaseCounter = 0;
 
 function createNextTool() {
   return createTool({
@@ -131,10 +127,7 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
 
 describe('bureau.eventHistory run ownership survives a process restart over LMDB (AB-359)', () => {
   it('a run dispatched with a principal, recovered over LMDB in a fresh process, is readable by that principal and denied to another', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-event-history-owner-recovery-lmdb-${process.pid}-${recoveryDatabaseCounter++}`,
-    );
+    const databasePath = createTemporaryPath('bureau-event-history-owner-recovery-lmdb');
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau({
@@ -231,11 +224,11 @@ describe('bureau.eventHistory run ownership survives a process restart over LMDB
           hasMore: false,
         });
       } finally {
-        bureauB.dispose();
+        await bureauB.dispose();
       }
       await bureauA.dispose();
     } finally {
-      await rm(databasePath, { recursive: true, force: true });
+      removeTemporaryPath(databasePath);
     }
   });
 });

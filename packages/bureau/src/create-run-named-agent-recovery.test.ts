@@ -3,9 +3,6 @@
  * way a Bureau-wide run does. Recovery reuses the catalog path's policy: an agent gone from the
  * catalog fails the run, and one whose definition moved on is warned about and resumed.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
@@ -13,18 +10,18 @@ import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForRunState } from './test';
 import type { Bureau } from './types';
 
-let databaseCounter = 0;
 const databasePaths: string[] = [];
 const bureaus: Bureau<AgentDefinitions>[] = [];
 
 function nextDatabasePath(): string {
-  const path = join(tmpdir(), `bureau-named-agent-${process.pid}-${databaseCounter++}.sqlite`);
+  const path = createTemporaryPath('bureau-named-agent', '.sqlite');
   databasePaths.push(path);
   return path;
 }
@@ -32,9 +29,7 @@ function nextDatabasePath(): string {
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
   for (const path of databasePaths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 });
 
