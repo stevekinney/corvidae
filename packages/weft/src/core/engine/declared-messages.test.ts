@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { workflowSource } from '../source/index.ts';
 import {
   query,
   signal,
@@ -17,7 +18,9 @@ import {
   type WorkflowContext,
 } from '../types.ts';
 import { UndeclaredWorkflowMessageError } from './declared-messages.ts';
+import { deriveWorkflowDefinitionRevision } from './definition-revision.ts';
 import { ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING, Engine } from './index.ts';
+import { activateRegisteredSourceRevision } from './source-activation.ts';
 
 const approve = signal<string>('approve');
 const rename = update<string, string>('rename');
@@ -168,5 +171,79 @@ describe('closed message sets', () => {
     );
     expect(error.messageName).toBe('reject');
     expect(await storage.get(KEYS.workflow('sos-1'))).toBeNull();
+  });
+
+  it('checks startOrSignal against the existing target, not the requested type', async () => {
+    const { engine: running, handle } = await startParked(
+      undeclaredWorkflow,
+      'undeclared-messages',
+    );
+    running.register(declaredWorkflow);
+
+    const result = await running.startOrSignal(
+      'declared-messages',
+      null,
+      { name: 'whatever', payload: 'kept', signalId: 'whatever-1' },
+      { id: handle.id },
+    );
+    expect(result.outcome).toBe('signalled');
+    expect(await handle.result()).toBe('kept');
+  });
+
+  it('rejects an undeclared startOrSignal signal for a dynamic source without creating a run', async () => {
+    const storage = new MemoryStorage();
+    engine = new Engine({ storage, backgroundTasks: 'manual' });
+    const revision = await deriveWorkflowDefinitionRevision(declaredWorkflow);
+    engine.registerSource(
+      workflowSource(
+        { name: 'declared-messages', location: './declared.ts', exportName: 'w', revision },
+        async () => ({ w: declaredWorkflow }),
+      ),
+    );
+    await activateRegisteredSourceRevision(engine, 'declared-messages', revision);
+
+    await undeclaredOf(
+      engine.startOrSignal(
+        'declared-messages',
+        null,
+        { name: 'reject', signalId: 'reject-1' },
+        { id: 'sos-source' },
+      ),
+    );
+    expect(await storage.get(KEYS.workflow('sos-source'))).toBeNull();
+  });
+
+  it('rejects an undeclared update before running its validator', async () => {
+    const validated: unknown[] = [];
+    const strayValidator = workflow({ name: 'stray-validator' })
+      .updates({ rename })
+      .execute(async function* (ctx: WorkflowContext) {
+        ctx.onUpdate('retitle', (next) => next, {
+          validator: (value) => {
+            validated.push(value);
+          },
+        });
+        return yield* ctx.waitForSignal<string>('done');
+      });
+    const { engine: running, handle } = await startParked(strayValidator, 'stray-validator');
+
+    await undeclaredOf(running.update(handle.id, 'retitle', 'x'));
+    await undeclaredOf(running.submitCoordinatedUpdate(handle.id, 'retitle', 'x'));
+    expect(validated).toEqual([]);
+  });
+
+  it('admits both the builder alias and the wire name of an aliased declaration', async () => {
+    const aliased = workflow({ name: 'aliased-signal' })
+      .signals({ localAlias: signal<string>('wireName') })
+      .execute(async function* (ctx: WorkflowContext) {
+        return yield* ctx.waitForSignal('localAlias');
+      });
+    const { handle } = await startParked(aliased, 'aliased-signal');
+
+    const error = await undeclaredOf(handle.signal('other'));
+    expect(error.declaredNames).toEqual(['localAlias', 'wireName']);
+    await handle.signal('wireName', 'ignored');
+    await handle.signal('localAlias', 'delivered');
+    expect(await handle.result()).toBe('delivered');
   });
 });

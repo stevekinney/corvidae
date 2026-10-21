@@ -99,6 +99,15 @@ describe('createWorkflowFactory() — shared entries', () => {
     expect(Object.keys(built.uses ?? {})).toEqual(['greet']);
   });
 
+  it('keeps a __proto__ message key as an own entry', () => {
+    const signals = Object.fromEntries([['__proto__', signal('__proto__')]]);
+    const { workflow } = createWorkflowFactory({ signals });
+    const built = workflow({ name: 'proto' }).execute(async function* () {
+      return 0;
+    });
+    expect(Object.keys(built.signals)).toEqual(['__proto__']);
+  });
+
   it('snapshots each shared message definition, not only the maps', () => {
     const definition = { name: 'approve' };
     const { workflow } = createWorkflowFactory({ signals: { approve: definition } });

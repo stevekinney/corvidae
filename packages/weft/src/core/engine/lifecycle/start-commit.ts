@@ -42,7 +42,10 @@ import { attributeLostStartPreconditionOrRetry } from './start-precondition-attr
  * lost CAS rolls back the start and throws {@link StartIdempotencyRaceLostError}
  * so the caller resolves to the winner.
  */
-export type BuildIdempotentStartOperations = (workflowId: string) => {
+export type BuildIdempotentStartOperations = (
+  workflowId: string,
+  state: WorkflowState,
+) => {
   operations: BatchOperation[];
   conditions: ConditionalBatchCondition[];
 };
@@ -360,7 +363,7 @@ export async function buildAndCommitStartBatch(
   let lastWorkflowConcurrencyStateKey: string | undefined;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    const idempotent = buildIdempotentStartOperations?.(workflowId);
+    const idempotent = buildIdempotentStartOperations?.(workflowId, state);
     const workflowConcurrency = await context.buildWorkflowConcurrencyStartOperations?.();
     lastWorkflowConcurrencyStateKey =
       workflowConcurrency?.stateKey ?? lastWorkflowConcurrencyStateKey;

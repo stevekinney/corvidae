@@ -131,7 +131,7 @@ describe('validateRegistrySnapshot', () => {
     expect(Object.keys(result.value.activities)).toEqual(['ping']);
   });
 
-  it('projects scoped and engine-provided activities into one callable activity table', async () => {
+  it('projects only workflow-scoped activities into the worker activity table', async () => {
     const manifest = await fixtureManifest({
       name: 'welcome',
       workflowVersion: '1.0.0',
@@ -147,8 +147,8 @@ describe('validateRegistrySnapshot', () => {
     });
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected success');
+    // `greet` is engine-provided: a generated worker for `welcome` does not implement it.
     expect(result.value.workflows['welcome']?.activities).toEqual({
-      greet: { outputSchema: { type: 'string' } },
       local: { inputSchema: { type: 'number' } },
     });
   });

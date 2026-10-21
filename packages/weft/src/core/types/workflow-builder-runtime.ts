@@ -350,11 +350,20 @@ export class WorkflowBuilderImpl<TName extends string> {
 function freezeRecord<T extends object>(
   map: Record<string, T>,
 ): Readonly<Record<string, Readonly<T>>> {
-  const out: Record<string, T> = {};
+  const out = createNameRecord<T>();
   for (const key of Object.keys(map)) {
     out[key] = deepFreeze(clonePlain(map[key])) as T;
   }
   return Object.freeze(out);
+}
+
+/**
+ * A null-prototype record for the builder's name-keyed maps. `__proto__` is a
+ * grammar-valid activity name, and assigning it on a plain `{}` would set the
+ * prototype instead of storing an entry, dropping the declaration silently.
+ */
+function createNameRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
 }
 
 function isFunction(value: unknown): value is (...arguments_: unknown[]) => unknown {
@@ -399,7 +408,7 @@ function hasExecuteProperty(
  *      `execute` is the provided function. Object-form options pass through.
  */
 function normalizeActivityMap(map: ActivityMapInput): Record<string, ActivityDefinition> {
-  const out: Record<string, ActivityDefinition> = {};
+  const out = createNameRecord<ActivityDefinition>();
   for (const key of Object.keys(map)) {
     validateWorkflowOrActivityName(key, 'activity');
     const entry: ActivityEntryInput = map[key]!;
@@ -449,7 +458,7 @@ function normalizeActivityMap(map: ActivityMapInput): Record<string, ActivityDef
  * Only the name and schema metadata are kept, which is all a contract reads.
  */
 export function normalizeUsesMap(map: UsesMapInput): Record<string, UsedActivityDefinition> {
-  const out: Record<string, UsedActivityDefinition> = {};
+  const out = createNameRecord<UsedActivityDefinition>();
   for (const key of Object.keys(map)) {
     validateWorkflowOrActivityName(key, 'activity');
     const entry: unknown = map[key];

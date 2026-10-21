@@ -55,6 +55,20 @@ describe('workflow builder .uses()', () => {
     expect(Object.isFrozen(welcome.uses)).toBe(true);
   });
 
+  it('keeps an activity literally named __proto__ in .uses() and .activities()', () => {
+    const proto = activity({ name: '__proto__', execute: async () => 'proto' });
+    const scoped = workflow({ name: 'proto-scoped' })
+      .activities({ ['__proto__']: proto })
+      .execute(welcomeBody());
+    const used = workflow({ name: 'proto-used' })
+      .uses({ ['__proto__']: proto })
+      .execute(welcomeBody());
+
+    expect(Object.keys(scoped.activities)).toEqual(['__proto__']);
+    expect(Object.keys(used.uses ?? {})).toEqual(['__proto__']);
+    expect(Object.keys(buildWorkflowContract(used).usedActivities ?? {})).toEqual(['__proto__']);
+  });
+
   it('omits uses from a workflow that declares none', () => {
     expect(welcomeUndeclared).not.toHaveProperty('uses');
   });
@@ -160,6 +174,18 @@ describe('the contract of a workflow that uses engine activities', () => {
     if (!parsed.ok) throw new Error(`parse failed: ${parsed.message}`);
     expect(parsed.manifest.contract.usedActivities).toEqual(manifest.contract.usedActivities);
     expect(parsed.manifest.revision).toBe(manifest.revision);
+  });
+
+  it('rejects a manifest that declares one activity in both collections', async () => {
+    const manifest = await buildWorkflowRevisionManifest(buildWorkflowContract(welcome));
+    const hostile = JSON.parse(JSON.stringify(manifest)) as {
+      contract: { activities?: Record<string, unknown> };
+    };
+    hostile.contract.activities = { greet: {} };
+    const parsed = await parseWorkflowRevisionManifest(hostile);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) throw new Error('expected rejection');
+    expect(parsed.message).toContain('both activities and usedActivities');
   });
 
   it('rejects a manifest whose usedActivities key is not a valid activity name', async () => {

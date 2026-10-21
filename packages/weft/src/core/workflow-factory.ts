@@ -282,7 +282,8 @@ export function createWorkflowFactory<
  * is created cannot change what later workflows declare.
  */
 function snapshot<T extends object>(map: Record<string, T> | undefined): Record<string, T> {
-  const out: Record<string, T> = {};
+  // A null prototype keeps a `__proto__` key an own entry.
+  const out = Object.create(null) as Record<string, T>;
   for (const [key, definition] of Object.entries(map ?? {})) {
     out[key] = deepFreeze(clonePlain(definition));
   }
