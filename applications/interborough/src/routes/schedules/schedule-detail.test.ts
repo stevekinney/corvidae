@@ -101,6 +101,38 @@ describe('ScheduleDetail', () => {
     }
   });
 
+  test('a schedule that missed fires shows how many in a warning badge beside its status', async () => {
+    // The engine's clock is moved past three occurrences in one step, as it is for an engine that
+    // was down, so the next tick skips them as missed. A tick that is only late by its own poll
+    // drift no longer counts as a missed fire (COR-1616), so the real poller never does this.
+    const clock = { now: Date.now() };
+    const server = await startLiveSourceTestServer({ getNow: () => clock.now });
+    await server.engine.schedule({
+      workflow: 'inventory-sync-sweep',
+      id: 'missed-probe',
+      every: '1m',
+      input: { warehouseId: 'wh-main' },
+    });
+    const client = new HttpClient({ baseUrl: server.baseUrl, token: server.token });
+    clock.now += 3 * 60_000 + 30_000;
+    await server.engine.scheduler.tick(clock.now);
+
+    await waitForServerState(async () => {
+      const schedule = await client.getSchedule('missed-probe');
+      return (schedule?.missedFireCount ?? 0) > 0;
+    }, 'missed-probe has missed fires');
+
+    try {
+      const { findByText } = render(ScheduleDetailHarness, {
+        props: { client, id: 'missed-probe' },
+      });
+
+      expect(await findByText('3 missed')).not.toBeNull();
+    } finally {
+      await server.stop();
+    }
+  });
+
   test('a schedule with no current or queued runs shows the empty runs note', async () => {
     const server = await startLiveSourceTestServer();
     await server.engine.schedule({
