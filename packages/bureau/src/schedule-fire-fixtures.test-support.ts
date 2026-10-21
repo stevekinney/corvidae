@@ -296,11 +296,11 @@ export function holdingWrites(marker: string) {
 }
 
 /**
- * A storage whose process dies between a fire step's session write, which records an approval, and
+ * A storage whose process dies between a fire step's session write, which carries `marker`, and
  * the step's commit: the journal write of the step is held for good, so the hook has run and the
  * request has been announced, and the step never commits. `reached` resolves at the hold.
  */
-export function crashAfterApprovalWrite() {
+export function crashAfterSessionWrite(marker: string) {
   let armed = false;
   let held = false;
   const reached = Promise.withResolvers<void>();
@@ -322,13 +322,22 @@ export function crashAfterApprovalWrite() {
               // write lost a checkpoint compare-and-swap.
               return new Promise(() => {});
             }
-            if (text.includes('pendingApprovalOverrides')) armed = true;
+            if (text.includes(marker)) armed = true;
             return call();
           };
         },
       });
     },
   };
+}
+
+/**
+ * A storage whose process dies between a fire step's session write, which records an approval, and
+ * the step's commit: the journal write of the step is held for good, so the hook has run and the
+ * request has been announced, and the step never commits. `reached` resolves at the hold.
+ */
+export function crashAfterApprovalWrite() {
+  return crashAfterSessionWrite('pendingApprovalOverrides');
 }
 
 /** The audit records of `type` that a run has, narrowed to one review by its id when given. */
