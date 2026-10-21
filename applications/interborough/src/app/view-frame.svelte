@@ -33,7 +33,7 @@
   import { router } from '../lib/router.svelte.ts';
   import { getPrincipalStore, scopeReason } from '../lib/scopes.svelte.ts';
   import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
-  import { probeFor, ViewProbeFault } from './view-probes.ts';
+  import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
   import { VIEWS, type ViewName } from './views.ts';
 
   interface ViewFrameProps {
@@ -91,6 +91,10 @@
       enabled: probe !== undefined && !scopeDenied,
       retry: false,
       staleTime: 5_000,
+      // A probe that expects its empty answer to change asks again while the view is empty, and
+      // stops once there is something to show.
+      refetchInterval: (query: { state: { data: ViewProbeResult | undefined } }) =>
+        query.state.data?.empty ? (query.state.data.recheckMs ?? false) : false,
       // A probe nobody is watching is dropped, so coming back to the view asks again and never
       // shows what it found last time.
       gcTime: 0,

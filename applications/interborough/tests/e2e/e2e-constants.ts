@@ -11,9 +11,9 @@ import { endToEndPort } from '../../scripts/environment-configuration.ts';
 
 /**
  * Port the E2E host listens on: 7399 unless `INTERBOROUGH_E2E_PORT` says another. Distinct from the
- * interactive host's default of 7234. The suite holds three consecutive ports (this one, the
- * barrier's, and the second host's), so two runs on one machine set `INTERBOROUGH_E2E_PORT` at least
- * three apart.
+ * interactive host's default of 7234. The suite holds four consecutive ports (this one, the
+ * barrier's, the second host's, and the journey's), so two runs on one machine set
+ * `INTERBOROUGH_E2E_PORT` at least four apart.
  */
 export const E2E_PORT = endToEndPort();
 
@@ -34,6 +34,15 @@ export const E2E_BARRIER_URL = `http://127.0.0.1:${E2E_BARRIER_PORT}`;
  */
 export const E2E_BUREAU_PORT = E2E_PORT + 2;
 export const E2E_BUREAU_URL = `http://127.0.0.1:${E2E_BUREAU_PORT}`;
+
+/**
+ * The third host, on the port after the second's, which only the journey (`90-journey.spec.ts`)
+ * opens. Its console is also the Bureau's own engine, because the journey follows an agent-authored
+ * workflow's schedule fire into the Workflows area, and it has agents and a barrier of its own, so
+ * nothing another specification leaves behind can change what the journey counts.
+ */
+export const E2E_JOURNEY_PORT = E2E_PORT + 3;
+export const E2E_JOURNEY_URL = `http://127.0.0.1:${E2E_JOURNEY_PORT}`;
 
 /** `deploymentName` the E2E `RemoteWorker` registers under (flow (e), drain-a-deployment). */
 export const E2E_DEPLOYMENT_NAME = 'checkout-worker-fleet';
