@@ -27,10 +27,11 @@ import type { EngineConstructorOptions, ResolvedOptions } from './engine-interna
  * workflow or activity definition that leaves a schema undeclared. Raised by
  * `engine.register()`, `Engine.create({ workflows, activities })`, and the
  * dynamic-source load behind `engine.resolveWorkflowSource()`, before anything
- * is registered or installed. `missing` lists every undeclared schema as a
- * dotted path relative to the definition, such as `inputSchema`,
- * `finalizer.outputSchema`, `signals.approve.inputSchema`, or
- * `activities.charge.outputSchema`.
+ * is registered or installed. When `engine.start()` loads a dynamic source, it
+ * arrives as the `cause` of a `DynamicWorkflowSourceUnavailableError`.
+ * `missing` lists every undeclared schema as a dotted path relative to the
+ * definition, such as `inputSchema`, `finalizer.outputSchema`,
+ * `signals.approve.inputSchema`, or `activities.charge.outputSchema`.
  *
  * @example
  * ```ts

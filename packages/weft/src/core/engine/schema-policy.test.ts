@@ -10,6 +10,7 @@ import { activity } from '../types/activity.ts';
 import { query, signal, update } from '../types/message-handles.ts';
 import { workflow } from '../types/workflow-function.ts';
 import { copyWorkflowDefinition } from './construction.ts';
+import { DynamicWorkflowSourceUnavailableError } from './dynamic-source-errors.ts';
 import { Engine } from './index.ts';
 import { buildPerWorkflowActivityRegistry, buildRegistrationEntry } from './registration.ts';
 import { DefinitionSchemaRequiredError } from './schema-policy.ts';
@@ -293,6 +294,21 @@ describe('schemas engine option', () => {
     expect(error).toBeInstanceOf(DefinitionSchemaRequiredError);
     expect((error as DefinitionSchemaRequiredError).missing).toContain(
       'signals.approve.inputSchema',
+    );
+  });
+
+  it('surfaces the rejection as the cause when engine.start() loads a schemaless source', async () => {
+    const engine = requiredEngine();
+    engine.registerSource(
+      workflowSource(
+        { name: 'bare', location: './bare.ts', exportName: 'bare', revision: schemalessRevision },
+        async () => ({ bare: schemalessWorkflow }),
+      ),
+    );
+    const error = await rejectionOf(engine.start('bare', undefined));
+    expect(error).toBeInstanceOf(DynamicWorkflowSourceUnavailableError);
+    expect((error as DynamicWorkflowSourceUnavailableError).cause).toBeInstanceOf(
+      DefinitionSchemaRequiredError,
     );
   });
 });
