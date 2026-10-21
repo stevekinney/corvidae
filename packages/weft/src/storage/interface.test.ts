@@ -130,6 +130,8 @@ describe('KEYS insertion order', () => {
       'updatePrefix',
       'update',
       'updateResponse',
+      'updateHistoryPrefix',
+      'updateHistory',
       'updateIdempotency',
       'startIdempotency',
       'startIdempotencySignalId',
@@ -335,6 +337,7 @@ describe('WEFT_RESERVED_KEY_PREFIXES', () => {
       KEYS.tagIndex('tag', 'workflow-id'),
       KEYS.update('workflow-id', 'update-id'),
       KEYS.updateResponse('update-id'),
+      KEYS.updateHistory('workflow-id', 1, 'update-id'),
       KEYS.updateIdempotency('workflow-id', 'idempotency-key'),
       KEYS.startIdempotency('idempotency-key'),
       KEYS.liveness('instance-id'),
@@ -966,6 +969,10 @@ describe('KEYS', () => {
     expect(KEYS.updatePrefix(workflowId)).toBe(`upd:${encodedWorkflowId}:`);
     expect(KEYS.update(workflowId, 'update-1')).toBe(`upd:${encodedWorkflowId}:update-1`);
     expect(KEYS.updateResponse('update-1')).toBe('upr:update-1');
+    expect(KEYS.updateHistoryPrefix(workflowId)).toBe(`uph:${encodedWorkflowId}:`);
+    expect(KEYS.updateHistory(workflowId, 1_700_000_000_000, 'update-1')).toBe(
+      `uph:${encodedWorkflowId}:0001700000000000:update-1`,
+    );
     expect(KEYS.updateIdempotency(workflowId, 'idem-1')).toBe(`upk:${encodedWorkflowId}:idem-1`);
     expect(KEYS.startIdempotency('idem-1')).toBe('start-idem:idem-1');
     expect(KEYS.startIdempotency('a:b')).toBe('start-idem:a%3Ab');

@@ -16,6 +16,7 @@
   import { agentEditPath, agentMemoryPath } from '../../lib/agent-paths.ts';
   import { getAgentDefinition } from '../../lib/agent-definitions.ts';
   import { listAgents, listContexts } from '../../lib/bureau-client.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { agentsByName, sessionSummary } from '../chat/session-summary.ts';
@@ -53,9 +54,11 @@
   );
 
   const rows = $derived(
-    (sessions.data?.pages ?? [])
-      .flatMap((page) => page.contexts)
-      .map((context) => sessionSummary(context, agentsByName(agents.data ?? []))),
+    combinePages(
+      sessions.data?.pages,
+      (page) => page.contexts,
+      (context) => context.id,
+    ).map((context) => sessionSummary(context, agentsByName(agents.data ?? []))),
   );
 
   const editPath = agentEditPath(id);

@@ -8,6 +8,7 @@ import { listGoals } from '../lib/bureau-goals.ts';
 import { listBureauReviews } from '../lib/bureau-reviews.ts';
 import { getTask, listTasks } from '../lib/bureau-tasks.ts';
 import { DEFAULT_AGENT } from '../lib/default-agent.ts';
+import { classifyFault } from '../lib/faults.ts';
 import { listMemories } from '../lib/memory-client.ts';
 import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
 import {
@@ -217,10 +218,19 @@ export function probeFor(
         return { empty: page.tasks.length === 0 };
       };
     case 'reviews':
-      // The Bureau's list is what the view can be refused. The page reads the engine's reviews
-      // itself, when the principal may, so a view with reviews of either kind is never empty here.
+      // The Bureau's list is what the view can be refused, and nothing else it says is the view's
+      // to report: the page reads the engine's reviews itself, when the principal may, and shows the
+      // Bureau's own failure in a banner beside them. So the probe lets through the two answers that
+      // mean the caller may not see the list: a 403, which the frame shows as forbidden, and a 401
+      // (the Bureau does not know the caller), which the frame shows as an error with Retry, as it
+      // does for every other view's probe. It swallows any other failure (a 5xx, an unreachable
+      // Bureau), and a view with reviews of either kind is never empty here.
       return async () => {
-        await listBureauReviews();
+        try {
+          await listBureauReviews();
+        } catch (error) {
+          if (classifyFault(error)?.kind === 'unauthorized') throw error;
+        }
         return { empty: false };
       };
     case 'workers':

@@ -138,7 +138,13 @@ describe('update() bypasses the in-memory waiter when the workflow is owned else
         ['workflow-1', new Set([WAITER_KEY])],
       ]),
       updateCoordinator: {
-        createRequest: mock(async () => 'update-1'),
+        submitRequest: mock(async () => ({
+          updateId: 'update-1',
+          workflowId: 'workflow-1',
+          name: 'rename',
+          payload: undefined,
+          createdAt: 1_000,
+        })),
         waitForResponse: mock(async () => ({ updateId: 'update-1', result: 'coordinated' })),
       },
     } as any;

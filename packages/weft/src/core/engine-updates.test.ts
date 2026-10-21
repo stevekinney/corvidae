@@ -183,7 +183,16 @@ function wrapStorageWithDelayedUpdateResponse(storage: Storage, result: unknown)
     },
     delete: storage.delete.bind(storage),
     scan: storage.scan.bind(storage),
-    batch: storage.batch.bind(storage),
+    // The request is written in a batch with its update-history entry (COR-1463).
+    async batch(operations) {
+      for (const operation of operations) {
+        if (operation.type === 'put' && operation.key.startsWith('upd:')) {
+          pendingRequestKey = operation.key;
+        }
+      }
+
+      await storage.batch(operations);
+    },
     ...(storage.conditionalBatch
       ? { conditionalBatch: storage.conditionalBatch.bind(storage) }
       : {}),
@@ -515,6 +524,16 @@ for (const backend of storageBackends) {
             }
 
             await staleWorkflowStateStorage.storage.put(key, value);
+          },
+          // The request is written in a batch with its update-history entry (COR-1463).
+          async batch(operations) {
+            for (const operation of operations) {
+              if (operation.type === 'put' && operation.key.startsWith('upd:')) {
+                pendingRequestKey = operation.key;
+              }
+            }
+
+            await staleWorkflowStateStorage.storage.batch(operations);
           },
         };
 

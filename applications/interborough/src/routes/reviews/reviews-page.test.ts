@@ -170,6 +170,92 @@ describe('deciding a Bureau tool approval', () => {
   });
 });
 
+describe('one source failing', () => {
+  /** Opens `/reviews` over a Bureau whose list fails from the first request, the frame's probe included. */
+  function openFailing(fault: StubFault, world: Partial<BureauWorld>) {
+    stub = installBureauWorld(emptyBureauWorld(world));
+    stub.on('bureau.reviews.list', () => {
+      throw fault;
+    });
+    router.navigate('/reviews', { replace: true });
+    return render(Harness, {
+      props: {
+        client: new HttpClient({ baseUrl: 'http://localhost/api' }),
+        scopes: AUTHORIZATION_SCOPES,
+      },
+    } as never);
+  }
+
+  test('leaves the other’s reviews on the page, with the failing source’s own banner', async () => {
+    const { container, findByText, getAllByText } = openFailing(
+      new StubFault('EngineFailure', 500, 'The Bureau broke.'),
+      { weftReviews: [weftPending()] },
+    );
+    await findByText('The Bureau broke.');
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    expect(getAllByText('Contract approval').length).toBeGreaterThan(0);
+    // The page itself is up: the frame did not turn the Bureau's failure into an error for it.
+    expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
+      'ready',
+    );
+  });
+
+  test('still refuses the whole page when the Bureau refuses the caller', async () => {
+    const { container, findByRole } = openFailing(new StubFault('Forbidden', 403, 'No.'), {
+      weftReviews: [weftPending()],
+    });
+    await findByRole('heading', { level: 1, name: 'Reviews are locked' });
+    expect(container.querySelector('[data-view="reviews"]')?.getAttribute('data-state')).toBe(
+      'forbidden',
+    );
+  });
+});
+
+describe('the approval pane', () => {
+  test('shows what the approval would run: the command, the patch, and the files', async () => {
+    const approval = toolApprovalFixture({
+      requestedAt: Date.now() - 120_000,
+      approval: {
+        ...toolApprovalFixture().approval,
+        action: {
+          type: 'approval',
+          message: 'Run it?',
+          risk: 'high',
+          operation: { kind: 'command', command: 'bun run deploy', filesTouched: ['dist/app.js'] },
+        },
+      },
+    });
+    const { container, findByText } = open({ reviews: [approval] });
+    await findByText('bun run deploy');
+    expect(container.textContent).toContain('dist/app.js');
+    expect(container.textContent).toContain(REVIEWS_COPY.operation.command);
+  });
+
+  test('keeps the inbox usable when the operation lists one path twice', async () => {
+    const approval = toolApprovalFixture({
+      requestedAt: Date.now() - 120_000,
+      approval: {
+        ...toolApprovalFixture().approval,
+        action: {
+          type: 'approval',
+          message: 'Run it?',
+          risk: 'high',
+          operation: {
+            kind: 'patch',
+            command: 'bun run deploy',
+            filesTouched: ['dist/app.js', 'dist/app.js'],
+          },
+        },
+      },
+    });
+    const { container, findByText } = open({ reviews: [approval] });
+    await findByText('bun run deploy');
+    expect(container.textContent).not.toContain('Something went wrong');
+    expect(container.textContent).toContain('dist/app.js');
+    expect(container.querySelectorAll('.weft-bureau-review-operation__files li').length).toBe(1);
+  });
+});
+
 describe('a decision that took effect', () => {
   const NOT_WRITTEN =
     'APPROVAL_OUTCOME_NOT_WRITTEN: The decision was recorded, but its outcome could not be written into the conversation.';

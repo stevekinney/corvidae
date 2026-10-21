@@ -37,6 +37,45 @@ export type ViewCopy = {
   readonly forbiddenByPattern?: Readonly<Record<string, ViewStateCopy>>;
 };
 
+/** The words the run detail page (`/runs/:id`) uses for its attributes, streams and updates. */
+export const RUN_DETAIL_COPY = {
+  attributes: {
+    heading: 'Search attributes',
+    loading: 'Loading search attributes',
+    empty: 'This run has no search attributes.',
+    engineOwned: 'Set by the engine. It cannot be edited here.',
+    edit: (key: string): string => `Edit ${key}`,
+    save: (key: string): string => `Save ${key}`,
+    cancel: (key: string): string => `Cancel editing ${key}`,
+    invalidNumber: 'Enter a number.',
+    invalidDate: 'Enter a date and time, such as 2026-07-01T09:00:00Z.',
+  },
+  streams: {
+    /** A stream key longer than this is shown cut off, with the whole key in its `title`. */
+    keyDisplayLimit: 48,
+    viewChunks: (key: string): string => `View chunks of ${key}`,
+    heading: 'Stream chunks',
+    close: 'Close',
+    loading: 'Loading chunks',
+    noChunks: 'This stream has no chunks.',
+    swept: 'This run was cancelled or timed out, so its stream chunks are no longer kept.',
+    liveNote: 'New chunks appear here every 2 seconds while the run is active.',
+    chunkLabel: (sequence: number): string => `Chunk ${sequence}`,
+  },
+  updates: {
+    heading: 'Update history',
+    loading: 'Loading updates',
+    empty: 'This run has received no updates.',
+    awaiting: 'awaiting result',
+    neverAnswered: 'never answered',
+    resultSwept: 'result no longer kept',
+    loadingResult: 'loading result',
+    loadMore: 'Load older updates',
+    timedOut: (name: string): string =>
+      `${name} had not answered when the wait ended. It stays queued, and its result appears here once it is answered.`,
+  },
+} as const;
+
 /** The label on the control that asks a view to try again. */
 export const RETRY_LABEL = 'Try again';
 
@@ -791,6 +830,13 @@ export const REVIEWS_COPY = {
   sendAnswer: 'Send answer',
   toolLabel: 'Tool',
   argumentsLabel: 'Arguments',
+  /** The labels on the parts of what an approval would run. */
+  operation: {
+    command: 'Command',
+    diff: 'Changes',
+    filesTouched: 'Files touched',
+    showWholeDiff: 'Show the whole diff',
+  },
   reasonFact: 'Reason',
   messageFact: 'Message',
   riskFact: 'Risk',

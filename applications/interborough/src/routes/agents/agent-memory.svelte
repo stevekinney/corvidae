@@ -16,6 +16,7 @@
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
+  import { combinePages } from '../../lib/combine-pages.ts';
   import { listMemories, searchMemories, type Memory } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -59,9 +60,11 @@
   const active = $derived(applied === '' ? list : search);
   const rows = $derived.by<Row[]>(() => {
     if (applied === '') {
-      return (list.data?.pages ?? [])
-        .flatMap((page) => page.memories)
-        .map((memory) => ({ memory, score: null }));
+      return combinePages(
+        list.data?.pages,
+        (page) => page.memories,
+        (memory) => memory.id,
+      ).map((memory) => ({ memory, score: null }));
     }
     return (search.data ?? []).map((hit) => ({ memory: hit.memory, score: hit.score }));
   });
