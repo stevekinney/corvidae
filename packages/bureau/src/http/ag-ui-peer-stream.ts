@@ -330,10 +330,13 @@ async function tail(
 ): Promise<void> {
   const { bureau, nativeRunId } = context;
   const sessionSaves = new Changes();
+  const recheck = new ParkRecheck(context.timers);
   const sessionSubscription = bureau.subscribeEventHistory(
     { kind: 'session', id: context.threadId },
     (event) => {
-      if (event.kind === 'session.saved') sessionSaves.bump();
+      if (event.kind !== 'session.saved') return;
+      sessionSaves.bump();
+      recheck.wake();
     },
   );
   context.onDispose(() => sessionSubscription.unsubscribe());
@@ -343,7 +346,6 @@ async function tail(
     | { readonly kind: 'parked'; readonly waits: PendingHumanWaitReview[] }
     | undefined;
   let decided = false;
-  const recheck = new ParkRecheck(context.timers);
   const ending = await new Promise<Ending>((resolve) => {
     const decide = (value: Ending): void => {
       decided = true;
@@ -382,14 +384,13 @@ async function tail(
     // read again on each session save and, between saves, every PEER_PARK_RECHECK_INTERVAL_MS.
     void (async () => {
       for (;;) {
-        const next = sessionSaves.next();
         const waits = await humanWaitsOf(context);
         if (decided) return;
         if (waits.length > 0) {
           decide({ kind: 'parked', waits });
           return;
         }
-        await recheck.due(next);
+        await recheck.due();
         if (decided) return;
       }
     })();
@@ -403,29 +404,35 @@ async function tail(
 }
 
 /**
- * The re-check timer of one peer tail. {@link ParkRecheck.due} resolves on `saved`, once
- * {@link PEER_PARK_RECHECK_INTERVAL_MS} has passed on the mount's clock, or on
- * {@link ParkRecheck.stop}, whichever is first. At most one timer is pending, and none outlives the
- * wait that armed it.
+ * When a peer tail next reads the run's waits. {@link ParkRecheck.due} resolves once
+ * {@link PEER_PARK_RECHECK_INTERVAL_MS} has passed on the mount's clock, on
+ * {@link ParkRecheck.wake} (a session save), or on {@link ParkRecheck.stop}, whichever is first. A
+ * wake that comes while no wait is pending, during a read, makes the next `due` resolve at once.
+ * At most one timer is pending, and none outlives the wait that armed it.
  */
 class ParkRecheck {
   private pending:
     { readonly handle: RuntimeTimeoutHandle; readonly release: () => void } | undefined;
+  private woken = false;
   private stopped = false;
 
   constructor(private readonly timers: RuntimeServices['timers']) {}
 
-  async due(saved: Promise<void>): Promise<void> {
+  async due(): Promise<void> {
     if (this.stopped) return;
-    const due = new Promise<void>((resolve) => {
+    if (this.woken) {
+      this.woken = false;
+      return;
+    }
+    await new Promise<void>((resolve) => {
       const handle = this.timers.setTimeout(() => this.clear(), PEER_PARK_RECHECK_INTERVAL_MS);
       this.pending = { handle, release: resolve };
     });
-    try {
-      await Promise.race([saved, due]);
-    } finally {
-      this.clear();
-    }
+  }
+
+  wake(): void {
+    if (this.pending === undefined) this.woken = true;
+    else this.clear();
   }
 
   stop(): void {
