@@ -262,6 +262,9 @@ export interface WorkflowBuilder<
    * or an `{ execute, retry?, timeout?, ... }` options object. Calling
    * `.activities` twice before `.execute()` is a type error and throws
    * `WorkflowBuilderError` at runtime.
+   * A name the builder already declares with `.uses()`, including an activity
+   * shared by `createWorkflowFactory`, is a type error here and throws
+   * `WorkflowBuilderError`.
    *
    * @example
    * ```ts
@@ -297,8 +300,10 @@ export interface WorkflowBuilder<
    * activity's own `name`. The declaration puts the activity's schemas in the
    * workflow's contract and links the workflow to the activity in the registry
    * snapshot; dispatch still resolves the engine's registered implementation.
-   * A name declared in both `.activities()` and `.uses()` throws at
-   * `.execute()`. Calling `.uses` twice before `.execute()` is a type error and
+   * A name declared in both `.activities()` and `.uses()` is a type error and
+   * throws at `.execute()`. On a builder from `createWorkflowFactory`, these
+   * entries merge with the factory's shared activities, and redeclaring one
+   * throws `WorkflowBuilderError`. Calling `.uses` twice before `.execute()` is a type error and
    * throws `WorkflowBuilderError` at runtime.
    *
    * @example
@@ -336,6 +341,10 @@ export interface WorkflowBuilder<
    * that declares no signals accepts any name. Calling `.signals` twice
    * before `.execute()` is a type error and throws `WorkflowBuilderError` at
    * runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared signals, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -370,6 +379,10 @@ export interface WorkflowBuilder<
    * persisting it, while a workflow that declares no updates accepts any
    * name. Calling `.updates` twice before `.execute()` is a type error and
    * throws `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared updates, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
@@ -402,6 +415,10 @@ export interface WorkflowBuilder<
    * `activityProgress` query always answers), while a workflow that declares
    * no queries accepts any name. Calling `.queries` twice before `.execute()`
    * is a type error and throws `WorkflowBuilderError` at runtime.
+   * On a builder from `createWorkflowFactory`, these entries merge with the
+   * factory's shared queries, whose declaration closes the set for every
+   * workflow the factory builds; redeclaring a shared name is a type error and
+   * throws `WorkflowBuilderError` at runtime.
    *
    * @example
    * ```ts
