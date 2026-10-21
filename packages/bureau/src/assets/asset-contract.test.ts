@@ -195,7 +195,7 @@ describe('admission API', () => {
     await harness.close();
   });
 
-  it('admits an upload completion, assembling the chunks and retiring the session', async () => {
+  it('admits an upload completion, assembling the chunks and keeping the session as a terminal record', async () => {
     const fixture = memoryFixture();
     const { assets, harness } = await open({ storage: fixture.storage });
     const bytes = textBytes('hello, chunked world');
@@ -216,7 +216,9 @@ describe('admission API', () => {
     const resolved = await assets.resolve(admission.source, alice);
     expect(resolved.content).toEqual({ kind: 'bytes', bytes });
     expect(resolved.descriptor.provenanceKind).toBe('upload');
-    expect(await fixture.storage.list('asset:v1:upload')).toHaveLength(0);
+    // The chunks are the asset's bytes now; the session stays, as a terminal record, until it expires.
+    expect(await fixture.storage.list('asset:v1:upload-chunk:')).toHaveLength(0);
+    expect(await fixture.storage.list('asset:v1:upload:')).toHaveLength(1);
     await harness.close();
   });
 

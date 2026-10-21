@@ -4,7 +4,8 @@
    * `@lostgradient/chat`'s surface over the session's controller (`chat-session.svelte.ts`). The
    * controller owns what is sent and when, so a message typed while the run is going is a
    * follow-up and a decision on an approval continues the run. A question the run is waiting on a
-   * person to answer is shown above the transcript, and the next message answers it.
+   * person to answer is shown above the transcript, and the next message answers it; when it waits
+   * on several, the first without an answer is shown, and each message answers the next.
    *
    * What a person may attach comes from the selected agent's model (`bureau.agents.list`'s `media`):
    * the file picker is on for an agent whose model takes media and off for one that names no model,
@@ -30,11 +31,13 @@
     chatAttachmentErrorMessage,
     createAttachmentUpload,
   } from '../../lib/chat-attachments.ts';
+  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { invalidateReviewQueries } from '../../lib/review-queries.ts';
   import { router } from '../../lib/router.svelte.ts';
   import ApprovalAlert from './approval-alert.svelte';
   import ChatAssets from './chat-assets.svelte';
+  import { withTypedAnswers } from './answer-rows.ts';
   import { assetsOf, hasContent, withoutAssetParts } from './chat-assets.ts';
   import { ChatSessionState } from './chat-session.svelte.ts';
   import SessionTasks from './session-tasks.svelte';
@@ -62,7 +65,7 @@
       choosing = false;
       // The session exists now. Its address replaces the new chat's, so Back returns to where the
       // person came from, and this page stays mounted so the run carries on.
-      router.navigate(`/chat/${encodeURIComponent(sessionId)}`, { replace: true, keep: true });
+      router.navigate(chatSessionPath(sessionId), { replace: true, keep: true });
       void queryClient.invalidateQueries({ queryKey: ['contexts'] });
     },
   });
@@ -123,8 +126,8 @@
   }
 
   // Chat lays out the conversation without the Bureau's files in it; they are shown under their
-  // rows (`chat-assets.svelte`).
-  const shown = $derived(withoutAssetParts(session.conversation));
+  // rows (`chat-assets.svelte`). An answer to a question is shown as it was typed (`answer-rows.ts`).
+  const shown = $derived(withoutAssetParts(withTypedAnswers(session.conversation)));
 
   let deciding = $state(false);
 
@@ -188,7 +191,7 @@
 
   <!-- The run reports a question as it parks, a moment before the turn that carried it is over; a
        message sent in between would be a follow-up, so the question waits for the turn's end. -->
-  {#each session.streaming ? [] : session.humanRequests as request (request.interruptId)}
+  {#each session.streaming ? [] : session.humanRequests.slice(0, 1) as request (request.interruptId)}
     <Alert variant="info" class="weft-chat-approval" data-interrupt={request.interruptId}>
       <p class="weft-chat-approval__title">{CHAT_COPY.humanRequestTitle}</p>
       <p class="weft-chat-approval__message">
@@ -222,8 +225,9 @@
     <Chat
       id={`chat-${sessionId}`}
       conversation={shown}
-      adapter={session.adapter}
+      adapter={session.chatAdapter}
       streaming={session.streaming}
+      streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{ attachments: attachable, editing: false, quote: false }}
       uploadAttachment={upload}
       acceptedTypes={settings?.acceptedTypes ?? []}

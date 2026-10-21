@@ -21,7 +21,14 @@ export type BetterSqliteStatement = {
   all(...parameters: unknown[]): Record<string, unknown>[];
 };
 
-export type BetterSqliteTransaction = (...args: unknown[]) => unknown;
+/**
+ * A transaction wrapper from `better-sqlite3`'s `transaction()`. Calling it directly runs a
+ * deferred transaction; `.immediate` runs the same function under `BEGIN IMMEDIATE`, which takes
+ * the write lock before the first statement.
+ */
+export type BetterSqliteTransaction = ((...args: unknown[]) => unknown) & {
+  immediate(...args: unknown[]): unknown;
+};
 
 export type BetterSqliteDatabase = {
   pragma(source: string): unknown;

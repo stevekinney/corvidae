@@ -5,18 +5,46 @@
  */
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, spyOn, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { router } from '../../lib/router.svelte.ts';
 import ChatConversation from './chat-conversation.svelte';
-import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
+import { AGENT, bureau as bureauOf, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
+/**
+ * The most times any test here lets the page read a session's title. The page reads it when it
+ * opens and once more when a run ends, so a test reaches the cap only when the page reads it in a
+ * loop: it asks again each time an answer lands, so no timer ever runs, and a test that waits on
+ * one waits for ever instead of failing. The read past the cap never answers, which stops the loop
+ * where it is, and the afterEach below fails the test that made it.
+ */
+const CONTEXT_READ_CAP = 6;
+let contextReads = 0;
+
+/** `bureau` from the shared support, with every test's reads of the session counted and capped. */
+function bureau(
+  answers: Parameters<typeof bureauOf>[0],
+  other: Parameters<typeof bureauOf>[1] = () => undefined,
+): ReturnType<typeof bureauOf> {
+  return bureauOf(answers, (url, init) => {
+    if (typeof init?.body === 'string' && init.body.includes('"bureau.contexts.get"')) {
+      contextReads += 1;
+      if (contextReads > CONTEXT_READ_CAP) return new Response(new ReadableStream({ start() {} }));
+    }
+    return other(url, init);
+  });
+}
+
 let restore: (() => void) | undefined;
+beforeEach(() => {
+  contextReads = 0;
+});
 afterEach(() => {
   cleanup();
   restore?.();
   restore = undefined;
+  expect(contextReads).toBeLessThanOrEqual(CONTEXT_READ_CAP);
 });
 
 const RESEARCHER = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' };
@@ -312,6 +340,68 @@ describe('a run that waits on a person’s answer', () => {
         payload: { decision: 'approve', answer: 'staging' },
       },
     ]);
+  });
+});
+
+describe('a run that waits on several questions', () => {
+  const FIRST = {
+    id: 'human-wait:native-1:environment:0',
+    reason: 'human-wait',
+    message: 'Which environment should the release go to?',
+  };
+  const SECOND = {
+    id: 'human-wait:native-1:region:0',
+    reason: 'human-wait',
+    message: 'Which region should the release go to?',
+  };
+
+  test('shows each question in turn, holds the answers as rows, and sends one resume for them all', async () => {
+    const bodies: Array<{ messages: unknown[]; resume?: Array<{ interruptId: string }> }> = [];
+    restore = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));
+      const first = bodies.length === 1;
+      return sse([
+        { type: 'RUN_STARTED', threadId: 'session-1', runId: `run-${bodies.length}` },
+        {
+          type: 'RUN_FINISHED',
+          threadId: 'session-1',
+          runId: `run-${bodies.length}`,
+          outcome: first ? { type: 'interrupt', interrupts: [FIRST, SECOND] } : { type: 'success' },
+        },
+      ]);
+    }).restore;
+    landAt('/chat/session-1');
+    const { container, findByText, queryByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('Plan the week');
+
+    await sendMessage(container, 'Ship it');
+
+    // One question is shown at a time, the first one the run asked.
+    expect(await findByText(FIRST.message)).not.toBeNull();
+    expect(queryByText(SECOND.message)).toBeNull();
+    await sendMessage(container, 'staging');
+
+    // The answer is a row in the transcript, once, and the alert moves on. Nothing was sent.
+    expect(await findByText(SECOND.message)).not.toBeNull();
+    await waitFor(() => expect(queryByText(FIRST.message)?.textContent ?? null).toBeNull());
+    expect(container.textContent?.split('staging').length).toBe(2);
+    expect(bodies).toHaveLength(1);
+
+    await sendMessage(container, 'eu');
+
+    await waitFor(() => expect(queryByText(SECOND.message)?.textContent ?? null).toBeNull());
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]?.messages).toEqual([]);
+    expect(bodies[1]?.resume?.map((entry) => entry.interruptId)).toEqual([FIRST.id, SECOND.id]);
   });
 });
 
@@ -1104,5 +1194,72 @@ describe('the files on a row', () => {
       ).not.toBeNull();
     });
     expect(container.textContent).toContain('Look at these');
+  });
+});
+
+describe('a stop before the run’s first event', () => {
+  test('shows the turn as stopped and takes no message until the run has been cancelled', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const starts: string[] = [];
+    const cancels: string[] = [];
+    const stub = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (url.includes('/cancel')) {
+        cancels.push(url);
+        return Response.json({ runId: 'native-1', status: 'aborted' });
+      }
+      if (url.includes('/runs/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      starts.push(typeof init?.body === 'string' ? init.body : '');
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await held;
+          const started = {
+            type: 'RUN_STARTED',
+            threadId: 'session-1',
+            runId: 'run-1',
+            metadata: { '@lostgradient/bureau': { runId: 'native-1', sessionId: 'session-1' } },
+          };
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(started)}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    restore = stub.restore;
+    landAt('/chat/session-1');
+    const { container, findByText, findByRole, queryByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('Plan the week');
+    await sendMessage(container, 'Start');
+    await waitFor(() => expect(starts).toHaveLength(1));
+
+    await fireEvent.click(await findByRole('button', { name: /stop/i }));
+
+    // The page says the turn is stopped, and its composer takes nothing: Enter sends no follow-up.
+    await waitFor(() => expect(queryByText('Stopping…')).not.toBeNull());
+    const composer = container.querySelector('textarea');
+    expect(composer?.disabled).toBe(true);
+    await fireEvent.keyDown(composer!, { key: 'Enter' });
+    expect(stub.calls.map((call) => call.method)).not.toContain('bureau.contexts.input');
+    expect(starts).toHaveLength(1);
+    expect(cancels).toEqual([]);
+
+    release();
+
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    await waitFor(() => expect(queryByText('Stopping…')?.textContent ?? null).toBeNull());
+    expect(container.querySelector('textarea')?.disabled).toBe(false);
   });
 });

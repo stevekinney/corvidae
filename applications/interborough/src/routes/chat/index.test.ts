@@ -6,8 +6,9 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { VIEW_COPY } from '../../app/copy.ts';
+import { chatSessionPath } from '../../lib/identifier-paths.ts';
 import ChatIndex from './index.svelte';
-import { bureau, landAt } from './pages.test-support.ts';
+import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -84,4 +85,33 @@ describe('a session whose page could not read it', () => {
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(context.asked()).toBeGreaterThan(asked));
   });
+});
+
+describe('a session whose identifier the path cannot carry', () => {
+  for (const sessionId of ['new', '.', '..']) {
+    test(`opens the session ${sessionId}, and not the new chat or another page`, async () => {
+      const { calls, restore: restoreBureau } = bureau(
+        {
+          'bureau.contexts.get': () => ({
+            ...CONTEXT,
+            id: sessionId,
+            title: 'A session by an odd name',
+          }),
+        },
+        (url) =>
+          url.endsWith('/messages') || url.includes('/threads/')
+            ? Response.json({ threadId: sessionId, messages: [] })
+            : undefined,
+      );
+      restore = restoreBureau;
+      landAt(chatSessionPath(sessionId));
+
+      const { findByRole } = mount();
+
+      await findByRole('heading', { level: 1, name: 'A session by an odd name' });
+      expect(calls.find((call) => call.method === 'bureau.contexts.get')?.params).toEqual({
+        contextId: sessionId,
+      });
+    });
+  }
 });

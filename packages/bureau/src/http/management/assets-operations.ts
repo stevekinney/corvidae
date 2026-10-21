@@ -9,6 +9,11 @@
  *   asset was rejected or quarantined. No call answers while the asset is `pending`.
  * - `bureau.assets.get` reads one asset's descriptor.
  *
+ * An upload session admits exactly one asset (COR-1609). A completion claims the session; one that
+ * loses, or arrives while another is in flight, is answered `Conflict`. A retried completion of a
+ * session already completed is answered the settled outcome of the asset it admitted, until the
+ * session expires, so a client whose answer was lost can recover the asset id.
+ *
  * The bytes themselves are served by `GET /assets/{assetId}/content` (`assets-mount.ts`).
  *
  * The two scopes, `bureau.assets:read` and `bureau.assets:write`, gate who may call; they grant
@@ -27,6 +32,7 @@ import { z } from 'zod';
 import { decodeBase64 } from '../../assets/base64.ts';
 import {
   AssetAdmissionError,
+  AssetConflictError,
   AssetNotFoundError,
   AssetServiceClosedError,
 } from '../../assets/errors.ts';
@@ -84,7 +90,7 @@ function assetPrincipalOf(
 /**
  * The fault an asset error is answered with. A missing asset or session, and one the caller may
  * not see, are the same `NotFound`; a refused admission is `Unprocessable` with the asset's
- * rejection code in `data.reason`. Anything else is not the caller's doing and is rethrown.
+ * rejection code in `data.reason`; a write that lost to a concurrent one is `Conflict`. Anything else is not the caller's doing and is rethrown.
  */
 function faultOf(error: unknown, resource: 'asset' | 'upload', identifier: string): unknown {
   if (error instanceof AssetNotFoundError) return resourceNotFound(resource, identifier);
@@ -93,6 +99,14 @@ function faultOf(error: unknown, resource: 'asset' | 'upload', identifier: strin
       code: 'Unprocessable',
       message: error.message,
       data: { reason: error.code },
+    } satisfies OperationFault;
+  }
+  if (error instanceof AssetConflictError) {
+    // The storage key stays out of the message: it names the caller's own resource and nothing more.
+    return {
+      code: 'Conflict',
+      message: `${resource === 'upload' ? 'Upload' : 'Asset'} "${identifier}" was changed by another request; read it again before retrying`,
+      data: { reason: 'concurrent-write' },
     } satisfies OperationFault;
   }
   if (error instanceof AssetServiceClosedError) {
@@ -235,7 +249,7 @@ export const assetsUploadsAppendOperation = defineOperation<
   mcpExposable: false,
   summary: 'Append a chunk to an asset upload',
   description:
-    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. Requires `bureau.assets:write`.',
+    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. An append that loses to another append to the same session, in this process or any other sharing the store, is `Conflict` with `data.reason: "concurrent-write"`: nothing of it is stored, and the session holds only the chunk that won. A session that already holds a chunk at the next index (left by a writer that stored the chunk and died before it recorded it) answers every append `Conflict` until it expires (an embedding host can also abort it through `AssetService.abortUpload`; the management plane does not serve abort). A session holds at most 9999 chunks: the append that would exceed that is refused as `Unprocessable` with `reason: "per-part-limit-exceeded"` and stores nothing, so a client sends chunks large enough to fit its declared length in 9999. Requires `bureau.assets:write`.',
   destructive: false,
   tags: ['Assets'],
   inputSchema: appendInput,
@@ -243,6 +257,7 @@ export const assetsUploadsAppendOperation = defineOperation<
   producibleFaults: [
     'InvalidParams',
     'NotFound',
+    'Conflict',
     'Unprocessable',
     'UnsupportedCapability',
     'Unavailable',
@@ -272,7 +287,7 @@ export const assetsUploadsCompleteOperation = defineOperation<
   mcpExposable: false,
   summary: 'Complete an asset upload',
   description:
-    'Admits the caller’s own upload as an asset and answers once the asset has settled, never while it is `pending`: with its descriptor, in state `available`, or with an `Unprocessable` fault whose `data.reason` is the asset’s rejection code (for example `media-type-mismatch` or `safety-gate-flagged`) and whose message names the asset and says whether it was `rejected` or `quarantined`. A session that is not complete (fewer bytes than declared) is refused with `reason: "upload-incomplete"`. A session another owner holds, one already completed, expired, or missing is `NotFound`. Requires `bureau.assets:write`.',
+    'Admits the caller’s own upload as an asset and answers once the asset has settled, never while it is `pending`: with its descriptor, in state `available`, or with an `Unprocessable` fault whose `data.reason` is the asset’s rejection code (for example `media-type-mismatch` or `safety-gate-flagged`) and whose message names the asset and says whether it was `rejected` or `quarantined`. A session that is not complete (fewer bytes than declared) is refused with `reason: "upload-incomplete"` and stays open, so the missing bytes can still be appended. Completing claims the session: a completion that arrives while another is in flight, or that loses the claim to one in another process, is `Conflict` and admits nothing. A completion retried after the session completed is answered from the current state of the asset the session admitted (the asset it reused, under the `reuse` duplicate policy): its descriptor when `available`, an `Unprocessable` fault carrying the rejection it recorded when refused, and `Unavailable` when the asset has since expired or been deleted, until the session expires; a retry that finds the first still in flight, before its asset has settled, is `Conflict`. A session another owner holds, an expired or purged one, and a missing one are `NotFound`. Requires `bureau.assets:write`.',
   destructive: false,
   tags: ['Assets'],
   inputSchema: completeInput,
@@ -280,6 +295,7 @@ export const assetsUploadsCompleteOperation = defineOperation<
   producibleFaults: [
     'InvalidParams',
     'NotFound',
+    'Conflict',
     'Unprocessable',
     'UnsupportedCapability',
     'Unavailable',
@@ -292,35 +308,63 @@ export const assetsUploadsCompleteOperation = defineOperation<
     const { uploadId } = input;
     const { service, caller } = assetPrincipalOf(host, principal, 'upload', uploadId);
     // Asked first: a refused completion must not start an admission, and so leave a rejected
-    // asset behind, for a session the caller does not hold.
-    await asFault('upload', uploadId, () => service.inspectUpload(uploadId, caller));
+    // asset behind, for a session the caller does not hold. A session already completed is a
+    // retry, answered from the asset it admitted; one in flight answers `Conflict` here.
+    const settledAssetId = await asFault('upload', uploadId, () =>
+      service.completedUploadAssetId(uploadId, caller),
+    );
+    if (settledAssetId !== undefined) {
+      return answerFor(service, caller, uploadId, settledAssetId, 'replayed');
+    }
     const admission = await asFault('upload', uploadId, () =>
       service.admit({ source: { kind: 'upload', uploadId } }, caller),
     );
     const outcome = await admission.work.result();
-    const descriptor = await asFault('asset', admission.assetId, () =>
-      service.inspect(admission.assetId, caller),
-    );
-    if (descriptor.state === 'available') return assetView(descriptor);
-    if (descriptor.state === 'rejected' || descriptor.state === 'quarantined') {
-      const code = descriptor.rejection?.code ?? 'unknown';
-      // The session was retired between the check above and the admission reading it.
-      if (code === 'source-not-available') throw resourceNotFound('upload', uploadId);
-      throw {
-        code: 'Unprocessable',
-        message: `Asset "${descriptor.assetId}" was ${descriptor.state}: ${descriptor.rejection?.message ?? code}`,
-        data: { reason: code },
-      } satisfies OperationFault;
-    }
-    // Aborted by a shutdown, or expired or deleted the moment it settled: it is not an asset
-    // the caller can use, and not something the caller did wrong.
-    throw {
-      code: 'Unavailable',
-      message: `Asset "${descriptor.assetId}" is ${descriptor.state} (${outcome.outcome})`,
-      data: { reason: `asset-${descriptor.state}` },
-    } satisfies OperationFault;
+    // Under the `reuse` duplicate policy the admission's own asset is retired and its work
+    // completes with the asset it matched: that is the one the caller can use.
+    const assetId = outcome.outcome === 'completed' ? outcome.value.assetId : admission.assetId;
+    return answerFor(service, caller, uploadId, assetId, outcome.outcome);
   },
 });
+
+/**
+ * The answer for a completion that admitted `assetId`: its descriptor when `available`, otherwise
+ * the fault the asset's state calls for. A replay (`outcome: 'replayed'`) answers from the asset's
+ * state as it is now, so it can differ from the first call's answer (an asset deleted since reads
+ * `Unavailable`), and a replay finding the asset still `pending` is another completion's
+ * in-flight work: `Conflict`.
+ */
+async function answerFor(
+  service: AssetService,
+  caller: AssetPrincipal,
+  uploadId: string,
+  assetId: string,
+  outcome: string,
+): Promise<z.infer<typeof assetViewSchema>> {
+  const descriptor = await asFault('asset', assetId, () => service.inspect(assetId, caller));
+  if (descriptor.state === 'available') return assetView(descriptor);
+  if (descriptor.state === 'pending' && outcome === 'replayed') {
+    throw faultOf(new AssetConflictError(uploadId), 'upload', uploadId);
+  }
+  if (descriptor.state === 'rejected' || descriptor.state === 'quarantined') {
+    const code = descriptor.rejection?.code ?? 'unknown';
+    // The session was retired between the check above and the admission reading it.
+    if (code === 'source-not-available') throw resourceNotFound('upload', uploadId);
+    throw {
+      code: 'Unprocessable',
+      message: `Asset "${descriptor.assetId}" was ${descriptor.state}: ${descriptor.rejection?.message ?? code}`,
+      data: { reason: code },
+    } satisfies OperationFault;
+  }
+  // Aborted by a shutdown, or expired or deleted the moment it settled: it is not an asset
+  // the caller can use, and not something the caller did wrong.
+  throw {
+    code: 'Unavailable',
+    // A replay re-reads the asset's current state, so it has no first-call outcome to name.
+    message: `Asset "${descriptor.assetId}" is ${descriptor.state}${outcome === 'replayed' ? '' : ` (${outcome})`}`,
+    data: { reason: `asset-${descriptor.state}` },
+  } satisfies OperationFault;
+}
 
 const getInput = z.object({ assetId: z.string().min(1) });
 

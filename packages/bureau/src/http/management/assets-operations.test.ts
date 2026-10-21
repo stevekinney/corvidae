@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
+import { holdAssetStorageCall } from '../../testing/asset-storage-hold.test-support.ts';
 import { KEYS } from '../../assets/records.ts';
 import { createMemoryAssetStorage } from '../../assets/storage.ts';
 import { base64Of, pngBytes, textBytes } from '../../testing/asset-fixtures.test-support.ts';
@@ -333,11 +334,156 @@ describe('two principals', () => {
       expect(mask(bob, [openUploadId, assetId])).toBe(
         mask(missing, ['upload-missing', 'asset-missing']),
       );
-      // The completed session is gone for everyone, its owner included, and reads as missing.
-      expect(httpStatusOf(await complete(opened, 'alice-assets-key', uploadId))).toBe(404);
+      // A completed session is read as missing by anyone but its owner, so a retry cannot be
+      // used to learn which asset a stranger's upload became.
+      expect(httpStatusOf(await complete(opened, 'bob-assets-key', uploadId))).toBe(404);
+      const retried = await complete(opened, 'alice-assets-key', uploadId);
+      expect(retried.result).toEqual(completed.result);
       // Alice's own upload was untouched by bob's attempts.
       const own = await append(opened, 'alice-assets-key', openUploadId, png);
       expect(own.result).toMatchObject({ receivedBytes: png.byteLength });
+    });
+  });
+});
+
+describe('a retried or concurrent completion', () => {
+  it('answers a retry after success with the same asset, however many times it is asked', async () => {
+    await withBureau({}, async (opened) => {
+      const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const assetId = completed.result!['assetId'] as string;
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const retried = await complete(opened, 'alice-assets-key', uploadId);
+        expect(retried.result).toEqual(completed.result);
+      }
+      // Still exactly one asset: the retries admitted nothing.
+      expect(await opened.bureau.assets!.inspect(assetId, { id: 'api-key:alice' })).toMatchObject({
+        state: 'available',
+      });
+    });
+  });
+
+  it('replays a rejected completion as the same typed fault', async () => {
+    const assetStorage = createMemoryAssetStorage();
+    await withBureau({ assetStorage }, async (opened) => {
+      const { uploadId, completed } = await upload(
+        opened,
+        'alice-assets-key',
+        png,
+        'application/pdf',
+      );
+      expect(completed.error?.data).toMatchObject({
+        httpStatus: 422,
+        reason: 'media-type-mismatch',
+      });
+      const recordsBefore = await assetStorage.list(KEYS.recordPrefix);
+
+      const retried = await complete(opened, 'alice-assets-key', uploadId);
+
+      expect(retried.error?.data).toMatchObject({ httpStatus: 422, reason: 'media-type-mismatch' });
+      expect(retried.error?.message).toBe(completed.error?.message);
+      expect(await assetStorage.list(KEYS.recordPrefix)).toEqual(recordsBefore);
+    });
+  });
+
+  it('answers a retry as NotFound once the session has been purged', async () => {
+    const assetStorage = createMemoryAssetStorage();
+    await withBureau({ assetStorage }, async (opened) => {
+      const { uploadId } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      // What the expiry collection does to a session past its `expiresAt`.
+      await assetStorage.delete(KEYS.upload(uploadId));
+
+      expect(httpStatusOf(await complete(opened, 'alice-assets-key', uploadId))).toBe(404);
+    });
+  });
+
+  it('answers 409 to a completion that arrives while the first is in flight, and the first still succeeds', async () => {
+    const hold = holdAssetStorageCall(createMemoryAssetStorage(), 'list', (prefix) =>
+      prefix.startsWith(KEYS.chunkRootPrefix),
+    );
+    await withBureau({ assetStorage: hold.storage }, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+      await append(opened, 'alice-assets-key', uploadId, png);
+
+      hold.arm();
+      const first = complete(opened, 'alice-assets-key', uploadId);
+      await hold.reached;
+      const second = await complete(opened, 'alice-assets-key', uploadId);
+      hold.release();
+
+      expect(second.result).toBeUndefined();
+      expect(second.error?.data).toMatchObject({ httpStatus: 409 });
+      const answered = await first;
+      expect(answered.result).toMatchObject({ state: 'available' });
+    });
+  });
+
+  it('answers 409 to a retry that arrives after the terminal write while the asset is still pending', async () => {
+    // Parks the first completion at its commit's blob read: its session is `completed`, its asset `pending`.
+    const inner = createMemoryAssetStorage();
+    const hold = holdAssetStorageCall(inner, 'get', (key) => key.startsWith(KEYS.blobPrefix));
+    await withBureau({ assetStorage: hold.storage }, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+      await append(opened, 'alice-assets-key', uploadId, png);
+
+      hold.arm();
+      const first = complete(opened, 'alice-assets-key', uploadId);
+      await hold.reached;
+      const raw = await inner.get(KEYS.upload(uploadId));
+      const retry = await complete(opened, 'alice-assets-key', uploadId);
+      hold.release();
+
+      expect(JSON.parse(raw!)).toMatchObject({ state: 'completed' });
+      expect(retry.result).toBeUndefined();
+      expect(retry.error?.data).toMatchObject({ httpStatus: 409, reason: 'concurrent-write' });
+      const answered = await first;
+      expect(answered.result).toMatchObject({ state: 'available' });
+    });
+  });
+
+  it('answers a retry from the asset’s current state: Unavailable once it has been deleted', async () => {
+    await withBureau({}, async (opened) => {
+      const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const assetId = completed.result!['assetId'] as string;
+      await opened.bureau.assets!.delete(assetId, { id: 'api-key:alice' }).result();
+
+      const retried = await complete(opened, 'alice-assets-key', uploadId);
+
+      expect(retried.error?.data).toMatchObject({ reason: 'asset-deleted' });
+      expect(retried.error?.message).toBe(`Asset "${assetId}" is deleted`);
+    });
+  });
+
+  it('names Conflict among the faults append and complete can answer, and says when', () => {
+    for (const operation of [assetsUploadsAppendOperation, assetsUploadsCompleteOperation]) {
+      expect(operation.producibleFaults).toContain('Conflict');
+      expect(operation.description).toMatch(/`Conflict`/);
+    }
+    expect(assetsUploadsCreateOperation.producibleFaults).not.toContain('Conflict');
+    expect(assetsGetOperation.producibleFaults).not.toContain('Conflict');
+  });
+});
+
+describe('a completion that reuses an identical asset', () => {
+  it('reports the asset it reused, on the first call and on a retry', async () => {
+    await withBureau({ assetPolicy: { duplicatePolicy: 'reuse' } }, async (opened) => {
+      const first = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const firstAssetId = first.completed.result!['assetId'] as string;
+      expect(first.completed.result).toMatchObject({ state: 'available' });
+
+      const second = await upload(opened, 'alice-assets-key', png, 'image/png');
+
+      // The admission's own id is retired as a duplicate; the caller is given the asset it can use.
+      expect(second.completed.error).toBeUndefined();
+      expect(second.completed.result).toMatchObject({ assetId: firstAssetId, state: 'available' });
+      const retried = await complete(opened, 'alice-assets-key', second.uploadId);
+      expect(retried.result).toEqual(second.completed.result);
     });
   });
 });
