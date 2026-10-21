@@ -520,11 +520,22 @@ export interface AssetService {
       readonly declaredByteLength: number;
     },
   ): Promise<AssetUploadSession>;
+  /**
+   * Adds one chunk to the open session. Each append is one compare-and-swap on the session, so
+   * an append that loses to another (in this process or any process sharing the storage) rejects
+   * with `AssetConflictError` and stores nothing. A session that already holds a chunk at its next
+   * index (a dead writer's residue) answers `AssetConflictError` until it is aborted or expires. An append that would take the session past 9999 chunks (`MAX_UPLOAD_CHUNKS`) rejects with `AssetAdmissionError` code `per-part-limit-exceeded` and stores nothing.
+   */
   appendUpload(
     uploadId: string,
     principal: AssetPrincipal,
     bytes: Uint8Array,
   ): Promise<AssetUploadSession>;
+  /**
+   * Discards the open session and its chunks in one compare-and-swap. An abort that loses to an
+   * append, a claim or a completion (in this process or any process sharing the storage) rejects
+   * with `AssetConflictError` and deletes nothing, so it cannot remove a terminal record.
+   */
   abortUpload(uploadId: string, principal: AssetPrincipal): Promise<void>;
   /**
    * The open upload session `uploadId`, as its owner sees it. A session that does not exist, is
@@ -532,6 +543,14 @@ export interface AssetService {
    * management plane asks before it admits, so a refused completion starts no admission.
    */
   inspectUpload(uploadId: string, principal: AssetPrincipal): Promise<AssetUploadSession>;
+  /**
+   * The asset a completed upload session admitted (or reused, under the `reuse` duplicate policy),
+   * for a caller retrying a completion whose answer it lost; the session keeps it until its
+   * `expiresAt`. `undefined` while the session is still open. A session whose completion is in
+   * flight rejects with `AssetConflictError`, and one that does not exist, has expired, or belongs
+   * to another principal with `AssetNotFoundError`.
+   */
+  completedUploadAssetId(uploadId: string, principal: AssetPrincipal): Promise<string | undefined>;
   inspect(
     assetId: string,
     principal: AssetPrincipal,

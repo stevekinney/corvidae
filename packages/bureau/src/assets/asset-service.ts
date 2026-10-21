@@ -260,6 +260,8 @@ export async function createAssetService(options: AssetServiceOptions): Promise<
       guarded(() => uploads.abortUpload(internals, uploadId, principal)),
     inspectUpload: (uploadId, principal) =>
       guarded(() => uploads.inspectUpload(internals, uploadId, principal)),
+    completedUploadAssetId: (uploadId, principal) =>
+      guarded(() => uploads.completedUploadAssetId(internals, uploadId, principal)),
 
     async inspect(assetId, principal, inspectOptions) {
       open();
