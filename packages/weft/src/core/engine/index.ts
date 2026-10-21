@@ -198,6 +198,7 @@ import {
   EngineDisposedError,
   StartOrSignalConflictError,
 } from './errors.ts';
+import { isLaunchedUnderClaim } from './execution-attempts.ts';
 import { assertLeaseHeldForEngineWork, commitFencedEngineWrite } from './fenced-write.ts';
 import { recordFinalizerState } from './finalizer-state.ts';
 import { getFinalizerStatus as getFinalizerStatusFromInternals } from './finalizer-status.ts';
@@ -213,7 +214,6 @@ import {
   type PreparedWorkflowHandle,
   type WorkflowClaimHandle,
 } from './handles.ts';
-import { hasQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import {
   handleStrategyMessage as handleStrategyMessageFromInternals,
   resumeParkedInlineWorkflow as resumeParkedInlineWorkflowFromInternals,
@@ -250,6 +250,10 @@ import {
   removeTags as removeWorkflowTags,
   setAttributes as setWorkflowAttributes,
 } from './listing.ts';
+import {
+  defersToQueuedInlineWorkflowStart,
+  hasQueuedInlineWorkflowStart,
+} from './local-execution.ts';
 import { getOffloadFromInternals } from './operations-data.ts';
 import { getStreamChunksFromInternals } from './operations-stream.ts';
 import {
@@ -1248,6 +1252,26 @@ export class Engine<
         // driving the workflow it sits idle while this engine's renewal keeps
         // the claim alive, shielding it from any engine that would resume it.
         onWorkflowClaimReclaimed: async (workflowId: string) => {
+          // An inline start of the workflow whose launch is queued or in flight under this claim
+          // is this engine's own drive in the making, listed by a reclaim scan that took its
+          // exclude set before the start folded its claim. Its flush drives the run under this
+          // claim, so leave the run to it (COR-1618); waiting for the flush would wait on the host
+          // under `'manual'` launch scheduling. A start enqueued under an earlier claim is stale,
+          // and its flush discards it, so the replay below is the drive.
+          if (defersToQueuedInlineWorkflowStart(internals, workflowId)) return;
+          // A drive that began under the claim just taken is this reclaim's to leave alone: the
+          // eviction and replay below restart a run driven under an EARLIER claim (this engine
+          // lost it, then took it back), and a launch under this very claim began after that.
+          // `recoverAll()` landing between the takeover and this call, or between a reclaim
+          // listing and its attempt, is one. Evicting or replaying it would drive the generation
+          // a second time (COR-1618). Whether a drive is live is read from the strategy and the
+          // attempt it created, never asserted by a launch path (`isLaunchedUnderClaim`).
+          // This epoch governs eviction only. The replay below reads the epoch again, after the
+          // awaits, because a claim lost and taken back during them is the one it must check against.
+          const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
+          if (claimEpoch !== null && isLaunchedUnderClaim(internals, workflowId, claimEpoch)) {
+            return;
+          }
           // Same-engine reclaim (this engine held the claim, was deposed, and
           // later reclaimed it): deposition drops only the registry's claim
           // entry, so this engine's OLD in-memory context/generator/abort
@@ -1279,18 +1303,28 @@ export class Engine<
           // deterministic token and wait forever for a delivery the completion
           // caller was already told had succeeded.
           await recoverPendingAsyncActivities(internals, workflowId);
+          const gate = internals.reclaimReplayGateForTesting;
+          if (gate !== undefined) await gate(workflowId);
           // Disposal can land while the reload above was in flight — recheck
           // rather than replay against a torn-down host. `markDisposing()` on
           // the reclaim target (see `ownership-bootstrap.ts`) closes the
           // takeover-CAS side of this race; this closes the drive side for a
           // takeover that had already landed before disposal was signaled.
           if (internals.disposed) return;
+          // The awaits above may have spanned a claim this engine lost and took back, so the
+          // replay is checked against the claim held now, not the one held on entry.
+          const replayEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
           await resumeFromLifecycle(
             internals,
             workflowId,
             this.#createLifecycleCallbacks(),
             internals.onRecoveredWorkflowHook,
-            { forceReplayFromStorage: true },
+            {
+              forceReplayFromStorage: true,
+              // A drive may have begun under that claim during the same awaits; the replay
+              // re-checks as it registers.
+              ...(replayEpoch !== null && { skipIfLaunchedUnderClaimEpoch: replayEpoch }),
+            },
           );
         },
         // Owner-side signal polling (ADR 0002): without this, a signal
