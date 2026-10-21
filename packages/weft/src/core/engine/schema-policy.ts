@@ -117,8 +117,8 @@ const BOTH = ['inputSchema', 'outputSchema'] as const;
 /**
  * Every schema `definition` leaves undeclared, as dotted paths: its own input
  * and output, its finalizer's, each signal's input, each update's and
- * query's input and output, and each per-workflow activity's input and
- * output. A hand-rolled definition without the builder's message maps is
+ * query's input and output, and each per-workflow or `.uses()` activity's
+ * input and output. A hand-rolled definition without the builder's message maps is
  * checked for what it has.
  */
 export function collectMissingWorkflowSchemas(definition: WorkflowDefinition): string[] {
@@ -132,11 +132,13 @@ export function collectMissingWorkflowSchemas(definition: WorkflowDefinition): s
     readonly signals?: Readonly<Record<string, NamedSchemaFields>>;
     readonly updates?: Readonly<Record<string, NamedSchemaFields>>;
     readonly queries?: Readonly<Record<string, NamedSchemaFields>>;
+    readonly uses?: Readonly<Record<string, NamedSchemaFields>>;
   };
   collectNamed(missing, 'signals', maps.signals, ['inputSchema']);
   collectNamed(missing, 'updates', maps.updates, BOTH);
   collectNamed(missing, 'queries', maps.queries, BOTH);
   collectNamed(missing, 'activities', maps.activities, BOTH);
+  collectNamed(missing, 'uses', maps.uses, BOTH);
   return missing;
 }
 

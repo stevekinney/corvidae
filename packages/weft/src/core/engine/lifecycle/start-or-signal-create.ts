@@ -12,6 +12,7 @@ import type { BatchOperation, ConditionalBatchCondition } from '../../../storage
 import { KEYS } from '../../../storage/interface.ts';
 import { encode } from '../../codec.ts';
 import type { StartOrSignalOptions, StartOrSignalSignal } from '../../types.ts';
+import { assertWorkflowMessageDeclared } from '../declared-messages.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { type StartOrSignalOutcome, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
@@ -39,7 +40,14 @@ export function idempotentStartOperationsFor(
   idempotencyKey: string | undefined,
   signal: { name: string; payload: unknown; signalId: string } | undefined,
 ): BuildIdempotentStartOperations {
-  return (workflowId) => {
+  return (workflowId, state) => {
+    // Checked against the revision this start resolved, eager or dynamic source,
+    // before the create batch commits, so a rejected signal never creates a run.
+    // An existing target is checked when `engine.signal()` buffers the signal.
+    if (signal !== undefined) {
+      const identity = { type: state.type, revision: state.revision };
+      assertWorkflowMessageDeclared(internals, 'signal', workflowId, identity, signal.name);
+    }
     const operations: BatchOperation[] = [];
     const conditions: ConditionalBatchCondition[] = [];
 

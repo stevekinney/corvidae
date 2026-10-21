@@ -22,6 +22,7 @@ import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import {
   invalidParamsFault,
+  undeclaredMessageFault,
   workerStartOverrideRejectedFault,
   workerVersionRemovedFault,
 } from './operation-helpers.ts';
@@ -156,6 +157,8 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   if (error instanceof WorkflowNotRegisteredError) {
     throw invalidParamsFault(message, error.code);
   }
+  const undeclared = undeclaredMessageFault(error);
+  if (undeclared !== undefined) throw undeclared;
   if (
     error instanceof StartOrSignalConflictError ||
     error instanceof IdempotencyKeyPurgedError ||
@@ -213,7 +216,8 @@ export function createStartOrSignalWorkflowOperation(
       '`onTerminalConflict: "start-new"` is supplied with `id` and `signalId`, in which case the ' +
       'prior terminal run is replaced through the shared terminal-replacement path and the initial ' +
       'signal is delivered to the fresh run. A spent `idempotencyKey` whose run was purged or swept ' +
-      'by retention also faults with Conflict. ' +
+      'by retention also faults with Conflict. A signal name the target declares no signal for, ' +
+      'when it declares its signals, faults with Unprocessable. ' +
       'Requires `type`, `signalName`, and exactly one of `signalId` or `idempotencyKey` (not ' +
       'both). Accepts `input`, `signalPayload`, and the non-idempotency start options from ' +
       'weft.workflows.start (`id`, `executionTimeout`, `startAt`/`startAfter`, `tags`, ' +
@@ -235,7 +239,7 @@ export function createStartOrSignalWorkflowOperation(
       scopes: { kind: 'allOf', scopes: ['workflows:write', 'signals:write'] },
     },
     discoverable: true,
-    producibleFaults: ['Conflict'],
+    producibleFaults: ['Conflict', 'Unprocessable'],
     transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
     unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
     invoke: async ({ input, host: engine }): Promise<StartOrSignalWorkflowOutput> => {

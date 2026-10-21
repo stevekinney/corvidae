@@ -268,34 +268,18 @@ function toCodegenWorkflowEntry(manifest: WorkflowRevisionManifest): CodegenWork
   if (manifest.contract.tags !== undefined && manifest.contract.tags.length > 0) {
     entry.tags = manifest.contract.tags;
   }
-  const activities = projectCallableActivities(manifest);
-  if (activities !== undefined) entry.activities = activities;
-  return entry;
-}
-
-/**
- * Every activity the workflow can call, sorted by name: its own
- * `.activities({...})` entries and the engine-provided ones it declares with
- * `.uses({...})`. Generated client types do not distinguish the two, because a
- * caller dispatches both the same way.
- */
-function projectCallableActivities(
-  manifest: WorkflowRevisionManifest,
-): Record<string, CodegenActivityContract> | undefined {
-  const { activities: scoped, usedActivities: used } = manifest.contract;
-  if (scoped === undefined && used === undefined) return undefined;
-  const entries = [...Object.entries(scoped ?? {}), ...Object.entries(used ?? {})].toSorted(
-    ([left], [right]) => (left < right ? -1 : left > right ? 1 : 0),
-  );
-  const activities: Record<string, CodegenActivityContract> = {};
-  Object.setPrototypeOf(activities, null);
-  for (const [name, contract] of entries) {
-    const activity: CodegenActivityContract = {};
-    if (contract.inputSchema !== undefined) activity.inputSchema = contract.inputSchema;
-    if (contract.outputSchema !== undefined) activity.outputSchema = contract.outputSchema;
-    activities[name] = activity;
+  if (manifest.contract.activities !== undefined) {
+    const activities: Record<string, CodegenActivityContract> = {};
+    Object.setPrototypeOf(activities, null);
+    for (const [name, contract] of Object.entries(manifest.contract.activities)) {
+      const activity: CodegenActivityContract = {};
+      if (contract.inputSchema !== undefined) activity.inputSchema = contract.inputSchema;
+      if (contract.outputSchema !== undefined) activity.outputSchema = contract.outputSchema;
+      activities[name] = activity;
+    }
+    entry.activities = activities;
   }
-  return activities;
+  return entry;
 }
 
 /**

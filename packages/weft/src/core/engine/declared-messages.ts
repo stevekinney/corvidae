@@ -8,8 +8,8 @@
  *
  * Each kind closes independently, so declaring signals does not close
  * updates or queries. Declared names are the messages' own wire names (the
- * `.name` each `signal()`/`update()`/`query()` handle carries), which is what
- * callers send and what the contract lists.
+ * `.name` each `signal()`/`update()`/`query()` handle carries, which the
+ * contract lists) together with the keys the builder map aliases them to.
  *
  * A workflow whose definition this process does not have — a client-only
  * engine, or a dynamic source revision not resolved here — is not checked:
@@ -72,6 +72,9 @@ export class UndeclaredWorkflowMessageError extends WeftError<'UndeclaredWorkflo
 
 type NamedMessages = Readonly<Record<string, { readonly name: string }>> | undefined;
 
+/** The message maps a builder definition carries; absent on a hand-rolled one. */
+type DeclaredMessageMaps = Partial<Record<'signals' | 'updates' | 'queries', NamedMessages>>;
+
 const MESSAGE_FIELDS = {
   signal: 'signals',
   update: 'updates',
@@ -79,9 +82,30 @@ const MESSAGE_FIELDS = {
 } as const satisfies Record<WorkflowMessageKind, 'signals' | 'updates' | 'queries'>;
 
 /**
- * The wire names of `kind` the workflow `type` (at `revision`, for a dynamic
+ * The builder definition this process runs for `type`: the eagerly registered
+ * one, or the dynamic source resolved at `revision`. `undefined` for a type
+ * this process has no builder definition for.
+ */
+function declaringDefinition(
+  internals: EngineInternals,
+  type: string,
+  revision: string | undefined,
+): DeclaredMessageMaps | undefined {
+  if (internals.registrations.has(type)) {
+    return internals.workflowDefinitionsByName.get(type);
+  }
+  if (revision === undefined) return undefined;
+  return internals.sources.resolved.get(type)?.get(revision)?.definition as
+    DeclaredMessageMaps | undefined;
+}
+
+/**
+ * The names of `kind` the workflow `type` (at `revision`, for a dynamic
  * source) declared, or `undefined` when this process does not know the
- * definition or the workflow declared none of that kind.
+ * definition or the workflow declared none of that kind. Both the builder
+ * key and the message's wire name are admitted, since a declaration may alias
+ * one to the other (`.signals({ localAlias: signal('wireName') })`) and the
+ * builder types the alias for `ctx.waitForSignal()` and handlers.
  */
 function declaredMessageNames(
   internals: EngineInternals,
@@ -89,20 +113,14 @@ function declaredMessageNames(
   type: string,
   revision: string | undefined,
 ): readonly string[] | undefined {
-  const field = MESSAGE_FIELDS[kind];
-  const eager = internals.registrations.get(type);
-  let messages: NamedMessages;
-  if (eager !== undefined) {
-    messages = eager[field];
-  } else if (revision !== undefined) {
-    messages = (
-      internals.sources.resolved.get(type)?.get(revision)?.definition as
-        Partial<Record<typeof field, NamedMessages>> | undefined
-    )?.[field];
-  }
+  const messages = declaringDefinition(internals, type, revision)?.[MESSAGE_FIELDS[kind]];
   if (messages === undefined) return undefined;
-  const names = Object.values(messages).map((message) => message.name);
-  return names.length === 0 ? undefined : names.toSorted();
+  const names = new Set<string>();
+  for (const [key, message] of Object.entries(messages)) {
+    names.add(key);
+    names.add(message.name);
+  }
+  return names.size === 0 ? undefined : [...names].toSorted();
 }
 
 /**

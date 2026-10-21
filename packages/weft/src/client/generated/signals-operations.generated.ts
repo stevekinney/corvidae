@@ -29,6 +29,6 @@ export type SignalsOperationTypes = {
       readonly workerStartOverridePreview?: unknown;
     };
     readonly output: { readonly id: string; readonly outcome: 'started' | 'signalled' };
-    readonly faults: 'Conflict';
+    readonly faults: 'Conflict' | 'Unprocessable';
   };
 };

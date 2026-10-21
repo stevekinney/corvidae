@@ -241,6 +241,29 @@ function parseNamedRecordFields(
   return undefined;
 }
 
+/**
+ * An activity is either scoped to the workflow or provided by the engine,
+ * never both. `contractHash` excludes `usedActivities`, so without this check a
+ * manifest could add a conflicting used entry without invalidating its hash.
+ */
+function checkActivityCollectionsDisjoint(
+  collections: ContractCollectionFields,
+  path: string,
+): WorkflowRevisionManifestValidationFailure | undefined {
+  const { activities, usedActivities } = collections;
+  if (activities === undefined || usedActivities === undefined) return undefined;
+  for (const name of Object.keys(usedActivities)) {
+    if (Object.hasOwn(activities, name)) {
+      return workflowRevisionManifestFailure(
+        'invalid-field',
+        `declares activity ${JSON.stringify(name)} in both activities and usedActivities`,
+        `${path}.usedActivities`,
+      );
+    }
+  }
+  return undefined;
+}
+
 function parseContractCollections(
   value: Readonly<Record<string, unknown>>,
   path: string,
@@ -259,6 +282,8 @@ function parseContractCollections(
 
   const recordFailure = parseNamedRecordFields(value, path, collections);
   if (recordFailure !== undefined) return recordFailure;
+  const overlapFailure = checkActivityCollectionsDisjoint(collections, path);
+  if (overlapFailure !== undefined) return overlapFailure;
 
   if (value['finalizer'] !== undefined) {
     const finalizer = parseSchemaPair(value['finalizer'], `${path}.finalizer`);
