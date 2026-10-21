@@ -37,7 +37,7 @@ import {
   classifyRevisionGroups,
   createRecoveryScopedRevisionCallbacks,
 } from './recovery-revision-groups.ts';
-import { resumeWorkflowFromStorage, type FreshResumeClaimTracker } from './resume.ts';
+import { resumeStoredWorkflow, type FreshResumeClaimTracker } from './resume.ts';
 import {
   enforceHistoryPolicyBeforeReplayById,
   loadWorkflowStartHeaders,
@@ -293,6 +293,8 @@ export type ResumeOptions = {
    */
   readonly deferClaimReleaseOnRejection?: boolean;
   readonly freshClaimTracker?: FreshResumeClaimTracker;
+  /** Forwarded to `ResumeFromStorageOptions.skipIfLaunchedUnderClaimEpoch`; set by a claim reclaim's replay only. */
+  readonly skipIfLaunchedUnderClaimEpoch?: number;
 };
 
 export async function resume(
@@ -321,14 +323,7 @@ export async function resume(
     }
   }
 
-  return resumeWorkflowFromStorage(internals, workflowId, true, callbacks, onRecoveredWorkflow, {
-    ...(options?.deferClaimReleaseOnRejection !== undefined && {
-      deferClaimReleaseOnRejection: options.deferClaimReleaseOnRejection,
-    }),
-    ...(options?.freshClaimTracker !== undefined && {
-      freshClaimTracker: options.freshClaimTracker,
-    }),
-  });
+  return resumeStoredWorkflow(internals, workflowId, callbacks, onRecoveredWorkflow, options);
 }
 
 export async function fork(
