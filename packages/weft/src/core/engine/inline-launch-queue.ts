@@ -7,6 +7,7 @@ import { startWorkflowExecution } from './lifecycle.ts';
 import { releaseFreshlyAcquiredResumeClaim } from './lifecycle/standalone-claim-acquire.ts';
 import {
   isInlineWorkflowExecutionLive,
+  isQueuedInlineWorkflowStartStale,
   recordInlineWorkflowStartLaunching,
   recordInlineWorkflowStartQueued,
   settleEveryInlineWorkflowStart,
@@ -347,6 +348,29 @@ async function letGoOfFailedQueuedStart(
   }
 }
 
+/**
+ * What follows the generator's first scheduled turn. Async disposal starts queued workflows so
+ * their first turns cannot fire later against torn-down state: it aborts cooperatively after
+ * `generator.next()` has been scheduled, before awaiting either the advance or pending-update
+ * processing, so a first turn parked on `ctx.signal` can settle (if the aborted advance yields
+ * another operation, the inline strategy suppresses it so nested work cannot begin during lease
+ * handoff). Otherwise the pending updates are processed. Not `async`, and split out of
+ * {@link startQueuedInlineWorkflowExecution} only for the repository's complexity ceiling: the
+ * launch path's turn count is load-bearing, and this adds none on the processing path.
+ */
+function settleQueuedStartFirstAdvance(
+  internals: EngineInternals,
+  start: QueuedInlineWorkflowExecutionStart,
+  callbacks: Pick<InlineLaunchQueueCallbacks, 'processPendingUpdatesAfterInlineAdvance'>,
+  options: { abortStartedWorkflows?: boolean } | undefined,
+): Promise<void> | undefined {
+  if (options?.abortStartedWorkflows === true) {
+    internals.inlineStrategy?.abortWorkflowAdvanceForShutdown(start.workflowId);
+    return undefined;
+  }
+  return callbacks.processPendingUpdatesAfterInlineAdvance(start.workflowId);
+}
+
 async function startQueuedInlineWorkflowExecution(
   internals: EngineInternals,
   start: QueuedInlineWorkflowExecutionStart,
@@ -380,6 +404,14 @@ async function startQueuedInlineWorkflowExecution(
       return;
     }
 
+    // A start enqueued under a claim this engine lost and took back since carries the checkpoint
+    // of that time, which another holder may have advanced; the reclaim that took the claim back
+    // drives the run from storage instead, and this stale copy is discarded (COR-1618). Decided
+    // in the same synchronous turn as the launch, so no reclaim can land between the two.
+    if (isQueuedInlineWorkflowStartStale(internals, start.workflowId)) {
+      return;
+    }
+
     recordInlineWorkflowStartLaunching(internals, start.workflowId);
     internals.engine.dispatchEvent(
       new WorkflowStartedEvent(start.workflowId, start.workflowType, start.input),
@@ -399,22 +431,12 @@ async function startQueuedInlineWorkflowExecution(
       start.executionStateOwnerId,
     );
 
-    // Async disposal starts queued workflows so their first turns cannot fire
-    // later against torn-down state. Abort cooperatively after generator.next()
-    // has been scheduled, before awaiting either the advance or pending-update
-    // processing, so a first turn parked on ctx.signal can settle. If the
-    // aborted advance yields another operation, the inline strategy suppresses
-    // it so nested work cannot begin during lease handoff.
-    if (options?.abortStartedWorkflows === true) {
-      internals.inlineStrategy?.abortWorkflowAdvanceForShutdown(start.workflowId);
-    } else {
-      await callbacks.processPendingUpdatesAfterInlineAdvance(start.workflowId);
-    }
+    await settleQueuedStartFirstAdvance(internals, start, callbacks, options);
   } catch (error) {
     await letGoOfFailedQueuedStart(internals, start, error);
     throw error;
   } finally {
-    // The launch is over, whatever it did: a reclaim waiting to join it now reads what it left.
+    // The launch is over, whatever it did: the run is now live, let go, or someone else's.
     settleInlineWorkflowStart(internals, start.workflowId);
     // Settle the `defer: false` awaiter exactly once. The generator has been
     // driven by this point on the success path; on the skip/throw paths the run

@@ -251,8 +251,8 @@ import {
   setAttributes as setWorkflowAttributes,
 } from './listing.ts';
 import {
+  defersToQueuedInlineWorkflowStart,
   hasQueuedInlineWorkflowStart,
-  queuedInlineWorkflowStartSettlement,
 } from './local-execution.ts';
 import { getOffloadFromInternals } from './operations-data.ts';
 import { getStreamChunksFromInternals } from './operations-stream.ts';
@@ -1251,15 +1251,13 @@ export class Engine<
         // driving the workflow it sits idle while this engine's renewal keeps
         // the claim alive, shielding it from any engine that would resume it.
         onWorkflowClaimReclaimed: async (workflowId: string) => {
-          // An inline start of the workflow whose launch is queued or in flight is this engine's
-          // own drive in the making, listed by a reclaim scan that took its exclude set before
-          // the start folded its claim. It is neither live nor absent: join it, and judge what it
-          // left behind, a generator or nothing (COR-1618). Nothing waits when none is queued.
-          const queuedStart = queuedInlineWorkflowStartSettlement(internals, workflowId);
-          if (queuedStart !== undefined) {
-            await queuedStart;
-            if (internals.disposed) return;
-          }
+          // An inline start of the workflow whose launch is queued or in flight under this claim
+          // is this engine's own drive in the making, listed by a reclaim scan that took its
+          // exclude set before the start folded its claim. Its flush drives the run under this
+          // claim, so leave the run to it (COR-1618); waiting for the flush would wait on the host
+          // under `'manual'` launch scheduling. A start enqueued under an earlier claim is stale,
+          // and its flush discards it, so the replay below is the drive.
+          if (defersToQueuedInlineWorkflowStart(internals, workflowId)) return;
           // A drive that began under the claim just taken is this reclaim's to leave alone: the
           // eviction and replay below restart a run driven under an EARLIER claim (this engine
           // lost it, then took it back), and a launch under this very claim began after that.

@@ -23,7 +23,7 @@ import {
 } from '../execution-attempts.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
-import { queuedInlineWorkflowStartSettlement } from '../local-execution.ts';
+import { defersToQueuedInlineWorkflowStart } from '../local-execution.ts';
 import type { ResumeAwaitingAdoption } from '../resume-awaiting-adoption.ts';
 import { decodeWorkflowState } from '../validation.ts';
 import { performResumeAfterClaimAcquired } from './resume-body.ts';
@@ -69,8 +69,8 @@ export type ResumeFromStorageOptions = {
    * Set only by a claim reclaim's forced replay, to the epoch of the claim it took. When this
    * engine already drives the generation under that claim, the replay returns the running handle
    * instead of driving the generation a second time. A queued or launching inline start of the
-   * run is joined before this function is reached (`resumeStoredWorkflow`), so the check decides
-   * on what that launch left. It shares its synchronous turn with the in-flight registration
+   * run under that claim is deferred to before this function is reached (`resumeStoredWorkflow`),
+   * so the check never meets one. It shares its synchronous turn with the in-flight registration
    * below, so no launch can land between them.
    */
   skipIfLaunchedUnderClaimEpoch?: number;
@@ -80,11 +80,12 @@ export type ResumeFromStorageOptions = {
  * `resume()`'s replay from storage: `resumeWorkflowFromStorage` with the caller's options, less
  * `forceReplayFromStorage`, which only decides whether `resume()` reaches it at all.
  *
- * A claim reclaim's replay (the one caller that sets `skipIfLaunchedUnderClaimEpoch`) first joins
- * a queued or launching inline start of the run, which a start committed or a delayed start fired
- * between the reclaim's listing and here can leave: it waits for that launch to settle and then
- * replays, which decides on what the launch left. Nothing waits, and no turn is added, when no
- * launch is queued: the turn count of this path is load-bearing (see `resumeWorkflowFromStorage`).
+ * A claim reclaim's replay (the one caller that sets `skipIfLaunchedUnderClaimEpoch`) defers to a
+ * queued or launching inline start of the run under the claim it holds, which a start committed or
+ * a delayed start fired between the reclaim's listing and here can leave: the flush drives the run
+ * under that claim, so the replay returns the handle instead of registering and replaying beside
+ * it (`defersToQueuedInlineWorkflowStart`). No turn is added to any other resume: the turn count
+ * of this path is load-bearing (see `resumeWorkflowFromStorage`).
  */
 export function resumeStoredWorkflow(
   internals: EngineInternals,
@@ -94,20 +95,20 @@ export function resumeStoredWorkflow(
   options: (ResumeFromStorageOptions & { readonly forceReplayFromStorage?: boolean }) | undefined,
 ): Promise<WorkflowHandle> {
   const { forceReplayFromStorage: _decidesWhetherToReplay, ...forwarded } = options ?? {};
-  const replay = () =>
-    resumeWorkflowFromStorage(
-      internals,
-      workflowId,
-      true,
-      callbacks,
-      onRecoveredWorkflow,
-      forwarded,
-    );
-  const queuedStart =
-    forwarded.skipIfLaunchedUnderClaimEpoch === undefined
-      ? undefined
-      : queuedInlineWorkflowStartSettlement(internals, workflowId);
-  return queuedStart === undefined ? replay() : queuedStart.then(replay);
+  if (
+    forwarded.skipIfLaunchedUnderClaimEpoch !== undefined &&
+    defersToQueuedInlineWorkflowStart(internals, workflowId)
+  ) {
+    return Promise.resolve(callbacks.getHandle(workflowId));
+  }
+  return resumeWorkflowFromStorage(
+    internals,
+    workflowId,
+    true,
+    callbacks,
+    onRecoveredWorkflow,
+    forwarded,
+  );
 }
 
 /** Populate `tracker.epoch` from a fresh acquisition — split out to keep `resumeWorkflowFromStorage`'s complexity under this repository's ceiling. */
@@ -286,7 +287,7 @@ export const RESUME_OPTION_JOIN_POLICY = {
   freshClaimTracker: "carried over: filled with the joined resume's freshly acquired epoch",
   skipEagerRevisionCheck: 'required: a joiner that checks joins only a resume that checks',
   skipIfLaunchedUnderClaimEpoch:
-    'decided before joining: a replay first waits for a queued inline start of the run to settle, then returns if the generation is driven under its claim, and may join otherwise',
+    'decided before joining: a replay returns when the generation is driven, or queued to be driven, under its claim, and may join otherwise',
 } as const satisfies Record<keyof ResumeFromStorageOptions, string>;
 
 /** Hand the epoch of a claim this resume freshly acquired to the joiners' trackers. */
