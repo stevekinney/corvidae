@@ -15,13 +15,13 @@
  * - `pending`, on a run that has ended: nothing will answer it ("never answered"), because the
  *   request is deleted when the run turns terminal.
  *
- * ## Why an update is sent over JSON-RPC, not the REST route
+ * ## Why an update is sent over JSON-RPC
  *
- * `POST /v1/workflows/:id/update/:name` answers a timed-out update `408 Request Timeout`, and a
- * browser retries a request that gets a 408. Each retry is a new update, so one send that outlasts
- * its wait became a burst of duplicate updates (six in six seconds against the seeded server). The
- * JSON-RPC route answers HTTP 200 and carries the fault, with the update's id, in the envelope, so
- * nothing replays it. `HttpClient.submitCoordinatedUpdate` is the REST route; this module does not use it.
+ * Every operation the console calls goes through `client.operations[...]`, which speaks JSON-RPC. A
+ * timed-out update comes back as the envelope's `Timeout` fault, whose `data` carries the update's id
+ * and whose `httpStatus` is 504; the REST route answers the same fault with a `504` too (it used to
+ * answer `Request Timeout`, which a browser replays, so one send became several updates). This
+ * module does not use `HttpClient.submitCoordinatedUpdate`, the REST route.
  */
 import type { HttpClient } from '@lostgradient/weft';
 
@@ -155,7 +155,7 @@ export function describeUpdate(
 export function isSubmissionTimeout(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   return (
-    ('status' in error && error.status === 408) ||
+    ('status' in error && error.status === 504) ||
     ('faultCode' in error && error.faultCode === 'Timeout')
   );
 }

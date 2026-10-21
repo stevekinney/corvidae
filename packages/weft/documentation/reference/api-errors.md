@@ -15,7 +15,7 @@ This page covers both vocabularies, how each transport puts them on the wire, an
 | `NotFound`              | 404         | -32020        | `application`    |
 | `Conflict`              | 409         | -32021        | `application`    |
 | `Unprocessable`         | 422         | -32022        | `application`    |
-| `Timeout`               | 408         | -32023        | `timeout`        |
+| `Timeout`               | 504         | -32023        | `timeout`        |
 | `PayloadTooLarge`       | 413         | -32024        | `resource`       |
 | `NotImplemented`        | 501         | -32025        | `system`         |
 | `UnsupportedTransport`  | 501         | -32030        | `system`         |
@@ -56,6 +56,8 @@ A REST fault response carries the status from the table above and a JSON body sh
 `currentRevision` is what tells a client to re-read and retry rather than treat the fault as a plain `Conflict`. `retryAfterSeconds` is also emitted as the REST `Retry-After` header, rounded up to whole seconds. A value that is absent, negative, or not finite is dropped from the header, the REST body, and the JSON-RPC payload alike. `Unavailable.reason` is the only field of these four codes sent over JSON-RPC alone; REST omits it as internal detail.
 
 A timed-out `weft.workflows.update` answers `Timeout` with `data.updateId` over both transports, on REST as the body's `data` and on JSON-RPC in the error's `data` (beside `operationName` when the fault carries one). The update stays queued after the caller gave up waiting, and the id is how the caller finds its answer later: read it with `weft.updates.result.get` while the answer is kept, or find the update among the entries `weft.workflows.updates.list` returns, which outlive the answer and are removed when the workflow is purged. Every other `Timeout` carries no `updateId`.
+
+`Timeout` answers `504 Gateway Timeout`, not `408 Request Timeout`. A user agent may repeat a request that was answered `408` (RFC 9110 §15.5.9), and browsers do, so a timed-out `POST` such as `weft.workflows.update` would run again, each time as a new update. No user agent replays a `504`. The fault is otherwise the same on both transports: JSON-RPC code `-32023`, `weftCode` `Timeout`, and `httpStatus` 504 in the error's `data`.
 
 The in-process rate limiter (`serve({ rateLimit })`) answers in the same shape. When a key is over budget, the middleware responds `429` with the `RateLimited` body `{ "error": "Too Many Requests", "data": { "retryAfterSeconds": <n> } }`, the matching `Retry-After` header, and `X-RateLimit-Limit` and `X-RateLimit-Remaining`. It does so because the limiter knows when the window resets. The generated OpenAPI document lists `429` only on operations that declare `RateLimited`; it does not add the middleware's `429` to every route, so a client of a server configured with `rateLimit` should expect it on any authenticated route.
 
@@ -99,7 +101,7 @@ import { HttpClientError, isWeftErrorLike, isWeftFault } from '@lostgradient/wef
 
 function describeFailure(error: unknown): string {
   if (isWeftFault(error, 'WorkflowNotFoundError')) return 'missing workflow';
-  if (error instanceof HttpClientError && error.status === 408) return 'timed out';
+  if (error instanceof HttpClientError && error.status === 504) return 'timed out';
   if (isWeftErrorLike(error)) return `${error.code}: ${error.message}`;
   return 'unknown failure';
 }

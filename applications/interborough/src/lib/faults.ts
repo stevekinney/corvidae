@@ -143,9 +143,8 @@ const FAULT_CODE_TREATMENT_KIND = {
   Forbidden: 'unauthorized',
   NotImplemented: 'not-supported',
   UnsupportedTransport: 'not-supported',
-  // `Timeout`'s REST status (408) is nominally a 4xx, but a timeout is
-  // transient by nature (unlike the other 4xx codes, retrying with the same
-  // input can succeed) — bucketed with `internal` deliberately so query.ts's
+  // A timeout is transient by nature (unlike the 4xx codes, retrying with the
+  // same input can succeed), so it is bucketed with `internal`, and query.ts's
   // retry policy treats it as retryable. See query.ts `shouldRetryQuery`.
   Timeout: 'internal',
   SubscriptionOverflow: 'internal',

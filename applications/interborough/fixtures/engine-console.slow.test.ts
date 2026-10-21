@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { Engine } from '@lostgradient/weft';
 
+import { UPDATE_DESK_RUN_ID } from './engine-console-ids.ts';
 import { seedEngineConsole } from './engine-console.ts';
 import { workflows } from './workflows.ts';
 
@@ -25,9 +26,8 @@ describe('seedEngineConsole slow update', () => {
     const engine = await Engine.create({ workflows });
     engines.push(engine);
     await seedEngineConsole(engine);
-    const { items } = await engine.list({ type: 'update-desk' });
-    const run = items[0];
-    if (run === undefined) throw new Error('no update-desk run was seeded');
+    const run = await engine.get(UPDATE_DESK_RUN_ID);
+    if (run === null) throw new Error('no update-desk run was seeded');
 
     const timedOut = await engine
       .submitCoordinatedUpdate(run.id, 'slow', 'x', { timeout: 1_000 })
