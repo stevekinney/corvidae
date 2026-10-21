@@ -2,6 +2,8 @@
  * Registration-time normalization of a workflow's `.uses({...})` map: the
  * engine-provided activities it declares, kept as name and schema metadata.
  *
+ * Also copies a registration's declared message maps alongside it.
+ *
  * @module core/engine/used-activities
  */
 
@@ -12,6 +14,8 @@ import {
   type WorkflowDefinition,
 } from '../types.ts';
 import { validateWorkflowOrActivityName } from '../types/name-grammar.ts';
+import type { RegisteredWorkflowDefinition } from '../types/workflow-registry.ts';
+import type { RegistrationEntry } from './engine-internal-types.ts';
 
 /**
  * Validate and copy a builder definition's `.uses()` map. The builder already
@@ -68,9 +72,18 @@ export function normalizeUsedActivities(
   return Object.keys(normalized).length === 0 ? undefined : Object.freeze(normalized);
 }
 
-/** `{ uses }` with a fresh copy of `uses` when present, otherwise `{}`, for spreading into a definition. */
-export function usedActivitiesField(
-  uses: Readonly<Record<string, UsedActivityDefinition>> | undefined,
-): { uses?: Readonly<Record<string, UsedActivityDefinition>> } {
-  return uses === undefined ? {} : { uses: { ...uses } };
+/**
+ * A registration's declared signal, update, and query maps and its `.uses()`
+ * declarations, each shallow-copied when present and omitted otherwise, for
+ * spreading into a `RegisteredWorkflowDefinition`.
+ */
+export function declaredMapFields(
+  registration: RegistrationEntry,
+): Pick<RegisteredWorkflowDefinition, 'signals' | 'updates' | 'queries' | 'uses'> {
+  const fields: Pick<RegisteredWorkflowDefinition, 'signals' | 'updates' | 'queries' | 'uses'> = {};
+  if (registration.signals !== undefined) fields.signals = { ...registration.signals };
+  if (registration.updates !== undefined) fields.updates = { ...registration.updates };
+  if (registration.queries !== undefined) fields.queries = { ...registration.queries };
+  if (registration.uses !== undefined) fields.uses = { ...registration.uses };
+  return fields;
 }

@@ -38,7 +38,7 @@ import {
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
 import { resolveSchemaPolicy } from './schema-policy.ts';
-import { usedActivitiesField } from './used-activities.ts';
+import { declaredMapFields } from './used-activities.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
@@ -182,10 +182,7 @@ export function copyWorkflowDefinition(
     ...(registration.description === undefined ? {} : { description: registration.description }),
     ...(registration.inputSchema === undefined ? {} : { inputSchema: registration.inputSchema }),
     ...(registration.outputSchema === undefined ? {} : { outputSchema: registration.outputSchema }),
-    ...(registration.signals === undefined ? {} : { signals: { ...registration.signals } }),
-    ...(registration.updates === undefined ? {} : { updates: { ...registration.updates } }),
-    ...(registration.queries === undefined ? {} : { queries: { ...registration.queries } }),
-    ...usedActivitiesField(registration.uses),
+    ...declaredMapFields(registration),
     ...(registration.searchAttributes === undefined
       ? {}
       : { searchAttributes: registration.searchAttributes }),
