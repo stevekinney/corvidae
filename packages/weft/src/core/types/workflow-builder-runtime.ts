@@ -170,14 +170,20 @@ export class WorkflowBuilderImpl<TName extends string> {
 
   /**
    * Add a chain method's entries to the ones the builder already carries from
-   * `createWorkflowFactory`. A name the factory already declared is rejected,
+   * `createWorkflowFactory`. A key the factory already declared is rejected,
    * not overridden, so a shared entry means the same thing in every workflow.
+   * Message maps also compare runtime names, which registration re-keys by.
    */
   #merge<T>(method: ChainMethodName, current: Record<string, T>, added: Record<string, T>) {
-    for (const key of Object.keys(added)) {
-      if (Object.hasOwn(current, key)) {
+    const runtimeName = (entry: T) =>
+      method === 'activities' || method === 'uses' ? undefined : (entry as { name: string }).name;
+    const sharedNames = new Set(Object.values(current).map(runtimeName));
+    for (const [key, entry] of Object.entries(added)) {
+      const name = runtimeName(entry);
+      if (Object.hasOwn(current, key) || (name !== undefined && sharedNames.has(name))) {
+        const as = name === undefined || name === key ? '' : ` with runtime name "${name}"`;
         throw new WorkflowBuilderError(
-          `workflow("${this.#options.name}"): .${method}() declares "${key}", which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
+          `workflow("${this.#options.name}"): .${method}() declares "${key}"${as}, which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
         );
       }
     }

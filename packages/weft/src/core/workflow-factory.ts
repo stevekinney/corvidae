@@ -20,6 +20,8 @@ import type {
 } from './engine/engine-create-types.ts';
 import { ActivityResolutionError } from './engine/errors.ts';
 import { Engine } from './engine/index.ts';
+import { clonePlain } from './types/clone-plain.ts';
+import { deepFreeze } from './types/deep-freeze.ts';
 import type {
   QueryDefinition,
   SignalDefinition,
@@ -230,9 +232,9 @@ export function createWorkflowFactory<
   const activities = Object.freeze({ ...entries.activities }) as Readonly<TActivities>;
   const shared: SharedWorkflowEntries = {
     uses: normalizeUsesMap(activities),
-    signals: { ...(entries.signals as Record<string, SignalDefinition<unknown>> | undefined) },
-    updates: { ...(entries.updates as Record<string, UpdateDefinition> | undefined) },
-    queries: { ...(entries.queries as Record<string, QueryDefinition> | undefined) },
+    signals: snapshot(entries.signals as Record<string, SignalDefinition<unknown>> | undefined),
+    updates: snapshot(entries.updates as Record<string, UpdateDefinition> | undefined),
+    queries: snapshot(entries.queries as Record<string, QueryDefinition> | undefined),
   };
 
   const workflow = <const TName extends string>(options: WorkflowBuilderOptions<TName>) =>
@@ -273,4 +275,16 @@ export function createWorkflowFactory<
     activities,
     createEngine,
   }) as unknown as WorkflowFactory<TActivities, TSignals, TUpdates, TQueries>;
+}
+
+/**
+ * Clone and freeze each message definition, so mutating one after the factory
+ * is created cannot change what later workflows declare.
+ */
+function snapshot<T extends object>(map: Record<string, T> | undefined): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const [key, definition] of Object.entries(map ?? {})) {
+    out[key] = deepFreeze(clonePlain(definition));
+  }
+  return out;
 }

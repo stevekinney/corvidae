@@ -5,7 +5,7 @@
 
 import { Engine, type WorkflowHandle } from '../index.ts';
 import { activity } from './types/activity.ts';
-import { query, signal, update } from './types/message-handles.ts';
+import { query, signal, update, type SignalDefinition } from './types/message-handles.ts';
 import type { MergeMaps, NormalizeActivities } from './types/workflow-builder-helpers.ts';
 import { workflow as plainWorkflow } from './types/workflow-function.ts';
 import { createWorkflowFactory } from './workflow-factory.ts';
@@ -118,6 +118,22 @@ const _check_merged_signals: Equals<
 > = true;
 void _check_merged_activities;
 void _check_merged_signals;
+
+// Additions held in a wide map type keep the shared entries' types.
+declare const wideSignals: Record<string, SignalDefinition<{ reason: string }>>;
+declare const wideActivities: Record<string, (text: string) => Promise<number>>;
+workflow({ name: 'wide' })
+  .signals(wideSignals)
+  .activities(wideActivities)
+  .execute(async function* (ctx, name: string) {
+    const greeting = yield* ctx.run('greet', name);
+    const _check_wide_greeting: Equals<typeof greeting, string> = true;
+    void _check_wide_greeting;
+    const approval = yield* ctx.waitForSignal('approve');
+    const _check_wide_approval: Equals<typeof approval, { approverId: string }> = true;
+    void _check_wide_approval;
+    return greeting;
+  });
 
 // ---------------------------------------------------------------------------
 // Conflicting names are rejected, and each chain method is still once-only.

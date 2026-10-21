@@ -98,6 +98,20 @@ describe('createWorkflowFactory() — shared entries', () => {
     expect(Object.keys(built.signals)).toEqual(['approve']);
     expect(Object.keys(built.uses ?? {})).toEqual(['greet']);
   });
+
+  it('snapshots each shared message definition, not only the maps', () => {
+    const definition = { name: 'approve' };
+    const { workflow } = createWorkflowFactory({ signals: { approve: definition } });
+    const first = workflow({ name: 'first' }).execute(async function* () {
+      return 0;
+    });
+    definition.name = 'reject';
+    const second = workflow({ name: 'second' }).execute(async function* () {
+      return 0;
+    });
+    expect(first.signals['approve']?.name).toBe('approve');
+    expect(second.signals['approve']?.name).toBe('approve');
+  });
 });
 
 describe('createWorkflowFactory() — conflicts and validation', () => {
@@ -136,6 +150,18 @@ describe('createWorkflowFactory() — conflicts and validation', () => {
       );
     });
   }
+
+  it('rejects a local message under another key with a shared runtime name', () => {
+    const builder = workflow({ name: 'alias' }) as unknown as Untyped;
+    expect(() => builder['signals']!({ localApprove: signal('approve') })).toThrow(
+      '.signals() declares "localApprove" with runtime name "approve", which the workflow factory already declares',
+    );
+    expect(() =>
+      (workflow({ name: 'alias' }) as unknown as Untyped)['queries']!({
+        localProgress: query<void, number>('progress'),
+      }),
+    ).toThrow(WorkflowBuilderError);
+  });
 
   it('validates shared activities like .uses() does', () => {
     expect(() => createWorkflowFactory({ activities: { salute: greet } as never })).toThrow(

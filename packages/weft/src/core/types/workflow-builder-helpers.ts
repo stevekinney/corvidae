@@ -404,7 +404,8 @@ export type QueryMap = Record<string, { readonly name: string }>;
  * existing entries plus the ones the call adds. A fresh `workflow({ name })`
  * builder carries `{}`, so `MergeMaps<{}, T>` is exactly `T`. A builder typed
  * with a wide `Record<string, ...>` map keeps the old replace semantics, since
- * there are no known names to merge.
+ * there are no known names to merge; a wide added map is intersected with the
+ * known base entries, so they keep their types.
  *
  * @example
  * ```ts
@@ -417,13 +418,17 @@ export type QueryMap = Record<string, { readonly name: string }>;
  */
 export type MergeMaps<TBase, TAdded> = string extends keyof TBase
   ? TAdded
-  : {
-      [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
-        ? TAdded[K]
-        : K extends keyof TBase
-          ? TBase[K]
-          : never;
-    };
+  : string extends keyof TAdded
+    ? // A wide added map has no known names; keep the known base entries rather
+      // than letting its index signature shadow them.
+      TBase & TAdded
+    : {
+        [K in keyof TBase | keyof TAdded]: K extends keyof TAdded
+          ? TAdded[K]
+          : K extends keyof TBase
+            ? TBase[K]
+            : never;
+      };
 
 /**
  * Constraint a chain method intersects with its argument so that an entry
