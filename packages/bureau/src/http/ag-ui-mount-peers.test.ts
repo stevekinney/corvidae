@@ -38,7 +38,10 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { PEER_SESSION_SETTLE_GRACE_MS } from './ag-ui-peer-stream.ts';
+import {
+  PEER_PARK_RECHECK_INTERVAL_MS,
+  PEER_SESSION_SETTLE_GRACE_MS,
+} from './ag-ui-peer-stream.ts';
 import {
   bureauMetadata,
   FrameReader,
@@ -943,6 +946,60 @@ describe('recalled memory in a peer’s snapshots (COR-1546)', () => {
           expect(messageTexts(rest[0])).toContain('Second.');
           expect(showsEvidence(rest[0])).toBe(false);
         });
+      },
+    );
+  });
+});
+
+describe('a peer stream of a run that parks after it opened (COR-1615)', () => {
+  it('ends with the interrupt of a human wait the holder parks on while the peer follows', async () => {
+    const clock = createManualRuntimeServices();
+    await withPeers(
+      { script: [hold('a-generating'), askHuman], ...humanWaits },
+      async (harness) => {
+        await withPeer(
+          harness,
+          async (peer) => {
+            const started = await startOn(harness.handler);
+            await harness.generate.reached('a-generating');
+
+            const attached = new FrameReader(await peer.handler(attachThreadRequest(THREAD)));
+            const opened = await opening(attached);
+            expect(snapshotOf(opened[2]!)['pendingInterruptIds']).toEqual([]);
+            let more = false;
+            const next = attached.next().then((frame) => {
+              more = true;
+              return frame;
+            });
+
+            harness.generate.release('a-generating');
+            await started.reader.rest();
+            const [parked] = harness.bureau.listPendingReviews();
+            await pollUntil(async () => (await waitsOn(peer, started.nativeRunId)) > 0);
+            // The park saved no session and recorded nothing in the run's history, so the stream is
+            // still open, waiting on its next re-check of the run on the mount's clock.
+            const recheckDue = clock.monotonic.now() + PEER_PARK_RECHECK_INTERVAL_MS;
+            await pollUntil(() =>
+              clock.pendingTimers().some((timer) => timer.dueAt === recheckDue),
+            );
+            const session = await peer.bureau.getSession(THREAD);
+            expect(session?.metadata['lastRunStatus']).toBe('running');
+            expect(more).toBe(false);
+
+            await clock.advance(PEER_PARK_RECHECK_INTERVAL_MS);
+            const state = await next;
+            const rest = await attached.rest();
+
+            expect(parked?.kind).toBe('human-wait');
+            expect(state?.event.type).toBe(EventType.STATE_SNAPSHOT);
+            expect(snapshotOf(state!)['pendingInterruptIds']).toEqual([parked!.id]);
+            expect(typesOf(rest)).toEqual([EventType.RUN_FINISHED]);
+            expect(rest[0]!.event).toMatchObject({
+              outcome: { type: 'interrupt', interrupts: [{ id: parked!.id }] },
+            });
+          },
+          { runtime: clock },
+        );
       },
     );
   });

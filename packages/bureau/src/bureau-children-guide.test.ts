@@ -12,9 +12,6 @@
  * `durableRunId` helper both examples use. Change the examples and the
  * documentation together.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   type AgentRun,
@@ -25,18 +22,22 @@ import {
   stopWhen,
 } from '@lostgradient/operative';
 import { createTool } from 'armorer';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type Bureau, createBureau } from './index';
 import { throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 
-const databasePath = join(tmpdir(), `bureau-children-guide-${process.pid}.sqlite`);
+let databasePath = '';
 
-afterEach(async () => {
-  for (const suffix of ['', '-wal', '-shm']) {
-    await rm(`${databasePath}${suffix}`, { force: true });
-  }
+beforeEach(() => {
+  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
+  databasePath = createTemporaryPath('bureau-children-guide', '.sqlite');
+});
+
+afterEach(() => {
+  removeTemporaryPath(databasePath);
 });
 
 /** Never answers, and stops when its run is aborted, as a real provider call does. */

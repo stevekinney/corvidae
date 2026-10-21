@@ -10,9 +10,6 @@
  * restarted Bureau reattaches replays its memoized steps and dispatches no step
  * events, so it is covered separately below.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
@@ -25,6 +22,7 @@ import { resolveStorage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Tool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForRunState } from './test';
@@ -132,8 +130,6 @@ describe.each(drivers)('a Bureau run on the $name', ({ options }) => {
   });
 });
 
-let recoveryDatabaseCounter = 0;
-
 const generateToolThenAnswer: GenerateFunction = async ({ step }) =>
   step === 0
     ? { content: '', toolCalls: [{ name: 'noop', arguments: {} }] }
@@ -169,10 +165,7 @@ describe.each(failureShapes)(
   'a Bureau that reattaches a budget-exceeded run after a restart when $name',
   ({ options }) => {
     it('announces the budget failure without claiming a step it cannot know', async () => {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-budget-exceeded-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-budget-exceeded-recovery', '.sqlite');
       const crashed = holdFirstTerminalRunCommit(
         await resolveStorage({ type: 'sqlite', path: databasePath }),
       );
@@ -242,9 +235,7 @@ describe.each(failureShapes)(
         await bureauA?.dispose();
         crashed.storage[Symbol.dispose]();
         replayed?.storage[Symbol.dispose]();
-        await rm(databasePath, { force: true });
-        await rm(`${databasePath}-wal`, { force: true });
-        await rm(`${databasePath}-shm`, { force: true });
+        removeTemporaryPath(databasePath);
       }
       // Bureau never closes a storage instance it was handed, so each handle this test opened
       // against the database is the test's to release.

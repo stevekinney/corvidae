@@ -8,9 +8,6 @@
  * same SQLite file. Everything B knows about A's children it learns from
  * storage.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   createAgent,
@@ -33,13 +30,12 @@ import {
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { BureauError, createBureau } from './create-bureau';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
 import { rejectionOf, throwingRejectionOf } from './testing/promise-outcome.test-support.ts';
 import type { Bureau, BureauDiagnostic } from './types';
-
-let databaseCounter = 0;
 
 /**
  * Every bureau here reports into this sink instead of the console. Disposing
@@ -69,13 +65,11 @@ async function pollUntil(
 }
 
 function databasePath(label: string): string {
-  return join(tmpdir(), `bureau-children-${label}-${process.pid}-${databaseCounter++}.sqlite`);
+  return createTemporaryPath(`bureau-children-${label}`, '.sqlite');
 }
 
 async function removeDatabase(path: string): Promise<void> {
-  await rm(path, { force: true });
-  await rm(`${path}-wal`, { force: true });
-  await rm(`${path}-shm`, { force: true });
+  removeTemporaryPath(path);
 }
 
 const proceedSignals = defineChildSignals({

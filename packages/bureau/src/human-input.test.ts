@@ -28,9 +28,6 @@
 // (every pre-existing park test in `create-bureau.test.ts` uses it), so a
 // loop that doesn't break on its own is never masked.
 
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
 import {
@@ -41,6 +38,7 @@ import {
 } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
@@ -73,8 +71,6 @@ function createNextTool() {
     execute: async () => 'ok',
   });
 }
-
-let recoveryDatabaseCounter = 0;
 
 describe('requestHumanInput park is observable on a fresh dispatch (AB-336)', () => {
   it('parks before any further generation, observable through listPendingReviews, getRun, getDurableRun, and liveness', async () => {
@@ -240,10 +236,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     // disposed — simulating a crash while genuinely parked, the exact
     // scenario the crash fixture's `signal-parked` marker now drives through
     // the real tool instead of a bespoke stand-in.
-    const databasePath = join(
-      tmpdir(),
-      `ab336-human-wait-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab336-human-wait-recovery', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -336,6 +329,7 @@ describe('requestHumanInput park survives a process restart while still parked (
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -346,10 +340,7 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     // process died before the run committed a step past the park. On recovery
     // the last checkpointed step is still the park, so it is re-synthesized;
     // its id must equal the persisted one or it would show as pending again.
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-resolved-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-resolved', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -423,14 +414,12 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 
   it('numbers a re-park after several resolved parks and a mid-step crash past all of them', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-multi-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-multi-park', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -526,16 +515,14 @@ describe('a resolved human-wait review stays resolved across a restart (COR-106)
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('a re-park after a resolved park and a crash before the next commit (COR-106)', () => {
   it('surfaces the re-park on the same signal instead of hiding it behind the resolved id', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-resume-crash-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-resume-crash', '.sqlite');
 
     let aCalls = 0;
     const bureauA = await createBureau({
@@ -621,16 +608,14 @@ describe('a re-park after a resolved park and a crash before the next commit (CO
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('resolving a recovered run re-park leaves no phantom review (COR-106)', () => {
   it('keeps listPendingReviews empty while the resumed run is still running its next step', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-human-wait-phantom-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-human-wait-phantom', '.sqlite');
     const park = (id: string) => ({
       content: '',
       toolCalls: [{ id, name: 'requestHumanInput', arguments: { signalName: 'human-response' } }],
@@ -700,16 +685,14 @@ describe('resolving a recovered run re-park leaves no phantom review (COR-106)',
       );
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
 
 describe('parallel same-signal parks keep review ids stable across a restart (COR-106)', () => {
   it('reconstructs no phantom review after two parallel same-signal calls, a re-park, and a crash', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `cor106-parallel-park-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('cor106-parallel-park', '.sqlite');
     const call = (id: string) => ({
       id,
       name: 'requestHumanInput',
@@ -786,6 +769,7 @@ describe('parallel same-signal parks keep review ids stable across a restart (CO
       );
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
@@ -801,10 +785,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     // never included `requestHumanInput`: the call would settle as a
     // tool-not-found error, `pendingHumanWait` would never be set, and the
     // step loop would continue straight past the park.
-    const databasePath = join(
-      tmpdir(),
-      `ab336-toolbox-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('ab336-toolbox-recovery', '.sqlite');
 
     let bureauAReachedStep1 = false;
     const bureauA = await createBureau({
@@ -903,6 +884,7 @@ describe('a run recovered mid-step whose replay reaches requestHumanInput actual
     } finally {
       await bureauA.dispose();
       await bureauB.dispose();
+      removeTemporaryPath(databasePath);
     }
   });
 });
