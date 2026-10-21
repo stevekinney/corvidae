@@ -167,7 +167,8 @@ export async function inspectUpload(
   uploadId: string,
   principal: AssetPrincipal,
 ): Promise<AssetUploadSession> {
-  return project((await loadOpenSession(internals, uploadId, principal)).session);
+  const { session } = await loadOpenSession(internals, uploadId, principal);
+  return project(session);
 }
 
 export function appendUpload(

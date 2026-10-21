@@ -26,6 +26,7 @@ import {
   AssetNotFoundError,
   type AssetStorage,
   type BureauAssetOptions,
+  type ManagedAssetSource,
 } from '../index';
 import type { UploadSessionRecord } from './uploads';
 import { KEYS } from './records';
@@ -79,6 +80,17 @@ const CHUNK_PREFIX = KEYS.chunkRootPrefix;
 
 const uploadOf = (uploadId: string) => ({ kind: 'upload' as const, uploadId });
 
+async function stateOf(storage: AssetStorage, uploadId: string): Promise<string | undefined> {
+  const record = await sessionRecord(storage, uploadId);
+  return record?.state;
+}
+
+/** The bytes the asset service resolves for `source`. */
+async function contentOf(assets: AssetHarness['assets'], source: ManagedAssetSource) {
+  const resolved = await assets.resolve(source, alice);
+  return resolved.content;
+}
+
 async function sessionRecord(
   storage: AssetStorage,
   uploadId: string,
@@ -115,9 +127,8 @@ describe('appends across two processes', () => {
     const losing = rejectionOf(first.assets.appendUpload(session.uploadId, alice, textBytes('aa')));
     await parking.hold().reached;
     // The second process appends while the first holds a read of the session that is now stale.
-    expect(
-      (await second.assets.appendUpload(session.uploadId, alice, textBytes('bb'))).receivedBytes,
-    ).toBe(2);
+    const won = await second.assets.appendUpload(session.uploadId, alice, textBytes('bb'));
+    expect(won.receivedBytes).toBe(2);
     parking.hold().release();
 
     expect(await losing).toBeInstanceOf(AssetConflictError);
@@ -135,7 +146,7 @@ describe('appends across two processes', () => {
     await second.assets.appendUpload(session.uploadId, alice, textBytes('cc'));
     const admission = await second.assets.admit({ source: uploadOf(session.uploadId) }, alice);
     expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
-    expect((await second.assets.resolve(admission.source, alice)).content).toEqual({
+    expect(await contentOf(second.assets, admission.source)).toEqual({
       kind: 'bytes',
       bytes: textBytes('bbcc'),
     });
@@ -159,7 +170,7 @@ describe('completions across two processes', () => {
     expect(await losing).toBeInstanceOf(AssetConflictError);
     // One asset record, the winner's: the loser persisted nothing to reject.
     expect(await shared.list(KEYS.recordPrefix)).toEqual([KEYS.record(winning.assetId)]);
-    expect((await first.assets.resolve(winning.source, alice)).content).toEqual({
+    expect(await contentOf(first.assets, winning.source)).toEqual({
       kind: 'bytes',
       bytes: textBytes('abcd'),
     });
@@ -288,7 +299,7 @@ describe('the session record', () => {
     });
     const whole = await opened.assets.admit({ source: uploadOf(session.uploadId) }, alice);
     expect(await whole.work.result()).toMatchObject({ outcome: 'completed' });
-    expect((await opened.assets.resolve(whole.source, alice)).content).toEqual({
+    expect(await contentOf(opened.assets, whole.source)).toEqual({
       kind: 'bytes',
       bytes: textBytes('abcd'),
     });
@@ -304,12 +315,12 @@ describe('the session record', () => {
     const admission = await opened.assets.admit({ source: uploadOf(session.uploadId) }, alice);
     // Claimed, and parked listing the chunks it has not yet read.
     await parking.hold().reached;
-    expect((await sessionRecord(opened.storage, session.uploadId))?.state).toBe('completing');
+    expect(await stateOf(opened.storage, session.uploadId)).toBe('completing');
     admission.work.abort('test');
     expect(await admission.work.result()).toMatchObject({ outcome: 'aborted' });
     parking.hold().release();
 
-    expect((await sessionRecord(opened.storage, session.uploadId))?.state).toBe('open');
+    expect(await stateOf(opened.storage, session.uploadId)).toBe('open');
     const retry = await opened.assets.admit({ source: uploadOf(session.uploadId) }, alice);
     expect(await retry.work.result()).toMatchObject({ outcome: 'completed' });
   });
@@ -367,7 +378,7 @@ describe('the session record', () => {
     await opened.assets.appendUpload(uploadId, alice, textBytes('cd'));
     const admission = await opened.assets.admit({ source: uploadOf(uploadId) }, alice);
     expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
-    expect((await opened.assets.resolve(admission.source, alice)).content).toEqual({
+    expect(await contentOf(opened.assets, admission.source)).toEqual({
       kind: 'bytes',
       bytes: textBytes('abcd'),
     });

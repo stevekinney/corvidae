@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { AssetStorage } from '../../assets/storage.ts';
 import { holdAssetStorageCall } from '../../testing/asset-storage-hold.test-support.ts';
 import { KEYS } from '../../assets/records.ts';
 import { createMemoryAssetStorage } from '../../assets/storage.ts';
@@ -338,9 +337,8 @@ describe('two principals', () => {
       // A completed session is read as missing by anyone but its owner, so a retry cannot be
       // used to learn which asset a stranger's upload became.
       expect(httpStatusOf(await complete(opened, 'bob-assets-key', uploadId))).toBe(404);
-      expect((await complete(opened, 'alice-assets-key', uploadId)).result).toEqual(
-        completed.result,
-      );
+      const retried = await complete(opened, 'alice-assets-key', uploadId);
+      expect(retried.result).toEqual(completed.result);
       // Alice's own upload was untouched by bob's attempts.
       const own = await append(opened, 'alice-assets-key', openUploadId, png);
       expect(own.result).toMatchObject({ receivedBytes: png.byteLength });
@@ -400,27 +398,26 @@ describe('a retried or concurrent completion', () => {
   });
 
   it('answers 409 to a completion that arrives while the first is in flight, and the first still succeeds', async () => {
-    let hold: ReturnType<typeof holdAssetStorageCall> | undefined;
-    const assetStorage = createMemoryAssetStorage();
-    const held: AssetStorage = (hold = holdAssetStorageCall(assetStorage, 'list', (prefix) =>
+    const hold = holdAssetStorageCall(createMemoryAssetStorage(), 'list', (prefix) =>
       prefix.startsWith(KEYS.chunkRootPrefix),
-    )).storage;
-    await withBureau({ assetStorage: held }, async (opened) => {
+    );
+    await withBureau({ assetStorage: hold.storage }, async (opened) => {
       const created = await create(opened, 'alice-assets-key', {
         declaredByteLength: png.byteLength,
       });
       const uploadId = created.result!['uploadId'] as string;
       await append(opened, 'alice-assets-key', uploadId, png);
 
-      hold!.arm();
+      hold.arm();
       const first = complete(opened, 'alice-assets-key', uploadId);
-      await hold!.reached;
+      await hold.reached;
       const second = await complete(opened, 'alice-assets-key', uploadId);
-      hold!.release();
+      hold.release();
 
       expect(second.result).toBeUndefined();
       expect(second.error?.data).toMatchObject({ httpStatus: 409 });
-      expect((await first).result).toMatchObject({ state: 'available' });
+      const answered = await first;
+      expect(answered.result).toMatchObject({ state: 'available' });
     });
   });
 
