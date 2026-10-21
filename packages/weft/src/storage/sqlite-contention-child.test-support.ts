@@ -30,10 +30,13 @@ import {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+/** What the race needs of an adapter: both SQLite adapters implement `conditionalBatch`. */
+type RacingStorage = Storage & Required<Pick<Storage, 'conditionalBatch'>> & Disposable;
+
 async function openStorage(
   adapter: SqliteContentionAdapter,
   databasePath: string,
-): Promise<Storage & Disposable> {
+): Promise<RacingStorage> {
   if (adapter === 'node') {
     const { NodeSQLiteStorage } = await import('./node-sqlite.ts');
     return new NodeSQLiteStorage(databasePath);
@@ -49,7 +52,7 @@ async function waitForFile(path: string): Promise<void> {
 }
 
 async function race(
-  storage: Storage,
+  storage: RacingStorage,
   mode: SqliteContentionMode,
   tag: string,
 ): Promise<SqliteContentionReport> {
