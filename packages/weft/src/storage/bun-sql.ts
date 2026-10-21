@@ -256,8 +256,8 @@ export class BunSQLiteStorage implements Storage {
   async batch(operations: BatchOperation[]): Promise<void> {
     assertStorageBatchOperationCount('batch operations', operations.length);
     if (operations.length === 0) return;
-    // `.immediate` takes the write lock before the first statement, so the busy timeout applies.
-    // A deferred transaction would read first and meet SQLITE_BUSY at once on upgrading.
+    // A batch writes first, so a deferred transaction would also wait under the busy timeout;
+    // `.immediate` keeps it in step with `conditionalBatch`, which reads before it writes.
     this.#batchTransaction.immediate(operations);
   }
 
