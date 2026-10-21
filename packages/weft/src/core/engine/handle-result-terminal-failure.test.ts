@@ -30,6 +30,7 @@ function createInternals(storage: unknown) {
     // A claim registry tracking no epoch — this engine owns nothing.
     workflowClaimRegistry: { engineId: 'observer-engine', currentEpoch: () => null },
     resultResolvers: new Map(),
+    pendingTerminalSettlements: new Set(),
     disposed: false,
   } as any;
 }

@@ -15,6 +15,7 @@ import type { WorkflowResultWaiter } from './engine-internal-types.ts';
 import { currentExecutionAttempt } from './execution-attempts.ts';
 import type { EngineInternals } from './internals.ts';
 import { markResultReplaced } from './result-committer.ts';
+import type { PendingTerminalSettlement } from './terminal-settlement-pending.ts';
 
 /** What a result waiter rejects with when a newer run reused its workflow id before it settled. */
 export function workflowRunReplacedError(workflowId: string): Error {
@@ -64,6 +65,22 @@ export function waiterBelongsToRun(
 }
 
 /**
+ * The pending settlement holding back `waiter`, if the run it belongs to has one. A waiter that
+ * belongs to a different run, such as a `start-new` replacement's, is never held.
+ */
+export function pendingTerminalSettlementFor(
+  internals: EngineInternals,
+  workflowId: string,
+  waiter: WorkflowResultWaiter,
+): PendingTerminalSettlement | undefined {
+  return [...internals.pendingTerminalSettlements].find(
+    (settlement) =>
+      settlement.workflowId === workflowId &&
+      waiterBelongsToRun(waiter, settlement.workflowExecutionToken),
+  );
+}
+
+/**
  * Whether two waiters registered for the same workflow id speak for the same run. Only two
  * bound waiters can be told apart, and then by exact token, so a waiter bound to a pre-token
  * run never answers for a token-bearing one.
@@ -105,6 +122,14 @@ export function rejectReplacedResultWaiter(
 ): void {
   if (internals.resultResolvers.get(workflowId) === waiter) {
     internals.resultResolvers.delete(workflowId);
+  }
+  // A terminated run's result is held for its in-flight activity (COR-1597), and its outcome is
+  // the terminal error already committed, not "replaced". Its settlement rejects it once the
+  // activity lands; the replacement only takes over the per-id slot.
+  const held = pendingTerminalSettlementFor(internals, workflowId, waiter);
+  if (held !== undefined) {
+    held.waiter ??= waiter;
+    return;
   }
   markResultReplaced(waiter);
   waiter.reject(workflowRunReplacedError(workflowId));

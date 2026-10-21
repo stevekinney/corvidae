@@ -3,6 +3,7 @@ import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-prese
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
 import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
 import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
+import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   resumeWorkflowFromStorage as resumeWorkflowFromStorageFromLifecycle,
@@ -223,43 +224,52 @@ async function dispatchStrategyMessage(
     case 'checkpoint': {
       const operation = callbacks.translateOperationRequest(message.operationRequest);
 
-      // Persist checkpoint at this yield boundary
-      await callbacks.persistCheckpoint(message.workflowId, operation, message.checkpoint);
-      recordDurableInlineOperation(internals, message.workflowId, operation);
+      // Record the operation this turn is processing before anything awaits: the history circuit
+      // breaker terminates the run from inside `persistCheckpoint` and must already see an
+      // activity in flight (COR-1597). The `finally` clears it, which also covers the early
+      // `break`s and a `persistCheckpoint` that throws.
+      const inFlight = beginInFlightOperation(internals, message.workflowId, operation);
+      try {
+        // Persist checkpoint at this yield boundary
+        await callbacks.persistCheckpoint(message.workflowId, operation, message.checkpoint);
+        recordDurableInlineOperation(internals, message.workflowId, operation);
 
-      // Development mode: validate checkpoint round-trip
-      callbacks.validateDevelopmentCheckpoint(message.workflowId);
+        // Development mode: validate checkpoint round-trip
+        callbacks.validateDevelopmentCheckpoint(message.workflowId);
 
-      // Evaluate domain constraints — done after persistence so the
-      // checkpoint is durable before any violation reaction.
-      const constraintViolated = await callbacks.evaluateConstraints(message.workflowId);
-      if (constraintViolated) {
-        // Violation already handled (event dispatched, error thrown or logged).
+        // Evaluate domain constraints — done after persistence so the
+        // checkpoint is durable before any violation reaction.
+        const constraintViolated = await callbacks.evaluateConstraints(message.workflowId);
+        if (constraintViolated) {
+          // Violation already handled (event dispatched, error thrown or logged).
+          break;
+        }
+
+        if (await callbacks.parkInlineWorkflowAfterCheckpoint(message.workflowId, operation)) {
+          break;
+        }
+
+        if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
+          void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
+            const failedError = error instanceof Error ? error : new Error(String(error));
+            return failWorkflowFromTermination(
+              internals,
+              message.workflowId,
+              failedError,
+              callbacks.createTerminationCallbacks(),
+              'system',
+            );
+          });
+          break;
+        }
+
+        // Translate the operation request: worker protocol uses `kind` while the
+        // engine uses `type`. Inline strategy already emits ContextOperationRequest.
+        await callbacks.processOperation(message.workflowId, operation);
         break;
+      } finally {
+        endInFlightOperation(internals, message.workflowId, inFlight);
       }
-
-      if (await callbacks.parkInlineWorkflowAfterCheckpoint(message.workflowId, operation)) {
-        break;
-      }
-
-      if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
-        void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
-          const failedError = error instanceof Error ? error : new Error(String(error));
-          return failWorkflowFromTermination(
-            internals,
-            message.workflowId,
-            failedError,
-            callbacks.createTerminationCallbacks(),
-            'system',
-          );
-        });
-        break;
-      }
-
-      // Translate the operation request: worker protocol uses `kind` while the
-      // engine uses `type`. Inline strategy already emits ContextOperationRequest.
-      await callbacks.processOperation(message.workflowId, operation);
-      break;
     }
   }
 }
