@@ -191,6 +191,18 @@ describe('schemas engine option', () => {
     }
   });
 
+  it('lists missing message schemas in runtime-name order', () => {
+    const definition = workflow(fullySchemaed())
+      .signals({ zeta: signal('zeta'), alpha: signal('alpha') })
+      .execute(async function* () {
+        return { id: 'x' };
+      });
+    expect(schemaError(() => requiredEngine().register(definition)).missing).toEqual([
+      'signals.alpha.inputSchema',
+      'signals.zeta.inputSchema',
+    ]);
+  });
+
   it('leaves no state behind on rejection, and accepts the corrected definition', () => {
     const engine = requiredEngine();
     schemaError(() => engine.register(schemalessWorkflow));
