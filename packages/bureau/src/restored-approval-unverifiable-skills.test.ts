@@ -13,6 +13,7 @@ import type { BureauError } from './create-bureau';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   createScheduleFireHarness,
+  durableStatus,
   fireOnce,
   pollUntil,
   reviewOf,
@@ -93,6 +94,37 @@ async function rewriteSkillSnapshotOnDisk(
   }
   if (rewritten === 0) throw new Error('No session held a skill snapshot to rewrite.');
 }
+
+/**
+ * What a read of a session's body returns, set after the restart: `missing` reads it as absent,
+ * and `rejectAt` fails the read with that number (counted from `count = 0`) with an error.
+ */
+type BodyReads = { mode: 'through' | 'missing'; count: number; rejectAt: number | undefined };
+
+/** A storage that reads a session's body back as `reads` says. */
+function sessionBodyReads(reads: BodyReads) {
+  return (storage: Storage): Storage =>
+    new Proxy(storage, {
+      get(target, property) {
+        const member = Reflect.get(target, property, target) as unknown;
+        if (typeof member !== 'function') return member;
+        if (property !== 'get') return (member as (...a: unknown[]) => unknown).bind(target);
+        return (...args: unknown[]) => {
+          if (!String(args[0]).startsWith('agent-session-v2:body:')) {
+            return (member as (...a: unknown[]) => unknown).apply(target, args);
+          }
+          reads.count += 1;
+          if (reads.rejectAt === reads.count) {
+            return Promise.reject(new Error('the session store is unavailable'));
+          }
+          if (reads.mode === 'missing') return Promise.resolve(null);
+          return (member as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+}
+
+const newBodyReads = (): BodyReads => ({ mode: 'through', count: 0, rejectAt: undefined });
 
 const approve = (bureau: Bureau, id: string) =>
   bureau.resolveReview({ id, decision: 'approve', principal: OWNER.alice });
@@ -203,8 +235,80 @@ describe('a restored fire approval whose snapshot cannot be read', () => {
 describe('a restored fire approval whose snapshot names another fire', () => {
   it('is refused with CONFLICT when a newer fire of the schedule has taken the session', async () => {
     const catalog = await skillCatalogOnDisk();
+    const path = harness.nextDatabasePath();
+    const phase = { first: true };
+    const locked = lockedAfterCharging('stop');
+    const generate: GenerateFunction = (context) =>
+      phase.first ? locked(context) : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
+    const first = await harness.open({
+      generate,
+      stopWhen: stopWhen.noToolCalls(),
+      skills: { catalog: await catalog.discover() },
+      toolbox: chargeApprovalToolbox([]),
+      storage: { type: 'sqlite', path },
+    });
+    const created = await first.createSchedule({
+      agentName: 'researcher',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+      sessionId: SESSION,
+    });
+    if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
+      throw new Error('The schedule has no first occurrence.');
+    }
+    await first.runDurableMaintenance(created.nextFireAt);
+    const fireId = await pollUntil(async () => {
+      const current = await first.getSchedule(created.id);
+      return current?.currentWorkflowId;
+    }, 'the first fire');
+    await reviewOf(first, fireId);
+    await pollForTime(
+      async () => ((await skillsRecorded(first, SESSION)) ? true : undefined),
+      'the active skill to be recorded',
+    );
+    await letStepsCommit();
+    await pollUntil(
+      async () => ((await durableStatus(first, fireId)) === 'completed' ? true : undefined),
+      'the first fire to settle',
+    );
+    // The schedule's next occurrence is a newer fire, in the same session.
+    phase.first = false;
+    const schedule = await first.getSchedule(created.id);
+    if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
+      throw new Error('The schedule has no second occurrence.');
+    }
+    await first.runDurableMaintenance(schedule.nextFireAt);
+    const newer = await pollUntil(async () => {
+      const current = await first.getSchedule(created.id);
+      const id = current?.currentWorkflowId;
+      return id !== undefined && id !== fireId ? id : undefined;
+    }, 'the newer fire');
+    await pollForTime(async () => {
+      const session = await first.getSession(SESSION);
+      return session?.metadata['lastScheduledFireRunId'] === newer ? true : undefined;
+    }, 'the newer fire to take the session');
+    const charges: number[] = [];
+    const restarted = await harness.open({
+      generate: () => Promise.resolve({ content: 'nothing to do', toolCalls: [] }),
+      stopWhen: stopWhen.noToolCalls(),
+      skills: { catalog: await catalog.discover() },
+      toolbox: chargeApprovalToolbox(charges),
+      storage: { type: 'sqlite', path },
+    });
+    const restored = await reviewOf(restarted, fireId);
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('could not be verified');
+    expect(refusal.message).toContain('another fire');
+    expect(charges).toEqual([]);
+  });
+
+  it('is refused with CONFLICT when the session names another fire that did not run', async () => {
+    const catalog = await skillCatalogOnDisk();
     const { path, fireId } = await parkedFireWithSkill(catalog);
-    // The session names the schedule's newer fire, as it does once that fire has run in it.
     await rewriteSkillSnapshotOnDisk(path, (metadata) => {
       metadata['lastScheduledFireRunId'] = 'a-newer-fire';
     });
@@ -215,37 +319,55 @@ describe('a restored fire approval whose snapshot names another fire', () => {
     const refusal = await refusalOf(restarted, restored.id);
 
     expect(refusal.code).toBe('CONFLICT');
-    expect(refusal.message).toContain('could not be verified');
+    expect(refusal.message).toContain('another fire');
+    expect(charges).toEqual([]);
+  });
+
+  it('is refused with CONFLICT when its snapshot step does not deserialize', async () => {
+    const catalog = await skillCatalogOnDisk();
+    const { path, fireId } = await parkedFireWithSkill(catalog);
+    await rewriteSkillSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecordsStep'] = 'corrupt';
+    });
+    const charges: number[] = [];
+    const restarted = await restartFire(catalog, path, charges);
+    const restored = await reviewOf(restarted, fireId);
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('snapshot step does not deserialize');
     expect(charges).toEqual([]);
   });
 });
 
-describe('a restored session-run approval whose snapshot cannot be read', () => {
-  async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
-    const path = harness.nextDatabasePath();
-    const options = async () => ({
-      generate: lockedAfterCharging('stop'),
-      stopWhen: stopWhen.noToolCalls(),
-      skills: { catalog: await catalog.discover() },
-    });
-    const first = await harness.open({
-      ...(await options()),
-      toolbox: chargeApprovalToolbox([]),
-      storage: { type: 'sqlite', path },
-    });
-    const run = await first.createRun({ message: 'charge, then lock', principal: OWNER.alice });
-    const review = await pollUntil(
-      () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
-      'the session run’s approval',
-    );
-    await pollForTime(
-      async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
-      'the active skill to be recorded',
-    );
-    await letStepsCommit();
-    return { path, run, review, options };
-  }
+/** A session run that parks on its approval after the locking skill is active and committed. */
+async function parkedRunWithSkill(catalog: SkillCatalogOnDisk) {
+  const path = harness.nextDatabasePath();
+  const options = async () => ({
+    generate: lockedAfterCharging('stop'),
+    stopWhen: stopWhen.noToolCalls(),
+    skills: { catalog: await catalog.discover() },
+  });
+  const first = await harness.open({
+    ...(await options()),
+    toolbox: chargeApprovalToolbox([]),
+    storage: { type: 'sqlite', path },
+  });
+  const run = await first.createRun({ message: 'charge, then lock', principal: OWNER.alice });
+  const review = await pollUntil(
+    () => first.listPendingReviews().find((candidate) => candidate.runId === run.id),
+    'the session run’s approval',
+  );
+  await pollForTime(
+    async () => ((await skillsRecorded(first, run.sessionId)) ? true : undefined),
+    'the active skill to be recorded',
+  );
+  await letStepsCommit();
+  return { path, run, review, options };
+}
 
+describe('a restored session-run approval whose snapshot cannot be read', () => {
   it('is refused with CONFLICT when the stored records do not deserialize', async () => {
     const catalog = await skillCatalogOnDisk();
     const { path, review, options } = await parkedRunWithSkill(catalog);
@@ -387,5 +509,113 @@ describe('a restored approval of a run that never activated a skill', () => {
     await approve(restarted, review.id);
 
     expect(charges).toEqual([4242]);
+  });
+});
+
+describe('a restored session-run approval is decided under the snapshot read at approve', () => {
+  async function restoreRun(
+    catalog: SkillCatalogOnDisk,
+    reads: BodyReads,
+    charges: number[],
+    withSkills = true,
+  ) {
+    const parked = await parkedRunWithSkill(catalog);
+    const restarted = await harness.open({
+      generate: lockedAfterCharging('stop'),
+      stopWhen: stopWhen.noToolCalls(),
+      ...(withSkills ? { skills: { catalog: await catalog.discover() } } : {}),
+      toolbox: chargeApprovalToolbox(charges),
+      storage: await harness.sqliteStorage(parked.path, sessionBodyReads(reads)),
+    });
+    const restored = await pollUntil(
+      () => restarted.listPendingReviews().find((candidate) => candidate.id === parked.review.id),
+      'the restored approval',
+    );
+    return { ...parked, restarted, restored };
+  }
+
+  it('follows a snapshot that has changed since a clean restore', async () => {
+    const charges: number[] = [];
+    const { restarted, restored, path } = await restoreRun(
+      await skillCatalogOnDisk(),
+      newBodyReads(),
+      charges,
+    );
+    // As restored, the skill forbids the call.
+    const before = await refusalOf(restarted, restored.id);
+    expect(before.message).toContain('not permitted by the run');
+
+    // The snapshot now says, verifiably and under the same run, that no skill is active.
+    await rewriteSkillSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecords'] = [];
+    });
+    await approve(restarted, restored.id);
+
+    expect(charges).toEqual([4242]);
+  });
+
+  it('is refused when the snapshot names another run', async () => {
+    const charges: number[] = [];
+    const { restarted, restored, path } = await restoreRun(
+      await skillCatalogOnDisk(),
+      newBodyReads(),
+      charges,
+    );
+    await rewriteSkillSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecordsRunId'] = 'another-run';
+    });
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('names another run');
+    expect(charges).toEqual([]);
+  });
+
+  it('is refused when the session cannot be found', async () => {
+    const reads = newBodyReads();
+    const charges: number[] = [];
+    const { restarted, restored } = await restoreRun(await skillCatalogOnDisk(), reads, charges);
+    reads.mode = 'missing';
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('its session is not found');
+    expect(charges).toEqual([]);
+  });
+
+  it('is refused when the session cannot be read', async () => {
+    const reads = newBodyReads();
+    const charges: number[] = [];
+    const { restarted, restored } = await restoreRun(await skillCatalogOnDisk(), reads, charges);
+    // A refused approve reads the session a fixed number of times, the last at the policy check.
+    reads.count = 0;
+    await refusalOf(restarted, restored.id);
+    const readsToTheCheck = reads.count;
+    reads.count = 0;
+    reads.rejectAt = readsToTheCheck;
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('could not be read');
+    expect(charges).toEqual([]);
+  });
+
+  it('is refused when this Bureau has no skills to enforce the stored ones', async () => {
+    const charges: number[] = [];
+    const { restarted, restored } = await restoreRun(
+      await skillCatalogOnDisk(),
+      newBodyReads(),
+      charges,
+      false,
+    );
+
+    const refusal = await refusalOf(restarted, restored.id);
+
+    expect(refusal.code).toBe('CONFLICT');
+    expect(refusal.message).toContain('could not be verified');
+    expect(charges).toEqual([]);
   });
 });

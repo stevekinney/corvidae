@@ -248,7 +248,8 @@ import {
   decodeScheduleRunMarker,
   isRunFailureFinishReason,
   isScheduledFireAuthority,
-  readSessionSkillSnapshot,
+  recordRecoveredSkillPolicy,
+  recoveredSkillPolicyOf,
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
@@ -5825,24 +5826,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
-  /**
-   * COR-1577 — the catalog agent a recovered session run belongs to: `undefined` for the default
-   * agent, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
-   * thrown so one run's lost agent never stops the rest of recovery.
-   */
-  /** What a restored approval's run was rebuilt with, kept with the toolbox that was built. */
-  const restoredSkillPolicies = new WeakMap<
-    object,
-    {
-      readonly scheduledFire: boolean;
-      readonly agentName: string;
-      readonly sessionAgent: SessionAgentRun | undefined;
-      readonly recordsKey: string;
-      /** Whether the snapshot was verified and every stored skill recovered. */
-      readonly recoveredCleanly: boolean;
-    }
-  >();
-
   /** COR-1620 — the active-skill snapshot of a restored run, read from its session. */
   function readRestoredSkillSnapshot(
     session: { readonly metadata: Record<string, JSONValue> } | undefined,
@@ -5851,13 +5834,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<SkillSnapshot> {
     return scheduledFire
       ? runtime.readCommittedScheduledSkillSnapshot(session, runId, true)
-      : Promise.resolve(readSessionSkillSnapshot(session, runId));
+      : Promise.resolve(runtime.readSessionSkillSnapshot(session, runId));
   }
 
   /**
-   * COR-1620 — the toolbox whose tools decide whether a restored approval's call is permitted
-   * by the run's active skills. A live run's own toolbox is it. A restored one is decided under
-   * the snapshot read again now, so a failure that has cleared is not held against it: the same
+   * COR-1620 — the toolbox whose tools decide whether an approval's call is permitted by the
+   * run's active skills. A live run's own toolbox is it. One that recovery built (a restored
+   * approval's, a replayed fire's, a reattached session run's) is decided under the snapshot read
+   * again now, so a failure that has cleared is not held against it: the same
    * toolbox when the snapshot is what it was built with, and one built with the snapshot read now
    * otherwise. When the snapshot cannot be verified, or a stored skill was refused on recovery,
    * or the run has no toolbox of its own and the base toolbox carries no skills, the approval is
@@ -5867,7 +5851,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     registered: BureauToolbox | undefined,
   ): Promise<BureauToolbox> {
-    const restored = registered === undefined ? undefined : restoredSkillPolicies.get(registered);
+    const restored = registered === undefined ? undefined : recoveredSkillPolicyOf(registered);
     if (registered !== undefined && restored === undefined) return registered;
     if (review.sessionId === undefined) return registered ?? runtime.baseToolbox;
     const refuse = (reason: string): never => {
@@ -5921,6 +5905,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     return policyRuntime.toolbox;
   }
 
+  /**
+   * COR-1577 — the catalog agent a recovered session run belongs to: `undefined` for the default
+   * agent, and `'unavailable'` when the agent cannot be resolved, which is reported rather than
+   * thrown so one run's lost agent never stops the rest of recovery.
+   */
   async function resolveRecoveredSessionAgent(
     agentName: string,
     runId: string,
@@ -6033,7 +6022,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     );
     // The skills must be back before a call is decided under their policy.
     const skillRecovery = await runRuntime.skillsRecovered;
-    restoredSkillPolicies.set(runRuntime.toolbox, {
+    recordRecoveredSkillPolicy(runRuntime.toolbox, {
       scheduledFire,
       agentName: recoveredAgentName,
       sessionAgent: recoveredSessionAgent,
@@ -6378,7 +6367,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
           //
           // All three keys, not just the records. The run id and step are what
-          // loadCommittedScheduledActiveSkills matches on, and a stale pair left
+          // readCommittedScheduledSkillSnapshot matches on, and a stale pair left
           // behind would let it accept a committed step snapshot belonging to a
           // previous run on this session.
           activeSkillRecords: null,
