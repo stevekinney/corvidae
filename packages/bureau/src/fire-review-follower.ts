@@ -95,6 +95,17 @@ export function createFireReviewFollower(
   let reconciling: Promise<void> | undefined;
   let subscription: DurableEventOwnersSubscription | undefined;
   let disposed = false;
+  /**
+   * How many times in a row a subscription has ended on its own, across reconciliations. A
+   * subscription that ends after the pass that opened it must not be reopened at once, so the wait
+   * before a reopen grows with this count. It starts over only once a subscription has stayed up
+   * for the longest wait, or has delivered an event.
+   */
+  let consecutiveEnds = 0;
+  /** Set by an end the reconciliation has yet to wait out. */
+  let endedWithoutWait = false;
+  /** Ends the stretch of the current subscription that counts as it staying up. */
+  let stabilityTimer: ReturnType<typeof scheduleTimeout> | undefined;
 
   /** Waits `milliseconds` on a timer that {@link FireReviewFollower.dispose} clears. */
   function wait(milliseconds: number): Promise<void> {
@@ -151,6 +162,8 @@ export function createFireReviewFollower(
 
   /** The reaction to an event the subscription delivers: a failed one is reconciled later. */
   async function handle(event: DurableEventEnvelope): Promise<void> {
+    // A subscription that delivers is a working one.
+    consecutiveEnds = 0;
     if (event.owner.kind !== 'run' || !REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) return;
     const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
     if (typeof reviewId !== 'string') return;
@@ -188,9 +201,9 @@ export function createFireReviewFollower(
     }
   }
 
-  /** Whether a fire is marked and the follower is still running. */
+  /** Whether a fire is marked, or an end has yet to be waited out, and the follower is running. */
   function hasReconciliationToDo(): boolean {
-    return !disposed && needsReconciliation.size > 0;
+    return !disposed && followedRuns.size > 0 && (needsReconciliation.size > 0 || endedWithoutWait);
   }
 
   /** The wait after the `failures`-th consecutive failed reconciliation: doubled, and bounded. */
@@ -207,6 +220,16 @@ export function createFireReviewFollower(
   async function runReconciliation(): Promise<void> {
     let failures = 0;
     while (hasReconciliationToDo()) {
+      // A subscription that ended on its own is reopened after a wait that grows with each end in
+      // a row, however long after its last pass it ended.
+      if (endedWithoutWait) {
+        endedWithoutWait = false;
+        await wait(backoff(consecutiveEnds));
+        // The end's mark may have been cleared by a read that began before it: a new subscription
+        // starts at the tail, so every followed fire is read from its history again.
+        for (const runId of followedRuns) needsReconciliation.add(runId);
+        continue;
+      }
       let failed = false;
       try {
         await open().ready;
@@ -220,7 +243,9 @@ export function createFireReviewFollower(
             needsReconciliation.delete(runId);
             await catchUp(runId);
           } catch (error) {
-            needsReconciliation.add(runId);
+            // Only a fire still followed is marked again: one unfollowed meanwhile has nothing
+            // left to read, and marking it would open a subscription that follows nothing.
+            if (followedRuns.has(runId)) needsReconciliation.add(runId);
             failed = true;
             diagnose({
               level: 'error',
@@ -229,13 +254,6 @@ export function createFireReviewFollower(
               cause: error,
             });
           }
-        }
-        // A subscription that ended during a pass that read everything is not a success: opened
-        // again at once it would end again, in a loop with no wait. It counts as a failure, so
-        // the wait grows and the loop is as slow as the backoff allows.
-        if (subscription?.closed === true && followedRuns.size > 0) {
-          failed = true;
-          for (const runId of followedRuns) needsReconciliation.add(runId);
         }
       } catch (error) {
         failed = true;
@@ -250,6 +268,8 @@ export function createFireReviewFollower(
         failures = 0;
         continue;
       }
+      // A subscription that failed to open has reported its end, which the wait above handles.
+      if (endedWithoutWait) continue;
       failures += 1;
       await wait(backoff(failures));
     }
@@ -283,16 +303,33 @@ export function createFireReviewFollower(
     );
   }
 
+  function clearStability(): void {
+    if (stabilityTimer === undefined) return;
+    cancelTimeout(stabilityTimer);
+    stabilityTimer = undefined;
+  }
+
   function open(): DurableEventOwnersSubscription {
     if (subscription !== undefined && !subscription.closed) return subscription;
     const opened = history.subscribeEventHistoryOfOwners(handle, {
       onGap: rereadAll,
-      // The new subscription starts at the feed's tail, so what the old one had not read is
-      // read from each fire's history.
-      onEnded: () => reconcile(followedRuns),
+      onEnded: () => {
+        if (subscription !== opened) return;
+        clearStability();
+        consecutiveEnds += 1;
+        endedWithoutWait = true;
+        // The new subscription starts at the feed's tail, so what the old one had not read is
+        // read from each fire's history.
+        reconcile(followedRuns);
+      },
     });
     for (const runId of followedRuns) opened.follow(runOwner(runId));
     subscription = opened;
+    clearStability();
+    stabilityTimer = scheduleTimeout(() => {
+      stabilityTimer = undefined;
+      if (subscription === opened && !opened.closed) consecutiveEnds = 0;
+    }, dependencies.maximumRetryDelayMilliseconds);
     return opened;
   }
 
@@ -312,6 +349,7 @@ export function createFireReviewFollower(
       if (followedRuns.size === 0) {
         subscription?.unsubscribe();
         subscription = undefined;
+        clearStability();
       }
     },
     followed: () => [...followedRuns],
@@ -325,6 +363,7 @@ export function createFireReviewFollower(
       needsReconciliation.clear();
       subscription?.unsubscribe();
       subscription = undefined;
+      clearStability();
       for (const entry of Array.from(waits)) {
         cancelTimeout(entry.handle);
         entry.wake();

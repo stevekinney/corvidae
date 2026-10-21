@@ -526,6 +526,69 @@ describe('the binding of a re-gated round', () => {
   });
 });
 
+describe('a fire read again with one review that cannot be restored', () => {
+  it('still refreshes the fire’s other reviews, and then fails the read', async () => {
+    const twoCharges: GenerateFunction = async (context) =>
+      context.step === 0
+        ? {
+            content: '',
+            toolCalls: [
+              { id: 'charge-1', name: 'charge-card', arguments: { cents: 4242 } },
+              { id: 'charge-2', name: 'charge-card', arguments: { cents: 4243 } },
+            ],
+          }
+        : { content: 'charged', toolCalls: [] };
+    const peerGate = { revision: 1 };
+    const { holder, peer, fireId } = await holderAndPeer(
+      { holder: switchedToolbox([], { revision: 1 }), peer: switchedToolbox([], peerGate) },
+      'peer-sync-partial-reread',
+      (storage) => storage,
+      { generate: twoCharges },
+    );
+    await eventually(
+      () => (reviewsOf(holder, fireId).length === 2 ? true : undefined),
+      'both approvals to be listed on the holder',
+    );
+    await eventually(
+      () => (reviewsOf(peer, fireId).length === 2 ? true : undefined),
+      'both approvals to be listed on the peer',
+    );
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    peerGate.revision = 2;
+    for (const review of reviewsOf(peer, fireId)) {
+      const outcome = await peer.resolveReview({
+        id: review.id,
+        decision: 'approve',
+        principal: OWNER.alice,
+      });
+      expect(outcome.superseded).toBe(true);
+    }
+    const toolbox = scheduledFireReviewStateOf(holder).runToolboxesByRunId.get(
+      fireId,
+    ) as unknown as { restoreApproval: (approval: unknown) => Promise<void> };
+    const restore = toolbox.restoreApproval.bind(toolbox);
+    let failNext = true;
+    toolbox.restoreApproval = async (approval) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error('the approval store is unavailable');
+      }
+      await restore(approval);
+    };
+    const roundsOf = () =>
+      (reviewsOf(holder, fireId) as PendingToolApprovalReview[]).map((review) => review.round);
+
+    const failure = await rejectionOf(fireReviewFollowerOf(holder).reread(fireId));
+
+    expect((failure as Error).message).toContain('unavailable');
+    // One approval could not be restored, and the other was refreshed all the same.
+    expect(roundsOf().toSorted()).toEqual([0, 1]);
+
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(roundsOf()).toEqual([1, 1]);
+  });
+});
+
 describe('the grace a review is given to reach durable state', () => {
   it('keeps a young review the session no longer records, and drops it once it is thirty seconds old', async () => {
     const skew = { milliseconds: 0 };

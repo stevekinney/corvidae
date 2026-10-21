@@ -5702,6 +5702,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const heldIds = Array.from(pendingApprovalOverrides.keys()).filter((id) =>
       id.startsWith(`approval:${runId}:`),
     );
+    // One review that cannot be read again must not keep the fire's others from being: each is
+    // tried, and the first failure is thrown after them all, so the pass still counts as failed.
+    const failures: unknown[] = [];
     if (sessionId !== undefined && heldIds.length > 0) {
       const session = await runtime.sessionStore?.load(sessionId);
       if (session !== undefined) {
@@ -5709,25 +5712,34 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ? new Set(stringValues(session.metadata['resolvedReviewIds']))
           : new Set<string>();
         for (const id of heldIds) {
-          const persisted = persistedApprovalOf(session.metadata, id);
-          if (persisted !== undefined && !decided.has(id)) {
-            await adoptPersistedApprovalRound(runId, id, persisted);
-            continue;
-          }
-          const age = runtimeServices.clock.now() - (approvalRequestedAt.get(id) ?? 0);
-          if (decided.has(id) || age > FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS) {
-            await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
+          try {
+            const persisted = persistedApprovalOf(session.metadata, id);
+            if (persisted !== undefined && !decided.has(id)) {
+              await adoptPersistedApprovalRound(runId, id, persisted);
+              continue;
+            }
+            const age = runtimeServices.clock.now() - (approvalRequestedAt.get(id) ?? 0);
+            if (decided.has(id) || age > FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS) {
+              await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
+            }
+          } catch (error) {
+            failures.push(error);
           }
         }
       }
     }
-    const closedWait = await runHumanWaits.rereadClosed(
-      runId,
-      FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS,
-    );
-    if (closedWait !== undefined) {
-      await tasks.reviewClosedElsewhere(runId, closedWait, REREAD_CLOSURE);
+    try {
+      const closedWait = await runHumanWaits.rereadClosed(
+        runId,
+        FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS,
+      );
+      if (closedWait !== undefined) {
+        await tasks.reviewClosedElsewhere(runId, closedWait, REREAD_CLOSURE);
+      }
+    } catch (error) {
+      failures.push(error);
     }
+    if (failures.length > 0) throw failures[0];
   }
 
   /** Whether this process still holds an approval of the fire: one that is expired counts. */
@@ -15963,7 +15975,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           timers: runtimeServices.timers,
           diagnose,
           attempts: SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
-          retryDelayMilliseconds: sessionPersistenceRetryDelayMilliseconds,
+          // A wait of zero would make a failing store a busy loop, so the backoff has a floor.
+          retryDelayMilliseconds: Math.max(1, sessionPersistenceRetryDelayMilliseconds),
           maximumRetryDelayMilliseconds: FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS,
         });
   // The durable event producer (AB-311's coordinator amendment) — sinks

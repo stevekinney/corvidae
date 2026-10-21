@@ -661,6 +661,265 @@ describe('a followed fire that cannot be read', () => {
   });
 });
 
+/** Timers that run on the real clock and remember every wait the follower asked for. */
+function recordingTimers(holdMilliseconds?: number) {
+  const requested: number[] = [];
+  const live = new Set<ReturnType<typeof setTimeout>>();
+  return {
+    requested,
+    live,
+    timers: {
+      setTimeout: (callback: () => void, ms?: number) => {
+        requested.push(ms ?? 0);
+        // A wait of the held length never ends: the stretch a subscription must stay up for.
+        if (ms === holdMilliseconds) return undefined;
+        const handle = setTimeout(() => {
+          live.delete(handle);
+          callback();
+        }, 0);
+        live.add(handle);
+        return handle;
+      },
+      clearTimeout: (handle: unknown) => {
+        if (handle === undefined) return;
+        live.delete(handle as ReturnType<typeof setTimeout>);
+        clearTimeout(handle as ReturnType<typeof setTimeout>);
+      },
+    },
+  };
+}
+
+describe('a followed fire whose subscription keeps ending', () => {
+  for (const endAfter of [0, 2, 5]) {
+    it(`is reopened with a growing wait when each subscription ends ${endAfter} ms after its pass`, async () => {
+      const { history: real } = await openHistory();
+      const state = { opens: 0 };
+      const endingLater: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+        page: (...args) => real.page(...args),
+        subscribeEventHistoryOfOwners(listener, options) {
+          state.opens += 1;
+          const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+          // Opens fine, and ends on its own after the reconciliation pass that opened it.
+          void subscription.ready.then(() =>
+            setTimeout(() => {
+              subscription.unsubscribe();
+              options?.onEnded?.();
+            }, endAfter),
+          );
+          return subscription;
+        },
+      };
+      const follower = createFireReviewFollower({
+        history: endingLater,
+        closeReview: async () => undefined,
+        reread: async () => undefined,
+        timers: {
+          setTimeout: (callback, ms) => setTimeout(callback, ms),
+          clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+        },
+        diagnose: () => undefined,
+        attempts: 3,
+        // The Bureau's own values.
+        retryDelayMilliseconds: 10,
+        maximumRetryDelayMilliseconds: 5_000,
+      });
+      cleanups.push(() => follower.dispose());
+      follower.follow('fire-a');
+
+      await sleep(1_000);
+
+      // Waits of 10, 20, 40, ... milliseconds fit about eight opens in a second; a reopen with no
+      // wait made hundreds.
+      expect(state.opens).toBeGreaterThan(1);
+      expect(state.opens).toBeLessThan(20);
+    });
+  }
+
+  /**
+   * A follower whose subscriptions each end at once, on timers that hold any request for
+   * `capMilliseconds` (the stretch a subscription must stay up for, and the longest wait).
+   */
+  async function followerWhoseSubscriptionsEnd(capMilliseconds: number) {
+    const { history: real } = await openHistory();
+    const { requested, timers } = recordingTimers(capMilliseconds);
+    const endsAtOnce: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+      page: (...args) => real.page(...args),
+      subscribeEventHistoryOfOwners(listener, options) {
+        const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+        void subscription.ready.then(() => {
+          subscription.unsubscribe();
+          options?.onEnded?.();
+        });
+        return subscription;
+      },
+    };
+    const follower = createFireReviewFollower({
+      history: endsAtOnce,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      timers,
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 10,
+      maximumRetryDelayMilliseconds: capMilliseconds,
+    });
+    cleanups.push(() => follower.dispose());
+    follower.follow('fire-a');
+    return requested;
+  }
+
+  it('doubles the wait with each consecutive end', async () => {
+    const requested = await followerWhoseSubscriptionsEnd(100_000);
+
+    // The cap, which is also the stretch a subscription must stay up for, is held and filtered.
+    const waits = () => requested.filter((ms) => ms !== 100_000);
+    await eventually(() => (waits().length >= 8 ? true : undefined), 'eight waits to be asked for');
+
+    expect(waits().slice(0, 8)).toEqual([10, 20, 40, 80, 160, 320, 640, 1_280]);
+  });
+
+  it('stops doubling at its cap', async () => {
+    const requested = await followerWhoseSubscriptionsEnd(50);
+
+    // Each open asks for the 50 ms stability timer, and the wait that reaches the cap is held too.
+    await eventually(
+      () => (requested.filter((ms) => ms === 50).length >= 5 ? true : undefined),
+      'the wait to reach its cap',
+    );
+
+    expect(requested.filter((ms) => ms !== 50)).toEqual([10, 20, 40]);
+  });
+
+  it('starts the wait over once a subscription has stayed up for the cap', async () => {
+    const { history: real } = await openHistory();
+    // The stretch a subscription must stay up for (5 000 ms) passes at once here.
+    const { requested, timers } = recordingTimers();
+    const lives: Array<() => void> = [];
+    const endable: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+      page: (...args) => real.page(...args),
+      subscribeEventHistoryOfOwners(listener, options) {
+        const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+        lives.push(() => {
+          subscription.unsubscribe();
+          options?.onEnded?.();
+        });
+        return subscription;
+      },
+    };
+    const follower = createFireReviewFollower({
+      history: endable,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      timers,
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 10,
+      maximumRetryDelayMilliseconds: 5_000,
+    });
+    cleanups.push(() => follower.dispose());
+    follower.follow('fire-a');
+    await follower.settled();
+    // Ends once, and again after it has stayed up for the cap: each is the first of its run.
+    lives[0]?.();
+    await eventually(() => (lives.length >= 2 ? true : undefined), 'the first reopen');
+    await follower.settled();
+    // The stability timer fires (the recording timers run it at once), which is the cap elapsing.
+    await sleep(20);
+    lives[1]?.();
+    await eventually(() => (lives.length >= 3 ? true : undefined), 'the second reopen');
+
+    const betweenOpens = requested.filter((ms) => ms !== 5_000);
+    expect(betweenOpens).toEqual([10, 10]);
+  });
+
+  it('starts the wait over once a subscription has delivered an event', async () => {
+    const { history: real } = await openHistory();
+    // The stretch a subscription must stay up for never passes here: only an event can reset.
+    const { requested, timers } = recordingTimers(5_000);
+    const lives: Array<() => void> = [];
+    const endable: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+      page: (...args) => real.page(...args),
+      subscribeEventHistoryOfOwners(listener, options) {
+        const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+        lives.push(() => {
+          subscription.unsubscribe();
+          options?.onEnded?.();
+        });
+        return subscription;
+      },
+    };
+    const waitsAsked = () => requested.filter((ms) => ms !== 5_000);
+    const follower = createFireReviewFollower({
+      history: endable,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      timers,
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 10,
+      maximumRetryDelayMilliseconds: 5_000,
+    });
+    cleanups.push(() => follower.dispose());
+    follower.follow('fire-b');
+    await follower.settled();
+    const first = lives.length - 1;
+    lives[first]?.();
+    await eventually(() => (lives.length >= first + 2 ? true : undefined), 'the first reopen');
+    await follower.settled();
+    // The reopened subscription delivers an event of a followed fire.
+    await real.record(runOwner('fire-b'), 'review.requested', closing('approval:fire-b:1'));
+    await sleep(100);
+    lives[lives.length - 1]?.();
+    await eventually(() => (lives.length >= first + 3 ? true : undefined), 'the second reopen');
+
+    expect(waitsAsked()).toEqual([10, 10]);
+  });
+
+  it('keeps no subscription open when the last fire is unfollowed during a failing catch-up', async () => {
+    const { history: real } = await openHistory();
+    const opened: DurableEventOwnersSubscription[] = [];
+    let pageStarted: (() => void) | undefined;
+    const history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+      page: () =>
+        new Promise((_resolve, reject) => {
+          pageStarted?.();
+          setTimeout(() => reject(new Error('storage unavailable')), 30);
+        }),
+      subscribeEventHistoryOfOwners(listener, options) {
+        const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+        opened.push(subscription);
+        return subscription;
+      },
+    };
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      timers: {
+        setTimeout: (callback, ms) => setTimeout(callback, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 10,
+      maximumRetryDelayMilliseconds: 5_000,
+    });
+    cleanups.push(() => follower.dispose());
+    const started = new Promise<void>((resolve) => {
+      pageStarted = resolve;
+    });
+    follower.follow('fire-a');
+    await started;
+    // The fire's last review is released while its catch-up read is in flight.
+    follower.unfollow('fire-a');
+    await sleep(300);
+    await follower.settled();
+
+    expect(follower.followed()).toEqual([]);
+    expect(opened.filter((subscription) => !subscription.closed)).toHaveLength(0);
+  });
+});
+
 describe('the deduplication key of a canceled review', () => {
   it('names the review and the round, and leaves a short review id as it was written', () => {
     expect(reviewCanceledDedupeKey('approval:run-1:call-1', 1)).toBe(
