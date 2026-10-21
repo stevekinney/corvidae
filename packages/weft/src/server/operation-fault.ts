@@ -171,7 +171,9 @@ export const FAULT_CODE_TO_HTTP_STATUS: Readonly<Record<FaultCode, number>> = Ob
   NotFound: 404,
   Conflict: 409,
   Unprocessable: 422,
-  Timeout: 408,
+  // 504, not `Request Timeout`: a user agent may repeat a request answered `Request Timeout` (RFC 9110
+  // §15.5.9), and browsers do, so a timed-out `POST` would run again. No user agent replays a `504`.
+  Timeout: 504,
   PayloadTooLarge: 413,
   NotImplemented: 501,
   UnsupportedTransport: 501,

@@ -2028,7 +2028,7 @@ describe('handleRequest', () => {
     expect(body.error).toContain('cancelled');
   });
 
-  it('GET /v1/workflows/:id/result returns 408 when running workflow times out', async () => {
+  it('GET /v1/workflows/:id/result returns 504 when running workflow times out', async () => {
     engine = createEngine();
 
     engine.register(longRunningWorkflow);
@@ -2051,7 +2051,7 @@ describe('handleRequest', () => {
 
     const response = await handleRequest(request('GET', `/v1/workflows/${id}/result`), engine);
 
-    expect(response.status).toBe(408);
+    expect(response.status).toBe(504);
     const body = (await json(response)) as { error: string };
     expect(body.error).toContain('Timeout');
 
@@ -2135,7 +2135,7 @@ describe('handleRequest', () => {
       expect(body.result).toEqual({ accepted: true });
     });
 
-    it('returns 408 when update times out', async () => {
+    it('returns 504 when update times out', async () => {
       const storage = new MemoryStorage();
       engine = new Engine({ storage });
       engine.register(echoWorkflow);
@@ -2149,7 +2149,7 @@ describe('handleRequest', () => {
         engine,
       );
 
-      expect(response.status).toBe(408);
+      expect(response.status).toBe(504);
       const body = (await json(response)) as { error: string };
       expect(body.error).toContain('timed out');
     });

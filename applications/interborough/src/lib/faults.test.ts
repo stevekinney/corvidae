@@ -24,7 +24,7 @@ const HTTP_STATUS_FOR_FAULT_CODE: Readonly<Record<FaultCode, number>> = {
   NotFound: 404,
   Conflict: 409,
   Unprocessable: 422,
-  Timeout: 408,
+  Timeout: 504,
   PayloadTooLarge: 413,
   NotImplemented: 501,
   UnsupportedTransport: 501,

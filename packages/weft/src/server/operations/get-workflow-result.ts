@@ -111,7 +111,8 @@ export const getWorkflowResultOperation = defineOperation({
 
 function shapeGetWorkflowResultFault(fault: OperationFault): Response {
   if (fault.code === 'Timeout') {
-    return shapeRestFault(fault, { message: 'Timeout waiting for workflow result', status: 408 });
+    // The status is the fault map's: `Timeout` answers 504.
+    return shapeRestFault(fault, { message: 'Timeout waiting for workflow result' });
   }
   // Every other fault goes through the canonical `shapeRestFault`, which
   // masks EngineFailure to a generic "Internal server error" 500 and maps
