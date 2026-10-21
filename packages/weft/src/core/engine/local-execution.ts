@@ -70,6 +70,64 @@ export function settleEveryInlineWorkflowStart(internals: EngineInternals): void
 }
 
 /**
+ * A delayed or prepared start holds the claim it folded or committed under, and is launching: from
+ * its `running` commit to its launch it awaits a re-provision and reads, and in that window it is
+ * neither queued nor live. The marker records it as launching under that claim, so a reclaim
+ * defers to it ({@link defersToQueuedInlineWorkflowStart}) instead of replaying beside it. It adds
+ * the id to `queuedOrLaunchingInlineWorkflowStartIds` only, never to `queuedInlineWorkflowStartIds`,
+ * so `engine.get()` keeps reporting `running`. An inline launch hands the marker over to the queue
+ * (`recordInlineWorkflowStartQueued` overwrites it under the same id); a worker launch settles it
+ * once the worker has its run; a launch that stops short lets the run go
+ * ({@link letGoOfPendingLaunch}).
+ */
+export function recordLaunchPending(internals: EngineInternals, workflowId: string): void {
+  internals.queuedOrLaunchingInlineWorkflowStartIds.add(workflowId);
+  queuedEpochsOf(internals).set(
+    workflowId,
+    internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null,
+  );
+}
+
+/** The launching start handed its run to the strategy (a worker has it): the marker is over. */
+export function settleLaunchPending(internals: EngineInternals, workflowId: string): void {
+  internals.queuedOrLaunchingInlineWorkflowStartIds.delete(workflowId);
+  queuedInlineStartClaimEpochs.get(internals)?.delete(workflowId);
+}
+
+/**
+ * The launching start launched. An inline launch has queued its start, which took the marker over
+ * under the same id, so the queue now owns it; a worker launch has handed the run to the worker,
+ * which never enqueues, so the marker is settled here.
+ */
+export function handOverPendingLaunch(internals: EngineInternals, workflowId: string): void {
+  if (internals.inlineStrategy === null) settleLaunchPending(internals, workflowId);
+}
+
+/**
+ * The launching start stopped short of its launch: it threw, or its services were unavailable.
+ * Nothing drives the run, and nothing else would while this engine holds and renews the claim it
+ * folded, because the reclaim scan excludes held ids and a reclaim that met the marker deferred to
+ * it. So the marker is settled and the claim is released, best-effort and guarded on the epoch the
+ * marker recorded: the run is then `running` with no holder, which the next reclaim pass lists as
+ * ownerless and drives, on this engine or any other. A run the launch failed terminally has already
+ * released its claim, and the guarded release is then a no-op.
+ */
+export async function letGoOfPendingLaunch(
+  internals: EngineInternals,
+  workflowId: string,
+): Promise<void> {
+  const claimEpoch = queuedInlineStartClaimEpochs.get(internals)?.get(workflowId);
+  if (claimEpoch === undefined) return;
+  settleLaunchPending(internals, workflowId);
+  if (claimEpoch === null) return;
+  try {
+    await internals.workflowClaimRegistry?.release(workflowId, claimEpoch);
+  } catch {
+    // Best-effort: a thrown release leaves the claim to expire, which any engine then takes over.
+  }
+}
+
+/**
  * Whether the workflow's queued or launching inline start was enqueued under a claim this engine
  * no longer holds: the claim was lost and taken back since, so the start's checkpoint may be behind
  * the run's durable one. The flush discards such a start, and a reclaim does not defer to it.

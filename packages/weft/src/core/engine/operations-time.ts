@@ -1,18 +1,17 @@
-import type { BatchOperation } from '../../storage/interface.ts';
 import { KEYS, storageHas } from '../../storage/interface.ts';
 import { deserializeCheckpoint } from '../checkpoint.ts';
-import { encode } from '../codec.ts';
 import type { ContextOperationRequest } from '../context.ts';
-import { buildTimerBatchOperations, normalizeStorageTimestamp } from '../scheduler.ts';
+import { normalizeStorageTimestamp } from '../scheduler.ts';
 import type { Checkpoint, StartOptions, TimerEntry, WorkflowState } from '../types.ts';
 import { adoptLaunchCheckpoint } from './checkpoint-commit-snapshots.ts';
 import { notifyConditionWaiters, notifyConditionWaitersForTimerFire } from './condition-waiters.ts';
+import { commitDelayedStartRunning } from './delayed-start-commit.ts';
 import { currentExecutionAttempt } from './execution-attempts.ts';
-import { commitFencedEngineWrite } from './fenced-write.ts';
 import type { EngineInternals } from './internals.ts';
 import { resolveDelayedStartRegistrationOrFail } from './lifecycle/delayed-start-registration.ts';
 import { reprovideRecoveredServices } from './lifecycle/recovered-services.ts';
 import { ensureDelayedStartClaimAndCleanupBeforeFailure } from './lifecycle/standalone-claim-acquire.ts';
+import { handOverPendingLaunch, letGoOfPendingLaunch } from './local-execution.ts';
 import { registerSleepResolver } from './sleep-resolver-registration.ts';
 import {
   acknowledgeSupersededSleepTimers,
@@ -24,11 +23,6 @@ import {
 } from './sleep-timer-acknowledgements.ts';
 import { type TimeOperationCallbacks } from './time-operation-callbacks.ts';
 import { wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';
-import { commitWithWorkflowClaimFold, prepareWorkflowClaimFold } from './workflow-claim-fold.ts';
-import {
-  refreshWorkflowVisibilityMaintenance,
-  visibilityIndexOperations,
-} from './workflow-visibility-maintenance.ts';
 
 type SleepOperation = Extract<ContextOperationRequest, { type: 'sleep' }>;
 
@@ -147,6 +141,10 @@ export async function processSleepOperation(
   }
 }
 
+function isPendingDelayedStart(state: WorkflowState | null): state is WorkflowState {
+  return state !== null && state.status === 'pending';
+}
+
 export async function startDelayedWorkflow(
   internals: EngineInternals,
   entry: TimerEntry,
@@ -165,7 +163,7 @@ export async function startDelayedWorkflow(
   >,
 ): Promise<void> {
   const state = await callbacks.loadWorkflowState(entry.workflowId);
-  if (!state || state.status !== 'pending') {
+  if (!isPendingDelayedStart(state)) {
     return;
   }
 
@@ -197,154 +195,74 @@ export async function startDelayedWorkflow(
   const executionDeadline = await resolveDelayedExecutionDeadline(internals, entry, now, callbacks);
   if (executionDeadline === 'invalid') return;
 
-  const runningState = await callbacks.runSerializedWorkflowStateWrite(
-    entry.workflowId,
-    async () => {
-      const latestState = await callbacks.loadWorkflowState(entry.workflowId);
-      if (!latestState || latestState.status !== 'pending') {
-        return null;
-      }
+  // From the fold to the launch the run is held and launching (COR-1625). The marker is handed to
+  // the inline queue by the enqueue, settled once a worker has the run, and otherwise let go of.
+  let handedOver = false;
+  try {
+    const runningState = await callbacks.runSerializedWorkflowStateWrite(entry.workflowId, () =>
+      commitDelayedStartRunning(internals, entry, callbacks, {
+        now,
+        executionDeadline,
+        resolvedRevision,
+      }),
+    );
+    if (!runningState) {
+      return;
+    }
 
-      // `latestState.revision ?? resolvedRevision` — NEVER the other order.
-      // `resolveExecutableRegistrationForRevision()` always returns
-      // `revision: undefined` for an eager registration (eager has no
-      // ambiguity to resolve against), even when `latestState.revision` is a
-      // real, independently-meaningful pin (stamped at ordinary start time
-      // for every registration kind). Blindly preferring `resolvedRevision`
-      // would silently WIPE that pin on every eager-type delayed-start fire.
-      // `resolvedRevision` only fills the gap for the one case it actually
-      // applies to: a legacy, pre-revision-pinning pending record on a
-      // `registerSource()`-registered type with exactly one registered
-      // candidate, where `latestState.revision` is itself `undefined` even
-      // though the resolver unambiguously resolved that sole candidate.
-      // Mirrors `createForkedWorkflowState()`'s identical fix (WFT-19 review
-      // round 6) for the same resolver contract, one launch path over.
-      const effectiveRevision = latestState.revision ?? resolvedRevision;
-      const nextRunningState: WorkflowState = {
-        ...latestState,
-        status: 'running',
-        startedAt: now,
-        updatedAt: now,
-        // Conditional spread, not a plain property: `revision` is optional
-        // and `exactOptionalPropertyTypes` forbids assigning an explicit
-        // `undefined` to it.
-        ...(effectiveRevision !== undefined && { revision: effectiveRevision }),
-        ...(executionDeadline !== undefined && { executionDeadline }),
-      };
+    // A delayed-start workflow that crashed `pending` before its timer fired loses
+    // its in-memory services on recovery (fires in a fresh process). Re-provide
+    // them before execution, as resume does — fail rather than run with
+    // `ctx.services === undefined`.
+    const servicesUnavailable = await reprovideRecoveredServices(
+      internals,
+      runningState,
+      (workflowId, error) => callbacks.failWorkflow(workflowId, error),
+      callbacks.handleCleanupError,
+      callbacks.dispatchEvent,
+    );
+    if (servicesUnavailable) {
+      return;
+    }
 
-      const visibilityMaintenance = refreshWorkflowVisibilityMaintenance(internals);
-      if (visibilityMaintenance !== undefined) await visibilityMaintenance;
-      const operations: BatchOperation[] = [
-        {
-          type: 'put',
-          key: KEYS.workflow(entry.workflowId),
-          value: encode(nextRunningState),
-        },
-        ...visibilityIndexOperations(internals, latestState, nextRunningState),
-      ];
-      if (executionDeadline !== undefined) {
-        operations.push(
-          ...buildTimerBatchOperations({
-            id: `deadline:${entry.workflowId}`,
-            workflowId: entry.workflowId,
-            fireAt: executionDeadline,
-            kind: 'execution-deadline',
-          }),
-        );
-      }
+    // Re-derive terminal-cleanup tracking from the durable marker, as resume does.
+    if (await storageHas(internals.storage, KEYS.terminalCleanupNeeded(entry.workflowId))) {
+      internals.workflowsNeedingTerminalCleanup.add(entry.workflowId);
+    }
 
-      // ADR 0002 row `startDelayedWorkflow` (delayed-start timer fire):
-      // claim-acquiring — this is where a delayed-start workflow gets its FIRST
-      // owner, since its create batch is intentionally external (no claim held
-      // yet; see `lifecycle/start-commit.ts`). Fold `acquire()` into this SAME
-      // pending→running batch when `workflow-lease` applies; a lost claim race
-      // here is background-scanner territory (this fire is dispatched by the
-      // scheduler tick, not an explicit single-workflow caller), so it is
-      // reported by returning `null` — never thrown — letting the caller skip
-      // this workflow and the scheduler continue its sweep undisturbed.
-      const claimFold = await prepareWorkflowClaimFold(internals, entry.workflowId);
-      if (claimFold) {
-        const result = await commitWithWorkflowClaimFold(
-          internals,
-          claimFold,
-          operations,
-          [],
-          'delayed-start workflow claim acquisition',
-        );
-        return result.status === 'committed' ? nextRunningState : null;
-      }
-
-      // Fence the delayed-start pending→running transition on the lease epoch: a
-      // deposed timer must not flip a workflow the successor already owns. (Epoch-only
-      // is sufficient under lease ownership's single-writer invariant; the existing
-      // in-process serialization above handles same-engine ordering.) Also the
-      // `ownership: 'none'` path, and the `'workflow-lease'` path while no
-      // `WorkflowClaimRegistry` is constructed yet (a parallel construction stage).
-      await commitFencedEngineWrite(
-        internals,
-        entry.workflowId,
-        operations,
-        [],
-        () =>
-          new Error(
-            `Delayed-start transition for workflow "${entry.workflowId}" lost its CAS race.`,
-          ),
-      );
-      return nextRunningState;
-    },
-  );
-  if (!runningState) {
-    return;
+    // The headers are read before the checkpoint is adopted: nothing awaits between adoption and the
+    // launch completing, so an attempt is never observable adopted but not launched across an await.
+    const startHeaders = await callbacks.loadWorkflowStartHeaders(entry.workflowId);
+    // Prime the checkpoint compare-and-swap baseline from the bytes just loaded, so
+    // this run's first commit is conditioned on them like start and resume.
+    adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint, serializedCheckpoint);
+    internals.workflowVersionTuples.set(
+      entry.workflowId,
+      callbacks.workflowVersionTupleFromState(runningState),
+    );
+    callbacks.setWorkflowStartHeaders(entry.workflowId, startHeaders);
+    callbacks.beginWorkflowExecution(
+      entry.workflowId,
+      runningState.workflowExecutionToken,
+      runningState.type,
+      // `runningState.revision` — the EFFECTIVE revision computed above
+      // (`latestState.revision ?? resolvedRevision`) and persisted onto this
+      // exact state, never the raw `resolvedRevision` alone: that would
+      // silently wipe an eager type's real pin (see the stamp's doc). The
+      // per-instance identity cache this populates (`start-exec.ts`) must
+      // agree with what storage now holds (WFT-19 review round 7).
+      runningState.revision,
+      runningState.input,
+      checkpoint,
+      executionDeadline,
+      runningState.executionStateOwnerId ?? entry.workflowId,
+      registration,
+    );
+    handedOver = true;
+    handOverPendingLaunch(internals, entry.workflowId);
+  } finally {
+    if (!handedOver) await letGoOfPendingLaunch(internals, entry.workflowId);
   }
-
-  // A delayed-start workflow that crashed `pending` before its timer fired loses
-  // its in-memory services on recovery (fires in a fresh process). Re-provide
-  // them before execution, as resume does — fail rather than run with
-  // `ctx.services === undefined`.
-  const servicesUnavailable = await reprovideRecoveredServices(
-    internals,
-    runningState,
-    (workflowId, error) => callbacks.failWorkflow(workflowId, error),
-    callbacks.handleCleanupError,
-    callbacks.dispatchEvent,
-  );
-  if (servicesUnavailable) {
-    return;
-  }
-
-  // Re-derive terminal-cleanup tracking from the durable marker, as resume does.
-  if (await storageHas(internals.storage, KEYS.terminalCleanupNeeded(entry.workflowId))) {
-    internals.workflowsNeedingTerminalCleanup.add(entry.workflowId);
-  }
-
-  // The headers are read before the checkpoint is adopted: nothing awaits between adoption and the
-  // launch completing, so an attempt is never observable adopted but not launched across an await.
-  const startHeaders = await callbacks.loadWorkflowStartHeaders(entry.workflowId);
-  // Prime the checkpoint compare-and-swap baseline from the bytes just loaded, so
-  // this run's first commit is conditioned on them like start and resume.
-  adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint, serializedCheckpoint);
-  internals.workflowVersionTuples.set(
-    entry.workflowId,
-    callbacks.workflowVersionTupleFromState(runningState),
-  );
-  callbacks.setWorkflowStartHeaders(entry.workflowId, startHeaders);
-  callbacks.beginWorkflowExecution(
-    entry.workflowId,
-    runningState.workflowExecutionToken,
-    runningState.type,
-    // `runningState.revision` — the EFFECTIVE revision computed above
-    // (`latestState.revision ?? resolvedRevision`) and persisted onto this
-    // exact state, never the raw `resolvedRevision` alone: that would
-    // silently wipe an eager type's real pin (see the stamp's doc). The
-    // per-instance identity cache this populates (`start-exec.ts`) must
-    // agree with what storage now holds (WFT-19 review round 7).
-    runningState.revision,
-    runningState.input,
-    checkpoint,
-    executionDeadline,
-    runningState.executionStateOwnerId ?? entry.workflowId,
-    registration,
-  );
 }
 
 async function loadDelayedWorkflowCheckpoint(
