@@ -153,6 +153,99 @@ describe('appends across two processes', () => {
   });
 });
 
+describe('each condition of the append guard', () => {
+  it('the session condition: an append that read the session before another process completed it loses, and the terminal record survives', async () => {
+    const parking = parked('get', (key) => key.startsWith(KEYS.uploadPrefix));
+    const { first, second, shared } = await twoBureausOverOneStore(parking.wrap);
+    const session = await second.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await second.assets.appendUpload(session.uploadId, alice, textBytes('ab'));
+
+    parking.hold().arm();
+    const stale = rejectionOf(first.assets.appendUpload(session.uploadId, alice, textBytes('cd')));
+    await parking.hold().reached;
+    // The other process appends the rest and completes while the first holds its stale read. Chunk
+    // index 1 is free again once the completion deletes the chunks, so only the session condition
+    // stands between the stale append and the terminal record.
+    await second.assets.appendUpload(session.uploadId, alice, textBytes('cd'));
+    const admission = await second.assets.admit({ source: uploadOf(session.uploadId) }, alice);
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
+    parking.hold().release();
+
+    expect(await stale).toBeInstanceOf(AssetConflictError);
+    expect(await sessionRecord(shared, session.uploadId)).toMatchObject({
+      state: 'completed',
+      assetId: admission.assetId,
+    });
+    expect(await shared.list(KEYS.chunkPrefix(session.uploadId))).toEqual([]);
+    expect(await second.assets.completedUploadAssetId(session.uploadId, alice)).toBe(
+      admission.assetId,
+    );
+  });
+
+  it('the chunk condition: an append never overwrites a chunk already at its index, and that session answers Conflict until it expires', async () => {
+    const opened = await twoBureausOverOneStore((inner) => inner, {
+      policy: { uploadSessionTtlMilliseconds: 60_000 },
+    });
+    const { second, shared } = opened;
+    const session = await second.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await second.assets.appendUpload(session.uploadId, alice, textBytes('ab'));
+    // What a writer that stored its chunk and died before it recorded the session leaves behind.
+    const residue = base64Of(textBytes('zz'));
+    await shared.set(KEYS.chunk(session.uploadId, 1), residue);
+    const recordBefore = await shared.get(KEYS.upload(session.uploadId));
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(
+        await rejectionOf(second.assets.appendUpload(session.uploadId, alice, textBytes('cd'))),
+      ).toBeInstanceOf(AssetConflictError);
+    }
+    expect(await shared.get(KEYS.chunk(session.uploadId, 1))).toBe(residue);
+    expect(await shared.get(KEYS.upload(session.uploadId))).toBe(recordBefore);
+
+    // It stays in Conflict until it expires, and the expiry collection then purges it with the residue.
+    await second.runtime.advance(60_000);
+    const purge = await second.assets.collectGarbage().result();
+    expect(purge).toMatchObject({ value: { purgedUploads: [session.uploadId] } });
+    expect(await shared.list(KEYS.chunkPrefix(session.uploadId))).toEqual([]);
+  });
+});
+
+describe('abortUpload across two processes', () => {
+  it('is a compare-and-swap: an abort that read the session open loses to a completion and deletes nothing', async () => {
+    const parking = parked('list', (prefix) => prefix.startsWith(CHUNK_PREFIX));
+    const { first, second, shared } = await twoBureausOverOneStore(parking.wrap);
+    const session = await second.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await second.assets.appendUpload(session.uploadId, alice, textBytes('abcd'));
+
+    parking.hold().arm();
+    const aborting = rejectionOf(first.assets.abortUpload(session.uploadId, alice));
+    await parking.hold().reached;
+    const admission = await second.assets.admit({ source: uploadOf(session.uploadId) }, alice);
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
+    parking.hold().release();
+
+    expect(await aborting).toBeInstanceOf(AssetConflictError);
+    expect(await sessionRecord(shared, session.uploadId)).toMatchObject({
+      state: 'completed',
+      assetId: admission.assetId,
+    });
+    expect(await second.assets.completedUploadAssetId(session.uploadId, alice)).toBe(
+      admission.assetId,
+    );
+  });
+
+  it('still discards an open session and its chunks', async () => {
+    const { second, shared } = await twoBureausOverOneStore((inner) => inner);
+    const session = await second.assets.beginUpload(alice, { declaredByteLength: 4 });
+    await second.assets.appendUpload(session.uploadId, alice, textBytes('ab'));
+
+    await second.assets.abortUpload(session.uploadId, alice);
+
+    expect(await shared.list(KEYS.uploadPrefix)).toEqual([]);
+    expect(await shared.list(KEYS.chunkPrefix(session.uploadId))).toEqual([]);
+  });
+});
+
 describe('completions across two processes', () => {
   it('claims the session before reading chunks: two overlapping completions admit one asset, and the loser answers Conflict with no orphan', async () => {
     const parking = parked('get', (key) => key.startsWith(KEYS.uploadPrefix));
@@ -319,6 +412,8 @@ describe('the session record', () => {
     admission.work.abort('test');
     expect(await admission.work.result()).toMatchObject({ outcome: 'aborted' });
     parking.hold().release();
+    // The work's result is final at the abort; the reopen runs in its cleanup.
+    await admission.work.closed();
 
     expect(await stateOf(opened.storage, session.uploadId)).toBe('open');
     const retry = await opened.assets.admit({ source: uploadOf(session.uploadId) }, alice);

@@ -421,6 +421,45 @@ describe('a retried or concurrent completion', () => {
     });
   });
 
+  it('answers 409 to a retry that arrives after the terminal write while the asset is still pending', async () => {
+    // Parks the first completion at its commit's blob read: its session is `completed`, its asset `pending`.
+    const inner = createMemoryAssetStorage();
+    const hold = holdAssetStorageCall(inner, 'get', (key) => key.startsWith(KEYS.blobPrefix));
+    await withBureau({ assetStorage: hold.storage }, async (opened) => {
+      const created = await create(opened, 'alice-assets-key', {
+        declaredByteLength: png.byteLength,
+      });
+      const uploadId = created.result!['uploadId'] as string;
+      await append(opened, 'alice-assets-key', uploadId, png);
+
+      hold.arm();
+      const first = complete(opened, 'alice-assets-key', uploadId);
+      await hold.reached;
+      const raw = await inner.get(KEYS.upload(uploadId));
+      const retry = await complete(opened, 'alice-assets-key', uploadId);
+      hold.release();
+
+      expect(JSON.parse(raw!)).toMatchObject({ state: 'completed' });
+      expect(retry.result).toBeUndefined();
+      expect(retry.error?.data).toMatchObject({ httpStatus: 409, reason: 'concurrent-write' });
+      const answered = await first;
+      expect(answered.result).toMatchObject({ state: 'available' });
+    });
+  });
+
+  it('answers a retry from the asset’s current state: Unavailable once it has been deleted', async () => {
+    await withBureau({}, async (opened) => {
+      const { uploadId, completed } = await upload(opened, 'alice-assets-key', png, 'image/png');
+      const assetId = completed.result!['assetId'] as string;
+      await opened.bureau.assets!.delete(assetId, { id: 'api-key:alice' }).result();
+
+      const retried = await complete(opened, 'alice-assets-key', uploadId);
+
+      expect(retried.error?.data).toMatchObject({ reason: 'asset-deleted' });
+      expect(retried.error?.message).toBe(`Asset "${assetId}" is deleted`);
+    });
+  });
+
   it('names Conflict among the faults append and complete can answer, and says when', () => {
     for (const operation of [assetsUploadsAppendOperation, assetsUploadsCompleteOperation]) {
       expect(operation.producibleFaults).toContain('Conflict');

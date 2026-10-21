@@ -523,13 +523,19 @@ export interface AssetService {
   /**
    * Adds one chunk to the open session. Each append is one compare-and-swap on the session, so
    * an append that loses to another (in this process or any process sharing the storage) rejects
-   * with `AssetConflictError` and stores nothing.
+   * with `AssetConflictError` and stores nothing. A session that already holds a chunk at its next
+   * index (a dead writer's residue) answers `AssetConflictError` until it expires.
    */
   appendUpload(
     uploadId: string,
     principal: AssetPrincipal,
     bytes: Uint8Array,
   ): Promise<AssetUploadSession>;
+  /**
+   * Discards the open session and its chunks in one compare-and-swap. An abort that loses to an
+   * append, a claim or a completion (in this process or any process sharing the storage) rejects
+   * with `AssetConflictError` and deletes nothing, so it cannot remove a terminal record.
+   */
   abortUpload(uploadId: string, principal: AssetPrincipal): Promise<void>;
   /**
    * The open upload session `uploadId`, as its owner sees it. A session that does not exist, is

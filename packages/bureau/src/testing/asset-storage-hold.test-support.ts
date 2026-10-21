@@ -6,8 +6,6 @@
  */
 import type { AssetStorage } from '../assets/storage';
 
-type AssetStorageVerb = 'get' | 'set' | 'delete' | 'list' | 'conditionalBatch';
-
 export interface AssetStorageHold {
   /** The storage to give the held Bureau. Nothing is held until `arm()`. */
   readonly storage: AssetStorage;
@@ -25,7 +23,7 @@ export interface AssetStorageHold {
  */
 export function holdAssetStorageCall(
   inner: AssetStorage,
-  verb: Exclude<AssetStorageVerb, 'conditionalBatch'>,
+  verb: 'get' | 'list',
   matches: (key: string) => boolean,
 ): AssetStorageHold {
   let armed = false;

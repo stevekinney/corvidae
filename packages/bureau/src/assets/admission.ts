@@ -2,8 +2,11 @@
  * The admission pipeline (COR-794).
  *
  * `beginAdmission` refuses what can be refused synchronously (an inline
- * payload over the ceiling, a source the caller cannot read), persists the
- * asset as `pending`, and returns its identity with a started-work handle —
+ * payload over the ceiling, a source the caller cannot read, an upload session
+ * that is missing or not the caller's, or that another completion has already
+ * claimed or completed: `Conflict`), claims an upload session for the
+ * admission, persists the asset as `pending`, and returns its identity with a
+ * started-work handle —
  * never waiting for fetch, extraction, or scanning. The handle's body then:
  *
  * 1. acquires bytes — inline, an upload completion (`upload` work), a host

@@ -249,7 +249,7 @@ export const assetsUploadsAppendOperation = defineOperation<
   mcpExposable: false,
   summary: 'Append a chunk to an asset upload',
   description:
-    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. An append that loses to another append to the same session, in this process or any other sharing the store, is `Conflict` with `data.reason: "concurrent-write"`: nothing of it is stored, and the session holds only the chunk that won. Requires `bureau.assets:write`.',
+    'Appends one base64 chunk to the caller’s own open upload and answers the session with its `receivedBytes`. A chunk that is not base64 is `InvalidParams`; a chunk larger than the handler’s `maxRequestBodyBytes` is refused with 413 before the operation runs. A chunk that would take the session past its declared length, and an empty one, are refused and nothing is stored. A session another owner holds, one that is not open, and one that does not exist are all `NotFound`. An append that loses to another append to the same session, in this process or any other sharing the store, is `Conflict` with `data.reason: "concurrent-write"`: nothing of it is stored, and the session holds only the chunk that won. A session that already holds a chunk at the next index (left by a writer that stored the chunk and died before it recorded it) answers every append `Conflict` until it expires. Requires `bureau.assets:write`.',
   destructive: false,
   tags: ['Assets'],
   inputSchema: appendInput,
@@ -287,7 +287,7 @@ export const assetsUploadsCompleteOperation = defineOperation<
   mcpExposable: false,
   summary: 'Complete an asset upload',
   description:
-    'Admits the caller’s own upload as an asset and answers once the asset has settled, never while it is `pending`: with its descriptor, in state `available`, or with an `Unprocessable` fault whose `data.reason` is the asset’s rejection code (for example `media-type-mismatch` or `safety-gate-flagged`) and whose message names the asset and says whether it was `rejected` or `quarantined`. A session that is not complete (fewer bytes than declared) is refused with `reason: "upload-incomplete"` and stays open, so the missing bytes can still be appended. Completing claims the session: a completion that arrives while another is in flight, or that loses the claim to one in another process, is `Conflict` and admits nothing. A completion retried after the session completed is answered as the first was, with the descriptor of the same asset (the asset it reused, under the `reuse` duplicate policy) or the same fault, until the session expires; a retry that finds the first still in flight is `Conflict`. A session another owner holds, an expired or purged one, and a missing one are `NotFound`. Requires `bureau.assets:write`.',
+    'Admits the caller’s own upload as an asset and answers once the asset has settled, never while it is `pending`: with its descriptor, in state `available`, or with an `Unprocessable` fault whose `data.reason` is the asset’s rejection code (for example `media-type-mismatch` or `safety-gate-flagged`) and whose message names the asset and says whether it was `rejected` or `quarantined`. A session that is not complete (fewer bytes than declared) is refused with `reason: "upload-incomplete"` and stays open, so the missing bytes can still be appended. Completing claims the session: a completion that arrives while another is in flight, or that loses the claim to one in another process, is `Conflict` and admits nothing. A completion retried after the session completed is answered from the current state of the asset the session admitted (the asset it reused, under the `reuse` duplicate policy): its descriptor when `available`, an `Unprocessable` fault carrying the rejection it recorded when refused, and `Unavailable` when the asset has since expired or been deleted, until the session expires; a retry that finds the first still in flight, before its asset has settled, is `Conflict`. A session another owner holds, an expired or purged one, and a missing one are `NotFound`. Requires `bureau.assets:write`.',
   destructive: false,
   tags: ['Assets'],
   inputSchema: completeInput,
@@ -329,8 +329,10 @@ export const assetsUploadsCompleteOperation = defineOperation<
 
 /**
  * The answer for a completion that admitted `assetId`: its descriptor when `available`, otherwise
- * the fault the asset's state calls for. A replay and the first call answer alike, except that a
- * replay finding the asset still `pending` is another completion's in-flight work: `Conflict`.
+ * the fault the asset's state calls for. A replay (`outcome: 'replayed'`) answers from the asset's
+ * state as it is now, so it can differ from the first call's answer (an asset deleted since reads
+ * `Unavailable`), and a replay finding the asset still `pending` is another completion's
+ * in-flight work: `Conflict`.
  */
 async function answerFor(
   service: AssetService,
@@ -358,7 +360,8 @@ async function answerFor(
   // the caller can use, and not something the caller did wrong.
   throw {
     code: 'Unavailable',
-    message: `Asset "${descriptor.assetId}" is ${descriptor.state} (${outcome})`,
+    // A replay re-reads the asset's current state, so it has no first-call outcome to name.
+    message: `Asset "${descriptor.assetId}" is ${descriptor.state}${outcome === 'replayed' ? '' : ` (${outcome})`}`,
     data: { reason: `asset-${descriptor.state}` },
   } satisfies OperationFault;
 }

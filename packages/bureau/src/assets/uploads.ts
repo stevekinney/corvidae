@@ -10,10 +10,11 @@
  *
  * A session admits exactly one asset, however many processes share the store
  * and however often the caller retries (COR-1609). Every transition is a
- * compare-and-swap on the session record's raw JSON, so the in-process lock
- * is only an optimisation: an append writes its chunk and advances the record
- * in one `conditionalBatch`, and a completion claims the session
- * (`open` to `completing`) before it reads a chunk. See {@link UploadSessionRecord}.
+ * compare-and-swap guarded on the session record's raw JSON, so the in-process
+ * lock is only an optimisation: an append writes its chunk and advances the
+ * record in one `conditionalBatch`, a completion claims the session (`open` to
+ * `completing`) before it reads a chunk, and an abort deletes the chunks and
+ * the record in one `conditionalBatch`. See {@link UploadSessionRecord}.
  */
 import { encodeBase64 } from './base64';
 import { AssetAdmissionError, AssetConflictError, AssetNotFoundError } from './errors';
@@ -195,8 +196,12 @@ export function appendUpload(
       chunkCount: session.chunkCount + 1,
     };
     // One atomic step, guarded on the record this append read and on its chunk key being free:
-    // an append in another process that read the same `chunkCount` loses here, stores nothing, and
-    // answers `Conflict`, instead of overwriting the winner's chunk.
+    // - the record condition makes an append that read the session before another process
+    //   appended, completed or aborted it lose, whatever else changed since;
+    // - the chunk condition keeps an existing chunk at this index (the residue of a writer that
+    //   stored the chunk and died before it wrote the record) from being overwritten. Such a
+    //   session answers `Conflict` to every append until it expires and is purged.
+    // A losing append stores nothing and answers `Conflict`.
     const sessionKey = KEYS.upload(uploadId);
     const chunkKey = KEYS.chunk(uploadId, session.chunkCount);
     const committed = await internals.storage.conditionalBatch(
@@ -294,11 +299,20 @@ export function abortUpload(
   principal: AssetPrincipal,
 ): Promise<void> {
   return internals.withLock(`upload:${uploadId}`, async () => {
-    await loadOpenSession(internals, uploadId, principal);
-    for (const chunk of await internals.storage.list(KEYS.chunkPrefix(uploadId))) {
-      await internals.storage.delete(chunk);
-    }
-    await internals.storage.delete(KEYS.upload(uploadId));
+    const { raw } = await loadOpenSession(internals, uploadId, principal);
+    // One step, guarded on the record this abort read: a completion or an append in another process
+    // changes that record first, and the abort then answers `Conflict` and deletes nothing, so it
+    // can never remove a terminal record or a chunk it did not list.
+    const sessionKey = KEYS.upload(uploadId);
+    const chunks = await internals.storage.list(KEYS.chunkPrefix(uploadId));
+    const committed = await internals.storage.conditionalBatch(
+      [{ key: sessionKey, expectedValue: raw }],
+      [
+        ...chunks.map((key) => ({ type: 'delete' as const, key })),
+        { type: 'delete' as const, key: sessionKey },
+      ],
+    );
+    if (!committed) throw new AssetConflictError(sessionKey);
     await internals.emit({ type: 'asset.upload.aborted', uploadId, principal: principal.id });
   });
 }
