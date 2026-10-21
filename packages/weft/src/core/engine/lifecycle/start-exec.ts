@@ -86,6 +86,8 @@ export function startWorkflowExecution(
       headers: [...internals.workflowHeaders.get(workflowId)!],
     }),
   });
+  // The generator exists, or the worker has its run, as of this turn: the attempt now drives.
+  completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
 }
 
 export function beginWorkflowExecution(
@@ -114,6 +116,8 @@ export function beginWorkflowExecution(
   internals.pendingNestingDepth = undefined;
 
   if (internals.inlineStrategy !== null) {
+    // Queued only: the generator exists once the queue flushes, and `startWorkflowExecution` there
+    // is what records the attempt as driving. Until then the launch is joinable, not live.
     callbacks.queueInlineWorkflowExecutionStart({
       workflowId,
       ...(workflowExecutionToken !== undefined && { workflowExecutionToken }),
@@ -129,7 +133,6 @@ export function beginWorkflowExecution(
       // property, so only include the key when a liveness callback was provided.
       ...(onStarted !== undefined && { onStarted }),
     });
-    completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
     return;
   }
 
@@ -147,7 +150,6 @@ export function beginWorkflowExecution(
     executionStateOwnerId,
     callbacks,
   );
-  completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
   // Worker/non-inline path executes synchronously above, so liveness is already
   // satisfied by the time this returns.
   onStarted?.();

@@ -214,7 +214,6 @@ import {
   type PreparedWorkflowHandle,
   type WorkflowClaimHandle,
 } from './handles.ts';
-import { hasQueuedInlineWorkflowStart } from './inline-launch-queue.ts';
 import {
   handleStrategyMessage as handleStrategyMessageFromInternals,
   resumeParkedInlineWorkflow as resumeParkedInlineWorkflowFromInternals,
@@ -251,6 +250,10 @@ import {
   removeTags as removeWorkflowTags,
   setAttributes as setWorkflowAttributes,
 } from './listing.ts';
+import {
+  hasQueuedInlineWorkflowStart,
+  queuedInlineWorkflowStartSettlement,
+} from './local-execution.ts';
 import { getOffloadFromInternals } from './operations-data.ts';
 import { getStreamChunksFromInternals } from './operations-stream.ts';
 import {
@@ -1246,12 +1249,22 @@ export class Engine<
         // driving the workflow it sits idle while this engine's renewal keeps
         // the claim alive, shielding it from any engine that would resume it.
         onWorkflowClaimReclaimed: async (workflowId: string) => {
+          // An inline start of the workflow whose launch is queued or in flight is this engine's
+          // own drive in the making, listed by a reclaim scan that took its exclude set before
+          // the start folded its claim. It is neither live nor absent: join it, and judge what it
+          // left behind, a generator or nothing (COR-1618). Nothing waits when none is queued.
+          const queuedStart = queuedInlineWorkflowStartSettlement(internals, workflowId);
+          if (queuedStart !== undefined) {
+            await queuedStart;
+            if (internals.disposed) return;
+          }
           // A drive that began under the claim just taken is this reclaim's to leave alone: the
           // eviction and replay below restart a run driven under an EARLIER claim (this engine
           // lost it, then took it back), and a launch under this very claim began after that.
           // `recoverAll()` landing between the takeover and this call, or between a reclaim
           // listing and its attempt, is one. Evicting or replaying it would drive the generation
-          // a second time (COR-1618).
+          // a second time (COR-1618). Whether a drive is live is read from the strategy and the
+          // attempt it created, never asserted by a launch path (`isLaunchedUnderClaim`).
           // This epoch governs eviction only. The replay below reads the epoch again, after the
           // awaits, because a claim lost and taken back during them is the one it must check against.
           const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;

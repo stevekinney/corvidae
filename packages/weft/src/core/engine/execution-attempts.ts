@@ -1,6 +1,7 @@
 import { KEYS } from '../../storage/interface.ts';
 import type { WorkflowState } from '../types.ts';
 import type { EngineInternals } from './internals.ts';
+import { holdsWorkflowExecution } from './local-execution.ts';
 
 /**
  * The execution attempt registry: the single answer to "which generation does this engine
@@ -74,15 +75,12 @@ export type ExecutionAttempt = {
   /** This engine lost the generation's checkpoint compare-and-swap race, so it is the winner's. */
   readonly abandoned: boolean;
   /**
-   * Whether the launch ran to the point the generator or worker was started. An attempt begins
-   * when the engine adopts the checkpoint, and a launch can still fail after that, leaving an
-   * attempt with nothing driving it.
-   */
-  readonly launchCompleted: boolean;
-  /**
-   * The epoch of the workflow claim this engine held when the launch completed, or `null` while it
-   * has not, and when no per-workflow claim is held. Stamped then, not at adoption: a start adopts
-   * its checkpoint before its create batch commits the claim it folds.
+   * The epoch of the workflow claim this engine held when it created the generation's generator or
+   * handed it to a worker, or `null` until then, and when no per-workflow claim is held. An attempt
+   * begins when the engine adopts the checkpoint, and a launch can still stop short of the
+   * generator after that (a start's queued launch, say), leaving an attempt with nothing driving
+   * it; the stamp is taken at the generator, not at adoption or enqueue, so such an attempt carries
+   * `null`. A start's claim commits after its adoption too, in the create batch that folds it.
    */
   readonly claimEpoch: number | null;
   /** What the engine knows of the run's durable identity; `undefined` until it is known. */
@@ -114,7 +112,6 @@ export type RunIdentity = {
 type ExecutionAttemptRecord = {
   readonly workflowExecutionToken: string | undefined;
   abandoned: boolean;
-  launchCompleted: boolean;
   claimEpoch: number | null;
   identity: RunIdentity | undefined;
   pendingIdentity: Promise<RunIdentity | undefined> | undefined;
@@ -150,7 +147,6 @@ export function beginExecutionAttempt(
   attempts.set(workflowId, {
     workflowExecutionToken,
     abandoned: false,
-    launchCompleted: false,
     claimEpoch: null,
     identity,
     pendingIdentity: undefined,
@@ -218,10 +214,12 @@ export function currentExecutionAttempt(
 }
 
 /**
- * Record that the launch of the generation named by `workflowExecutionToken` ran to the point its
- * generator or worker was started, under whatever claim the engine holds now. Call it in the same
- * synchronous turn as that start, so the epoch it stamps is the claim the drive runs under. Does
- * nothing when the engine holds no attempt, or the attempt launched another generation.
+ * Record that the generation named by `workflowExecutionToken` now has its generator, or was
+ * handed to a worker, under whatever claim the engine holds now. Called once per launch, in the
+ * same synchronous turn as the strategy call that creates the generator or sends the worker its
+ * run (`startWorkflowExecution`, the fork launch, and the two resume relaunches), so the epoch it
+ * stamps is the claim the drive runs under; never at adoption or at enqueue, where nothing drives
+ * yet. Does nothing when the engine holds no attempt, or the attempt is another generation's.
  */
 export function completeExecutionAttemptLaunch(
   internals: EngineInternals,
@@ -230,13 +228,13 @@ export function completeExecutionAttemptLaunch(
 ): void {
   const attempt = attemptsByEngine.get(internals)?.get(workflowId);
   if (attempt === undefined || attempt.workflowExecutionToken !== workflowExecutionToken) return;
-  attempt.launchCompleted = true;
   attempt.claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
 }
 
 /**
- * Whether this engine already drives the workflow under the claim it holds at `claimEpoch`: it
- * completed a launch of it under that claim and has not lost the generation it launched since.
+ * Whether this engine drives the workflow under the claim it holds at `claimEpoch`: the generator
+ * or worker of the generation it holds was created under that claim, the engine has not lost that
+ * generation since, and the strategy still holds the run ({@link holdsWorkflowExecution}).
  * `workflowExecutionToken` narrows the answer to one generation when the caller knows which it is
  * resuming; omit it to ask about whatever generation the claim covers.
  *
@@ -244,8 +242,9 @@ export function completeExecutionAttemptLaunch(
  * restart a run the engine drove under an *earlier* claim, one it lost and later took back, whose
  * in-memory drive no longer has the claim behind it. A launch under this very claim is not that
  * run: it started after the engine took the claim, so replaying it would drive the generation a
- * second time. A launch that adopted the checkpoint and failed before it started the generator or
- * worker drives nothing, so it does not count: the replay has to restart that run.
+ * second time. An attempt whose launch stopped short of the generator or worker, or whose launch is
+ * still queued, carries no epoch and drives nothing, so it does not count: the replay joins a queued
+ * launch (`queuedInlineWorkflowStartSettlement`) and restarts a run nothing drives.
  */
 export function isLaunchedUnderClaim(
   internals: EngineInternals,
@@ -256,11 +255,11 @@ export function isLaunchedUnderClaim(
   const attempt = attemptsByEngine.get(internals)?.get(workflowId);
   return (
     attempt !== undefined &&
-    attempt.launchCompleted &&
     !attempt.abandoned &&
     attempt.claimEpoch === claimEpoch &&
     (workflowExecutionToken === undefined ||
-      attempt.workflowExecutionToken === workflowExecutionToken)
+      attempt.workflowExecutionToken === workflowExecutionToken) &&
+    holdsWorkflowExecution(internals, workflowId)
   );
 }
 

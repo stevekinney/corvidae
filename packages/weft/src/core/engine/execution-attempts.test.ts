@@ -50,7 +50,6 @@ describe('the execution attempt registry', () => {
     expect(first).toEqual({
       workflowExecutionToken: 'generation-1',
       abandoned: false,
-      launchCompleted: false,
       claimEpoch: null,
       identity: undefined,
       pendingIdentity: undefined,
@@ -75,25 +74,21 @@ describe('the execution attempt registry', () => {
     const registry = internals.workflowClaimRegistry!;
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
 
-    // An attempt whose launch has not completed drives nothing, whatever claim the engine holds.
+    // An attempt whose generator does not exist yet drives nothing, whatever claim the engine holds.
     expect(await registry.acquire('run')).toMatchObject({ status: 'acquired', epoch: 1 });
     beginExecutionAttempt(internals, 'run', 'generation-1');
-    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({
-      launchCompleted: false,
-      claimEpoch: null,
-    });
+    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({ claimEpoch: null });
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
 
     // Completing the launch of another generation leaves it alone.
     completeExecutionAttemptLaunch(internals, 'run', 'generation-2');
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
 
-    // The epoch is the claim held when the launch completes.
+    // The epoch is the claim held when the generator is created. The inline strategy holds the run
+    // (here, parked on a signal) for as long as the engine drives it.
     completeExecutionAttemptLaunch(internals, 'run', 'generation-1');
-    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({
-      launchCompleted: true,
-      claimEpoch: 1,
-    });
+    internals.parkedInlineWorkflows.add('run');
+    expect(currentExecutionAttempt(internals, 'run')).toMatchObject({ claimEpoch: 1 });
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(true);
     expect(isLaunchedUnderClaim(internals, 'run', 1, 'generation-1')).toBe(true);
     // A claim taken after the launch is not the claim it launched under, nor is another generation's.
@@ -101,12 +96,19 @@ describe('the execution attempt registry', () => {
     expect(isLaunchedUnderClaim(internals, 'run', 1, 'generation-2')).toBe(false);
     expect(isLaunchedUnderClaim(internals, 'other-run', 1)).toBe(false);
 
+    // A run the strategy no longer holds is not driven, whatever its attempt recorded.
+    internals.parkedInlineWorkflows.delete('run');
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+    internals.parkedInlineWorkflows.add('run');
+    expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(true);
+
     // A generation this engine lost is the winner's, whatever claim it launched under.
     abandonExecutionAttempt(internals, 'run', 'generation-1');
     expect(isLaunchedUnderClaim(internals, 'run', 1)).toBe(false);
+    internals.parkedInlineWorkflows.delete('run');
   });
 
-  it('records the claim a started run holds once its start returns', async () => {
+  it('records the claim a started run holds once its queued launch creates the generator', async () => {
     await using engine = await Engine.create({
       storage: new MemoryStorage(),
       workflows: {
@@ -124,10 +126,15 @@ describe('the execution attempt registry', () => {
     const internals = getInternals(engine);
     await engine.start('parked', null, { id: 'started-run' });
 
-    // The start folds its claim into the create batch, after it adopted the checkpoint, so the
-    // attempt must carry the epoch the claim holds when the launch completes.
+    // The start folds its claim into the create batch, after it adopted the checkpoint, and then
+    // only queues its launch: the attempt carries no epoch and drives nothing until the queue
+    // flushes and the generator exists.
     const epoch = internals.workflowClaimRegistry!.currentEpoch('started-run');
     expect(epoch).not.toBeNull();
+    expect(currentExecutionAttempt(internals, 'started-run')?.claimEpoch).toBeNull();
+    expect(isLaunchedUnderClaim(internals, 'started-run', epoch!)).toBe(false);
+
+    await engine.flushInlineLaunches();
     expect(currentExecutionAttempt(internals, 'started-run')?.claimEpoch).toBe(epoch);
     expect(isLaunchedUnderClaim(internals, 'started-run', epoch!)).toBe(true);
   });
