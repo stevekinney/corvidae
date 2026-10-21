@@ -40,7 +40,6 @@ import {
 import { z } from 'zod';
 
 import { DURABLE_HISTORY_GAP_KIND } from '../../durable-event-history.ts';
-import { REVIEW_CLOSING_EVENT_KINDS } from '../../review-closing-events.ts';
 import {
   settledTaskState,
   TASK_ARTIFACT_TEXT_LIMIT,
@@ -307,10 +306,7 @@ const TERMINAL_RUN_EVENTS: ReadonlySet<string> = new Set([
 
 /** What the operation reads from the handler's `host`. */
 export type BureauTaskEventsOperationHost = BureauOwnershipHost & {
-  readonly tasks: Pick<
-    TaskRegistry,
-    'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged' | 'reviewClosedElsewhere'
-  >;
+  readonly tasks: Pick<TaskRegistry, 'get' | 'ownerOf' | 'record' | 'onSettled' | 'onChanged'>;
   readonly taskHistory: Pick<Bureau, 'eventHistory' | 'subscribeEventHistory'>;
   readonly runtime?: Pick<RuntimeServices, 'identifiers' | 'clock'>;
 };
@@ -366,7 +362,6 @@ function followScheduleFire(
         };
   let unsubscribe: (() => void) | undefined;
   let unsubscribeChanged: (() => void) | undefined;
-  let unsubscribeHistory: (() => void) | undefined;
   let ended = false;
   /**
    * The status the stream last told, so a change is told once (COR-1596). A stream that resumes
@@ -381,7 +376,6 @@ function followScheduleFire(
     ended = true;
     unsubscribe?.();
     unsubscribeChanged?.();
-    unsubscribeHistory?.();
     queue.push({
       kind: 'task.status',
       taskId,
@@ -443,20 +437,9 @@ function followScheduleFire(
           finish(view, settledRecord.settled);
         });
         unsubscribeChanged = host.tasks.onChanged(taskId, tellChange);
-        // A review another process closes is in the run's durable history, which is shared; this
-        // process drops its own stale copy and re-reads the task, so the end reaches this stream
-        // (COR-1613). The history replays what was closed before, which drops nothing it holds.
-        const subscription = host.taskHistory.subscribeEventHistory(
-          { kind: 'run', id: taskId },
-          (event) => {
-            const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
-            if (typeof reviewId !== 'string' || !REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) return;
-            void host.tasks
-              .reviewClosedElsewhere(taskId, reviewId, event.kind)
-              .catch(() => undefined);
-          },
-        );
-        unsubscribeHistory = () => subscription.unsubscribe();
+        // A review another process closes reaches `onChanged` through the Bureau's own history
+        // subscription (COR-1621), which every process keeps whether or not a stream is open, so
+        // this stream opens none of its own.
         const latest = await host.tasks.get(taskId);
         if (latest !== undefined && isTerminalStatus(latest.status)) {
           const latestRecord = await host.tasks.record(taskId);
@@ -480,7 +463,6 @@ function followScheduleFire(
         ended = true;
         unsubscribe?.();
         unsubscribeChanged?.();
-        unsubscribeHistory?.();
         queue.end();
       },
     },

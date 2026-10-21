@@ -2590,6 +2590,9 @@ function createRecordingHistory(
     subscribeEventHistory() {
       throw new Error('unused by createDurableEventProducer');
     },
+    subscribeEventHistoryOfOwners() {
+      throw new Error('unused by createDurableEventProducer');
+    },
     retainedRunOwnerIds() {
       throw new Error('unused by createDurableEventProducer');
     },

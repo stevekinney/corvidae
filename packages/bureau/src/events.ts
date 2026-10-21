@@ -336,9 +336,22 @@ export class ReviewRevokedEvent extends ReviewLifecycleEvent {
  */
 export class ReviewCanceledEvent extends ReviewLifecycleEvent {
   static readonly type = 'review.canceled' as const;
+  /**
+   * The round of the approval the cancel closed (COR-1621): a re-gated approval keeps its id and
+   * each round it leaves is closed on its own, so the pair of id and round names one closing.
+   * `undefined` for an event that states none, which is recorded without a deduplication key.
+   */
+  readonly round: number | undefined;
 
-  constructor(reviewId: string, runId: string, principal: string, kind: ReviewEventKind) {
+  constructor(
+    reviewId: string,
+    runId: string,
+    principal: string,
+    kind: ReviewEventKind,
+    round?: number,
+  ) {
     super(ReviewCanceledEvent.type, reviewId, runId, principal, kind);
+    this.round = round;
   }
 }
 
