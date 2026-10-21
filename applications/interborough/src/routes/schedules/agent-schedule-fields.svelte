@@ -7,6 +7,7 @@
    * Mutates the passed-in `form`, as the Weft schedule's fields do.
    */
   import {
+    Button,
     Input,
     RadioGroup,
     ScheduleBuilder,
@@ -36,7 +37,7 @@
   );
 
   function onCadenceChange(next: ScheduleValue): void {
-    form.cadence = next;
+    form.setCadence(next);
   }
 
   function isOverlap(value: string): value is AgentOverlap {
@@ -95,13 +96,29 @@
 
   <section class="weft-schedule-form__section">
     <h3 class="weft-schedule-form__section-title">{copy.cadenceLabel}</h3>
-    <ScheduleBuilder
-      value={form.cadence}
-      onValueChange={onCadenceChange}
-      {computeNextFires}
-      timezoneLabel="UTC"
-      label={copy.cadenceLabel}
-    />
+    {#if form.exactCadenceText !== undefined}
+      <!-- The builder counts in whole minutes, so a cadence below that is shown as it is and kept. -->
+      <Input
+        id="weft-agent-schedule-exact-cadence"
+        label={copy.cadenceLabel}
+        description={copy.exactCadenceDescription}
+        value={form.exactCadenceText}
+        disabled
+      />
+      <div>
+        <Button variant="secondary" size="sm" onclick={() => form.changeCadence()}
+          >{copy.changeCadenceAction}</Button
+        >
+      </div>
+    {:else}
+      <ScheduleBuilder
+        value={form.cadence}
+        onValueChange={onCadenceChange}
+        {computeNextFires}
+        timezoneLabel="UTC"
+        label={copy.cadenceLabel}
+      />
+    {/if}
   </section>
 
   <section class="weft-schedule-form__section">

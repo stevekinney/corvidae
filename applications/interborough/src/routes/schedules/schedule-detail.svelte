@@ -122,6 +122,12 @@
   const actions = createScheduleActions();
 
   let cancelDialogOpen = $state(false);
+  /**
+   * What the operator was shown when they asked to cancel, revision included. The page reads the
+   * schedule again while the confirmation is open, so cancel sends this snapshot, not the newest
+   * read: a schedule that moved on is refused as stale.
+   */
+  let cancelTarget = $state.raw<Target | null>(null);
 
   function openEdit(): void {
     router.navigate(scheduleEditPath(id));
@@ -235,7 +241,10 @@
             size="sm"
             disabled={writeGate.disabled || actions.busy}
             title={writeGate.title}
-            onclick={() => (cancelDialogOpen = true)}
+            onclick={() => {
+              cancelTarget = target;
+              cancelDialogOpen = true;
+            }}
           >
             <CircleX aria-hidden="true" size={14} /> Cancel
           </Button>
@@ -366,7 +375,9 @@
       description={`"${schedule.id}" will stop firing. This can't be undone — create a new schedule to resume this cadence.`}
       confirmLabel="Cancel schedule"
       destructive
-      onConfirm={() => actions.cancel.mutate(target)}
+      onConfirm={() => {
+        if (cancelTarget !== null) actions.cancel.mutate(cancelTarget);
+      }}
     />
   {/if}
 </div>

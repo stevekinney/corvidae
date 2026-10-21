@@ -16,6 +16,7 @@ import { validateWorkflowOrActivityName } from '../types/name-grammar.ts';
 import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
 import type { RegistrationEntry } from './engine-internal-types.ts';
 import type { EngineInternals } from './internals.ts';
+import { assertWorkflowSchemas } from './schema-policy.ts';
 import { normalizeRetentionPolicy } from './validation.ts';
 
 export type RegistrationCallbacks = {
@@ -453,6 +454,7 @@ export function register(
   if (isBuilderWorkflowDefinition(definition)) {
     const decision = checkWorkflowCollision(internals, definition.name, definition);
     if (decision.kind === 'idempotent') return;
+    assertWorkflowSchemas(internals.options.schemaPolicy, definition);
     // Build the per-workflow ActivityRegistry before any commits so an
     // activity-metadata failure leaves zero state behind. Commit both maps
     // (workflowDefinitionsByName + activityRegistriesByWorkflow) together
@@ -470,6 +472,7 @@ export function register(
   // maps). The builder always populates those maps to empty objects, so this
   // branch only fires for hand-rolled `WorkflowDefinition` literals — which
   // are still valid because the public type is structural.
+  assertWorkflowSchemas(internals.options.schemaPolicy, definition);
   commitWorkflowDefinition(internals, definition, callbacks);
 }
 

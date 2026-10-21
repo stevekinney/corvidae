@@ -8,6 +8,7 @@ import { requireElement } from '../../../tests/dom.test-support.ts';
 import { fireEvent, render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
 
+import { SCHEDULE_COPY } from '../../app/copy.ts';
 import ScheduleFormFields from './schedule-form-fields.svelte';
 import { ScheduleFormState } from './schedule-form-state.svelte.ts';
 
@@ -73,6 +74,47 @@ describe('ScheduleFormFields — create mode', () => {
     ).not.toBeNull();
     expect(queryByText('Registry lookup unavailable — enter the workflow type name.')).toBeNull();
     expect(queryByRole('combobox', { name: 'Workflow type' })).toBeNull();
+  });
+
+  test('says why nothing is offered when the registry holds only types that are started elsewhere, and keeps the free-text field', async () => {
+    // The registry is not empty: every type in it is the Bureau's, or has a screen of its own. The
+    // field stays free text, which a host whose own types are not registered relies on, but it must
+    // not claim that nothing is registered.
+    const form = new ScheduleFormState();
+
+    const { getByRole, getByText, queryByRole, queryByText } = render(ScheduleFormFields, {
+      props: { form, mode: 'create', workflowTypeOptions: [], registeredTypeCount: 3 },
+    });
+
+    expect(getByText(SCHEDULE_COPY.form.allTypesReserved)).not.toBeNull();
+    expect(
+      queryByText('No registered workflow types found — enter the workflow type name.'),
+    ).toBeNull();
+    expect(queryByText('Registry lookup unavailable — enter the workflow type name.')).toBeNull();
+    expect(queryByRole('combobox', { name: 'Workflow type' })).toBeNull();
+    expect(
+      requireElement(getByRole('textbox', { name: 'Workflow type' }), HTMLInputElement).disabled,
+    ).toBe(false);
+  });
+
+  test('an exact cadence below a minute is shown as text until Change cadence brings the builder back', async () => {
+    const form = new ScheduleFormState({
+      cadence: { mode: 'interval', every: 1, unit: 'minutes' },
+      originalCadence: { intervalMs: 30_000 },
+    });
+
+    const { getByRole, queryByRole } = render(ScheduleFormFields, {
+      props: { form, mode: 'edit', workflowTypeOptions: undefined },
+    });
+
+    expect(requireElement(getByRole('textbox', { name: 'Cadence' }), HTMLInputElement).value).toBe(
+      'Every 30 seconds',
+    );
+    expect(queryByRole('tab', { name: 'Interval' })).toBeNull();
+    await fireEvent.click(getByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }));
+    expect(form.cadenceChanged).toBe(true);
+    expect(getByRole('tab', { name: 'Interval' })).not.toBeNull();
+    expect(queryByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction })).toBeNull();
   });
 
   test('shows the schedule id, input JSON, and cadence fields', async () => {

@@ -382,6 +382,9 @@ export const SCHEDULE_COPY = {
     descriptionLabel: 'Description',
     descriptionDescription: 'Optional. Shown to operators alongside the schedule.',
     cadenceLabel: 'Cadence',
+    exactCadenceDescription:
+      'The cadence builder counts in whole minutes at the smallest, so this schedule’s exact timing is kept unless you change it.',
+    changeCadenceAction: 'Change cadence',
     agentRequired: 'Choose an agent.',
     descriptionTooLong: (most: number): string =>
       `The description is too long: it can be at most ${String(most)} characters.`,
@@ -393,6 +396,8 @@ export const SCHEDULE_COPY = {
       'The Bureau starts this workflow itself, with checks a schedule made here would skip.',
     reservedAgentAuthored:
       'This workflow is agent-authored. Its schedule is the trigger in its file, so change it in the workflow.',
+    allTypesReserved:
+      'Every registered workflow type here is started from its own screen or by the Bureau itself, so none is offered. Enter the name of another workflow type.',
     registryNote:
       'Only workflows defined in code are listed. An agent-authored workflow is scheduled by the trigger in its file.',
     overlayLoading: 'Checking which workflows are agent-authored.',
@@ -451,7 +456,12 @@ export const GOALS_COPY = {
     maximumTotalStepsInvalid: 'Enter a whole number of steps, one or more.',
     createAction: 'Create goal',
     cancelAction: 'Cancel',
+    /** What Cancel is called once the goal exists, so there is nothing left to cancel. */
+    closeAction: 'Close',
     failed: 'The goal was not created',
+    /** The goal was committed, and the Bureau could not start its controller: it stays pending until recovery. */
+    startFailedTitle: 'Goal created, but it did not start',
+    startFailedGoal: (id: string): string => `Goal ${id}`,
   },
 } as const;
 

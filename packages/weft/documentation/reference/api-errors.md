@@ -118,6 +118,7 @@ The registered public vocabulary—every code `isWeftErrorCode` accepts—with t
 | `BulkOperationConfirmationError`            | `core/engine/errors.ts`                        |
 | `WorkflowTypeNotRegisteredForRecoveryError` | `core/engine/errors.ts`                        |
 | `EngineCreateNameMismatchError`             | `core/engine/errors.ts`                        |
+| `DefinitionSchemaRequiredError`             | `core/engine/schema-policy.ts`                 |
 | `EngineDisposedError`                       | `core/engine/errors.ts`                        |
 | `EngineDisposalError`                       | `core/engine/errors.ts`                        |
 | `WorkflowNotFoundError`                     | `core/engine/errors.ts`                        |

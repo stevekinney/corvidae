@@ -9,7 +9,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { GOALS_COPY } from '../../app/copy.ts';
-  import { createGoal } from '../../lib/bureau-goals.ts';
+  import { createGoal, type GoalCreated } from '../../lib/bureau-goals.ts';
   import { listAgents, wireCodeOf } from '../../lib/bureau-client.ts';
   import { faultTreatment } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -38,21 +38,35 @@
     agentsQuery.isSuccess ? agentsQuery.data.map((agent) => agent.name) : undefined,
   );
 
+  /**
+   * The goal the Bureau committed but could not start a controller for. Such a goal has no
+   * controller and stays pending until recovery, so the drawer stays open to say so. It is read-only
+   * from then on, because a second submit repeats the idempotency key, comes back `existing`, and
+   * would close the drawer as if the goal had started.
+   */
+  let notStarted = $state<GoalCreated>();
+
   const creation = createMutation(() => ({
     mutationFn: () => createGoal(form.toInput()),
     // The fault is said in the drawer, beside what was typed, so it is not also a toast.
     onError: () => undefined,
-    onSuccess: () => {
+    onSuccess: (created) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.goals.list() });
+      if (created.controller?.status === 'start-failed') {
+        notStarted = created;
+        return;
+      }
       onClose();
     },
   }));
 
   const fault = $derived(creation.error);
   const submitting = $derived(creation.isPending);
+  /** Whether the goal is made, so the fields and Create are done with. */
+  const created = $derived(notStarted !== undefined);
 
   function submit(): void {
-    if (!form.isValid || submitting) return;
+    if (!form.isValid || submitting || created) return;
     creation.mutate();
   }
 
@@ -70,6 +84,7 @@
         label={copy.agentLabel}
         description={copy.agentDescription}
         bind:value={form.agentName}
+        disabled={created}
         options={[
           { value: '', label: copy.agentPlaceholder, disabled: true },
           ...agentNames.map((name) => ({ value: name, label: name })),
@@ -82,6 +97,7 @@
         description={agentNames === undefined
           ? copy.agentFreeTextDescription
           : copy.agentDescription}
+        disabled={created}
         bind:value={form.agentName}
       />
     {/if}
@@ -90,6 +106,7 @@
       label={copy.promptLabel}
       description={copy.promptDescription}
       rows={4}
+      disabled={created}
       bind:value={form.prompt}
     />
     <fieldset class="weft-goal-form__group">
@@ -97,11 +114,13 @@
       <Input
         id="weft-goal-identity-name"
         label={copy.identityNameLabel}
+        disabled={created}
         bind:value={form.identityName}
       />
       <Input
         id="weft-goal-identity-version"
         label={copy.identityVersionLabel}
+        disabled={created}
         bind:value={form.identityVersion}
       />
     </fieldset>
@@ -110,11 +129,13 @@
       <Input
         id="weft-goal-validator-name"
         label={copy.validatorNameLabel}
+        disabled={created}
         bind:value={form.validatorName}
       />
       <Input
         id="weft-goal-validator-version"
         label={copy.validatorVersionLabel}
+        disabled={created}
         bind:value={form.validatorVersion}
       />
     </fieldset>
@@ -123,6 +144,7 @@
       label={copy.maximumAttemptsLabel}
       description={copy.maximumAttemptsDescription}
       inputmode="numeric"
+      disabled={created}
       bind:value={form.maximumAttempts}
       error={form.attemptsValid ? '' : copy.maximumAttemptsInvalid}
     />
@@ -131,10 +153,19 @@
       label={copy.maximumTotalStepsLabel}
       description={copy.maximumTotalStepsDescription}
       inputmode="numeric"
+      disabled={created}
       bind:value={form.maximumTotalSteps}
       error={form.stepsValid ? '' : copy.maximumTotalStepsInvalid}
     />
-    {#if fault}
+    {#if notStarted !== undefined}
+      <Alert variant="warning" data-testid="goal-not-started">
+        <p class="weft-goal-form__alert-title">{copy.startFailedTitle}</p>
+        {#if notStarted.controller?.reason}
+          <p class="weft-goal-form__alert-body">{notStarted.controller.reason}</p>
+        {/if}
+        <p class="weft-goal-form__alert-body">{copy.startFailedGoal(notStarted.goal.goalRunId)}</p>
+      </Alert>
+    {:else if fault}
       <Alert variant="danger" data-testid="goal-fault" data-fault-code={wireCodeOf(fault) ?? ''}>
         <p class="weft-goal-form__alert-title">{copy.failed}</p>
         <p class="weft-goal-form__alert-body">{faultTreatment(fault).message}</p>
@@ -144,9 +175,14 @@
 
   {#snippet footer()}
     <div class="weft-goal-form__footer">
-      <Button variant="ghost" size="sm" onclick={() => (open = false)}>{copy.cancelAction}</Button>
-      <Button variant="primary" size="sm" disabled={!form.isValid || submitting} onclick={submit}
-        >{copy.createAction}</Button
+      <Button variant="ghost" size="sm" onclick={() => (open = false)}
+        >{created ? copy.closeAction : copy.cancelAction}</Button
+      >
+      <Button
+        variant="primary"
+        size="sm"
+        disabled={!form.isValid || submitting || created}
+        onclick={submit}>{copy.createAction}</Button
       >
     </div>
   {/snippet}
