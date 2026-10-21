@@ -185,6 +185,19 @@ describe('a durable run whose result rejects with an unclassified error', () => 
     });
   }
 
+  it('marks the run.error settleRejectedRun announces as reconstructed', async () => {
+    const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();
+    const announced: RunErrorEvent[] = [];
+    emitter.addEventListener(RunErrorEvent.type, (event) => announced.push(event));
+
+    const result = await drivers[0]!.settle(new Error('x refused by the store'), emitter);
+
+    expect(result.finishReason).toBe('error');
+    // The step count it passes is what the run recorded, not the step that failed.
+    expect(announced).toHaveLength(1);
+    expect(announced[0]!.reconstructed).toBe(true);
+  });
+
   it('keeps the error a step already reported, and does not repeat run.error', async () => {
     const stepError = new AgentRunError('the model refused', { kind: 'generate', code: 'UNKNOWN' });
     const emitter = new CompletableEventTarget<CombinedOperativeEventMap>();

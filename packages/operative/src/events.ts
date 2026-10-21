@@ -168,10 +168,26 @@ export class RunErrorEvent extends Event {
   static readonly type = 'run.error' as const;
   readonly step: number;
   readonly error: AgentRunError;
-  constructor(step: number, error: unknown, kind?: AgentRunErrorKind) {
+  /**
+   * Present, and `true`, only when the failure was announced from a terminal result rather than
+   * by the step that failed (a run recovered after a crash, or one whose result rejected with no
+   * step reporting it): `step` is then the count of steps the run recorded, which is not the
+   * failing step. A live event leaves the key out, so a reader tells a guessed step from a real
+   * one by the key alone. It is recorded in the run's event history with the rest of the event.
+   */
+  declare readonly reconstructed?: true;
+  constructor(
+    step: number,
+    error: unknown,
+    kind?: AgentRunErrorKind,
+    options: { readonly reconstructed?: boolean } = {},
+  ) {
     super(RunErrorEvent.type);
     this.step = step;
     this.error = toAgentRunError(error, { kind });
+    // An own property only when set, because the run store copies every own property of an event
+    // into the recorded action.
+    if (options.reconstructed === true) this.reconstructed = true;
   }
 }
 

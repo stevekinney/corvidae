@@ -9,6 +9,8 @@ import {
   ElicitationRequestedEvent,
   type GenerateFunction,
   type RunFrame,
+  RunCompletedEvent,
+  RunErrorEvent,
   runFrameSchema,
   type RunOptions,
   stopWhen,
@@ -550,5 +552,49 @@ describe('run frames carry response parts (COR-713)', () => {
     expect(finals.map((frame) => frame.messageId)).toEqual(result.steps.map((s) => s.messageId));
     for (const frame of frames)
       expect(() => runFrameSchema.parse(JSON.parse(JSON.stringify(frame)))).not.toThrow();
+  });
+});
+
+describe('the step a budget notification names (COR-1598)', () => {
+  /** A budget-exceeded run's `run.error` and `run.completed`, dispatched in the order a run fires them. */
+  function budgetNotificationStep(errorEvent: RunErrorEvent): number | undefined {
+    const { activeRun, dispatch } = createEventDrivenActiveRun();
+    const frames: RunFrame[] = [];
+    const dispose = createRunFrameForwarder('run-reconstructed-step', activeRun, (frame) =>
+      frames.push(frame),
+    );
+    dispatch(errorEvent);
+    dispatch(
+      new RunCompletedEvent({
+        conversation: new Conversation(),
+        steps: [],
+        content: '',
+        parts: [],
+        usage: { prompt: 0, completion: 0, total: 0 },
+        finishReason: 'budget-exceeded',
+        error: errorEvent.error,
+      }),
+    );
+    dispose();
+    const notifications = frames.filter(
+      (frame): frame is Extract<RunFrame, { type: 'notification' }> =>
+        frame.type === 'notification' && frame.code === 'budget.exceeded',
+    );
+    expect(notifications).toHaveLength(1);
+    return notifications[0]!.step;
+  }
+
+  it("takes the budget notification's step from a live run.error and not from a reconstructed one", () => {
+    const error = new BudgetExceededError('token limit reached');
+
+    // A live `run.error` names the step that failed.
+    const live = new RunErrorEvent(3, error, 'policy');
+    expect(Object.hasOwn(live, 'reconstructed')).toBe(false);
+    expect(budgetNotificationStep(live)).toBe(3);
+
+    // A reconstructed one carries the count of recorded steps, which is not the failing step.
+    const reconstructed = new RunErrorEvent(3, error, 'policy', { reconstructed: true });
+    expect(reconstructed.reconstructed).toBe(true);
+    expect(budgetNotificationStep(reconstructed)).toBeUndefined();
   });
 });
