@@ -542,3 +542,7 @@ export {
   PUBLISHED_AGENT_NAME_PATTERN,
 } from './http/create-bureau-handler';
 export { BUREAU_SCOPES, type BureauScope } from './http/bureau-scopes';
+export {
+  RESUME_ATTEMPT_FAILED_MESSAGES,
+  RESUME_ATTEMPT_STILL_GOING_MESSAGES,
+} from './http/ag-ui-resume-messages';

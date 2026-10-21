@@ -23,9 +23,22 @@
  * ({@link ChatRunWiringOptions.onHumanRequests}), and the person's next message is sent as the
  * answer: a resume, not a new run, because the run is parked and a new run would be refused as busy.
  *
+ * A resume carries an answer to every interrupt the run ended on, and the mount refuses one that
+ * leaves any unanswered. So the wiring holds what the person has answered so far (a decision on an
+ * approval, the text typed for a question, in the order the questions came) and sends one resume
+ * once every interrupt has an entry. A turn the controller starts before that point is held, and
+ * sends nothing.
+ *
  * A request is committed only once the mount has answered it. The first event of the response is
  * the answer, so a request that failed before one keeps what it carried (the decisions on
- * approvals, the run identifier) for the retry, which the mount recognises by that identifier.
+ * approvals, the run identifier) for the retry, which the mount recognises by that identifier. A
+ * refusal of a resume is not an answer to it either: the one-event `RUN_ERROR` with no run's
+ * identifier keeps the entries, and the page reads again what is still pending
+ * ({@link ChatRunWiring.attach}), which drops the entries whose interrupt is gone.
+ *
+ * A Stop before the response's first event does not abort the request: the run exists from the
+ * moment the mount admits the request, and only its first event names it. The wiring reads to that
+ * event, then cancels the run it names, or cancels nothing for a refusal.
  */
 import {
   EventType,
@@ -73,6 +86,35 @@ function isMessagesSnapshot(event: unknown): event is MessagesSnapshotEvent {
   return parsed.success && parsed.data.type === EventType.MESSAGES_SNAPSHOT;
 }
 
+/** A request the mount turned away at the door, as its `RUN_ERROR` says it. */
+export type Refusal = {
+  /** The mount's code (`THREAD_BUSY`, `RUN_FAILED`, ...), when it sent one. */
+  readonly code: string | undefined;
+  readonly message: string;
+  /** Whether the request that was refused was a resume, which carried what the person had answered. */
+  readonly resume: boolean;
+  /**
+   * Whether the mount only found the thread busy: the thread's lease is held, or an earlier attempt
+   * at this very resume is still being applied. Nothing is wrong with the request, and the next send
+   * repeats it. Every other refusal is a failure to be told.
+   */
+  readonly busy: boolean;
+};
+
+/**
+ * The refusals of a resume that say an attempt is still going (`ag-ui-resume.ts`: "An earlier
+ * attempt at this resume is still being applied; try again shortly", "Another attempt at this
+ * resume is in progress; try again", "This resume lost its lease to another attempt before it
+ * finished; try again"). The mount sends them as `RUN_FAILED`, as it does the refusals of an
+ * attempt that failed ("The answers could not be applied; answer the interrupts again", "...send a
+ * new message to continue the thread"), which are told to the person. They differ by their words.
+ */
+const ATTEMPT_STILL_GOING = /\b(?:attempt|resume)\b[^.]*\btry again\b/i;
+
+function isBusyRefusal(code: string | undefined, message: string): boolean {
+  return code === 'THREAD_BUSY' || (code === 'RUN_FAILED' && ATTEMPT_STILL_GOING.test(message));
+}
+
 /** A question a run is waiting on a person to answer. */
 export type HumanRequest = {
   /** The interrupt the answer resolves. */
@@ -98,8 +140,9 @@ export type ChatRunWiringOptions = {
    */
   readonly onRunStarted?: () => void;
   /**
-   * Told what the run is waiting on a person to answer: the questions a run ended on, and none
-   * when a run begins. The person's next message answers the first of them.
+   * Told what the run is waiting on a person to answer: the questions a run ended on that have no
+   * answer held yet, and none when a run begins. The person's next message answers the first of
+   * them.
    */
   readonly onHumanRequests?: (requests: readonly HumanRequest[]) => void;
 };
@@ -129,6 +172,34 @@ export type ChatRunWiring = {
    * leaves the chat. Without it the end of the signal is a Stop, which cancels the Bureau's run.
    */
   detach(): void;
+  /**
+   * Holds the person's answer, the text of the row `rowId`, to the first question still waiting,
+   * for the resume that answers every interrupt. Answers the question as `false` when none waits.
+   */
+  holdAnswer(text: string, rowId: string): boolean;
+  /**
+   * What the last turn was refused with, once: the one-event `RUN_ERROR` a mount answers a request
+   * with that it did not admit, which carries no run's identifier. Nothing for a turn that was not
+   * refused. The page reads the thread again after a refused resume.
+   */
+  takeRefusal(): Refusal | undefined;
+  /**
+   * Whether a refused resume still owes the mount what it carried, which the next send repeats
+   * before anything new is sent.
+   */
+  owesResume(): boolean;
+  /**
+   * Whether what a refused resume still owes leaves an interrupt without an entry, so the person's
+   * next message is the missing answer and completes it. When it is complete, the resume is sent as
+   * a turn of its own, from the entries held, before anything new.
+   */
+  owedResumeIncomplete(): boolean;
+  /**
+   * The rows holding answers that no resume owes any longer, once: the mount took them, or the
+   * question they answered is gone. The run holds each answer as a row of its own, so the typed
+   * rows are dropped from the conversation, and no later start sends one a second time.
+   */
+  takeSettledAnswerRows(): readonly string[];
   /**
    * The assets the last turn announced that no terminal frame stamped on a row: a turn that ended
    * in an error or a stop carries no history to stamp them on. Answers them once, and the caller
@@ -163,6 +234,27 @@ function nativeRunIdOf(event: unknown): string | undefined {
   return isRecord(fields) && typeof fields['runId'] === 'string' ? fields['runId'] : undefined;
 }
 
+/**
+ * What a request was refused with, or `undefined` when `event` is not a refusal. A mount answers a
+ * request it did not admit with one `RUN_ERROR` and nothing else, and no run's identifier: a
+ * `RUN_ERROR` that ends a run carries the run's own.
+ */
+function refusalOf(event: unknown, resume: boolean): Refusal | undefined {
+  if (!isRecord(event) || event['type'] !== 'RUN_ERROR' || nativeRunIdOf(event) !== undefined) {
+    return undefined;
+  }
+  const code = event['code'];
+  const message = event['message'];
+  const refusedCode = typeof code === 'string' ? code : undefined;
+  const refusedMessage = typeof message === 'string' ? message : '';
+  return {
+    code: refusedCode,
+    message: refusedMessage,
+    resume,
+    busy: isBusyRefusal(refusedCode, refusedMessage),
+  };
+}
+
 const CALL_EVENT_TYPES: ReadonlySet<unknown> = new Set([
   'TOOL_CALL_START',
   'TOOL_CALL_ARGS',
@@ -192,15 +284,19 @@ function isFollowUp(message: ConversationHistory['messages'][string] | undefined
 }
 
 /**
- * The user turn that opened the run: the last user row that is not a follow-up. A follow-up row
- * can come after it, and the rows before it belong to turns that are over.
+ * The user turn that opened the run: the last user row that is not a follow-up, and not one of the
+ * `ignored` rows (the answers typed to a run's questions). A follow-up row can come after it, and
+ * the rows before it belong to turns that are over.
  */
 export function openingTurn(
   conversation: ConversationHistory,
+  ignored: ReadonlySet<string> = new Set(),
 ): ConversationHistory['messages'][string] | undefined {
   for (let index = conversation.ids.length - 1; index >= 0; index -= 1) {
     const message = conversation.messages[conversation.ids[index]!];
-    if (message?.role === 'user' && !isFollowUp(message)) return message;
+    if (message?.role === 'user' && !isFollowUp(message) && !ignored.has(message.id)) {
+      return message;
+    }
   }
   return undefined;
 }
@@ -268,7 +364,7 @@ function withApprovalRows(
 
 /**
  * The turn's frames, with the history the run ends with made what the chat should show: each tool
- * call that is waiting on the user parked on its approval, and the person's answer to a question
+ * call that is waiting on the user parked on its approval, and the person's answers to questions
  * left out. The run appends its own row for an answer (`ag-ui-resume.ts`), which is in the history
  * it ends with, so the row the person typed would be a second one, ahead of the call it answers.
  * The assets the run announced are put on the rows that carry them, as a reloaded thread's
@@ -277,7 +373,7 @@ function withApprovalRows(
 async function* parkApprovals(
   frames: AsyncIterable<ChatStreamEvent>,
   interrupts: () => readonly Interrupt[],
-  answerRowId: string | undefined,
+  answerRowIds: ReadonlySet<string>,
   announced: AssetAnnouncement[],
 ): AsyncGenerator<ChatStreamEvent> {
   for await (const frame of frames) {
@@ -290,10 +386,11 @@ async function* parkApprovals(
     announced.splice(0);
     yield {
       ...frame,
-      conversation:
-        answerRowId !== undefined && parked.messages[answerRowId] !== undefined
-          ? removeMessage(parked, answerRowId)
-          : parked,
+      conversation: [...answerRowIds].reduce(
+        (current, id) =>
+          current.messages[id] === undefined ? current : removeMessage(current, id),
+        parked,
+      ),
     };
   }
 }
@@ -467,18 +564,80 @@ function withAttachmentParts<T extends { id: string }>(
   });
 }
 
+/**
+ * The request a Stop must not abort before the response's first event. The mount admits a request
+ * before it answers, and the run it began has no identifier a client can cancel it by until that
+ * event names it, so a fetch aborted before it leaves a run nobody can stop and a thread that
+ * refuses the next message as busy. The gate holds the fetch open until the first event has
+ * arrived, and then lets a Stop end it as it always did.
+ */
+type FirstEventGate = {
+  /** The signal the fetch carries. */
+  readonly signal: AbortSignal;
+  /** The response's first event has arrived. */
+  arrived(): void;
+  dispose(): void;
+};
+
 export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWiring {
   const send = options.fetch ?? fetch;
   /** The interrupts the latest run ended on, read from its raw events. */
   let interrupts: readonly Interrupt[] = [];
   /** The decisions on approvals, by interrupt, that no request the mount answered has carried. */
   const decisions = new Map<string, ResumeEntry>();
+  /** The text typed to answer each question, by interrupt, with the row it was typed in. */
+  const answers = new Map<string, { readonly entry: ResumeEntry; readonly rowId: string }>();
   /** The start the mount has not answered, so a retry of the same request is the same run. */
   let unanswered: { readonly fingerprint: string; readonly runId: string } | undefined;
   let attached: AsyncGenerator<unknown> | undefined;
   let detached = false;
   /** The assets the turn on screen announced that no terminal frame has put on a row. */
   let unstamped: AssetAnnouncement[] = [];
+  /** What the last turn was refused with, until it is taken. */
+  let refusal: Refusal | undefined;
+  /** Whether a resume was refused and what it carried is still held, to be sent again. */
+  let refusedResume = false;
+  /** The rows of answers that are settled and not yet dropped from the conversation. */
+  let settledAnswerRows: string[] = [];
+
+  /** The questions the run waits on that no answer is held for, in the order the run asked them. */
+  function unansweredRequests(): HumanRequest[] {
+    return humanRequestsOf(interrupts).filter((request) => !answers.has(request.interruptId));
+  }
+
+  /**
+   * Makes `next` what the run waits on. An answer held for an interrupt that is not among them is
+   * dropped: the mount has settled it, so a resume that carried it would be refused.
+   */
+  function setInterrupts(next: readonly Interrupt[]): void {
+    interrupts = next;
+    const pending = new Set(next.map((interrupt) => interrupt.id));
+    // Deleting from a map while it is walked is safe: the walk skips what it has already left.
+    for (const id of decisions.keys()) if (!pending.has(id)) decisions.delete(id);
+    for (const [id, answer] of answers) {
+      if (pending.has(id)) continue;
+      answers.delete(id);
+      settledAnswerRows.push(answer.rowId);
+    }
+    if (decisions.size === 0 && answers.size === 0) refusedResume = false;
+    options.onHumanRequests?.(unansweredRequests());
+  }
+
+  /** Holds `text`, typed in the row `rowId`, as the answer to the first question without one. */
+  function holdAnswer(text: string, rowId: string): boolean {
+    const waiting = unansweredRequests()[0];
+    if (waiting === undefined) return false;
+    answers.set(waiting.interruptId, {
+      entry: {
+        interruptId: waiting.interruptId,
+        status: 'resolved',
+        payload: { decision: 'approve', answer: text },
+      },
+      rowId,
+    });
+    options.onHumanRequests?.(unansweredRequests());
+    return true;
+  }
 
   /**
    * Stops the Bureau's run: a stop on this page ends this page's stream, and the run goes on
@@ -500,20 +659,45 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     }
   }
 
+  /** The gate a start's fetch runs behind, for the turn `stop` can end. */
+  function firstEventGate(stop: AbortSignal): FirstEventGate {
+    const fetching = new AbortController();
+    let waiting = true;
+    // Leaving the page is not a Stop and has nothing to cancel, so nothing is waited for.
+    const onStop = (): void => {
+      if (!waiting || detached) fetching.abort();
+    };
+    stop.addEventListener('abort', onStop, { once: true });
+    return {
+      signal: fetching.signal,
+      arrived() {
+        waiting = false;
+      },
+      dispose() {
+        stop.removeEventListener('abort', onStop);
+      },
+    };
+  }
+
   async function* observe(
     events: AsyncIterable<unknown>,
     signal: AbortSignal,
     started: boolean,
     announced: AssetAnnouncement[],
+    gate: FirstEventGate | undefined,
   ): AsyncGenerator<unknown> {
     let nativeRunId: string | undefined;
     let held: ReadonlySet<string> | undefined;
     try {
       for await (const event of events) {
+        gate?.arrived();
+        nativeRunId ??= nativeRunIdOf(event);
+        // A Stop before this event is acted on here, now that the run it began has a name: the
+        // run is cancelled below, and nothing of the turn is shown.
+        if (signal.aborted) return;
         // Read at the first event, not when the turn started: an attach restores the thread right
         // after it starts, and the calls this stream streams itself arrive after, never before.
         held ??= heldCalls(options.conversation());
-        nativeRunId ??= nativeRunIdOf(event);
         if (isRecord(event) && event['type'] === 'RUN_STARTED') {
           if (started) options.onRunStarted?.();
           // A run that has begun is waiting on nobody.
@@ -522,49 +706,64 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         const announcement = announcementOf(event);
         if (announcement !== undefined) announced.push(announcement);
         const ended = interruptsOf(event);
-        if (ended !== undefined) {
-          interrupts = ended;
-          options.onHumanRequests?.(humanRequestsOf(ended));
-        }
+        if (ended !== undefined) setInterrupts(ended);
         // A run that follows an approval shows the call it was waiting on again, for a client that
         // did not watch it run. This conversation holds the call, and holds it only once.
         if (isCallEventFor(event, held)) continue;
         yield event;
       }
     } finally {
+      gate?.dispose();
       // An abort is a Stop only while the page is still here: leaving it ends the signal too, and
       // the run goes on.
       if (signal.aborted && !detached && nativeRunId !== undefined) await cancelRun(nativeRunId);
     }
   }
 
-  /** What a start's resume carries, and whether the person's own words are the answer in it. */
-  function resumeFor(conversation: ConversationHistory): {
+  /** What a start carries: the entries of a resume, and the rows the person's answers are in. */
+  type Resume = {
     readonly entries: readonly ResumeEntry[];
-    /** The row holding the person's own words, when they are the answer in the resume. */
-    readonly answerRowId: string | undefined;
-  } {
-    if (decisions.size > 0) return { entries: [...decisions.values()], answerRowId: undefined };
-    const waiting = interrupts.find((interrupt) => interrupt.reason === 'human-wait');
-    const answer = waiting === undefined ? undefined : openingTurn(conversation);
-    if (waiting === undefined || answer === undefined) {
-      return { entries: [], answerRowId: undefined };
+    /** The rows holding the answers typed to the run's questions. */
+    readonly answerRowIds: ReadonlySet<string>;
+    /** Whether an interrupt the run waits on has no entry yet, so a resume would be refused. */
+    readonly incomplete: boolean;
+  };
+
+  /**
+   * What a start's resume carries. The row the person has just typed answers the first question
+   * still without an answer; a row typed earlier is already held, and a turn the controller starts
+   * for a decision has no new row. Every interrupt the run waits on needs an entry before one
+   * resume can carry them all.
+   */
+  function resumeFor(conversation: ConversationHistory): Resume {
+    const last = conversation.messages[conversation.ids.at(-1) ?? ''];
+    const held = new Set([...answers.values()].map((answer) => answer.rowId));
+    if (last?.role === 'user' && !isFollowUp(last) && !held.has(last.id)) {
+      if (holdAnswer(textOf(last), last.id)) held.add(last.id);
     }
-    return {
-      entries: [
-        {
-          interruptId: waiting.id,
-          status: 'resolved',
-          payload: { decision: 'approve', answer: textOf(answer) },
-        },
-      ],
-      answerRowId: answer.id,
-    };
+    const { entries, incomplete } = entriesOwed();
+    return { entries, answerRowIds: held, incomplete };
+  }
+
+  /** The entries held for the interrupts the run waits on, and whether one of them has none yet. */
+  function entriesOwed(): {
+    readonly entries: readonly ResumeEntry[];
+    readonly incomplete: boolean;
+  } {
+    const answerable = interrupts.filter(
+      (interrupt) =>
+        interrupt.reason === 'human-wait' ||
+        (interrupt.reason === 'tool-approval' && interrupt.toolCallId !== undefined),
+    );
+    const entries = answerable.flatMap(
+      (interrupt) => decisions.get(interrupt.id) ?? answers.get(interrupt.id)?.entry ?? [],
+    );
+    return { entries, incomplete: entries.length > 0 && entries.length < answerable.length };
   }
 
   function runInput(
     conversation: ConversationHistory,
-    resume: ReturnType<typeof resumeFor>,
+    resume: Resume,
     attachments: readonly ChatAttachment[],
   ): RunAgentInput {
     const base = {
@@ -585,9 +784,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         ),
       };
     }
-    // The person's answer rides in the resume. As a message too it would be a second row, next to
-    // the one the run appends for the answer.
-    const opener = resume.answerRowId !== undefined ? undefined : openingTurn(conversation);
+    // The person's answers ride in the resume. As messages too they would be second rows, next to
+    // the ones the run appends for them. A decision on an approval continues the turn that opened
+    // the run, which the resume carries.
+    const opener = decisions.size > 0 ? openingTurn(conversation, resume.answerRowIds) : undefined;
     const messages =
       opener === undefined
         ? []
@@ -625,7 +825,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     unanswered = undefined;
     for (const entry of sent) {
       if (decisions.get(entry.interruptId) === entry) decisions.delete(entry.interruptId);
+      const answer = answers.get(entry.interruptId);
+      if (answer?.entry === entry) {
+        answers.delete(entry.interruptId);
+        settledAnswerRows.push(answer.rowId);
+      }
     }
+    refusedResume = false;
     // The questions and approvals of the run before are answered, or refused as the mount sees fit.
     interrupts = [];
   }
@@ -638,18 +844,31 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     for await (const event of events) {
       if (!answered) {
         answered = true;
-        acknowledged(sent);
+        const refused = refusalOf(event, sent.length > 0);
+        if (refused !== undefined) refusal = refused;
+        if (refused?.resume === true) refusedResume = true;
+        // A refusal is the mount's answer to a start, but not to a resume: the entries it carried
+        // are still owed, and what is still pending is read again before they are sent.
+        if (refused === undefined || sent.length === 0) acknowledged(sent);
       }
       yield event;
     }
   }
 
-  function startEvents(request: ChatSessionRequest): {
+  function startEvents(
+    request: ChatSessionRequest,
+    gate: FirstEventGate,
+  ): {
     readonly events: AsyncGenerator<unknown>;
-    readonly answerRowId: string | undefined;
+    readonly answerRowIds: ReadonlySet<string>;
+    /** Whether nothing is sent, because an interrupt the run waits on is still unanswered. */
+    readonly held: boolean;
   } {
     const conversation = withoutHiddenRows(request.conversation);
     const resume = resumeFor(conversation);
+    if (resume.incomplete) {
+      return { events: (async function* () {})(), answerRowIds: resume.answerRowIds, held: true };
+    }
     const input = runInput(conversation, resume, request.attachments);
     const events = untilAnswered(
       readEvents(() =>
@@ -657,32 +876,68 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
           method: 'POST',
           headers: { 'content-type': 'application/json', accept: 'text/event-stream' },
           body: JSON.stringify(input),
-          signal: request.signal,
+          signal: gate.signal,
         }),
       ),
       resume.entries,
     );
-    return { events, answerRowId: resume.answerRowId };
+    return { events, answerRowIds: resume.answerRowIds, held: false };
+  }
+
+  /**
+   * The turn the controller starts for a decision or an answer while another interrupt of the run
+   * is still unanswered: a run that began and ended with the conversation as it was, and no request.
+   * The run is not told to the page as one that began, because none did.
+   */
+  function heldTurn(request: ChatSessionRequest): AsyncGenerator<ChatStreamEvent> {
+    const threadId = request.conversation.id;
+    const runId = `held-${crypto.randomUUID()}`;
+    return mapAGUIEventsToChatStream(
+      [
+        { type: EventType.RUN_STARTED, threadId, runId },
+        { type: EventType.RUN_FINISHED, threadId, runId, outcome: { type: 'success' } },
+      ],
+      { conversation: withoutHiddenRows(request.conversation) },
+    );
   }
 
   const transport: ChatSessionTransport = (request) => {
+    refusal = undefined;
     const attachedStream = attached;
-    const opened =
-      attachedStream === undefined
-        ? startEvents(request)
-        : { events: attachedStream, answerRowId: undefined };
     attached = undefined;
+    // Only a start has a fetch of its own for a Stop to wait on; an attach reads a stream the page
+    // opened earlier, under a signal of its own.
+    let gate: FirstEventGate | undefined;
+    let opened: { events: AsyncIterable<unknown>; answerRowIds: ReadonlySet<string> };
+    if (attachedStream === undefined) {
+      gate = firstEventGate(request.signal);
+      const start = startEvents(request, gate);
+      // Nothing was sent, so there is no fetch for a Stop to wait on and nothing to observe.
+      if (start.held) {
+        gate.dispose();
+        return heldTurn(request);
+      }
+      opened = start;
+    } else {
+      opened = { events: attachedStream, answerRowIds: new Set() };
+    }
     const announced: AssetAnnouncement[] = [];
     unstamped = announced;
     // An attach reads a thread the page may know nothing of yet: its first rows come from the
     // snapshot, and the row the controller appended to start the turn is not one of them.
     const frames = mapAGUIEventsToChatStream(
-      observe(opened.events, request.signal, attachedStream === undefined, announced),
+      observe(opened.events, request.signal, attachedStream === undefined, announced, gate),
       {
         conversation: withoutHiddenRows(request.conversation),
       },
     );
-    return parkApprovals(frames, () => interrupts, opened.answerRowId, announced);
+    return parkApprovals(
+      frames,
+      // An approval already decided here stays decided while the mount still has it pending.
+      () => interrupts.filter((interrupt) => !decisions.has(interrupt.id)),
+      opened.answerRowIds,
+      announced,
+    );
   };
 
   return {
@@ -709,6 +964,8 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         started.value['type'] !== 'RUN_STARTED'
       ) {
         await events.return(undefined);
+        // The thread has nothing going or waiting, so nothing answered for it can still be sent.
+        setInterrupts([]);
         return undefined;
       }
       // An attach stream opens with the thread as a snapshot, which is what restores a transcript
@@ -744,6 +1001,17 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     },
     detach() {
       detached = true;
+    },
+    holdAnswer,
+    owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
+    owedResumeIncomplete: () => refusedResume && entriesOwed().incomplete,
+    takeSettledAnswerRows() {
+      return settledAnswerRows.splice(0);
+    },
+    takeRefusal() {
+      const taken = refusal;
+      refusal = undefined;
+      return taken;
     },
     drainAssets() {
       return unstamped.splice(0);
