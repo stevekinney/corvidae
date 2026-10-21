@@ -182,14 +182,14 @@ function commitSerializedResumeState(
   internals.parkedInlineWorkflows.delete(workflowId);
 }
 
-async function relaunchInlineWorkflowAfterResume(
+function relaunchInlineWorkflowAfterResume(
   internals: EngineInternals,
   latestState: WorkflowState,
   args: Pick<
     SerializedResumeArgs,
     'workflowId' | 'resumeCheckpoint' | 'registration' | 'resolvedRevision' | 'callbacks'
   >,
-): Promise<void> {
+): void {
   const { workflowId, resumeCheckpoint, registration, resolvedRevision, callbacks } = args;
   // Keep the final running-state check and the re-entry into user code in the same serialized
   // section so cancel/timeout cannot commit a terminal state and still let a parked workflow continue.
@@ -208,8 +208,6 @@ async function relaunchInlineWorkflowAfterResume(
     revision: resolvedRevision,
   });
 
-  resetCancelHandlers(internals, workflowId);
-  await rehydrateChildCancellationHandlers(internals, workflowId, callbacks);
   const context = new Context({
     workflowId,
     ...(latestState.workflowExecutionToken !== undefined && {
@@ -256,15 +254,15 @@ async function relaunchInlineWorkflowAfterResume(
   completeExecutionAttemptLaunch(internals, workflowId, latestState.workflowExecutionToken);
 }
 
-async function relaunchWorkerWorkflowAfterResume(
+function relaunchWorkerWorkflowAfterResume(
   internals: EngineInternals,
   latestState: WorkflowState,
   args: Pick<
     SerializedResumeArgs,
-    'workflowId' | 'resumeCheckpoint' | 'workflowStartHeaders' | 'resolvedRevision' | 'callbacks'
+    'workflowId' | 'resumeCheckpoint' | 'workflowStartHeaders' | 'resolvedRevision'
   >,
-): Promise<void> {
-  const { workflowId, resumeCheckpoint, workflowStartHeaders, resolvedRevision, callbacks } = args;
+): void {
+  const { workflowId, resumeCheckpoint, workflowStartHeaders, resolvedRevision } = args;
   // See `relaunchInlineWorkflowAfterResume()`'s matching comment: identity
   // population (WFT-19), landed before `startWorkflow()` below, using
   // `resolvedRevision` per `SerializedResumeArgs.resolvedRevision`'s doc.
@@ -272,8 +270,6 @@ async function relaunchWorkerWorkflowAfterResume(
     type: latestState.type,
     revision: resolvedRevision,
   });
-  resetCancelHandlers(internals, workflowId);
-  await rehydrateChildCancellationHandlers(internals, workflowId, callbacks);
   const serialized = serializeCheckpoint(resumeCheckpoint);
   internals.strategy.startWorkflow({
     workflowId,
@@ -375,13 +371,17 @@ async function performSerializedResume(
   // extra state write (and visibility-index churn) on every recoverAll() resume.
   await reactivateSuspendedWorkflowState(internals, latestState);
 
+  // The scan awaits, so it runs before adoption: from `commitSerializedResumeState` to the launch
+  // completing nothing awaits, and a resume landing there never sees an adopted, unlaunched run.
+  resetCancelHandlers(internals, workflowId);
+  await rehydrateChildCancellationHandlers(internals, workflowId, args.callbacks);
   commitSerializedResumeState(internals, args);
 
   if (internals.inlineStrategy) {
-    await relaunchInlineWorkflowAfterResume(internals, latestState, args);
+    relaunchInlineWorkflowAfterResume(internals, latestState, args);
     return;
   }
-  await relaunchWorkerWorkflowAfterResume(internals, latestState, args);
+  relaunchWorkerWorkflowAfterResume(internals, latestState, args);
 }
 
 /**

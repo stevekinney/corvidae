@@ -1252,6 +1252,8 @@ export class Engine<
           // `recoverAll()` landing between the takeover and this call, or between a reclaim
           // listing and its attempt, is one. Evicting or replaying it would drive the generation
           // a second time (COR-1618).
+          // This epoch governs eviction only. The replay below reads the epoch again, after the
+          // awaits, because a claim lost and taken back during them is the one it must check against.
           const claimEpoch = internals.workflowClaimRegistry?.currentEpoch(workflowId) ?? null;
           if (claimEpoch !== null && isLaunchedUnderClaim(internals, workflowId, claimEpoch)) {
             return;

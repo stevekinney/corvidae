@@ -14,6 +14,7 @@ import { KEYS } from '../../storage/interface.ts';
 import { MemoryStorage } from '../../storage/memory.ts';
 import { waitForCondition } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
+import { currentExecutionAttempt } from './execution-attempts.ts';
 import { getInternals } from './internals.ts';
 import {
   createRecoveringEngine,
@@ -61,6 +62,8 @@ describe('a drive that adopted and failed before it launched is redriven', () =>
       outcomes: [{ workflowId: WORKFLOW_ID, status: 'error' }],
     });
     expect(registry.currentEpoch(WORKFLOW_ID)).not.toBeNull();
+    // The scan is before adoption, so the failed resume leaves no attempt behind.
+    expect(currentExecutionAttempt(internals, WORKFLOW_ID)).toBeUndefined();
     expect(probe.runs).toBe(0);
 
     const second = await internals.workflowClaimRenewalTask!.runOnce();
