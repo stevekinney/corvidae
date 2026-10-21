@@ -5718,9 +5718,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const candidates = new Map<string, PendingReview>();
     const failures: string[] = [];
     try {
-      for (const [id, round] of (await readFireReviewHistory(runId)).open) {
-        candidates.set(id, reviewOf(id, round));
-      }
+      const history = await readFireReviewHistory(runId);
+      for (const [id, round] of history.open) candidates.set(id, reviewOf(id, round));
     } catch (error) {
       failures.push(`its history could not be read: ${serializeUnknownError(error)}`);
     }
@@ -5734,7 +5733,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           candidates.set(id, {
             ...reviewOf(id, 0),
             ...(outstanding.prompt === undefined ? {} : { prompt: outstanding.prompt }),
-          } as PendingReview);
+          });
         }
       }
     } catch (error) {
@@ -5910,17 +5909,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       retryAt = retryAt === undefined ? at : Math.max(retryAt, at);
     };
     if (heldIds.length > 0) {
-      const store = runtime.sessionStore;
+      const sessions = runtime.sessionStore;
       // Nothing to read the approvals against: they cannot be verified, which is not the same as
       // the session being gone, so the fire stays marked and is tried again.
-      if (sessionId === undefined || store === undefined) {
+      if (sessionId === undefined || sessions === undefined) {
         throw new Error(
           `The approvals held of schedule fire "${runId}" cannot be verified against its session: ${
-            store === undefined ? 'there is no session store' : 'no session is recorded for it'
+            sessions === undefined ? 'there is no session store' : 'no session is recorded for it'
           }`,
         );
       }
-      const session = await store.load(sessionId);
+      const session = await sessions.load(sessionId);
       if (session === undefined) {
         // The session is gone (deleted by a peer): so are the approvals it held.
         for (const id of heldIds) {

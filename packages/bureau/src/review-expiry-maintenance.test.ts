@@ -216,6 +216,7 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
     await runtime.advance(1500);
     await bureau.runDurableMaintenance();
 
-    expect((await bureau.getReview(review.id))?.status).toBe('expired');
+    const expired = await bureau.getReview(review.id);
+    expect(expired?.status).toBe('expired');
   });
 });

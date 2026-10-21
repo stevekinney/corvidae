@@ -40,10 +40,10 @@ describe('a fire’s seed state', () => {
       principal: OWNER.alice,
       payload: 'staging',
     });
-    await pollUntil(
-      async () => ((await bureau.tasks.get(fireId))?.status === 'completed' ? true : undefined),
-      'the fire to complete',
-    );
+    await pollUntil(async () => {
+      const task = await bureau.tasks.get(fireId);
+      return task?.status === 'completed' ? true : undefined;
+    }, 'the fire to complete');
     await pollUntil(() => (seeds.has(fireId) ? undefined : true), 'the seed read to be dropped');
 
     expect(seeds.size()).toBe(0);

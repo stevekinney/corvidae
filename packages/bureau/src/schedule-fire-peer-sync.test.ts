@@ -746,7 +746,8 @@ describe('a task stream whose notification fails after the review is dropped', (
     await eventually(() => (failing.failures > 0 ? true : undefined), 'the notification to fail');
     await eventually(() => (ended ? true : undefined), 'the task stream to end');
 
-    expect((await frames).at(-1)?.data).toMatchObject({ status: 'completed' });
+    const seen = await frames;
+    expect(seen.at(-1)?.data).toMatchObject({ status: 'completed' });
     expect(reviewsOf(holder, fireId)).toHaveLength(0);
   });
 });

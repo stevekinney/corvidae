@@ -213,7 +213,8 @@ async function startFire(bureau: Bureau, sessionId: string): Promise<string> {
 }
 
 async function taskStatus(bureau: Bureau, fireId: string): Promise<string | undefined> {
-  return (await bureau.tasks.get(fireId))?.status;
+  const task = await bureau.tasks.get(fireId);
+  return task?.status;
 }
 
 describe('a close that waits for the seed read', () => {
@@ -365,9 +366,8 @@ describe('a canceled fire’s closes, retried at boot', () => {
       'the task to settle',
     );
     expect(failing.state.failures).toBe(1);
-    expect(
-      (await historyKinds(first, fireId)).filter((kind) => kind === 'review.canceled'),
-    ).toEqual([]);
+    const firstKinds = await historyKinds(first, fireId);
+    expect(firstKinds.filter((kind) => kind === 'review.canceled')).toEqual([]);
     await first.dispose();
 
     const restarted = await openWaiting(path);
@@ -377,9 +377,8 @@ describe('a canceled fire’s closes, retried at boot', () => {
     }, 'the next boot to write the history event');
     await sleep(300);
 
-    expect(
-      (await historyKinds(restarted, fireId)).filter((kind) => kind === 'review.canceled'),
-    ).toHaveLength(1);
+    const restartedKinds = await historyKinds(restarted, fireId);
+    expect(restartedKinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
     expect(
       await auditRecordsOf(restarted, fireId, 'review.human-wait.canceled', review.id),
     ).toHaveLength(1);

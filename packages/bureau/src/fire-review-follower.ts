@@ -203,7 +203,7 @@ export function createFireReviewFollower(
     };
     report(firstError);
     const work = (async () => {
-      for (let failures = 1; !disposed; failures += 1) {
+      for (let failures = 1; ; failures += 1) {
         await wait(backoff(failures));
         if (disposed) return;
         try {
