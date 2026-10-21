@@ -3332,7 +3332,8 @@ async function buildRuntimeComposition(
     let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
     // COR-1620: set when the policy that governs the run cannot be verified, from the start or
     // once a stored skill is refused on recovery. The run then offers no tool and writes no
-    // skill snapshot, so a recovered step runs nothing its persisted skill would forbid.
+    // skill snapshot, so what it persisted before is kept, and an approval it raises is refused
+    // at approve.
     let skillPolicyUnverified = runtimeOptions?.skillPolicyUnverifiable === true;
 
     if (options.identity) {
@@ -3717,8 +3718,8 @@ async function buildRuntimeComposition(
     // before the crash. `activeSkillRecords` is written by createSkillRecordSnapshotHook after
     // each step boundary and is validated here before use (PRRT_kwDORvupsc6MZ1Md).
     // COR-1620: the snapshot it can verify, or none and no tools: a reattached run whose policy
-    // cannot be verified, or whose stored skill the catalog refuses, runs nothing its persisted
-    // skill would forbid, and keeps the snapshot it has.
+    // cannot be verified, or whose stored skill the catalog refuses, is offered no tool, has its
+    // approvals refused at approve, and keeps the snapshot it has.
     const skillSnapshot: SkillSnapshot =
       runId === undefined
         ? { status: 'verified', records: undefined }
