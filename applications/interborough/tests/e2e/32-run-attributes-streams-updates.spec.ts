@@ -132,12 +132,16 @@ test('operator reads a run’s update history, then sends an update that outlast
 }) => {
   await page.goto(`/runs/${UPDATE_DESK_RUN_ID}?tab=updates`);
 
-  // Both were sent when the fixture was seeded, before this page loaded.
+  // Both were sent when the fixture was seeded, before this page loaded. A stored answer is swept five
+  // minutes after it is made, and a long browser run can reach this spec after that, so what the row
+  // must hold is the outcome, which the history keeps, and either the answer or the note that it is gone.
   const greeted = page.locator('[data-update-id]', { hasText: 'greet' });
   await expect(greeted).toBeVisible();
-  await expect(greeted).toContainText('hello ada');
+  await expect(greeted).toHaveAttribute('data-status', 'completed');
+  await expect(greeted).toContainText(/hello ada|result no longer kept/);
   const exploded = page.locator('[data-update-id]', { hasText: 'explode' });
   await expect(exploded).toBeVisible();
+  await expect(exploded).toHaveAttribute('data-status', 'failed');
   await expect(exploded).toContainText('the desk refused this update');
   await checkA11y('workflow detail — update history');
 
@@ -185,9 +189,6 @@ test('a browser that sends an update over REST and sees it time out does not sen
     }
   }, UPDATE_DESK_REPLAY_RUN_ID);
 
-  expect(outcome.status).toBe(504);
-  expect(outcome.body).toMatchObject({ data: { updateId: expect.any(String) } });
-
   const listed = await request.post('/jsonrpc', {
     data: {
       jsonrpc: '2.0',
@@ -197,5 +198,9 @@ test('a browser that sends an update over REST and sees it time out does not sen
     },
   });
   const body = (await listed.json()) as { result: { items: Array<{ name: string }> } };
+  // The count comes first: a replayed request leaves one entry per replay, and the browser never sees
+  // a status at all, so the count is what names the replay.
   expect(body.result.items.filter((item) => item.name === 'slow')).toHaveLength(1);
+  expect(outcome.status).toBe(504);
+  expect(outcome.body).toMatchObject({ data: { updateId: expect.any(String) } });
 });

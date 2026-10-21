@@ -86,8 +86,7 @@ describe('isSubmissionTimeout', () => {
   test('does not call any other failure a timeout', () => {
     expect(isSubmissionTimeout(new HttpClientError(422, 'refused'))).toBe(false);
     // `Request Timeout` is no longer what the server answers a timeout with: nothing treats it as one.
-    const requestTimeoutStatus = 4 * 100 + 8;
-    expect(isSubmissionTimeout(new HttpClientError(requestTimeoutStatus, 'timed out'))).toBe(false);
+    expect(isSubmissionTimeout(new HttpClientError(408, 'timed out'))).toBe(false);
     expect(isSubmissionTimeout(new Error('network unreachable'))).toBe(false);
     expect(isSubmissionTimeout('boom')).toBe(false);
     expect(isSubmissionTimeout(null)).toBe(false);
