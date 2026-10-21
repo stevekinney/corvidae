@@ -13,6 +13,7 @@
  * because this module was evaluated.
  */
 import { routes, type RouteDefinition } from '../app/routes.ts';
+import { identifierPath, withEscapedIdentifier } from './identifier-paths.ts';
 
 export interface RouteMatch {
   readonly pattern: string;
@@ -51,24 +52,6 @@ function matchPattern(pattern: string, pathname: string): Record<string, string>
   return params;
 }
 
-/** The path segment `workflowDetailPath` and `scheduleDetailPath` emit in place of a dot-only identifier. */
-const DOT_ID_PLACEHOLDER = '_';
-
-/** The query key that carries the identifier a placeholder path stands for, by route pattern. */
-const ESCAPED_ID_QUERY: Readonly<Record<string, string>> = {
-  '/runs/:id': '__weft_workflow_id',
-  '/schedules/:id': '__weft_schedule_id',
-};
-
-/** `/<segment>/<id>`, with a dot-only `id` carried in the query, which no browser normalises away. */
-function identifierPath(segment: string, queryKey: string, id: string, search: URLSearchParams) {
-  const nextSearch = new URLSearchParams(search);
-  const dotOnly = id === '.' || id === '..';
-  if (dotOnly) nextSearch.set(queryKey, id);
-  const query = nextSearch.toString();
-  return `/${segment}/${dotOnly ? DOT_ID_PLACEHOLDER : encodeURIComponent(id)}${query ? `?${query}` : ''}`;
-}
-
 /**
  * Builds a workflow detail path. Dot-only identifiers use a query-carried
  * escape because browsers normalize those exact path segments before the
@@ -78,7 +61,7 @@ export function workflowDetailPath(
   workflowId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  return identifierPath('runs', '__weft_workflow_id', workflowId, search);
+  return identifierPath('runs', '/runs/:id', workflowId, search);
 }
 
 /** A schedule's page. A dot-only identifier is carried as `workflowDetailPath` carries one. */
@@ -86,7 +69,7 @@ export function scheduleDetailPath(
   scheduleId: string,
   search: URLSearchParams = new URLSearchParams(),
 ): string {
-  return identifierPath('schedules', '__weft_schedule_id', scheduleId, search);
+  return identifierPath('schedules', '/schedules/:id', scheduleId, search);
 }
 
 /** A schedule's page with its edit drawer open. */
@@ -171,13 +154,20 @@ class DashboardRouter {
   }
 
   /**
-   * What the route outlet keys the mounted route on: the pathname, so a new path is a new page.
+   * What the route outlet keys the mounted route on: the pathname (and the identifier an escaped
+   * path stands in for), so a new path is a new page.
    * A navigation that asks to `keep` the page leaves the key as it was, so the route that made it
    * stays mounted under the new address (a new chat becoming its session, mid-run).
    */
   get viewKey(): string {
     this.#listen();
-    return this.#keptKey ?? this.pathname;
+    if (this.#keptKey !== undefined) return this.#keptKey;
+    // Two identifiers a path stands in for with one placeholder are two pages, not one.
+    const found = findRouteDefinition(this.pathname, routes);
+    const params = found === null ? undefined : withEscapedIdentifier(found, this.search);
+    return found !== null && params !== found.params
+      ? `${this.pathname}#${JSON.stringify(params)}`
+      : this.pathname;
   }
 
   /** The route matching the current `pathname`, or `null` for an unowned path. */
@@ -189,18 +179,7 @@ class DashboardRouter {
   get current(): RouteState {
     const found = findRouteDefinition(this.pathname, routes);
     const search = this.search;
-    // The override stands in for a dot-only identifier that cannot be a path segment, and the
-    // path builders pair it with the placeholder `_`. On any other path it would make the page act
-    // on a different thing than the one its address names.
-    const escapeKey = found === null ? undefined : ESCAPED_ID_QUERY[found.definition.pattern];
-    const escapedIdentifier =
-      escapeKey !== undefined && found?.params['id'] === DOT_ID_PLACEHOLDER
-        ? search.get(escapeKey)
-        : null;
-    const params =
-      (escapedIdentifier === '.' || escapedIdentifier === '..') && found
-        ? { ...found.params, id: escapedIdentifier }
-        : (found?.params ?? {});
+    const params = found === null ? {} : withEscapedIdentifier(found, search);
     return {
       route: found?.definition ?? null,
       params,
