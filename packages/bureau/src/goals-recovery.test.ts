@@ -27,6 +27,7 @@ import {
   createDiagnostics,
   createLatch,
   createTestDatabase,
+  createUnsetTestDatabase,
   currentEpochMilliseconds,
   durableIds,
   goalRequest,
@@ -53,7 +54,7 @@ import {
 import type { Bureau } from './types';
 
 const cleanups: Array<() => Promise<void> | void> = [];
-let database: TestDatabase = createTestDatabase('unset');
+let database: TestDatabase = createUnsetTestDatabase();
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();

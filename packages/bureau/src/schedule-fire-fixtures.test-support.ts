@@ -3,9 +3,6 @@
  * timers are driven by hand, a fire that is one `runDurableMaintenance` tick away, and the tools
  * and models a fire asks a human with. Each test file calls `harness.dispose` after each test.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   type GenerateContext,
@@ -16,6 +13,7 @@ import {
 import { resolveStorage, type Storage, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createMemoryAssetStorage } from './assets/storage';
 import { createBureau } from './create-bureau';
@@ -42,7 +40,6 @@ export function createScheduleFireHarness() {
   const databasePaths: string[] = [];
   const openedStorages: Storage[] = [];
   const beforeDispose: Array<() => void> = [];
-  let databaseCounter = 0;
   return {
     /** Runs `action` ahead of the next `dispose`, ahead of closing any Bureau. */
     onDispose(action: () => void): void {
@@ -53,16 +50,11 @@ export function createScheduleFireHarness() {
       for (const bureau of bureaus.splice(0)) await bureau.dispose();
       for (const storage of openedStorages.splice(0)) storage[Symbol.dispose]();
       for (const path of databasePaths.splice(0)) {
-        await rm(path, { force: true });
-        await rm(`${path}-wal`, { force: true });
-        await rm(`${path}-shm`, { force: true });
+        removeTemporaryPath(path);
       }
     },
     nextDatabasePath(): string {
-      const path = join(
-        tmpdir(),
-        `bureau-schedule-fire-reviews-${process.pid}-${databaseCounter++}.sqlite`,
-      );
+      const path = createTemporaryPath('bureau-schedule-fire-reviews', '.sqlite');
       databasePaths.push(path);
       return path;
     },
@@ -304,11 +296,11 @@ export function holdingWrites(marker: string) {
 }
 
 /**
- * A storage whose process dies between a fire step's session write, which records an approval, and
+ * A storage whose process dies between a fire step's session write, which carries `marker`, and
  * the step's commit: the journal write of the step is held for good, so the hook has run and the
  * request has been announced, and the step never commits. `reached` resolves at the hold.
  */
-export function crashAfterApprovalWrite() {
+export function crashAfterSessionWrite(marker: string) {
   let armed = false;
   let held = false;
   const reached = Promise.withResolvers<void>();
@@ -330,13 +322,22 @@ export function crashAfterApprovalWrite() {
               // write lost a checkpoint compare-and-swap.
               return new Promise(() => {});
             }
-            if (text.includes('pendingApprovalOverrides')) armed = true;
+            if (text.includes(marker)) armed = true;
             return call();
           };
         },
       });
     },
   };
+}
+
+/**
+ * A storage whose process dies between a fire step's session write, which records an approval, and
+ * the step's commit: the journal write of the step is held for good, so the hook has run and the
+ * request has been announced, and the step never commits. `reached` resolves at the hold.
+ */
+export function crashAfterApprovalWrite() {
+  return crashAfterSessionWrite('pendingApprovalOverrides');
 }
 
 /** The audit records of `type` that a run has, narrowed to one review by its id when given. */

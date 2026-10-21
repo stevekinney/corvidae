@@ -27,6 +27,23 @@ try {
 
 `trackTimers()` observes the host's `setTimeout`, `setInterval`, and matching clear calls for the current test process. It does not prove that a promise, event listener, browser animation, or server process has stopped. Pair it with the owning package's `dispose()`, `complete()`, or shutdown report when the fixture starts those resources.
 
+## Temporary paths
+
+Name a test's temporary files with `@lostgradient/testing/temporary-path`, never with `process.pid`. The operating system reuses process ids, so a later run builds the path an earlier run used, opens the database that run left behind, and inherits its rows. `createTemporaryPath(label, extension)` returns a path inside a fresh `mkdtemp` directory, so a SQLite file and its `-wal` and `-shm` files share one owner, and `removeTemporaryPath(path)` removes that directory in a `finally` or an `afterEach`. A file that has to stay next to the source it imports, such as a compiled server-render module, takes `uniqueFileName(label, extension)`, which appends a `crypto.randomUUID()`.
+
+```typescript
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+
+const databasePath = createTemporaryPath('bureau-recovery', '.sqlite');
+try {
+  // Open the database at databasePath, exercise it, dispose of it.
+} finally {
+  removeTemporaryPath(databasePath);
+}
+```
+
+`scripts/check-process-identifier-test-paths.ts`, part of `bun run lint:root`, fails when a test file passes the process id to `join` or `resolve`. Bureau's public storage fixtures cannot import this package at runtime, so `packages/bureau/src/test/temporary-path.ts` is a byte-for-byte copy that `scripts/check-test-support-copies.ts` keeps in step.
+
 ## Accessibility and visual evidence
 
 `evaluateAxeGate()` turns the blocking `critical` and `serious` buckets from an axe scan into a binary decision. An allow-list entry may explain an intentional exception, but a new rule identifier still fails the gate. Keep the key stable so the failure identifies the same component, theme, viewport, and fixture in every run:

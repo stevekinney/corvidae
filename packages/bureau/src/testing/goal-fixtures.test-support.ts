@@ -8,10 +8,6 @@
  * knows about A's goals it learns from storage.
  */
 
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createAgent,
@@ -26,12 +22,11 @@ import {
 } from '@lostgradient/operative';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { expect } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
 import type { Bureau, BureauDiagnostic } from '../types';
-
-let databaseCounter = 0;
 
 export interface TestDatabase {
   readonly path: string;
@@ -56,14 +51,20 @@ export function currentEpochMilliseconds(): number {
   return realRuntime.clock.now();
 }
 
+/**
+ * A placeholder for a suite's module-scope `database` before its first test assigns a real one. It
+ * names no path and makes no directory, so nothing is left behind when no test replaces it.
+ */
+export function createUnsetTestDatabase(): TestDatabase {
+  return { path: '', async remove() {} };
+}
+
 export function createTestDatabase(label: string): TestDatabase {
-  const path = join(tmpdir(), `bureau-goals-${label}-${process.pid}-${databaseCounter++}.sqlite`);
+  const path = createTemporaryPath(`bureau-goals-${label}`, '.sqlite');
   return {
     path,
     async remove() {
-      await rm(path, { force: true });
-      await rm(`${path}-wal`, { force: true });
-      await rm(`${path}-shm`, { force: true });
+      removeTemporaryPath(path);
     },
   };
 }

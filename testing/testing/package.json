@@ -5,7 +5,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./coverage-ratchet": "./src/coverage-ratchet/index.ts",
-    "./hang-guard": "./src/hang-guard.ts"
+    "./hang-guard": "./src/hang-guard.ts",
+    "./temporary-path": "./src/temporary-path.ts"
   },
   "scripts": {
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src",

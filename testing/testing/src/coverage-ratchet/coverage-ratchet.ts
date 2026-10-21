@@ -175,6 +175,16 @@ function isTransientTestArtifact(file: string, packageRoot: string): boolean {
     return true;
   }
 
+  // The SSR tests now name these modules with `uniqueFileName('.cinder-ssr-<label>', '.mjs')`
+  // (`../temporary-path.ts`): `.cinder-ssr-<label>-<uuid>.mjs`, with no process id in it.
+  if (
+    /(?:^|\/)\.cinder-ssr-[a-z0-9-]+-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:\.svelte-server)?\.mjs$/.test(
+      file,
+    )
+  ) {
+    return true;
+  }
+
   // hydration-safety.ts writes paired server/client bundles into the package
   // root's `tmp/hydration-safety`, imports them once, then unlinks them.
   const normalizedFile = file.replaceAll('\\', '/');

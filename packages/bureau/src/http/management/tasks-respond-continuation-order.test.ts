@@ -12,10 +12,6 @@
  * the run has parked again, forcing that order, and check the task still reads `input-required`.
  */
 
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import {
   createAgent,
   type GenerateContext,
@@ -25,6 +21,7 @@ import {
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { waitForCondition } from '../../test';
 import {
@@ -128,10 +125,7 @@ async function withHeldBureau(
   options: Parameters<typeof openBureau>[0],
   body: (opened: OpenedBureau, hold: HeldStorage) => Promise<void>,
 ): Promise<void> {
-  const path = join(
-    tmpdir(),
-    `bureau-respond-order-${String(process.pid)}-${crypto.randomUUID()}.sqlite`,
-  );
+  const path = createTemporaryPath('bureau-respond-order', '.sqlite');
   const hold = holdWrites(await resolveStorage({ type: 'sqlite', path }));
   const opened = await openBureau({ ...options, storage: hold.storage });
   try {
@@ -140,9 +134,7 @@ async function withHeldBureau(
     hold.release();
     await opened.dispose();
     hold.storage[Symbol.dispose]();
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 }
 
