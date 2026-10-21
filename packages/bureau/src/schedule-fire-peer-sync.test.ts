@@ -10,6 +10,7 @@
 import { type GenerateFunction, stopWhen, type Toolbox } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
+import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -21,6 +22,7 @@ import {
 } from './http/management/management-fixtures.test-support.ts';
 import {
   approvalToolbox,
+  askingGenerate,
   auditRecordsOf,
   chargesOnce,
   createScheduleFireHarness,
@@ -34,8 +36,9 @@ import {
   storedText,
 } from './schedule-fire-fixtures.test-support';
 import { fireReviewFollowerOf } from './fire-review-follower';
+import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from './testing/promise-outcome.test-support.ts';
-import type { Bureau, PendingToolApprovalReview } from './types';
+import type { Bureau, BureauOptions, PendingToolApprovalReview } from './types';
 
 const harness = createScheduleFireHarness();
 
@@ -120,10 +123,12 @@ async function holderAndPeer(
   toolboxes: { holder: Toolbox; peer: Toolbox },
   sessionId: string,
   wrapHolder: (storage: Storage) => Storage = (storage) => storage,
+  holderOptions: Partial<BureauOptions> = {},
 ) {
   const path = harness.nextDatabasePath();
   const holder = await harness.open({
     ...peerOptions,
+    ...holderOptions,
     toolbox: toolboxes.holder,
     storage: await harness.sqliteStorage(path, wrapHolder),
   });
@@ -284,6 +289,8 @@ describe('a decision on a stale round', () => {
       },
       'peer-sync-stale-round',
     );
+    // The test does not depend on the holder's subscription: it never hears the re-gate.
+    fireReviewFollowerOf(holder).unfollow(fireId);
     peerGate.revision = 2;
     const outcome = await peer.resolveReview({
       id: review.id,
@@ -431,6 +438,203 @@ describe('a canceled review an earlier build recorded without the deduplication 
     );
     expect(records).toHaveLength(1);
     expect(records[0]?.principal).toBe('system:run-abort');
+  });
+});
+
+describe('a decision whose round advances while its claim is being made', () => {
+  it('is refused with CONFLICT once the claim is held, the tool does not run, and the peer’s round survives', async () => {
+    const holderCharges: number[] = [];
+    const hold = holdingWrites('review-decision:v1:');
+    harness.onDispose(() => hold.release());
+    const peerGate = { revision: 1 };
+    const { holder, peer, fireId, review } = await holderAndPeer(
+      {
+        holder: switchedToolbox(holderCharges, { revision: 1 }),
+        peer: switchedToolbox([], peerGate),
+      },
+      'peer-sync-claim-race',
+      (storage) => hold.wrap(storage),
+    );
+    // The holder reads the session at round 0, then its claim is held at the write.
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    hold.arm();
+    const deciding = rejectionOf(
+      holder.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice }),
+    );
+    await Promise.race([hold.reached, sleep(3_000)]);
+    expect(hold.held).toBe(true);
+
+    // The peer re-gates the approval and gives up its claim of round 0 while the holder waits.
+    peerGate.revision = 2;
+    const outcome = await peer.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
+    expect(outcome.superseded).toBe(true);
+    hold.release();
+    const refusal = await deciding;
+
+    expect((refusal as BureauError).code).toBe('CONFLICT');
+    expect(holderCharges).toEqual([]);
+    const session = await peer.getSession('peer-sync-claim-race');
+    expect(session?.metadata['pendingApprovalRounds']).toEqual({ [review.id]: 1 });
+    expect(Object.keys(session?.metadata['pendingApprovalOverrides'] as object)).toEqual([
+      review.id,
+    ]);
+    // The refusal released the claim: the round the peer left can be claimed by no one, and the
+    // holder now lists the round the session holds.
+    expect((reviewsOf(holder, fireId) as PendingToolApprovalReview[])[0]?.round).toBe(1);
+  });
+});
+
+describe('the binding of a re-gated round', () => {
+  it('is restored before the round is adopted, so a restore that fails is tried again', async () => {
+    const peerGate = { revision: 1 };
+    const { holder, peer, fireId, review } = await holderAndPeer(
+      { holder: switchedToolbox([], { revision: 1 }), peer: switchedToolbox([], peerGate) },
+      'peer-sync-restore-order',
+    );
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    const toolbox = scheduledFireReviewStateOf(holder).runToolboxesByRunId.get(
+      fireId,
+    ) as unknown as {
+      restoreApproval: (approval: unknown) => Promise<void>;
+    };
+    const restore = toolbox.restoreApproval.bind(toolbox);
+    const attempts = { failNext: true, restored: 0 };
+    toolbox.restoreApproval = async (approval) => {
+      if (attempts.failNext) {
+        attempts.failNext = false;
+        throw new Error('the approval store is unavailable');
+      }
+      attempts.restored += 1;
+      await restore(approval);
+    };
+    peerGate.revision = 2;
+    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+
+    const failure = await rejectionOf(fireReviewFollowerOf(holder).reread(fireId));
+    expect((failure as Error).message).toContain('unavailable');
+    // The round was not adopted, so it is still the one the holder lists.
+    expect((reviewsOf(holder, fireId) as PendingToolApprovalReview[])[0]?.round).toBe(0);
+
+    await fireReviewFollowerOf(holder).reread(fireId);
+
+    expect(attempts.restored).toBe(1);
+    expect((reviewsOf(holder, fireId) as PendingToolApprovalReview[])[0]?.round).toBe(1);
+  });
+});
+
+describe('the grace a review is given to reach durable state', () => {
+  it('keeps a young review the session no longer records, and drops it once it is thirty seconds old', async () => {
+    const skew = { milliseconds: 0 };
+    const base = createDefaultRuntimeServices();
+    const runtime = {
+      ...base,
+      clock: {
+        now: () => base.clock.now() + skew.milliseconds,
+        nowISO: () => new Date(base.clock.now() + skew.milliseconds).toISOString(),
+      },
+    };
+    const { holder, peer, fireId } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-grace',
+      (storage) => storage,
+      {
+        runtime,
+        durableOwnership: { ...OWNERSHIP, workflowClaimTtlMs: 600_000 },
+      },
+    );
+    // The holder hears nothing of the expiry: only a read of durable state can drop the review.
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    skew.milliseconds = 29_000;
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    skew.milliseconds = 31_000;
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(0);
+  });
+});
+
+describe('a Bureau that shuts down', () => {
+  it('stops following the fires it held, so no subscription outlives it', async () => {
+    const { holder, fireId } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-shutdown',
+    );
+    const follower = fireReviewFollowerOf(holder);
+    expect(follower.followed()).toEqual([fireId]);
+
+    await holder.dispose();
+
+    expect(follower.followed()).toEqual([]);
+  });
+});
+
+describe('the human wait of a fire', () => {
+  const waitOptions = {
+    generate: askingGenerate('answer', []),
+    humanInput: true,
+    stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+    durableOwnership: OWNERSHIP,
+    durableBackgroundTasks: 'automatic' as const,
+  };
+
+  it('is followed while it is parked, and no longer once a peer has answered it', async () => {
+    const path = harness.nextDatabasePath();
+    const holder = await harness.open({
+      ...waitOptions,
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice, 'peer-sync-wait-lifecycle');
+    const review = await reviewOf(holder, fireId);
+    expect(review.kind).toBe('human-wait');
+    expect(fireReviewFollowerOf(holder).followed()).toEqual([fireId]);
+    await sleep(150);
+    const peer = await harness.open({ ...waitOptions, storage: await harness.sqliteStorage(path) });
+
+    await peer.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+      payload: 'staging',
+    });
+
+    await eventually(
+      async () => ((await durableStatus(holder, fireId)) === 'completed' ? true : undefined),
+      'the fire to complete',
+    );
+    await eventually(
+      () => (fireReviewFollowerOf(holder).followed().length === 0 ? true : undefined),
+      'the holder to stop following the answered fire',
+    );
+  });
+
+  it('is followed by the Bureau that restores the park after a restart', async () => {
+    const path = harness.nextDatabasePath();
+    const first = await harness.open({
+      ...waitOptions,
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(first, OWNER.alice, 'peer-sync-wait-restart');
+    const review = await reviewOf(first, fireId);
+    await first.dispose();
+
+    const restarted = await harness.open({
+      ...waitOptions,
+      storage: await harness.sqliteStorage(path),
+    });
+    const restored = await reviewOf(restarted, fireId);
+
+    expect(restored.id).toBe(review.id);
+    expect(fireReviewFollowerOf(restarted).followed()).toEqual([fireId]);
   });
 });
 

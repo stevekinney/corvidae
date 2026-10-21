@@ -14,6 +14,8 @@ import {
   createDurableEventHistory,
   createDurableEventProducer,
   type DurableEventHistory,
+  type DurableEventOwnersSubscribeOptions,
+  type DurableEventOwnersSubscription,
 } from './durable-event-history';
 import { ReviewCanceledEvent } from './events';
 import { createFireReviewFollower, type FireReviewFollower } from './fire-review-follower';
@@ -53,11 +55,12 @@ async function openHistory(): Promise<{ history: DurableEventHistory; storage: S
 }
 
 function openFollower(
-  history: DurableEventHistory,
+  history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
   overrides: {
     closeReview?: (runId: string, reviewId: string, kind: string) => Promise<void>;
     reread?: (runId: string) => Promise<void>;
     diagnostics?: BureauDiagnostic[];
+    retryDelayMilliseconds?: number;
   } = {},
 ) {
   const closed: string[] = [];
@@ -74,10 +77,14 @@ function openFollower(
       (async (runId) => {
         reread.push(runId);
       }),
-    sleep: () => Promise.resolve(),
+    timers: {
+      setTimeout: (callback, ms) => setTimeout(callback, ms),
+      clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    },
     diagnose: (diagnostic) => overrides.diagnostics?.push(diagnostic),
     attempts: 3,
-    retryDelayMilliseconds: 0,
+    retryDelayMilliseconds: overrides.retryDelayMilliseconds ?? 0,
+    maximumRetryDelayMilliseconds: overrides.retryDelayMilliseconds ?? 0,
   });
   cleanups.push(() => follower.dispose());
   return { follower, closed, reread };
@@ -303,7 +310,9 @@ describe('the fire review follower', () => {
           : undefined,
       'the diagnostic',
     );
-    expect(rereads).toEqual(['fire-a']);
+    // A fire that cannot be read is reconciled again, not given up on.
+    expect(rereads.length).toBeGreaterThanOrEqual(1);
+    expect(new Set(rereads)).toEqual(new Set(['fire-a']));
   });
 
   it('reads every followed fire again when retention overtakes the subscription', async () => {
@@ -359,17 +368,6 @@ describe('the fire review follower', () => {
 });
 
 describe('a canceled review recorded with and without its deduplication key', () => {
-  function canceledBureau(): { bureau: Bureau; dispatch: (event: ReviewCanceledEvent) => void } {
-    let listener: ((event: ReviewCanceledEvent) => void) | undefined;
-    const bureau = {
-      addEventListener(type: string, handler: (event: ReviewCanceledEvent) => void) {
-        if (type === 'review.canceled') listener = handler;
-      },
-      removeEventListener() {},
-    } as unknown as Bureau;
-    return { bureau, dispatch: (event) => listener?.(event) };
-  }
-
   it('keeps one history event for a review round that two instances both record', async () => {
     const { history } = await openHistory();
     const runtime = createManualRuntimeServices();
@@ -459,5 +457,249 @@ describe('a canceled review recorded with and without its deduplication key', ()
     if (!('events' in page)) throw new Error('expected a page');
     expect(page.events).toHaveLength(3);
     expect(page.events[0]?.payload).toMatchObject({ reviewId: 'approval:run-1:call-1' });
+  });
+});
+
+function canceledBureau(): { bureau: Bureau; dispatch: (event: ReviewCanceledEvent) => void } {
+  let listener: ((event: ReviewCanceledEvent) => void) | undefined;
+  const bureau = {
+    addEventListener(type: string, handler: (event: ReviewCanceledEvent) => void) {
+      if (type === 'review.canceled') listener = handler;
+    },
+    removeEventListener() {},
+  } as unknown as Bureau;
+  return { bureau, dispatch: (event) => listener?.(event) };
+}
+
+/**
+ * A history whose reads can be made to fail: a storage that cannot read the feed's tail
+ * (`down`: every subscription opened ends at once, on its own), and a page read that fails
+ * `failPages` times. `endLive` ends the live subscription on its own, as a storage failure would.
+ */
+function unreliableHistory(real: DurableEventHistory) {
+  const state = { down: false, failPages: 0, opens: 0 };
+  let live:
+    | {
+        subscription: DurableEventOwnersSubscription;
+        options: DurableEventOwnersSubscribeOptions | undefined;
+      }
+    | undefined;
+  const history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+    page: (...args) => {
+      if (state.failPages > 0) {
+        state.failPages -= 1;
+        return Promise.reject(new Error('storage unavailable'));
+      }
+      return real.page(...args);
+    },
+    subscribeEventHistoryOfOwners(listener, options) {
+      state.opens += 1;
+      if (state.down) {
+        const ready = Promise.reject(new Error('storage unavailable'));
+        ready.catch(() => undefined);
+        const failed: DurableEventOwnersSubscription = {
+          follow() {},
+          unfollow() {},
+          followed: () => [],
+          unsubscribe() {},
+          closed: true,
+          ready,
+        };
+        queueMicrotask(() => options?.onEnded?.());
+        return failed;
+      }
+      const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+      live = { subscription, options };
+      return subscription;
+    },
+  };
+  return {
+    history,
+    state,
+    endLive() {
+      live?.subscription.unsubscribe();
+      live?.options?.onEnded?.();
+    },
+  };
+}
+
+describe('a followed fire that cannot be read', () => {
+  it('is caught up after an outage that outlasts the reopens, with no other fire followed', async () => {
+    const { history: real } = await openHistory();
+    const flaky = unreliableHistory(real);
+    const { follower, closed } = openFollower(flaky.history);
+    follower.follow('fire-a');
+    await follower.settled();
+
+    flaky.state.down = true;
+    flaky.endLive();
+    await eventually(() => (flaky.state.opens > 6 ? true : undefined), 'the reopens to be tried');
+    // The storage recovers, and a peer has closed the fire's review in the meantime.
+    flaky.state.down = false;
+    await real.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+
+    await eventually(() => (closed.length > 0 ? true : undefined), 'the closing to be read');
+    expect(closed).toEqual(['fire-a|approval:fire-a:1|review.approved']);
+  });
+
+  it('is caught up again when the read of its history fails once after the subscription ended', async () => {
+    const { history: real } = await openHistory();
+    const flaky = unreliableHistory(real);
+    const { follower, closed } = openFollower(flaky.history);
+    follower.follow('fire-a');
+    await follower.settled();
+
+    // The subscription ends and a peer closes the review, before the reopen's catch-up read,
+    // which fails once.
+    flaky.state.failPages = 1;
+    await real.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+    flaky.endLive();
+
+    await eventually(() => (closed.length > 0 ? true : undefined), 'the closing to be read');
+    expect(closed).toEqual(['fire-a|approval:fire-a:1|review.approved']);
+    expect(flaky.state.failPages).toBe(0);
+  });
+
+  it('is read again from durable state when the read a gap makes necessary fails once', async () => {
+    const { history, storage } = await openHistory();
+    const writer = createDurableEventHistory(storage, createManualRuntimeServices());
+    cleanups.push(() => writer.dispose());
+    const gate = Promise.withResolvers<void>();
+    const failedOnce = new Set<string>();
+    const succeeded: string[] = [];
+    const { follower } = openFollower(history, {
+      closeReview: async (_runId, reviewId) => {
+        if (reviewId === 'first') await gate.promise;
+      },
+      reread: async (runId) => {
+        if (!failedOnce.has(runId)) {
+          failedOnce.add(runId);
+          throw new Error('storage unavailable');
+        }
+        succeeded.push(runId);
+      },
+    });
+    follower.follow('fire-a');
+    follower.follow('fire-b');
+    await follower.settled();
+    succeeded.length = 0;
+    failedOnce.clear();
+    await writer.record(runOwner('fire-a'), 'review.approved', closing('first'));
+    await sleep(100);
+    await writer.record(runOwner('fire-a'), 'review.expired', closing('second'));
+    await writer.record(runOwner('fire-b'), 'review.expired', closing('third'));
+    expect(await writer.retainBefore(Date.now() + 1_000_000)).toBeGreaterThan(0);
+
+    gate.resolve();
+
+    await eventually(
+      () => (succeeded.includes('fire-a') && succeeded.includes('fire-b') ? true : undefined),
+      'both fires to be read again after their first read failed',
+    );
+  });
+
+  it('does not open subscriptions in a loop when each one ends at once without a failure', async () => {
+    const { history: real } = await openHistory();
+    const state = { opens: 0 };
+    const endingAtOnce: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'> = {
+      page: (...args) => real.page(...args),
+      subscribeEventHistoryOfOwners(listener, options) {
+        state.opens += 1;
+        const subscription = real.subscribeEventHistoryOfOwners(listener, options);
+        // The feed was released under it, as at shutdown: the subscription ends by itself.
+        queueMicrotask(() => {
+          subscription.unsubscribe();
+          options?.onEnded?.();
+        });
+        return subscription;
+      },
+    };
+    const { follower } = openFollower(endingAtOnce, { retryDelayMilliseconds: 20 });
+    follower.follow('fire-a');
+
+    await sleep(400);
+
+    // One open per 20 milliseconds wait at the most: a few tens, not the thousands of a loop.
+    expect(state.opens).toBeGreaterThan(1);
+    expect(state.opens).toBeLessThan(40);
+  });
+
+  it('keeps no timer alive once it is disposed, however long its backoff', async () => {
+    const { history: real } = await openHistory();
+    const flaky = unreliableHistory(real);
+    const live = new Set<ReturnType<typeof setTimeout>>();
+    const follower = createFireReviewFollower({
+      history: flaky.history,
+      closeReview: async () => undefined,
+      reread: async () => undefined,
+      timers: {
+        setTimeout: (callback, ms) => {
+          const handle = setTimeout(() => {
+            live.delete(handle);
+            callback();
+          }, ms);
+          live.add(handle);
+          return handle;
+        },
+        clearTimeout: (handle) => {
+          live.delete(handle as ReturnType<typeof setTimeout>);
+          clearTimeout(handle as ReturnType<typeof setTimeout>);
+        },
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 60_000,
+      maximumRetryDelayMilliseconds: 60_000,
+    });
+    flaky.state.down = true;
+    follower.follow('fire-a');
+    await eventually(() => (live.size > 0 ? true : undefined), 'the backoff to be waiting');
+
+    await follower.dispose();
+
+    expect(live.size).toBe(0);
+  });
+});
+
+describe('the deduplication key of a canceled review', () => {
+  it('names the review and the round, and leaves a short review id as it was written', () => {
+    expect(reviewCanceledDedupeKey('approval:run-1:call-1', 1)).toBe(
+      'review.canceled:approval:run-1:call-1:1',
+    );
+    expect(reviewCanceledDedupeKey('human-wait:run-1:answer:0', 0)).toBe(
+      'review.canceled:human-wait:run-1:answer:0:0',
+    );
+  });
+
+  it('bounds a long review id, so the persisted key stays short and still tells reviews and rounds apart', async () => {
+    const longId = `human-wait:run-1:${'s'.repeat(5_000)}:0`;
+    const otherLongId = `human-wait:run-1:${'t'.repeat(5_000)}:0`;
+
+    const key = reviewCanceledDedupeKey(longId, 0);
+
+    expect(key.length).toBeLessThan(200);
+    expect(key).toMatch(/^review\.canceled:human-wait:sha256:[0-9a-f]{64}:0$/);
+    expect(reviewCanceledDedupeKey(longId, 0)).toBe(key);
+    expect(reviewCanceledDedupeKey(otherLongId, 0)).not.toBe(key);
+    expect(reviewCanceledDedupeKey(longId, 1)).not.toBe(key);
+
+    // Recorded twice, as two instances would, the closing is one record in the history.
+    const { history } = await openHistory();
+    const runtime = createManualRuntimeServices();
+    const first = canceledBureau();
+    const second = canceledBureau();
+    const firstProducer = createDurableEventProducer(first.bureau, history, runtime);
+    const secondProducer = createDurableEventProducer(second.bureau, history, runtime);
+    cleanups.push(() => firstProducer.dispose());
+    cleanups.push(() => secondProducer.dispose());
+    const event = () =>
+      new ReviewCanceledEvent(longId, 'run-1', 'system:run-abort', 'human-wait', 0);
+    first.dispatch(event());
+    second.dispatch(event());
+    await firstProducer.waitForAllActiveWrites();
+    await secondProducer.waitForAllActiveWrites();
+    const page = await history.page(runOwner('run-1'));
+    if (!('events' in page)) throw new Error('expected a page');
+    expect(page.events).toHaveLength(1);
   });
 });

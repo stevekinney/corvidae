@@ -463,6 +463,8 @@ import { streamEventToFrame } from './websocket-frames';
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
 const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
+/** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
+const FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS = 5_000;
 /**
  * COR-1476 — the first wait between attempts to write an ended run's steering
  * `run-ended` entry; each later wait doubles, up to the cap. The write is
@@ -5641,8 +5643,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     },
   ): Promise<boolean> {
     if (persisted.round <= (pendingApprovalRounds.get(reviewId) ?? 0)) return false;
-    pendingApprovalOverrides.set(reviewId, persisted.approval);
-    pendingApprovalRounds.set(reviewId, persisted.round);
     const restoreApproval = (
       runToolboxesByRunId.get(runId) as unknown as
         { restoreApproval?: (approval: SignedPendingToolApproval) => Promise<void> } | undefined
@@ -5665,6 +5665,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         });
       }
     }
+    // Moved only once the binding is restored: a restore that throws leaves this copy at the
+    // round it held, so the next read of the session adopts the round again rather than finding
+    // it already held and never restoring the binding.
+    pendingApprovalOverrides.set(reviewId, persisted.approval);
+    pendingApprovalRounds.set(reviewId, persisted.round);
     return true;
   }
 
@@ -14123,6 +14128,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
+   * COR-1621: the check {@link refuseStaleApprovalRound} makes before a decision is claimed, made
+   * again once it is held. A peer re-gates by writing the next round to the session and only then
+   * releasing its claim of the round it left, so a claim of that round can land after this
+   * process read the session and before the peer's release, or just after it. Once this process
+   * holds the claim no one can re-gate the round, so the session read now is final. A refusal
+   * here releases the claim through the failure path of the caller.
+   */
+  async function refuseStaleRoundOfHeldClaim(
+    review: PendingReview,
+    claimHeld: boolean,
+  ): Promise<void> {
+    if (!claimHeld || review.kind !== 'tool-approval') return;
+    const session = await runtime.sessionStore?.load(review.sessionId);
+    await refuseStaleApprovalRound(review, session?.metadata);
+  }
+
+  /**
    * COR-1621: refuses a decision on a round of an approval that is behind the session's. The round
    * this process lists can be behind: a peer that re-gated the approval put the next round in the
    * session, and a decision claim is keyed by review id and round, so a decision on the stale round
@@ -14353,6 +14375,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     let result: unknown;
     let keepPending = false;
     try {
+      await refuseStaleRoundOfHeldClaim(review, heldApprovalClaim !== undefined);
       if (review.kind === 'tool-approval') {
         // COR-1596: a fire canceled elsewhere (a peer process, a route that never reached this
         // one) still has its approval here until this is read; the engine's status says it was
@@ -14805,7 +14828,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // `recordReviewDecision`'s own doc comment for the transitions that DO.
     // This keeps writing directly, exactly as before.
     // COR-1621: a canceled review round is closed once across instances, so its record carries the
-    // key two instances that observe the same cancel share. Every other status is written as it
+    // key two instances that observe the same cancel of the same round share. Every other status is written as it
     // was. A keyed write rejects on a storage failure where the unkeyed one never does, so that
     // rejection is diagnosed here and the closing goes on, as a failed unkeyed write always did.
     const round = review.kind === 'tool-approval' ? review.round : 0;
@@ -15937,10 +15960,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           closeReview: (runId, reviewId, eventKind) =>
             tasks.reviewClosedElsewhere(runId, reviewId, eventKind),
           reread: rereadFireReviews,
-          sleep: sessionPersistenceSleep,
+          timers: runtimeServices.timers,
           diagnose,
           attempts: SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
           retryDelayMilliseconds: sessionPersistenceRetryDelayMilliseconds,
+          maximumRetryDelayMilliseconds: FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS,
         });
   // The durable event producer (AB-311's coordinator amendment) — sinks
   // `bureau`'s action stream into `eventHistoryInstance.record()`. Wired
