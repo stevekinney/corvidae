@@ -15,6 +15,7 @@ import { commitAnonymousSignalOperations } from './anonymous-signal-sequence.ts'
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
 import { assertWorkflowMessageDeclared } from './declared-messages.ts';
 import type { EngineInternals } from './internals.ts';
+import { validateSignalsForWorkflow } from './payload-validation.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { confirmWakeOwnership, wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';
 
@@ -198,6 +199,7 @@ export async function bufferSignalPayloads(
     return;
   }
   if (targetState) assertSignalsDeclared(internals, workflowId, targetState, deliveries);
+  await validateSignalsForWorkflow(internals, targetState, deliveries);
 
   const signalId = getSingleSignalId(deliveries, defaultOptions);
   validateSignalIdsBeforeKeyConstruction(deliveries, defaultOptions, signalId);

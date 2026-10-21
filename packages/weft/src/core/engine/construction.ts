@@ -37,7 +37,7 @@ import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
-import { resolveSchemaPolicy } from './schema-policy.ts';
+import { resolvePayloadValidation, resolveSchemaPolicy } from './schema-policy.ts';
 import { declaredMapFields } from './used-activities.ts';
 import {
   normalizeHistoryPolicy,
@@ -315,6 +315,7 @@ export function resolveEngineOptions(
     backgroundTaskMode: resolveBackgroundTaskMode(options),
     inlineLaunchSchedulingMode: resolveInlineLaunchSchedulingMode(options),
     schemaPolicy: resolveSchemaPolicy(options),
+    payloadValidation: resolvePayloadValidation(options),
     ...resolveBooleanDefaults(options),
     ...resolveNumericDefaults(options),
     ...resolveRetentionFields(options),

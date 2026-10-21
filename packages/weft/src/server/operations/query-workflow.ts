@@ -4,6 +4,7 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import {
   assertOperationEngineMethods,
   invalidParamsFault,
@@ -48,6 +49,8 @@ export const queryWorkflowOperation = defineOperation({
     } catch (error) {
       const undeclared = undeclaredMessageFault(error);
       if (undeclared !== undefined) throw undeclared;
+      const schemaFault = standardSchemaValidationFault(error);
+      if (schemaFault !== undefined) throw schemaFault;
       const message = error instanceof Error ? error.message : String(error);
 
       if (message.includes('not supported')) {

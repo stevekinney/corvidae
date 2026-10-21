@@ -55,6 +55,7 @@ describe('isWorkflowClaimedByAnotherEngine', () => {
     const storage = new MemoryStorage();
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       workflowClaimRegistry: fakeClaimRegistry(null),
       storage,
     } as unknown as Parameters<typeof isWorkflowClaimedByAnotherEngine>[0];
@@ -68,6 +69,7 @@ describe('isWorkflowClaimedByAnotherEngine', () => {
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       workflowClaimRegistry: fakeClaimRegistry(null),
       storage,
     } as unknown as Parameters<typeof isWorkflowClaimedByAnotherEngine>[0];
@@ -90,6 +92,7 @@ describe('isWorkflowClaimedByAnotherEngine', () => {
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       workflowClaimRegistry: fakeClaimRegistry(null),
       storage,
     } as unknown as Parameters<typeof isWorkflowClaimedByAnotherEngine>[0];
@@ -112,6 +115,7 @@ describe('isWorkflowClaimedByAnotherEngine', () => {
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       workflowClaimRegistry: fakeClaimRegistry(7, 'engine-a'),
       storage,
     } as unknown as Parameters<typeof isWorkflowClaimedByAnotherEngine>[0];
@@ -137,6 +141,7 @@ describe('isWorkflowClaimedByAnotherEngine', () => {
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       workflowClaimRegistry: fakeClaimRegistry(7, 'engine-a'),
       storage,
     } as unknown as Parameters<typeof isWorkflowClaimedByAnotherEngine>[0];
@@ -148,6 +153,7 @@ describe('query()', () => {
   it('returns the built-in activityProgress heartbeat regardless of ownership', async () => {
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map([['wf-1', { detail: 'x' }]]),
     } as unknown as Parameters<typeof query>[0];
     expect(await query(internals, 'wf-1', 'activityProgress')).toEqual({ detail: 'x' });
@@ -156,6 +162,7 @@ describe('query()', () => {
   it('throws when no inline strategy is configured (worker execution mode)', async () => {
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: null,
     } as unknown as Parameters<typeof query>[0];
@@ -167,6 +174,7 @@ describe('query()', () => {
   it('returns undefined when no context exists and no other engine claims the workflow', async () => {
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: { getContext: () => undefined, getParkedContext: () => undefined },
       workflowClaimRegistry: null,
@@ -198,6 +206,7 @@ describe('query()', () => {
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: { getContext: () => undefined, getParkedContext: () => undefined },
       workflowClaimRegistry: fakeClaimRegistry(null),
@@ -213,6 +222,7 @@ describe('query()', () => {
     const handler = mock((input: unknown) => `handled:${String(input)}`);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => ({
@@ -233,6 +243,7 @@ describe('query()', () => {
     const accessor = mock(() => 'accessor-value');
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => ({
@@ -249,6 +260,7 @@ describe('query()', () => {
   it('returns undefined when a live context has neither a handler nor accessor for the name', async () => {
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => ({ queryHandlers: new Map(), exposedAccessors: new Map() }),
@@ -263,6 +275,7 @@ describe('query()', () => {
     const handler = mock((input: unknown) => `handled:${String(input)}`);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => ({
@@ -294,6 +307,7 @@ describe('query()', () => {
     const handler = mock((input: unknown) => `handled:${String(input)}`);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         // A deposed engine keeps its live Context until some later fenced
@@ -380,6 +394,7 @@ describe('query() F1: re-reads the context after ownership validation', () => {
     };
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => freshContext,
@@ -410,6 +425,7 @@ describe('query() F1: re-reads the context after ownership validation', () => {
     };
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => undefined,
@@ -442,6 +458,7 @@ describe('query() F2: ignores a stale durable holder for a locally terminal work
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: { getContext: () => undefined, getParkedContext: () => undefined },
       workflowClaimRegistry: fakeClaimRegistry(null),
@@ -472,6 +489,7 @@ describe('query() F2: ignores a stale durable holder for a locally terminal work
     ]);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: { getContext: () => undefined, getParkedContext: () => undefined },
       workflowClaimRegistry: fakeClaimRegistry(null),
@@ -490,6 +508,7 @@ describe('query() performance: no storage read for ownership: "none"/"lease"', (
     const getSpy = mock(async () => null);
     const internals = {
       workflowTypeByWorkflowId: new Map(),
+      options: { payloadValidation: 'none' },
       heartbeatDetails: new Map(),
       inlineStrategy: {
         getContext: () => ({
