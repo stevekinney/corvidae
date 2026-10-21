@@ -2512,7 +2512,8 @@ describe('recurring schedules', () => {
     });
     const description = await schedule.describe();
 
-    await tickEngine(engine, clock, Date.UTC(2026, 0, 1, 0, 1, 2));
+    // Three seconds late: past one poll interval plus the one-second drift margin (COR-1616).
+    await tickEngine(engine, clock, Date.UTC(2026, 0, 1, 0, 1, 3));
 
     expect(executions).toEqual([]);
 
