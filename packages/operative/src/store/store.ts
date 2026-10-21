@@ -96,6 +96,25 @@ export function createStore(options: StoreOptions = {}): Store {
     emitter.dispatch(new StoreActionEvent(action));
   }
 
+  function settleRun(
+    runId: string,
+    type: 'run.aborted' | 'run.error',
+    detail: { readonly error: unknown } & Record<string, unknown>,
+  ): void {
+    const runState = runs.get(runId);
+    if (runState?.status !== 'running') return;
+    // The run's own events no longer describe it: whatever it still emits comes after its end.
+    deregister(runId);
+    const action = appendAction(runId, type, detail, runtime.clock.now());
+    const updated = runs.get(runId)!;
+    runs.set(runId, {
+      ...updated,
+      status: type === 'run.aborted' ? 'aborted' : 'error',
+      error: detail.error,
+    });
+    emitter.dispatch(new StoreActionEvent(action));
+  }
+
   function register(activeRun: ActiveRun, id?: string): string {
     const runId = id ?? runtime.identifiers.next('run');
 
@@ -290,6 +309,7 @@ export function createStore(options: StoreOptions = {}): Store {
     getState,
     getRun,
     recordAction,
+    settleRun,
     subscribe,
     addEventListener: emitter.addEventListener.bind(emitter),
     removeEventListener: emitter.removeEventListener.bind(emitter),
