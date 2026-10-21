@@ -334,6 +334,12 @@ export interface EngineInternals {
    */
   workflowClaimRegistry: WorkflowClaimRegistry | null;
   /**
+   * Test-only gate `onWorkflowClaimReclaimed` awaits after reloading the workflow's pending async
+   * activities and before it replays the workflow from storage, so a test can hold a reclaim in
+   * that window and run `recoverAll()` against it. Unset in production, where nothing waits.
+   */
+  reclaimReplayGateForTesting?: (workflowId: string) => Promise<void>;
+  /**
    * The active per-workflow claim-renewal task for `ownership: 'workflow-lease'`;
    * `null` under `'none'`/`'lease'` and until `#bootstrapOwnershipIfConfigured`
    * completes. Renews every claim this engine holds (active or parked) on its

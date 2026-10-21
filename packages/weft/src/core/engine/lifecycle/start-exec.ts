@@ -2,6 +2,7 @@ import { serializeCheckpoint } from '../../checkpoint.ts';
 import { WorkflowStartedEvent } from '../../events.ts';
 import { StartWorkflowValidationError } from '../../start-workflow-validation.ts';
 import type { Checkpoint, StartOptions, WorkflowState } from '../../types.ts';
+import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import type { EngineInternals } from '../internals.ts';
 import { type LifecycleCallbacks, type RegistrationEntry } from './shared.ts';
 
@@ -85,6 +86,8 @@ export function startWorkflowExecution(
       headers: [...internals.workflowHeaders.get(workflowId)!],
     }),
   });
+  // The generator exists, or the worker has its run, as of this turn: the attempt now drives.
+  completeExecutionAttemptLaunch(internals, workflowId, workflowExecutionToken);
 }
 
 export function beginWorkflowExecution(
@@ -113,6 +116,8 @@ export function beginWorkflowExecution(
   internals.pendingNestingDepth = undefined;
 
   if (internals.inlineStrategy !== null) {
+    // Queued only: the generator exists once the queue flushes, and `startWorkflowExecution` there
+    // is what records the attempt as driving. Until then the launch is joinable, not live.
     callbacks.queueInlineWorkflowExecutionStart({
       workflowId,
       ...(workflowExecutionToken !== undefined && { workflowExecutionToken }),

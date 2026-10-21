@@ -14,6 +14,7 @@ import { WorkflowStartedEvent } from '../../events.ts';
 import type { Checkpoint, WorkflowState } from '../../types.ts';
 import { createWorkflowScopedContextCallbacks, resetCancelHandlers } from '../cancel-handlers.ts';
 import { adoptLaunchCheckpoint } from '../checkpoint-commit-snapshots.ts';
+import { completeExecutionAttemptLaunch } from '../execution-attempts.ts';
 import { getWorkflowExecutionStartedAt, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import { getComposedWorkflowInterceptor } from '../strategy-helpers.ts';
@@ -174,6 +175,7 @@ export function launchWorkflowFromCheckpoint(
   } else {
     launchWorkerWorkflowFromCheckpoint(internals, workflowId, state, checkpoint);
   }
+  completeExecutionAttemptLaunch(internals, workflowId, checkpoint.workflowExecutionToken);
 
   return handle;
 }
