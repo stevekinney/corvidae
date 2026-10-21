@@ -524,7 +524,7 @@ export interface AssetService {
    * Adds one chunk to the open session. Each append is one compare-and-swap on the session, so
    * an append that loses to another (in this process or any process sharing the storage) rejects
    * with `AssetConflictError` and stores nothing. A session that already holds a chunk at its next
-   * index (a dead writer's residue) answers `AssetConflictError` until it expires.
+   * index (a dead writer's residue) answers `AssetConflictError` until it is aborted or expires. An append that would take the session past 9999 chunks (`MAX_UPLOAD_CHUNKS`) rejects with `AssetAdmissionError` code `per-part-limit-exceeded` and stores nothing.
    */
   appendUpload(
     uploadId: string,

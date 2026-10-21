@@ -5,6 +5,7 @@
  * in the gap.
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { MAX_BATCH_OPERATIONS } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -22,6 +23,7 @@ import {
 import { holdAssetStorageCall } from '../testing/asset-storage-hold.test-support';
 import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
+  AssetAdmissionError,
   AssetConflictError,
   AssetNotFoundError,
   type AssetStorage,
@@ -207,6 +209,102 @@ describe('each condition of the append guard', () => {
     const purge = await second.assets.collectGarbage().result();
     expect(purge).toMatchObject({ value: { purgedUploads: [session.uploadId] } });
     expect(await shared.list(KEYS.chunkPrefix(session.uploadId))).toEqual([]);
+  });
+});
+
+/** The most chunks a session may hold: one fewer than the 10,000 operations a durable batch may carry. */
+const CHUNK_CEILING = MAX_BATCH_OPERATIONS - 1;
+
+describe('the chunk ceiling, on a durable store', () => {
+  /** A session holding exactly `CHUNK_CEILING` one-byte chunks, seeded in one batch (the ceiling itself is what a client would need 9,999 appends to reach). */
+  async function sessionAtTheCeiling(declaredByteLength: number) {
+    const runtime = createManualRuntimeServices({ identifierSeed: 'ceiling-process' });
+    const fixture = createDurableAssetStorageFixture({ runtime });
+    cleanups.push(() => fixture.dispose());
+    const opened = await open({ storage: fixture.storage }, 'ceiling-process');
+    const session = await opened.assets.beginUpload(alice, {
+      declaredByteLength,
+      declaredMediaType: 'text/plain',
+    });
+    const stored = (await sessionRecord(opened.storage, session.uploadId))!;
+    const oneByte = base64Of(textBytes('a'));
+    const seeded = await opened.storage.conditionalBatch(
+      [],
+      [
+        ...Array.from({ length: CHUNK_CEILING }, (_, index) => ({
+          type: 'set' as const,
+          key: KEYS.chunk(session.uploadId, index),
+          value: oneByte,
+        })),
+        {
+          type: 'set' as const,
+          key: KEYS.upload(session.uploadId),
+          value: JSON.stringify({
+            ...stored,
+            chunkCount: CHUNK_CEILING,
+            receivedBytes: CHUNK_CEILING,
+          }),
+        },
+      ],
+    );
+    expect(seeded).toBe(true);
+    return { opened, uploadId: session.uploadId };
+  }
+
+  it('refuses an append past the ceiling as a limit refusal, storing nothing', async () => {
+    const { opened, uploadId } = await sessionAtTheCeiling(CHUNK_CEILING + 100);
+    const recordBefore = await opened.storage.get(KEYS.upload(uploadId));
+
+    const refused = await rejectionOf(opened.assets.appendUpload(uploadId, alice, textBytes('b')));
+
+    expect(refused).toBeInstanceOf(AssetAdmissionError);
+    expect((refused as AssetAdmissionError).code).toBe('per-part-limit-exceeded');
+    expect(await opened.storage.get(KEYS.upload(uploadId))).toBe(recordBefore);
+    expect(await opened.storage.get(KEYS.chunk(uploadId, CHUNK_CEILING))).toBeNull();
+  });
+
+  it('completes a session exactly at the ceiling: its terminal batch is one operation under the cap', async () => {
+    // The control for the bound's value: at the ceiling the session holds as many chunks as can be
+    // completed, so no append can follow (every byte it declared is already stored).
+    const { opened, uploadId } = await sessionAtTheCeiling(CHUNK_CEILING);
+
+    const admission = await opened.assets.admit({ source: uploadOf(uploadId) }, alice);
+
+    expect(await admission.work.result()).toMatchObject({ outcome: 'completed' });
+    expect(await opened.storage.list(KEYS.chunkPrefix(uploadId))).toEqual([]);
+    expect(await stateOf(opened.storage, uploadId)).toBe('completed');
+    expect(await opened.assets.inspect(admission.assetId, alice)).toMatchObject({
+      state: 'available',
+      byteLength: CHUNK_CEILING,
+    });
+  });
+
+  it('refuses the chunk that would make a completable session need more operations than a batch holds, and the session then aborts', async () => {
+    // Declares one byte more than it holds: the chunk that finishes it would be its 10,000th, so
+    // without the ceiling the session would be complete in bytes and impossible to complete or abort.
+    const { opened, uploadId } = await sessionAtTheCeiling(CHUNK_CEILING + 1);
+
+    const refused = await rejectionOf(opened.assets.appendUpload(uploadId, alice, textBytes('b')));
+    expect(refused).toBeInstanceOf(AssetAdmissionError);
+    const admission = await opened.assets.admit({ source: uploadOf(uploadId) }, alice);
+    expect(await admission.work.result()).toMatchObject({
+      outcome: 'failed',
+      rejection: { code: 'upload-incomplete' },
+    });
+    await opened.assets.abortUpload(uploadId, alice);
+
+    expect(await opened.storage.list(KEYS.chunkPrefix(uploadId))).toEqual([]);
+  });
+
+  it('aborts a session at the ceiling, which the refused append keeps from passing it', async () => {
+    const { opened, uploadId } = await sessionAtTheCeiling(CHUNK_CEILING + 100);
+    const extra = await rejectionOf(opened.assets.appendUpload(uploadId, alice, textBytes('b')));
+    expect(extra).toBeInstanceOf(AssetAdmissionError);
+
+    await opened.assets.abortUpload(uploadId, alice);
+
+    expect(await opened.storage.list(KEYS.uploadPrefix)).toEqual([]);
+    expect(await opened.storage.list(KEYS.chunkPrefix(uploadId))).toEqual([]);
   });
 });
 

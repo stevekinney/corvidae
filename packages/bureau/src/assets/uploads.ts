@@ -16,6 +16,8 @@
  * `completing`) before it reads a chunk, and an abort deletes the chunks and
  * the record in one `conditionalBatch`. See {@link UploadSessionRecord}.
  */
+import { MAX_BATCH_OPERATIONS } from '@lostgradient/weft';
+
 import { encodeBase64 } from './base64';
 import { AssetAdmissionError, AssetConflictError, AssetNotFoundError } from './errors';
 import type { AssetInternals } from './internals';
@@ -29,6 +31,16 @@ import type { AssetPolicy, AssetPrincipal, AssetUploadSession } from './types';
  * Additive over the COR-794 shape: a record written before COR-1609 has
  * `state: 'open'` and no `assetId`, and loads unchanged.
  */
+/**
+ * The most chunks a session may hold. Completing a session writes its terminal record and deletes
+ * every chunk in one `conditionalBatch`, and aborting it deletes every chunk and the record in
+ * another; each batch carries one operation beyond the chunks, and a durable Weft backend refuses a
+ * batch of more than `MAX_BATCH_OPERATIONS`. Bounding the count where the session is written keeps
+ * both batches under the cap, so no session can be stranded where it can be neither completed nor
+ * aborted.
+ */
+export const MAX_UPLOAD_CHUNKS = MAX_BATCH_OPERATIONS - 1;
+
 export interface UploadSessionRecord {
   readonly uploadId: string;
   readonly ownerId: string;
@@ -190,6 +202,12 @@ export function appendUpload(
         'The chunk exceeds the declared byte length.',
       );
     }
+    if (session.chunkCount >= MAX_UPLOAD_CHUNKS) {
+      throw new AssetAdmissionError(
+        'per-part-limit-exceeded',
+        `An upload holds at most ${MAX_UPLOAD_CHUNKS} chunks; send larger chunks.`,
+      );
+    }
     const next: UploadSessionRecord = {
       ...session,
       receivedBytes: session.receivedBytes + bytes.byteLength,
@@ -200,7 +218,7 @@ export function appendUpload(
     //   appended, completed or aborted it lose, whatever else changed since;
     // - the chunk condition keeps an existing chunk at this index (the residue of a writer that
     //   stored the chunk and died before it wrote the record) from being overwritten. Such a
-    //   session answers `Conflict` to every append until it expires and is purged.
+    //   session answers `Conflict` to every append until its owner aborts it or it expires.
     // A losing append stores nothing and answers `Conflict`.
     const sessionKey = KEYS.upload(uploadId);
     const chunkKey = KEYS.chunk(uploadId, session.chunkCount);
