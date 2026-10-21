@@ -127,7 +127,7 @@
     {
       "files": ["src/core/types/options.ts"],
       "rules": {
-        "max-lines": ["error", { "max": 615, "skipBlankLines": false, "skipComments": false }]
+        "max-lines": ["error", { "max": 617, "skipBlankLines": false, "skipComments": false }]
       }
     },
     {
