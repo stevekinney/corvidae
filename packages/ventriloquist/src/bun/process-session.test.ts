@@ -322,6 +322,8 @@ const scenario3 = scenario(
         { pid: 3, parentPid: 1, group: 3 },
         { pid: 4, parentPid: 1, group: 4 },
       ],
+      // injected, so a zombie the host happens to have never reaches the table
+      async () => [1, 2, 3, 4].map((pid) => ({ pid, state: 'S' })),
     );
     // 2 vanished between the table and its session being read: it is gone, not escaped.
     expect(table.map((record) => [record.pid, record.group])).toEqual([
@@ -648,6 +650,34 @@ describe('a session that cannot be read', () => {
       [2, UNREADABLE_SESSION],
     ]);
     expect(descendantsOutsideGroup(unknown, 1, 500).map((record) => record.pid)).toEqual([2]);
+  });
+
+  // spawn-free: the table and the process states are injected, so no process is started
+  test('a zombie in the first read is dropped before its session is asked for', async () => {
+    const table = [
+      { pid: 1, parentPid: 0, group: 1 },
+      { pid: 2, parentPid: 1, group: 2 },
+      { pid: 3, parentPid: 1, group: 3 },
+    ];
+    const asked: number[] = [];
+    const records = await readSessionTable(
+      (pid) => {
+        asked.push(pid);
+        return 500;
+      },
+      async () => table,
+      async () => [
+        { pid: 1, state: 'S' },
+        { pid: 2, state: 'Z+' },
+        { pid: 3, state: 'R' },
+      ],
+    );
+    expect(records.map((record) => [record.pid, record.group])).toEqual([
+      [1, 500],
+      [3, 500],
+    ]);
+    // A zombie answers -1 on macOS and still exists, so it is filtered by state, not asked.
+    expect(asked).toEqual([1, 3]);
   });
 });
 
