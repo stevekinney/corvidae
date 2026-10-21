@@ -941,6 +941,8 @@ export class Engine<
     getInternals(this).retentionSweepInterval = null;
     getInternals(this).retentionSweepInFlight = null;
     getInternals(this).inFlightPurgeWrites = new Set();
+    getInternals(this).inFlightOperations = new Map();
+    getInternals(this).pendingTerminalSettlements = new Set();
     getInternals(this).nextRetentionSweepAt = null;
     getInternals(this).secondInstanceDetectionInterval = null;
     getInternals(this).secondInstanceDetector = null;

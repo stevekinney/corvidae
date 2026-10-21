@@ -188,6 +188,12 @@ export class WorkflowHandle<TResult = unknown> extends EventTarget implements As
     return this.#resultPromise;
   }
 
+  /**
+   * The workflow's final value, or the rejection that ended it. A run that a cancel, a timeout,
+   * or the history circuit breaker ends while its top-level activity is in flight rejects only
+   * after that activity has settled, so whatever the activity wrote is visible to the caller.
+   * Any other termination rejects as soon as its terminal state is committed.
+   */
   async result(): Promise<TResult> {
     // The engine stores persisted workflow results as unknown. The typed
     // handle is created from the registry-backed `Engine.start` overload that
