@@ -171,6 +171,22 @@ describe('payloadValidation engine option', () => {
     expect(await handle.result()).toEqual({ input: { id: 'o-4' }, decision: { approved: true } });
   });
 
+  it('validates the signal startOrSignal sends to an existing run', async () => {
+    const engine = validatingEngine();
+    const handle = await engine.start('checkout', { id: 'o-7' }, { id: 'existing' });
+    const error = await schemaRejection(
+      engine.startOrSignal(
+        'checkout',
+        { id: 'o-7' },
+        { name: 'approve', payload: { approved: 'no' }, signalId: 'sig-2' },
+        { id: 'existing' },
+      ),
+    );
+    expect(error.operation).toBe('weft.workflows.signal');
+    await engine.signal(handle.id, 'approve', { approved: true });
+    await handle.result();
+  });
+
   it('rejects an invalid update and query input, and answers valid ones', async () => {
     const engine = validatingEngine();
     const handle = await engine.start('checkout', { id: 'o-5' });
