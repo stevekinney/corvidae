@@ -31,6 +31,22 @@ async function registeredTypes(withGoal: boolean): Promise<string[]> {
   }
 }
 
+/** One way a module can reach another, and the pattern that finds it. */
+const IMPORT_FORMS: readonly { readonly form: string; readonly pattern: RegExp }[] = [
+  // `import x from './x'`, `import './x'`, and `import type`.
+  { form: 'import statement', pattern: /^\s*import\s/m },
+  // `export * from './x'` and `export { x } from './x'`, which load the module as an import does.
+  { form: "from '", pattern: /\bfrom\s*'/ },
+  { form: 'from "', pattern: /\bfrom\s*"/ },
+  { form: 'import(', pattern: /\bimport\s*\(/ },
+  { form: 'require(', pattern: /\brequire\s*\(/ },
+];
+
+/** The forms of import `source` contains, which is none for a module a browser can read alone. */
+function importFormsIn(source: string): string[] {
+  return IMPORT_FORMS.filter(({ pattern }) => pattern.test(source)).map(({ form }) => form);
+}
+
 describe('the types a Bureau’s run engine registers', () => {
   it('are the agent run, the heartbeat tick, and the goal', () => {
     expect([...RUN_ENGINE_WORKFLOW_TYPES].toSorted()).toEqual([
@@ -53,7 +69,27 @@ describe('the types a Bureau’s run engine registers', () => {
     const source = await Bun.file(
       new URL('./run-engine-workflow-types.ts', import.meta.url),
     ).text();
-    expect(source).not.toMatch(/^\s*import\s/m);
-    expect(source).not.toMatch(/\brequire\(/);
+    expect(importFormsIn(source)).toEqual([]);
+  });
+});
+
+describe('the check that a module imports nothing', () => {
+  it.each([
+    [
+      'an import statement',
+      "import { a } from './a';\nexport const b = 1;",
+      ['import statement', "from '"],
+    ],
+    ['a side-effect import', "import './a';", ['import statement']],
+    ['a re-export from a single-quoted path', "export { a } from './a';", ["from '"]],
+    ['a re-export from a double-quoted path', 'export * from "./a";', ['from "']],
+    ['a dynamic import', "export const load = () => import('./a');", ['import(']],
+    ['a require call', "const a = require('./a');", ['require(']],
+  ])('refuses %s', (_name, source, forms) => {
+    expect(importFormsIn(source)).toEqual(forms);
+  });
+
+  it('passes a module that only declares values', () => {
+    expect(importFormsIn("export const A = { b: 'from here' } as const;\n")).toEqual([]);
   });
 });

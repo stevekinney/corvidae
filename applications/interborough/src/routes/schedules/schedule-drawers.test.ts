@@ -376,6 +376,33 @@ describe('creating a schedule', () => {
     expect(values()).not.toContain('digest');
   });
 
+  test('says why nothing is offered when the registry holds only reserved types, and keeps the free-text field', async () => {
+    // A host whose console is the Bureau's engine and whose registry holds nothing else.
+    open('/schedules?create=1', {
+      definitions: RUN_ENGINE_WORKFLOW_TYPES.map((type) => codeDefinition(type)),
+      files: [],
+    });
+    const dialog = within(await drawer('Create schedule'));
+
+    await dialog.findByText(SCHEDULE_COPY.form.allTypesReserved);
+    const type = dialog.getByLabelText('Workflow type');
+    expect(type.tagName).toBe('INPUT');
+    expect(dialog.queryByText(/No registered workflow types found/)).toBeNull();
+    // A type that is not in the registry can still be typed and created.
+    await fireEvent.input(type, { target: { value: 'unlisted-type' } });
+    await waitFor(() =>
+      expect(dialog.getByRole('button', { name: 'Create schedule' })).not.toBeDisabled(),
+    );
+  });
+
+  test('says nothing is registered when the registry is empty', async () => {
+    open('/schedules?create=1', { definitions: [], files: [] });
+    const dialog = within(await drawer('Create schedule'));
+
+    await dialog.findByText('No registered workflow types found — enter the workflow type name.');
+    expect(dialog.queryByText(SCHEDULE_COPY.form.allTypesReserved)).toBeNull();
+  });
+
   test('refuses a typed name that is agentRun or an agent-authored workflow, when the registry cannot be read', async () => {
     open('/schedules?create=1', {}, (installed) =>
       installed.on('weft.system.registry', () => {
@@ -420,6 +447,50 @@ describe('creating a schedule', () => {
     await waitFor(() => expect(stub?.callsTo('POST /schedules').length).toBe(1));
     expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({ type: 'inventory-sync' });
     expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
+  });
+
+  test('refuses to create while the Bureau’s file list failed, even for a type that is a workflow file’s (probe C23)', async () => {
+    open('/schedules?create=1', { failBureauFiles: true });
+    const dialog = within(await drawer('Create schedule'));
+    const type = (await dialog.findByRole('combobox', {
+      name: 'Workflow type',
+    })) as HTMLSelectElement;
+    // `digest` is a workflow file's type. With the file list unread it is offered, and chosen.
+    await waitFor(() =>
+      expect([...type.options].map((option) => option.value)).toContain('digest'),
+    );
+    await fireEvent.change(type, { target: { value: 'digest' } });
+    await waitFor(() => expect(type.value).toBe('digest'));
+
+    const create = dialog.getByRole('button', { name: 'Create schedule' });
+    expect(create).toBeDisabled();
+    await fireEvent.click(create);
+
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+    expect(stub?.callsTo('bureau.schedules.create')).toEqual([]);
+  });
+
+  test('refuses to create while the Bureau’s file list is still pending, for a type that is chosen', async () => {
+    open('/schedules?create=1', {}, (installed) =>
+      // Never answers, so the list stays pending for the whole test.
+      installed.on('bureau.workflows.list', () => new Promise<never>(() => undefined)),
+    );
+    const dialog = within(await drawer('Create schedule'));
+    const type = (await dialog.findByRole('combobox', {
+      name: 'Workflow type',
+    })) as HTMLSelectElement;
+    await waitFor(() =>
+      expect([...type.options].map((option) => option.value)).toContain('digest'),
+    );
+    await fireEvent.change(type, { target: { value: 'digest' } });
+    await waitFor(() => expect(type.value).toBe('digest'));
+    await dialog.findByText(SCHEDULE_COPY.form.overlayLoading, { exact: false });
+
+    const create = dialog.getByRole('button', { name: 'Create schedule' });
+    expect(create).toBeDisabled();
+    await fireEvent.click(create);
+
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
   });
 
   test('does not offer a workflow type until the Bureau has said which are agent-authored', async () => {
@@ -557,6 +628,119 @@ describe('the drawers when something is not as it was', () => {
 
     await waitFor(() => expect(stub?.callsTo('bureau.schedules.create').length).toBe(1));
     expect(stub?.callsTo('bureau.schedules.create')[0]?.params['spec']).toMatch(/^30 /);
+  });
+});
+
+describe('a cadence of less than a minute', () => {
+  // The schedule builder counts in whole minutes at the smallest, so it cannot show these exactly.
+  const SECONDS_AGENT = 'every-thirty-seconds';
+  const SECONDS_CODE = 'every-ninety-seconds';
+
+  function secondsWorld(): Partial<World> {
+    const agent = scheduleFixture(SECONDS_AGENT, 'agentRun', {
+      description: 'Thirty seconds',
+      intervalMs: 30_000,
+      revision: 2,
+    });
+    delete agent.cronExpression;
+    const code = scheduleFixture(SECONDS_CODE, 'order-processing', {
+      description: 'Ninety seconds',
+      intervalMs: 90_000,
+      revision: 4,
+    });
+    delete code.cronExpression;
+    return {
+      schedules: [agent, code],
+      scheduleAgents: { [SECONDS_AGENT]: 'assistant' },
+    };
+  }
+
+  test('an agent run shows its cadence as it is, and an edit of only the description sends it exactly', async () => {
+    open(`/schedules/${SECONDS_AGENT}?edit=1`, secondsWorld());
+    const dialog = within(await drawer('Edit schedule'));
+    const description = await dialog.findByLabelText('Description');
+
+    const cadence = dialog.getByLabelText(SCHEDULE_COPY.form.cadenceLabel);
+    expect(cadence).toBeDisabled();
+    expect((cadence as HTMLInputElement).value).toBe('Every 30 seconds');
+    expect(dialog.queryByRole('tab', { name: 'Interval' })).toBeNull();
+
+    await fireEvent.input(description, { target: { value: 'Still thirty seconds' } });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params).toEqual({
+      scheduleId: SECONDS_AGENT,
+      spec: '30s',
+      description: 'Still thirty seconds',
+      expectedRevision: 2,
+    });
+  });
+
+  test('a code-defined schedule does the same, and sends every as milliseconds', async () => {
+    open(`/schedules/${SECONDS_CODE}?edit=1`, secondsWorld());
+    const dialog = within(await drawer('Edit schedule'));
+    const description = await dialog.findByLabelText('Description');
+
+    expect((dialog.getByLabelText(SCHEDULE_COPY.form.cadenceLabel) as HTMLInputElement).value).toBe(
+      'Every 90 seconds',
+    );
+    await fireEvent.input(description, { target: { value: 'Still ninety seconds' } });
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
+    const body = stub?.callsTo('PATCH /schedules/:id body')[0]?.params;
+    expect(body).toMatchObject({ every: 90_000, description: 'Still ninety seconds' });
+    expect(body).not.toHaveProperty('cronExpression');
+  });
+
+  test('an edit that sends only a cadence of 30s sends every: 30000 to the engine', async () => {
+    const code = scheduleFixture('thirty-seconds-code', 'order-processing', {
+      intervalMs: 30_000,
+      revision: 1,
+    });
+    delete code.cronExpression;
+    open(`/schedules/thirty-seconds-code?edit=1`, { schedules: [code] });
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+    await fireEvent.click(dialog.getByRole('switch', { name: 'Backfill missed occurrences' }));
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('PATCH /schedules/:id body').length).toBe(1));
+    expect(stub?.callsTo('PATCH /schedules/:id body')[0]?.params).toMatchObject({ every: 30_000 });
+  });
+
+  test('Change cadence brings back the builder, and a cadence chosen in it is sent instead', async () => {
+    open(`/schedules/${SECONDS_AGENT}?edit=1`, secondsWorld());
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+    expect(dialog.queryByRole('tab', { name: 'Interval' })).toBeNull();
+
+    await fireEvent.click(
+      dialog.getByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }),
+    );
+
+    await fireEvent.click(await dialog.findByRole('tab', { name: 'Interval' }));
+    const every = dialog.getByLabelText('Every');
+    await fireEvent.input(every, { target: { value: '20' } });
+    await fireEvent.change(every, { target: { value: '20' } });
+    await fireEvent.blur(every);
+    expect(document.getElementById('weft-agent-schedule-exact-cadence')).toBeNull();
+    await fireEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.schedules.update').length).toBe(1));
+    expect(stub?.callsTo('bureau.schedules.update')[0]?.params['spec']).toBe('20m');
+  });
+
+  test('a whole-minute cadence still opens in the builder', async () => {
+    open(`/schedules/${AGENT_SCHEDULE}?edit=1`);
+    const dialog = within(await drawer('Edit schedule'));
+    await dialog.findByLabelText('Description');
+
+    expect(dialog.getByRole('tab', { name: 'Interval' })).not.toBeNull();
+    expect(
+      dialog.queryByRole('button', { name: SCHEDULE_COPY.form.changeCadenceAction }),
+    ).toBeNull();
   });
 });
 
