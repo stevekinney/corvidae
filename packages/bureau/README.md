@@ -21,6 +21,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Audit Trail](#the-audit-trail)
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The AG-UI mount (COR-855)](#the-ag-ui-mount-cor-855)
+  - [External control plane](#external-control-plane)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
@@ -407,6 +408,140 @@ Every event carries `metadata['@lostgradient/bureau'] = { runId, sessionId, dura
 **Ending.** A client that goes away, a stream that reaches `maxStreamDurationMs`, and a reader that falls behind `liveBufferSize` all end the stream and leave the native run running. The last two end it with `RUN_ERROR` `STREAM_DEADLINE` and `STREAM_OVERFLOW`, which a client treats as a reason to attach again, not as a failure. A reader that falls behind is closed rather than thinned, because a dropped text delta would corrupt a transcript rebuilt from deltas. A quiet stream writes an SSE comment (`: keep-alive`) every `keepAliveIntervalMs`, because `Bun.serve` closes a connection that sends nothing for ten seconds by default and a model step that does not stream can be silent for longer; every client skips a block with no `data:` line. Keep it below the server's idle timeout.
 
 `resolveReview` now also writes a tool approval's outcome into the session's conversation (the executed result, or an error result carrying the reason on deny and reject), replacing the pending `action_required` row in place, for every caller of `bureau.reviews.resolve`, not only this mount. When that write cannot be made, `resolveReview` rejects with `ApprovalOutcomeNotWrittenError` after the decision has been recorded (the decision took effect; only the write failed), rather than reporting success. The one case it does not write is a conversation that never held a row for the call and whose run is no longer going (a review restored from persisted metadata alone); a run that is still going has not stored its conversation, so there the write is refused instead. An agent without `stopWhen: pendingApproval()` can overwrite the written row with the rest of its step.
+
+### External control plane
+
+`createBureauHandler(bureau, options)` is the entry point for a process outside the Bureau. It serves the management plane (`bureau.*` operations over JSON-RPC, and one subscription route over Server-Sent Events), the AG-UI mount when `agUi` is set, and the asset content route. [`documentation/external-control-plane.md`](./documentation/external-control-plane.md) is the reference: it began as the decision record for the contract (COR-901), and its "As built" section says what shipped, with the operations, the owner of record and its `anonymous:local` caller, the operator scopes, the authorization predicate, run-creation receipts and `BureauLedgerConflictError`, and the error contract. It also lists what the handler does not do, each limit in its own entry under "Unsupported behavior and limits". A host that runs the handler for people, such as Interborough, keeps its state in `~/.interborough` (`INTERBOROUGH_HOME`), which [its README](../../applications/interborough/README.md) describes.
+
+This is the whole path of an outside consumer: authenticate with an API key, discover what the deployment serves, read a task, answer it with a command that a retry cannot repeat, and await the result by reading the task's event stream to its end. It runs in [`src/external-control-plane-guide.test.ts`](./src/external-control-plane-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau`, records each `console.log` and asserts it, and checks that its example is this code block:
+
+```typescript
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
+import {
+  createAgent,
+  stopWhen,
+  waitForCondition,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { principalFromApiKey } from '@lostgradient/weft';
+
+const databasePath = './bureau.sqlite';
+
+// The agent asks which environment to release to, waits for the answer, then thanks the person.
+let calls = 0;
+const generate: GenerateFunction = async () => {
+  calls += 1;
+  if (calls > 1) return { content: 'Releasing to the environment you named.', toolCalls: [] };
+  const prompt = 'Which environment should the release go to?';
+  const ask = {
+    id: 'ask-1',
+    name: 'requestHumanInput',
+    arguments: { signalName: 'environment', prompt },
+  };
+  return { content: '', toolCalls: [ask] };
+};
+const releaser = createAgent({
+  name: 'releaser',
+  generate,
+  stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+});
+
+const bureau = await createBureau({
+  id: 'acme', // required once the handler serves persistent storage
+  agents: { releaser },
+  storage: { type: 'sqlite', path: databasePath },
+  durableExecution: true,
+  humanInput: true,
+  assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
+});
+
+// Authenticate: the host says which key stands for which principal. A principal with no scopes
+// owns what it creates and reaches nothing of anyone else's.
+const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
+const handler = createBureauHandler(bureau, {
+  publish: ['releaser'],
+  authentication: {
+    auditSink: () => undefined, // every authentication decision is passed here
+    resolveApiKeyPrincipal: async (key) =>
+      key in keys
+        ? principalFromApiKey({ subject: keys[key as keyof typeof keys], scopes: [] })
+        : null,
+  },
+});
+
+// One management call, answered with its HTTP status and JSON-RPC body.
+async function call(method: string, params: object, key = 'alice-key') {
+  const response = await handler(
+    new Request('http://bureau.test/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }),
+  );
+  return { status: response.status, body: await response.json() };
+}
+
+const unknownKey = await call('bureau.deployment.get', {}, 'no-such-key');
+console.log(unknownKey.status); // 401
+
+// Discover: the deployment's identity, the agents it publishes, and the operations it serves.
+const { body: deployment } = await call('bureau.deployment.get', {});
+console.log(deployment.result.id); // 'acme'
+console.log(deployment.result.publishedAgents); // ['releaser']
+const served = deployment.result.operations.map((operation: { name: string }) => operation.name);
+console.log(served.includes('bureau.tasks.respond')); // true
+
+// The handler starts no run of its own except through its AG-UI mount, so the host starts this
+// one. `principal` is the owner of record: an API-key caller `alice` owns as `api-key:alice`.
+const run = await bureau.createRun({
+  agentName: 'releaser',
+  message: 'Release it.',
+  principal: 'api-key:alice',
+});
+await waitForCondition(
+  () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+  'the run did not park on its question',
+);
+
+// Observe: the task is Alice's, it waits on her, and to Bob it does not exist.
+const { body: waiting } = await call('bureau.tasks.get', { taskId: run.id });
+console.log(waiting.result.status); // 'input-required'
+const { body: hidden } = await call('bureau.tasks.get', { taskId: run.id }, 'bob-key');
+console.log(hidden.error.data.httpStatus); // 404
+
+// Command: answer the question. The `messageId` is Alice's own, so a retry is the same command.
+const answer = { taskId: run.id, messageId: 'answer-1', answer: 'staging' };
+const { body: answered } = await call('bureau.tasks.respond', answer);
+console.log(answered.result.receipt); // 'applied'
+const { body: retried } = await call('bureau.tasks.respond', answer);
+console.log(retried.result.receipt); // 'applied', the original receipt and nothing delivered twice
+
+// Await: the task's history ends at its terminal status, so reading the stream to its end waits
+// for the result. A cursor in `Last-Event-ID` resumes a dropped stream where it stopped.
+const query = new URLSearchParams({ taskId: run.id });
+const stream = await handler(
+  new Request(`http://bureau.test/v1/subscriptions/bureau.tasks.events?${query}`, {
+    headers: { accept: 'text/event-stream', 'x-api-key': 'alice-key' },
+  }),
+);
+const body = await stream.text();
+const frames = body
+  .split('\n\n')
+  .filter((block) => block.includes('event: task.'))
+  .map((block) => ({
+    event: /^event: (.*)$/m.exec(block)?.[1],
+    data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] ?? 'null'),
+  }));
+console.log(frames[0]?.event); // 'task.snapshot'
+console.log(frames.at(-1)?.data.status); // 'completed'
+console.log(frames.at(-1)?.data.artifact.text); // 'Releasing to the environment you named.'
+
+console.log(calls); // 2: the retry did not run the agent a third time
+
+await bureau.dispose();
+```
+
+The handler has no run-starting operation of its own, so the host starts the run above with `createRun`, which is deprecated but is the call that makes a session run. A run started with `bureau.run()` is a catalog run, which records no durable `run.*` events, so its `bureau.tasks.events` stream is its snapshot alone and the example would have nothing to await. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
 
 ### Owner of record (COR-718)
 
