@@ -626,6 +626,131 @@ describe('the grace a review is given to reach durable state', () => {
   });
 });
 
+describe('a fire read again when its events cannot be trusted', () => {
+  it('drops the approvals it holds when a peer deleted the session they were held in', async () => {
+    const { holder, peer, fireId } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-missing-session',
+    );
+    // The holder hears nothing of the deletion: it reads durable state, as a gap makes it do.
+    fireReviewFollowerOf(holder).unfollow(fireId);
+    await peer.deleteSession('peer-sync-missing-session');
+    expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    await fireReviewFollowerOf(holder).reread(fireId);
+
+    expect(reviewsOf(holder, fireId)).toHaveLength(0);
+  });
+
+  it('reads the fire again when the grace of a review it could not verify ends, with no event', async () => {
+    const skew = { milliseconds: 0 };
+    const base = createDefaultRuntimeServices();
+    const runtime = {
+      ...base,
+      clock: {
+        now: () => base.clock.now() + skew.milliseconds,
+        nowISO: () => new Date(base.clock.now() + skew.milliseconds).toISOString(),
+      },
+    };
+    // The holder's reads of the history are held, so the peer's closing never reaches it: the
+    // event is as good as lost, which is what a history gap makes of it.
+    const hold = { armed: false, release: undefined as (() => void) | undefined };
+    const released = new Promise<void>((resolve) => {
+      hold.release = resolve;
+    });
+    harness.onDispose(() => hold.release?.());
+    const { holder, peer, fireId } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-grace-wait',
+      (storage) =>
+        new Proxy(storage, {
+          get(target, property) {
+            const member = Reflect.get(target, property, target) as unknown;
+            if (typeof member !== 'function' || typeof property !== 'string') return member;
+            return (...args: unknown[]) => {
+              const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+              if (
+                !hold.armed ||
+                property !== 'scan' ||
+                !storedText(args).startsWith('fleet-event')
+              ) {
+                return call();
+              }
+              // `scan` answers an async iterable, which starts reading once `released` resolves.
+              return (async function* () {
+                await released;
+                yield* call() as AsyncIterable<unknown>;
+              })();
+            };
+          },
+        }),
+      { runtime, durableOwnership: { ...OWNERSHIP, workflowClaimTtlMs: 600_000 } },
+    );
+    hold.armed = true;
+    // The peer closes the approval just after it was announced.
+    expect(await peer.sweepExpiredReviews(Date.now() + 60 * 60 * 1000)).toBe(1);
+    skew.milliseconds = 29_900;
+
+    // Too young to tell from a record that has not landed: kept, and read again when the grace ends.
+    await fireReviewFollowerOf(holder).reread(fireId);
+    expect(reviewsOf(holder, fireId)).toHaveLength(1);
+
+    await eventually(
+      () => (reviewsOf(holder, fireId).length === 0 ? true : undefined),
+      'the holder to drop the approval once its grace ended',
+    );
+  });
+});
+
+describe('a task stream whose notification fails after the review is dropped', () => {
+  it('still ends, because the notification is retried', async () => {
+    const failing = { armed: false, failures: 0 };
+    const failOnce = (raw: Storage): Storage =>
+      new Proxy(raw, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            if (
+              failing.armed &&
+              property === 'get' &&
+              storedText(args).startsWith('bureau-task:v1:')
+            ) {
+              failing.armed = false;
+              failing.failures += 1;
+              return Promise.reject(new Error('the task store is unavailable'));
+            }
+            return (member as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      });
+    const { holder, peer, fireId, review } = await holderAndPeer(
+      { holder: approvalToolbox([]), peer: approvalToolbox([]) },
+      'peer-sync-notification',
+      failOnce,
+    );
+    let ended = false;
+    const frames = readFrames(
+      await handlerOf(holder)(
+        subscribeRequest('bureau.tasks.events', { taskId: fireId }, 'alice-key'),
+      ),
+      { timeoutMs: 20_000 },
+    ).finally(() => {
+      ended = true;
+    });
+    frames.catch(() => undefined);
+    await sleep(150);
+
+    failing.armed = true;
+    await peer.resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice });
+    await eventually(() => (failing.failures > 0 ? true : undefined), 'the notification to fail');
+    await eventually(() => (ended ? true : undefined), 'the task stream to end');
+
+    expect((await frames).at(-1)?.data).toMatchObject({ status: 'completed' });
+    expect(reviewsOf(holder, fireId)).toHaveLength(0);
+  });
+});
+
 describe('a Bureau that shuts down', () => {
   it('stops following the fires it held, so no subscription outlives it', async () => {
     const { holder, fireId } = await holderAndPeer(

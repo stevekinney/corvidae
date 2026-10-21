@@ -541,7 +541,11 @@ export {
 export { DEFAULT_MAXIMUM_STEPS } from './run-step';
 export * from './scheduler/index';
 
-export { countHumanWaitParks, parkedSignalName } from './human-wait-parks';
+export {
+  countHumanWaitParks,
+  humanWaitParkSignalNames,
+  parkedSignalName,
+} from './human-wait-parks';
 export {
   assistantMessageIdentifier,
   signalMessageIdentifier,

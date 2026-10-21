@@ -13,7 +13,7 @@
  * @module scheduled-fire-review-state
  */
 
-import { type JSONValue, parkedSignalName } from '@lostgradient/operative';
+import { humanWaitParkSignalNames, type JSONValue } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition';
@@ -254,11 +254,12 @@ export function committedFireReviewIds(
   }[],
 ): Set<string> {
   const committed = committedFireApprovalIds(runId, steps);
+  // The ordinal is the count of parks before it, under Operative's rule for what one park is
+  // (consecutive results on one signal are one): the same function the checkpoint walk in
+  // `park-ordinals.ts` and the AG-UI mount use, so no second count can disagree with them.
   let ordinal = 0;
   for (const step of steps) {
-    for (const result of step.results) {
-      const signalName = parkedSignalName(result);
-      if (signalName === undefined) continue;
+    for (const signalName of humanWaitParkSignalNames(step.results)) {
       committed.add(`human-wait:${runId}:${signalName}:${ordinal}`);
       ordinal += 1;
     }

@@ -52,8 +52,17 @@ export interface FireReviewFollowerDependencies {
    * Reads the reviews this process holds of `runId` again from durable state, and drops or
    * refreshes each one the state says is closed or re-gated. Used when the events cannot be
    * trusted to be all there (a gap) or could not be acted on.
+   *
+   * A fire is reconciled only when every review it holds matches durable state. It resolves
+   * with the time the grace of the youngest review it could not yet verify ends (a review is given
+   * a moment to reach durable state), for the follower to read the fire again then, or with
+   * `undefined` once every review is verified. It rejects when a review cannot be verified at all
+   * (the store cannot be read, or says nothing about the review), which the follower retries with
+   * its backoff.
    */
-  readonly reread: (runId: string) => Promise<void>;
+  readonly reread: (runId: string) => Promise<number | undefined>;
+  /** The time now, in the clock the times {@link reread} resolves with are in. */
+  readonly now: () => number;
   /** The timers the waits between attempts run on, which {@link FireReviewFollower.dispose} clears. */
   readonly timers: Pick<RuntimeServices['timers'], 'setTimeout' | 'clearTimeout'>;
   readonly diagnose: DiagnosticSink;
@@ -92,6 +101,10 @@ export function createFireReviewFollower(
   /** The followed fires whose history or durable state has yet to be read again, in full. */
   const needsReconciliation = new Set<string>();
   const waits = new Set<{ readonly handle: ReturnType<typeof scheduleTimeout>; wake(): void }>();
+  /** The reads a grace asked for, by fire: one wait each, outside `needsReconciliation`. */
+  const graceWaits = new Map<string, { readonly handle: ReturnType<typeof scheduleTimeout> }>();
+  /** The notifications a reaction that unfollowed its fire is still retrying. */
+  const notifications = new Set<Promise<void>>();
   let reconciling: Promise<void> | undefined;
   let subscription: DurableEventOwnersSubscription | undefined;
   let disposed = false;
@@ -126,9 +139,91 @@ export function createFireReviewFollower(
   }
 
   /**
+   * Arms the one wait that reads a fire again when the youngest review `reread` could not yet
+   * verify has had its grace. It is the grace's own wait, not a reconciliation: nothing failed, so
+   * the fire is not marked and `settled()` does not wait for it. A later answer replaces it.
+   */
+  function scheduleGraceReread(runId: string, at: number | undefined): void {
+    clearGrace(runId);
+    if (at === undefined || disposed || !followedRuns.has(runId)) return;
+    const entry = {
+      handle: scheduleTimeout(
+        () => {
+          graceWaits.delete(runId);
+          if (disposed || !followedRuns.has(runId)) return;
+          rereadWatching(runId).catch((error: unknown) => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[bureau] Could not read the reviews of schedule fire "${runId}" again once their grace ended, and will try again: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+            reconcile([runId]);
+          });
+        },
+        Math.max(0, at - dependencies.now()),
+      ),
+    };
+    graceWaits.set(runId, entry);
+  }
+
+  function clearGrace(runId: string): void {
+    const entry = graceWaits.get(runId);
+    if (entry === undefined) return;
+    cancelTimeout(entry.handle);
+    graceWaits.delete(runId);
+  }
+
+  /** Reads a fire's reviews again from durable state, and arms the wait its grace asks for. */
+  async function rereadWatching(runId: string): Promise<void> {
+    scheduleGraceReread(runId, await reread(runId));
+  }
+
+  /**
+   * COR-1622 — finishes the notification of a reaction that took the local copy of a review away
+   * (and unfollowed its fire) and then failed to tell those following the task. The release acts
+   * only on what this process still holds, so running the reaction again only tells them. It is
+   * retried with the backoff, with no attempt limit, until it succeeds or the follower is
+   * disposed, and each failed attempt is reported. It runs beside the subscription, which goes on
+   * to the next event.
+   */
+  function finishNotification(
+    runId: string,
+    reviewId: string,
+    eventKind: string,
+    firstError: unknown,
+  ): void {
+    const report = (error: unknown): void => {
+      diagnose({
+        level: 'error',
+        scope: 'durable-event-history',
+        message: `[bureau] Could not tell those following schedule fire "${runId}" that review "${reviewId}" was closed, and will try again: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    };
+    report(firstError);
+    const work = (async () => {
+      for (let failures = 1; !disposed; failures += 1) {
+        await wait(backoff(failures));
+        if (disposed) return;
+        try {
+          await closeReview(runId, reviewId, eventKind);
+          return;
+        } catch (error) {
+          report(error);
+        }
+      }
+    })();
+    notifications.add(work);
+    void work.finally(() => notifications.delete(work));
+  }
+
+  /**
    * Reacts to one closing event, retrying a failed reaction and then reading the fire again, so a
    * transient failure never leaves the event unread. Resolves `false` when the reaction and the
-   * re-read both failed, which the caller reconciles.
+   * re-read both failed, which the caller reconciles. A reaction that fails after it has taken
+   * the fire's local copy away is not read again, there being nothing left to read: its
+   * notification is finished beside the subscription instead.
    */
   async function react(runId: string, reviewId: string, eventKind: string): Promise<boolean> {
     let lastError: unknown;
@@ -139,12 +234,16 @@ export function createFireReviewFollower(
         return true;
       } catch (error) {
         lastError = error;
+        if (!followedRuns.has(runId)) {
+          finishNotification(runId, reviewId, eventKind, error);
+          return true;
+        }
         if (attempt < dependencies.attempts) await wait(dependencies.retryDelayMilliseconds);
       }
     }
     if (disposed || !followedRuns.has(runId)) return true;
     try {
-      await reread(runId);
+      await rereadWatching(runId);
       return true;
     } catch (error) {
       diagnose({
@@ -180,14 +279,21 @@ export function createFireReviewFollower(
     let since: string | undefined;
     for (;;) {
       if (disposed || !followedRuns.has(runId)) return;
+      // A record the read could not decode is a hole in what the page says, so the fire's reviews
+      // are read from the state the record would have described.
+      let skipped = false;
       const page = await history.page(runOwner(runId), {
         limit: CATCH_UP_PAGE_LIMIT,
         ...(since === undefined ? {} : { since }),
+        onSkipped: () => {
+          skipped = true;
+        },
       });
       if (!('events' in page)) {
-        await reread(runId);
+        await rereadWatching(runId);
         return;
       }
+      if (skipped) await rereadWatching(runId);
       for (const event of page.events) {
         const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
         if (event.owner.kind !== 'run' || !REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) continue;
@@ -290,7 +396,7 @@ export function createFireReviewFollower(
   async function rereadAll(): Promise<void> {
     await Promise.all(
       [...followedRuns].map((runId) =>
-        reread(runId).catch((error: unknown) => {
+        rereadWatching(runId).catch((error: unknown) => {
           diagnose({
             level: 'error',
             scope: 'durable-event-history',
@@ -313,6 +419,20 @@ export function createFireReviewFollower(
     if (subscription !== undefined && !subscription.closed) return subscription;
     const opened = history.subscribeEventHistoryOfOwners(handle, {
       onGap: rereadAll,
+      // An event the feed could not decode: what it would have said is read from the state.
+      onSkipped: (owner) => {
+        const runId = owner.id;
+        if (!followedRuns.has(runId)) return;
+        rereadWatching(runId).catch((error: unknown) => {
+          diagnose({
+            level: 'error',
+            scope: 'durable-event-history',
+            message: `[bureau] Could not read the reviews of schedule fire "${runId}" again after an event of its history could not be decoded, and will try again: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+          reconcile([runId]);
+        });
+      },
       onEnded: () => {
         if (subscription !== opened) return;
         clearStability();
@@ -348,6 +468,7 @@ export function createFireReviewFollower(
     unfollow(runId) {
       if (!followedRuns.delete(runId)) return;
       needsReconciliation.delete(runId);
+      clearGrace(runId);
       subscription?.unfollow(runOwner(runId));
       if (followedRuns.size === 0) {
         subscription?.unsubscribe();
@@ -356,7 +477,7 @@ export function createFireReviewFollower(
       }
     },
     followed: () => [...followedRuns],
-    reread,
+    reread: rereadWatching,
     async settled() {
       for (let running = reconciling; running !== undefined; running = reconciling) await running;
     },
@@ -367,11 +488,13 @@ export function createFireReviewFollower(
       subscription?.unsubscribe();
       subscription = undefined;
       clearStability();
+      for (const runId of Array.from(graceWaits.keys())) clearGrace(runId);
       for (const entry of Array.from(waits)) {
         cancelTimeout(entry.handle);
         entry.wake();
       }
       await reconciling;
+      await Promise.allSettled(notifications);
     },
   };
 }

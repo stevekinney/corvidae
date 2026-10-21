@@ -25,15 +25,24 @@ export function parkedSignalName(result: ParkableResult): string | undefined {
     : undefined;
 }
 
-/** The parks one step's results hold, counted by the rule above. */
-export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): number {
-  let count = 0;
+/**
+ * The signal name of each park one step's results hold, in order, counted by the rule above:
+ * consecutive parked results on one signal are one park. The one place that rule is written, so
+ * a count of parks and the ordinal a park's review id carries cannot disagree.
+ */
+export function humanWaitParkSignalNames(results: ReadonlyArray<ParkableResult>): string[] {
+  const names: string[] = [];
   let previous: string | undefined;
   for (const result of results) {
     const signalName = parkedSignalName(result);
     if (signalName === undefined) continue;
-    if (previous !== signalName) count += 1;
+    if (previous !== signalName) names.push(signalName);
     previous = signalName;
   }
-  return count;
+  return names;
+}
+
+/** The parks one step's results hold, counted by the rule above. */
+export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): number {
+  return humanWaitParkSignalNames(results).length;
 }

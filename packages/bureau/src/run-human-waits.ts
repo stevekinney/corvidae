@@ -402,25 +402,27 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
   }
 
   /**
-   * COR-1621 — the id of the park this process restored for `runId` when the engine no longer
-   * parks the run on it (the run settled, or its signal was delivered, by another process), read
-   * from the engine rather than from events. A park younger than `graceMilliseconds` is never
-   * reported: the engine records a park a moment after the run announces it. `undefined` when the
-   * park still stands, or there is none.
+   * COR-1621, COR-1622 — what the engine says of the park this process restored for `runId`, read
+   * from the engine rather than from events. `closed` names the park when the engine no longer
+   * parks the run on it (the run settled, or its signal was delivered, by another process). A park
+   * younger than `graceMilliseconds` is not asked about, because the engine records a park a
+   * moment after the run announces it: `retryAt` is when its grace ends, the time to ask again.
+   * Neither is set when the park is verified still standing, or there is none.
    */
   async function rereadClosed(
     runId: string,
     graceMilliseconds: number,
-  ): Promise<string | undefined> {
+  ): Promise<{ readonly closed?: string; readonly retryAt?: number }> {
     const wait = restored.get(runId);
     const engine = dependencies.engine();
-    if (wait === undefined || engine === undefined) return undefined;
-    if (dependencies.now() - wait.requestedAt <= graceMilliseconds) return undefined;
+    if (wait === undefined || engine === undefined) return {};
+    const graceEnds = wait.requestedAt + graceMilliseconds;
+    if (dependencies.now() <= graceEnds) return { retryAt: graceEnds };
     const state = await engine.get(runId);
     if (settled(state) || !state?.waitingForSignals?.includes(wait.signalName)) {
-      return reviewIdFor(wait);
+      return { closed: reviewIdFor(wait) };
     }
-    return undefined;
+    return {};
   }
 
   function settled(state: WorkflowState | null): boolean {

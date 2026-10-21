@@ -249,6 +249,13 @@ export interface DurableEventHistoryPageOptions {
    * every incarnation, as a trusted caller does.
    */
   incarnation?: string | undefined;
+  /**
+   * COR-1622 — called once for each stored record the read skipped because it could not be decoded
+   * (it is reported to the diagnostic sink as well). A caller that mirrors what the history says
+   * knows by it that the page it received is not the whole of what was recorded, and reads
+   * the state the events would have described instead.
+   */
+  onSkipped?: (() => void) | undefined;
 }
 
 /**
@@ -345,6 +352,12 @@ export interface DurableEventOwnersSubscribeOptions {
    * read), as opposed to by `unsubscribe()` or `signal`, so the caller can open another.
    */
   onEnded?: () => void;
+  /**
+   * COR-1622 — told the owner of each event the subscription skipped because it could not be
+   * decoded (reported to the diagnostic sink as well), so a follower of that owner can read what the
+   * event would have said from the state it describes, instead of trusting a feed with a hole in it.
+   */
+  onSkipped?: (owner: DurableEventOwner) => void;
 }
 
 /**
@@ -1188,6 +1201,7 @@ export function createDurableEventHistory(
           message: `[durable-event-history] Skipped corrupt durable record at sequence ${envelope.sequence} for ${owner.kind}:${owner.id}:`,
           cause: error,
         });
+        options?.onSkipped?.();
         continue;
       }
       if (events.length >= limit) {
@@ -1436,6 +1450,16 @@ export function createDurableEventHistory(
               message: `[durable-event-history] Skipped corrupt durable record at sequence ${envelope.sequence} for ${owner.kind}:${owner.id}:`,
               cause: error,
             });
+            try {
+              options?.onSkipped?.(owner);
+            } catch (callbackError) {
+              diagnose({
+                level: 'error',
+                scope: 'durable-event-history',
+                message: '[durable-event-history] A subscription skip handler threw:',
+                cause: callbackError,
+              });
+            }
             continue;
           }
           try {
