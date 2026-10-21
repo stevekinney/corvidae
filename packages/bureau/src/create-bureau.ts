@@ -14893,13 +14893,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
     if (definition.sessionId !== undefined) {
       rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
-      // A schedule's session is made by its first fire when none exists yet.
-      const held = await runtime.sessionStore?.load(definition.sessionId.trim());
-      rejectUnopenableNewSessionIdentifier(
-        '"sessionId"',
-        definition.sessionId.trim(),
-        held !== undefined,
-      );
+      // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
+      // refused for one that does not, so any other id costs no read of the store.
+      if (unopenableNewSessionIdentifierReason('"sessionId"', definition.sessionId.trim())) {
+        const held = await runtime.sessionStore?.load(definition.sessionId.trim());
+        rejectUnopenableNewSessionIdentifier(
+          '"sessionId"',
+          definition.sessionId.trim(),
+          held !== undefined,
+        );
+      }
     }
     const owner = ownerFromPrincipal(definition.principal, toBadRequest);
     if (!runtime.durable) return undefined;

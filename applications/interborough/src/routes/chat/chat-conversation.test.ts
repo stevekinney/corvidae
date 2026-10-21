@@ -1196,3 +1196,70 @@ describe('the files on a row', () => {
     expect(container.textContent).toContain('Look at these');
   });
 });
+
+describe('a stop before the run’s first event', () => {
+  test('shows the turn as stopped and takes no message until the run has been cancelled', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const starts: string[] = [];
+    const cancels: string[] = [];
+    const stub = bureau({ 'bureau.contexts.get': () => CONTEXT }, (url, init) => {
+      if (url.endsWith('/messages')) return Response.json({ threadId: 'session-1', messages: [] });
+      if (url.includes('/threads/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'none', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (url.includes('/cancel')) {
+        cancels.push(url);
+        return Response.json({ runId: 'native-1', status: 'aborted' });
+      }
+      if (url.includes('/runs/')) {
+        return sse([{ type: 'RUN_ERROR', message: 'over', code: 'RUN_NOT_FOUND' }]);
+      }
+      if (!url.includes('/agents/')) return undefined;
+      starts.push(typeof init?.body === 'string' ? init.body : '');
+      const body = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          await held;
+          const started = {
+            type: 'RUN_STARTED',
+            threadId: 'session-1',
+            runId: 'run-1',
+            metadata: { '@lostgradient/bureau': { runId: 'native-1', sessionId: 'session-1' } },
+          };
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(started)}\n\n`));
+          controller.close();
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    restore = stub.restore;
+    landAt('/chat/session-1');
+    const { container, findByText, findByRole, queryByText } = mount({
+      sessionId: 'session-1',
+      title: 'Plan the week',
+      agentName: 'assistant',
+    });
+    await findByText('Plan the week');
+    await sendMessage(container, 'Start');
+    await waitFor(() => expect(starts).toHaveLength(1));
+
+    await fireEvent.click(await findByRole('button', { name: /stop/i }));
+
+    // The page says the turn is stopped, and its composer takes nothing: Enter sends no follow-up.
+    await waitFor(() => expect(queryByText('Stopping…')).not.toBeNull());
+    const composer = container.querySelector('textarea');
+    expect(composer?.disabled).toBe(true);
+    await fireEvent.keyDown(composer!, { key: 'Enter' });
+    expect(stub.calls.map((call) => call.method)).not.toContain('bureau.contexts.input');
+    expect(starts).toHaveLength(1);
+    expect(cancels).toEqual([]);
+
+    release();
+
+    await waitFor(() => expect(cancels).toHaveLength(1));
+    await waitFor(() => expect(queryByText('Stopping…')?.textContent ?? null).toBeNull());
+    expect(container.querySelector('textarea')?.disabled).toBe(false);
+  });
+});

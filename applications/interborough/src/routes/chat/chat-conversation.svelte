@@ -225,8 +225,9 @@
     <Chat
       id={`chat-${sessionId}`}
       conversation={shown}
-      adapter={session.adapter}
+      adapter={session.chatAdapter}
       streaming={session.streaming}
+      streamingStatus={session.stopping ? CHAT_COPY.stopping : ''}
       capabilities={{ attachments: attachable, editing: false, quote: false }}
       uploadAttachment={upload}
       acceptedTypes={settings?.acceptedTypes ?? []}

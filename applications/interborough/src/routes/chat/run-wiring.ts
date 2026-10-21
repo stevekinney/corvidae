@@ -93,7 +93,27 @@ export type Refusal = {
   readonly message: string;
   /** Whether the request that was refused was a resume, which carried what the person had answered. */
   readonly resume: boolean;
+  /**
+   * Whether the mount only found the thread busy: the thread's lease is held, or an earlier attempt
+   * at this very resume is still being applied. Nothing is wrong with the request, and the next send
+   * repeats it. Every other refusal is a failure to be told.
+   */
+  readonly busy: boolean;
 };
+
+/**
+ * The refusals of a resume that say an attempt is still going (`ag-ui-resume.ts`: "An earlier
+ * attempt at this resume is still being applied; try again shortly", "Another attempt at this
+ * resume is in progress; try again", "This resume lost its lease to another attempt before it
+ * finished; try again"). The mount sends them as `RUN_FAILED`, as it does the refusals of an
+ * attempt that failed ("The answers could not be applied; answer the interrupts again", "...send a
+ * new message to continue the thread"), which are told to the person. They differ by their words.
+ */
+const ATTEMPT_STILL_GOING = /\b(?:attempt|resume)\b[^.]*\btry again\b/i;
+
+function isBusyRefusal(code: string | undefined, message: string): boolean {
+  return code === 'THREAD_BUSY' || (code === 'RUN_FAILED' && ATTEMPT_STILL_GOING.test(message));
+}
 
 /** A question a run is waiting on a person to answer. */
 export type HumanRequest = {
@@ -164,6 +184,17 @@ export type ChatRunWiring = {
    */
   takeRefusal(): Refusal | undefined;
   /**
+   * Whether a refused resume still owes the mount what it carried, which the next send repeats
+   * before anything new is sent.
+   */
+  owesResume(): boolean;
+  /**
+   * The rows holding answers that no resume owes any longer, once: the mount took them, or the
+   * question they answered is gone. The run holds each answer as a row of its own, so the typed
+   * rows are dropped from the conversation, and no later start sends one a second time.
+   */
+  takeSettledAnswerRows(): readonly string[];
+  /**
    * The assets the last turn announced that no terminal frame stamped on a row: a turn that ended
    * in an error or a stop carries no history to stamp them on. Answers them once, and the caller
    * puts them on the rows with {@link withAssetParts}.
@@ -208,10 +239,13 @@ function refusalOf(event: unknown, resume: boolean): Refusal | undefined {
   }
   const code = event['code'];
   const message = event['message'];
+  const refusedCode = typeof code === 'string' ? code : undefined;
+  const refusedMessage = typeof message === 'string' ? message : '';
   return {
-    code: typeof code === 'string' ? code : undefined,
-    message: typeof message === 'string' ? message : '',
+    code: refusedCode,
+    message: refusedMessage,
     resume,
+    busy: isBusyRefusal(refusedCode, refusedMessage),
   };
 }
 
@@ -555,6 +589,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
   let unstamped: AssetAnnouncement[] = [];
   /** What the last turn was refused with, until it is taken. */
   let refusal: Refusal | undefined;
+  /** Whether a resume was refused and what it carried is still held, to be sent again. */
+  let refusedResume = false;
+  /** The rows of answers that are settled and not yet dropped from the conversation. */
+  let settledAnswerRows: string[] = [];
 
   /** The questions the run waits on that no answer is held for, in the order the run asked them. */
   function unansweredRequests(): HumanRequest[] {
@@ -570,7 +608,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     const pending = new Set(next.map((interrupt) => interrupt.id));
     // Deleting from a map while it is walked is safe: the walk skips what it has already left.
     for (const id of decisions.keys()) if (!pending.has(id)) decisions.delete(id);
-    for (const id of answers.keys()) if (!pending.has(id)) answers.delete(id);
+    for (const [id, answer] of answers) {
+      if (pending.has(id)) continue;
+      answers.delete(id);
+      settledAnswerRows.push(answer.rowId);
+    }
+    if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
   }
 
@@ -771,8 +814,13 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     unanswered = undefined;
     for (const entry of sent) {
       if (decisions.get(entry.interruptId) === entry) decisions.delete(entry.interruptId);
-      if (answers.get(entry.interruptId)?.entry === entry) answers.delete(entry.interruptId);
+      const answer = answers.get(entry.interruptId);
+      if (answer?.entry === entry) {
+        answers.delete(entry.interruptId);
+        settledAnswerRows.push(answer.rowId);
+      }
     }
+    refusedResume = false;
     // The questions and approvals of the run before are answered, or refused as the mount sees fit.
     interrupts = [];
   }
@@ -787,6 +835,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         answered = true;
         const refused = refusalOf(event, sent.length > 0);
         if (refused !== undefined) refusal = refused;
+        if (refused?.resume === true) refusedResume = true;
         // A refusal is the mount's answer to a start, but not to a resume: the entries it carried
         // are still owed, and what is still pending is read again before they are sent.
         if (refused === undefined || sent.length === 0) acknowledged(sent);
@@ -943,6 +992,10 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
       detached = true;
     },
     holdAnswer,
+    owesResume: () => refusedResume && (decisions.size > 0 || answers.size > 0),
+    takeSettledAnswerRows() {
+      return settledAnswerRows.splice(0);
+    },
     takeRefusal() {
       const taken = refusal;
       refusal = undefined;

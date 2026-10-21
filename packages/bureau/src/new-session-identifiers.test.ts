@@ -5,8 +5,15 @@
  * message beginning `unopenable-session-identifier:`; the AG-UI mount refuses a start that would
  * create one as `INVALID_INPUT` (`http/ag-ui-mount-routes.test.ts`).
  */
-import { createMockGenerate, stopWhen } from '@lostgradient/operative';
+import {
+  createAgentSession,
+  createMockGenerate,
+  createSessionStore,
+  stopWhen,
+} from '@lostgradient/operative';
+import { MemoryStorage, textValueStore, type Storage } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
+import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError, createBureau } from './create-bureau';
@@ -72,5 +79,102 @@ describe('a session id a browser would resolve away', () => {
     const run = await bureau.createRun({ message: 'hello', sessionId: '...' });
 
     expect(run.sessionId).toBe('...');
+  });
+});
+
+/** Memory storage that counts the reads that name a session's record. */
+function countingSessionReads() {
+  const storage = new MemoryStorage();
+  let reads = 0;
+  const proxy = new Proxy(storage, {
+    get(target, property, receiver) {
+      const member: unknown = Reflect.get(target, property, receiver);
+      if (typeof member !== 'function') return member;
+      return (...args: unknown[]) => {
+        if (
+          ['get', 'scan', 'has'].includes(String(property)) &&
+          JSON.stringify(args).includes('agent-session')
+        ) {
+          reads += 1;
+        }
+        return (member as (...rest: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+  return { storage: proxy as unknown as Storage, reads: () => reads };
+}
+
+async function bootOver(storage: Storage) {
+  const bureau = await createBureau({
+    agents: { worker: workerAgent(hangUntilAborted) },
+    generate: createMockGenerate([{ content: 'ok', toolCalls: [] }]),
+    toolbox: createToolbox([]),
+    stopWhen: stopWhen.noToolCalls(),
+    storage,
+    durableExecution: true,
+    onDiagnostic: createDiagnostics().onDiagnostic,
+  });
+  const typed = bureau as unknown as Bureau;
+  open.push(typed);
+  return typed;
+}
+
+describe('a session that already holds an id a browser would resolve away', () => {
+  it.each(UNOPENABLE)(
+    'keeps working: createRun and a schedule take the session %s',
+    async (sessionId) => {
+      // Such a session can exist: another client, or an earlier version, made it. The refusal is for
+      // creating one.
+      const storage = new MemoryStorage() as unknown as Storage;
+      await createSessionStore(textValueStore(storage)).save(
+        createAgentSession({
+          id: sessionId,
+          agentName: 'bureau',
+          conversationHistory: createConversationHistory({ id: sessionId }),
+          metadata: {},
+        }),
+      );
+      const bureau = await bootOver(storage);
+
+      const run = await bureau.createRun({ message: 'hello again', sessionId });
+      const schedule = await bureau.createSchedule({
+        agentName: 'worker',
+        input: 'x',
+        spec: '1h',
+        sessionId,
+      });
+
+      expect(run.sessionId).toBe(sessionId);
+      expect(schedule?.id).toBeDefined();
+    },
+  );
+});
+
+describe('a schedule', () => {
+  it('names an ordinary session without a read of the session store', async () => {
+    const counted = countingSessionReads();
+    const bureau = await bootOver(counted.storage);
+    const before = counted.reads();
+
+    await bureau.createSchedule({
+      agentName: 'worker',
+      input: 'x',
+      spec: '1h',
+      sessionId: 'recurring',
+    });
+
+    expect(counted.reads()).toBe(before);
+  });
+
+  it('reads the store before it refuses a dot-only id, which an existing session may hold', async () => {
+    const counted = countingSessionReads();
+    const bureau = await bootOver(counted.storage);
+    const before = counted.reads();
+
+    await bureau
+      .createSchedule({ agentName: 'worker', input: 'x', spec: '1h', sessionId: '.' })
+      .catch(() => undefined);
+
+    expect(counted.reads()).toBeGreaterThan(before);
   });
 });

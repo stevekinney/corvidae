@@ -1463,6 +1463,7 @@ describe('a resume the mount refused', () => {
       code: 'THREAD_BUSY',
       message: 'Thread has a run in progress',
       resume: true,
+      busy: true,
     });
     // The page reads again what the thread is waiting on, through the attach it makes on load.
     await wiring.attach(THREAD);

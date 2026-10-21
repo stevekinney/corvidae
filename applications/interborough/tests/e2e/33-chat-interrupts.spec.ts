@@ -168,7 +168,10 @@ test.describe('a stop before the run’s first event', () => {
 
       await page.getByRole('button', { name: /stop/i }).click();
 
-      // Nothing names the run yet, so nothing was cancelled, and the turn is still the page's.
+      // Nothing names the run yet, so nothing was cancelled. The page shows the turn as stopped, and
+      // its composer takes nothing until the run has been cancelled.
+      await expect(page.getByText(CHAT_COPY.stopping)).toBeVisible();
+      await expect(composer(page)).toBeDisabled();
       expect(cancels).toEqual([]);
       release();
 

@@ -680,15 +680,17 @@ describe('a resume the mount refused', () => {
 
   test('for a busy thread shows no failure, keeps the decision, and the next send applies it', async () => {
     const { mounted, session } = await approvedWith(
-      [refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second()],
+      [refusalOf('THREAD_BUSY', 'Thread has a run in progress'), second(), second()],
       [parkedOn(approval)],
     );
 
     expect(session.failure).toBeUndefined();
     await session.adapter.sendMessage({ role: 'user', content: 'Go on' }, []);
 
-    expect(mounted.bodies).toHaveLength(3);
+    // The decision is sent again first, and the message after it as a start of its own.
+    expect(mounted.bodies).toHaveLength(4);
     expect(mounted.bodies[2]?.resume).toEqual(mounted.bodies[1]?.resume);
+    expect(mounted.bodies[3]?.resume).toBeUndefined();
     expect(session.failure).toBeUndefined();
   });
 
@@ -715,6 +717,7 @@ describe('a resume the mount refused', () => {
           'RUN_FAILED',
           'An earlier attempt at this resume is still being applied; try again shortly',
         ),
+        second(),
         second(),
       ],
       [parkedOn(approval)],
