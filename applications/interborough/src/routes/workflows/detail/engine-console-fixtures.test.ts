@@ -13,6 +13,7 @@ import { Engine } from '@lostgradient/weft';
 import {
   ATTRIBUTE_SHOWCASE_RUN_ID,
   CHUNK_STREAMER_RUN_ID,
+  UPDATE_DESK_REPLAY_RUN_ID,
   UPDATE_DESK_RUN_ID,
 } from '../../../../fixtures/engine-console-ids.ts';
 import {
@@ -33,8 +34,9 @@ async function seededEngine() {
 type SeededEngine = Awaited<ReturnType<typeof seededEngine>>;
 type Run = Awaited<ReturnType<SeededEngine['list']>>['items'][number];
 
-async function runOfType(engine: SeededEngine, type: string): Promise<Run> {
-  const { items } = await engine.list({ type });
+async function runOfType(engine: SeededEngine, type: string, id?: string): Promise<Run> {
+  const listed = await engine.list({ type });
+  const items = listed.items.filter((item) => id === undefined || item.id === id);
   const run = items[0];
   if (items.length !== 1 || run === undefined) {
     throw new Error(`expected one ${type} run, found ${items.length}`);
@@ -83,12 +85,13 @@ describe('seedEngineConsole', () => {
   it('lets each run end on its own signal, so none stays parked for good', async () => {
     const engine = await seededEngine();
 
-    for (const [type, signal] of [
-      ['attribute-showcase', 'finish'],
-      ['chunk-streamer', 'finish'],
-      ['update-desk', 'close'],
+    for (const [type, signal, id] of [
+      ['attribute-showcase', 'finish', ATTRIBUTE_SHOWCASE_RUN_ID],
+      ['chunk-streamer', 'finish', CHUNK_STREAMER_RUN_ID],
+      ['update-desk', 'close', UPDATE_DESK_RUN_ID],
+      ['update-desk', 'close', UPDATE_DESK_REPLAY_RUN_ID],
     ] as const) {
-      const run = await runOfType(engine, type);
+      const run = await runOfType(engine, type, id);
       await engine.signal(run.id, signal);
       const deadline = Date.now() + 2_000;
       let state = await engine.get(run.id);
@@ -102,7 +105,7 @@ describe('seedEngineConsole', () => {
 
   it('starts a run whose history holds one completed and one failed update', async () => {
     const engine = await seededEngine();
-    const run = await runOfType(engine, 'update-desk');
+    const run = await runOfType(engine, 'update-desk', UPDATE_DESK_RUN_ID);
     expect(run.id).toBe(UPDATE_DESK_RUN_ID);
 
     expect(run.status).toBe('running');
@@ -111,5 +114,14 @@ describe('seedEngineConsole', () => {
       ['explode', 'failed', 'the desk refused this update'],
       ['greet', 'completed', undefined],
     ]);
+  });
+
+  it('starts a second update-desk run whose history is empty, so one send can be counted', async () => {
+    const engine = await seededEngine();
+    const run = await runOfType(engine, 'update-desk', UPDATE_DESK_REPLAY_RUN_ID);
+
+    expect(run.status).toBe('running');
+    const history = await engine.listUpdateHistory(run.id);
+    expect(history.items).toEqual([]);
   });
 });

@@ -161,8 +161,8 @@ describe('createQueryClient — retry policy never retries a 4xx-shaped fault', 
     expect(shouldRetry(3, error)).toBe(false);
   });
 
-  test('retries a Timeout FaultCode despite its 4xx-shaped HTTP status (transient by nature — see faults.ts)', () => {
-    const error = new HttpClientError(408, 'x', { faultCode: 'Timeout' });
+  test('retries a Timeout FaultCode, transient by nature (see faults.ts)', () => {
+    const error = new HttpClientError(504, 'x', { faultCode: 'Timeout' });
     expect(shouldRetry(0, error)).toBe(true);
   });
 

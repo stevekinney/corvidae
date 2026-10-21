@@ -208,7 +208,7 @@ describe('weft.workflows.update', () => {
     }
   });
 
-  it('returns 408 when the coordinated update times out', async () => {
+  it('returns 504 when the coordinated update times out', async () => {
     engine = createEngine();
     const originalSubmit = engine.submitCoordinatedUpdate.bind(engine);
 
@@ -223,7 +223,7 @@ describe('weft.workflows.update', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
 
-      expect(response.status).toBe(408);
+      expect(response.status).toBe(504);
       expect((await response.json()) as { error: string }).toEqual(
         expect.objectContaining({
           error: expect.stringContaining('timed out'),
@@ -234,7 +234,7 @@ describe('weft.workflows.update', () => {
     }
   });
 
-  it('carries the update id in the REST 408 body so the caller can read the answer later', async () => {
+  it('carries the update id in the REST 504 body so the caller can read the answer later', async () => {
     engine = createEngine();
     const originalSubmit = engine.submitCoordinatedUpdate.bind(engine);
 
@@ -249,7 +249,7 @@ describe('weft.workflows.update', () => {
         { operationRegistry: registry, restBindings: bindings },
       );
 
-      expect(response.status).toBe(408);
+      expect(response.status).toBe(504);
       expect(await response.json()).toEqual({
         error: 'Update update-123 timed out after 2000ms',
         data: { updateId: 'update-123' },
@@ -288,7 +288,7 @@ describe('weft.workflows.update', () => {
       }
       expect(outcome.response.error.code).toBe(-32023);
       expect(outcome.response.error.data).toEqual(
-        expect.objectContaining({ updateId: 'update-123', weftCode: 'Timeout' }),
+        expect.objectContaining({ updateId: 'update-123', weftCode: 'Timeout', httpStatus: 504 }),
       );
     } finally {
       engine.submitCoordinatedUpdate = originalSubmit;
