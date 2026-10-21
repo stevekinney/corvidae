@@ -30,6 +30,7 @@ import {
   type BetterSqliteTransaction,
 } from './node-sqlite-loader.ts';
 import {
+  SQLITE_BUSY_TIMEOUT_MS,
   SQLITE_CREATE_KEY_VALUE_TABLE,
   SQLITE_DELETE_VALUE_BY_KEY,
   SQLITE_SELECT_VALUE_BY_KEY,
@@ -130,6 +131,9 @@ export class NodeSQLiteStorage implements Storage {
       throw error;
     }
 
+    // First, so the connection waits for another process's lock from its first statement,
+    // including the journal-mode switch below, which takes a write lock of its own.
+    this.#database.pragma(`busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
     this.#database.pragma('journal_mode = WAL');
     this.#database.pragma('synchronous = NORMAL');
     this.#database.pragma('cache_size = -64000');
@@ -188,7 +192,9 @@ export class NodeSQLiteStorage implements Storage {
   async batch(operations: BatchOperation[]): Promise<void> {
     assertStorageBatchOperationCount('batch operations', operations.length);
     if (operations.length === 0) return;
-    this.#batchTransaction(operations);
+    // A batch writes first, so a deferred transaction would also wait under the busy timeout;
+    // `.immediate` keeps it in step with `conditionalBatch`, which reads before it writes.
+    this.#batchTransaction.immediate(operations);
   }
 
   async conditionalBatch(
@@ -218,7 +224,9 @@ export class NodeSQLiteStorage implements Storage {
         }),
     );
 
-    return Boolean(conditionalTransaction(conditions, operations));
+    // Immediate, so the write lock is taken before the read and a lost race returns `false`
+    // after waiting, where a deferred transaction would throw `database is locked`.
+    return Boolean(conditionalTransaction.immediate(conditions, operations));
   }
 
   [Symbol.dispose](): void {
