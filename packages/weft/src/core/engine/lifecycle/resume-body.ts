@@ -1,11 +1,9 @@
 /**
- * `resumeWorkflowFromStorage()`'s guts — split out of `resume.ts`, which has
- * no headroom under the repository's 500-line implementation-file ceiling
- * for the WFT-134 claim-release wrapping added around this logic (mirrors
- * `resume-generation-guard.ts`'s same split). `resume.ts` itself is now just
- * the public entry point: load/validate state, acquire a claim if needed,
- * and call {@link performResumeAfterClaimAcquired} below inside the
- * claim-release `try`/`catch`.
+ * `resumeWorkflowFromStorage()`'s guts — split out of `resume.ts`, which has no headroom under
+ * the repository's 500-line implementation-file ceiling for the WFT-134 claim-release wrapping
+ * added around this logic (mirrors `resume-generation-guard.ts`'s same split). `resume.ts` itself
+ * is now just the public entry point: load/validate state, acquire a claim if needed, and call
+ * {@link performResumeAfterClaimAcquired} below inside the claim-release `try`/`catch`.
  *
  * @module core/engine/lifecycle/resume-body
  */
