@@ -4,15 +4,13 @@
  * start and after a restart. These are agent-owned options; the class is covered by
  * `session-agent-options.test.ts`.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import { MemoryStorage, textValueStore, yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
@@ -22,14 +20,11 @@ import type { Bureau } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
-let databaseCounter = 0;
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
   for (const path of databasePaths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 });
 
@@ -100,10 +95,7 @@ describe('a named agent’s structured output on a session run', () => {
 
 describe('a named agent’s structured output after a restart', () => {
   it('is still enforced when the run resumes', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-named-output-${process.pid}-${databaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-named-output', '.sqlite');
     databasePaths.push(databasePath);
     const next = createTool({
       name: 'next',

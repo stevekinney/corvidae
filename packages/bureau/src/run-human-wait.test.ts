@@ -4,9 +4,6 @@
  * and resumes after `resolveReview`. The engine's own state is the source of truth, so resolution
  * does not depend on the audit trail, and a review survives a restart with the id it had.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import {
   createAgent,
@@ -17,6 +14,7 @@ import {
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
@@ -27,14 +25,11 @@ import type { Bureau, BureauOptions, PendingReview } from './types';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databasePaths: string[] = [];
-let databaseCounter = 0;
 
 afterEach(async () => {
   for (const bureau of bureaus.splice(0)) await bureau.dispose();
   for (const path of databasePaths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 });
 
@@ -476,7 +471,7 @@ describe('requestHumanInput on a goal attempt', () => {
 
 describe('a bureau.run() park after a restart', () => {
   function nextDatabasePath(): string {
-    const path = join(tmpdir(), `bureau-run-human-wait-${process.pid}-${databaseCounter++}.sqlite`);
+    const path = createTemporaryPath('bureau-run-human-wait', '.sqlite');
     databasePaths.push(path);
     return path;
   }
@@ -710,10 +705,7 @@ describe('a long signalName on a bureau.run() park (COR-1577)', () => {
   });
 
   it('derives the same delivery id after a restart, and resumes the recovered run', async () => {
-    const databasePath = join(
-      tmpdir(),
-      `bureau-run-human-wait-long-${process.pid}-${databaseCounter++}.sqlite`,
-    );
+    const databasePath = createTemporaryPath('bureau-run-human-wait-long', '.sqlite');
     databasePaths.push(databasePath);
     const options = {
       storage: { type: 'sqlite' as const, path: databasePath },

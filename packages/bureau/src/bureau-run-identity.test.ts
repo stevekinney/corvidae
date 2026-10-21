@@ -8,29 +8,24 @@
  * Bureau's read and control surfaces (`getRun`, `abortRun`, `getDurableRun`,
  * `eventHistory`) resolve.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import { createAgent, createStore, type RunnableAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 
-let databaseCounter = 0;
 const databasePaths: string[] = [];
 
 function nextDatabasePath(): string {
-  const path = join(tmpdir(), `bureau-run-identity-${process.pid}-${databaseCounter++}.sqlite`);
+  const path = createTemporaryPath('bureau-run-identity', '.sqlite');
   databasePaths.push(path);
   return path;
 }
 
 afterEach(async () => {
   for (const path of databasePaths.splice(0)) {
-    await rm(path, { force: true });
-    await rm(`${path}-wal`, { force: true });
-    await rm(`${path}-shm`, { force: true });
+    removeTemporaryPath(path);
   }
 });
 

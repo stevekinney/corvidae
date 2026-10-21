@@ -39,13 +39,11 @@
  * `StorageConfiguration`-only and their `openHandles()` always returns
  * `[]` — they have nothing of their own to account for.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import type { Storage, StorageConfiguration } from '@lostgradient/weft';
 import { MemoryStorage } from '@lostgradient/weft';
+import { createTemporaryPath, removeTemporaryPath } from './temporary-path';
 
 /**
  * One isolated storage backend for a single test. `configuration` is ready
@@ -251,23 +249,13 @@ export interface CreateLmdbStorageFixtureOptions extends CreatePersistentStorage
   readonly durability?: 'full' | 'relaxed';
 }
 
-/**
- * Process-local monotonic counter, used ONLY to keep two fixtures minted
- * from two DIFFERENT `RuntimeServices` instances (each with its own
- * `identifiers` counter starting at 1) from colliding on the same path
- * within this one process. Never consulted for anything the harness's own
- * determinism guarantees cover — it is disambiguation for a filesystem
- * path, not a source of test-observable behavior.
- */
-let fixtureSequence = 0;
-
 function allocateFixturePath(kind: 'sqlite' | 'lmdb', runtime: RuntimeServices): string {
   const identifier = runtime.identifiers.next('storage-fixture');
-  fixtureSequence += 1;
-  const suffix = kind === 'sqlite' ? '.sqlite' : '';
-  return join(
-    tmpdir(),
-    `bureau-${kind}-fixture-${process.pid}-${fixtureSequence}-${identifier}${suffix}`,
+  // A fresh `mkdtemp` directory per fixture: the runtime's identifier sequence restarts at 1 for
+  // every `ManualRuntimeServices`, and a process id repeats across runs, so neither can name a path.
+  return createTemporaryPath(
+    `bureau-${kind}-fixture-${identifier}`,
+    kind === 'sqlite' ? '.sqlite' : '',
   );
 }
 
@@ -336,9 +324,7 @@ export function createSqliteStorageFixture(
     owned,
     async dispose() {
       if (!owned) return;
-      await rm(path, { force: true });
-      await rm(`${path}-wal`, { force: true });
-      await rm(`${path}-shm`, { force: true });
+      removeTemporaryPath(path);
     },
     openHandles: () => [],
   };
@@ -366,7 +352,7 @@ export function createLmdbStorageFixture(
     owned,
     async dispose() {
       if (!owned) return;
-      await rm(path, { recursive: true, force: true });
+      removeTemporaryPath(path);
     },
     openHandles: () => [],
   };
