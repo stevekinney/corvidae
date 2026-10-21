@@ -3,8 +3,7 @@
  * the repository's 500-line implementation-file ceiling for the WFT-134 claim-release wrapping
  * added around this logic (mirrors `resume-generation-guard.ts`'s same split). `resume.ts` itself
  * is now just the public entry point: load/validate state, acquire a claim if needed, and call
- * {@link performResumeAfterClaimAcquired} below inside the claim-release
- * `try`/`catch`.
+ * {@link performResumeAfterClaimAcquired} below inside the claim-release `try`/`catch`.
  *
  * @module core/engine/lifecycle/resume-body
  */
@@ -46,6 +45,7 @@ import {
   type RecoveredWorkflowInfo,
   type RegistrationEntry,
 } from './shared.ts';
+import { WorkflowNotResumableError } from './workflow-not-resumable-error.ts';
 
 export type SerializedResumeArgs = {
   workflowId: string;
@@ -353,9 +353,7 @@ async function performSerializedResume(
   }
 
   if (latestState.status !== 'running' && latestState.status !== 'suspended') {
-    throw new Error(
-      `Cannot resume workflow "${workflowId}": status is "${latestState.status}", expected "running" or "suspended"`,
-    );
+    throw new WorkflowNotResumableError(workflowId, latestState.status);
   }
 
   assertSameGeneration(workflowId, latestState, args.expectedGeneration);
