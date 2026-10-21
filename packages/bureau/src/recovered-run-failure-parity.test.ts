@@ -49,7 +49,11 @@ function generateThenFail(failure: unknown): GenerateFunction {
       : Promise.reject(failure);
 }
 
-const failures = [
+const failures: Array<{
+  reason: string;
+  failure: () => Error;
+  lifecycle: string[];
+}> = [
   {
     reason: 'budget-exceeded',
     failure: () => new BudgetExceededError('token limit reached'),
@@ -71,7 +75,7 @@ const failures = [
     failure: () => new ElicitationDeniedError(),
     lifecycle: ['run.error', 'run.completed'],
   },
-] as const;
+];
 
 const LIFECYCLE_EVENTS = new Set(['run.error', 'run.tripwire', 'run.completed', 'run.aborted']);
 
@@ -238,8 +242,8 @@ describe.each(failures)('a $reason run', ({ reason, failure, lifecycle }) => {
     });
 
     // The filter also catches a duplicated `run.error`.
-    expect(fresh.lifecycle).toEqual([...lifecycle]);
-    expect(recovered.lifecycle).toEqual([...lifecycle]);
+    expect(fresh.lifecycle).toEqual(lifecycle);
+    expect(recovered.lifecycle).toEqual(lifecycle);
     expect(fresh.status).toBe('error');
     expect(recovered.status).toBe('error');
     expect(recovered.lastRunStatus).toBe(fresh.lastRunStatus);
