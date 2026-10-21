@@ -21,17 +21,16 @@ describe('the finish reasons a recovered run announces as a failure', () => {
   it('announces exactly the finish reasons that makeErrorResult classifies as a failure', () => {
     const reasons = Object.keys(FINISH_REASONS_ANNOUNCED_ON_REATTACH) as FinishReason[];
     // Every finish reason is classified, so a reason added to the type cannot be skipped here.
-    expect(reasons.toSorted()).toEqual(
-      [
-        'aborted',
-        'budget-exceeded',
-        'elicitation-denied',
-        'error',
-        'maximum-steps',
-        'stop-condition',
-        'tripwire',
-      ].toSorted(),
-    );
+    const everyFinishReason: FinishReason[] = [
+      'aborted',
+      'budget-exceeded',
+      'elicitation-denied',
+      'error',
+      'maximum-steps',
+      'stop-condition',
+      'tripwire',
+    ];
+    expect(reasons.toSorted()).toEqual(everyFinishReason);
 
     for (const finishReason of reasons) {
       const reconstructed = reconstructTerminalRunError({ finishReason, steps: 1 });
