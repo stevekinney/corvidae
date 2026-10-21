@@ -113,13 +113,32 @@ const DARWIN_BASELINE: CoverageBaseline = {
   // COR-1612 re-measures `src/app`, `src/lib`, `src/routes/agents`, `chat`, `reviews`, and `tasks`
   // (the page-combining helper, the approval pane's file list and diff cap, and the task list's
   // fault banner). `src/routes/agents` is now 403/404 functions. Every floor rose or held.
-  measuredAt: '2026-10-20T02:29:00.000Z',
-  overall: { linesFound: 72661, linesHit: 70814, functionsFound: 14337, functionsHit: 13961 },
+  //
+  // COR-1496 re-measures `fixtures`, `scripts`, `src/app`, and `src/routes/workflows` on the merge of
+  // the journey with the reviews, tasks, and run-detail work, from one coverage run at that head. The
+  // other areas held. Every floor rose or held against both parents.
+  measuredAt: '2026-10-21T00:00:00.000Z',
+  overall: { linesFound: 74204, linesHit: 72388, functionsFound: 14673, functionsHit: 14298 },
   areas: {
-    fixtures: { linesFound: 698, linesHit: 321, functionsFound: 69, functionsHit: 12 },
-    scripts: { linesFound: 970, linesHit: 970, functionsFound: 68, functionsHit: 68 },
+    fixtures: {
+      linesFound: 799,
+      linesHit: 415,
+      functionsFound: 85,
+      functionsHit: 27,
+    },
+    scripts: {
+      linesFound: 980,
+      linesHit: 980,
+      functionsFound: 70,
+      functionsHit: 70,
+    },
     src: { linesFound: 152, linesHit: 152, functionsFound: 26, functionsHit: 26 },
-    'src/app': { linesFound: 3836, linesHit: 3769, functionsFound: 660, functionsHit: 642 },
+    'src/app': {
+      linesFound: 3873,
+      linesHit: 3806,
+      functionsFound: 667,
+      functionsHit: 649,
+    },
     'src/lib': { linesFound: 4193, linesHit: 4176, functionsFound: 643, functionsHit: 639 },
     // COR-1532, measured on darwin: the agent editor's route, form, state, and revision history.
     'src/routes/agent-editor': {
@@ -197,10 +216,10 @@ const DARWIN_BASELINE: CoverageBaseline = {
       functionsHit: 520,
     },
     'src/routes/workflows': {
-      linesFound: 14966,
-      linesHit: 14294,
-      functionsFound: 3045,
-      functionsHit: 2903,
+      linesFound: 16288,
+      linesHit: 15654,
+      functionsFound: 3344,
+      functionsHit: 3204,
     },
     'src/views': { linesFound: 376, linesHit: 376, functionsFound: 67, functionsHit: 67 },
     // COR-1496, measured on darwin: the journey's test models (`tests/e2e/journey-agent.ts`).
