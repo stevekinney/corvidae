@@ -14,6 +14,7 @@ import {
 import { assertReadOnlyQuery } from './read-only-query.ts';
 import { scopedStorage } from './scoped-storage.ts';
 import {
+  SQLITE_BUSY_TIMEOUT_MS,
   SQLITE_COUNT_KEYS_BY_PREFIX,
   SQLITE_CREATE_KEY_VALUE_TABLE,
   SQLITE_DELETE_KEYS_BY_PREFIX,
@@ -86,7 +87,7 @@ export class BunSQLiteStorage implements Storage {
   #hasStatement: Statement<{ present: number }, [string]>;
   #countStatement: Statement<{ count: number }, [string, string]>;
   #deletePrefixStatement: Statement<unknown, [string, string]>;
-  #batchTransaction: (entries: BatchOperation[]) => void;
+  #batchTransaction: { immediate: (entries: BatchOperation[]) => void };
   // Cache prepared statements for scan() keyed by the fully-built SQL string.
   // The set of SQL variants is bounded by the structural shape of the scan
   // arguments (presence of gt/gte/lt/lte/reverse/limit), not by their
@@ -118,6 +119,9 @@ export class BunSQLiteStorage implements Storage {
     if (sqlite === undefined) throw new Error('BunSQLiteStorage requires the Bun runtime.');
     this.#database = new sqlite.Database(path);
 
+    // First, so the connection waits for another process's lock from its first statement,
+    // including the journal-mode switch below, which takes a write lock of its own.
+    this.#database.exec(`PRAGMA busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`);
     this.#database.exec('PRAGMA journal_mode = WAL');
     this.#database.exec('PRAGMA synchronous = NORMAL');
     this.#database.exec('PRAGMA cache_size = -64000');
@@ -252,7 +256,9 @@ export class BunSQLiteStorage implements Storage {
   async batch(operations: BatchOperation[]): Promise<void> {
     assertStorageBatchOperationCount('batch operations', operations.length);
     if (operations.length === 0) return;
-    this.#batchTransaction(operations);
+    // A batch writes first, so a deferred transaction would also wait under the busy timeout;
+    // `.immediate` keeps it in step with `conditionalBatch`, which reads before it writes.
+    this.#batchTransaction.immediate(operations);
   }
 
   async conditionalBatch(
@@ -278,7 +284,9 @@ export class BunSQLiteStorage implements Storage {
         }),
     );
 
-    return conditionalTransaction(conditions, operations);
+    // Immediate, so the write lock is taken before the read and a lost race returns `false`
+    // after waiting, where a deferred transaction would throw `database is locked`.
+    return conditionalTransaction.immediate(conditions, operations);
   }
 
   async query<T>(sql: string, parameters?: SQLQueryBindings[]): Promise<T[]> {

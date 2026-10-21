@@ -1,6 +1,20 @@
 import type { NormalizedDeleteRangeOptions } from './delete-range.ts';
 import { resolvePrefixRangeEnd, type ScanOptions } from './interface.ts';
 
+/**
+ * How long a SQLite connection waits for another connection's write lock before it gives up with
+ * SQLite's busy error, in milliseconds. Both SQLite adapters set it as `PRAGMA busy_timeout`.
+ *
+ * Without it, a write that meets another process's lock fails at once with `database is locked`,
+ * and a `conditionalBatch` that lost a compare-and-swap race throws where its caller expects
+ * `false`. The bound has to outlast any one transaction another process commits, so a loser
+ * waits its turn instead of failing, and stay finite, so a holder that never releases surfaces
+ * as SQLite's own error instead of a hang. Five seconds is `better-sqlite3`'s default for the
+ * same pragma, which keeps the two adapters' behavior the same. The adapters take no option for
+ * it.
+ */
+export const SQLITE_BUSY_TIMEOUT_MS = 5000;
+
 export const SQLITE_CREATE_KEY_VALUE_TABLE = `CREATE TABLE IF NOT EXISTS kv (
   key TEXT PRIMARY KEY,
   value BLOB NOT NULL

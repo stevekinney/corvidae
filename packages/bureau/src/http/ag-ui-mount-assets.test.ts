@@ -197,9 +197,76 @@ describe('a user message carrying a managed asset', () => {
         expect(await harness.bureau.getSession('thread-1')).toBeUndefined();
         // The owner's own use of it still works.
         const own = await readAgUiStream(
-          await harness.handler(startRequest(userInput([attachment(assetId)]), as('alice-key'))),
+          await harness.handler(
+            startRequest(userInput([attachment(assetId)]), as('alice-assets-key')),
+          ),
         );
         expect(own.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+      },
+    );
+  });
+});
+
+describe('an asset reference and the asset scope', () => {
+  it('needs bureau.assets:read, and a credential without it is answered as for a missing asset', async () => {
+    await withHarness(
+      { script: [say('Seen.')], backends: anthropic.slice(0, 1), authentication },
+      async (harness) => {
+        const assets = harness.bureau.assets!;
+        const available = await admit(harness, pngBytes(4, 3, 64), 'api-key:alice');
+        const deleted = await admit(harness, pngBytes(5, 3, 64), 'api-key:alice');
+        await assets.delete(deleted, { id: 'api-key:alice' }).result();
+
+        const frames = async (assetId: string, threadId: string) =>
+          readAgUiStream(
+            await harness.handler(
+              startRequest(userInput([attachment(assetId)], { threadId }), as('alice-key')),
+            ),
+          );
+        const unscopedAvailable = await frames(available, 'thread-available');
+        const unscopedDeleted = await frames(deleted, 'thread-deleted');
+        const unscopedMissing = await frames('asset-never-admitted', 'thread-missing');
+
+        // The same owner without the scope is told neither that the asset exists nor its state.
+        const text = (found: typeof unscopedAvailable) =>
+          (found[0]!.event as { message: string }).message;
+        for (const [found, assetId] of [
+          [unscopedAvailable, available],
+          [unscopedDeleted, deleted],
+          [unscopedMissing, 'asset-never-admitted'],
+        ] as const) {
+          expect(typesOf(found)).toEqual([EventType.RUN_ERROR]);
+          expect(found[0]!.event).toMatchObject({ code: 'INVALID_INPUT' });
+          expect(text(found)).toBe(`Asset "${assetId}" was not found`);
+        }
+        expect(harness.generate.callCount).toBe(0);
+        expect(await harness.bureau.getSession('thread-available')).toBeUndefined();
+
+        // The credential that holds the scope starts the run on the same asset.
+        const scoped = await readAgUiStream(
+          await harness.handler(
+            startRequest(
+              userInput([attachment(available)], { threadId: 'thread-scoped' }),
+              as('alice-assets-key'),
+            ),
+          ),
+        );
+        expect(scoped.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
+      },
+    );
+  });
+
+  it('is held by the local caller, which names no credential', async () => {
+    await withHarness(
+      { script: [say('Seen.')], backends: anthropic.slice(0, 1) },
+      async (harness) => {
+        const assetId = await admit(harness, pngBytes(4, 3, 64));
+
+        const frames = await readAgUiStream(
+          await harness.handler(startRequest(userInput([attachment(assetId)]))),
+        );
+
+        expect(frames.at(-1)?.event.type).toBe(EventType.RUN_FINISHED);
       },
     );
   });
