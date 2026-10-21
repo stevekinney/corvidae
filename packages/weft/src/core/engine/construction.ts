@@ -32,6 +32,7 @@ import type {
 import { copyFinalizerMetadata } from './finalizer-metadata.ts';
 import type { RecoverAllOptions } from './lifecycle.ts';
 import { resolveBackgroundTaskMode, resolveOwnershipFields } from './ownership-options.ts';
+import { resolveSchemaPolicy } from './schema-policy.ts';
 import { EngineOwnedRemoteActivityBroker } from './remote-activity-broker.ts';
 import {
   buildRevisionRealmExecutionStrategyBundle,
@@ -314,6 +315,7 @@ export function resolveEngineOptions(
     workerStartOverrideSigningSecret: options?.workerStartOverrideSigningSecret ?? null,
     backgroundTaskMode: resolveBackgroundTaskMode(options),
     inlineLaunchSchedulingMode: resolveInlineLaunchSchedulingMode(options),
+    schemaPolicy: resolveSchemaPolicy(options),
     ...resolveBooleanDefaults(options),
     ...resolveNumericDefaults(options),
     ...resolveRetentionFields(options),

@@ -308,6 +308,7 @@ import {
   releaseSignalWaiter,
   signal as signalWorkflow,
 } from './signals.ts';
+import { assertActivitySchemas } from './schema-policy.ts';
 import { registerSource as registerWorkflowSource } from './source-registration.ts';
 import {
   resolveWorkflowSource as resolveWorkflowSourceImpl,
@@ -391,6 +392,7 @@ export type {
   TrackedWaiterKeys,
   WorkflowResultWaiter,
 } from './engine-internal-types.ts';
+export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export {
   ActivityResolutionError,
   BulkDeleteRequiresTerminalWorkflowsError,
@@ -1805,6 +1807,7 @@ export class Engine<
     getInternals(this).composedActivityInterceptor = undefined;
   }
   #registerActivityDefinition(definition: AnyActivityDefinition): void {
+    assertActivitySchemas(getInternals(this).options.schemaPolicy, definition);
     getInternals(this).activityRegistry.register(definition.name, definition);
   }
 

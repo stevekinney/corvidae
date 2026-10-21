@@ -71,6 +71,7 @@ export {
   ENGINE_LEASE_SYNCHRONOUS_DISPOSE_WARNING_NAME,
   EagerRecoveryRevisionRefusedError,
   Engine,
+  DefinitionSchemaRequiredError,
   EngineCreateNameMismatchError,
   EngineDisposalError,
   EngineDisposedError,
