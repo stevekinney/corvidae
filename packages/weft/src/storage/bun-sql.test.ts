@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'bun:test';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import { spawnWithHangGuard } from '../../scripts/lib/hang-guard.ts';
+import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-support.ts';
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { BunSQLiteStorage } from './bun-sql.ts';
+import {
+  describeSqliteContentionViolations,
+  parseSqliteContentionReport,
+  SQLITE_CONTENTION_BATCH_PREFIX,
+  SQLITE_CONTENTION_COUNTER_KEY,
+  type SqliteContentionMode,
+} from './sqlite-contention.test-support.ts';
+import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-key-value-queries.ts';
 import {
   collect,
   bytes as encode,
@@ -184,6 +197,85 @@ describe('BunSQLiteStorage', () => {
       'Storage query only supports read-only SELECT and PRAGMA statements.',
     );
 
+    storage[Symbol.dispose]();
+  });
+});
+
+// Two OS processes race through BunSQLiteStorage over one database file. A write that meets the
+// other process's lock must wait for it, so a lost compare-and-swap comes back as `false` and a
+// plain batch never throws (COR-1624). The processes are real, so each phase runs at module scope,
+// off Bun's five-second per-test clock; each test rethrows its outcome.
+
+const contentionChildPath = new URL('./sqlite-contention-child.test-support.ts', import.meta.url)
+  .pathname;
+
+async function raceTwoProcesses(mode: SqliteContentionMode): Promise<void> {
+  const directory = mkdtempSync(join(tmpdir(), 'weft-sqlite-contention-'));
+  try {
+    const databasePath = join(directory, 'contention.sqlite');
+    const parent = new BunSQLiteStorage(databasePath);
+    try {
+      await parent.put(SQLITE_CONTENTION_COUNTER_KEY, new TextEncoder().encode('0'));
+
+      const tags = ['a', 'b'];
+      const children = tags.map((tag) =>
+        spawnWithHangGuard(
+          [process.execPath, contentionChildPath, 'bun', databasePath, mode, tag],
+          { stdout: 'pipe', stderr: 'pipe' },
+        ),
+      );
+      const settled = children.map((child) => child.exited.then(() => true));
+      let anyExited = false;
+      void Promise.race(settled).then(() => {
+        anyExited = true;
+      });
+
+      // Release both processes together once each has opened the database, so neither finishes
+      // before the other starts. A child that exits first has failed to start; stop waiting.
+      while (!anyExited && !tags.every((tag) => existsSync(join(directory, `ready-${tag}`)))) {
+        await Bun.sleep(2);
+      }
+      writeFileSync(join(directory, 'go'), '');
+
+      const reports = await Promise.all(
+        children.map(async (child, index) => {
+          const [stdout, stderr] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+            child.exited,
+          ]);
+          return parseSqliteContentionReport(tags[index]!, child.exitCode, stdout, stderr);
+        }),
+      );
+
+      const counter = await parent.get(SQLITE_CONTENTION_COUNTER_KEY);
+      const finalCounter = Number(new TextDecoder().decode(counter ?? undefined));
+      const batchKeyCount = await parent.count(SQLITE_CONTENTION_BATCH_PREFIX);
+      expect(
+        describeSqliteContentionViolations(mode, reports, { finalCounter, batchKeyCount }),
+      ).toEqual([]);
+    } finally {
+      parent[Symbol.dispose]();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
+const conditionalBatchRace = await outcomeOf(() => raceTwoProcesses('conditionalBatch'));
+const batchRace = await outcomeOf(() => raceTwoProcesses('batch'));
+
+describe('BunSQLiteStorage across processes', () => {
+  it('waits for another process holding the write lock, so a lost conditionalBatch returns false', () =>
+    rethrow(conditionalBatchRace));
+
+  it('waits for another process holding the write lock, so a plain batch never throws', () =>
+    rethrow(batchRace));
+
+  it('sets the busy timeout every connection waits for a held lock', async () => {
+    const storage = new BunSQLiteStorage(':memory:');
+    const [row] = await storage.query<{ timeout: number }>('PRAGMA busy_timeout');
+    expect(row?.timeout).toBe(SQLITE_BUSY_TIMEOUT_MS);
     storage[Symbol.dispose]();
   });
 });
