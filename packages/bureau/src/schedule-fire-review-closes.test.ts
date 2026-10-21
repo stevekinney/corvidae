@@ -5,13 +5,15 @@
  * history event each on their own), a checkpoint that cannot be read strictly closes nothing, and
  * a fire's seed state goes with the fire.
  */
-import { stopWhen } from '@lostgradient/operative';
+import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
+  approvalToolbox,
   askingGenerate,
+  chargesOnce,
   auditRecordsOf,
   createScheduleFireHarness,
   durableStatus,
@@ -141,7 +143,11 @@ const encoder = new TextEncoder();
  * while `state.on`: a record a tolerant `loadSteps` skips and a strict one rejects. The record on
  * disk is untouched.
  */
-function unreadableSteps(storage: Storage, state: { on: boolean }): Storage {
+function unreadableSteps(
+  storage: Storage,
+  state: { on: boolean },
+  stepPattern = /:step:/,
+): Storage {
   return new Proxy(storage, {
     get(target, property) {
       const member = Reflect.get(target, property, target) as unknown;
@@ -153,7 +159,7 @@ function unreadableSteps(storage: Storage, state: { on: boolean }): Storage {
         if (
           !state.on ||
           !key.startsWith('durable-run:') ||
-          !key.includes(':step:') ||
+          !stepPattern.test(key) ||
           (typeof value !== 'string' && !(value instanceof Uint8Array))
         ) {
           return value;
@@ -251,6 +257,43 @@ describe('a close that waits for the seed read', () => {
   });
 });
 
+describe('a tool approval’s decision that waits for the seed read', () => {
+  it('follows the request it closes in the history', async () => {
+    const hold = holdingHistoryReads();
+    harness.onDispose(() => hold.release());
+    const charges: number[] = [];
+    const bureau = await harness.open({
+      generate: chargesOnce,
+      toolbox: approvalToolbox(charges),
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+      storage: await harness.sqliteStorage(harness.nextDatabasePath(), (storage) =>
+        hold.wrap(storage),
+      ),
+    });
+    hold.arm();
+    const fireId = await startFire(bureau, 'closes-seed-approval');
+    const review = await reviewOf(bureau, fireId);
+    await Promise.race([hold.reached, sleep(3_000)]);
+    expect(hold.held).toBe(true);
+
+    const deciding = bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
+    await sleep(200);
+    hold.release();
+    await deciding;
+    await pollUntil(async () => {
+      const kinds = await historyKinds(bureau, fireId);
+      return kinds.includes('review.approved') ? kinds : undefined;
+    }, 'the decision to reach the history');
+
+    expect(await historyKinds(bureau, fireId)).toEqual(['review.requested', 'review.approved']);
+    expect(charges).toEqual([4242]);
+  });
+});
+
 describe('a canceled fire’s closes, retried at boot', () => {
   it('writes the audit record that failed once, exactly once, at the next boot', async () => {
     const path = harness.nextDatabasePath();
@@ -331,48 +374,69 @@ describe('a canceled fire’s closes, retried at boot', () => {
   });
 
   it('closes nothing for a checkpoint it cannot read strictly, and the right review at a later boot', async () => {
+    // A fire that parks on `first`, is answered, and parks on `second`.
+    const asksTwice: GenerateFunction = async (context) => {
+      if (context.step > 1) return { content: 'thanks', toolCalls: [] };
+      const signalName = context.step === 0 ? 'first' : 'second';
+      return {
+        content: '',
+        toolCalls: [
+          {
+            id: `call-${String(context.step)}`,
+            name: 'requestHumanInput',
+            arguments: { signalName, prompt: 'Which one?' },
+          },
+        ],
+      };
+    };
+    const options = { ...waitOptions, generate: asksTwice };
     const path = harness.nextDatabasePath();
-    // The history never got the wait's request, and the process died as it began its closing.
+    // The history never got the waits' requests, and the process died as it began its closing.
     const noRequest = failingWrites('review.requested');
     const hold = holdingWrites('review.human-wait.canceled');
     harness.onDispose(() => hold.release());
-    const first = await openWaiting(path, (storage) => hold.wrap(noRequest.wrap(storage)));
+    const open = async (wrap: (storage: Storage) => Storage) =>
+      harness.open({ ...options, storage: await harness.sqliteStorage(path, wrap) });
+    const first = await open((storage) => hold.wrap(noRequest.wrap(storage)));
     const { fireId } = await fireOnce(first, OWNER.alice, 'closes-strict');
-    const review = await reviewOf(first, fireId);
+    const answered = await reviewOf(first, fireId);
+    // The first wait is answered outside the review path, so no audit record says so.
+    await first.durableEngine()?.signal(fireId, 'first', 'go');
+    const waiting = await pollUntil(
+      () => first.listPendingReviews().find((listed) => listed.id !== answered.id),
+      'the second wait',
+    );
     hold.arm();
     void first.durableEngine()?.cancel(fireId);
     await Promise.race([hold.reached, sleep(3_000)]);
     expect(hold.held).toBe(true);
-    expect(await historyKinds(first, fireId)).toEqual([]);
 
-    // The next boot reads a checkpoint whose latest step cannot be read: it closes nothing, and
-    // the task is settled all the same.
+    // The next boot reads a checkpoint whose latest step cannot be read. A tolerant read would
+    // fall back to the step before it and close the wait that was answered; a strict one closes
+    // nothing, and the task is settled all the same.
     const unreadable = { on: true };
-    const second = await openWaiting(path, (storage) => unreadableSteps(storage, unreadable));
+    const second = await open((storage) => unreadableSteps(storage, unreadable, /:step:0*1$/));
     await pollUntil(
       async () => ((await taskStatus(second, fireId)) === 'canceled' ? true : undefined),
       'the task to settle despite the close that could not be made',
     );
     await sleep(300);
     expect(await auditRecordsOf(second, fireId, 'review.human-wait.canceled')).toEqual([]);
-    expect(await historyKinds(second, fireId)).toEqual([]);
     await second.dispose();
 
     // A later boot with a readable checkpoint closes the right review, though the task is settled.
     unreadable.on = false;
-    const third = await openWaiting(path);
+    const third = await open((storage) => unreadableSteps(storage, unreadable));
     await pollUntil(async () => {
-      const records = await auditRecordsOf(third, fireId, 'review.human-wait.canceled', review.id);
+      const records = await auditRecordsOf(third, fireId, 'review.human-wait.canceled');
       return records.length > 0 ? true : undefined;
     }, 'the later boot to close the wait');
     await sleep(300);
 
-    expect(
-      await auditRecordsOf(third, fireId, 'review.human-wait.canceled', review.id),
-    ).toHaveLength(1);
-    expect(
-      (await historyKinds(third, fireId)).filter((kind) => kind === 'review.canceled'),
-    ).toHaveLength(1);
+    const closed = await auditRecordsOf(third, fireId, 'review.human-wait.canceled');
+    expect(closed.map((record) => (record.detail as { review: { id: string } }).review.id)).toEqual(
+      [waiting.id],
+    );
     expect(await durableStatus(third, fireId)).toBe('cancelled');
   });
 });
