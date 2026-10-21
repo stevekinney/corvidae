@@ -80,7 +80,7 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
     scope.onHang(remove);
     try {
       const storagePath = join(directory, backend === 'sqlite' ? 'bureau.sqlite' : 'bureau-lmdb');
-      const { sessionId, runId } = await runCrashingChild(
+      const { sessionId, incarnation, runId } = await runCrashingChild(
         scope,
         backend,
         storagePath,
@@ -129,6 +129,17 @@ function recoveredScenario(backend: Backend): ReturnType<typeof settleScenario> 
         expect(Object.values(records).map((record) => record.promotion !== undefined)).toEqual([
           true,
           true,
+        ]);
+
+        // The run answered what it was given, so both admitted inputs read `applied`. A recovered
+        // run driven twice generates a second time without the inputs the first drive leased, and
+        // leaves their receipts short of `applied` (COR-1618).
+        const receipts = await createSessionInputMailbox(storage, sessionId, incarnation, 100).list(
+          { limit: 10 },
+        );
+        expect(receipts.map((receipt) => [receipt.idempotencyKey, receipt.state])).toEqual([
+          ['input-a', 'applied'],
+          ['input-b', 'applied'],
         ]);
       } finally {
         storage[Symbol.dispose]();

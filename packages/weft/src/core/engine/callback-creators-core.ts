@@ -13,13 +13,12 @@ import type { GuardCallbacks } from './guards.ts';
 import { createWorkflowHandleWithResultPromise } from './handle-result.ts';
 import type { Engine } from './index.ts';
 import {
-  hasLocalCheckpointOwnership,
-  isInlineWorkflowLocallyOwned,
   queueInlineWorkflowExecutionStart,
   type InlineLaunchQueueCallbacks,
 } from './inline-launch-queue.ts';
 import { getInternals } from './internals.ts';
 import { processPendingUpdatesAfterReplay, type LifecycleCallbacks } from './lifecycle.ts';
+import { hasLocalCheckpointOwnership, isInlineWorkflowLocallyOwned } from './local-execution.ts';
 import {
   processPendingUpdatesAfterInlineAdvance,
   processPendingUpdatesForHandlers,

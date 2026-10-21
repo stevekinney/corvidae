@@ -317,6 +317,9 @@ export async function startDelayedWorkflow(
     internals.workflowsNeedingTerminalCleanup.add(entry.workflowId);
   }
 
+  // The headers are read before the checkpoint is adopted: nothing awaits between adoption and the
+  // launch completing, so an attempt is never observable adopted but not launched across an await.
+  const startHeaders = await callbacks.loadWorkflowStartHeaders(entry.workflowId);
   // Prime the checkpoint compare-and-swap baseline from the bytes just loaded, so
   // this run's first commit is conditioned on them like start and resume.
   adoptLaunchCheckpoint(internals, entry.workflowId, checkpoint, serializedCheckpoint);
@@ -324,10 +327,7 @@ export async function startDelayedWorkflow(
     entry.workflowId,
     callbacks.workflowVersionTupleFromState(runningState),
   );
-  callbacks.setWorkflowStartHeaders(
-    entry.workflowId,
-    await callbacks.loadWorkflowStartHeaders(entry.workflowId),
-  );
+  callbacks.setWorkflowStartHeaders(entry.workflowId, startHeaders);
   callbacks.beginWorkflowExecution(
     entry.workflowId,
     runningState.workflowExecutionToken,
