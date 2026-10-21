@@ -188,17 +188,22 @@
    * gate.
    */
   let cancelDialogOpen = $state(false);
-  let cancelTargetId = $state<string | null>(null);
+  /**
+   * What the operator was shown when they asked to cancel, revision included. The list reads itself
+   * again while the confirmation is open, so confirming looks nothing up: cancel sends this
+   * snapshot, and a schedule that moved on is refused as stale instead of a version the operator
+   * never saw being cancelled.
+   */
+  let cancelTarget = $state.raw<Target | null>(null);
 
-  function requestCancel(id: string, event: Event): void {
+  function requestCancel(schedule: ScheduleSummary, event: Event): void {
     event.stopPropagation();
-    cancelTargetId = id;
+    cancelTarget = targetOf(schedule);
     cancelDialogOpen = true;
   }
 
   function confirmCancel(): void {
-    const schedule = allItems.find((candidate) => candidate.id === cancelTargetId);
-    if (schedule !== undefined) actions.cancel.mutate(targetOf(schedule));
+    if (cancelTarget !== null) actions.cancel.mutate(cancelTarget);
     cancelDialogOpen = false;
   }
 </script>
@@ -404,7 +409,7 @@
                     <Dropdown.Item
                       variant="danger"
                       disabled={writeGate.disabled || actions.busy}
-                      onclick={(event) => requestCancel(schedule.id, event)}
+                      onclick={(event) => requestCancel(schedule, event)}
                     >
                       <CircleX aria-hidden="true" size={14} /> Cancel
                     </Dropdown.Item>
@@ -422,8 +427,8 @@
 <ConfirmDialog
   bind:open={cancelDialogOpen}
   title="Cancel this schedule?"
-  description={cancelTargetId
-    ? `"${cancelTargetId}" will stop firing. This can't be undone — create a new schedule to resume this cadence.`
+  description={cancelTarget
+    ? `"${cancelTarget.schedule.id}" will stop firing. This can't be undone — create a new schedule to resume this cadence.`
     : ''}
   confirmLabel="Cancel schedule"
   destructive

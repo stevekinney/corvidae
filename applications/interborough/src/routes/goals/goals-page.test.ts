@@ -75,7 +75,12 @@ type Served = { goals: GoalRow[]; pageSize: number };
 
 function open(
   initial: GoalRow[] = [],
-  options: { scopes?: readonly string[]; pageSize?: number } = {},
+  options: {
+    scopes?: readonly string[];
+    pageSize?: number;
+    /** How the Bureau answers that the goal's controller stands, which is started unless said. */
+    controller?: { status: 'started' | 'not-needed' | 'start-failed'; reason: string | null };
+  } = {},
 ) {
   const served: Served = { goals: [...initial], pageSize: options.pageSize ?? 50 };
   let created = 0;
@@ -124,7 +129,11 @@ function open(
         },
       });
       served.goals.push(made);
-      return { outcome: 'created', goal: made, controller: { status: 'started', reason: null } };
+      return {
+        outcome: 'created',
+        goal: made,
+        controller: options.controller ?? { status: 'started', reason: null },
+      };
     },
     'bureau.goals.cancel': (params) => {
       const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
@@ -302,6 +311,50 @@ describe('creating a goal', () => {
       await waitFor(() => expect(create).not.toBeDisabled());
     }
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
+  });
+});
+
+describe('a goal whose controller failed to start', () => {
+  const REASON = 'The controller could not start: the run engine is shutting down.';
+
+  test('stays in an open drawer that says so, with the reason and the id, and cannot be submitted again', async () => {
+    const { view, served } = open([goal('goal-1')], {
+      controller: { status: 'start-failed', reason: REASON },
+    });
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    await fireEvent.click(view.getByRole('button', { name: GOALS_COPY.newAction }));
+    const element = await view.findByRole('dialog', { name: GOALS_COPY.form.title });
+    const dialog = within(element);
+    await fillGoal(element);
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
+
+    const notice = await dialog.findByTestId('goal-not-started');
+    expect(notice.textContent).toContain(GOALS_COPY.form.startFailedTitle);
+    expect(notice.textContent).toContain(REASON);
+    expect(notice.textContent).toContain(GOALS_COPY.form.startFailedGoal('goal-created-1'));
+    // The drawer is still open, read-only, and Cancel has become Close.
+    expect(view.queryByRole('dialog', { name: GOALS_COPY.form.title })).not.toBeNull();
+    expect(router.search.get('create')).toBe('1');
+    expect(dialog.getByRole('button', { name: GOALS_COPY.form.createAction })).toBeDisabled();
+    expect(dialog.queryByRole('button', { name: GOALS_COPY.form.cancelAction })).toBeNull();
+    for (const label of [
+      GOALS_COPY.form.agentLabel,
+      GOALS_COPY.form.promptLabel,
+      GOALS_COPY.form.identityNameLabel,
+      GOALS_COPY.form.validatorNameLabel,
+      GOALS_COPY.form.maximumAttemptsLabel,
+    ]) {
+      expect(dialog.getByLabelText(label), label).toBeDisabled();
+    }
+    // The goal is in the list behind the drawer, because the list was read again.
+    await waitFor(() => expect(row(view.container, 'goal-created-1')).not.toBeNull());
+    expect(served.goals.map((candidate) => candidate.goalRunId)).toContain('goal-created-1');
+    // Submitting again would reuse the key and come back `existing`, so it is not offered.
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
+    expect(stub?.callsTo('bureau.goals.create')).toHaveLength(1);
+
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.closeAction }));
+    await waitFor(() => expect(router.search.get('create')).toBeNull());
   });
 });
 

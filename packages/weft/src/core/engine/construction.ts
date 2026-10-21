@@ -37,6 +37,7 @@ import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
+import { resolveSchemaPolicy } from './schema-policy.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
@@ -314,6 +315,7 @@ export function resolveEngineOptions(
     workerStartOverrideSigningSecret: options?.workerStartOverrideSigningSecret ?? null,
     backgroundTaskMode: resolveBackgroundTaskMode(options),
     inlineLaunchSchedulingMode: resolveInlineLaunchSchedulingMode(options),
+    schemaPolicy: resolveSchemaPolicy(options),
     ...resolveBooleanDefaults(options),
     ...resolveNumericDefaults(options),
     ...resolveRetentionFields(options),

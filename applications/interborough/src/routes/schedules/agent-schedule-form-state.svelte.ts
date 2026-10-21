@@ -17,7 +17,13 @@ import {
   type AgentScheduleInput,
   type AgentScheduleUpdate,
 } from '../../lib/bureau-schedules.ts';
-import { scheduleValueToWireSpec } from './cadence.ts';
+import {
+  cadenceToWireSpec,
+  describeCadence,
+  isSubMinuteInterval,
+  scheduleValueToWireSpec,
+  type ScheduleCadence,
+} from './cadence.ts';
 
 /** The longest input, and description, the Bureau accepts. */
 const MAX_INPUT_LENGTH = 100_000;
@@ -29,6 +35,8 @@ export type AgentScheduleFormInit = {
   readonly mode: 'create' | 'edit';
   readonly agentName?: string;
   readonly cadence?: ScheduleValue;
+  /** The cadence an edit was built from, exactly as stored. Kept and resent unless the operator changes it, so a value the builder rounds, such as `30s`, is not rounded by an unrelated edit. */
+  readonly originalCadence?: ScheduleCadence;
   readonly description?: string;
   readonly overlap?: AgentOverlap;
   /** The revision of the schedule an edit was built from. */
@@ -52,7 +60,11 @@ export class AgentScheduleFormState {
   input = $state('');
   sessionId = $state('');
   overlap = $state<AgentOverlap>('skip');
+  /** Whether the operator changed the cadence. Until then an edit sends `originalCadence`, not the builder's value. */
+  cadenceChanged = $state(false);
 
+  /** The cadence an edit was built from, exactly as stored; `undefined` for a new schedule. */
+  readonly originalCadence: ScheduleCadence | undefined;
   /** The revision the schedule was at when this draft was made. `undefined` for a new schedule. */
   readonly revision: number | undefined;
   private readonly initialSpec: string;
@@ -66,14 +78,38 @@ export class AgentScheduleFormState {
     this.description = init.description ?? this.description;
     this.overlap = init.overlap ?? this.overlap;
     this.revision = init.revision;
-    this.initialSpec = bureauSpecOf(scheduleValueToWireSpec(this.cadence));
+    this.originalCadence = init.originalCadence;
+    this.initialSpec = this.spec;
     this.initialDescription = this.description;
     this.initialOverlap = this.overlap;
   }
 
-  /** The cadence in the text the Bureau takes. */
+  /** The cadence in the text the Bureau takes: what the schedule had, until the operator changes it, and then the builder's value. */
   get spec(): string {
+    if (!this.cadenceChanged && this.originalCadence !== undefined) {
+      const original = cadenceToWireSpec(this.originalCadence);
+      if (original !== undefined) return bureauSpecOf(original);
+    }
     return bureauSpecOf(scheduleValueToWireSpec(this.cadence));
+  }
+
+  /** What the edit drawer shows in place of the builder, for a cadence the builder cannot show exactly, until the operator asks to change it. */
+  get exactCadenceText(): string | undefined {
+    if (this.cadenceChanged || this.originalCadence === undefined) return undefined;
+    return isSubMinuteInterval(this.originalCadence)
+      ? describeCadence(this.originalCadence)
+      : undefined;
+  }
+
+  /** Takes the cadence the builder committed. */
+  setCadence(next: ScheduleValue): void {
+    this.cadence = next;
+    this.cadenceChanged = true;
+  }
+
+  /** Replaces the kept cadence with the builder's value, which the operator then edits. */
+  changeCadence(): void {
+    this.cadenceChanged = true;
   }
 
   get errors(): AgentScheduleFormErrors {

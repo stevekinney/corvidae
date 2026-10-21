@@ -235,6 +235,33 @@ export function intervalMsToScheduleValue(intervalMs: number): IntervalScheduleV
   };
 }
 
+/**
+ * Whether a persisted cadence is an interval the `ScheduleBuilder` cannot show exactly: it counts
+ * in whole minutes at the smallest, so `30s` or `90s` would be rounded to a minute count. An edit
+ * that resends the rounded value silently changes the schedule's timing, so such a cadence is
+ * kept as it was until the operator chooses to change it.
+ */
+export function isSubMinuteInterval(cadence: ScheduleCadence): boolean {
+  return (
+    cadence.intervalMs !== undefined && cadence.intervalMs % CINDER_INTERVAL_UNIT_MS.minutes !== 0
+  );
+}
+
+/** Just the cadence of a persisted schedule, copied, so a draft keeps it exactly as it was read. */
+export function cadenceOf(schedule: ScheduleCadence): ScheduleCadence {
+  return {
+    ...(schedule.cronExpression !== undefined ? { cronExpression: schedule.cronExpression } : {}),
+    ...(schedule.intervalMs !== undefined ? { intervalMs: schedule.intervalMs } : {}),
+  };
+}
+
+/** A persisted cadence in the wire fields an update takes, exactly as it is stored; `undefined` for a schedule with no cadence. */
+export function cadenceToWireSpec(cadence: ScheduleCadence): ScheduleSpec | undefined {
+  if (cadence.cronExpression !== undefined) return { cron: cadence.cronExpression };
+  if (cadence.intervalMs !== undefined) return { every: cadence.intervalMs };
+  return undefined;
+}
+
 /** Rehydrates a persisted schedule's cadence into a `ScheduleValue` for the edit drawer's `ScheduleBuilder`. */
 export function cadenceToScheduleValue(cadence: ScheduleCadence): ScheduleValue {
   if (cadence.cronExpression !== undefined)

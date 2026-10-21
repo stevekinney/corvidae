@@ -26,7 +26,7 @@
   import { workflowEditPath } from '../../lib/workflow-type-paths.ts';
   import AgentScheduleFields from './agent-schedule-fields.svelte';
   import { AgentScheduleFormState } from './agent-schedule-form-state.svelte.ts';
-  import { cadenceToScheduleValue, scheduleValueToWireSpec } from './cadence.ts';
+  import { cadenceOf, cadenceToScheduleValue } from './cadence.ts';
   import FaultBanner from './fault-banner.svelte';
   import { OVERLAY_FAILURE } from './overlay-failure.ts';
   import { scheduleOverlayOptions } from './overlay-query.ts';
@@ -166,6 +166,7 @@
       agentForm = new AgentScheduleFormState({
         mode: 'edit',
         cadence: cadenceToScheduleValue(schedule),
+        originalCadence: cadenceOf(schedule),
         description: schedule.description ?? '',
         overlap: schedule.overlap === 'allow' ? 'allow' : 'skip',
         revision: schedule.revision,
@@ -185,6 +186,7 @@
       workflowType: schedule.workflowType,
       ...(schedule.description !== undefined ? { description: schedule.description } : {}),
       cadence: cadenceToScheduleValue(schedule),
+      originalCadence: cadenceOf(schedule),
       overlap: schedule.overlap,
       jitterText: schedule.jitterMs !== undefined ? `${schedule.jitterMs}ms` : '',
       backfill: schedule.backfill,
@@ -231,12 +233,7 @@
   const updateScheduleMutation = createMutation(() => ({
     mutationFn: async () => {
       if (!form || scheduleId === undefined) throw new Error('Form not ready.');
-      await updateScheduleSpec(
-        client,
-        scheduleId,
-        scheduleValueToWireSpec(form.cadence),
-        form.toUpdateOptions(),
-      );
+      await updateScheduleSpec(client, scheduleId, form.cadenceSpec, form.toUpdateOptions());
     },
     onSuccess: () => {
       invalidateSchedules();
@@ -397,7 +394,12 @@
         leaving a stale draft to silently overwrite the new form's value.
       -->
       {#key form}
-        <ScheduleFormFields {form} {mode} {workflowTypeOptions} />
+        <ScheduleFormFields
+          {form}
+          {mode}
+          {workflowTypeOptions}
+          registeredTypeCount={registryQuery.isSuccess ? registryQuery.data.length : 0}
+        />
       {/key}
       {#if mode === 'create' && starts === 'workflow'}
         {#if overlayQuery.data?.failed && overlayQuery.data.files === undefined}
