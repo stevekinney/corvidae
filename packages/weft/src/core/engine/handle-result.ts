@@ -8,6 +8,7 @@ import { copyResultCommitter, recordResultCommitter } from './result-committer.t
 import {
   bindResultWaiterToRun,
   heldRunForResultWaiter,
+  pendingTerminalSettlementFor,
   rejectReplacedResultWaiter,
   waiterBelongsToRun,
   waitersBelongToSameRun,
@@ -312,9 +313,10 @@ async function deferToLocalTerminalDeliveryIfPending(
 }
 
 /**
- * Combines the two settle-time guards every terminal-outcome branch of
- * {@link bootstrapWorkflowResultResolver} needs (WFT-79 F1 and F2) into one
- * call, keeping that function's cyclomatic complexity down. Returns
+ * Combines the settle-time guards every terminal-outcome branch of
+ * {@link bootstrapWorkflowResultResolver} needs (WFT-79 F1 and F2, and a
+ * terminated run's pending settlement, COR-1597) into one call, keeping that
+ * function's cyclomatic complexity down. Returns
  * `'proceed'` when the caller should go ahead and settle `waiter` itself;
  * otherwise returns the {@link ResultResolutionOutcome} the caller must
  * return immediately without touching `waiter` again.
@@ -323,9 +325,19 @@ async function prepareToSettleTerminalWaiter(
   internals: EngineInternals,
   workflowId: string,
   waiter: WorkflowResultWaiter,
-): Promise<'proceed' | Extract<ResultResolutionOutcome, 'settled'>> {
+): Promise<'proceed' | ResultResolutionOutcome> {
+  // A terminated run's result waits for the activity it still has in flight (COR-1597). Asked
+  // after the deferral below rather than before it, because the terminal commit can land while
+  // that deferral yields; the claim has been released by now, so it would not hold the waiter.
   if (await deferToLocalTerminalDeliveryIfPending(internals, workflowId, waiter)) {
     return 'settled';
+  }
+  const pending = pendingTerminalSettlementFor(internals, workflowId, waiter);
+  if (pending !== undefined) {
+    // A read that found no record (a purge removed it) left the waiter unbound. Bind it to the
+    // run being settled, so the settlement finds and rejects it when the activity lands.
+    bindResultWaiterToRun(waiter, pending.workflowExecutionToken);
+    return 'pending';
   }
   return 'proceed';
 }

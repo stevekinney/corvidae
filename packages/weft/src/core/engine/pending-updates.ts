@@ -274,6 +274,7 @@ async function rejectPendingUpdate(
     undefined,
     errorMessage,
     update.idempotencyKey,
+    { name: update.name, receivedAt: update.createdAt },
   );
   // The update response is engine-generated (derived from running the update
   // handler), so a deposed engine must not write a stale response over the
@@ -313,6 +314,7 @@ async function deliverPendingUpdate(
     result,
     error,
     update.idempotencyKey,
+    { name: update.name, receivedAt: update.createdAt },
   );
   // Engine-generated update response (see rejectPendingUpdate) — fence on the
   // lease epoch so a deposed engine cannot overwrite the successor's response.

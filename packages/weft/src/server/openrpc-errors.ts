@@ -25,7 +25,10 @@ export const NotFoundDataSchema = z.object({
 });
 export const ConflictDataSchema = z.object({ reason: z.string() });
 export const UnprocessableDataSchema = z.object({ reason: z.string() });
-export const TimeoutDataSchema = z.object({ operationName: z.string().optional() });
+export const TimeoutDataSchema = z.object({
+  operationName: z.string().optional(),
+  updateId: z.string().optional(),
+});
 export const PayloadTooLargeDataSchema = z.object({ maxBytes: z.number() });
 export const NotImplementedDataSchema = z.object({});
 const TransportKindSchema = z.enum([

@@ -104,7 +104,7 @@ describe('engine callback creators', () => {
 
     await createUpdateCallbacks(engine).persistCoordinatedUpdateResponse(
       'workflow-update-response',
-      'approve',
+      { name: 'approve', receivedAt: 1_700_000_000_000 },
       'update-1',
       'idempotency-1',
       { approved: true },
@@ -139,7 +139,7 @@ describe('engine callback creators', () => {
 
     await createUpdateCallbacks(engine).persistCoordinatedUpdateResponse(
       'workflow-update-response-failure',
-      'approve',
+      { name: 'approve', receivedAt: 1_700_000_000_000 },
       'update-1',
       'idempotency-1',
       { approved: true },
@@ -180,7 +180,7 @@ describe('engine callback creators', () => {
 
     await createUpdateCallbacks(engine).persistCoordinatedUpdateResponse(
       'workflow-update-response-race',
-      'approve',
+      { name: 'approve', receivedAt: 1_700_000_000_000 },
       'update-2',
       undefined,
       { approved: true },

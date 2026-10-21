@@ -42,7 +42,9 @@ export const updateWorkflowOperation = defineOperation({
     'Invoke a named update handler on a workflow and wait for its result. Requires the ' +
     'workflow `id` and the update `name`; `payload` is optional. Unlike signals, updates ' +
     'return the handler result synchronously. Faults with NotFound when the workflow is not ' +
-    'visible and InvalidParams when the payload exceeds the size limit.',
+    'visible and InvalidParams when the payload exceeds the size limit. A Timeout fault carries ' +
+    'the `updateId` in its `data`: the update stays queued, and its answer is read later with ' +
+    '`weft.updates.result.get` or listed by `weft.workflows.updates.list`.',
   destructive: true,
   tags: ['Updates'],
   inputSchema: updateWorkflowInput,
@@ -110,7 +112,7 @@ export const updateWorkflowOperation = defineOperation({
         const fault: OperationFault = {
           code: 'Timeout',
           message: error.message,
-          data: {},
+          data: { updateId: error.updateId },
         };
         throw fault;
       }

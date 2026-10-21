@@ -21,6 +21,7 @@ Declare `"@lostgradient/bureau": "workspace:*"` in the consuming workspace's dep
   - [The Audit Trail](#the-audit-trail)
   - [Run-creation receipts (COR-424)](#run-creation-receipts-cor-424)
   - [The AG-UI mount (COR-855)](#the-ag-ui-mount-cor-855)
+  - [External control plane](#external-control-plane)
   - [The Durable Event History Store (AB-91)](#the-durable-event-history-store-ab-91)
   - [Parent-child topology (COR-772)](#parent-child-topology-cor-772)
   - [Durable goals (COR-851)](#durable-goals-cor-851)
@@ -58,7 +59,7 @@ Applications own HTTP and browser integration. `createBureau()` has no HTTP depe
 
 A `createRun` request that names a catalog agent (`agentName`) runs that agent. The session run uses the agent's own `generate`, tools, system prompt (the request's `systemPrompt` wins, then the agent's, then the Bureau's), `maximumSteps`, `maximumTokens`, and stop conditions, with the Bureau's memory, guardrails, identity, skills, and opt-in tools (`requestHumanInput`, `scheduleWakeup`) composed around it. A session is bound to the agent that created it: a later run omits `agentName` or repeats it, and naming another is a `BAD_REQUEST`. A name outside the catalog is `NOT_FOUND`, and a Bureau that has only catalog agents accepts a named run and refuses an unnamed one with `NOT_CONFIGURED`. A durable named run recovers as its agent. If the agent has left the catalog the run fails, and if its definition revision changed Bureau logs a warning and resumes with the current definition. A schedule's fire and a goal's attempt still run the Bureau-wide runtime.
 
-With `humanInput: true` on a durable Bureau, an agent can call `requestHumanInput` to park its run, whichever way the run was started (a `createRun` run, or a `bureau.run()` run of an agent that resolves definitions; a child run or a goal attempt is not offered the tool, and neither is anything on a Bureau with no durable engine). The park appears in `listPendingReviews()` as a `human-wait` review. A `createRun` run's review carries its `sessionId`; a `bureau.run()` run has no session, so its review has no `sessionId` and is addressed by its `runId`. `resolveReview` resumes either one: `approve` delivers the optional `payload`, and `deny` and `reject` deliver the same denial and rejection markers on the signal. A `bureau.run()` park is resolved through the engine by run id, under a delivery id derived from the review id (the review id itself, or a fixed-length hash of it when it exceeds Weft's 128-byte `signalId` limit, as a long `signalName` makes it), so a retried resolve delivers once. The engine's own record of what the run waits on decides whether a review is still pending, so resolving does not depend on the audit trail. After a restart a parked `bureau.run()` run is listed again under the id it had. The agent must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Tool approvals on `bureau.run()` runs are not reviewed. A schedule fire is offered `requestHumanInput` the same way, and what it waits on is a review of the fire: its `runId` is the fire's run id (its task id), its `sessionId` is the session the fire runs in, and its owner is the schedule's owner. A fire's park is listed live and after a restart, and `bureau.tasks.respond` or `resolveReview` answers it. A tool call a fire's step leaves awaiting approval is a `tool-approval` review of the fire in the same way, recorded with the fire's session, in the same write as its conversation, so a restart lists it again. A restart lists only the approvals the fire's run committed, whether the fire is still going or has ended: the run's checkpoint is the source of truth, and what the session holds is a claim made before the step committed. One from a step that crashed before its commit is not restored, the replayed step records its own, and the session is reconciled with the checkpoint when the fire settles. `resolveReview` with `approve` runs the tool, and the fire's task is `input-required` until it is decided. An approval nobody answers is swept by `sweepExpiredReviews` like any other, and a canceled fire's approvals are revoked and removed from its session, so a restart never brings one back to run a tool for a canceled run. The engine's own status decides whether a fire was canceled, at boot and again when an approval is decided: a fire the engine records as `cancelled`, whichever process canceled it and however far the cancel's bookkeeping got, restores nothing, and deciding its approval is refused with `CONFLICT`. A boot that cannot read the engine's status restores nothing and prunes nothing, and tries again at the next boot. A decided, expired, canceled or abandoned approval leaves nothing of its own in the session; what fences a concurrent resolver goes with the fire's task at retention. A fire announces each review it raises as `review.requested`, and its `bureau.tasks.events` stream reads `input-required` while a review is open and ends when the last one closes, decided or expired. A fire that takes another step after an approval writes its conversation back then, over the outcome an early decision would have recorded, so deciding such an approval throws `ApprovalOutcomeNotWrittenError`: configure the agent with `stopWhen.pendingApproval()`. Reviews of a fire are the same on every Bureau sharing its stores (COR-1613). Another instance answers a fire's `requestHumanInput` park through the engine by run id, without holding the fire, and the fire completes on its holder. A review closed by another instance, decided or expired, reaches the holder through the run's shared durable history: it drops its own copy and re-reads the task, so a `bureau.tasks.events` stream it serves ends when the last review closes anywhere. A `-1` reconnect to that stream is told the fire's current status first. A replayed step announces the same `review.requested` once, by review id from the run's history, and a request a replay abandoned (the model minted a new tool call id) is closed with `review.superseded` when the fire settles or is canceled. A canceled fire's approvals and parks are each closed once per round in the audit trail and the durable history, by whichever process finds them first, whichever route cancels the fire, and including after a crash and restart. A re-gate (`review.superseded`) does not close an approval: it stays pending under its id at the next round, and a task stream that replays the history does not drop it. The expiry sweep leaves a review alone while a decision on it is in flight. An approval or park the canceled fire was holding is recorded as `canceled` by principal `system:run-abort` only when no terminal record exists. A restored approval is decided under the skills the run has active now, which are the last set it committed (a fire's from its checkpoint, a session run's from its session snapshot), not the set that was active when the call was requested, so a skill activated after the request can narrow a tool away from it. A call those skills refuse is refused after a restart, and a tool the active skills do not permit cannot be approved even live (`CONFLICT`). When the skills cannot be recovered, because the snapshot is unreadable or its source was revoked, the policy is not applied and the call stays approvable. The automatic maintenance profile runs `sweepExpiredReviews` on its own timer (every five minutes), so expired state goes without a host call, and an approval's session prune commits before its in-memory state is dropped: when the prune fails the approval stays hidden and refused, and the fire's next release retries it. A fire that settled with a review still open counts as activity for its context, so `bureau.contexts.list` and `get` read `awaiting-input` as `bureau.tasks.get` reads `input-required`.
+With `humanInput: true` on a durable Bureau, an agent can call `requestHumanInput` to park its run, whichever way the run was started (a `createRun` run, or a `bureau.run()` run of an agent that resolves definitions; a child run or a goal attempt is not offered the tool, and neither is anything on a Bureau with no durable engine). The park appears in `listPendingReviews()` as a `human-wait` review. A `createRun` run's review carries its `sessionId`; a `bureau.run()` run has no session, so its review has no `sessionId` and is addressed by its `runId`. `resolveReview` resumes either one: `approve` delivers the optional `payload`, and `deny` and `reject` deliver the same denial and rejection markers on the signal. A `bureau.run()` park is resolved through the engine by run id, under a delivery id derived from the review id (the review id itself, or a fixed-length hash of it when it exceeds Weft's 128-byte `signalId` limit, as a long `signalName` makes it), so a retried resolve delivers once. The engine's own record of what the run waits on decides whether a review is still pending, so resolving does not depend on the audit trail. After a restart a parked `bureau.run()` run is listed again under the id it had. The agent must stop on the call (`stopWhen.toolCalled('requestHumanInput')`) for the run to park. Tool approvals on `bureau.run()` runs are not reviewed. A schedule fire is offered `requestHumanInput` the same way, and what it waits on is a review of the fire: its `runId` is the fire's run id (its task id), its `sessionId` is the session the fire runs in, and its owner is the schedule's owner. A fire's park is listed live and after a restart, and `bureau.tasks.respond` or `resolveReview` answers it. A tool call a fire's step leaves awaiting approval is a `tool-approval` review of the fire in the same way, recorded with the fire's session, in the same write as its conversation, so a restart lists it again. A restart lists only the approvals the fire's run committed, whether the fire is still going or has ended: the run's checkpoint is the source of truth, and what the session holds is a claim made before the step committed. One from a step that crashed before its commit is not restored, the replayed step records its own, and the session is reconciled with the checkpoint when the fire settles. `resolveReview` with `approve` runs the tool, and the fire's task is `input-required` until it is decided. An approval nobody answers is swept by `sweepExpiredReviews` like any other, and a canceled fire's approvals are revoked and removed from its session, so a restart never brings one back to run a tool for a canceled run. The engine's own status decides whether a fire was canceled, at boot and again when an approval is decided: a fire the engine records as `cancelled`, whichever process canceled it and however far the cancel's bookkeeping got, restores nothing, and deciding its approval is refused with `CONFLICT`. A boot that cannot read the engine's status restores nothing and prunes nothing, and tries again at the next boot. A decided, expired, canceled or abandoned approval leaves nothing of its own in the session; what fences a concurrent resolver goes with the fire's task at retention. A fire announces each review it raises as `review.requested`, and its `bureau.tasks.events` stream reads `input-required` while a review is open and ends when the last one closes, decided or expired. A fire that takes another step after an approval writes its conversation back then, over the outcome an early decision would have recorded, so deciding such an approval throws `ApprovalOutcomeNotWrittenError`: configure the agent with `stopWhen.pendingApproval()`. Reviews of a fire are the same on every Bureau sharing its stores (COR-1613). Another instance answers a fire's `requestHumanInput` park through the engine by run id, without holding the fire, and the fire completes on its holder. A review closed by another instance, decided or expired, reaches the holder through the run's shared durable history: it drops its own copy and re-reads the task, so a `bureau.tasks.events` stream it serves ends when the last review closes anywhere. A `-1` reconnect to that stream is told the fire's current status first. A replayed step announces the same `review.requested` once, by review id from the run's history, and a request a replay abandoned (the model minted a new tool call id) is closed with `review.superseded` when the fire settles or is canceled. A canceled fire's approvals and parks are each closed once per round in the audit trail and the durable history, by whichever process finds them first, whichever route cancels the fire, and including after a crash and restart. A re-gate (`review.superseded`) does not close an approval: it stays pending under its id at the next round, and a task stream that replays the history does not drop it. The expiry sweep leaves a review alone while a decision on it is in flight. An approval or park the canceled fire was holding is recorded as `canceled` by principal `system:run-abort` only when no terminal record exists. A restored approval is decided under the skills the run has active now, which are the last set it committed (a fire's from its checkpoint, a session run's from its session snapshot), not the set that was active when the call was requested, so a skill activated after the request can narrow a tool away from it. A call those skills refuse is refused after a restart, and a tool the active skills do not permit cannot be approved even live (`CONFLICT`). The snapshot is read again on each approve (COR-1620), so a read that failed once does not fix the policy for good. When the policy that governed the call cannot be verified, the approve is refused with `CONFLICT` and runs nothing, and a deny still goes through. Unverifiable is a snapshot that fails to be read or deserialized, one that names another fire (a recurring schedule's newer fire) or another run, a stored skill the catalog refuses on recovery (a revoked source or a drifted digest), and a run with no toolbox of its own whose session names active skills, which the base toolbox cannot enforce. A snapshot that verifiably names no skill is not unverifiable: a run that never activated one is approved as before. A snapshot a later run cleared is unverifiable too: the start of a run in a session nulls the session's skill records and their run id, so a cleared snapshot whose run id is null while the session's last run is another run is that run's reset, not a record that this run had no skills (a Bureau with no skills has nothing to verify, and is not affected). The same holds for every toolbox recovery builds, not only the restore's: a fire replayed after its process died in a step, and a session run reattached the same way, are offered no tool and write no skill snapshot when their snapshot cannot be verified or a stored skill is refused on recovery, so what they persisted before is kept, and an approval they raise is refused at approve under the snapshot read again. The automatic maintenance profile runs `sweepExpiredReviews` on its own timer (every five minutes), so expired state goes without a host call, and an approval's session prune commits before its in-memory state is dropped: when the prune fails the approval stays hidden and refused, and the fire's next release retries it. A fire that settled with a review still open counts as activity for its context, so `bureau.contexts.list` and `get` read `awaiting-input` as `bureau.tasks.get` reads `input-required`.
 
 On boot, if durable execution is configured, `bureau` sweeps suspended scheduler-origin residue and calls `engine.recoverAll()`. Each recovered handle is classified—`reattach` (a bureau-owned, in-flight, session-confirmed run becomes a live `ActiveRun` again), `monitor` (a native scheduled fire gets a detached result monitor but no live run surface), `cancel` (a positively unowned or unidentifiable run is terminalized), or `skip` (ownership can't be confirmed, so recovery leaves it alone rather than risk cancelling a legitimate resume).
 
@@ -407,6 +408,140 @@ Every event carries `metadata['@lostgradient/bureau'] = { runId, sessionId, dura
 **Ending.** A client that goes away, a stream that reaches `maxStreamDurationMs`, and a reader that falls behind `liveBufferSize` all end the stream and leave the native run running. The last two end it with `RUN_ERROR` `STREAM_DEADLINE` and `STREAM_OVERFLOW`, which a client treats as a reason to attach again, not as a failure. A reader that falls behind is closed rather than thinned, because a dropped text delta would corrupt a transcript rebuilt from deltas. A quiet stream writes an SSE comment (`: keep-alive`) every `keepAliveIntervalMs`, because `Bun.serve` closes a connection that sends nothing for ten seconds by default and a model step that does not stream can be silent for longer; every client skips a block with no `data:` line. Keep it below the server's idle timeout.
 
 `resolveReview` now also writes a tool approval's outcome into the session's conversation (the executed result, or an error result carrying the reason on deny and reject), replacing the pending `action_required` row in place, for every caller of `bureau.reviews.resolve`, not only this mount. When that write cannot be made, `resolveReview` rejects with `ApprovalOutcomeNotWrittenError` after the decision has been recorded (the decision took effect; only the write failed), rather than reporting success. The one case it does not write is a conversation that never held a row for the call and whose run is no longer going (a review restored from persisted metadata alone); a run that is still going has not stored its conversation, so there the write is refused instead. An agent without `stopWhen: pendingApproval()` can overwrite the written row with the rest of its step.
+
+### External control plane
+
+`createBureauHandler(bureau, options)` is the entry point for a process outside the Bureau. It serves the management plane (`bureau.*` operations over JSON-RPC, and one subscription route over Server-Sent Events), the AG-UI mount when `agUi` is set, and the asset content route. [`documentation/external-control-plane.md`](./documentation/external-control-plane.md) is the reference: it began as the decision record for the contract (COR-901), and its "As built" section says what shipped, with the operations, the owner of record and its `anonymous:local` caller, the operator scopes, the authorization predicate, run-creation receipts and `BureauLedgerConflictError`, and the error contract. It also lists what the handler does not do, each limit in its own entry under "Unsupported behavior and limits". A host that runs the handler for people, such as Interborough, keeps its state in `~/.interborough` (`INTERBOROUGH_HOME`), which [its README](../../applications/interborough/README.md) describes.
+
+This is the whole path of an outside consumer: authenticate with an API key, discover what the deployment serves, read a task, answer it with a command that a retry cannot repeat, and await the result by reading the task's event stream to its end. It runs in [`src/external-control-plane-guide.test.ts`](./src/external-control-plane-guide.test.ts), which imports from `./index` instead of `@lostgradient/bureau`, records each `console.log` and asserts it, and checks that its example is this code block:
+
+```typescript
+import { createBureau, createBureauHandler, createMemoryAssetStorage } from '@lostgradient/bureau';
+import {
+  createAgent,
+  stopWhen,
+  waitForCondition,
+  type GenerateFunction,
+} from '@lostgradient/operative';
+import { principalFromApiKey } from '@lostgradient/weft';
+
+const databasePath = './bureau.sqlite';
+
+// The agent asks which environment to release to, waits for the answer, then thanks the person.
+let calls = 0;
+const generate: GenerateFunction = async () => {
+  calls += 1;
+  if (calls > 1) return { content: 'Releasing to the environment you named.', toolCalls: [] };
+  const prompt = 'Which environment should the release go to?';
+  const ask = {
+    id: 'ask-1',
+    name: 'requestHumanInput',
+    arguments: { signalName: 'environment', prompt },
+  };
+  return { content: '', toolCalls: [ask] };
+};
+const releaser = createAgent({
+  name: 'releaser',
+  generate,
+  stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+});
+
+const bureau = await createBureau({
+  id: 'acme', // required once the handler serves persistent storage
+  agents: { releaser },
+  storage: { type: 'sqlite', path: databasePath },
+  durableExecution: true,
+  humanInput: true,
+  assets: { storage: createMemoryAssetStorage() }, // the handler serves the asset operations
+});
+
+// Authenticate: the host says which key stands for which principal. A principal with no scopes
+// owns what it creates and reaches nothing of anyone else's.
+const keys = { 'alice-key': 'alice', 'bob-key': 'bob' } as const;
+const handler = createBureauHandler(bureau, {
+  publish: ['releaser'],
+  authentication: {
+    auditSink: () => undefined, // every authentication decision is passed here
+    resolveApiKeyPrincipal: async (key) =>
+      key in keys
+        ? principalFromApiKey({ subject: keys[key as keyof typeof keys], scopes: [] })
+        : null,
+  },
+});
+
+// One management call, answered with its HTTP status and JSON-RPC body.
+async function call(method: string, params: object, key = 'alice-key') {
+  const response = await handler(
+    new Request('http://bureau.test/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-api-key': key },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+    }),
+  );
+  return { status: response.status, body: await response.json() };
+}
+
+const unknownKey = await call('bureau.deployment.get', {}, 'no-such-key');
+console.log(unknownKey.status); // 401
+
+// Discover: the deployment's identity, the agents it publishes, and the operations it serves.
+const { body: deployment } = await call('bureau.deployment.get', {});
+console.log(deployment.result.id); // 'acme'
+console.log(deployment.result.publishedAgents); // ['releaser']
+const served = deployment.result.operations.map((operation: { name: string }) => operation.name);
+console.log(served.includes('bureau.tasks.respond')); // true
+
+// The handler starts no run of its own except through its AG-UI mount, so the host starts this
+// one. `principal` is the owner of record: an API-key caller `alice` owns as `api-key:alice`.
+const run = await bureau.createRun({
+  agentName: 'releaser',
+  message: 'Release it.',
+  principal: 'api-key:alice',
+});
+await waitForCondition(
+  () => bureau.listPendingReviews().some((review) => review.runId === run.id),
+  'the run did not park on its question',
+);
+
+// Observe: the task is Alice's, it waits on her, and to Bob it does not exist.
+const { body: waiting } = await call('bureau.tasks.get', { taskId: run.id });
+console.log(waiting.result.status); // 'input-required'
+const { body: hidden } = await call('bureau.tasks.get', { taskId: run.id }, 'bob-key');
+console.log(hidden.error.data.httpStatus); // 404
+
+// Command: answer the question. The `messageId` is Alice's own, so a retry is the same command.
+const answer = { taskId: run.id, messageId: 'answer-1', answer: 'staging' };
+const { body: answered } = await call('bureau.tasks.respond', answer);
+console.log(answered.result.receipt); // 'applied'
+const { body: retried } = await call('bureau.tasks.respond', answer);
+console.log(retried.result.receipt); // 'applied', the original receipt and nothing delivered twice
+
+// Await: the task's history ends at its terminal status, so reading the stream to its end waits
+// for the result. A cursor in `Last-Event-ID` resumes a dropped stream where it stopped.
+const query = new URLSearchParams({ taskId: run.id });
+const stream = await handler(
+  new Request(`http://bureau.test/v1/subscriptions/bureau.tasks.events?${query}`, {
+    headers: { accept: 'text/event-stream', 'x-api-key': 'alice-key' },
+  }),
+);
+const body = await stream.text();
+const frames = body
+  .split('\n\n')
+  .filter((block) => block.includes('event: task.'))
+  .map((block) => ({
+    event: /^event: (.*)$/m.exec(block)?.[1],
+    data: JSON.parse(/^data: (.*)$/m.exec(block)?.[1] ?? 'null'),
+  }));
+console.log(frames[0]?.event); // 'task.snapshot'
+console.log(frames.at(-1)?.data.status); // 'completed'
+console.log(frames.at(-1)?.data.artifact.text); // 'Releasing to the environment you named.'
+
+console.log(calls); // 2: the retry did not run the agent a third time
+
+await bureau.dispose();
+```
+
+The handler has no run-starting operation of its own, so the host starts the run above with `createRun`, which is deprecated but is the call that makes a session run. A run started with `bureau.run()` is a catalog run, which records no durable `run.*` events, so its `bureau.tasks.events` stream is its snapshot alone and the example would have nothing to await. A client outside the process starts one through the AG-UI mount. A stream that ends without a terminal status is resumed with the `Last-Event-ID` header set to the `id` of the last frame that carried a cursor.
 
 ### Owner of record (COR-718)
 

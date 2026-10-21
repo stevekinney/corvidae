@@ -6,14 +6,14 @@ import type { BureauOptions } from './types';
 declare const runtime: RuntimeComposition;
 
 // AB-260: `resolveRunServices`, `buildScheduledRunServices`, and
-// `loadCommittedScheduledActiveSkills` are folded directly onto the
+// `readCommittedScheduledSkillSnapshot` are folded directly onto the
 // returned `RuntimeComposition` — genuine capabilities of every caller (test
 // or production), not test-only hooks reached through a WeakMap side
 // channel (the retired `RuntimeCompositionTestingSeams`/
 // `getRuntimeCompositionTestingSeams`).
 void runtime.resolveRunServices;
 void runtime.buildScheduledRunServices;
-void runtime.loadCommittedScheduledActiveSkills;
+void runtime.readCommittedScheduledSkillSnapshot;
 
 // @ts-expect-error — the retired seam accessor is gone; a production
 // `RuntimeComposition` never exposed it and no compatibility shim remains.

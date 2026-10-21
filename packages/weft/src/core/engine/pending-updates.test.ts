@@ -101,6 +101,17 @@ describe('pending update helpers', () => {
         updateId,
       }),
     );
+    // The refusal is answered in the history too, at the entry the request wrote: one `failed`
+    // entry with the message, not a second entry beside a `pending` one.
+    const history = await harness.updateCoordinator.listHistory(workflowId);
+    expect(history.items).toEqual([
+      expect.objectContaining({
+        updateId,
+        name: 'approve',
+        outcome: 'failed',
+        error: 'Update "approve" rejected by validator: approval required',
+      }),
+    ]);
   });
 
   it('drains pending updates once, even when scheduled twice concurrently', async () => {
@@ -265,6 +276,10 @@ describe('pending update helpers', () => {
         updateId,
       }),
     );
+    const history = await harness.updateCoordinator.listHistory(workflowId);
+    expect(history.items.map((entry) => [entry.updateId, entry.outcome])).toEqual([
+      [updateId, 'failed'],
+    ]);
   });
 
   it('swallows scheduled drain failures after the timeout callback fires', async () => {
