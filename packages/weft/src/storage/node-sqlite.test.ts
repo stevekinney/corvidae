@@ -9,6 +9,7 @@ import { outcomeOf, rethrow } from '../testing/module-scope-scenario.test-suppor
 import { throwingRejectionOf } from '../testing/promise-outcome.test-support.ts';
 import { loadBetterSqlite3ForTest } from './node-sqlite-loader.ts';
 import { NodeSQLiteStorage } from './node-sqlite.ts';
+import { SQLITE_BUSY_TIMEOUT_MS } from './sqlite-key-value-queries.ts';
 
 // The loader distinguishes the three ways a better-sqlite3 load can fail, because
 // their remedies differ and a single catch-all sentence hid an unbuilt binding
@@ -38,6 +39,8 @@ function createFakeDatabaseConstructor() {
   const values = new Map<string, Uint8Array>();
   const preparedSql = new Set<string>();
   const pragmas: string[] = [];
+  // Which entry point of each transaction wrapper the adapter called, in call order.
+  const transactionEntryPoints: ('deferred' | 'immediate')[] = [];
 
   class FakeDatabase {
     pragma(source: string): void {
@@ -139,7 +142,15 @@ function createFakeDatabaseConstructor() {
     }
 
     transaction<TArguments extends unknown[], TResult>(fn: (...entries: TArguments) => TResult) {
-      return (...entries: unknown[]): unknown => fn(...(entries as TArguments));
+      const deferred = (...entries: unknown[]): unknown => {
+        transactionEntryPoints.push('deferred');
+        return fn(...(entries as TArguments));
+      };
+      deferred.immediate = (...entries: unknown[]): unknown => {
+        transactionEntryPoints.push('immediate');
+        return fn(...(entries as TArguments));
+      };
+      return deferred;
     }
 
     close(): void {
@@ -152,6 +163,7 @@ function createFakeDatabaseConstructor() {
     isClosed: () => closed,
     preparedSql,
     pragmas,
+    transactionEntryPoints,
   };
 }
 
@@ -290,6 +302,7 @@ it('supports the adapter behavior under Bun when a database constructor is injec
 
   expect(fake.isClosed()).toBe(true);
   expect(fake.pragmas).toEqual([
+    `busy_timeout = ${SQLITE_BUSY_TIMEOUT_MS}`,
     'journal_mode = WAL',
     'synchronous = NORMAL',
     'cache_size = -64000',
@@ -298,6 +311,27 @@ it('supports the adapter behavior under Bun when a database constructor is injec
     'wal_autocheckpoint = 10000',
   ]);
   expect([...fake.preparedSql]).toContain('SELECT value FROM kv WHERE key = ?');
+});
+
+it('takes the write lock up front: batch and conditionalBatch run as immediate transactions', async () => {
+  // A deferred transaction reads first and takes the write lock only when it writes, and SQLite
+  // answers SQLITE_BUSY at once when another process holds it. `.immediate` is what makes the
+  // busy timeout apply, so a fake that offers both entry points shows which one is called.
+  const fake = createFakeDatabaseConstructor();
+  const storage = new NodeSQLiteStorage(':memory:', fake.Database);
+
+  await storage.batch([{ type: 'put', key: 'k', value: new Uint8Array([1]) }]);
+  await storage.conditionalBatch(
+    [{ key: 'k', expectedValue: new Uint8Array([1]) }],
+    [{ type: 'put', key: 'k', value: new Uint8Array([2]) }],
+  );
+  await storage.conditionalBatch(
+    [{ key: 'k', expectedValue: new Uint8Array([9]) }],
+    [{ type: 'put', key: 'k', value: new Uint8Array([3]) }],
+  );
+
+  expect(fake.transactionEntryPoints).toEqual(['immediate', 'immediate', 'immediate']);
+  storage[Symbol.dispose]();
 });
 
 async function resolveNativeNode(searchPath: string): Promise<string> {
@@ -401,8 +435,8 @@ const scenario3 = await outcomeOf(async () => {
     new Response(child.stderr).text(),
   ]);
   expect(exitCode, describeChildFailure(stdout, stderr)).toBe(0);
-  expect(stdout).toContain('# tests 21');
-  expect(stdout).toContain('# pass 21');
+  expect(stdout).toContain('# tests 23');
+  expect(stdout).toContain('# pass 23');
   expect(stdout).toContain('# skipped 0');
 });
 

@@ -1,7 +1,97 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 import { NodeSQLiteStorage } from './node-sqlite.ts';
+import {
+  describeSqliteContentionViolations,
+  parseSqliteContentionReport,
+  SQLITE_CONTENTION_BATCH_PREFIX,
+  SQLITE_CONTENTION_COUNTER_KEY,
+  type SqliteContentionMode,
+  type SqliteContentionReport,
+} from './sqlite-contention.test-support.ts';
+
+const contentionChildPath = new URL('./sqlite-contention-child.test-support.ts', import.meta.url)
+  .pathname;
+
+/** A racing child's exit, with what it wrote. A hung child is killed after the guard. */
+function runRacingProcess(
+  databasePath: string,
+  mode: SqliteContentionMode,
+  tag: string,
+): { exited: Promise<SqliteContentionReport>; hasExited: () => boolean } {
+  const child = spawn(process.execPath, [contentionChildPath, 'node', databasePath, mode, tag], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  let stdout = '';
+  let stderr = '';
+  let exited = false;
+  child.stdout.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString();
+  });
+  child.stderr.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+  const hangGuard = setTimeout(() => child.kill('SIGKILL'), 120_000);
+  return {
+    hasExited: () => exited,
+    exited: new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', (exitCode) => {
+        exited = true;
+        clearTimeout(hangGuard);
+        try {
+          resolve(parseSqliteContentionReport(tag, exitCode, stdout, stderr));
+        } catch (error) {
+          reject(error);
+        }
+      });
+    }),
+  };
+}
+
+/** Two OS processes race through NodeSQLiteStorage over one file, as the Bun suite does. */
+async function raceTwoProcesses(mode: SqliteContentionMode): Promise<string[]> {
+  const directory = mkdtempSync(join(tmpdir(), 'weft-node-sqlite-contention-'));
+  try {
+    const databasePath = join(directory, 'contention.sqlite');
+    const parent = new NodeSQLiteStorage(databasePath);
+    try {
+      await parent.put(SQLITE_CONTENTION_COUNTER_KEY, new TextEncoder().encode('0'));
+
+      const tags = ['a', 'b'];
+      const children = tags.map((tag) => runRacingProcess(databasePath, mode, tag));
+      // Release both processes together once each has opened the database. A child that exits
+      // before it is ready has failed to start, so stop waiting and let its report explain.
+      while (
+        !children.some((child) => child.hasExited()) &&
+        !tags.every((tag) => existsSync(join(directory, `ready-${tag}`)))
+      ) {
+        await sleep(2);
+      }
+      writeFileSync(join(directory, 'go'), '');
+      const reports = await Promise.all(children.map((child) => child.exited));
+
+      const counter = await parent.get(SQLITE_CONTENTION_COUNTER_KEY);
+      const finalCounter = Number(new TextDecoder().decode(counter ?? undefined));
+      let batchKeyCount = 0;
+      for await (const key of parent.scan(SQLITE_CONTENTION_BATCH_PREFIX)) {
+        void key;
+        batchKeyCount += 1;
+      }
+      return describeSqliteContentionViolations(mode, reports, { finalCounter, batchKeyCount });
+    } finally {
+      parent[Symbol.dispose]();
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 await describe('NodeSQLiteStorage (integration)', async () => {
   let storage: NodeSQLiteStorage;
@@ -216,6 +306,16 @@ await describe('NodeSQLiteStorage (integration)', async () => {
       const instance = new NodeSQLiteStorage(':memory:');
       // Should not throw.
       instance[Symbol.dispose]();
+    });
+  });
+
+  await describe('across processes', async () => {
+    await it('waits for another process holding the write lock, so a lost conditionalBatch returns false', async () => {
+      assert.deepEqual(await raceTwoProcesses('conditionalBatch'), []);
+    });
+
+    await it('waits for another process holding the write lock, so a plain batch never throws', async () => {
+      assert.deepEqual(await raceTwoProcesses('batch'), []);
     });
   });
 });

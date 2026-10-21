@@ -114,9 +114,8 @@ function createFakeDatabaseConstructor() {
     }
 
     transaction<TArguments extends unknown[], TResult>(fn: (...entries: TArguments) => TResult) {
-      return (...entries: TArguments): TResult => {
-        return fn(...entries);
-      };
+      const run = (...entries: TArguments): TResult => fn(...entries);
+      return Object.assign(run, { immediate: run });
     }
 
     close(): void {
