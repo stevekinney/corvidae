@@ -277,3 +277,53 @@ describe('ScheduleFormState', () => {
     });
   });
 });
+
+describe('a cadence the builder cannot show exactly', () => {
+  const builderValue = { mode: 'interval', every: 1, unit: 'minutes' } as const;
+
+  test('is kept as stored until the operator changes it, and then follows the builder', () => {
+    const form = new ScheduleFormState({
+      cadence: builderValue,
+      originalCadence: { intervalMs: 30_000 },
+    });
+    expect(form.exactCadenceText).toBe('Every 30 seconds');
+    expect(form.cadenceSpec).toEqual({ every: 30_000 });
+    expect(form.isDirty).toBe(false);
+
+    form.changeCadence();
+    expect(form.exactCadenceText).toBeUndefined();
+    expect(form.cadenceSpec).toEqual({ every: 60_000 });
+    expect(form.isDirty).toBe(true);
+  });
+
+  test('is replaced by a cadence the builder commits', () => {
+    const form = new ScheduleFormState({
+      cadence: builderValue,
+      originalCadence: { intervalMs: 90_000 },
+    });
+    form.setCadence({ mode: 'interval', every: 5, unit: 'minutes' });
+    expect(form.cadenceChanged).toBe(true);
+    expect(form.cadenceSpec).toEqual({ every: 300_000 });
+  });
+
+  test('is not special for a whole-minute interval or a cron expression, which the builder shows exactly', () => {
+    const minutes = new ScheduleFormState({
+      cadence: { mode: 'interval', every: 5, unit: 'minutes' },
+      originalCadence: { intervalMs: 300_000 },
+    });
+    expect(minutes.exactCadenceText).toBeUndefined();
+    expect(minutes.cadenceSpec).toEqual({ every: 300_000 });
+    const cron = new ScheduleFormState({
+      cadence: { mode: 'cron', expression: '0 9 * * *' },
+      originalCadence: { cronExpression: '0 9 * * *' },
+    });
+    expect(cron.exactCadenceText).toBeUndefined();
+    expect(cron.cadenceSpec).toEqual({ cron: '0 9 * * *' });
+  });
+
+  test('a new draft has no original cadence, so it sends what the builder holds', () => {
+    const form = new ScheduleFormState({ cadence: { mode: 'interval', every: 2, unit: 'hours' } });
+    expect(form.exactCadenceText).toBeUndefined();
+    expect(form.toCreateArgs().spec).toEqual({ every: 7_200_000 });
+  });
+});
