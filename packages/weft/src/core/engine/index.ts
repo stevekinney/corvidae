@@ -299,6 +299,7 @@ import {
   toScheduleSummary,
   updateSchedule as updateScheduleFromInternals,
 } from './schedules.ts';
+import { assertActivitySchemas } from './schema-policy.ts';
 import {
   createSecondInstanceDetectionTick,
   createSecondInstanceDetector,
@@ -439,6 +440,7 @@ export {
 export { getRevisionRealmDiagnostics } from './revision-realm-diagnostics.ts';
 export { ScheduleHandle } from './schedule-handle.ts';
 export { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
+export { DefinitionSchemaRequiredError } from './schema-policy.ts';
 export type { ResolveWorkflowSourceOptions } from './source-resolution.ts';
 export type { WorkflowClaimHolderStatus } from './workflow-claim-registry.ts';
 export type {
@@ -1806,6 +1808,7 @@ export class Engine<
     getInternals(this).composedActivityInterceptor = undefined;
   }
   #registerActivityDefinition(definition: AnyActivityDefinition): void {
+    assertActivitySchemas(getInternals(this).options.schemaPolicy, definition);
     getInternals(this).activityRegistry.register(definition.name, definition);
   }
 

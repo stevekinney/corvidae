@@ -14,6 +14,7 @@ import {
   BranchTopologyChangedError,
   BulkDeleteRequiresTerminalWorkflowsError,
   BulkOperationConfirmationError,
+  DefinitionSchemaRequiredError,
   DurableActivityScopeError,
   DurableActivityUnsupportedError,
   DynamicWorkflowSourceUnavailableError,
@@ -102,6 +103,8 @@ const cases: Record<WeftErrorCode, () => WeftError> = {
       registeredTypes: ['known'],
       missingWorkflows: [{ type: 'mystery', workflowId: 'wf-7' }],
     }),
+  DefinitionSchemaRequiredError: () =>
+    new DefinitionSchemaRequiredError('workflow', 'checkout', ['inputSchema']),
   EngineCreateNameMismatchError: () =>
     new EngineCreateNameMismatchError('workflow', 'expected', 'actual'),
   EngineDisposalError: () => new EngineDisposalError(new Error('drain failed'), true),

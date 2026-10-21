@@ -33,6 +33,7 @@ export type WeftErrorCode =
   | 'BulkOperationConfirmationError'
   | 'WorkflowTypeNotRegisteredForRecoveryError'
   | 'EngineCreateNameMismatchError'
+  | 'DefinitionSchemaRequiredError'
   | 'EngineDisposedError'
   | 'EngineDisposalError'
   | 'WorkflowNotFoundError'
@@ -124,6 +125,7 @@ const publicWeftErrorCodeMap = {
   BulkOperationConfirmationError: true,
   WorkflowTypeNotRegisteredForRecoveryError: true,
   EngineCreateNameMismatchError: true,
+  DefinitionSchemaRequiredError: true,
   EngineDisposedError: true,
   EngineDisposalError: true,
   WorkflowNotFoundError: true,

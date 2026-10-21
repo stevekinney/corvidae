@@ -101,6 +101,8 @@ Passing an explicitly empty workflow map is the same default-registry boot shape
 
 Serverless hosts that cannot keep process-local intervals alive can set `backgroundTasks: 'manual'` and call `await engine.runMaintenance()` from an alarm or Cron wake-up to drive timers, scheduled starts, update-response cleanup, retention, and alert evaluation. Await each maintenance cycle before starting another one so host-driven ticks do not overlap.
 
+Schemas are optional metadata by default, and a definition without one leaves that field empty in the contract, the registry, `weft codegen` output, and MCP tools. Pass `schemas: 'required'` to `new Engine()` or `Engine.create()` to make them mandatory: registering a workflow, finalizer, signal, update, query, or activity that leaves an input or output schema undeclared throws `DefinitionSchemaRequiredError`, which lists every missing schema. A message or activity without a payload declares a schema that accepts `undefined`, such as `z.undefined()`. The option checks declarations only; it does not validate payloads at runtime.
+
 If you'd rather wire things up by hand — useful for tests, isolating engines onto separate storage scopes via `ScopedStorage`, or adding new workflows after the engine starts up — `new Engine({ storage })`, `engine.register(workflow)` or `engine.registerWorkflows({ ... })`, and `await engine.recoverAll()` are the underlying primitives. Each `engine.register(workflow)` call returns the engine with that workflow's name and types baked in, so `engine.start('welcome', ...)` autocompletes immediately.
 
 When a workflow needs a live host capability that cannot be checkpointed, pass it as per-run `services`:

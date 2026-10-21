@@ -66,6 +66,8 @@ export interface ResolvedOptions {
   backgroundTaskMode: 'automatic' | 'manual';
   /** Resolved form of `EngineOptions.inlineLaunchScheduling` (COR-74). */
   inlineLaunchSchedulingMode: 'event-loop' | 'manual';
+  /** Resolved form of `EngineOptions.schemas`. */
+  schemaPolicy: 'optional' | 'required';
   checkpointHistory: number;
   checkpointSizeWarningThreshold: number;
   maxNestingDepth: number;

@@ -5,6 +5,7 @@ import type { CompressionOptions } from '../compression.ts';
 import type { Interceptor } from '../interceptor.ts';
 import type { RemoteActivityBroker } from '../remote-activity-broker.ts';
 import type { ArchiveAdapter } from './archive-adapter.ts';
+import type { EngineSchemaPolicyOptions } from './engine-schema-policy-options.ts';
 import type { HistoryPolicy } from './history-policy.ts';
 import type { PayloadSizePolicy } from './payload-size-policy.ts';
 import type { Duration, RetentionPolicy, RetryPolicy } from './retry-retention.ts';
@@ -247,7 +248,8 @@ export interface ForkOptions {
  * const engine = new Engine({ development: true });
  * ```
  */
-export interface EngineOptions<TServices = unknown> extends WorkflowVisibilityIndexOptions {
+export interface EngineOptions<TServices = unknown>
+  extends WorkflowVisibilityIndexOptions, EngineSchemaPolicyOptions {
   storage?: WeftStorage;
   development?: boolean;
   workerStartOverrideSigningSecret?: string;
