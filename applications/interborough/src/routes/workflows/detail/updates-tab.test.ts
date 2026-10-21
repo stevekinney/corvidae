@@ -516,9 +516,9 @@ describe('UpdatesTab timed-out submissions', () => {
         receivedAt: 5_000,
         outcome: 'pending',
       });
-      throw new HttpClientError(408, 'Update u-slow timed out after 1000ms', {
+      throw new HttpClientError(504, 'Update u-slow timed out after 1000ms', {
         faultCode: 'Timeout',
-        data: { updateId: 'u-slow', weftCode: 'Timeout', httpStatus: 408 },
+        data: { updateId: 'u-slow', weftCode: 'Timeout', httpStatus: 504 },
       });
     };
     const { container, getByLabelText, getByRole, findByText, queryByText } = renderTab(server);

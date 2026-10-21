@@ -5,7 +5,11 @@
  * and a fire's terminal lifecycle event is dispatched as completed or failed.
  *
  * Each fire is started by the poller on real elapsed time (a `1s` schedule on a one-second poll),
- * so these are slow by nature and live in the `test:slow` lane (COR-1576). The rest of the
+ * so these are slow by nature and live in the `test:slow` lane (COR-1576). The first occurrence is
+ * due one second after the schedule is created and fires on the first poll tick after that, so a
+ * fire lands between one and two seconds after creation, depending on where the ticks fall: the
+ * first occurrence reliably fires now that a tick's own lateness is no longer a missed fire
+ * (COR-1616), but up to two seconds is still over the fast lane's budget. The rest of the
  * scheduled-fire path is in `schedule-fire.test.ts`.
  */
 

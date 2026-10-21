@@ -213,7 +213,12 @@ export function createRunFrameForwarder(
   // step is recorded depends on where the error was thrown (a rejected
   // `generate` call leaves it out, a throwing stop condition runs after it is
   // recorded). With neither source, `step` is left unset rather than guessed.
+  //
+  // A `run.error` announced from a terminal result, not by the step that failed, is marked
+  // `reconstructed` and its step is the count of steps the run recorded, which is not the failing
+  // one (COR-1598). It names no step, so it is ignored here.
   on('run.error', (event) => {
+    if (event.reconstructed === true) return;
     failureStep = event.step;
   });
 

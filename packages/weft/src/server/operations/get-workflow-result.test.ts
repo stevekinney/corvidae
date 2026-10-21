@@ -180,7 +180,7 @@ describe('weft.workflows.result.get', () => {
     expect(await response.json()).toEqual({ error: 'Workflow cancelled' });
   });
 
-  it('returns 408 when waiting for a running workflow result times out', async () => {
+  it('returns 504 when waiting for a running workflow result times out', async () => {
     const { engine } = createEngineWithStorage();
     const handle = await engine.start('hold', null, { id: 'workflow-result-timeout' });
     await waitForWorkflowStatus(engine, handle.id, 'running');
@@ -204,7 +204,7 @@ describe('weft.workflows.result.get', () => {
         },
       );
 
-      expect(response.status).toBe(408);
+      expect(response.status).toBe(504);
       expect(response.headers.get('content-type')).toBe('application/json');
       expect(await response.json()).toEqual({ error: 'Timeout waiting for workflow result' });
     } finally {
