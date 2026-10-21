@@ -153,14 +153,17 @@ function assertConvergenceTokenProvided(
  *   8. StandardSchemaValidationError → InvalidParams (declared input or signal schema)
  *   9. otherwise                    → EngineFailure
  */
+/** A start bound to a removed build answers Conflict; a signal the target does not declare, Unprocessable. */
+function removedBuildOrUndeclaredSignalFault(error: unknown): OperationFault | undefined {
+  return workerVersionRemovedFault(error) ?? undeclaredMessageFault(error);
+}
+
 function resolveStartOrSignalWorkflowFault(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
 
   if (error instanceof WorkflowNotRegisteredError) {
     throw invalidParamsFault(message, error.code);
   }
-  const undeclared = undeclaredMessageFault(error);
-  if (undeclared !== undefined) throw undeclared;
   if (
     error instanceof StartOrSignalConflictError ||
     error instanceof IdempotencyKeyPurgedError ||
@@ -186,8 +189,8 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   if (error instanceof WorkerStartOverrideRejectedError) {
     throw workerStartOverrideRejectedFault(message);
   }
-  const removedFault = workerVersionRemovedFault(error);
-  if (removedFault !== undefined) throw removedFault;
+  const typedFault = removedBuildOrUndeclaredSignalFault(error);
+  if (typedFault !== undefined) throw typedFault;
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }
