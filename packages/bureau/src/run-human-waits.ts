@@ -143,6 +143,12 @@ export type RunHumanWaitsDependencies = {
     isCatalogRun: boolean;
     attribution?: { agentName: string; principal?: string };
   }>;
+  /**
+   * Told that this process no longer holds a restored park of `runId`: it was answered here,
+   * closed by another process, or forgotten with its run (COR-1621). A host that follows the
+   * run's durable history for such a park stops once it holds no other review of the run.
+   */
+  readonly released?: ((runId: string) => void) | undefined;
   readonly createError: (message: string, code: 'BAD_REQUEST' | 'CONFLICT' | 'NOT_FOUND') => Error;
   /** The error for a Bureau with no durable engine to deliver through. */
   readonly durableNotConfigured: () => Error;
@@ -380,17 +386,41 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       if (reviewIdFor(wait) === reviewId) {
         resolved.add(reviewId);
         restored.delete(runId);
+        dependencies.released?.(runId);
       }
     }
   }
 
   /** Drop everything held for a run, once it has settled. */
   function forget(runId: string): void {
-    restored.delete(runId);
+    const held = restored.delete(runId);
     baselines.delete(runId);
     for (const id of resolved) {
       if (id.startsWith(`human-wait:${runId}:`)) resolved.delete(id);
     }
+    if (held) dependencies.released?.(runId);
+  }
+
+  /**
+   * COR-1621 — the id of the park this process restored for `runId` when the engine no longer
+   * parks the run on it (the run settled, or its signal was delivered, by another process), read
+   * from the engine rather than from events. A park younger than `graceMilliseconds` is never
+   * reported: the engine records a park a moment after the run announces it. `undefined` when the
+   * park still stands, or there is none.
+   */
+  async function rereadClosed(
+    runId: string,
+    graceMilliseconds: number,
+  ): Promise<string | undefined> {
+    const wait = restored.get(runId);
+    const engine = dependencies.engine();
+    if (wait === undefined || engine === undefined) return undefined;
+    if (dependencies.now() - wait.requestedAt <= graceMilliseconds) return undefined;
+    const state = await engine.get(runId);
+    if (settled(state) || !state?.waitingForSignals?.includes(wait.signalName)) {
+      return reviewIdFor(wait);
+    }
+    return undefined;
   }
 
   function settled(state: WorkflowState | null): boolean {
@@ -518,6 +548,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
       });
       resolved.add(review.id);
       restored.delete(review.runId);
+      dependencies.released?.(review.runId);
     } finally {
       resolving.delete(review.id);
     }
@@ -539,6 +570,7 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     holds,
     derive,
     closedElsewhere,
+    rereadClosed,
     /** Whether a wait {@link derive} returned is a schedule fire's (COR-1613). */
     isDerivedFire: (review: PendingHumanWaitReview) => derivedFireWaits.has(review),
     attach,
