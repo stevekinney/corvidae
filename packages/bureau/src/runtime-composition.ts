@@ -2175,9 +2175,10 @@ export interface RuntimeComposition {
       /** COR-1546 — the run's owner of record, which its memory is partitioned under. */
       memoryOwner?: string | undefined;
       /**
-       * COR-1620 — the skill policy that governs the run cannot be verified, so no tool is
-       * offered or run and the run writes no skill snapshot. A recovered step must not take a
-       * tool its persisted skill would forbid.
+       * COR-1620 — the skill policy that governs the run cannot be verified, so the run is
+       * offered no tool and writes no skill snapshot. This is a filter on what the model sees, not
+       * a gate on what runs: a call the model makes anyway still reaches its approval, which is
+       * refused at approve under the snapshot read again.
        */
       skillPolicyUnverifiable?: boolean | undefined;
     },
@@ -2205,7 +2206,7 @@ export interface RuntimeComposition {
     skillsRecovered: Promise<SkillRecoveryOutcome>;
     /**
      * COR-1620 — whether the skill policy is held unverified: the snapshot could not be
-     * verified, or a stored skill was refused on recovery. Such a run offers and runs no tool and
+     * verified, or a stored skill was refused on recovery. Such a run is offered no tool and
      * writes no skill snapshot, so what it persisted before is kept. Settles with
      * {@link skillsRecovered}.
      */
@@ -3755,6 +3756,19 @@ async function buildRuntimeComposition(
       },
     );
     const skillRecovery = await runRuntime.skillsRecovered;
+    if (skillSnapshot.status === 'unverifiable' || skillRecovery.refused.length > 0) {
+      options.onLog?.({
+        workflowId: runId ?? session.id,
+        workflowType: 'agentRun',
+        timestamp: runtimeServices.clock.now(),
+        level: 'warn',
+        message: `Session run "${runId ?? session.id}" is reattached without tools: its skill policy cannot be verified (${
+          skillSnapshot.status === 'unverifiable'
+            ? skillSnapshot.reason
+            : `a stored skill was refused on recovery: ${skillRecovery.refused.join(', ')}`
+        }).`,
+      });
+    }
 
     // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
     // path too — see `wireDurableOptInTools`'s own doc comment for the root

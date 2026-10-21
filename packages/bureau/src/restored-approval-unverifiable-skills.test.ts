@@ -478,6 +478,72 @@ describe('a restored approval of a run that never activated a skill', () => {
     expect(charges).toEqual([4242]);
   });
 
+  it('runs as before for a fire whose recurring schedule has since run a newer fire', async () => {
+    // No `skills` option: the newer fire's snapshot is not this fire's policy, and there is none.
+    const path = harness.nextDatabasePath();
+    const phase = { first: true };
+    const generate: GenerateFunction = (context) =>
+      phase.first && context.step === 0
+        ? Promise.resolve({
+            content: '',
+            toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+          })
+        : Promise.resolve({ content: 'nothing to do', toolCalls: [] });
+    const first = await harness.open({
+      generate,
+      stopWhen: stopWhen.noToolCalls(),
+      toolbox: chargeApprovalToolbox([]),
+      storage: { type: 'sqlite', path },
+    });
+    const created = await first.createSchedule({
+      agentName: 'researcher',
+      input: 'check in',
+      spec: '1m',
+      principal: OWNER.alice,
+      sessionId: SESSION,
+    });
+    if (created?.nextFireAt === null || created?.nextFireAt === undefined) {
+      throw new Error('The schedule has no first occurrence.');
+    }
+    await first.runDurableMaintenance(created.nextFireAt);
+    const fireId = await pollUntil(async () => {
+      const current = await first.getSchedule(created.id);
+      return current?.currentWorkflowId;
+    }, 'the first fire');
+    await reviewOf(first, fireId);
+    await pollUntil(
+      async () => ((await durableStatus(first, fireId)) === 'completed' ? true : undefined),
+      'the first fire to settle',
+    );
+    phase.first = false;
+    const schedule = await first.getSchedule(created.id);
+    if (schedule?.nextFireAt === null || schedule?.nextFireAt === undefined) {
+      throw new Error('The schedule has no second occurrence.');
+    }
+    await first.runDurableMaintenance(schedule.nextFireAt);
+    const newer = await pollUntil(async () => {
+      const current = await first.getSchedule(created.id);
+      const id = current?.currentWorkflowId;
+      return id !== undefined && id !== fireId ? id : undefined;
+    }, 'the newer fire');
+    await pollForTime(async () => {
+      const session = await first.getSession(SESSION);
+      return session?.metadata['lastScheduledFireRunId'] === newer ? true : undefined;
+    }, 'the newer fire to take the session');
+    const charges: number[] = [];
+    const restarted = await harness.open({
+      generate,
+      stopWhen: stopWhen.noToolCalls(),
+      toolbox: chargeApprovalToolbox(charges),
+      storage: { type: 'sqlite', path },
+    });
+    const restored = await reviewOf(restarted, fireId);
+
+    await approve(restarted, restored.id);
+
+    expect(charges).toEqual([4242]);
+  });
+
   it('runs as before for a session run with no toolbox of its own', async () => {
     const path = harness.nextDatabasePath();
     const options = {

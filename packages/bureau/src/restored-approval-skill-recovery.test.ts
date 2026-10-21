@@ -436,9 +436,11 @@ describe('a session run reattached after its process died in a step', () => {
     life: { current: 'first' | 'second' },
     charges: number[],
     offered: string[] = [],
+    onLog?: (record: { level: string; message: string }) => void,
   ) {
     life.current = 'second';
     return harness.open({
+      ...(onLog === undefined ? {} : { onLog }),
       generate: dyingInStepOne(life, offered),
       stopWhen: stopWhen.noToolCalls(),
       skills: { catalog: await catalog.discover() },
@@ -472,6 +474,26 @@ describe('a session run reattached after its process died in a step', () => {
     expect(charges).toEqual([]);
     const held = await snapshotOnDisk(path);
     expect(held.some((records) => records === 'not records')).toBe(true);
+  });
+
+  it('logs a warning naming the run and the reason when it is reattached unverified', async () => {
+    const catalog = await skillCatalogOnDisk();
+    const { path, run, life } = await runDyingInStepOne(catalog);
+    await rewriteSnapshotOnDisk(path, (metadata) => {
+      metadata['activeSkillRecords'] = 'not records';
+    });
+    const logs: { level: string; message: string }[] = [];
+    const restarted = await reattach(catalog, path, life, [], [], (record) => logs.push(record));
+
+    await pollUntil(
+      async () => ((await durableStatus(restarted, run.id)) === 'completed' ? true : undefined),
+      'the reattached run to complete',
+    );
+
+    const warning = logs.find((record) => record.message.includes('is reattached without tools'));
+    expect(warning?.level).toBe('warn');
+    expect(warning?.message).toContain(run.id);
+    expect(warning?.message).toContain('do not deserialize');
   });
 
   it('runs no tool, and keeps the snapshot, when a stored skill is refused on recovery', async () => {
