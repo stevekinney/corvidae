@@ -13,6 +13,7 @@ import {
   announceRunFailure,
   classifyTimeoutMessage,
   finalizeRunResult,
+  FINISH_REASONS_ANNOUNCED_ON_REATTACH,
   loadRunStateFromCheckpoint,
   lostRunToAnotherEngine,
   makeInterruptedRunResult,
@@ -192,16 +193,16 @@ export async function driveReattachedRun(
     conversation: durableConversation,
   } = await reconstructRunResult(context, runId, summary, runtime);
 
-  // A run that ended in an error announces it with `run.error` before `run.completed`, as every
+  // A run that ended in a failure announces it with `run.error` before `run.completed`, as every
   // failed run does, because that is what turns the run record to `error` and ends an attached
   // stream with `RUN_ERROR`. The step's own `run.error` fired in the process that died when the
   // run failed before the crash, so this one has not seen it: the summary is all that says so.
-  // One this process saw is kept and not repeated. Other failure reasons (a budget, a tripwire, a
-  // denied elicitation) keep their existing announcements.
+  // One this process saw is kept and not repeated. The announcement is marked `reconstructed`:
+  // the step it carries is a count of recorded steps, not the one that failed (COR-1598).
   const reportedError = result.error instanceof AgentRunError ? result.error : undefined;
   const terminalError =
     terminalErrorFromEvent ??
-    (result.finishReason === 'error'
+    (FINISH_REASONS_ANNOUNCED_ON_REATTACH[result.finishReason]
       ? announceRunFailure(
           emitter,
           runState.steps.length,

@@ -291,9 +291,34 @@ export async function classifyTimeoutMessage(
 }
 
 /**
- * Announce a run's failure with `run.error`, the way every other failed run does, at the step it
- * failed at. Returns the error so a caller can hand the same object to the terminal result.
- * `run.completed` follows it from `finalizeRunResult`.
+ * Whether a run recovered with each finish reason announces `run.error` before `run.completed`
+ * (COR-1598): the failures, because that is what turns the run record to `error` and ends an
+ * attached stream with `RUN_ERROR`, and a fresh run that fails announces it. `maximum-steps`
+ * fires `run.completed` alone on a fresh run too, `aborted` has its own `run.aborted`, and
+ * `stop-condition` is not a failure. `satisfies Record<FinishReason, boolean>` makes a finish
+ * reason added without being classified here fail the type-check, and
+ * `active-run-announced-failure-reasons.test.ts` keeps the map equal to what `makeErrorResult`
+ * classifies as a failure.
+ */
+export const FINISH_REASONS_ANNOUNCED_ON_REATTACH = {
+  error: true,
+  'budget-exceeded': true,
+  tripwire: true,
+  'elicitation-denied': true,
+  'maximum-steps': false,
+  aborted: false,
+  'stop-condition': false,
+} as const satisfies Record<FinishReason, boolean>;
+
+/**
+ * Announce a run's failure with `run.error`, the way every other failed run does. Returns the
+ * error so a caller can hand the same object to the terminal result. `run.completed` follows it
+ * from `finalizeRunResult`.
+ *
+ * `step` is the count of steps the run recorded, which is not the step that failed: the terminal
+ * result cannot tell a failure in a step that was never recorded from one in the step after the
+ * last recorded one. So every event this announces is marked `reconstructed`, and a listener that
+ * reads `step` ignores it on one.
  */
 export function announceRunFailure(
   emitter: OperativeEventEmitter,
@@ -303,7 +328,7 @@ export function announceRunFailure(
   if (error === undefined) return undefined;
   // The loose dispatcher the run lifecycle's own terminal helpers take.
   const dispatcher: EventDispatcher = emitter;
-  const event = new RunErrorEvent(step, error, error.kind);
+  const event = new RunErrorEvent(step, error, error.kind, { reconstructed: true });
   dispatcher.dispatch(event);
   return event.error;
 }
