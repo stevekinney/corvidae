@@ -87,6 +87,30 @@ describe('workflow builder .uses()', () => {
     const forged = { ...welcomeUndeclared, uses: { greet: { name: 'other' } } };
     expect(() => buildRegistrationEntry('welcome', forged)).toThrow(/must be an activity/);
   });
+
+  it('rejects an untrusted uses value that is not a plain object', () => {
+    const forged = { ...welcomeUndeclared, uses: new Map() };
+    expect(() => buildRegistrationEntry('welcome', forged)).toThrow(/must be a plain object/);
+  });
+
+  it('rejects an untrusted uses entry that is also a scoped activity', () => {
+    const scoped = workflow({ name: 'welcome' }).activities({ greet }).execute(welcomeBody());
+    const forged = { ...scoped, uses: { greet: { name: 'greet' } } };
+    expect(() => buildRegistrationEntry('welcome', forged)).toThrow(/both activities and uses/);
+  });
+
+  it('treats an empty untrusted uses map as no declaration', () => {
+    const forged = { ...welcomeUndeclared, uses: {} };
+    expect(buildRegistrationEntry('welcome', forged).uses).toBeUndefined();
+  });
+
+  it('rejects an untrusted uses entry whose schema is not a definition schema', () => {
+    const forged = {
+      ...welcomeUndeclared,
+      uses: { greet: { name: 'greet', inputSchema: 'not a schema' } },
+    };
+    expect(() => buildRegistrationEntry('welcome', forged)).toThrow(/uses\.greet\.inputSchema/);
+  });
 });
 
 describe('dispatching a used activity', () => {
