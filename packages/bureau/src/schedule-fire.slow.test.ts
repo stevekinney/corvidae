@@ -11,9 +11,6 @@
  * fire (COR-1616), but still over the fast lane's budget. The rest of the scheduled-fire path is
  * in `schedule-fire.test.ts`.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import type {
   GenerateContext,
@@ -26,12 +23,11 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { createBureau } from './create-bureau';
 
 const FIRE_TIMEOUT_MS = 20_000;
-
-let recoveryDatabaseCounter = 0;
 
 /** Real-wall-clock poll — `engine.schedule` ticks fire on actual elapsed time. */
 async function waitForReal(
@@ -84,10 +80,7 @@ describe('D6 scheduled-fire path (#109)', () => {
   it(
     'recovers an in-flight scheduled fire across a bureau restart without cancelling it',
     async () => {
-      const databasePath = join(
-        tmpdir(),
-        `bureau-scheduled-fire-recovery-${process.pid}-${recoveryDatabaseCounter++}.sqlite`,
-      );
+      const databasePath = createTemporaryPath('bureau-scheduled-fire-recovery', '.sqlite');
 
       try {
         let bureauACall: RecordedCall | undefined;
@@ -132,7 +125,7 @@ describe('D6 scheduled-fire path (#109)', () => {
         const recoveredSessionId = bureauACall!.conversationId;
         expect(recoveredSessionId.startsWith(`sched-${schedule!.id}-`)).toBe(true);
 
-        bureauA.dispose();
+        await bureauA.dispose();
 
         let resolveRecoveredGenerate: ((response: GenerateResponse) => void) | undefined;
         const recoveredGenerate = new Promise<GenerateResponse>((resolve) => {
@@ -200,12 +193,10 @@ describe('D6 scheduled-fire path (#109)', () => {
           ).toBe(true);
           expect(session!.metadata['lastRunStatus']).not.toBe('running');
         } finally {
-          bureauB.dispose();
+          await bureauB.dispose();
         }
       } finally {
-        await rm(databasePath, { force: true });
-        await rm(`${databasePath}-wal`, { force: true });
-        await rm(`${databasePath}-shm`, { force: true });
+        removeTemporaryPath(databasePath);
       }
     },
     FIRE_TIMEOUT_MS,

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+
 import { CINDER_COMPONENT_SOURCE } from '../src/component-sources.ts';
 import { assetUrlsFromHtml, initialRoutePayload } from './initial-route-payload.ts';
 import { fingerprintStaticAssets } from './static-asset-fingerprints.ts';
@@ -228,14 +230,14 @@ describe('a symlinked build directory that points outside the repository', () =>
 
   test('refuses an explicit output directory that is itself a symlink', async () => {
     await withExternalDirectory(async ({ boundaries }) => {
-      const requested = join(tmpdir(), `cinder-static-export-requested-${process.pid}`);
+      const requested = createTemporaryPath('cinder-static-export-requested');
       await symlink(boundaries.approvedOutputDirectory, requested);
       try {
         expect(() => assertSafeOutputDirectory(requested, boundaries)).toThrow(
           'symlinked output directory',
         );
       } finally {
-        await rm(requested, { force: true });
+        removeTemporaryPath(requested);
       }
     });
   });

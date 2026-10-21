@@ -17,6 +17,7 @@ import {
   createCheckValidator,
   createDiagnostics,
   createTestDatabase,
+  createUnsetTestDatabase,
   durableIds,
   freshHandoff,
   goalRequest,
@@ -32,7 +33,7 @@ import { bootOver } from './testing/goal-recovery-fixtures.test-support';
 import type { Bureau } from './types';
 
 const cleanups: Array<() => Promise<void> | void> = [];
-let database: TestDatabase = createTestDatabase('unset');
+let database: TestDatabase = createUnsetTestDatabase();
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).toReversed()) await cleanup();

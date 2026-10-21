@@ -9,15 +9,12 @@
 // complete but bureau's own row never lands. Bureau B then recovers the run at
 // boot, finds nothing to reconstruct, and replays straight into the wait.
 
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-
 import { type GenerateFunction, HumanWaitParkedEvent, stopWhen } from '@lostgradient/operative';
 import { resolveStorage, type Storage } from '@lostgradient/weft';
 import { createTool, createToolbox, type Toolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { BureauError, createBureau } from './create-bureau';
 import { waitForCondition } from './test';
@@ -39,15 +36,12 @@ function createNextTool() {
   });
 }
 
-let databaseCounter = 0;
 function databasePathFor(label: string): string {
-  return join(tmpdir(), `cor121-${label}-${process.pid}-${databaseCounter++}.sqlite`);
+  return createTemporaryPath(`cor121-${label}`, '.sqlite');
 }
 
 async function removeDatabase(databasePath: string): Promise<void> {
-  await rm(databasePath, { force: true });
-  await rm(`${databasePath}-wal`, { force: true });
-  await rm(`${databasePath}-shm`, { force: true });
+  removeTemporaryPath(databasePath);
 }
 
 function isHumanInputStepPut(key: string, value: Uint8Array): boolean {

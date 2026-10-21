@@ -10,21 +10,22 @@
  * `terminalSessionSaved`. Every result the README claims in a comment is
  * asserted. Change the example and this test together.
  */
-import { rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 
 import type { GenerateFunction } from '@lostgradient/operative';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 
 import { type Bureau, createBureau, type RunSummary } from './index';
 
-const databasePath = join(tmpdir(), `bureau-quick-start-guide-${process.pid}.sqlite`);
+let databasePath = '';
 
-afterEach(async () => {
-  for (const suffix of ['', '-wal', '-shm']) {
-    await rm(`${databasePath}${suffix}`, { force: true });
-  }
+beforeEach(() => {
+  // A fresh directory per test: the process id repeats across runs, so it cannot name the file.
+  databasePath = createTemporaryPath('bureau-quick-start-guide', '.sqlite');
+});
+
+afterEach(() => {
+  removeTemporaryPath(databasePath);
 });
 
 /**

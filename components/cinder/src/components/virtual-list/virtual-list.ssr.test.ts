@@ -23,6 +23,7 @@ import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { uniqueFileName } from '@lostgradient/testing/temporary-path';
 import { afterEach, describe, expect, test } from 'bun:test';
 import type { Component } from 'svelte';
 import { compile } from 'svelte/compiler';
@@ -91,7 +92,7 @@ async function renderComponentToServerHtml(props: Record<string, unknown>): Prom
     `from ${JSON.stringify(serverSvelteEntry)};`,
   );
 
-  const tempFile = join(dirname(sourcePath), `.cinder-ssr-test-${process.pid}-${Date.now()}.mjs`);
+  const tempFile = join(dirname(sourcePath), uniqueFileName('.cinder-ssr-test', '.mjs'));
   await writeFile(tempFile, serverCode, 'utf-8');
 
   try {
