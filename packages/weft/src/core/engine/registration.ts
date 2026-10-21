@@ -16,6 +16,7 @@ import { validateWorkflowOrActivityName } from '../types/name-grammar.ts';
 import { DEFAULT_WORKFLOW_VERSION } from '../versioning.ts';
 import type { RegistrationEntry } from './engine-internal-types.ts';
 import type { EngineInternals } from './internals.ts';
+import { normalizeUsedActivities } from './used-activities.ts';
 import { normalizeRetentionPolicy } from './validation.ts';
 
 export type RegistrationCallbacks = {
@@ -188,6 +189,8 @@ export function buildRegistrationEntry(
     entry.signals = normalizeMessageDefinitions(name, 'signal', registration.signals);
     entry.updates = normalizeMessageDefinitions(name, 'update', registration.updates);
     entry.queries = normalizeMessageDefinitions(name, 'query', registration.queries);
+    const uses = normalizeUsedActivities(name, registration);
+    if (uses !== undefined) entry.uses = uses;
   }
   return entry;
 }

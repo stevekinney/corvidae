@@ -380,6 +380,7 @@ export {
   WeftWorkflowCheckpointConflictWarning,
   WORKFLOW_CHECKPOINT_CONFLICT_WARNING_NAME,
 } from './checkpoint-conflict-error.ts';
+export { UndeclaredWorkflowMessageError, type WorkflowMessageKind } from './declared-messages.ts';
 export {
   DynamicWorkflowSourceUnavailableError,
   WorkflowSourceNotRegisteredError,

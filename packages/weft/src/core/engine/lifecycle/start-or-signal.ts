@@ -6,6 +6,7 @@ import {
   StartWorkflowValidationError,
 } from '../../start-workflow-validation.ts';
 import type { StartOptions, StartOrSignalOptions, StartOrSignalSignal } from '../../types.ts';
+import { assertWorkflowMessageDeclared } from '../declared-messages.ts';
 import { IdempotencyKeyPurgedError, StartOrSignalConflictError } from '../errors.ts';
 import { type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
@@ -216,6 +217,16 @@ export async function startOrSignal(
   const idempotencyKey = options?.idempotencyKey;
   validateStartOrSignalConvergence(signalSpec, options);
   const signalId = resolveSignalId(signalSpec, idempotencyKey);
+  // Checked against the eagerly registered type's declaration up front, so a
+  // rejected signal never creates a run. An existing target is checked again
+  // when `engine.signal()` buffers it.
+  assertWorkflowMessageDeclared(
+    internals,
+    'signal',
+    options?.id ?? '(new run)',
+    { type, revision: undefined },
+    signalSpec.name,
+  );
 
   const mappedId =
     idempotencyKey !== undefined

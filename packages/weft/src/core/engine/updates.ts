@@ -21,7 +21,8 @@ export type UpdateCallbacks = {
     operationId: string,
     workflowExecutionToken?: string,
   ) => void;
-  guardTerminalWorkflow: (workflowId: string) => Promise<void>;
+  /** Rejects a terminal workflow and, given `updateName`, an update name the workflow did not declare. */
+  guardTerminalWorkflow: (workflowId: string, updateName?: string) => Promise<void>;
   guardTerminalWorkflowAfterCoordinatedRequest: (
     workflowId: string,
     updateId: string,
@@ -65,8 +66,8 @@ export async function update(
   // Run pre-acceptance validator before any durable action.
   await runUpdateValidator(internals, workflowId, name, payload);
 
-  // Reject updates to workflows in terminal states
-  await callbacks.guardTerminalWorkflow(workflowId);
+  // Reject updates to workflows in terminal states, and undeclared update names
+  await callbacks.guardTerminalWorkflow(workflowId, name);
 
   const inlineResult = await tryInlineUpdateHandler(
     internals,
@@ -303,8 +304,8 @@ export async function submitCoordinatedUpdate(
   // Run pre-acceptance validator before any durable action.
   await runUpdateValidator(internals, workflowId, name, payload);
 
-  // Reject updates to workflows in terminal states
-  await callbacks.guardTerminalWorkflow(workflowId);
+  // Reject updates to workflows in terminal states, and undeclared update names
+  await callbacks.guardTerminalWorkflow(workflowId, name);
 
   const requestOptions: { timeout: number; idempotencyKey?: string } = { timeout };
   if (idempotencyKey !== undefined) {

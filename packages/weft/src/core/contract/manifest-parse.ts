@@ -214,15 +214,17 @@ type ContractCollectionFields = {
   updates?: Readonly<Record<string, WorkflowMessageContract>>;
   queries?: Readonly<Record<string, WorkflowMessageContract>>;
   activities?: Readonly<Record<string, WorkflowActivityContract>>;
+  usedActivities?: Readonly<Record<string, WorkflowActivityContract>>;
   finalizer?: WorkflowActivityContract;
 };
 
-/** `signals`/`updates`/`queries` accept any name; `activities` is grammar-validated, matching `checkContractKey`. */
+/** `signals`/`updates`/`queries` accept any name; `activities`/`usedActivities` are grammar-validated, matching `checkContractKey`. */
 const NAMED_RECORD_FIELDS = [
   ['signals', undefined],
   ['updates', undefined],
   ['queries', undefined],
   ['activities', 'activity'],
+  ['usedActivities', 'activity'],
 ] as const;
 
 function parseNamedRecordFields(

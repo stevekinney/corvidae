@@ -13,6 +13,7 @@ import { validateSignalId } from '../signal-id.ts';
 import type { SignalDeliveryOptions, WorkflowState } from '../types.ts';
 import { commitAnonymousSignalOperations } from './anonymous-signal-sequence.ts';
 import { stageAtomicWorkflowCommitSideEffects } from './checkpoint-side-effects.ts';
+import { assertWorkflowMessageDeclared } from './declared-messages.ts';
 import type { EngineInternals } from './internals.ts';
 import { isTerminalWorkflowStatus } from './validation.ts';
 import { confirmWakeOwnership, wakeNeedsOwnershipCheck } from './wake-ownership-guard.ts';
@@ -196,6 +197,7 @@ export async function bufferSignalPayloads(
   if (targetState && isTerminalWorkflowStatus(targetState.status)) {
     return;
   }
+  if (targetState) assertSignalsDeclared(internals, workflowId, targetState, deliveries);
 
   const signalId = getSingleSignalId(deliveries, defaultOptions);
   validateSignalIdsBeforeKeyConstruction(deliveries, defaultOptions, signalId);
@@ -245,6 +247,19 @@ export async function bufferSignalPayloads(
     () => markTerminalCleanupTracked(internals, workflowId),
   );
   await deliverBufferedSignals(internals, workflowId, deliveries, callbacks);
+}
+
+/** Reject the batch before anything is buffered when any signal name is undeclared. */
+function assertSignalsDeclared(
+  internals: EngineInternals,
+  workflowId: string,
+  targetState: WorkflowState,
+  deliveries: readonly BufferedSignalDelivery[],
+): void {
+  const identity = { type: targetState.type, revision: targetState.revision };
+  for (const delivery of deliveries) {
+    assertWorkflowMessageDeclared(internals, 'signal', workflowId, identity, delivery.signalName);
+  }
 }
 
 function createExplicitSignalOperations(

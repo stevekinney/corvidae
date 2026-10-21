@@ -1,0 +1,146 @@
+/**
+ * Closed message sets: once a workflow declares signals, updates, or queries
+ * with `.signals({...})`/`.updates({...})`/`.queries({...})`, a message of
+ * that kind under any other name is rejected before anything is buffered,
+ * persisted, or dispatched. A workflow that declares none of a kind keeps
+ * accepting any name of that kind, because nothing in its definition says
+ * which names it handles.
+ *
+ * Each kind closes independently, so declaring signals does not close
+ * updates or queries. Declared names are the messages' own wire names (the
+ * `.name` each `signal()`/`update()`/`query()` handle carries), which is what
+ * callers send and what the contract lists.
+ *
+ * A workflow whose definition this process does not have — a client-only
+ * engine, or a dynamic source revision not resolved here — is not checked:
+ * the engine cannot tell what such a workflow declared.
+ *
+ * @module core/engine/declared-messages
+ */
+
+import { WeftError } from '../weft-error.ts';
+import type { WorkflowExecutionIdentity } from './engine-internal-types.ts';
+import type { EngineInternals } from './internals.ts';
+
+/** The three message kinds a workflow can declare. */
+export type WorkflowMessageKind = 'signal' | 'update' | 'query';
+
+/**
+ * Thrown when a signal, update, or query names a message the target workflow
+ * did not declare, although it declared others of that kind. Raised before
+ * the message is buffered or dispatched, so nothing about the run changes.
+ *
+ * @example
+ * ```ts
+ * import { UndeclaredWorkflowMessageError } from '@lostgradient/weft';
+ *
+ * function isUndeclaredMessage(error: unknown): boolean {
+ *   return error instanceof UndeclaredWorkflowMessageError;
+ * }
+ * console.log(isUndeclaredMessage(new Error('other'))); // false
+ * ```
+ */
+export class UndeclaredWorkflowMessageError extends WeftError<'UndeclaredWorkflowMessageError'> {
+  readonly workflowId: string;
+  readonly workflowType: string;
+  readonly messageKind: WorkflowMessageKind;
+  readonly messageName: string;
+  /** The names of this kind the workflow declared, sorted. */
+  readonly declaredNames: readonly string[];
+
+  constructor(options: {
+    workflowId: string;
+    workflowType: string;
+    messageKind: WorkflowMessageKind;
+    messageName: string;
+    declaredNames: readonly string[];
+  }) {
+    const declared = options.declaredNames.map((name) => JSON.stringify(name)).join(', ');
+    super(
+      'UndeclaredWorkflowMessageError',
+      `Workflow "${options.workflowId}" (type "${options.workflowType}") does not declare ` +
+        `${options.messageKind} "${options.messageName}"; it declares ${declared}. ` +
+        `Add it to the workflow's .${options.messageKind === 'query' ? 'queries' : `${options.messageKind}s`}({...}) declaration.`,
+    );
+    this.workflowId = options.workflowId;
+    this.workflowType = options.workflowType;
+    this.messageKind = options.messageKind;
+    this.messageName = options.messageName;
+    this.declaredNames = options.declaredNames;
+  }
+}
+
+type NamedMessages = Readonly<Record<string, { readonly name: string }>> | undefined;
+
+const MESSAGE_FIELDS = {
+  signal: 'signals',
+  update: 'updates',
+  query: 'queries',
+} as const satisfies Record<WorkflowMessageKind, 'signals' | 'updates' | 'queries'>;
+
+/**
+ * The wire names of `kind` the workflow `type` (at `revision`, for a dynamic
+ * source) declared, or `undefined` when this process does not know the
+ * definition or the workflow declared none of that kind.
+ */
+function declaredMessageNames(
+  internals: EngineInternals,
+  kind: WorkflowMessageKind,
+  type: string,
+  revision: string | undefined,
+): readonly string[] | undefined {
+  const field = MESSAGE_FIELDS[kind];
+  const eager = internals.registrations.get(type);
+  let messages: NamedMessages;
+  if (eager !== undefined) {
+    messages = eager[field];
+  } else if (revision !== undefined) {
+    messages = (
+      internals.sources.resolved.get(type)?.get(revision)?.definition as
+        Partial<Record<typeof field, NamedMessages>> | undefined
+    )?.[field];
+  }
+  if (messages === undefined) return undefined;
+  const names = Object.values(messages).map((message) => message.name);
+  return names.length === 0 ? undefined : names.toSorted();
+}
+
+/**
+ * Throw {@link UndeclaredWorkflowMessageError} when the workflow identified
+ * by `identity` declared messages of `kind` and `name` is not one of them.
+ */
+export function assertWorkflowMessageDeclared(
+  internals: EngineInternals,
+  kind: WorkflowMessageKind,
+  workflowId: string,
+  identity: WorkflowExecutionIdentity,
+  name: string,
+): void {
+  const declaredNames = declaredMessageNames(internals, kind, identity.type, identity.revision);
+  if (declaredNames === undefined || declaredNames.includes(name)) return;
+  throw new UndeclaredWorkflowMessageError({
+    workflowId,
+    workflowType: identity.type,
+    messageKind: kind,
+    messageName: name,
+    declaredNames,
+  });
+}
+
+/**
+ * {@link assertWorkflowMessageDeclared} against the identity this process
+ * caches for a run it is executing, with no storage read. A query uses this:
+ * it is served only from a live context here, and a query must never pay a
+ * storage read on the hot path. A run not live here is not checked.
+ */
+export function assertLiveWorkflowMessageDeclared(
+  internals: EngineInternals,
+  kind: WorkflowMessageKind,
+  workflowId: string,
+  name: string,
+): void {
+  const cached = internals.workflowTypeByWorkflowId.get(workflowId);
+  if (cached !== undefined) {
+    assertWorkflowMessageDeclared(internals, kind, workflowId, cached, name);
+  }
+}

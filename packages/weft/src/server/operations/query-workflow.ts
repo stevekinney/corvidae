@@ -4,7 +4,11 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestTextBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, invalidParamsFault } from './operation-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  invalidParamsFault,
+  undeclaredMessageFault,
+} from './operation-helpers.ts';
 
 const queryWorkflowInput = z.object({
   workflowId: z.string().min(1),
@@ -23,14 +27,15 @@ export const queryWorkflowOperation = defineOperation({
   description:
     'Run a named read-only query handler against a workflow and return its result. Requires ' +
     'the workflow `id` and the query `name`; `input` is optional. Queries do not mutate ' +
-    'workflow state. Faults with NotFound when the workflow is not visible.',
+    'workflow state. Faults with NotFound when the workflow is not visible and Unprocessable ' +
+    'when the workflow declares its queries and this name is not one of them.',
   destructive: false,
   tags: ['Workflows'],
   inputSchema: queryWorkflowInput,
   outputSchema: queryWorkflowOutput,
   access: { kind: 'scoped', scopes: { kind: 'anyOf', scopes: ['queries:read'] } },
   discoverable: true,
-  producibleFaults: ['NotImplemented'],
+  producibleFaults: ['NotImplemented', 'Unprocessable'],
   transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: true, jsonRpcStdio: true },
   unknownKeyPolicy: { http: 'strip', jsonRpc: 'reject' },
   invoke: async ({ input, host: engine }): Promise<QueryWorkflowOutput> => {
@@ -41,6 +46,8 @@ export const queryWorkflowOperation = defineOperation({
       const result = await e.query(input.workflowId, input.queryName, input.input);
       return { result: result ?? null };
     } catch (error) {
+      const undeclared = undeclaredMessageFault(error);
+      if (undeclared !== undefined) throw undeclared;
       const message = error instanceof Error ? error.message : String(error);
 
       if (message.includes('not supported')) {

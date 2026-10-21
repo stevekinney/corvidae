@@ -37,6 +37,7 @@ import {
   buildRevisionRealmExecutionStrategyBundle,
   resolveRevisionRealmExecutionForMode,
 } from './revision-realm-execution-construction.ts';
+import { usedActivitiesField } from './used-activities.ts';
 import {
   normalizeHistoryPolicy,
   normalizePayloadSizePolicy,
@@ -183,6 +184,7 @@ export function copyWorkflowDefinition(
     ...(registration.signals === undefined ? {} : { signals: { ...registration.signals } }),
     ...(registration.updates === undefined ? {} : { updates: { ...registration.updates } }),
     ...(registration.queries === undefined ? {} : { queries: { ...registration.queries } }),
+    ...usedActivitiesField(registration.uses),
     ...(registration.searchAttributes === undefined
       ? {}
       : { searchAttributes: registration.searchAttributes }),

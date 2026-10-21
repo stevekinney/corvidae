@@ -131,6 +131,28 @@ describe('validateRegistrySnapshot', () => {
     expect(Object.keys(result.value.activities)).toEqual(['ping']);
   });
 
+  it('projects scoped and engine-provided activities into one callable activity table', async () => {
+    const manifest = await fixtureManifest({
+      name: 'welcome',
+      workflowVersion: '1.0.0',
+      activities: { local: { inputSchema: { type: 'number' } } },
+      usedActivities: { greet: { outputSchema: { type: 'string' } } },
+    });
+    const result = await validateRegistrySnapshot({
+      registryVersion: 2,
+      generatedAt: new Date(0).toISOString(),
+      workflows: [manifest],
+      activeRevisions: { welcome: manifest.revision },
+      activities: { greet: { queue: 'default', usedBy: ['welcome'] } },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected success');
+    expect(result.value.workflows['welcome']?.activities).toEqual({
+      greet: { outputSchema: { type: 'string' } },
+      local: { inputSchema: { type: 'number' } },
+    });
+  });
+
   it('rejects a workflows array over the maximum manifest count before parsing or hashing any element', async () => {
     // Every element here is `{}` — not even a well-formed placeholder —
     // proving the count bound rejects the payload before a single element

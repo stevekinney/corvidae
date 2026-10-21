@@ -10,6 +10,7 @@
  */
 
 import type { ActivityCallable, ActivityContext, ActivityDefinition } from './activity.ts';
+import type { DefinitionSchema } from './definition-schema.ts';
 import type { QueryDefinition, SignalDefinition, UpdateDefinition } from './message-handles.ts';
 
 // ---------------------------------------------------------------------------
@@ -91,6 +92,42 @@ export type ActivityEntryInput =
  * ```
  */
 export type ActivityMapInput = Record<string, ActivityEntryInput>;
+
+/**
+ * Schema metadata a workflow keeps for an activity it declares with
+ * `.uses({ ... })`: the engine-provided activity's name and its input/output
+ * schemas. Never an `execute` function, because dispatch resolves a used
+ * activity through the engine's registry by name.
+ *
+ * @example
+ * ```ts
+ * import type { UsedActivityDefinition } from '@lostgradient/weft';
+ *
+ * const greet: UsedActivityDefinition = { name: 'greet' };
+ * void greet;
+ * ```
+ */
+export type UsedActivityDefinition = Readonly<{
+  name: string;
+  inputSchema?: DefinitionSchema;
+  outputSchema?: DefinitionSchema;
+}>;
+
+/**
+ * The map shape `.uses({ ... })` accepts: activity definitions the engine
+ * registers, keyed by their own names. Each entry carries the `name` the
+ * engine resolves it by, which must equal its key.
+ *
+ * @example
+ * ```ts
+ * import { activity, type UsesMapInput } from '@lostgradient/weft';
+ *
+ * const greet = activity({ name: 'greet', execute: async (name: string) => `hello ${name}` });
+ * const map: UsesMapInput = { greet };
+ * void map;
+ * ```
+ */
+export type UsesMapInput = Record<string, ActivityEntryInput & { readonly name: string }>;
 
 // ---------------------------------------------------------------------------
 // Normalised activity map carried by the builder and the workflow definition

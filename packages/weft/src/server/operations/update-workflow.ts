@@ -9,7 +9,11 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
-import { assertOperationEngineMethods, isOperationFault } from './operation-helpers.ts';
+import {
+  assertOperationEngineMethods,
+  isOperationFault,
+  undeclaredMessageFault,
+} from './operation-helpers.ts';
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
 
@@ -42,7 +46,8 @@ export const updateWorkflowOperation = defineOperation({
     'Invoke a named update handler on a workflow and wait for its result. Requires the ' +
     'workflow `id` and the update `name`; `payload` is optional. Unlike signals, updates ' +
     'return the handler result synchronously. Faults with NotFound when the workflow is not ' +
-    'visible and InvalidParams when the payload exceeds the size limit. A Timeout fault carries ' +
+    'visible, InvalidParams when the payload exceeds the size limit, and Unprocessable when ' +
+    'the workflow declares its updates and this name is not one of them. A Timeout fault carries ' +
     'the `updateId` in its `data`: the update stays queued, and its answer is read later with ' +
     '`weft.updates.result.get` or listed by `weft.workflows.updates.list`.',
   destructive: true,
@@ -92,41 +97,24 @@ export const updateWorkflowOperation = defineOperation({
       if (isOperationFault(error)) {
         throw error;
       }
-      if (error instanceof UpdateValidationError) {
-        const fault: OperationFault = {
-          code: 'Unprocessable',
-          message: error.message,
-          data: { reason: error.message },
-        };
-        throw fault;
-      }
-      if (error instanceof WorkflowTerminalError) {
-        const fault: OperationFault = {
-          code: 'Unprocessable',
-          message: error.message,
-          data: { reason: error.message },
-        };
-        throw fault;
-      }
-      if (error instanceof UpdateTimeoutError) {
-        const fault: OperationFault = {
-          code: 'Timeout',
-          message: error.message,
-          data: { updateId: error.updateId },
-        };
-        throw fault;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      const fault: OperationFault = {
-        code: 'EngineFailure',
-        message,
-        data: {},
-      };
-      throw fault;
+      throw updateErrorToFault(error);
     }
   },
 });
+
+/** The fault an update answers for an engine error: rejected admission, timeout, or engine failure. */
+function updateErrorToFault(error: unknown): OperationFault {
+  const undeclared = undeclaredMessageFault(error);
+  if (undeclared !== undefined) return undeclared;
+  if (error instanceof UpdateValidationError || error instanceof WorkflowTerminalError) {
+    return { code: 'Unprocessable', message: error.message, data: { reason: error.message } };
+  }
+  if (error instanceof UpdateTimeoutError) {
+    return { code: 'Timeout', message: error.message, data: { updateId: error.updateId } };
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return { code: 'EngineFailure', message, data: {} };
+}
 
 export const updateWorkflowRestBinding: UnknownRestBinding = {
   method: 'POST',
