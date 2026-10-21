@@ -57,8 +57,9 @@ export class ScheduleFiredEvent extends Event {
 
 /**
  * Fired on the {@link Engine} when a non-backfill schedule timer is more than
- * one second late and the engine skips the missed occurrence window instead of
- * starting workflows for those ticks.
+ * one second plus one scheduler poll interval late, as after the engine was
+ * down, and the engine skips the missed occurrence window instead of starting
+ * workflows for those ticks.
  *
  * @example
  * ```ts

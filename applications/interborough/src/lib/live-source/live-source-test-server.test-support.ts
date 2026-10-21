@@ -51,8 +51,8 @@ import { Engine, serve } from '@lostgradient/weft';
 import { workflows } from '../../../fixtures/workflows.ts';
 import { AUTHORIZATION_SCOPES } from '../scopes.svelte.ts';
 
-async function createTestEngine() {
-  return Engine.create({ workflows });
+async function createTestEngine(getNow?: () => number) {
+  return Engine.create({ workflows, ...(getNow && { getNow }) });
 }
 
 /** Not a secret — a fixed, well-known key for an ephemeral, localhost-only, per-test `MemoryStorage` server. */
@@ -67,8 +67,14 @@ export interface LiveSourceTestServer {
   stop(): Promise<void>;
 }
 
-export async function startLiveSourceTestServer(): Promise<LiveSourceTestServer> {
-  const engine = await createTestEngine();
+/**
+ * `getNow` replaces the engine's clock, for a test that has to move time itself, such as one that
+ * needs a schedule to miss fires the way it does after the engine was down.
+ */
+export async function startLiveSourceTestServer(
+  options: { getNow?: () => number } = {},
+): Promise<LiveSourceTestServer> {
+  const engine = await createTestEngine(options.getNow);
   const server = serve({
     engine,
     port: 0,

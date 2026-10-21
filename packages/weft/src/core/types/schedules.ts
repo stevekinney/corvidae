@@ -127,8 +127,11 @@ export interface ScheduleOptions {
   description?: string;
   overlap?: ScheduleOverlapPolicy;
   /**
-   * When `false` (the default), a tick that is more than one second late is
-   * skipped instead of backfilled. Skipped ticks increment
+   * When `false` (the default), an occurrence the scheduler reaches more than
+   * one second plus one scheduler poll interval
+   * (the engine's `schedulerPollIntervalMs`) late is skipped
+   * instead of backfilled. An occurrence the next poll tick reaches is never
+   * skipped for the lateness that polling itself introduces. Skipped ticks increment
    * {@link ScheduleState.missedFireCount}, update
    * {@link ScheduleState.lastMissedFireAt}, and emit a
    * `ScheduleMissedFireEvent`.
