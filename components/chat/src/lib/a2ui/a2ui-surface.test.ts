@@ -892,7 +892,8 @@ describe('review fixes', () => {
       props: {
         surfaceId: 'boundary',
         components: [
-          null,
+          // A JSON-parsed message can hold anything; the surface must survive it.
+          JSON.parse('null') as A2uiComponent,
           { id: 'root', component: 'Column', children: ['modal'] },
           { id: 'modal', component: 'Modal', trigger: 'open', content: 'body' },
           {
@@ -904,7 +905,7 @@ describe('review fixes', () => {
           },
           { id: 'agree', component: 'CheckBox', label: 'Agree', value: false },
           { id: 'body', component: 'Text', text: 'Details', variant: 'h2' },
-        ] as unknown as A2uiComponent[],
+        ],
         onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
       },
     });
