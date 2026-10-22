@@ -184,15 +184,18 @@ export function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
 /**
  * A function response for a result that carries parts. Gemini takes media in
  * `functionResponse.parts` as inline bytes, and text only in `response`, so
- * `response.output` keeps the parts' order: each text part as its string,
- * each media part as `{ part: n }`, its index in `parts`.
+ * `response.output` keeps the parts' order: each text part as its string, and
+ * each media part as `{ $ref: displayName }`, the reference form the Gemini
+ * API documents for naming a `FunctionResponsePart` from the response
+ * (https://ai.google.dev/gemini-api/docs/generate-content/function-calling,
+ * checked 2026-10-22).
  */
 function toMultimodalFunctionResponsePart(
   parts: NonNullable<ToolResult['parts']>,
   functionName: string,
   context: MediaExportContext,
 ): GeminiFunctionResponsePart {
-  const media: Array<{ inlineData: { mimeType: string; data: string } }> = [];
+  const media: Array<{ inlineData: { mimeType: string; data: string; displayName: string } }> = [];
   const output = parts.map((part, partIndex) => {
     if (part.type === 'text') return part.text;
     const converted = toGeminiMediaPart(part, partIndex, context);
@@ -200,8 +203,9 @@ function toMultimodalFunctionResponsePart(
       // The Gemini API does not accept URI-based data in a function response.
       return rejectPart(context, partIndex, part, 'source-form-not-accepted', part.source.kind);
     }
-    media.push({ inlineData: converted.inlineData });
-    return { part: media.length - 1 };
+    const displayName = `part-${partIndex}`;
+    media.push({ inlineData: { ...converted.inlineData, displayName } });
+    return { $ref: displayName };
   });
   return { functionResponse: { name: functionName, response: { output }, parts: media } };
 }

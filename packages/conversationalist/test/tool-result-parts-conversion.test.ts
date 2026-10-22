@@ -202,7 +202,7 @@ describe('Anthropic tool_result blocks', () => {
 });
 
 describe('Gemini function responses', () => {
-  it('carry media as inline parts and keep the order in response.output', () => {
+  it('carry media as inline parts and reference them in order from response.output', () => {
     const { contents, lineage } = toGeminiMessages(withToolResult(TEXT_AND_IMAGE));
     expect(contents.at(-1)).toEqual({
       role: 'user',
@@ -210,8 +210,8 @@ describe('Gemini function responses', () => {
         {
           functionResponse: {
             name: 'chart',
-            response: { output: ['Before the chart.', { part: 0 }, 'After the chart.'] },
-            parts: [{ inlineData: { mimeType: 'image/png', data: PNG } }],
+            response: { output: ['Before the chart.', { $ref: 'part-1' }, 'After the chart.'] },
+            parts: [{ inlineData: { mimeType: 'image/png', data: PNG, displayName: 'part-1' } }],
           },
         },
       ],
