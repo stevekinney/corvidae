@@ -281,8 +281,8 @@ export function createUpdateCallbacks<TWorkflows extends object, TActivities ext
       broadcastFromInternals(getInternals(engine), message, createBroadcastCallbacks(engine)),
     completeOperation: (id, value, operationId, workflowExecutionToken) =>
       completeOperationForEngine(engine, id, value, operationId, workflowExecutionToken),
-    guardTerminalWorkflow: (id) =>
-      guardTerminalWorkflow(getInternals(engine), id, createGuardCallbacks(engine)),
+    guardTerminalWorkflow: (id, updateName) =>
+      guardTerminalWorkflow(getInternals(engine), id, createGuardCallbacks(engine), updateName),
     guardTerminalWorkflowAfterCoordinatedRequest: (id, updateId) =>
       guardTerminalWorkflowAfterCoordinatedRequest(
         getInternals(engine),

@@ -53,6 +53,7 @@ const finalizerWith = (schemas: { inputSchema?: z.ZodType; outputSchema?: z.ZodT
 
 const schemalessWorkflow = workflow({ name: 'bare' })
   .activities({ charge: async () => 'ok' })
+  .uses({ audit: activity({ name: 'audit', execute: async () => 'ok' }) })
   .signals({ approve: signal('approve') })
   .updates({ rename: update('rename') })
   .queries({ status: query('status') })
@@ -110,6 +111,8 @@ describe('schemas engine option', () => {
       'queries.status.outputSchema',
       'activities.charge.inputSchema',
       'activities.charge.outputSchema',
+      'uses.audit.inputSchema',
+      'uses.audit.outputSchema',
     ]);
     expect(error.message).toContain('signals.approve.inputSchema');
   });
