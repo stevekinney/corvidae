@@ -526,18 +526,21 @@ export function createInteractiveSurfaces(
     ) {
       return loaded;
     }
-    const reason = task.settled === 'canceled' ? 'cancelled' : 'task-ended';
-    const persisted = await freezeOne(taskId, surfaceId, reason, `task-settled:${taskId}`);
-    const reloaded = await load(taskId, surfaceId);
-    // A freeze that lost every race still leaves the task ended: the command sees the surface
-    // closed, as the next read that does commit the freeze will record it.
-    if (persisted || reloaded === undefined || reloaded.stored.surface.state === 'closed') {
-      return reloaded;
-    }
-    return {
-      text: reloaded.text,
-      stored: { ...reloaded.stored, surface: frozen(reloaded.stored.surface, reason) },
-    };
+    // A freeze that cannot be written leaves the stored surface open; the
+    // commands that change or act refuse an ended task on their own (see
+    // `ended`), so what a snapshot reads is always what is stored.
+    await freezeOne(
+      taskId,
+      surfaceId,
+      task.settled === 'canceled' ? 'cancelled' : 'task-ended',
+      `task-settled:${taskId}`,
+    );
+    return load(taskId, surfaceId);
+  }
+
+  /** Whether a command must treat the surface as closed: it is, or its task has ended. */
+  function ended(task: InteractiveSurfaceTask, surface: InteractiveSurface): boolean {
+    return surface.state === 'closed' || task.settled !== undefined;
   }
 
   function accepted(
@@ -703,8 +706,15 @@ export function createInteractiveSurfaces(
         // announced its settlement, so freeze what was just committed now.
         const after = await options.task(taskId);
         if (after?.settled !== undefined) {
+          // The create committed, so it is accepted; the surface it reports is frozen.
           await settleTask(taskId, after.settled);
-          return rejection('closed', 'the task ended while the surface was being created');
+          const settled = await load(taskId, surfaceId);
+          return accepted(
+            commandId,
+            await withCursor(settled?.stored.surface ?? { ...surface, eventCursor: cursor }),
+            false,
+            1,
+          );
         }
         return accepted(commandId, { ...surface, eventCursor: cursor }, false);
       });
@@ -761,7 +771,7 @@ export function createInteractiveSurfaces(
         const replayed = await replay(loaded.stored, commandId, digest);
         if (replayed !== undefined) return replayed;
         const before = loaded.stored.surface;
-        if (before.state === 'closed') return rejection('closed', 'the surface is closed');
+        if (ended(task, before)) return rejection('closed', 'the surface is closed');
         if (before.revision !== baseRevision) {
           return rejection('stale-revision', undefined, before.revision);
         }
@@ -877,7 +887,7 @@ export function createInteractiveSurfaces(
           return { ...seen.admission, value, replayed: true };
         }
         const surface = loaded.stored.surface;
-        if (surface.state === 'closed') return rejection('closed', 'the surface is closed');
+        if (ended(task, surface)) return rejection('closed', 'the surface is closed');
         if (surface.revision !== revision) {
           return rejection('stale-revision', undefined, surface.revision);
         }
@@ -975,7 +985,7 @@ export function createInteractiveSurfaces(
         const replayed = await replay(loaded.stored, commandId, digest);
         if (replayed !== undefined) return replayed;
         const before = loaded.stored.surface;
-        if (before.state === 'closed') return rejection('closed', 'the surface is closed');
+        if (ended(task, before)) return rejection('closed', 'the surface is closed');
         const at = isoNow();
         const revision = before.revision + 1;
         const surface: InteractiveSurface = {
@@ -1160,6 +1170,13 @@ export function createInteractiveSurfaces(
       };
       waiters.add(onSettled);
       signal?.addEventListener('abort', onAbort, { once: true });
+      // A settlement that started after the checks above may already have
+      // announced itself to an empty set of waiters.
+      const started = settlements.get(taskId);
+      if (started !== undefined) {
+        waiters.delete(onSettled);
+        void started.then(onSettled);
+      }
     });
   }
 

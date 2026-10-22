@@ -721,7 +721,7 @@ describe('review fixes', () => {
     expect(replay.outcome === 'accepted' && replay.surface.revision).toBe(3);
   });
 
-  it('closes a surface created while its task settled, instead of accepting it open', async () => {
+  it('reports a surface created while its task settled as frozen, not open', async () => {
     const runtime = createManualRuntimeServices();
     const storage = new MemoryStorage();
     let reads = 0;
@@ -737,9 +737,15 @@ describe('review fixes', () => {
       now: () => runtime.clock.now(),
     });
 
-    expect(await surfaces.create(createCommand())).toMatchObject({ reason: 'closed' });
-    const read = await snapshotOf(surfaces);
-    expect(read).toMatchObject({ liveness: 'frozen', closeResult: { reason: 'cancelled' } });
+    const receipt = await surfaces.create(createCommand());
+
+    // The create committed, so it is accepted, reporting the surface already frozen.
+    expect(receipt).toMatchObject({
+      outcome: 'accepted',
+      committedRevision: 1,
+      surface: { state: 'closed', liveness: 'frozen', closeResult: { reason: 'cancelled' } },
+    });
+    expect(await snapshotOf(surfaces)).toMatchObject({ liveness: 'frozen' });
   });
 
   it('refuses an asynchronous schema and CSP entries that are not origins', async () => {
