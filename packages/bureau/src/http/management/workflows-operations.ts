@@ -420,7 +420,7 @@ export const workflowsGetOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one workflow',
   description:
     'Returns one workflow: whether its file is `ready` or `invalid` (with the `problem` that makes it so), the `hash` and `text` of the file for an editor that writes it back with `expectedHash`, who wrote it, whether it is paused, its Weft `version`, and its live `schedule`. Requires `bureau.workflows:read` unless the caller owns the deployment’s workflows; anyone else is answered `NotFound`.',
@@ -453,7 +453,7 @@ export const workflowsListOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List workflows',
   description:
     'Lists every workflow file by identifier, `ready` and `invalid` alike. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
@@ -546,7 +546,7 @@ export const workflowsRunsListOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.runs.list',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'List the instances of workflows',
   description:
     'Lists the instances (Weft runs) of the workflow files, newest first. `workflow` narrows to one workflow’s identifier and `status` to one status. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page. A caller who does not own the deployment’s workflows and lacks `bureau.workflows:read` gets an empty page.',
@@ -582,7 +582,7 @@ export const workflowsRunsGetOperation = defineOperation<
   BureauWorkflowsOperationHost
 >({
   name: 'bureau.workflows.runs.get',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Read one instance of a workflow',
   description:
     'Returns one instance: its workflow and revision, its status, what started it (`trigger`), its `result`, and, for an instance that failed, its `error`, including a failed `agent` step’s. Only an instance of a workflow file is readable here; any other run is answered `NotFound`, as is a caller who does not own the deployment’s workflows and lacks `bureau.workflows:read`.',

@@ -201,7 +201,7 @@ export const tasksRespondOperation = defineOperation<
   BureauTasksRespondOperationHost
 >({
   name: 'bureau.tasks.respond',
-  mcpExposable: false,
+  mcpExposable: true,
   summary: 'Answer a task’s open human-input or approval wait',
   description:
     'Answers one open wait of a task as the authenticated caller. `answer` (text, or a list of parts joined with a newline) answers a human-input wait; `decision` (`approve`, `deny`, or `reject`, which requires a `reason`) decides an approval or a human wait. `signalName` or `callId` says which wait when several are open; with neither, exactly one must be. `messageId` is the idempotency key: an exact retry returns the original receipt, and the same `messageId` with a different command is a `Conflict`. The task’s owner answers anything; a caller holding `bureau.tasks:write` answers human-input waits only, and another owner’s approval answers as a missing task. The `receipt` is `applied` or `superseded` (the approval was gated again and the tool did not run).',

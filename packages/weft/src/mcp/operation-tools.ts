@@ -36,11 +36,11 @@ export type OperationMcpMountOptions = {
   readonly pathPrefix?: string;
   /** Upper bound on a POST body, answered `413` when exceeded. */
   readonly maxBodyBytes?: number;
-  /** The `serverInfo` the MCP handshake reports. Defaults to Weft's. */
+  /** The `serverInfo` the MCP handshake reports; each field omitted is Weft's own. */
   readonly serverInfo?: {
-    readonly name: string;
+    readonly name?: string;
     readonly title?: string;
-    readonly version: string;
+    readonly version?: string;
   };
   /**
    * The most elements one call to a `subscription` tool returns. The tool answers with what is
@@ -107,7 +107,7 @@ export function createOperationMcpMount(
   options: OperationMcpMountOptions = {},
 ): OperationHandlerMount {
   const limits = collectionLimits(options);
-  const serverInfo = options.serverInfo ?? { name: 'weft', title: 'Weft', version: VERSION };
+  const serverInfo = { name: 'weft', title: 'Weft', version: VERSION, ...options.serverInfo };
   const handler = createMcpHandler(
     (request) => buildServer(contextOf(request), serverInfo, limits),
     {
@@ -156,7 +156,7 @@ type CollectionLimits = { readonly maxEvents: number; readonly idleMs: number };
 
 function buildServer(
   context: OperationHandlerMountContext,
-  serverInfo: NonNullable<OperationMcpMountOptions['serverInfo']>,
+  serverInfo: { readonly name: string; readonly title?: string; readonly version: string },
   limits: CollectionLimits,
 ): McpServer {
   const server = new McpServer(serverInfo, { capabilities: { tools: {} } });
