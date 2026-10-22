@@ -446,11 +446,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
    * is current. A scan reads the file, and settles it against the store later; a peer may edit and
    * record the new content in between. If the record describes other content while `hash` is what
    * this catalog itself last recorded, the scan may be that stale reading, and writing would record
-   * a revert that never happened. A catalog that has recorded nothing yet (its first scan after a
-   * start) has no last-recorded hash to compare, so it is in the same position. The write is
-   * deferred once for each record hash: the revision is kept for this scan (a catalog that knows
-   * nothing lists the stored revision), and the next scan decides (a stale reading does not
-   * repeat, and a genuine change or revert is written then). A record that cannot be read or written leaves the last known
+   * a revert that never happened. The write is deferred once for each record hash: the revision is
+   * kept for this scan, and the next scan decides (a stale reading does not repeat, and a genuine
+   * revert is written then). A catalog that has recorded nothing yet (its first scan after a start)
+   * has no last-recorded hash and never defers: it writes, so the revision it lists always names
+   * the content it lists it with, as after a restart that follows an offline edit. The price is a
+   * narrow race on that first scan, where a stale first read can over-count a peer's edit, and
+   * never lowers a revision. A record that cannot be read or written leaves the last known
    * revision, or 1, and the next scan tries again; the failure is reported when it is new (the
    * first after a success, or at a different hash), not on every scan that finds the store still
    * down.
@@ -459,19 +461,18 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const known = recorded.get(id);
     try {
       const record = await revisions.advance(id, hash, {
-        // A catalog with a last-recorded hash defers when the file still has it; one with none (its
-        // first scan after a start) has no reading to compare and defers too. Once per record hash.
+        // Only a catalog whose own last-recorded hash is the file's can tell a stale reading from
+        // a change: a reading that matches what it last recorded is the one a peer may have
+        // overtaken. Once per record hash.
         defer: (current) =>
-          (known === undefined || known.hash === hash) &&
-          deferredAgainst.get(id)?.has(current.hash) !== true,
+          known?.hash === hash && deferredAgainst.get(id)?.has(current.hash) !== true,
       });
       failedAt.delete(id);
       if (record.hash !== hash) {
         const against = deferredAgainst.get(id) ?? new Set<string>();
         against.add(record.hash);
         deferredAgainst.set(id, against);
-        // A catalog that knows nothing lists the stored revision for this scan: it adopts it.
-        return known === undefined ? record.revision : known.revision;
+        return known?.revision ?? record.revision;
       }
       deferredAgainst.delete(id);
       recorded.set(id, record);
