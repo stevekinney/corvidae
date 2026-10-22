@@ -256,6 +256,7 @@ import {
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
+  sessionRecordedRevision,
   sessionRunMediaOptions,
   wireDurableOptInTools,
 } from './runtime-composition';
@@ -2320,6 +2321,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
               modelCatalog,
               resolveGenerate: resolveAgentGenerate,
               runtime: runtimeServices,
+              // COR-1584: the revision records share the Bureau's store, so a revision survives a
+              // restart and two Bureaus on one store agree on it.
+              revisionStore: runtime.kv,
               diagnose: (message, cause) =>
                 diagnose({
                   level: 'error',
@@ -2413,7 +2417,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             `Run "${runId}" recorded an agent file definition, but this Bureau has no agent directory.`,
           );
         }
-        const rebuilt = await fileAgents.agentForRecordedRun(name, recorded.agentDefinitionHash);
+        const rebuilt = await fileAgents.agentForRecordedRun(
+          name,
+          recorded.agentDefinitionHash,
+          recorded.definitionRevision,
+        );
         agent = rebuilt.agent;
         agentBinding = rebuilt.binding;
       } else {
@@ -6606,15 +6614,23 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // run's, and a session's runs may be of different agents, so the run's own reference decides
     // and the session's hash is what an older record without one falls back to.
     const reference = await fileAgents?.snapshots.reference(runId);
+    const ownReference =
+      reference !== undefined && reference.id === agentName ? reference : undefined;
     const recordedHash =
-      reference !== undefined && reference.id === agentName
-        ? reference.hash
-        : metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
+      ownReference === undefined
+        ? metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]
+        : ownReference.hash;
     const resolution = await runtime.resolveSessionAgentRun(
       agentName,
       runId,
       resolveSessionOwner(metadata),
-      { agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined },
+      {
+        agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
+        // COR-1584: the revision the run's own reference recorded. Only a reference written before
+        // references named one falls back to the session's metadata, which names its latest run's.
+        definitionRevision:
+          ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
+      },
     );
     if (resolution.status === 'resolved') return resolution.run;
     diagnose({

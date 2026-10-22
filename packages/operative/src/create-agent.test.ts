@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createAgent } from './create-agent';
+import { readGenerationProfile } from './generation-profile';
 import { hasDefinitionResolver, OPERATIVE_RESOLVE_RUN_OPTIONS } from './runnable-agent';
 
 function mockGenerate() {
@@ -85,4 +86,33 @@ describe('createAgent: descriptive metadata (COR-1301)', () => {
 
     expect('skills' in agent).toBe(false);
   });
+});
+
+describe('createAgent: generation profile revision (COR-1584)', () => {
+  it('reports revision 1 when no revision is given', () => {
+    const agent = createAgent({ generate: mockGenerate() });
+
+    expect(readGenerationProfile(agent).revision).toBe(1);
+  });
+
+  it('reports the revision it was created with', () => {
+    const agent = createAgent({ generate: mockGenerate(), revision: 4 });
+
+    expect(readGenerationProfile(agent).revision).toBe(4);
+  });
+
+  it('does not leak the revision into the resolved run options', async () => {
+    const agent = createAgent({ generate: mockGenerate(), revision: 4 });
+
+    const options = await resolver(agent)('hello');
+
+    expect('revision' in options).toBe(false);
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 2 ** 53])(
+    'refuses %p, which is not a positive safe integer',
+    (revision) => {
+      expect(() => createAgent({ generate: mockGenerate(), revision })).toThrow(/revision/u);
+    },
+  );
 });

@@ -58,10 +58,15 @@ export interface FileAgentRuntime {
   settleRun(runId: string, at?: string): Promise<void>;
   /** Drop the run's reference. Never rejects. */
   releaseRun(runId: string): Promise<void>;
-  /** The agent a run recorded, rebuilt from its snapshot with the model and tools resolved now. */
+  /**
+   * The agent a run recorded, rebuilt from its snapshot with the model and tools resolved now. It
+   * reports `revision`, the definition revision the run recorded, never the file's current one: a
+   * snapshot is keyed by content, so a revision cannot be read back from it.
+   */
   agentForRecordedRun(
     name: string,
     hash: string,
+    revision?: number,
   ): Promise<{ readonly agent: AnyRunnableAgent; readonly binding: FileAgentBinding }>;
   /**
    * Settle or release every reference that is still open against what the durable engine says:
@@ -122,7 +127,7 @@ export function createFileAgentRuntime(options: {
       return tracked('agent-snapshot-release', snapshots.releaseRun(runId));
     },
 
-    async agentForRecordedRun(name, hash) {
+    async agentForRecordedRun(name, hash, revision) {
       const snapshot = await snapshots.load(name, hash);
       if (snapshot === undefined) {
         throw new AgentSnapshotError(
@@ -132,7 +137,7 @@ export function createFileAgentRuntime(options: {
           `The run recorded the definition of agent "${name}" at ${hash}, which is no longer stored, so it cannot be resumed.`,
         );
       }
-      const agent = files.agentFromSnapshot(snapshot);
+      const agent = files.agentFromSnapshot(snapshot, revision);
       const binding = readFileAgentBinding(agent);
       if (binding === undefined) {
         throw new AgentSnapshotError(

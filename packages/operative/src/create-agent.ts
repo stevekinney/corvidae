@@ -168,6 +168,18 @@ export interface CreateAgentOptionsBase {
   generationPreferences?: AgentPreferences | undefined;
 
   /**
+   * The revision of this agent's definition: the number the returned agent's
+   * `generationProfile.revision` reports, and so the `definitionRevision`
+   * Bureau's control plane shows for it. A positive safe integer. Defaults to
+   * `1`, which is what an agent that is only ever defined in code reports. A
+   * host that rebuilds an agent from a definition that changes over time
+   * (Bureau's file agents, COR-1584) passes the revision it keeps for that
+   * definition, so a client fencing on `(name, definitionRevision)` sees the
+   * change.
+   */
+  revision?: number | undefined;
+
+  /**
    * Candidates a future selector (AB-66) may choose among. Supplying this
    * promotes the returned agent's `generationProfile.mode` to `'selectable'`
    * regardless of how many `BackendDescriptor`s `generate` itself carries.
@@ -413,6 +425,15 @@ function validateCreateAgentOptions(options: CreateAgentOptions): void {
         "every run (required for armorer's cross-request approval flow, where " +
         '`toolbox.resumeApproval` must share the same `approvalSecret` that minted the pending ' +
         'approval).',
+    );
+  }
+
+  if (
+    options.revision !== undefined &&
+    !(Number.isSafeInteger(options.revision) && options.revision >= 1)
+  ) {
+    throw new Error(
+      `createAgent: \`revision\` must be a positive safe integer; received ${String(options.revision)}.`,
     );
   }
 
@@ -689,6 +710,8 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     // `RunOptions` bag `buildRunOptions` hands to `createActiveRun`.
     generationPreferences,
     allowedCandidates,
+    // COR-1584 — likewise consumed only by `generationProfile`.
+    revision = 1,
     // AB-92/AB-252 — destructured out (rather than left in `...rest`) so it
     // can be resolved to a concrete `RuntimeServices` instance exactly once
     // below, at agent construction, and that SAME instance handed to every
@@ -745,7 +768,7 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
         : attachedDescriptors.length > 1
           ? 'routed'
           : 'opaque',
-    revision: 1,
+    revision,
     projection: 'privileged',
     descriptors: attachedDescriptors,
     ...(generationPreferences

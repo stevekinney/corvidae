@@ -2226,6 +2226,8 @@ const readOnly: AgentGenerationProfile = readGenerationProfile(agent);
 
 `AgentPreferences` (`requiredCapabilities`, `preferredProviders`, `preferredModels`, `minimumContextWindowTokens`) and `allowedCandidates` reach the profile through two new `createAgent` options, `generationPreferences` and `allowedCandidates`—the latter promotes the mode to `'selectable'`. `selector` always reads `'unavailable'` on a standalone agent (no Bureau, no policy, no catalog to select through); `'available'` is reported only through Bureau's future catalog read (AB-66/AB-247).
 
+`createAgent`'s optional `revision` (a positive safe integer, `1` when absent) sets the profile's `revision`. An agent defined once in code never needs it. A host that rebuilds an agent from a definition that changes over time passes the revision it keeps for that definition, so a client that fences on `(name, definitionRevision)` sees the change; Bureau does so for its file agents.
+
 Every generate-function wrapper this package ships preserves whatever descriptors the function it wraps carried, so composing wrappers around a described provider factory never silently downgrades an Agent's profile to `'opaque'`: `withStreaming`, `withRoutingMetrics`, `withEnhancedStreaming`, `withCache`, `withCacheMetrics`, the provider instrumentation wrapper (`instrumentGenerate`), `createFallbackGenerate`, and `createFalloverGenerate` all read `readBackendDescriptors` off their inner function(s) and reattach the result to the function they return. `createFallbackGenerate` and `createFalloverGenerate`, like `createRoutingGenerate`, attach the ordered union of every candidate's descriptors, deduplicated by `(provider, endpoint, model)`.
 
 ### Model Policy Precedence (AB-64, AB-248)
