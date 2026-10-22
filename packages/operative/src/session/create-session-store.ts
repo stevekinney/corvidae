@@ -8,6 +8,7 @@ import { messageText } from 'conversationalist';
 import type { AgentSession } from '../agent-session';
 import type { OperativeEventMap } from '../events';
 import { SessionOutboxAppendedEvent } from '../events';
+import { sessionLineageOf } from './session-lineage';
 import { sessionOwnerOf } from './session-owner';
 import type {
   SessionCleanupOptions,
@@ -27,10 +28,11 @@ const SUMMARY_INDEX_KEY = 'agent-session:summary-index';
 const MAXIMUM_SAVE_ATTEMPTS = 5;
 const MAXIMUM_INDEX_CONTENTION_ATTEMPTS = MAXIMUM_SAVE_ATTEMPTS;
 const DEFAULT_SESSION_LIST_LIMIT = 100;
-// Version 2 adds `title`, `lastMessagePreview` and `owner` to every summary. An index
-// of any other version is unparseable, so it is rebuilt from the bodies once, by the
-// same path that repairs a corrupt one: no migration step exists or is needed.
-const SUMMARY_FORMAT_VERSION = 2;
+// Version 2 adds `title`, `lastMessagePreview` and `owner` to every summary; version 3 adds
+// `parentContextId` and `forkedFromMessageId` (COR-1560). An index of any other version is
+// unparseable, so it is rebuilt from the bodies once, by the same path that repairs a corrupt
+// one: no migration step exists or is needed.
+const SUMMARY_FORMAT_VERSION = 3;
 const TITLE_LIMIT = 80;
 const PREVIEW_LIMIT = 120;
 // AB-389 — the commit outbox. Disjoint from `KEY_PREFIX`/`BODY_PREFIX`
@@ -323,6 +325,7 @@ export function summarizeSession(session: AgentSession): SessionSummary {
     agentName: session.agentName,
     ...describeConversation(history),
     owner: sessionOwnerOf(session.metadata),
+    ...sessionLineageOf(session.metadata),
     messageCount,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
@@ -346,6 +349,8 @@ function parseSummaryRecord(
     !isTextOrNull(record['title']) ||
     !isTextOrNull(record['lastMessagePreview']) ||
     !isTextOrNull(record['owner']) ||
+    !isTextOrNull(record['parentContextId']) ||
+    !isTextOrNull(record['forkedFromMessageId']) ||
     typeof record['messageCount'] !== 'number' ||
     !isValidDate(record['createdAt']) ||
     !isValidDate(record['updatedAt'])
@@ -357,6 +362,8 @@ function parseSummaryRecord(
     title: record['title'],
     lastMessagePreview: record['lastMessagePreview'],
     owner: record['owner'],
+    parentContextId: record['parentContextId'],
+    forkedFromMessageId: record['forkedFromMessageId'],
     messageCount: record['messageCount'],
     createdAt: record['createdAt'] as string,
     updatedAt: record['updatedAt'] as string,

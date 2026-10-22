@@ -349,9 +349,16 @@ export {
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
+export { SessionForkRefusedError } from './session-fork';
+export type {
+  ForkSessionRequest,
+  ForkSessionResult,
+  SessionForkRefusalReason,
+} from './session-fork';
 export type {
   BureauSteeringGate,
   ImplementedSteeringCommand,
+  SessionSteeringState,
   SteeringAdmissionContext,
   SteeringCommandAdmissionOutcome,
   SteeringCommandConflict,

@@ -47,6 +47,7 @@ import {
   type BureauAgentCatalog,
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
+import { describeAgentModels } from '../agent-models.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
@@ -58,9 +59,21 @@ import { BUREAU_SCOPES } from './bureau-scopes.ts';
 import { type BureauOwnershipHost, mayAccessOwnedResource } from './owner-predicate.ts';
 import type { BureauReviewsOperationHost } from './bureau-reviews-operations.ts';
 import {
+  type BureauAgentModelsOperationHost,
+  agentsModelsOperation,
+} from './management/agents-models-operation.ts';
+import {
   type BureauContextsInputOperationHost,
   contextsInputOperation,
 } from './management/contexts-input-operation.ts';
+import {
+  type BureauContextsForkOperationHost,
+  contextsForkOperation,
+} from './management/contexts-fork-operation.ts';
+import {
+  type BureauContextsSteerOperationHost,
+  contextsSteerOperation,
+} from './management/contexts-steer-operation.ts';
 import {
   type BureauContextsOperationHost,
   contextsDeleteOperation,
@@ -146,6 +159,9 @@ export type BureauHandlerSource = Pick<
   | 'eventHistory'
   | 'subscribeEventHistory'
   | 'getSession'
+  | 'getSessionSteering'
+  | 'submitSteeringCommand'
+  | 'forkSession'
   | 'deleteSession'
   | 'listSessions'
   | 'sessionStore'
@@ -210,6 +226,9 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauTasksRespondOperationHost &
   BureauContextsOperationHost &
   BureauContextsInputOperationHost &
+  BureauContextsSteerOperationHost &
+  BureauContextsForkOperationHost &
+  BureauAgentModelsOperationHost &
   BureauAgentDefinitionsOperationHost &
   BureauWorkflowsOperationHost &
   BureauSchedulesOperationHost &
@@ -451,6 +470,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   getPrincipalOperation,
   deploymentGetOperation,
   agentsListOperation,
+  agentsModelsOperation,
   tasksListOperation,
   tasksGetOperation,
   tasksCancelOperation,
@@ -460,6 +480,8 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsGetOperation,
   contextsDeleteOperation,
   contextsInputOperation,
+  contextsSteerOperation,
+  contextsForkOperation,
   ...bureauAgentDefinitionsOperations,
   ...bureauWorkflowsOperations,
   defineBureauEventsSubscriptionOperation('bureau.events:observe-all'),
@@ -648,6 +670,14 @@ export function buildBureauHandlerHost(
     tasks: bureau.tasks,
     taskHistory: bureau,
     contexts: bureau,
+    agentModels: {
+      describe: (agentName) => {
+        const agent = bureau.agents.find(agentName);
+        return agent === undefined
+          ? undefined
+          : describeAgentModels(agent, bureau.modelCatalog.catalog().descriptors);
+      },
+    },
     agentDefinitions: {
       agents: bureau.agents,
       publishesCodeAgent: (id) => publish.includes(id),

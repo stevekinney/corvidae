@@ -44,6 +44,42 @@ const definition: AgentDefinitionInput = {
   instructions: 'Be careful.',
 };
 
+describe('the models list', () => {
+  test('get reads the models a file lists, and null for a file that lists none', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => ({
+        ...readyAgent(),
+        definition: { ...readyAgent().definition, models: ['anthropic/sonnet', 'openai/gpt-4.1'] },
+      }),
+    });
+
+    const detail = await getAgentDefinition('researcher');
+
+    expect(detail.definition?.models).toEqual(['anthropic/sonnet', 'openai/gpt-4.1']);
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
+    const plain = await getAgentDefinition('researcher');
+    expect(plain.definition?.models).toBeNull();
+  });
+
+  test('update sends the models it is given, and sends none when the definition has none', async () => {
+    stub = installBureauStub({
+      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
+    });
+
+    await updateAgent('researcher', 'hash-1', {
+      ...definition,
+      models: ['anthropic/sonnet', 'openai/gpt-4.1'],
+    });
+    await updateAgent('researcher', 'hash-1', definition);
+
+    expect(stub.calls[0]?.params).toMatchObject({
+      definition: { models: ['anthropic/sonnet', 'openai/gpt-4.1'] },
+    });
+    expect(stub.calls[1]?.params).not.toHaveProperty('definition.models');
+  });
+});
+
 describe('the operations', () => {
   test('get asks for one agent by identifier and parses its detail', async () => {
     stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
