@@ -114,7 +114,7 @@ describe('createWorkflowFactory() — shared entries', () => {
     const built = workflow({ name: 'described-later' }).execute(async function* () {
       return 0;
     });
-    expect((built.uses?.['described']?.inputSchema as { title?: string }).title).toBe('before');
+    expect(built.uses?.['described']?.inputSchema).toMatchObject({ title: 'before' });
   });
 
   it('keeps a __proto__ message key as an own entry', () => {
