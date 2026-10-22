@@ -39,6 +39,11 @@
  * support one Bureau per store (Interborough is one process), so no cross-instance check is made;
  * a topology with several Bureaus over one store would need a conditional delete.
  *
+ * That limit is the snapshots' and the run references' only. The revision record of a file agent
+ * (`agent-revision-store.ts`, `bureau-agent-revision:v1:<id>`) is written with a conditional
+ * batch, so it is safe across processes: two Bureaus on one store that see the same change
+ * produce one increment and report the same revision (COR-1584).
+ *
  * @module agent-snapshot-store
  */
 

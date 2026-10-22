@@ -8,7 +8,11 @@ import { join } from 'node:path';
 
 import { createAgent, readGenerationProfile } from '@lostgradient/operative';
 import * as operative from '@lostgradient/operative';
-import { createTemporaryDirectory, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
+import { decode, resolveStorage, type Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
@@ -46,16 +50,29 @@ function revisionOf(bureau: Bureau, id: string): number | undefined {
   return bureau.agents.list().find((listing) => listing.id === id)?.definitionRevision;
 }
 
-async function recoveryRecordOf(bureau: Bureau, runId: string) {
-  const text = await bureau.kv?.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`);
-  return text === null || text === undefined
+/** The recovery record of a run, read from the durable storage the Bureau was given. */
+async function recoveryRecordOf(storage: Storage, runId: string) {
+  const bytes = await storage.get(`${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`);
+  return bytes === null
     ? undefined
-    : (JSON.parse(text) as { definitionRevision: number; agentDefinitionHash?: string });
+    : (decode(bytes) as { definitionRevision: number; agentDefinitionHash?: string });
+}
+
+/** A durable Bureau over storage the test owns, so the records can be read back. */
+async function openDurable(
+  storage: Storage,
+  options: Parameters<typeof startFileBureau>[0] = {},
+): Promise<FileBureauHarness> {
+  return open({
+    ...options,
+    overrides: { storage, durableExecution: true, ...options.overrides },
+  });
 }
 
 describe('a run of a file agent', () => {
   it('records the revision it started with in its recovery record', async () => {
-    const harness = await open();
+    const storage = await resolveStorage({ type: 'memory' });
+    const harness = await openDurable(storage);
     await edit(harness, 'One.\n');
     await edit(harness, 'Two.\n');
     const { bureau } = harness;
@@ -66,8 +83,8 @@ describe('a run of a file agent', () => {
     const later = bureau.run('researcher', 'hello again');
     await later.result();
 
-    expect((await recoveryRecordOf(bureau, run.id))?.definitionRevision).toBe(2);
-    expect((await recoveryRecordOf(bureau, later.id))?.definitionRevision).toBe(3);
+    expect((await recoveryRecordOf(storage, run.id))?.definitionRevision).toBe(2);
+    expect((await recoveryRecordOf(storage, later.id))?.definitionRevision).toBe(3);
   });
 
   it('records the revision it started with on its session', async () => {
@@ -86,7 +103,8 @@ describe('a run of a file agent', () => {
 
 describe('a run of a code-defined agent', () => {
   it('records the revision the agent was created with, and the catalog lists it', async () => {
-    const harness = await open({
+    const storage = await resolveStorage({ type: 'memory' });
+    const harness = await openDurable(storage, {
       agents: {
         alpha: createAgent({
           name: 'alpha',
@@ -102,7 +120,7 @@ describe('a run of a code-defined agent', () => {
 
     expect(revisionOf(bureau, 'alpha')).toBe(4);
     expect(readGenerationProfile(bureau.agents.get('alpha')).revision).toBe(4);
-    expect((await recoveryRecordOf(bureau, run.id))?.definitionRevision).toBe(4);
+    expect((await recoveryRecordOf(storage, run.id))?.definitionRevision).toBe(4);
   });
 });
 
@@ -115,13 +133,12 @@ describe('a run resumed after a restart', () => {
     const storagePath = join(directory, 'bureau.sqlite');
     const hold = new Promise<never>(() => undefined);
     const overrides = {
-      storage: { type: 'sqlite' as const, path: storagePath },
-      durableExecution: true as const,
       durableOwnership: { ownership: 'none' as const },
       durableBackgroundTasks: 'manual' as const,
     };
 
-    const first = await open({
+    const firstStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const first = await openDurable(firstStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => hold },
       overrides,
@@ -130,16 +147,17 @@ describe('a run resumed after a restart', () => {
     await edit(first, 'Version two.\n');
     const run = first.bureau.run('researcher', 'long question');
     await waitForCondition(
-      async () => (await recoveryRecordOf(first.bureau, run.id)) !== undefined,
+      async () => (await recoveryRecordOf(firstStorage, run.id)) !== undefined,
       'the run is recorded',
       ATTEMPTS,
     );
-    expect((await recoveryRecordOf(first.bureau, run.id))?.definitionRevision).toBe(2);
+    expect((await recoveryRecordOf(firstStorage, run.id))?.definitionRevision).toBe(2);
     await edit(first, 'Version three.\n');
     expect(revisionOf(first.bureau, 'researcher')).toBe(3);
 
     const built = spyOn(operative, 'createAgent');
-    const second = await open({
+    const secondStorage = await resolveStorage({ type: 'sqlite', path: storagePath });
+    const second = await openDurable(secondStorage, {
       directory: agents,
       scripts: { 'claude-opus-5-5': () => 'resumed' },
       overrides,
@@ -147,7 +165,10 @@ describe('a run resumed after a restart', () => {
     await second.bureau.waitForRecovery?.();
 
     const resumedAgents = built.mock.calls
-      .map(([agentOptions]) => agentOptions as { name?: string; instructions?: string; revision?: number })
+      .map(
+        ([agentOptions]) =>
+          agentOptions as { name?: string; instructions?: string; revision?: number },
+      )
       .filter((agentOptions) => agentOptions.name === 'researcher');
     const resumed = resumedAgents.filter((agentOptions) =>
       agentOptions.instructions?.includes('Version two.'),
@@ -155,7 +176,7 @@ describe('a run resumed after a restart', () => {
     expect(resumed.length).toBeGreaterThan(0);
     expect(resumed.map((agentOptions) => agentOptions.revision)).toEqual(resumed.map(() => 2));
     expect(revisionOf(second.bureau, 'researcher')).toBe(3);
-    expect((await recoveryRecordOf(second.bureau, run.id))?.definitionRevision).toBe(2);
+    expect((await recoveryRecordOf(secondStorage, run.id))?.definitionRevision).toBe(2);
     built.mockRestore();
   });
 });

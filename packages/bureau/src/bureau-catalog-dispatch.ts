@@ -752,6 +752,7 @@ export function createCatalogDispatcher({
             const recorded = await fileAgents.agentForRecordedRun(
               name,
               claimed.agentDefinitionHash,
+              claimed.definitionRevision,
             );
             claimedAgent = recorded.agent as AnyRunnableAgent &
               DefinitionResolvingAgentWithResolver;

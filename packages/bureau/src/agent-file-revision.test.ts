@@ -8,7 +8,10 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { readGenerationProfile } from '@lostgradient/operative';
-import { createTemporaryDirectory, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -99,7 +102,7 @@ describe('the revision of a file agent', () => {
 
     await fixture.catalog.refresh();
 
-    const hash = fixture.catalog.list()[0]?.definitionHash;
+    const hash = fixture.catalog.list()[0]?.definitionHash ?? '';
     expect(revisionOf(fixture)).toBe(1);
     expect(await recordOf(revisionStore)).toEqual({ revision: 1, hash });
   });
