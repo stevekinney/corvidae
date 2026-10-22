@@ -1201,7 +1201,16 @@ export function createDurableEventHistory(
           message: `[durable-event-history] Skipped corrupt durable record at sequence ${envelope.sequence} for ${owner.kind}:${owner.id}:`,
           cause: error,
         });
-        options?.onSkipped?.();
+        try {
+          options?.onSkipped?.();
+        } catch (callbackError) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-event-history',
+            message: '[durable-event-history] A page skip handler threw:',
+            cause: callbackError,
+          });
+        }
         continue;
       }
       if (events.length >= limit) {

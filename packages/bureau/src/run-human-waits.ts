@@ -417,7 +417,8 @@ export function createRunHumanWaits(dependencies: RunHumanWaitsDependencies) {
     const engine = dependencies.engine();
     if (wait === undefined || engine === undefined) return {};
     const graceEnds = wait.requestedAt + graceMilliseconds;
-    if (dependencies.now() <= graceEnds) return { retryAt: graceEnds };
+    // The exact end of the grace counts as ended: asked again at `retryAt`, the park is read.
+    if (dependencies.now() < graceEnds) return { retryAt: graceEnds };
     const state = await engine.get(runId);
     if (settled(state) || !state?.waitingForSignals?.includes(wait.signalName)) {
       return { closed: reviewIdFor(wait) };

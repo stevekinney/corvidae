@@ -553,6 +553,23 @@ function omitKey(record: Record<string, JSONValue>, omittedKey: string): Record<
   return remaining;
 }
 
+/**
+ * A set of review ids that tells `onAdd` whenever one is added (COR-1622). The ids of the approvals
+ * that left (decided, expired, found invalid) are kept in two such sets, and each addition is a
+ * moment the Bureau may hold no tool approval any more, which stops its expiry sweep's own timer.
+ */
+class NotifyingReviewIdSet extends Set<string> {
+  constructor(private readonly onAdd: () => void) {
+    super();
+  }
+
+  override add(value: string): this {
+    super.add(value);
+    this.onAdd();
+    return this;
+  }
+}
+
 function stringValues(values: readonly JSONValue[]): string[] {
   const strings: string[] = [];
   for (const value of values) {
@@ -2504,7 +2521,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // run may take a moment to produce its next action. This set is the
   // authoritative "already handled" marker so a resolved review disappears
   // from the queue immediately, and is never accidentally resolved twice.
-  const resolvedReviewIds = new Set<string>();
+  const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
   const resolvingReviewIds = new Set<string>();
   const reviewResolutionCleanupPending = new Map<
     string,
@@ -2534,6 +2551,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     pendingApprovalOverrides.delete(reviewId);
     pendingApprovalRounds.delete(reviewId);
     approvalRequestedAt.delete(reviewId);
+    stopLazyExpirySweepWhenNoneHeld();
   }
   const terminalReviewSessions = new Map<
     string,
@@ -2554,7 +2572,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // A persisted approval can be stale by the time a process restarts. Keep
   // that failure scoped to its review rather than preventing the bureau from
   // recovering unrelated runs.
-  const invalidApprovalReviewIds = new Set<string>();
+  const invalidApprovalReviewIds = new NotifyingReviewIdSet(() =>
+    stopLazyExpirySweepWhenNoneHeld(),
+  );
   // AB-54 usage analytics: agentName/principal resolved deterministically at
   // `createRun` time, keyed by runId. Layer A only (in-memory, like the rest
   // of RunSummary) — a durably recovered run (process restart) has no entry
@@ -4322,18 +4342,29 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     requested: Set<string>;
     closed: Set<string>;
     /**
-     * COR-1622 — the requests no closing has ended, by review id, with the round each stands at.
-     * A re-gated approval keeps its id, and each re-gate records a `review.superseded` and the
-     * `review.approved` of the round it leaves, so rounds opened (one plus the supersessions) minus
-     * the closings (every terminal event, `canceled` among them) is what is still open.
+     * COR-1622 — the requests whose current round no decision has ended, by review id: the
+     * candidates a canceled fire's boot repairs. A review's round advances only on a
+     * `review.superseded` paired with that round's decision (a re-gate records the supersession,
+     * then the decision of the round it leaves). A supersession with no decision after it ends the
+     * request, as `closeAbandonedFireRequests` writes for a request a crashed attempt abandoned. A
+     * request whose current round has a terminal event other than `review.canceled` is closed. A
+     * lone `review.canceled` stays a candidate, flagged, because its audit half may be missing.
      */
-    open: Map<string, number>;
+    open: Map<string, { readonly round: number; readonly canceled: boolean }>;
   }> {
     const requested = new Set<string>();
     const closed = new Set<string>();
-    const supersessions = new Map<string, number>();
-    const closings = new Map<string, number>();
-    const open = new Map<string, number>();
+    const rounds = new Map<
+      string,
+      {
+        round: number;
+        decided: boolean;
+        awaitingDecision: boolean;
+        ended: boolean;
+        canceled: boolean;
+      }
+    >();
+    const open = new Map<string, { readonly round: number; readonly canceled: boolean }>();
     if (eventHistoryInstance === undefined) return { requested, closed, open };
     // The events this process dispatched are written asynchronously: wait for them first.
     await durableEventProducerInstance?.waitForActiveWrites({ kind: 'run', id: runId });
@@ -4347,21 +4378,43 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       for (const event of page.events) {
         const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
         if (typeof reviewId !== 'string') continue;
+        const state = rounds.get(reviewId) ?? {
+          round: 0,
+          decided: false,
+          awaitingDecision: false,
+          ended: false,
+          canceled: false,
+        };
+        rounds.set(reviewId, state);
         if (event.kind === 'review.requested') requested.add(reviewId);
-        else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) {
+        else if (event.kind === 'review.canceled') {
           closed.add(reviewId);
-          closings.set(reviewId, (closings.get(reviewId) ?? 0) + 1);
+          state.canceled = true;
+        } else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) {
+          closed.add(reviewId);
+          if (state.awaitingDecision) {
+            // The decision of the round a re-gate left: the next round is now the current one.
+            state.round += 1;
+            state.awaitingDecision = false;
+            state.decided = false;
+            state.canceled = false;
+          } else {
+            state.decided = true;
+          }
         } else if (event.kind === REVIEW_SUPERSEDED_EVENT_KIND) {
           closed.add(reviewId);
-          supersessions.set(reviewId, (supersessions.get(reviewId) ?? 0) + 1);
+          // A second supersession with no decision between them leaves the first one lone.
+          if (state.awaitingDecision) state.ended = true;
+          state.awaitingDecision = true;
         }
       }
       if (!page.hasMore || page.nextCursor === undefined) break;
       since = page.nextCursor;
     }
     for (const reviewId of requested) {
-      const rounds = supersessions.get(reviewId) ?? 0;
-      if ((closings.get(reviewId) ?? 0) <= rounds) open.set(reviewId, rounds);
+      const state = rounds.get(reviewId);
+      if (state === undefined || state.ended || state.awaitingDecision || state.decided) continue;
+      open.set(reviewId, { round: state.round, canceled: state.canceled });
     }
     return { requested, closed, open };
   }
@@ -4411,7 +4464,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   ): Promise<void> {
     followFireReviews(runId);
     // The request is announced after the read of what the history already says, and a close
-    // written meanwhile waits for the same read (`awaitFireSeed`), so it follows the request.
+    // written meanwhile waits for the same read (`fireReviewSeeds.pending`), so it follows the request.
     await fireReviewSeeds.ensure(runId);
     announceReview(runId, reviewId, kind, target);
   }
@@ -4471,9 +4524,31 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   let lazyExpirySweepArmed = false;
   let lazyExpirySweepPass: Promise<void> | undefined;
 
-  /** Whether this process holds a tool approval, of a live run or a restored one. */
+  /**
+   * Whether this process holds a tool approval, of a live run or a restored one, counting an
+   * approval whose binding has run out and that no sweep has yet released (which
+   * `listPendingReviews` leaves out) and one whose resolution is in flight (not yet recorded as
+   * resolved). The sweep's timer stops when this is false and not before.
+   */
   function holdsToolApproval(): boolean {
-    return listPendingReviews().some((review) => review.kind === 'tool-approval');
+    const leftOrInvalid = (id: string): boolean =>
+      resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id);
+    for (const [runId, runState] of store.getState().runs) {
+      if (catalogRunIds.has(runId)) continue;
+      for (const step of runState.steps) {
+        for (const result of step.results) {
+          if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
+          if (!leftOrInvalid(`approval:${runId}:${result.pendingApproval.callId}`)) return true;
+        }
+      }
+    }
+    for (const id of pendingApprovalOverrides.keys()) if (!leftOrInvalid(id)) return true;
+    return false;
+  }
+
+  /** The check every approval's leaving makes: with none held, the sweep's timer is not needed. */
+  function stopLazyExpirySweepWhenNoneHeld(): void {
+    if (lazyExpirySweepArmed && !holdsToolApproval()) stopLazyExpirySweep();
   }
 
   function stopLazyExpirySweep(): void {
@@ -4504,7 +4579,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             cause: error,
           });
         }
-        if (!holdsToolApproval()) stopLazyExpirySweep();
+        stopLazyExpirySweepWhenNoneHeld();
       })().finally(() => {
         lazyExpirySweepPass = undefined;
       });
@@ -5647,7 +5722,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * the settlement that follows it, waits for the first instead of reading the trail before the
    * first has written.
    */
-  function closeCanceledFireReview(review: PendingReview, principal: string): Promise<void> {
+  function closeCanceledFireReview(
+    review: PendingReview,
+    principal: string,
+    // COR-1622: the history is already known to hold the review's `review.canceled` (read at boot),
+    // so only its audit half is checked, and an event written before the deduplication key existed
+    // is not written again.
+    known: { readonly historyHoldsCancel?: boolean } = {},
+  ): Promise<void> {
     const key = `${review.id}:${review.kind === 'tool-approval' ? review.round : 0}`;
     const inFlight = closingCanceledReviews.get(key);
     if (inFlight !== undefined) return inFlight;
@@ -5659,8 +5741,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       const status = await terminalAuditStatusOf(review);
       if (status !== undefined && status !== 'canceled') return;
       const auditMissing = status === undefined;
-      if (!auditMissing && (await canceledRecordedInHistory(review))) return;
-      await recordReviewStatusTransition(review, 'canceled', principal, { audit: auditMissing });
+      if (
+        !auditMissing &&
+        (known.historyHoldsCancel === true || (await canceledRecordedInHistory(review)))
+      ) {
+        return;
+      }
+      await recordReviewStatusTransition(review, 'canceled', principal, {
+        audit: auditMissing,
+        dispatch: known.historyHoldsCancel !== true,
+      });
     })().finally(() => {
       closingCanceledReviews.delete(key);
     });
@@ -5727,10 +5817,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       };
     };
     const candidates = new Map<string, PendingReview>();
+    // The candidates whose history already holds a `review.canceled`: their audit half is what may
+    // be missing.
+    const canceledInHistory = new Set<string>();
     const failures: string[] = [];
     try {
       const history = await readFireReviewHistory(runId);
-      for (const [id, round] of history.open) candidates.set(id, reviewOf(id, round));
+      for (const [id, { round, canceled }] of history.open) {
+        candidates.set(id, reviewOf(id, round));
+        if (canceled) canceledInHistory.add(id);
+      }
     } catch (error) {
       failures.push(`its history could not be read: ${serializeUnknownError(error)}`);
     }
@@ -5752,7 +5848,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
     for (const review of candidates.values()) {
       try {
-        await closeCanceledFireReview(review, 'system:run-abort');
+        await closeCanceledFireReview(review, 'system:run-abort', {
+          historyHoldsCancel: canceledInHistory.has(review.id),
+        });
       } catch (error) {
         failures.push(`review "${review.id}" could not be closed: ${serializeUnknownError(error)}`);
       }
@@ -5954,7 +6052,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             const requestedAt = approvalRequestedAt.get(id) ?? 0;
             if (
               decided.has(id) ||
-              runtimeServices.clock.now() - requestedAt > FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS
+              runtimeServices.clock.now() - requestedAt >=
+                FIRE_REVIEW_PERSISTENCE_GRACE_MILLISECONDS
             ) {
               await tasks.reviewClosedElsewhere(runId, id, REREAD_CLOSURE);
             } else {
@@ -15102,8 +15201,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     status: Exclude<ReviewStatus, 'pending' | 'approved' | 'denied' | 'rejected'>,
     principal: string,
     // COR-1622: `audit: false` leaves the audit record alone, because it is already there and the
-    // history event is what is being written.
-    parts: { readonly audit?: boolean } = {},
+    // history event is what is being written; `dispatch: false` writes no event, because the
+    // history already holds it and the audit record is what is being written.
+    parts: { readonly audit?: boolean; readonly dispatch?: boolean } = {},
   ): Promise<void> {
     // COR-1622: a close follows the request it closes in the history.
     await fireReviewSeeds.pending(review.runId);
@@ -15142,23 +15242,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // above. `approve`/`deny`/`reject` never reach this function — they
     // dispatch from `recordReviewDecision` instead — so the switch below is
     // exhaustive over exactly `expired | revoked | canceled | superseded`.
-    switch (status) {
-      case 'expired':
-        emitter.dispatch(new ReviewExpiredEvent(review.id, review.runId, principal, review.kind));
-        break;
-      case 'revoked':
-        emitter.dispatch(new ReviewRevokedEvent(review.id, review.runId, principal, review.kind));
-        break;
-      case 'canceled':
-        emitter.dispatch(
-          new ReviewCanceledEvent(review.id, review.runId, principal, review.kind, round),
-        );
-        break;
-      case 'superseded':
-        emitter.dispatch(
-          new ReviewSupersededEvent(review.id, review.runId, principal, review.kind),
-        );
-        break;
+    if (parts.dispatch !== false) {
+      switch (status) {
+        case 'expired':
+          emitter.dispatch(new ReviewExpiredEvent(review.id, review.runId, principal, review.kind));
+          break;
+        case 'revoked':
+          emitter.dispatch(new ReviewRevokedEvent(review.id, review.runId, principal, review.kind));
+          break;
+        case 'canceled':
+          emitter.dispatch(
+            new ReviewCanceledEvent(review.id, review.runId, principal, review.kind, round),
+          );
+          break;
+        case 'superseded':
+          emitter.dispatch(
+            new ReviewSupersededEvent(review.id, review.runId, principal, review.kind),
+          );
+          break;
+      }
     }
     // COR-1577: a catalog run's review has no session whose ownership could need restoring.
     if (review.sessionId !== undefined) {
@@ -15382,6 +15484,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
     }
 
+    // Whatever this sweep released, the timer is only needed while an approval is still held.
+    stopLazyExpirySweepWhenNoneHeld();
     return sweptCount;
   }
 

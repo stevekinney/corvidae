@@ -189,6 +189,96 @@ describe('expired review state of a Bureau with no maintenance timer of its own'
     );
   });
 
+  it('leaves no timer armed once the approval it was armed for is decided, before any tick', async () => {
+    const runtime = createManualRuntimeServices();
+    const bureau = await createBureau({
+      id: 'expiry-lazy-decided-bureau',
+      agents: {},
+      storage: { type: 'memory' },
+      runtime,
+      generate: chargesOnce,
+      toolbox: gatedToolbox(runtime),
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    });
+    bureaus.push(bureau);
+    const run = await bureau.createRun({ message: 'charge', principal: OWNER.alice });
+    const review = await pollUntil(
+      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      'the approval',
+    );
+    expect(runtime.pendingTimers()).toHaveLength(1);
+
+    await bureau.resolveReview({ id: review.id, decision: 'deny', principal: OWNER.alice });
+
+    // The last approval left, so the timer is gone now, not at the next tick.
+    expect(runtime.pendingTimers()).toEqual([]);
+  });
+
+  it('keeps its timer armed through a tick that finds the expired approval being decided, and stops it when that ends', async () => {
+    const runtime = createManualRuntimeServices();
+    const gate = Promise.withResolvers<void>();
+    const started = Promise.withResolvers<void>();
+    const toolbox = createToolbox(
+      [
+        createTool({
+          name: 'charge-card',
+          version: '1.0.0',
+          description: 'Charge a payment card',
+          input: z.object({ cents: z.number() }),
+          async execute({ cents }) {
+            started.resolve();
+            await gate.promise;
+            return { charged: cents };
+          },
+        }),
+      ],
+      {
+        approvalSecret: 'expiry-lazy-inflight-secret',
+        approvalBindingTtlMs: 1000,
+        runtime,
+        policy: {
+          beforeExecute: () => ({
+            allow: false,
+            status: 'needs_approval',
+            reason: 'Operator approval required',
+            action: { message: 'Approve charge' },
+          }),
+        },
+      },
+    ) as unknown as Toolbox;
+    const bureau = await createBureau({
+      id: 'expiry-lazy-inflight-bureau',
+      agents: {},
+      storage: { type: 'memory' },
+      runtime,
+      generate: chargesOnce,
+      toolbox,
+      stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+    });
+    bureaus.push(bureau);
+    const run = await bureau.createRun({ message: 'charge', principal: OWNER.alice });
+    const review = await pollUntil(
+      () => bureau.listPendingReviews().find((listed) => listed.runId === run.id),
+      'the approval',
+    );
+    const deciding = bureau.resolveReview({
+      id: review.id,
+      decision: 'approve',
+      principal: OWNER.alice,
+    });
+    await started.promise;
+
+    // The binding runs out while the tool is still running, and a tick finds the decision in
+    // flight: the sweep leaves the approval alone, and the timer, which it still needs, stays.
+    await runtime.advance(1500);
+    await runtime.advance(EXPIRY_SWEEP_INTERVAL_MILLISECONDS);
+    expect(runtime.pendingTimers()).toHaveLength(1);
+
+    gate.resolve();
+    await deciding;
+    expect(runtime.pendingTimers()).toEqual([]);
+  });
+
   it('is swept by a manual host’s own durable maintenance', async () => {
     const runtime = createManualRuntimeServices();
     const path = createTemporaryPath('bureau-expiry-manual', '.sqlite');

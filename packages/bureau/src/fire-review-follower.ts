@@ -105,6 +105,8 @@ export function createFireReviewFollower(
   const graceWaits = new Map<string, { readonly handle: ReturnType<typeof scheduleTimeout> }>();
   /** The notifications a reaction that unfollowed its fire is still retrying. */
   const notifications = new Set<Promise<void>>();
+  /** The reads started beside the reconciliation (a grace's, a skipped record's). */
+  const sideReads = new Set<Promise<void>>();
   let reconciling: Promise<void> | undefined;
   let subscription: DurableEventOwnersSubscription | undefined;
   let disposed = false;
@@ -151,20 +153,28 @@ export function createFireReviewFollower(
         () => {
           graceWaits.delete(runId);
           if (disposed || !followedRuns.has(runId)) return;
-          rereadWatching(runId).catch((error: unknown) => {
-            diagnose({
-              level: 'error',
-              scope: 'durable-event-history',
-              message: `[bureau] Could not read the reviews of schedule fire "${runId}" again once their grace ended, and will try again: ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-            reconcile([runId]);
-          });
+          trackSideRead(
+            rereadWatching(runId).catch((error: unknown) => {
+              diagnose({
+                level: 'error',
+                scope: 'durable-event-history',
+                message: `[bureau] Could not read the reviews of schedule fire "${runId}" again once their grace ended, and will try again: ${serializeUnknownError(error)}`,
+                cause: error,
+              });
+              reconcile([runId]);
+            }),
+          );
         },
         Math.max(0, at - dependencies.now()),
       ),
     };
     graceWaits.set(runId, entry);
+  }
+
+  /** Remembers a read started beside the reconciliation, so `dispose()` waits for it. */
+  function trackSideRead(read: Promise<void>): void {
+    sideReads.add(read);
+    void read.finally(() => sideReads.delete(read));
   }
 
   function clearGrace(runId: string): void {
@@ -423,15 +433,17 @@ export function createFireReviewFollower(
       onSkipped: (owner) => {
         const runId = owner.id;
         if (!followedRuns.has(runId)) return;
-        rereadWatching(runId).catch((error: unknown) => {
-          diagnose({
-            level: 'error',
-            scope: 'durable-event-history',
-            message: `[bureau] Could not read the reviews of schedule fire "${runId}" again after an event of its history could not be decoded, and will try again: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          reconcile([runId]);
-        });
+        trackSideRead(
+          rereadWatching(runId).catch((error: unknown) => {
+            diagnose({
+              level: 'error',
+              scope: 'durable-event-history',
+              message: `[bureau] Could not read the reviews of schedule fire "${runId}" again after an event of its history could not be decoded, and will try again: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+            reconcile([runId]);
+          }),
+        );
       },
       onEnded: () => {
         if (subscription !== opened) return;
@@ -495,6 +507,7 @@ export function createFireReviewFollower(
       }
       await reconciling;
       await Promise.allSettled(notifications);
+      await Promise.allSettled(sideReads);
     },
   };
 }

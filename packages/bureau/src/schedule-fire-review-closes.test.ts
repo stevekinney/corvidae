@@ -9,6 +9,9 @@ import { type GenerateFunction, stopWhen } from '@lostgradient/operative';
 import type { Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+
+import { createDurableEventHistory } from './durable-event-history';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   approvalToolbox,
@@ -84,6 +87,58 @@ function holdingHistoryReads(limit = Number.POSITIVE_INFINITY) {
               await release.promise;
               yield* call() as AsyncIterable<unknown>;
             })();
+          };
+        },
+      });
+    },
+  };
+}
+
+/**
+ * Holds only the storage reads made under a fire's seed read of its review history (found by the
+ * stack they are made from), so the reads a decision, the follower or the maintenance pass make
+ * of their own are left free.
+ */
+function holdingSeedRead() {
+  let armed = false;
+  let held = 0;
+  const release = Promise.withResolvers<void>();
+  const reached = Promise.withResolvers<void>();
+  return {
+    arm(): void {
+      armed = true;
+    },
+    release(): void {
+      release.resolve();
+    },
+    reached: reached.promise,
+    get held(): number {
+      return held;
+    },
+    wrap(storage: Storage): Storage {
+      return new Proxy(storage, {
+        get(target, property) {
+          const member = Reflect.get(target, property, target) as unknown;
+          if (typeof member !== 'function' || typeof property !== 'string') return member;
+          return (...args: unknown[]) => {
+            const call = () => (member as (...a: unknown[]) => unknown).apply(target, args);
+            if (!armed || !['scan', 'get', 'list'].includes(property)) return call();
+            const stack = String(new Error().stack);
+            if (
+              !stack.includes('readFireReviewHistory') ||
+              stack.includes('closeAbandonedFireRequests')
+            ) {
+              return call();
+            }
+            held += 1;
+            reached.resolve();
+            if (property === 'scan') {
+              return (async function* () {
+                await release.promise;
+                yield* call() as AsyncIterable<unknown>;
+              })();
+            }
+            return release.promise.then(call);
           };
         },
       });
@@ -270,9 +325,9 @@ describe('a close that waits for the seed read', () => {
 
 describe('a tool approval’s decision that waits for the seed read', () => {
   it('follows the request it closes in the history', async () => {
-    // The fire's seed read and the follower's catch-up are the two reads its first request starts:
-    // holding those two leaves the reads a decision makes of its own free.
-    const hold = holdingHistoryReads(2);
+    // Only the seed read is held: the decision's own reads, and the follower's, are free, so it
+    // is the decision's wait for the seed read that keeps the request first.
+    const hold = holdingSeedRead();
     harness.onDispose(() => hold.release());
     const charges: number[] = [];
     const bureau = await harness.open({
@@ -287,20 +342,25 @@ describe('a tool approval’s decision that waits for the seed read', () => {
     const fireId = await startFire(bureau, 'closes-seed-approval');
     const review = await reviewOf(bureau, fireId);
     await Promise.race([hold.reached, sleep(3_000)]);
-    expect(hold.held).toBe(true);
+    expect(hold.held).toBeGreaterThan(0);
 
-    const deciding = bureau.resolveReview({
-      id: review.id,
-      decision: 'approve',
-      principal: OWNER.alice,
-    });
-    await sleep(200);
+    let decided = false;
+    const deciding = bureau
+      .resolveReview({ id: review.id, decision: 'approve', principal: OWNER.alice })
+      .then(() => {
+        decided = true;
+      });
+    await sleep(500);
+    // The decision has not been recorded ahead of the request it closes.
+    expect(decided).toBe(false);
     hold.release();
     await deciding;
     await pollUntil(async () => {
       const kinds = await historyKinds(bureau, fireId);
-      return kinds.includes('review.approved') ? kinds : undefined;
-    }, 'the decision to reach the history');
+      return kinds.includes('review.approved') && kinds.includes('review.requested')
+        ? kinds
+        : undefined;
+    }, 'both events to reach the history');
 
     expect(await historyKinds(bureau, fireId)).toEqual(['review.requested', 'review.approved']);
     expect(charges).toEqual([4242]);
@@ -449,5 +509,152 @@ describe('a canceled fire’s closes, retried at boot', () => {
       [waiting.id],
     );
     expect(await durableStatus(third, fireId)).toBe('cancelled');
+  });
+});
+
+/** A fire whose first step asks to charge a card, and whose next step runs until it is aborted. */
+const continuing: GenerateFunction = async (context) => {
+  if (context.step === 0) {
+    return {
+      content: '',
+      toolCalls: [{ id: 'charge-X', name: 'charge-card', arguments: { cents: 4242 } }],
+    };
+  }
+  return new Promise((_resolve, reject) => {
+    context.signal?.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+  });
+};
+
+async function openApproving(path: string, wrap: (storage: Storage) => Storage = (s) => s) {
+  return harness.open({
+    generate: continuing,
+    toolbox: approvalToolbox([]),
+    stopWhen: stopWhen.noToolCalls(),
+    storage: await harness.sqliteStorage(path, wrap),
+  });
+}
+
+describe('a canceled fire’s tool approval, retried at boot', () => {
+  it('has its audit record written exactly once when only that write failed', async () => {
+    const path = harness.nextDatabasePath();
+    const failing = failingWriteOnce('audit-dedupe:v1:review.canceled');
+    const first = await openApproving(path, (storage) => failing.wrap(storage));
+    const { fireId } = await fireOnce(first, OWNER.alice, 'closes-approval-audit-retry');
+    const review = await reviewOf(first, fireId);
+    expect(review.kind).toBe('tool-approval');
+
+    void first.durableEngine()?.cancel(fireId);
+    await pollUntil(async () => {
+      const kinds = await historyKinds(first, fireId);
+      return kinds.includes('review.canceled') ? true : undefined;
+    }, 'the history close');
+    await pollUntil(
+      async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
+      'the task to settle',
+    );
+    expect(failing.state.failures).toBe(1);
+    expect(await auditRecordsOf(first, fireId, 'review.tool-approval.canceled', review.id)).toEqual(
+      [],
+    );
+    await first.dispose();
+
+    const restarted = await openApproving(path);
+    await pollUntil(async () => {
+      const records = await auditRecordsOf(
+        restarted,
+        fireId,
+        'review.tool-approval.canceled',
+        review.id,
+      );
+      return records.length > 0 ? true : undefined;
+    }, 'the next boot to write the audit record');
+    await sleep(300);
+
+    expect(
+      await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', review.id),
+    ).toHaveLength(1);
+    const kinds = await historyKinds(restarted, fireId);
+    expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
+  });
+
+  it('writes no canceled record for a request a replay superseded and never committed', async () => {
+    const path = harness.nextDatabasePath();
+    const first = await openWaiting(path);
+    const { fireId } = await fireOnce(first, OWNER.alice, 'closes-abandoned');
+    await reviewOf(first, fireId);
+    void first.durableEngine()?.cancel(fireId);
+    await pollUntil(
+      async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
+      'the task to settle',
+    );
+    // What a dead attempt and its replay's settlement leave behind: a request that was never
+    // committed, ended only by a `review.superseded` with no decision after it.
+    const abandoned = `approval:${fireId}:abandoned-call`;
+    const writer = createDurableEventHistory(
+      await harness.sqliteStorage(path),
+      createManualRuntimeServices(),
+    );
+    const payload = { reviewId: abandoned, runId: fireId, principal: 'p', kind: 'tool-approval' };
+    await writer.record({ kind: 'run', id: fireId }, 'review.requested', payload);
+    await writer.record({ kind: 'run', id: fireId }, 'review.superseded', {
+      ...payload,
+      principal: 'system:replay',
+    });
+    await writer.dispose();
+    await first.dispose();
+
+    const restarted = await openWaiting(path);
+    await sleep(1_500);
+
+    expect(
+      await auditRecordsOf(restarted, fireId, 'review.tool-approval.canceled', abandoned),
+    ).toEqual([]);
+    const kinds = await historyKinds(restarted, fireId);
+    expect(kinds.filter((kind) => kind === 'review.canceled')).toHaveLength(1);
+  });
+
+  it('repairs a re-gated approval at the round the supersession paired with a decision led to', async () => {
+    const path = harness.nextDatabasePath();
+    const first = await openWaiting(path);
+    const { fireId } = await fireOnce(first, OWNER.alice, 'closes-regated');
+    await reviewOf(first, fireId);
+    void first.durableEngine()?.cancel(fireId);
+    await pollUntil(
+      async () => ((await taskStatus(first, fireId)) === 'canceled' ? true : undefined),
+      'the task to settle',
+    );
+    // An approval that was re-gated once: the supersession, then the decision of the round it
+    // left, and then nothing else, so round 1 is the pending one when the fire is canceled.
+    const regated = `approval:${fireId}:regated-call`;
+    const writer = createDurableEventHistory(
+      await harness.sqliteStorage(path),
+      createManualRuntimeServices(),
+    );
+    const owner = { kind: 'run', id: fireId } as const;
+    const payload = { reviewId: regated, runId: fireId, principal: 'p', kind: 'tool-approval' };
+    await writer.record(owner, 'review.requested', payload);
+    await writer.record(owner, 'review.superseded', payload);
+    await writer.record(owner, 'review.approved', payload);
+    await writer.dispose();
+    await first.dispose();
+
+    const restarted = await openWaiting(path);
+    await pollUntil(async () => {
+      const records = await auditRecordsOf(
+        restarted,
+        fireId,
+        'review.tool-approval.canceled',
+        regated,
+      );
+      return records.length > 0 ? records : undefined;
+    }, 'the next boot to close the re-gated approval');
+
+    const [record] = await auditRecordsOf(
+      restarted,
+      fireId,
+      'review.tool-approval.canceled',
+      regated,
+    );
+    expect((record?.detail as { review: { round: number } }).review.round).toBe(1);
   });
 });

@@ -1080,6 +1080,120 @@ describe('a followed fire whose reviews cannot all be verified', () => {
   });
 });
 
+describe('a read the follower started beside its reconciliation', () => {
+  function slowFollower(
+    history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
+    reread: (runId: string) => Promise<number | undefined>,
+  ) {
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async () => undefined,
+      reread,
+      now: () => Date.now(),
+      timers: {
+        setTimeout: (callback, ms) => setTimeout(callback, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 1,
+      maximumRetryDelayMilliseconds: 1,
+    });
+    cleanups.push(() => follower.dispose());
+    return follower;
+  }
+
+  it('is waited for by dispose when a grace started it', async () => {
+    const { history } = await openHistory();
+    const gate = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const follower = slowFollower(history, async (runId) => {
+      calls.push(runId);
+      if (calls.length === 1) return Date.now() + 20;
+      await gate.promise;
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    await follower.reread('fire-a');
+    await eventually(() => (calls.length >= 2 ? true : undefined), 'the grace read to start');
+
+    let disposed = false;
+    const disposing = follower.dispose().then(() => {
+      disposed = true;
+    });
+    await sleep(50);
+    expect(disposed).toBe(false);
+    gate.resolve();
+    await disposing;
+
+    expect(disposed).toBe(true);
+  });
+
+  it('is waited for by dispose when a skipped record started it', async () => {
+    const { history, storage } = await openHistory();
+    const gate = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const follower = slowFollower(history, async (runId) => {
+      calls.push(runId);
+      await gate.promise;
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+    await eventually(() => (calls.length >= 1 ? true : undefined), 'the skipped record’s read');
+
+    let disposed = false;
+    const disposing = follower.dispose().then(() => {
+      disposed = true;
+    });
+    await sleep(50);
+    expect(disposed).toBe(false);
+    gate.resolve();
+    await disposing;
+
+    expect(disposed).toBe(true);
+  });
+});
+
+describe('a history page whose skip handler throws', () => {
+  it('still answers the page, and reports the handler', async () => {
+    const { history, storage } = await openHistory();
+    const diagnostics: BureauDiagnostic[] = [];
+    const reporting = createDurableEventHistory(storage, createManualRuntimeServices(), (entry) =>
+      diagnostics.push(entry),
+    );
+    cleanups.push(() => reporting.dispose());
+    await history.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+
+    const page = await reporting.page(runOwner('fire-a'), {
+      onSkipped: () => {
+        throw new Error('the handler failed');
+      },
+    });
+
+    if (!('events' in page)) throw new Error('expected a page');
+    expect(page.events).toHaveLength(1);
+    expect(diagnostics.some((entry) => entry.message.includes('page skip handler'))).toBe(true);
+  });
+});
+
 describe('a reaction that took the fire’s local copy away and then failed to notify', () => {
   it('finishes its notification with the backoff, until it succeeds', async () => {
     const { history } = await openHistory();
