@@ -34,8 +34,21 @@ const nonDangerous = queryTools(toolbox, {
 ## Query Criteria
 
 ```typescript
-import { queryTools } from 'armorer';
+import { createTool, createToolbox, queryTools } from 'armorer';
 import { z } from 'zod';
+
+const sendMessage = createTool({
+  name: 'send-message',
+  description: 'Send a message to a recipient',
+  input: z.object({ recipient: z.string(), subject: z.string(), body: z.string() }),
+  tags: ['communication'],
+  metadata: { tier: 'premium' },
+  async execute() {
+    return { sent: true };
+  },
+});
+
+const toolbox = createToolbox([sendMessage]);
 
 const byText = queryTools(toolbox, {
   text: { query: 'send message', mode: 'fuzzy', threshold: 0.6 },
@@ -62,11 +75,15 @@ const booleanGroups = queryTools(toolbox, {
 
 ## Embeddings
 
-When `createToolbox` is configured with `embed`, `queryTools` can match semantically through `text` queries.
+When `createToolbox` is configured with `embed`, a `fuzzy` `text` query also matches tools whose embeddings are similar to the query's, at or above the query's `threshold` (0.7 by default).
+
+`queryTools` and `searchTools` are synchronous, so they read only embeddings that have already resolved. With an asynchronous `embed` function, a tool's embeddings are pending until the embedder returns, and a query's embedding is requested by the first call that uses that query text; until both resolve, the call matches by text alone. Await `awaitToolEmbeddings(tool)` for each tool before querying, and expect the first call for a new query text to fall back to text matching. [`createSearchTool`](search-tool.md) waits for both, so its first search already uses embeddings.
 
 ```typescript
 import { createToolbox } from 'armorer';
 import { queryTools } from 'armorer';
+
+declare const embeddingClient: { embed(texts: string[]): Promise<number[][]> };
 
 const toolbox = createToolbox([], {
   embed: async (texts) => embeddingClient.embed(texts),
@@ -91,6 +108,10 @@ This is especially helpful when your toolbox is created from `as const` tool ent
 ## Selection and Pagination
 
 ```typescript
+import { queryTools, type Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+
 const summaries = queryTools(toolbox, {
   select: 'summary',
   includeSchema: true,

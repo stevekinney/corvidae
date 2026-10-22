@@ -2,7 +2,7 @@
 
 ## Overview
 
-Toolbox supports semantic search for tools using vector embeddings. When you provide an `embed` function to `createToolbox`, the registry generates embeddings for each tool's name, description, tags, schema keys, and metadata keys. These embeddings enable fuzzy, meaning-based searches that go beyond exact text matching.
+Toolbox supports semantic search for tools using vector embeddings. When you provide an `embed` function to `createToolbox`, the registry generates embeddings for each tool's name, description, tags, schema keys, and metadata keys. These embeddings enable fuzzy, meaning-based searches that go beyond exact text matching: a `fuzzy` text query also matches a tool when the cosine similarity between the query's embedding and one of the tool's field embeddings reaches the query's `threshold` (0.7 by default), and `searchTools` adds that similarity to the tool's score with an `embedding:<field>:<similarity>` reason. Vectors stored with `registerToolEmbeddings` are used the same way.
 
 ## Basic Embedding Integration
 
@@ -10,6 +10,8 @@ The `embed` option accepts a function that takes an array of strings and returns
 
 ```typescript
 import { createToolbox } from 'armorer';
+
+declare function generateEmbedding(text: string): number[];
 
 const toolbox = createToolbox([], {
   embed: async (texts: string[]): Promise<number[][]> => {
@@ -25,13 +27,42 @@ The most common approach is to use OpenAI's embedding API:
 
 ```typescript
 import { createToolbox, createTool } from 'armorer';
-import { queryTools } from 'armorer';
+import { createSearchTool } from 'armorer';
 import OpenAI from 'openai';
 import { z } from 'zod';
 
 const openai = new OpenAI();
 
-const toolbox = createToolbox([], {
+const sendEmail = createTool({
+  name: 'send-email',
+  description: 'Send an email to a recipient',
+  input: z.object({
+    to: z.string().email(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  tags: ['communication', 'email', 'messaging'],
+  async execute({ to, subject, body }) {
+    return { sent: true, to };
+  },
+});
+
+const createCalendarEvent = createTool({
+  name: 'create-calendar-event',
+  description: 'Schedule a meeting or event on the calendar',
+  input: z.object({
+    title: z.string(),
+    startTime: z.string(),
+    attendees: z.array(z.string().email()),
+  }),
+  tags: ['calendar', 'scheduling', 'meetings'],
+  async execute({ title, startTime, attendees }) {
+    return { created: true, title };
+  },
+});
+
+// Register tools - embeddings are generated automatically
+const toolbox = createToolbox([sendEmail, createCalendarEvent], {
   embed: async (texts: string[]): Promise<number[][]> => {
     const response = await openai.embeddings.create({
       model: 'text-embedding-3-small',
@@ -41,55 +72,25 @@ const toolbox = createToolbox([], {
   },
 });
 
-// Register tools - embeddings are generated automatically
-createTool(
-  {
-    name: 'send-email',
-    description: 'Send an email to a recipient',
-    input: z.object({
-      to: z.string().email(),
-      subject: z.string(),
-      body: z.string(),
-    }),
-    tags: ['communication', 'email', 'messaging'],
-    async execute({ to, subject, body }) {
-      return { sent: true, to };
-    },
-  },
-  toolbox,
-);
-
-createTool(
-  {
-    name: 'create-calendar-event',
-    description: 'Schedule a meeting or event on the calendar',
-    input: z.object({
-      title: z.string(),
-      startTime: z.string(),
-      attendees: z.array(z.string().email()),
-    }),
-    tags: ['calendar', 'scheduling', 'meetings'],
-    async execute({ title, startTime, attendees }) {
-      return { created: true, title };
-    },
-  },
-  toolbox,
-);
-
-// Semantic query - can still find "send-email" even though "notify" is not in the name
-const results = queryTools(toolbox, {
-  text: { query: 'notify someone about something', mode: 'fuzzy' },
-  tags: { any: ['communication'] },
+// The search tool waits for the asynchronous embedder before it searches.
+// It can still find "send-email" even though "notify" is not in the name.
+const searchTool = createSearchTool(toolbox);
+const results = await searchTool({
+  query: 'notify someone about something',
+  tags: ['communication'],
 });
 
-console.log(results[0]?.name); // 'send-email'
+console.log(results);
+// [{ name: 'send-email', ... }], if the model places the query close to it
 ```
+
+`queryTools` and `searchTools` are synchronous, so they read only embeddings that have already resolved. With an asynchronous `embed` function, a tool's embeddings are pending until the embedder returns, and a query's embedding is requested by the first call that uses that query text; until both resolve, the call matches by text alone. Await `awaitToolEmbeddings(tool)` for each tool before querying, and expect the first call for a new query text to fall back to text matching. [`createSearchTool`](search-tool.md) waits for both, so its first search already uses embeddings.
 
 ## Pinecone Integration
 
 For a full Pinecone setup, see the dedicated [Pinecone Integration](integrations/pinecone.md) guide. It covers:
 
-- Syncing tool embeddings to Pinecone on registration
+- Syncing tool embeddings to Pinecone when the toolbox is built
 - Semantic and hybrid search workflows
 - Production-ready index initialization and cleanup patterns
 
