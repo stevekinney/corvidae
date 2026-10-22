@@ -89,6 +89,7 @@ describe('a terminal write never overwrites another writer', () => {
     const key = KEYS.workflow(workflowId);
     let othersBytes: Uint8Array | undefined;
     let readsBeforeRetry = 0;
+    const changed = Promise.withResolvers<void>();
     run.refusing.refuse({
       matches: putsWorkflowStatus(workflowId, 'completed'),
       times: 1,
@@ -98,11 +99,13 @@ describe('a terminal write never overwrites another writer', () => {
         othersBytes = encode(state);
         await run.refusing.base.put(key, othersBytes);
         readsBeforeRetry = run.refusing.readCount(key);
+        changed.resolve();
       },
     });
     await run.engine.signal(workflowId, 'go', 'x');
     // The retry's first act is to read the record; wait for that read, then let what it decides
     // run to its end (it is all promise continuations from there, with no timer).
+    await changed.promise;
     await run.refusing.whenReads(key, readsBeforeRetry + 1);
     for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
     return { run, key, othersBytes: othersBytes! };
