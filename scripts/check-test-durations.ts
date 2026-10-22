@@ -25,7 +25,10 @@
  *   - a workspace that carries `*.slow.test.ts` files must exclude them from
  *     `test` and define `test:slow`, the serial lane that still runs them in
  *     `bun run validate`. Slow correctness tests live there instead of in the
- *     allowlist.
+ *     allowlist;
+ *   - every root `*.slow.test.ts` file must be named by a pattern in `test:self:slow`, because the
+ *     fast lane ignores slow test files wherever it looks: a slow file the slow lane does
+ *     not list would run in no lane and leave the gate unnoticed.
  *
  * Entries are keyed `<workspace> :: <file> :: <classname> :: <name>` using the
  * report's own `file`, `classname` and `name` attributes. `--shrink` rewrites
@@ -39,7 +42,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { workspaceParentDirectories } from './workspace-directories.ts';
 
 export const BUDGET_MILLISECONDS = 2000;
@@ -185,14 +188,30 @@ function slowTestFiles(
   return found;
 }
 
-/** The lane-wiring problems of one workspace's manifest. */
+/** The slow-file patterns a `test:self:slow` script names: its words ending in `.slow.test.ts`. */
+function slowLanePatterns(script: string): string[] {
+  return script
+    .split(/\s+/)
+    .map((word) => word.replace(/^['"]|['"]$/g, '').replace(/^\.\//, ''))
+    .filter((word) => word.endsWith(SLOW_LANE_SUFFIX));
+}
+
+/**
+ * The lane-wiring problems of one workspace's manifest. `rootSlowFiles` are the root workspace's
+ * slow files relative to the repository root; each must be matched by a `test:self:slow` pattern.
+ */
 export function laneProblems(
   workspace: string,
   scripts: Readonly<Record<string, string>>,
   hasSlowFiles: boolean,
+  rootSlowFiles: readonly string[] = [],
 ): string[] {
   const problems: string[] = [];
-  const test = scripts['test'] ?? '';
+  // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`, and
+  // its slow lane is `test:self:slow` (`test:slow` is the fan-out that runs every lane).
+  const isRoot = workspace === '.';
+  const test = (isRoot && hasSlowFiles ? scripts['test:self'] : scripts['test']) ?? '';
+  const slowScript = isRoot ? 'test:self:slow' : 'test:slow';
   // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
   if (workspace !== '.' && test !== '' && !WRAPPER_NAMES.some((name) => test.includes(name))) {
     problems.push(
@@ -209,8 +228,19 @@ export function laneProblems(
       `${workspace}: has ${SLOW_LANE_SUFFIX} files but its test script does not ignore them with --path-ignore-patterns`,
     );
   }
-  if (scripts['test:slow'] === undefined) {
-    problems.push(`${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no test:slow script`);
+  if (scripts[slowScript] === undefined) {
+    problems.push(
+      `${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no ${slowScript} script`,
+    );
+  } else if (isRoot) {
+    const patterns = slowLanePatterns(scripts[slowScript]);
+    for (const file of rootSlowFiles) {
+      if (!patterns.some((pattern) => new Bun.Glob(pattern).match(file))) {
+        problems.push(
+          `${workspace}: ${file} is a ${SLOW_LANE_SUFFIX} file that ${slowScript} does not run, so no lane would; list its directory in ${slowScript}`,
+        );
+      }
+    }
   }
   const coverage = scripts['test:coverage'] ?? '';
   const runsBunTest =
@@ -242,7 +272,21 @@ interface Collected {
   problems: string[];
 }
 
-function collect(): Collected {
+/**
+ * Whether the duration report reads a workspace's JUnit reports. `bun run validate` gates a
+ * workspace that has a `test:coverage` script through that coverage run instead of its `test`
+ * (the `test:gate` task in `turbo.json`), so its fast lane did not run and writes no report there;
+ * the report mode skips it rather than call the missing report a wiring problem or read a stale
+ * one. The on-demand enforce mode reruns every `test` first, so it measures every workspace.
+ */
+export function measuresWorkspace(
+  mode: 'report' | 'enforce',
+  scripts: Readonly<Record<string, string>>,
+): boolean {
+  return mode === 'enforce' || scripts['test:coverage'] === undefined;
+}
+
+function collect(mode: 'report' | 'enforce'): Collected {
   const collected: Collected = {
     measured: [],
     coveredWorkspaces: new Set(),
@@ -262,8 +306,16 @@ function collect(): Collected {
         ? new Set([...SKIPPED_DIRECTORIES, ...WORKSPACE_DIRECTORIES])
         : SKIPPED_DIRECTORIES,
     );
-    collected.problems.push(...laneProblems(workspace, scripts, slowFiles.length > 0));
+    collected.problems.push(
+      ...laneProblems(
+        workspace,
+        scripts,
+        slowFiles.length > 0,
+        slowFiles.map((file) => relative(directory, file)),
+      ),
+    );
 
+    if (!measuresWorkspace(mode, scripts)) continue;
     const wrapped = Object.values(scripts).some((script) =>
       WRAPPER_NAMES.some((name) => script.includes(name)),
     );
@@ -324,7 +376,7 @@ export function verdict(
 
 function main(): number {
   const mode = Bun.argv[2];
-  const collected = collect();
+  const collected = collect(mode === '--report' ? 'report' : 'enforce');
   const allowlist = readAllowlist();
 
   if (mode === '--seed') {

@@ -15,6 +15,9 @@
   },
   "dependencies": {
     "@ag-ui/core": "catalog:",
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/core": "catalog:",
+    "@modelcontextprotocol/ext-apps": "catalog:",
     "conversationalist": "workspace:*",
     "decode-named-character-reference": "catalog:",
     "micromark-util-decode-numeric-character-reference": "catalog:",

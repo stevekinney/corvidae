@@ -280,7 +280,12 @@ export type {
   ToolEventStamp,
 } from './events';
 // COR-581 — effective-context epochs
-export { createContextEpochSealer, digestText, epochSourcesUnchanged } from './context-epoch';
+export {
+  MEMORY_EVIDENCE_METADATA_KEY,
+  createContextEpochSealer,
+  digestText,
+  epochSourcesUnchanged,
+} from './context-epoch';
 export type {
   ContextEpochConsumer,
   ContextEpochSealInput,
@@ -292,6 +297,7 @@ export type {
   ContextSourceTrust,
   CreateContextEpochSealerOptions,
   EffectiveContextEpoch,
+  MemoryEvidenceMessageMetadata,
   SkillActivationBinding,
   SkillActivationContext,
 } from './context-epoch';
@@ -511,6 +517,7 @@ export {
   ScheduleResumedEvent,
   ScheduleSkippedEvent,
   WakeupScheduledEvent,
+  type ScheduleTransitionRecord,
 } from './events';
 // AB-10 — workflow versioning for in-flight durable runs
 export * from './durable';

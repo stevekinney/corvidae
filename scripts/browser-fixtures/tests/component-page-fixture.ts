@@ -46,10 +46,15 @@ export const test = base.extend<Fixtures>({
             viewport: { width: viewport.width, height: viewport.height },
             baseURL,
           });
-          await context.addInitScript(([key, value]) => localStorage.setItem(key, value), [
-            THEME_STORAGE_KEY,
-            theme,
-          ] as const);
+          // Only the fixture's own document stores the theme: an opaque-origin frame (a sandboxed
+          // `srcdoc` such as an MCP App's) has no storage, and reading it there throws.
+          await context.addInitScript(
+            ([key, value, origin]) => {
+              if (globalThis.location.origin !== origin) return;
+              localStorage.setItem(key, value);
+            },
+            [THEME_STORAGE_KEY, theme, new URL(baseURL).origin] as const,
+          );
           contexts.push(context);
           const page = await context.newPage();
           page.on('pageerror', (error) => diagnostics.push(`Page error: ${error.message}`));

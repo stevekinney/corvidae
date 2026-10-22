@@ -3,6 +3,7 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   approvalToolbox,
   type OpenedBureau,
@@ -10,6 +11,7 @@ import {
   parkingUntilAborted,
 } from './management/management-fixtures.test-support.ts';
 import { A2UI_EXTENSION_URI } from './a2a-agent-card.ts';
+import { inclusiveBoundary, LISTED_HISTORY_BYTES } from './a2a-request-handler.ts';
 import { CLEANUP_EXTENSION_URI } from './a2a-task-projection.ts';
 
 const PUBLIC_URL = 'http://localhost';
@@ -893,6 +895,195 @@ describe('two identical sends at once', () => {
 
       expect(first.id).toBe(second.id);
       expect(opened.bureau.listRuns()).toHaveLength(1);
+    });
+  });
+});
+
+describe('the first review pass', () => {
+  it('forwards metadata.callId to select the approval a decision decides', async () => {
+    const charges: number[] = [];
+    const opened = await openBureau({
+      agents: {
+        payer: createAgent({
+          name: 'payer',
+          generate: chargesThenReports(),
+          toolbox: approvalToolbox(charges),
+          stopWhen: stopWhen.some(stopWhen.pendingApproval(), stopWhen.noToolCalls()),
+        }),
+      },
+      publish: ['payer'],
+      handlerOptions: { publicUrl: PUBLIC_URL },
+    });
+    try {
+      const parked = await sendForTask(opened, 'payer', { message: message('pay') });
+      const decide = (callId: string) =>
+        send(opened, 'payer', {
+          message: {
+            ...message('', { taskId: parked.id, metadata: { callId } }),
+            parts: [{ data: { decision: 'approve' }, mediaType: 'application/json' }],
+          },
+          configuration: { returnImmediately: true },
+        });
+
+      const wrong = await decide('no-such-call');
+      const right = await decide('charge-1');
+
+      expect(wrong.body.error.code).toBe(-32602);
+      expect(right.body.error).toBeUndefined();
+      await waitForCondition(() => charges.length === 1, 'the approved charge never ran');
+    } finally {
+      await opened.dispose();
+    }
+  });
+
+  it('includes a task whose status timestamp equals statusTimestampAfter', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('boundary') });
+
+      const listed = await call(opened, 'asker', 'ListTasks', {
+        statusTimestampAfter: task.status.timestamp,
+      });
+
+      expect(listed.body.result.tasks.map((entry: Json) => entry.id)).toEqual([task.id]);
+    });
+  });
+
+  it('refuses acceptedOutputModes this agent cannot answer in, before admission', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const refused = await send(opened, 'asker', {
+        message: message('json only'),
+        configuration: { acceptedOutputModes: ['application/json'] },
+      });
+
+      expect(refused.body.error.code).toBe(-32005);
+      expect(opened.bureau.listRuns()).toEqual([]);
+    });
+  });
+
+  it('applies the handler’s maxRequestBodyBytes to A2A requests', async () => {
+    await withA2A(
+      { asker: answering('done') },
+      async (opened) => {
+        const oversized = await opened.handler(
+          new Request('http://localhost/a2a/asker', {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'A2A-Version': '1.0',
+              'X-API-Key': 'alice-key',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'SendMessage',
+              params: { message: message('x'.repeat(4096)) },
+            }),
+          }),
+        );
+        expect(oversized.status).toBe(413);
+        expect(opened.bureau.listRuns()).toEqual([]);
+      },
+      { handlerOptions: { maxRequestBodyBytes: 1024 } },
+    );
+  });
+});
+
+describe('the second review pass', () => {
+  it('answers a path that is not an agent’s interface or discovery route as not found', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const post = (path: string) =>
+        opened.handler(
+          new Request(`http://localhost${path}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'A2A-Version': '1.0',
+              'X-API-Key': 'alice-key',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'SendMessage',
+              params: { message: message('x') },
+            }),
+          }),
+        );
+
+      const extra = await post('/a2a/asker/extra');
+      const malformed = await post('/a2a/%/');
+      const slash = await post('/a2a/asker/');
+
+      expect([extra.status, malformed.status, slash.status]).toEqual([404, 404, 200]);
+      expect(opened.bureau.listRuns()).toHaveLength(1);
+    });
+  });
+
+  it('refuses a signing key that cannot sign when the handler is built', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, [
+      'sign',
+      'verify',
+    ]);
+    const open = () =>
+      withA2A({ asker: answering('done') }, async () => undefined, {
+        handlerOptions: { signing: { privateKey: pair.privateKey, kid: 'k', alg: 'ES256' } },
+      });
+    const refused = await rejectionOf(open());
+    expect(String(refused)).toContain('extractable');
+  });
+
+  it('empties a task’s A2A history when its context is deleted', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('private words') });
+      expect(task.history.length).toBeGreaterThan(0);
+
+      await opened.bureau.deleteSession(task.contextId);
+      const read = await call(opened, 'asker', 'GetTask', { id: task.id });
+
+      expect(read.body.result.history ?? []).toEqual([]);
+      expect(JSON.stringify(read.body)).not.toContain('private words');
+    });
+  });
+
+  it('answers a concurrent exact retry by its own returnImmediately, not the first send’s wait', async () => {
+    await withA2A({ asker: parkingUntilAborted }, async (opened) => {
+      const same = message('long');
+      const blocking = send(opened, 'asker', { message: same });
+      await waitForCondition(() => opened.bureau.listRuns().length === 1, 'the run never started');
+
+      const immediate = await send(opened, 'asker', {
+        message: same,
+        configuration: { returnImmediately: true },
+      });
+
+      expect(['TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING']).toContain(
+        immediate.body.result.task.status.state,
+      );
+      await opened.bureau.tasks.cancel(immediate.body.result.task.id, 0);
+      await blocking;
+    });
+  });
+});
+
+describe('the third review pass', () => {
+  it('reads statusTimestampAfter inclusively at any precision', () => {
+    const at = Date.parse('2026-01-01T00:00:00.000Z');
+    expect(inclusiveBoundary('2026-01-01T00:00:00.000Z')).toBe(at - 1);
+    expect(inclusiveBoundary('2026-01-01T00:00:00Z')).toBe(at - 1);
+    expect(inclusiveBoundary('2026-01-01T00:00:00.000000Z')).toBe(at - 1);
+    // A task at .000Z lies before .0005Z, so the bound stays on that millisecond.
+    expect(inclusiveBoundary('2026-01-01T00:00:00.0005Z')).toBe(at);
+  });
+
+  it('bounds a listed task’s history in bytes, whatever the messages hold', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('x'.repeat(300_000)) });
+
+      const listed = await call(opened, 'asker', 'ListTasks', {});
+      const read = await call(opened, 'asker', 'GetTask', { id: task.id });
+
+      const entry = listed.body.result.tasks.find((candidate: Json) => candidate.id === task.id);
+      expect(JSON.stringify(entry).length).toBeLessThan(LISTED_HISTORY_BYTES);
+      expect(read.body.result.history.length).toBeGreaterThan(0);
     });
   });
 });
