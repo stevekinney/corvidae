@@ -369,7 +369,8 @@ describe('a timer recovered on one engine while another changes the schedule', (
     hold.release();
     await recovering;
 
-    expect((await stateOf(shared)).status).toBe('paused');
+    const { status } = await stateOf(shared);
+    expect(status).toBe('paused');
     expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
   });
 });
