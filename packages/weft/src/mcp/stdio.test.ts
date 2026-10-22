@@ -1,3 +1,5 @@
+import { Client } from '@modelcontextprotocol/client';
+import type { JSONRPCMessage, Transport } from '@modelcontextprotocol/server';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
@@ -91,6 +93,48 @@ function collectingOutput(): {
   };
 }
 
+/** An SDK client transport wired to a stdio session's input and output streams. */
+function streamClientTransport(): {
+  transport: Transport;
+  input: ReadableStream<Uint8Array>;
+  output: WritableStream<Uint8Array>;
+} {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let buffer = '';
+  const transport: Transport = {
+    async start() {},
+    async send(message: JSONRPCMessage) {
+      controller.enqueue(encoder.encode(`${JSON.stringify(message)}\n`));
+    },
+    async close() {
+      controller.close();
+      transport.onclose?.();
+    },
+  };
+  return {
+    transport,
+    input: new ReadableStream<Uint8Array>({
+      start(nextController) {
+        controller = nextController;
+      },
+    }),
+    output: new WritableStream<Uint8Array>({
+      write(chunk) {
+        buffer += decoder.decode(chunk, { stream: true });
+        let newlineIndex = buffer.indexOf('\n');
+        while (newlineIndex !== -1) {
+          const line = buffer.slice(0, newlineIndex);
+          buffer = buffer.slice(newlineIndex + 1);
+          transport.onmessage?.(JSON.parse(line) as JSONRPCMessage);
+          newlineIndex = buffer.indexOf('\n');
+        }
+      },
+    }),
+  };
+}
+
 async function waitForLine(
   output: { lines(): ParsedLine[] },
   predicate: (line: ParsedLine) => boolean,
@@ -164,6 +208,40 @@ describe('runMcpStdioSession', () => {
       exitCode: 2,
       reason: 'MCP stdio startup token must be non-empty',
     });
+    engine[Symbol.dispose]();
+  });
+
+  it('serves a 2026-07-28 client and ends while its subscription is still open', async () => {
+    const engine = createEngine();
+    const { transport, input, output } = streamClientTransport();
+    const session = runMcpStdioSession({
+      input,
+      output,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+    });
+    const client = new Client(
+      { name: 'stdio-test', version: '1.0.0' },
+      { versionNegotiation: { mode: 'auto' } },
+    );
+    await client.connect(transport);
+    expect(client.getNegotiatedProtocolVersion()).toBe('2026-07-28');
+
+    const handle = await engine.start('hold-for-stdio-cancel', {}, { id: 'modern-stdio' });
+    const uri = `weft://workflows/${handle.id}/state`;
+    const updated = new Promise<string>((resolve) => {
+      client.setNotificationHandler('notifications/resources/updated', (notification) => {
+        resolve(notification.params.uri);
+      });
+    });
+    await client.listen({ resourceSubscriptions: [uri] });
+    await engine.signal(handle.id, 'release', 'done');
+    expect(await updated).toBe(uri);
+
+    // The open `subscriptions/listen` request never completes on its own, so
+    // the session must not wait for it once the input ends.
+    await client.close();
+    expect(await session).toEqual({ exitCode: 0 });
     engine[Symbol.dispose]();
   });
 

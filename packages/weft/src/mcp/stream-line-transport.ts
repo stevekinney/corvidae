@@ -64,7 +64,11 @@ export class StreamLineTransport implements Transport {
       this.onerror?.(error instanceof Error ? error : new Error(String(error)));
       return;
     }
-    if (isJSONRPCRequest(message)) this.#inFlight.add(requestIdKey(message.id));
+    // A `subscriptions/listen` request stays open until the connection ends,
+    // so it never counts as a call the session waits for.
+    if (isJSONRPCRequest(message) && message.method !== 'subscriptions/listen') {
+      this.#inFlight.add(requestIdKey(message.id));
+    }
     this.onmessage?.(message);
     // The SDK sends no response to a request the client cancelled.
     if (isJSONRPCNotification(message) && message.method === 'notifications/cancelled') {
