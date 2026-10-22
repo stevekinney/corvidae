@@ -45,7 +45,7 @@ import type {
   PendingToolApprovalReview,
 } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
-import { snapshotMessages } from './ag-ui-messages.ts';
+import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { errorOf, type NativeTerminal, RECORDED, usageOf } from './ag-ui-projection.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { type AgUiErrorCode, type EventStamp, stamp } from './ag-ui-vocabulary.ts';
@@ -90,7 +90,7 @@ export type PeerStreamContext = {
   readonly owner: string;
   /** The interrupts a resume just answered, which a peer may still read as pending. */
   readonly answered: ReadonlySet<string>;
-  readonly answerRows: ReadonlyArray<{ readonly id: string; readonly content: string }>;
+  readonly answerRows: ReadonlyArray<AnswerRow>;
   readonly preludeEvents: () => Event[];
   readonly replayCall: (
     history: AgentSession['conversationHistory'] | undefined,
@@ -260,17 +260,13 @@ export async function openPeerStream(
   context.writeEvents([
     live({ type: EventType.RUN_STARTED, threadId: context.threadId, runId: context.runId }),
   ]);
-  for (const row of context.answerRows) {
-    if (conversation.ids.includes(row.id)) continue;
-    context.writeEvents([
-      live({ type: EventType.TEXT_MESSAGE_START, messageId: row.id, role: 'user' }),
-      live({ type: EventType.TEXT_MESSAGE_CONTENT, messageId: row.id, delta: row.content }),
-      live({ type: EventType.TEXT_MESSAGE_END, messageId: row.id }),
-    ]);
-  }
   context.writeEvents([
     stamp(
-      { type: EventType.MESSAGES_SNAPSHOT, messages: snapshotMessages(conversation) },
+      {
+        type: EventType.MESSAGES_SNAPSHOT,
+        // The answers a resume just delivered, for the rows the run has not appended yet.
+        messages: snapshotMessagesWithAnswers(conversation, context.answerRows),
+      },
       stampContext,
       { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
     ),

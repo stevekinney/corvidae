@@ -309,7 +309,7 @@ A field that belongs to an extension is ignored unless the request activates tha
 
 ## Extensions
 
-Bureau publishes these A2A extensions. Each URI names a specification document that `@lostgradient/weft/a2a` ships alongside its implementation; the documents are written with the kit, so the URIs are reserved identifiers until then. The Weft mirror emits only documentation declared one file at a time in `scripts/mirror/source.ts`, so the issue that writes each document also declares it there, and the URIs count as published only when each returns `200` from the public repository.
+Bureau publishes these A2A extensions. Each URI names a specification document, written in COR-1474 and kept at `packages/weft/documentation/a2a/extensions/`; `packages/weft/scripts/check-a2a-extension-schemas.ts` compiles the schemas in them and validates their examples. The URIs are stable wire identifiers that clients compare, not links a client must resolve (decision 2026-10-22). The documents specify the extensions; the implementation is COR-903.
 
 | Extension | URI | What it adds |
 | --- | --- | --- |

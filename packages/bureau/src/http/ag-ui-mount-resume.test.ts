@@ -5,7 +5,7 @@
  * for a human wait and on a fresh one for a tool approval.
  */
 import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
-import { createManualRuntimeServices } from '@lostgradient/lifecycle';
+import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
@@ -23,6 +23,7 @@ import {
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
+import { openRunStream } from './ag-ui-stream.ts';
 import {
   bureauMetadata,
   FrameReader,
@@ -152,6 +153,30 @@ async function startUntilInterrupted(handler: Handler, headers: Record<string, s
     interruptIds: finished.outcome.interrupts.map((interrupt) => interrupt.id),
   };
 }
+
+/** The ids of every user-role text a stream streams: an answer never travels that way. */
+const userTextRows = (frames: ReadonlyArray<{ event: Event }>) =>
+  frames
+    .filter(
+      (frame) =>
+        frame.event.type === EventType.TEXT_MESSAGE_START &&
+        (frame.event as unknown as { role?: string }).role === 'user',
+    )
+    .map((frame) => (frame.event as unknown as { messageId: string }).messageId);
+
+/** The user rows the `MESSAGES_SNAPSHOT`s of a stream carry, only the answers among them (`:signal:`). */
+const snapshotUserRows = (frames: ReadonlyArray<{ event: Event }>) =>
+  frames.flatMap((frame) =>
+    frame.event.type === EventType.MESSAGES_SNAPSHOT
+      ? (
+          frame.event as unknown as {
+            messages: Array<{ id: string; role: string; content: string }>;
+          }
+        ).messages
+          .filter((message) => message.role === 'user' && message.id.includes(':signal:'))
+          .map(({ id, content }) => ({ id, content }))
+      : [],
+  );
 
 function resumeRequest(
   entries: ResumeEntry[],
@@ -819,7 +844,7 @@ describe('the resume command ledger', () => {
 });
 
 describe('resuming a human wait', () => {
-  it('streams the human’s answer as a user message under the id the conversation holds it by', async () => {
+  it('carries the human’s answer as a row of a snapshot, under the id the conversation holds it by', async () => {
     await withHarness(
       {
         script: [askHuman, say('Thanks for the answer.')],
@@ -838,23 +863,58 @@ describe('resuming a human wait', () => {
         );
 
         const id = `${first.nativeRunId}:signal:human-response:0`;
-        const events = frames.map((frame) => frame.event);
-        expect(events).toContainEqual(
-          expect.objectContaining({
-            type: EventType.TEXT_MESSAGE_START,
-            messageId: id,
-            role: 'user',
-          }),
-        );
-        expect(events).toContainEqual(
-          expect.objectContaining({
-            type: EventType.TEXT_MESSAGE_CONTENT,
-            messageId: id,
-            delta: '[signal:human-response] "yes"',
-          }),
-        );
+        // The row rides in a snapshot, and no user-role text event is streamed for it.
+        expect(userTextRows(frames)).toEqual([]);
+        expect(snapshotUserRows(frames)).toContainEqual({
+          id,
+          content: '[signal:human-response] "yes"',
+        });
         // The run's own conversation holds the answer under the id the stream gave it.
         expect(bureau.getRun(first.nativeRunId)!.transcript!.ids).toContain(id);
+      },
+    );
+  });
+
+  it('carries the answer in the opening snapshot when the stream opens before the run has appended it', async () => {
+    await withHarness(
+      {
+        script: [askHuman, say('Thanks.')],
+        humanInput: true,
+        stopWhen: stopWhen.some(stopWhen.toolCalled('requestHumanInput'), stopWhen.noToolCalls()),
+      },
+      async ({ handler, bureau }) => {
+        // The run is parked and has not been answered, so the conversation a stream opens on does
+        // not hold the answer: the order a fast history read gives a real resume (COR-1632).
+        const first = await startUntilInterrupted(handler);
+        const threadId = String((first.frames[0]!.event as { threadId?: unknown }).threadId);
+        const id = `${first.nativeRunId}:signal:human-response:0`;
+        expect(bureau.getRun(first.nativeRunId)?.transcript?.ids ?? []).not.toContain(id);
+
+        const frames = await readAgUiStream(
+          openRunStream(
+            {
+              bureau,
+              runtime: createDefaultRuntimeServices(),
+              maxStreamDurationMs: 5000,
+              liveBufferSize: 100,
+              keepAliveMs: 1000,
+            },
+            {
+              threadId,
+              runId: 'client-run-2',
+              nativeRunId: first.nativeRunId,
+              owner: 'anonymous:local',
+              replay: 'open-step',
+              messagesSnapshot: true,
+              answerRows: [{ id, content: '[signal:human-response] "staging"' }],
+            },
+          ),
+        );
+
+        expect(userTextRows(frames)).toEqual([]);
+        expect(snapshotUserRows(frames)).toEqual([
+          { id, content: '[signal:human-response] "staging"' },
+        ]);
       },
     );
   });
@@ -1941,31 +2001,15 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
   };
   const answerOf = (interruptId: string, text: string) =>
     resolved(interruptId, { decision: 'approve', answer: text });
-  const userRows = (frames: ReadonlyArray<{ event: Event }>) =>
-    frames
-      .filter(
-        (frame) =>
-          frame.event.type === EventType.TEXT_MESSAGE_START &&
-          (frame.event as unknown as { role?: string }).role === 'user',
-      )
-      .map((frame) => (frame.event as unknown as { messageId: string }).messageId);
   /**
-   * The user rows a stream shows the client: the ones it streams and, when the run had
-   * already committed its answer before the stream opened, the ones its snapshot holds.
-   * Which of the two happens depends on how far the run got first, which is not the
-   * numbering this test is about. A row is never shown twice, so the two are concatenated,
-   * not de-duplicated: an answer both snapshotted and streamed fails the assertion.
+   * The answer rows a stream shows the client: the `:signal:` user rows its snapshots hold,
+   * whether the run had already committed its answer before the stream opened or the resume
+   * says what the run will append. A stream that sends one as user-role text instead fails.
    */
-  const shownUserRows = (frames: ReadonlyArray<{ event: Event }>) => [
-    ...userRows(frames),
-    ...frames.flatMap((frame) =>
-      frame.event.type === EventType.MESSAGES_SNAPSHOT
-        ? (frame.event as unknown as { messages: Array<{ id: string; role: string }> }).messages
-            .filter((message) => message.role === 'user' && message.id.includes(':signal:'))
-            .map((message) => message.id)
-        : [],
-    ),
-  ];
+  const shownUserRows = (frames: ReadonlyArray<{ event: Event }>) =>
+    snapshotUserRows(frames)
+      .map((row) => row.id)
+      .filter((id) => id.includes(':signal:'));
   const interruptOf = (frames: ReadonlyArray<{ event: unknown }>) =>
     (frames.at(-1)!.event as { outcome: { interrupts: Array<{ id: string }> } }).outcome
       .interrupts[0]!.id;
@@ -1998,8 +2042,13 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         generate.release('after-second');
         await third.rest();
 
+        expect(userTextRows(second)).toEqual([]);
+        expect(userTextRows(opening)).toEqual([]);
         expect(shownUserRows(second)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
-        expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:1`]);
+        expect(shownUserRows(opening)).toEqual([
+          `${first.nativeRunId}:signal:human-response:0`,
+          `${first.nativeRunId}:signal:human-response:1`,
+        ]);
       },
     );
   });
@@ -2045,7 +2094,82 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
         harness.generate.release('next-step');
         await retry.rest();
 
-        expect(userRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
+      },
+    );
+  });
+
+  /**
+   * A stream opens on the conversation as it stands, and a run appends its answer row only once it
+   * wakes. Hiding the live run's transcript puts every stream on the side of that race where the
+   * row is not there yet, so the answer can reach the client only through the resume that says what
+   * it was (COR-1632).
+   */
+  const withTranscriptHidden = (bureau: Harness['bureau']) => {
+    const getRun = bureau.getRun.bind(bureau);
+    return spyOn(bureau, 'getRun').mockImplementation((runId) => {
+      const detail = getRun(runId);
+      return detail === undefined ? detail : { ...detail, transcript: undefined };
+    });
+  };
+
+  it('shows the answer in the opening snapshot of a retry that joins the attempt still applying it', async () => {
+    await withHarness(
+      {
+        script: [askAs('call-1'), { kind: 'block', barrier: 'after-answer' }, say('Done.')],
+        storage: 'sqlite',
+        ...humanWait,
+      },
+      async ({ handler, bureau, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [answerOf(first.interruptIds[0]!, 'yes')];
+        const resolve = spyOn(bureau, 'resolveReview');
+        withTranscriptHidden(bureau);
+
+        const applying = handler(resumeRequest(entries));
+        const joining = handler(resumeRequest(entries, {}, 'client-run-3'));
+        const left = new FrameReader(await applying);
+        const right = new FrameReader(await joining);
+        const leftOpening = await left.until(EventType.STATE_SNAPSHOT);
+        const rightOpening = await right.until(EventType.STATE_SNAPSHOT);
+        generate.release('after-answer');
+        await left.rest();
+        await right.rest();
+
+        // One attempt applied the answer, and the other joined it.
+        expect(resolve).toHaveBeenCalledTimes(1);
+        const id = `${first.nativeRunId}:signal:human-response:0`;
+        expect(userTextRows(rightOpening)).toEqual([]);
+        expect(shownUserRows(leftOpening)).toEqual([id]);
+        expect(shownUserRows(rightOpening)).toEqual([id]);
+      },
+    );
+  });
+
+  it('shows the answer in the opening snapshot of a retry that finds the command already completed', async () => {
+    await withHarness(
+      {
+        script: [askAs('call-1'), { kind: 'block', barrier: 'after-answer' }, say('Done.')],
+        storage: 'sqlite',
+        ...humanWait,
+      },
+      async ({ handler, bureau, generate }) => {
+        const first = await startUntilInterrupted(handler);
+        const entries = [answerOf(first.interruptIds[0]!, 'yes')];
+        withTranscriptHidden(bureau);
+
+        const applying = new FrameReader(await handler(resumeRequest(entries)));
+        await applying.until(EventType.STATE_SNAPSHOT);
+        // The ledger now says the command completed, while the run is still going.
+        const retry = new FrameReader(await handler(resumeRequest(entries, {}, 'client-run-3')));
+        const opening = await retry.until(EventType.STATE_SNAPSHOT);
+        generate.release('after-answer');
+        await applying.rest();
+        await retry.rest();
+
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual([`${first.nativeRunId}:signal:human-response:0`]);
       },
     );
   });
@@ -2081,7 +2205,8 @@ describe('the human’s answer, streamed under the id the run commits it by', ()
           .getRun(first.nativeRunId)!
           .transcript!.ids.filter((id) => id.includes(':signal:'));
         expect(committed).toHaveLength(1);
-        expect(userRows(opening)).toEqual(committed);
+        expect(userTextRows(opening)).toEqual([]);
+        expect(shownUserRows(opening)).toEqual(committed);
       },
     );
   });

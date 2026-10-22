@@ -47,6 +47,11 @@ export type WorkflowStateUpdateOptions = {
   buildAdditionalOperations?: (previousState: WorkflowState, updatedAt: number) => BatchOperation[];
   /** Checked with the decoded state after the last read before the commit; `true` skips the write. */
   skipCommitIf?: (state: WorkflowState) => boolean;
+  /**
+   * Retry a write storage refused in process, as a failure write (`failWorkflow`). Read only for the
+   * `'self'` category; a refused write that fails every attempt throws `CheckpointCommitFailedError`.
+   */
+  retryRefusedWrite?: 'failure';
 };
 
 export type WorkflowStateUpdateResult = {
@@ -185,6 +190,9 @@ async function attemptWorkflowStateUpdate(
       {
         includePendingAtomicSideEffects: isTerminalWorkflowStatus(updated.status),
         extraConditions: decisionConditions(workflowId, bytes, fence),
+        ...(options.retryRefusedWrite === undefined
+          ? {}
+          : { retryRefusedWrite: options.retryRefusedWrite }),
       },
     );
   } catch (error) {

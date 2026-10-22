@@ -2,7 +2,7 @@
  * Task and review rows as the Bureau answers them, for the tests of the Tasks area and of
  * `/reviews`. Each is the whole wire shape, so a test changes only what it is about.
  */
-import type { ChatContext } from './bureau-client.ts';
+import type { ChatContext, ContextDetail } from './bureau-client.ts';
 import type { BureauHumanWait, BureauToolApproval } from './bureau-reviews.ts';
 import type { TaskView } from './bureau-tasks.ts';
 
@@ -69,7 +69,7 @@ export function humanWaitFixture(overrides: Partial<BureauHumanWait> = {}): Bure
   };
 }
 
-/** A chat session as `bureau.contexts.get` shows it. */
+/** A chat session as `bureau.contexts.list` shows it. */
 export function contextFixture(id: string, overrides: Partial<ChatContext> = {}): ChatContext {
   return {
     id,
@@ -77,10 +77,20 @@ export function contextFixture(id: string, overrides: Partial<ChatContext> = {})
     agentName: 'assistant',
     title: null,
     lastMessagePreview: null,
+    parentContextId: null,
+    forkedFromMessageId: null,
     messageCount: 2,
     createdAt: '2026-10-19T08:00:00.000Z',
     updatedAt: '2026-10-19T08:00:01.000Z',
     activity: 'idle',
     ...overrides,
   };
+}
+
+/** A chat session as `bureau.contexts.get` shows it: the summary, and the model it was switched to. */
+export function contextDetailFixture(
+  id: string,
+  overrides: Partial<ContextDetail> = {},
+): ContextDetail {
+  return { ...contextFixture(id), model: null, configVersion: 0, ...overrides };
 }

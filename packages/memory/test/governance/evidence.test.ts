@@ -10,6 +10,7 @@ const evidence: MemoryEvidence = {
   id: 'record-1',
   label: 'evidence',
   authority: 'none',
+  kind: 'source-evidence',
   content: 'The user prefers metric units.',
   trust: 'untrusted',
   source: 'conversation',
@@ -55,5 +56,12 @@ describe('renderMemoryEvidence', () => {
     expect(rendered.match(/<\/memory-evidence>/g)).toHaveLength(1);
     expect(rendered).toContain('\\u003c/memory-evidence\\u003e');
     expect(rendered.split('\n')).toHaveLength(4);
+  });
+
+  it('spells out every kind except source evidence, the default', () => {
+    expect(renderMemoryEvidence([evidence])).not.toContain('"kind"');
+    expect(renderMemoryEvidence([{ ...evidence, kind: 'historical-projection' }])).toContain(
+      '"class":"episodic","kind":"historical-projection","content":',
+    );
   });
 });
