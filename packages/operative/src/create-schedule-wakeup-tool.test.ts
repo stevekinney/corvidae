@@ -2,13 +2,23 @@ import { createTool, createToolbox, createToolCall } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import { createRequestHumanInputTool } from './create-request-human-input-tool';
-import type { ScheduleWakeupContext } from './create-schedule-wakeup-tool';
+import type {
+  ScheduleWakeupContext,
+  ScheduleWakeupOutcome,
+  ScheduleWakeupResult,
+} from './create-schedule-wakeup-tool';
 import { createScheduleWakeupTool } from './create-schedule-wakeup-tool';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 
 describe('createScheduleWakeupTool', () => {
   function makeContext(durable = true): ScheduleWakeupContext {
     return { pendingWakeup: undefined, pendingHumanWait: undefined, durable };
+  }
+
+  /** Narrows an outcome the test expects to have scheduled. */
+  function expectScheduled(outcome: ScheduleWakeupOutcome): ScheduleWakeupResult {
+    if (!outcome.scheduled) throw new Error(`expected a scheduled result, got: ${outcome.message}`);
+    return outcome;
   }
 
   it('writes the duration into context.pendingWakeup', () => {
@@ -51,7 +61,7 @@ describe('createScheduleWakeupTool', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '6h' });
+    const result = expectScheduled(tool.execute({ in: '6h' }));
 
     expect(result.scheduled).toBe(true);
     expect(result.duration).toBe('6h');
@@ -170,7 +180,7 @@ describe('createScheduleWakeupTool', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '1h', note: 'My note' });
+    const result = expectScheduled(tool.execute({ in: '1h', note: 'My note' }));
 
     expect(result.note).toBe('My note');
   });
@@ -179,7 +189,7 @@ describe('createScheduleWakeupTool', () => {
     const context = makeContext();
     const tool = createScheduleWakeupTool({ context });
 
-    const result = tool.execute({ in: '1h' });
+    const result = expectScheduled(tool.execute({ in: '1h' }));
 
     expect(result.note).toBeUndefined();
   });
