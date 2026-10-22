@@ -146,6 +146,7 @@ export type {
   MemoryResourceDescriptor,
   MemoryVisibility,
 } from './governance/predicate';
+export type { MemoryEvidenceManifest, MemoryRecallDifference } from './governance/recall-replay';
 export type {
   DerivedRecordKind,
   GovernedMemoryRecord,
