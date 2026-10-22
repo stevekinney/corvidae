@@ -6,15 +6,16 @@ import { z } from 'zod';
 
 import { createAgentSession } from '../agent-session';
 import { createCheckpointStore } from '../durable/checkpoint-store';
-import { createRunEngine } from '../durable/create-run-engine';
 import { ToolStartedBubbleEvent } from '../events';
 import type { GenerateFunction } from '../types';
 import { createSessionStore } from './create-session-store';
 import { createSessionHandle } from './session-handle';
 import {
+  createParkedRunEngine,
   createTestRunOptions,
   fixtureRuntime,
-  makeParkingWorkflow,
+  settleParkedRun,
+  waitForParkedSleep,
 } from './session-handle-test-support';
 
 // Drain Weft's deferred inline-launch queue between tests — prevents one test's
@@ -90,7 +91,6 @@ describe('regression: recover() persists terminal state after recovered run sett
     // Mirrors the D2 acceptance test but adds a store-state assertion AFTER the
     // recovered run completes, proving the RunRef transitions from 'running' →
     // 'completed' and conversation history is updated.
-    const SLEEP_MS = 50;
     const storage = new MemoryStorage();
     const sessionId = 'recover-persist-session';
     const runId = `${sessionId}:0`;
@@ -99,12 +99,7 @@ describe('regression: recover() persists terminal state after recovered run sett
     const firstKv = textValueStore(storage, { disposeUnderlyingStorage: false });
     const firstStore = createSessionStore(firstKv);
 
-    const { engine: engine1 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
-      recover: false,
-      startScheduler: false,
-    });
+    const { engine: engine1 } = await createParkedRunEngine(storage, { recover: false });
 
     // Persist the session with a 'running' run ref (mimics what run() does).
     const session = createAgentSession({
@@ -125,9 +120,7 @@ describe('regression: recover() persists terminal state after recovered run sett
 
     // Start the durable workflow and let it park on ctx.sleep.
     const firstHandle = await engine1.start('agentRun', {}, { id: runId });
-    for (let i = 0; i < 10; i++) {
-      await yieldToPortableEventLoop();
-    }
+    await waitForParkedSleep(storage, runId);
     // "Crash" — dispose the first engine.
     engine1[Symbol.dispose]();
     void firstHandle.result().catch(() => {});
@@ -139,12 +132,7 @@ describe('regression: recover() persists terminal state after recovered run sett
       textValueStore(storage, { disposeUnderlyingStorage: false }),
     );
 
-    const { engine: engine2 } = await createRunEngine({
-      storage,
-      runWorkflow: makeParkingWorkflow(SLEEP_MS),
-      recover: false,
-      startScheduler: true, // fires the ctx.sleep timer
-    });
+    const { engine: engine2 } = await createParkedRunEngine(storage, { recover: false });
 
     try {
       await engine2.recoverAll();
@@ -160,7 +148,9 @@ describe('regression: recover() persists terminal state after recovered run sett
       const reattached = await h.recover();
       expect(reattached).not.toBeNull();
 
-      // Await the recovered run so we know the settle handler has fired.
+      // Fire the parked sleep, then await the recovered run so we know the
+      // settle handler has fired.
+      await settleParkedRun(engine2, runId);
       await reattached!.result();
       // Give the async settle handler a tick to complete the store.save.
       await yieldToPortableEventLoop();
