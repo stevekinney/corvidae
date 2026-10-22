@@ -480,7 +480,13 @@ export type InteractiveSurfaceSubscribeReceipt =
     }
   | InteractiveSurfaceRejection;
 
-/** What an owner abort returns: how many surfaces it froze, and the cleanup evidence. */
+/**
+ * What an owner abort returns: how many surfaces this invocation froze, and the
+ * cleanup evidence. An abort is idempotent by its effect and keeps no replay
+ * record: a retry, with any `commandId`, freezes whatever is still open and
+ * counts only that, so `frozen` is `0` once an earlier abort froze everything.
+ * `cleanup` is the evidence a caller relies on.
+ */
 export type AbortInteractiveSurfacesReceipt =
   | {
       readonly contractVersion: InteractiveSurfaceContractVersion;

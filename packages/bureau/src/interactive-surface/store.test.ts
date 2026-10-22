@@ -670,6 +670,24 @@ describe('closing, cancellation, and cleanup', () => {
     expect(total).toBe(2);
   });
 
+  it('answers an exact retry of an abort by its effect, counting nothing it did not freeze', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    const command = {
+      type: 'surface.owner-abort',
+      contractVersion: version,
+      commandId: 'abort-1',
+      taskId: TASK,
+    } as const;
+
+    expect(await surfaces.abort(command)).toMatchObject({ outcome: 'accepted', frozen: 1 });
+    expect(await surfaces.abort(command)).toMatchObject({
+      outcome: 'accepted',
+      frozen: 0,
+      cleanup: { status: 'completed' },
+    });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());
@@ -998,7 +1016,23 @@ describe('review fixes', () => {
       }),
     );
 
+    // The legacy `dependencies` keyword still holds subschemas Ajv compiles.
+    const viaDependencies = await surfaces.create(
+      createCommand({
+        commandId: 'create-3',
+        surfaceId: 'dependent',
+        representation: {
+          kind: 'input-form',
+          schema: {
+            type: 'object',
+            dependencies: { a: { properties: { b: { type: 'string', pattern: '^(a+)+$' } } } },
+          },
+        },
+      }),
+    );
+
     expect(withPattern).toMatchObject({ reason: 'invalid' });
+    expect(viaDependencies).toMatchObject({ reason: 'invalid' });
     expect(namedPattern).toMatchObject({ outcome: 'accepted' });
   });
 

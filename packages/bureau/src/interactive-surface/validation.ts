@@ -162,54 +162,8 @@ export function readAudience(value: unknown): readonly string[] {
 
 // ── Schemas ─────────────────────────────────────────────────────────
 
-/** Keywords whose value is a map of names to subschemas. */
-const SCHEMA_MAPS: ReadonlySet<string> = new Set([
-  'properties',
-  'patternProperties',
-  '$defs',
-  'definitions',
-  'dependentSchemas',
-]);
-
-/** Keywords whose value is a subschema, or a list of subschemas. */
-const SUBSCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
-  'additionalProperties',
-  'unevaluatedProperties',
-  'propertyNames',
-  'items',
-  'prefixItems',
-  'additionalItems',
-  'unevaluatedItems',
-  'contains',
-  'not',
-  'if',
-  'then',
-  'else',
-  'allOf',
-  'anyOf',
-  'oneOf',
-]);
-
-/**
- * Whether a schema or any subschema uses `pattern` or `patternProperties`.
- * Only real subschema positions are searched, so an annotation that happens
- * to hold a `pattern` key is not mistaken for a schema.
- */
-function declaresPattern(schema: unknown): boolean {
-  if (Array.isArray(schema)) return schema.some(declaresPattern);
-  if (!isPlainObject(schema)) return false;
-  if (typeof schema['pattern'] === 'string' || schema['patternProperties'] !== undefined) {
-    return true;
-  }
-  for (const [keyword, value] of Object.entries(schema)) {
-    if (SCHEMA_MAPS.has(keyword) && isPlainObject(value)) {
-      if (Object.values(value).some(declaresPattern)) return true;
-    } else if (SUBSCHEMA_KEYWORDS.has(keyword) && declaresPattern(value)) {
-      return true;
-    }
-  }
-  return false;
-}
+/** Thrown when a surface schema would compile a regular expression. */
+class RegularExpressionRefused extends Error {}
 
 /**
  * Compiles and caches JSON Schema 2020-12 validators. Unknown keywords are
@@ -217,7 +171,35 @@ function declaresPattern(schema: unknown): boolean {
  * which JSON Schema 2020-12 also makes the default.
  */
 export class InteractiveSurfaceSchemaCompiler {
-  readonly #ajv = new Ajv2020({ strict: false, allErrors: true, validateFormats: false });
+  /**
+   * Ajv calls this engine for each `pattern` and `patternProperties` it
+   * compiles, wherever the keyword sits (`dependencies` and every other
+   * subschema position included), so Ajv's own vocabulary decides what is a
+   * regular expression, and an annotation holding a `pattern` key is not one.
+   * Only the meta-schema, compiled in the constructor, may use one.
+   */
+  #refusing = false;
+  readonly #ajv = new Ajv2020({
+    strict: false,
+    allErrors: true,
+    validateFormats: false,
+    code: {
+      regExp: Object.assign(
+        (pattern: string, flags: string): RegExp => {
+          if (this.#refusing) throw new RegularExpressionRefused();
+          return new RegExp(pattern, flags);
+        },
+        { code: 'new RegExp' },
+      ),
+    },
+  });
+
+  constructor() {
+    // Compile the meta-schema, whose own patterns are trusted, before refusing.
+    this.#ajv.compile({});
+    this.#refusing = true;
+  }
+
   /** Compiled validators, most recently used last, bounded so unique schemas cannot grow the heap. */
   readonly #cache = new Map<string, ValidateFunction>();
   readonly #capacity = 256;
@@ -232,16 +214,16 @@ export class InteractiveSurfaceSchemaCompiler {
       return cached;
     }
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
-    // A schema's regular expressions run on Bureau's event loop when a value is
-    // admitted, and an untrusted author can write one that backtracks for
-    // seconds, so v1 refuses them.
-    if (declaresPattern(schema)) {
-      fail(`${where} must not use "pattern" or "patternProperties"`);
-    }
     let validate: ValidateFunction;
     try {
       validate = this.#ajv.compile(schema);
     } catch (error: unknown) {
+      // A schema's regular expressions run on Bureau's event loop when a value
+      // is admitted, and an untrusted author can write one that backtracks for
+      // seconds, so v1 refuses them.
+      if (error instanceof RegularExpressionRefused) {
+        fail(`${where} must not use "pattern" or "patternProperties"`);
+      }
       fail(
         `${where} is not a valid JSON Schema: ${error instanceof Error ? error.message : String(error)}`,
       );

@@ -16833,6 +16833,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           // follows is awaited, with the writes it starts, before the backend closes under them.
           await catalogSettlements.settled();
           await tasks.idle();
+          // COR-1631 — those settlements freeze their tasks' surfaces too; the freezes land
+          // before the backend closes under them.
+          await surfaces?.flush();
         } finally {
           // A run that ended in the drain without a save leaves no one to settle its record.
           for (const runId of terminalSessionRecordSettlers.keys()) {

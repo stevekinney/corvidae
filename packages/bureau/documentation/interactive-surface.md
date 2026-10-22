@@ -60,7 +60,7 @@ A renderer is never trusted. An action arrives as a command and is admitted only
 
 ## Commands and receipts
 
-Every command carries `contractVersion`, a `type`, the `taskId`, and a `commandId`, the caller's idempotency key. An exact retry, the same `commandId` with the same content, returns an acceptance with `replayed: true` and commits nothing; its `committedRevision` is the revision the original command committed, and its `surface` is the surface as it stands now, which later commands may have changed; the same `commandId` with other content is rejected as a `conflict`. A surface remembers its 64 most recent commands for this.
+Every command carries `contractVersion`, a `type`, the `taskId`, and a `commandId`, the caller's idempotency key. An exact retry, the same `commandId` with the same content, returns an acceptance with `replayed: true` and commits nothing; its `committedRevision` is the revision the original command committed, and its `surface` is the surface as it stands now, which later commands may have changed; the same `commandId` with other content is rejected as a `conflict`. A surface remembers its 64 most recent commands for this. Owner abort is the exception: it acts on every surface of a task, keeps no replay record, and is idempotent by its effect instead. A retry freezes whatever is still open, and its `frozen` counts only that, so it is `0` once an earlier abort froze everything; its `cleanup` is the evidence to rely on.
 
 | Command (`type`) | Receipt | Runtime in v1 |
 | --- | --- | --- |
