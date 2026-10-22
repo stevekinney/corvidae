@@ -667,37 +667,7 @@ const imported = await createToolbox.fromOpenAITools(tools, {
 
 Use `armorer` for tool schemas, provider tool definitions, tool-call parsing, and execution. Use `conversationalist` for the persistent conversation state and provider message history.
 
-```typescript
-import {
-  appendToolCalls,
-  appendToolResultsAsync,
-  appendUserMessage,
-  createConversationHistory,
-} from 'conversationalist';
-import { toOpenAIMessagesGrouped } from 'conversationalist';
-import { parseOpenAIToolCalls, toOpenAITools, type AnyToolbox } from 'armorer';
-import OpenAI from 'openai';
-
-declare const toolbox: AnyToolbox;
-const openai = new OpenAI();
-
-let conversation = createConversationHistory({ title: 'Weather' });
-conversation = appendUserMessage(conversation, 'What is the weather in Denver?');
-
-const tools = toOpenAITools(toolbox);
-const { messages } = toOpenAIMessagesGrouped(conversation);
-const completion = await openai.chat.completions.create({ model: 'gpt-4o', messages, tools });
-
-const toolCalls = parseOpenAIToolCalls(
-  completion.choices[0]?.message.tool_calls?.filter((toolCall) => toolCall.type === 'function'),
-);
-conversation = appendToolCalls(conversation, toolCalls);
-
-const results = await toolbox.execute(toolCalls, { stream: true });
-conversation = await appendToolResultsAsync(conversation, results);
-```
-
-See [Using `armorer` with `conversationalist`](documentation/conversationalist-integration.md) for complete OpenAI, Anthropic, and Gemini examples.
+`conversationalist` depends on `armorer`, so the examples that use both packages live in Conversationalist's documentation. See [Using `armorer` with `conversationalist`](../conversationalist/documentation/armorer-integration.md) for complete OpenAI, Anthropic, and Gemini examples.
 
 ## Observability (OpenTelemetry)
 
