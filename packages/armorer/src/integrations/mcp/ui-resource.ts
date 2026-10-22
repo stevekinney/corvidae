@@ -6,7 +6,11 @@ import { isTool, type Tool } from '../../is-tool';
 /** The URI scheme prefix MCP Apps uses for UI resources. */
 export const UI_RESOURCE_SCHEME = 'ui://';
 
-/** The subset of an MCP client that {@link readUiResource} needs: `resources/read`. */
+/**
+ * The subset of an MCP client that {@link readUiResource} needs: `resources/read`, and
+ * optionally `resources/list`, whose entries carry the `_meta.ui` a server declared when it
+ * registered the resource.
+ */
 export type McpUiResourceReader = {
   readResource(params: { uri: string }): Promise<{
     contents: ReadonlyArray<{
@@ -16,6 +20,10 @@ export type McpUiResourceReader = {
       blob?: string;
       _meta?: Record<string, unknown> | undefined;
     }>;
+  }>;
+  listResources?(params?: { cursor?: string }): Promise<{
+    resources: ReadonlyArray<{ uri: string; _meta?: Record<string, unknown> | undefined }>;
+    nextCursor?: string | undefined;
   }>;
 };
 
@@ -35,7 +43,12 @@ export type McpUiResource = {
 
 /**
  * Reads a `ui://` resource through an MCP client. Any other URI is rejected
- * before a request is issued, as is a response that is not MCP Apps HTML.
+ * before a request is issued, as is a response with no content item for that
+ * URI or one that is not MCP Apps HTML.
+ *
+ * `ui` follows MCP Apps' precedence: the content item's `_meta.ui` overrides,
+ * field by field, the `_meta.ui` of the resource's `resources/list` entry,
+ * which is read only when the client offers `listResources`.
  */
 export async function readUiResource(
   client: McpUiResourceReader,
@@ -45,8 +58,8 @@ export async function readUiResource(
     throw new TypeError(`readUiResource() only reads "${UI_RESOURCE_SCHEME}" URIs, got "${uri}".`);
   }
   const { contents } = await client.readResource({ uri });
-  const content = contents.find((item) => item.uri === uri) ?? contents[0];
-  if (!content) throw new Error(`MCP server returned no contents for "${uri}".`);
+  const content = contents.find((item) => item.uri === uri);
+  if (!content) throw new Error(`MCP server returned no content item for "${uri}".`);
   if (content.mimeType !== RESOURCE_MIME_TYPE) {
     throw new Error(
       `Expected "${uri}" to be "${RESOURCE_MIME_TYPE}", got "${content.mimeType ?? 'no MIME type'}".`,
@@ -57,12 +70,32 @@ export async function readUiResource(
     (content.blob === undefined ? undefined : Buffer.from(content.blob, 'base64').toString('utf8'));
   if (html === undefined) throw new Error(`MCP resource "${uri}" has neither text nor blob.`);
   const resource: McpUiResource = { uri, html, mimeType: RESOURCE_MIME_TYPE };
-  if (content._meta !== undefined) {
-    resource.meta = content._meta;
-    const ui = content._meta['ui'];
-    if (typeof ui === 'object' && ui !== null) resource.ui = ui;
-  }
+  if (content._meta !== undefined) resource.meta = content._meta;
+  const listed = await listedUi(client, uri);
+  const declared = uiRecord(content._meta);
+  if (listed !== undefined || declared !== undefined) resource.ui = { ...listed, ...declared };
   return resource;
+}
+
+function uiRecord(meta: Record<string, unknown> | undefined): McpUiResourceMeta | undefined {
+  const ui = meta?.['ui'];
+  return typeof ui === 'object' && ui !== null && !Array.isArray(ui) ? ui : undefined;
+}
+
+/** The `_meta.ui` of `uri`'s `resources/list` entry, paging until it is found. */
+async function listedUi(
+  client: McpUiResourceReader,
+  uri: string,
+): Promise<McpUiResourceMeta | undefined> {
+  if (client.listResources === undefined) return undefined;
+  let cursor: string | undefined;
+  do {
+    const page = await client.listResources(cursor === undefined ? undefined : { cursor });
+    const entry = page.resources.find((item) => item.uri === uri);
+    if (entry !== undefined) return uiRecord(entry._meta);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return undefined;
 }
 
 /**

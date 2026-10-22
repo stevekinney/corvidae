@@ -28,6 +28,15 @@ export const FIXTURE_RESOURCE_UI: McpUiResourceMeta = {
   permissions: { geolocation: {} },
 };
 
+/** A second `ui://` resource whose `_meta.ui` is declared only on its registration. */
+export const FIXTURE_LISTED_UI_URI = 'ui://weather/listed.html';
+
+/** The `_meta.ui` {@link FIXTURE_LISTED_UI_URI} declares on its `resources/list` entry. */
+export const FIXTURE_LISTED_RESOURCE_UI: McpUiResourceMeta = {
+  csp: { connectDomains: ['https://listed.weather.test'] },
+  prefersBorder: true,
+};
+
 /**
  * An ext-apps 2.0.x MCP server: one tool whose `_meta.ui` points at a `ui://`
  * resource, and that resource. Built with ext-apps' own server helpers.
@@ -57,6 +66,23 @@ export function createMcpAppsFixtureServer(): McpServer {
           mimeType: RESOURCE_MIME_TYPE,
           text: FIXTURE_UI_HTML,
           _meta: { ui: FIXTURE_RESOURCE_UI },
+        },
+      ],
+    }),
+  );
+  registerAppResource(
+    server,
+    'Listed Weather View',
+    FIXTURE_LISTED_UI_URI,
+    { _meta: { ui: FIXTURE_LISTED_RESOURCE_UI } },
+    async () => ({
+      contents: [
+        {
+          uri: FIXTURE_LISTED_UI_URI,
+          mimeType: RESOURCE_MIME_TYPE,
+          text: FIXTURE_UI_HTML,
+          // The content item overrides one field and inherits the rest from the listing.
+          _meta: { ui: { prefersBorder: false } },
         },
       ],
     }),

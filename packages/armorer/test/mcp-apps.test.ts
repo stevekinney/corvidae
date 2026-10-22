@@ -13,6 +13,8 @@ import {
   toMcpTools,
 } from '../src/integrations/mcp';
 import {
+  FIXTURE_LISTED_RESOURCE_UI,
+  FIXTURE_LISTED_UI_URI,
   FIXTURE_RESOURCE_UI,
   FIXTURE_TOOL_UI,
   FIXTURE_UI_HTML,
@@ -103,6 +105,51 @@ describe('MCP Apps through the MCP client', () => {
       );
     }
     expect(requests).toBe(0);
+  });
+
+  it('takes _meta.ui from the resources/list entry, overridden field by field by the content item', async () => {
+    const client = await connectFixture();
+    try {
+      const resource = await readUiResource(client, FIXTURE_LISTED_UI_URI);
+      expect(resource.ui).toEqual({ ...FIXTURE_LISTED_RESOURCE_UI, prefersBorder: false });
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('pages through resources/list to find the listing entry', async () => {
+    const cursors: Array<string | undefined> = [];
+    const reader = {
+      async readResource() {
+        return {
+          contents: [{ uri: 'ui://x/y', mimeType: 'text/html;profile=mcp-app', text: '<p>y</p>' }],
+        };
+      },
+      async listResources(params?: { cursor?: string }) {
+        cursors.push(params?.cursor);
+        return params?.cursor === undefined
+          ? { resources: [{ uri: 'ui://x/other' }], nextCursor: 'page-2' }
+          : { resources: [{ uri: 'ui://x/y', _meta: { ui: { prefersBorder: true } } }] };
+      },
+    };
+    const resource = await readUiResource(reader, 'ui://x/y');
+    expect(resource.ui).toEqual({ prefersBorder: true });
+    expect(cursors).toEqual([undefined, 'page-2']);
+  });
+
+  it('rejects a response with no content item for the requested URI', async () => {
+    const reader = {
+      async readResource() {
+        return {
+          contents: [
+            { uri: 'ui://x/other', mimeType: 'text/html;profile=mcp-app', text: '<p>other</p>' },
+          ],
+        };
+      },
+    };
+    await expectPromiseToReject(readUiResource(reader, 'ui://x/y'), (error) =>
+      expect(String(error)).toMatch(/no content item for "ui:\/\/x\/y"/),
+    );
   });
 
   it('rejects a ui:// response that is not MCP Apps HTML', async () => {
