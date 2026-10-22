@@ -426,6 +426,72 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       expect(JSON.stringify(result)).toContain('procedure.observation-digest');
     });
 
+    it('binds an approval to the validator kind and the observation it saw', async () => {
+      const candidate = await candidateFrom(1, 0, { scope: 'high-impact' });
+      const pending = await promote(candidate, { validator: validator() });
+      if (pending.status !== 'pending-review') throw new Error('pending');
+      const approval = review(true, pending.request.requestDigest);
+      const asEvaluator = await promote(candidate, {
+        validator: { ...validator(), kind: 'evaluator' },
+        review: approval,
+      });
+      expect(asEvaluator).toMatchObject({ status: 'refused', reason: 'review-mismatch' });
+      const otherObservation = await promote(candidate, {
+        validator: {
+          ...validator(),
+          validate: async () => ({
+            outcome: 'passed',
+            fixture: 'staging certificate expiring in 3 days',
+            evidence: 'renewed; expires in 30 days',
+          }),
+        },
+        review: approval,
+      });
+      expect(otherObservation).toMatchObject({ status: 'refused', reason: 'review-mismatch' });
+    });
+
+    it('decides on the review it was given, whatever happens to it while validation runs', async () => {
+      const candidate = await candidateFrom(1, 0, { scope: 'high-impact' });
+      const pending = await promote(candidate, { validator: validator() });
+      if (pending.status !== 'pending-review') throw new Error('pending');
+      const decision = { ...review(false, pending.request.requestDigest) };
+      const flipping: ProcedureValidator = {
+        ...validator(),
+        validate: async (seen) => {
+          (decision as { approved: boolean }).approved = true;
+          return validator().validate(seen);
+        },
+      };
+      const promotion = await promote(candidate, { validator: flipping, review: decision });
+      expect(promotion).toMatchObject({ status: 'refused', reason: 'review-declined' });
+    });
+
+    it('replays a committed promotion even after one of its episodes was revoked', async () => {
+      const candidate = await candidateFrom(1);
+      const first = await promote(candidate, { validator: validator() });
+      expect(first.status).toBe('promoted');
+      harness.clock.advance(1000);
+      await harness.engine.submit({
+        kind: 'revise-projection',
+        operationId: 'revoke-episode',
+        tenantId: TENANT,
+        authority,
+        revisions: [
+          {
+            namespace: NAMESPACE,
+            id: 'episode-0',
+            expectedRevision: 1,
+            change: { kind: 'revoked', reasonCode: 'poisoned' },
+          },
+        ],
+      });
+      const retried = await promote(candidate, { validator: validator() });
+      expect(retried).toMatchObject({
+        status: 'promoted',
+        result: { outcome: 'committed', replayed: true },
+      });
+    });
+
     it('refuses to retire anything but a procedure', async () => {
       await candidateFrom(1);
       harness.clock.advance(1000);

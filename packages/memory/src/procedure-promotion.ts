@@ -89,8 +89,14 @@ export interface ProcedureReviewRequest {
   readonly title: string;
   readonly scope: 'high-impact';
   readonly sideEffects: readonly string[];
-  readonly validator: { readonly name: string; readonly revision: string };
+  readonly validator: {
+    readonly name: string;
+    readonly revision: string;
+    readonly kind: 'deterministic' | 'evaluator';
+  };
   readonly fixtureDigest: string;
+  /** Digest of what the validation observed, so a different observation needs a new review. */
+  readonly observationDigest: string;
   /** Digest of the frozen candidate the request is for. */
   readonly candidateDigest: string;
   /** Digest of everything above; a decision names it to say which request it decides. */
@@ -135,6 +141,25 @@ export type ProcedurePromotion =
       readonly result: TransitionResult;
     }
   | { readonly status: 'rejected'; readonly result: TransitionResult };
+
+/** The options with the review decision and the validator's identity copied and frozen. */
+function freezeOptions(options: PromoteProcedureOptions): PromoteProcedureOptions {
+  const { validator, review } = options;
+  return {
+    ...options,
+    ...(review === undefined ? {} : { review: deepFreeze(structuredClone(review)) }),
+    ...(validator === undefined
+      ? {}
+      : {
+          validator: Object.freeze({
+            name: validator.name,
+            revision: validator.revision,
+            kind: validator.kind,
+            validate: (candidate: ProcedureCandidate) => validator.validate(candidate),
+          }),
+        }),
+  };
+}
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object') {
@@ -241,6 +266,7 @@ function promotionProposal(
 async function verifiedSources(
   options: PromoteProcedureOptions,
   candidate: ProcedureCandidate,
+  settled: boolean,
 ): Promise<{ readonly refusal: ProcedurePromotion } | { readonly sources: ProjectionSource[] }> {
   if (candidate.tenantId !== options.authority.tenantId) {
     return {
@@ -264,6 +290,10 @@ async function verifiedSources(
       },
     };
   }
+  // A promotion that already committed replays its receipt: its episodes are not
+  // re-read, since one revoked since then cannot undo a commit that happened, and the
+  // engine still refuses a retry that is not the same proposal.
+  if (settled) return { sources: [...candidate.sources] };
   try {
     assertDistinctEpisodes(candidate.successfulEpisodes, candidate.failedEpisodes);
     const sources = await readCurrentEpisodes(
@@ -298,8 +328,9 @@ function reviewGate(
     title: candidate.draft.title,
     scope: 'high-impact' as const,
     sideEffects: candidate.draft.sideEffects,
-    validator: { name: validator.name, revision: validator.revision },
+    validator: { name: validator.name, revision: validator.revision, kind: validator.kind },
     fixtureDigest: digestOfText(run.fixture),
+    observationDigest: digestOfText(run.evidence),
     candidateDigest: digestOfText(JSON.stringify(candidate)),
   };
   const request = { ...unsigned, requestDigest: digestOfText(JSON.stringify(unsigned)) };
@@ -336,12 +367,18 @@ function reviewGate(
 export async function promoteProcedure(
   options: PromoteProcedureOptions,
 ): Promise<ProcedurePromotion> {
+  // Everything external code could change while the validator runs is fixed now:
+  // the candidate, the review decision, and the validator's identity.
+  const frozen = freezeOptions(options);
   const snapshot = structuredClone(options.candidate);
-  const verified = await verifiedSources(options, snapshot);
+  const settled =
+    (await options.engine.getReceipt(options.authority.tenantId, options.operationId)) !==
+    undefined;
+  const verified = await verifiedSources(frozen, snapshot, settled);
   if ('refusal' in verified) return verified.refusal;
   // The stored sources are the episodes' evidence as just read, never the candidate's claim.
   const candidate = deepFreeze({ ...snapshot, sources: verified.sources });
-  const { validator } = options;
+  const { validator } = frozen;
   if (validator === undefined) {
     return {
       status: 'refused',
@@ -349,13 +386,13 @@ export async function promoteProcedure(
       detail: `Nothing validated the candidate; ${candidate.successfulEpisodes.length} successful episodes alone do not promote a procedure.`,
     };
   }
-  const run = await validator.validate(candidate);
+  const run = deepFreeze(structuredClone(await validator.validate(candidate)));
   if (run.outcome !== 'passed') {
     return { status: 'refused', reason: 'validation-failed', detail: run.evidence, run };
   }
-  const gate = reviewGate(options, candidate, validator, run);
+  const gate = reviewGate(frozen, candidate, validator, run);
   if (gate !== undefined) return gate;
-  const result = await options.engine.submit(promotionProposal(options, candidate, validator, run));
+  const result = await options.engine.submit(promotionProposal(frozen, candidate, validator, run));
   if (result.outcome !== 'committed') return { status: 'rejected', result };
   return {
     status: 'promoted',
