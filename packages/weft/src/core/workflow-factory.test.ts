@@ -99,6 +99,24 @@ describe('createWorkflowFactory() — shared entries', () => {
     expect(Object.keys(built.uses ?? {})).toEqual(['greet']);
   });
 
+  it('snapshots each shared activity schema at factory creation', () => {
+    const inputSchema = {
+      '~standard': { version: 1, vendor: 'test', validate: (value: unknown) => ({ value }) },
+      title: 'before',
+    };
+    const described = activity({
+      name: 'described',
+      inputSchema: inputSchema as never,
+      execute: async (value: string) => value,
+    });
+    const { workflow } = createWorkflowFactory({ activities: { described } });
+    inputSchema.title = 'after';
+    const built = workflow({ name: 'described-later' }).execute(async function* () {
+      return 0;
+    });
+    expect((built.uses?.['described']?.inputSchema as { title?: string }).title).toBe('before');
+  });
+
   it('keeps a __proto__ message key as an own entry', () => {
     const signals = Object.fromEntries([['__proto__', signal('__proto__')]]);
     const { workflow } = createWorkflowFactory({ signals });

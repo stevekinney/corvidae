@@ -231,7 +231,7 @@ export function createWorkflowFactory<
   // the caller's maps cannot change what the factory's workflows declare.
   const activities = Object.freeze({ ...entries.activities }) as Readonly<TActivities>;
   const shared: SharedWorkflowEntries = {
-    uses: normalizeUsesMap(activities),
+    uses: snapshot(normalizeUsesMap(activities)),
     signals: snapshot(entries.signals as Record<string, SignalDefinition<unknown>> | undefined),
     updates: snapshot(entries.updates as Record<string, UpdateDefinition> | undefined),
     queries: snapshot(entries.queries as Record<string, QueryDefinition> | undefined),
@@ -278,8 +278,8 @@ export function createWorkflowFactory<
 }
 
 /**
- * Clone and freeze each message definition, so mutating one after the factory
- * is created cannot change what later workflows declare.
+ * Clone and freeze each shared definition, schemas included, so mutating one
+ * after the factory is created cannot change what later workflows declare.
  */
 function snapshot<T extends object>(map: Record<string, T> | undefined): Record<string, T> {
   // A null prototype keeps a `__proto__` key an own entry.
