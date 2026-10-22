@@ -16,13 +16,21 @@ function plainCopy(value: A2uiJsonValue): A2uiJsonValue {
   if (Array.isArray(value)) return value.map(plainCopy);
   if (isContainer(value)) {
     const copy: Record<string, A2uiJsonValue> = {};
-    for (const [key, entry] of Object.entries(value)) copy[key] = plainCopy(entry);
+    for (const [key, entry] of Object.entries(value)) {
+      // Assigning `__proto__` would replace the copy's prototype, not add data.
+      if (key !== '__proto__') copy[key] = plainCopy(entry);
+    }
     return copy;
   }
   return value;
 }
 
+/** Keys that would reach an object's prototype rather than its data. */
+const UNSAFE_SEGMENTS: ReadonlySet<string> = new Set(['__proto__', 'prototype', 'constructor']);
+
 function childOf(container: Container, segment: string): A2uiJsonValue | undefined {
+  // Only own properties: a path must never walk into a prototype.
+  if (!Object.hasOwn(container, segment)) return undefined;
   return Array.isArray(container) ? container[Number(segment)] : container[segment];
 }
 
@@ -62,7 +70,7 @@ export class A2uiDataModel {
   readonly #onChange: ((value: A2uiJsonValue) => void) | undefined;
 
   constructor(initial: A2uiJsonValue | undefined, onChange?: (value: A2uiJsonValue) => void) {
-    this.#root = structuredClone(initial ?? {});
+    this.#root = plainCopy(initial ?? {});
     this.#onChange = onChange;
   }
 
@@ -73,7 +81,7 @@ export class A2uiDataModel {
 
   /** Replaces the whole model, as a server update does. */
   replace(value: A2uiJsonValue | undefined): void {
-    this.#root = structuredClone(value ?? {});
+    this.#root = plainCopy(value ?? {});
   }
 
   /** The value at `pointer`, or `undefined` when nothing is there. */
@@ -89,6 +97,8 @@ export class A2uiDataModel {
   /** Writes `value` at `pointer`, creating objects along the way. */
   set(pointer: string, value: A2uiJsonValue): void {
     const segments = pointerSegments(pointer);
+    // A path through a prototype key writes nothing, rather than polluting a prototype.
+    if (segments.some((segment) => UNSAFE_SEGMENTS.has(segment))) return;
     const last = segments.pop();
     if (last === undefined) {
       this.#root = value;

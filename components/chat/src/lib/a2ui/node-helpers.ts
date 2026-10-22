@@ -180,3 +180,63 @@ export function elementId(context: A2uiRenderContext, componentId: string, scope
   const raw = `${context.idPrefix}-${componentId}${scope === '' ? '' : `-${scope}`}`;
   return raw.replace(/[^A-Za-z0-9_-]/g, '_');
 }
+
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME_ONLY = /^(\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+const LOCAL_DATE_TIME = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?$/;
+
+function localParts(date: Date): { date: string; time: string } {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return {
+    date: `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
+    time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+  };
+}
+
+/**
+ * An ISO 8601 value in the form a Cinder date or time control takes: a date
+ * (`YYYY-MM-DD`) for `day`, a local date and time (`YYYY-MM-DDTHH:mm`) for
+ * `minute`, a time (`HH:mm`) for `time`. A zoned value is shown in local time.
+ * `undefined` when the value has nothing the control can show.
+ */
+export function dateTimeForControl(
+  value: unknown,
+  control: 'day' | 'minute' | 'time',
+): string | undefined {
+  if (typeof value !== 'string' || value === '') return undefined;
+  let date: string | undefined;
+  let time: string | undefined;
+  const dateOnly = DATE_ONLY.exec(value);
+  const timeOnly = TIME_ONLY.exec(value);
+  const local = LOCAL_DATE_TIME.exec(value);
+  if (dateOnly !== null) {
+    date = value;
+  } else if (timeOnly !== null) {
+    time = `${timeOnly[1]}:${timeOnly[2]}`;
+  } else if (local !== null) {
+    date = local[1];
+    time = local[2];
+  } else {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return undefined;
+    ({ date, time } = localParts(parsed));
+  }
+  if (control === 'time') return time;
+  if (control === 'day') return date;
+  return date === undefined ? undefined : `${date}T${time ?? '00:00'}`;
+}
+
+/** Whether `value` matches `pattern`, or `undefined` when the pattern is not a valid one. */
+export function matchesPattern(pattern: string, value: string): boolean | undefined {
+  try {
+    return new RegExp(pattern).test(value);
+  } catch {
+    return undefined;
+  }
+}
+
+/** An A2UI icon name as words: `shoppingCart` → `Shopping cart`. */
+export function iconLabel(name: string): string {
+  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}

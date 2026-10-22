@@ -224,14 +224,27 @@ function dateName(
   return new Intl.DateTimeFormat(locale, options).format(date);
 }
 
+/**
+ * A value as a date. A date-only string (`YYYY-MM-DD`) is a calendar date, so
+ * it is read as local midnight; `new Date` would read it as UTC midnight and
+ * show the previous day west of Greenwich.
+ */
+function toDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (dateOnly !== null) {
+      return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+    }
+    return new Date(value);
+  }
+  if (typeof value === 'number') return new Date(value);
+  return undefined;
+}
+
 /** Formats a date with a Unicode TR35 pattern (the subset the basic catalog documents). */
 export function formatDate(value: unknown, pattern: string, locale?: string): string {
-  const date =
-    value instanceof Date
-      ? value
-      : typeof value === 'number' || typeof value === 'string'
-        ? new Date(value)
-        : undefined;
+  const date = toDate(value);
   if (date === undefined || Number.isNaN(date.getTime())) return '';
   return pattern.replace(DATE_TOKEN, (token) => {
     if (token.startsWith("'")) return token.slice(1, -1);

@@ -396,3 +396,178 @@ describe('Modal', () => {
     expect(screen.getByRole('button', { name: /close/i })).not.toBeNull();
   });
 });
+
+describe('review fixes', () => {
+  test('the vendored files match the digests in PROVENANCE.json', async () => {
+    const provenance = (await Bun.file(new URL('./PROVENANCE.json', import.meta.url)).json()) as {
+      files: Record<string, { sha256: string }>;
+    };
+    for (const [name, { sha256 }] of Object.entries(provenance.files)) {
+      const bytes = await Bun.file(new URL(`./${name}`, import.meta.url)).arrayBuffer();
+      const digest = new Bun.CryptoHasher('sha256').update(bytes).digest('hex');
+      expect(`${name} ${digest}`).toBe(`${name} ${sha256}`);
+    }
+  });
+
+  test('a path through a prototype key writes nothing', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'proto',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Field',
+            value: { path: '/__proto__/polluted' },
+          },
+        ],
+      },
+    });
+    await flush();
+
+    await fireEvent.input(screen.getByLabelText('Field'), { target: { value: 'yes' } });
+
+    expect(Reflect.get({}, 'polluted')).toBeUndefined();
+  });
+
+  test('accepts a proxied data model, as a Svelte $state object is', async () => {
+    const dataModel = new Proxy({ name: 'Ada' }, {});
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'proxy',
+        components: [{ id: 'root', component: 'Text', text: { path: '/name' }, variant: 'h2' }],
+        dataModel,
+      },
+    });
+    await flush();
+
+    expect(container.textContent).toContain('Ada');
+  });
+
+  test('evaluates an unbound function-call value, and a server update replaces a literal edit', async () => {
+    const field = (value: unknown): A2uiComponent[] => [
+      { id: 'root', component: 'TextField', label: 'Greeting', value },
+    ];
+    const view = render(A2uiSurface, {
+      props: {
+        surfaceId: 'literal',
+        components: field({ call: 'formatString', args: { value: 'hi' } }),
+      },
+    });
+    await flush();
+    const input = () => screen.getByLabelText('Greeting') as HTMLInputElement;
+    expect(input().value).toBe('hi');
+
+    await fireEvent.input(input(), { target: { value: 'edited' } });
+    await view.rerender({ components: field('from the server') });
+    await flush();
+
+    expect(input().value).toBe('from the server');
+  });
+
+  test('a number TextField writes its bound path as a string', async () => {
+    const changes: A2uiJsonValue[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'number',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Count',
+            variant: 'number',
+            value: { path: '/count' },
+          },
+        ],
+        dataModel: { count: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = screen.getByRole('spinbutton', { name: /Count/ });
+
+    await fireEvent.input(field, { target: { value: '4' } });
+    await fireEvent.blur(field);
+
+    expect(changes.at(-1)).toEqual({ count: '4' });
+  });
+
+  test('an invalid validation pattern neither throws nor marks the value invalid', async () => {
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'pattern',
+        components: [
+          { id: 'root', component: 'TextField', label: 'Code', value: 'x', validationRegexp: '(' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(container.querySelector('[data-a2ui-id="root"]')).not.toBeNull();
+    expect(screen.getByLabelText('Code').getAttribute('aria-invalid')).not.toBe('true');
+  });
+
+  test('a weighted Row child grows in proportion', async () => {
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'weights',
+        components: [
+          { id: 'root', component: 'Row', children: ['wide', 'narrow'] },
+          { id: 'wide', component: 'Text', text: 'Wide', weight: 2 },
+          { id: 'narrow', component: 'Text', text: 'Narrow', weight: 1 },
+        ],
+      },
+    });
+    await flush();
+
+    const wide = container.querySelector('[data-a2ui-id="wide"]') as HTMLElement;
+    expect(wide.style.flexGrow).toBe('2');
+  });
+
+  test('a Modal whose Button trigger contains itself still renders', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'cycle',
+        components: [
+          { id: 'root', component: 'Modal', trigger: 'loop', content: 'body' },
+          { id: 'loop', component: 'Button', child: 'loop', action: { event: { name: 'x' } } },
+          { id: 'body', component: 'Text', text: 'Body' },
+        ],
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(diagnostics.map((entry) => entry.code)).toContain('component-cycle');
+  });
+
+  test('a ChoicePicker without a label and an icon-only Button are still named', async () => {
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'names',
+        components: [
+          { id: 'root', component: 'Column', children: ['pick', 'cart'] },
+          {
+            id: 'pick',
+            component: 'ChoicePicker',
+            displayStyle: 'chips',
+            options: [{ label: 'One', value: 'one' }],
+            value: [],
+          },
+          {
+            id: 'cart',
+            component: 'Button',
+            child: 'cart-icon',
+            action: { event: { name: 'cart' } },
+          },
+          { id: 'cart-icon', component: 'Icon', name: 'shoppingCart' },
+        ],
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('combobox', { name: 'Options' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Shopping cart' })).not.toBeNull();
+  });
+});

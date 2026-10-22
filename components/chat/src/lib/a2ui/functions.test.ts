@@ -36,7 +36,9 @@ describe('basic catalog functions', () => {
     ).json()) as {
       functions: Record<string, unknown>;
     };
-    expect([...A2UI_BASIC_FUNCTIONS].toSorted() as string[]).toEqual(Object.keys(catalog.functions).toSorted());
+    expect([...A2UI_BASIC_FUNCTIONS].toSorted() as string[]).toEqual(
+      Object.keys(catalog.functions).toSorted(),
+    );
   });
 
   it('formatString interpolates paths, literals, nested calls, and escapes', () => {
@@ -111,6 +113,20 @@ describe('basic catalog functions', () => {
       'Wednesday, March 4 at 3:07 PM',
     );
     expect(callFunction('formatDate', { value: 'not a date', format: 'yyyy' }, scope)).toBe('');
+  });
+
+  it('formatDate reads a date-only value as a calendar date in every time zone', () => {
+    const scope = context();
+    const original = process.env['TZ'];
+    process.env['TZ'] = 'America/Los_Angeles';
+    try {
+      expect(
+        callFunction('formatDate', { value: '2025-12-15', format: 'yyyy-MM-dd d' }, scope),
+      ).toBe('2025-12-15 15');
+    } finally {
+      if (original === undefined) delete process.env['TZ'];
+      else process.env['TZ'] = original;
+    }
   });
 
   it('pluralize picks the locale’s category and falls back to other', () => {

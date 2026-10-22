@@ -43,6 +43,8 @@
     VideoPlayer,
   } from '@lostgradient/cinder';
 
+  import { untrack } from 'svelte';
+
   import MarkdownPreview from '../components/chat/message/markdown-preview.svelte';
   import A2uiAsset from './a2ui-asset.svelte';
   // A node renders its children as nodes: the recursion is the component tree itself.
@@ -55,13 +57,17 @@
     isBasicComponent,
     mapEnum,
   } from './catalog-mapping.ts';
+  import { resolveDynamic } from './functions.ts';
   import { A2UI_ICONS } from './icon-names.ts';
   import {
     boundPointer,
     elementId,
     evaluationContext,
     expandChildren,
+    dateTimeForControl,
     failingCheck,
+    iconLabel,
+    matchesPattern,
     plainText,
     resolveBoolean,
     resolveNumber,
@@ -123,11 +129,19 @@
   function resolveDynamicProp(name: string): unknown {
     const value = prop(name);
     const pointer = boundPointer(value, scope);
-    return pointer === undefined ? value : context.model.get(pointer);
+    return pointer === undefined ? resolveDynamic(value, evaluation) : context.model.get(pointer);
   }
 
   // A literal input's own value, once the user has changed it.
   const local = $state<{ value: A2uiJsonValue; touched: boolean }>({ value: null, touched: false });
+
+  // A new value from the server (an `updateComponents` that changes it) replaces the user's edit.
+  $effect.pre(() => {
+    void JSON.stringify(component?.['value'] ?? null);
+    untrack(() => {
+      local.touched = false;
+    });
+  });
 
   /** A bound input's value: the data model's when it is bound, its own once changed otherwise. */
   function read(name: string): unknown {
@@ -161,14 +175,30 @@
   );
 
   /** A Modal's title: the trigger's own text, so the dialog is named after what opened it. */
-  function triggerTitle(trigger: A2uiComponent | undefined): string {
-    if (trigger === undefined) return 'Dialog';
+  function triggerTitle(trigger: A2uiComponent | undefined, seen: readonly string[] = []): string {
+    if (trigger === undefined || seen.includes(trigger.id)) return 'Dialog';
     if (trigger.component === 'Text') return plainText(resolveString(trigger['text'], evaluation));
     if (trigger.component === 'Button' && typeof trigger['child'] === 'string') {
-      return triggerTitle(context.component(trigger['child']));
+      return triggerTitle(context.component(trigger['child']), [...seen, trigger.id]);
     }
     return 'Dialog';
   }
+
+  /** An icon-only Button's name: its icon's name in words, since the icon itself is hidden. */
+  function iconButtonLabel(): string | undefined {
+    const childId = prop('child');
+    const childComponent = typeof childId === 'string' ? context.component(childId) : undefined;
+    if (childComponent?.component !== 'Icon') return undefined;
+    const name = resolveDynamic(childComponent['name'], evaluation);
+    return typeof name === 'string' ? iconLabel(name) : 'Icon';
+  }
+
+  /** A Row or Column child's relative weight, when it gives one. */
+  const weight = $derived(
+    typeof component?.['weight'] === 'number' && component['weight'] >= 0
+      ? component['weight']
+      : undefined,
+  );
 
   // ── Tabs ──
   let selectedTab = $state('0');
@@ -197,6 +227,8 @@
     class="a2ui-node"
     data-a2ui-component={type}
     data-a2ui-id={id}
+    class:a2ui-node--weighted={weight !== undefined}
+    style={weight === undefined ? undefined : `flex: ${weight} 1 0%;`}
   >
     {#if type === 'Text'}
       {@const variant = mapEnum(
@@ -328,6 +360,7 @@
         )}
         disabled={activate === undefined && checkMessage !== undefined}
         title={checkMessage}
+        {...optional('aria-label', iconButtonLabel())}
         class="a2ui-leaf"
         onclick={() => {
           if (activate !== undefined) activate();
@@ -349,11 +382,10 @@
           ? (prop('validationRegexp') as string)
           : undefined}
       {@const patternError =
-        pattern !== undefined &&
-        typeof value === 'string' &&
-        value !== '' &&
-        !new RegExp(pattern).test(value)
-          ? 'The value is not in the expected format.'
+        pattern !== undefined && typeof value === 'string' && value !== ''
+          ? matchesPattern(pattern, value) === false
+            ? 'The value is not in the expected format.'
+            : undefined
           : undefined}
       {@const error = checkMessage ?? patternError}
       {#if control === 'textarea'}
@@ -373,7 +405,8 @@
           value={typeof value === 'number' ? value : (resolveNumber(value, evaluation) ?? null)}
           {...optional('error', error)}
           class="a2ui-leaf"
-          onValueChange={(next: number | null) => setLocal('value', next)}
+          onValueChange={(next: number | null) =>
+            setLocal('value', next === null ? '' : String(next))}
         />
       {:else}
         <Input
@@ -420,7 +453,7 @@
         ),
         resolveBoolean(prop('filterable'), evaluation),
       )}
-      {@const label = text('label')}
+      {@const label = text('label') || 'Options'}
       {#if control === 'checkbox-group'}
         <CheckboxGroup {label} {...optional('error', checkMessage)} class="a2ui-leaf">
           {#each options as option (option.value)}
@@ -510,7 +543,7 @@
           id={domId}
           label={text('label')}
           bind:value={
-            () => (typeof value === 'string' ? value : ''), (next) => setLocal('value', next)
+            () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
           }
           {...optional('error', checkMessage)}
           class="a2ui-leaf"
@@ -523,8 +556,11 @@
           {...optional('min', text('min') || undefined)}
           {...optional('max', text('max') || undefined)}
           bind:value={
-            () => (typeof value === 'string' && value !== '' ? value : undefined),
-            (next) => setLocal('value', next ?? '')
+            () => dateTimeForControl(value, kind.granularity),
+            (next) => {
+              if (next !== dateTimeForControl(value, kind.granularity))
+                setLocal('value', next ?? '');
+            }
           }
           {...optional('error', checkMessage)}
           class="a2ui-leaf"
@@ -552,5 +588,11 @@
   .a2ui-node,
   .a2ui-modal-trigger {
     display: contents;
+  }
+
+  /* A weighted child of a Row or Column needs a box of its own to grow. */
+  .a2ui-node.a2ui-node--weighted {
+    display: block;
+    min-inline-size: 0;
   }
 </style>
