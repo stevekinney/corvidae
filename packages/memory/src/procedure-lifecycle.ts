@@ -1,6 +1,7 @@
 import type { EvidenceProjectionRecord, ProjectionReference } from './evidence-projection-schema';
 import { digestOfText } from './evidence-schema';
 import type { MemoryAuthority } from './governance/authority';
+import { decideMemoryAccess } from './governance/predicate';
 import type { TransitionEngine } from './transition-engine';
 import type { TransitionResult } from './transition-outcome';
 
@@ -70,6 +71,40 @@ async function assertProcedure(
   return target;
 }
 
+/**
+ * Refuses an outcome for a procedure the authority could not write, before
+ * anything is written: one resting on evidence another owner keeps private reads
+ * as not found, so recording outcomes cannot probe for it or claim to have run it.
+ */
+async function assertWritable(
+  engine: TransitionEngine,
+  authority: MemoryAuthority,
+  namespace: string,
+  target: EvidenceProjectionRecord,
+): Promise<void> {
+  for (const source of target.sources) {
+    const evidence = await engine.storage.getEvidence(authority.tenantId, source.evidenceId);
+    const allowed =
+      evidence !== undefined &&
+      decideMemoryAccess(authority, 'write', {
+        tenantId: evidence.tenantId,
+        ownerId: evidence.ownerId,
+        visibility: evidence.authorizationScope.visibility,
+        sharedWith: evidence.authorizationScope.sharedWith,
+        state: 'active',
+        integrity: 'intact',
+        pendingDerivation: false,
+      }).allowed;
+    if (!allowed) {
+      throw new ProcedureLifecycleError({
+        outcome: 'rejected',
+        reason: 'projection-not-found',
+        detail: `${namespace}/${target.id}@${target.revision} is not a procedure revision.`,
+      });
+    }
+  }
+}
+
 async function submitAll(
   engine: TransitionEngine,
   proposals: Parameters<TransitionEngine['submit']>[0][],
@@ -99,6 +134,7 @@ export async function recordProcedureOutcome(
   const { authority, engine, namespace } = options;
   const { at } = options;
   const target = await assertProcedure(engine, authority.tenantId, namespace, options.procedure);
+  await assertWritable(engine, authority, namespace, target);
   // An application cannot end before the revision it applied existed; nothing is written for one that claims to.
   if (at < target.transition.at) {
     throw new ProcedureLifecycleError({

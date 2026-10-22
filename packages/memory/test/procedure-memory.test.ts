@@ -25,7 +25,11 @@ import {
   promoteProcedure,
 } from '../src/procedure-promotion';
 import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
-import { createTransitionEngine, type TransitionEngine } from '../src/transition-engine';
+import {
+  createTransitionEngine,
+  type TransitionEngine,
+  TransitionIdentifierConflictError,
+} from '../src/transition-engine';
 import {
   FIXED_AT,
   makeInlineEvidence,
@@ -560,6 +564,40 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
         result: { outcome: 'committed', replayed: true },
       });
       expect(ran).toBe(false);
+    });
+
+    it('treats a reused operation id for a different promotion as a conflict, not a replay', async () => {
+      const candidate = await candidateFrom(1);
+      await promote(candidate, { validator: validator() });
+      const other = {
+        ...candidate,
+        draft: { ...candidate.draft, objective: 'Something else entirely.' },
+      };
+      const error = await rejectionOf(promote(other, { validator: validator() }));
+      expect(error).toBeInstanceOf(TransitionIdentifierConflictError);
+    });
+
+    it('refuses an outcome for another owner’s private procedure, writing nothing', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      const error = await rejectionOf(
+        recordProcedureOutcome({
+          engine: harness.engine,
+          authority: makeWriteAuthority({ ownerId: 'owner-b', principalId: 'user-2' }),
+          namespace: NAMESPACE,
+          procedure: { id: 'procedure-1', revision: 1 },
+          operationId: 'outcome-foreign',
+          episodeId: 'episode-foreign',
+          outcome: 'failed',
+          summary: 'Claims to have run a procedure it cannot see.',
+          projectorRevision: 'episode-projector:1',
+          at: harness.clock.now(),
+        }),
+      );
+      expect(error).toBeInstanceOf(ProcedureLifecycleError);
+      expect(await harness.storage.getEvidence(TENANT, 'outcome-foreign:outcome')).toBeUndefined();
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toMatchObject({
+        status: 'active',
+      });
     });
 
     it('refuses an outcome recorded before the revision it applied, writing nothing', async () => {

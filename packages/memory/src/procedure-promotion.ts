@@ -177,19 +177,28 @@ function promotedReference(options: PromoteProcedureOptions): ProjectionReferenc
 }
 
 /**
- * The replay of a promotion whose operation already committed, when its receipt
- * names this procedure's revision. Any other use of the operation id is left to
- * the engine, which reports it as a conflict.
+ * The replay of a promotion whose operation already committed. The proposal is
+ * rebuilt from these options with the sources and validation the committed
+ * revision recorded, so neither the episodes nor the validator run again, and it
+ * replays only when its digest is the receipt's: the same namespace, authority,
+ * candidate, review, and replaced revision. Any other use of the operation id
+ * falls through to the engine, which reports it as a conflict.
  */
-function replayed(
+async function replayed(
   options: PromoteProcedureOptions,
   receipt: TransitionReceipt,
-): ProcedurePromotion | undefined {
+): Promise<ProcedurePromotion | undefined> {
   const procedure = promotedReference(options);
-  const names = receipt.projections.some(
-    (projection) => projection.id === procedure.id && projection.revision === procedure.revision,
+  const stored = await options.engine.storage.getProjectionRevision(
+    receipt.tenantId,
+    options.candidate.namespace,
+    procedure.id,
+    procedure.revision,
   );
-  return names
+  if (stored?.kind !== 'procedure' || !('version' in stored.payload)) return undefined;
+  const candidate = { ...options.candidate, sources: stored.sources };
+  const proposal = promotionProposal(options, candidate, stored.payload.provenance.validation);
+  return transitionDigest(proposal) === receipt.digest
     ? { status: 'promoted', procedure, result: { outcome: 'committed', receipt, replayed: true } }
     : undefined;
 }
@@ -202,10 +211,25 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function procedurePayload(
-  candidate: ProcedureCandidate,
+type ProcedureValidationRecord = ProcedurePayloadV2['provenance']['validation'];
+
+/** What a passing validation run records about itself in the procedure's provenance. */
+function validationRecord(
   validator: ProcedureValidator,
   run: ProcedureValidationRun,
+): ProcedureValidationRecord {
+  return {
+    evaluator: { name: validator.name, revision: validator.revision, kind: validator.kind },
+    fixtureDigest: digestOfText(run.fixture),
+    outcome: 'passed',
+    observation: run.evidence,
+    observationDigest: digestOfText(run.evidence),
+  };
+}
+
+function procedurePayload(
+  candidate: ProcedureCandidate,
+  validation: ProcedureValidationRecord,
   review: ProcedureReviewDecision | undefined,
 ): ProcedurePayloadV2 {
   const { scope, ...draft } = candidate.draft;
@@ -216,13 +240,7 @@ function procedurePayload(
     provenance: {
       successfulEpisodes: [...candidate.successfulEpisodes],
       failedEpisodes: [...candidate.failedEpisodes],
-      validation: {
-        evaluator: { name: validator.name, revision: validator.revision, kind: validator.kind },
-        fixtureDigest: digestOfText(run.fixture),
-        outcome: 'passed',
-        observation: run.evidence,
-        observationDigest: digestOfText(run.evidence),
-      },
+      validation,
       ...(review === undefined
         ? {}
         : {
@@ -244,13 +262,12 @@ function procedurePayload(
 function promotionProposal(
   options: PromoteProcedureOptions,
   candidate: ProcedureCandidate,
-  validator: ProcedureValidator,
-  run: ProcedureValidationRun,
+  validation: ProcedureValidationRecord,
 ): TransitionProposal {
   const { authority } = options;
   // Only a review the high-impact gate verified is recorded; a routine promotion records none.
   const verifiedReview = candidate.draft.scope === 'high-impact' ? options.review : undefined;
-  const payload = procedurePayload(candidate, validator, run, verifiedReview);
+  const payload = procedurePayload(candidate, validation, verifiedReview);
   const base = { operationId: options.operationId, tenantId: authority.tenantId, authority };
   const confidence = options.confidence ?? 0.5;
   if (options.replaces !== undefined) {
@@ -355,7 +372,7 @@ function reviewGate(
   // digest, taken without the review it will carry, so it cannot carry over to
   // any other.
   const proposalDigest = transitionDigest(
-    promotionProposal(withoutReview(options), candidate, validator, run),
+    promotionProposal(withoutReview(options), candidate, validationRecord(validator, run)),
   );
   const unsigned = {
     proposalDigest,
@@ -411,7 +428,7 @@ export async function promoteProcedure(
   // not the episode reads, which a later revocation would fail, and not the
   // validator, whose result may have changed since.
   const settled = await frozen.engine.getReceipt(frozen.authority.tenantId, frozen.operationId);
-  const replay = settled === undefined ? undefined : replayed(frozen, settled);
+  const replay = settled === undefined ? undefined : await replayed(frozen, settled);
   if (replay !== undefined) return replay;
   const snapshot = structuredClone(frozen.candidate);
   const verified = await verifiedSources(frozen, snapshot);
@@ -432,7 +449,9 @@ export async function promoteProcedure(
   }
   const gate = reviewGate(frozen, candidate, validator, run);
   if (gate !== undefined) return gate;
-  const result = await frozen.engine.submit(promotionProposal(frozen, candidate, validator, run));
+  const result = await frozen.engine.submit(
+    promotionProposal(frozen, candidate, validationRecord(validator, run)),
+  );
   if (result.outcome !== 'committed') return { status: 'rejected', result };
   return { status: 'promoted', procedure: promotedReference(frozen), result };
 }
