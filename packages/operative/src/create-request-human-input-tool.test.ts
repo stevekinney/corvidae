@@ -2,15 +2,26 @@ import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { createTool, createToolbox, createToolCall } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
-import type { RequestHumanInputContext } from './create-request-human-input-tool';
+import type {
+  RequestHumanInputContext,
+  RequestHumanInputOutcome,
+  RequestHumanInputResult,
+} from './create-request-human-input-tool';
 import { createRequestHumanInputTool } from './create-request-human-input-tool';
+import { createScheduleWakeupTool } from './create-schedule-wakeup-tool';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
 import type { CombinedOperativeEventMap } from './events';
 import { HumanWaitParkedEvent } from './events';
 
 describe('createRequestHumanInputTool', () => {
   function makeContext(runId?: string, durable = true): RequestHumanInputContext {
-    return { pendingHumanWait: undefined, runId, durable };
+    return { pendingHumanWait: undefined, pendingWakeup: undefined, runId, durable };
+  }
+
+  /** Narrows an outcome the test expects to have parked. */
+  function expectParked(outcome: RequestHumanInputOutcome): RequestHumanInputResult {
+    if (!outcome.parked) throw new Error(`expected a parked result, got: ${outcome.message}`);
+    return outcome;
   }
 
   function makeEmitter() {
@@ -58,7 +69,7 @@ describe('createRequestHumanInputTool', () => {
     const context = makeContext();
     const tool = createRequestHumanInputTool({ context });
 
-    const result = tool.execute({ signalName: 'human-response' });
+    const result = expectParked(tool.execute({ signalName: 'human-response' }));
 
     expect(result.parked).toBe(true);
     expect(result.signalName).toBe('human-response');
@@ -68,7 +79,7 @@ describe('createRequestHumanInputTool', () => {
     const context = makeContext();
     const tool = createRequestHumanInputTool({ context });
 
-    const result = tool.execute({ signalName: 'human-response', prompt: 'Approve?' });
+    const result = expectParked(tool.execute({ signalName: 'human-response', prompt: 'Approve?' }));
 
     expect(result.prompt).toBe('Approve?');
   });
@@ -77,7 +88,7 @@ describe('createRequestHumanInputTool', () => {
     const context = makeContext();
     const tool = createRequestHumanInputTool({ context });
 
-    const result = tool.execute({ signalName: 'human-response' });
+    const result = expectParked(tool.execute({ signalName: 'human-response' }));
 
     expect(result.prompt).toBeUndefined();
   });
@@ -100,14 +111,139 @@ describe('createRequestHumanInputTool', () => {
     expect(result.message).toContain('Do you approve?');
   });
 
-  it('overwrites a previous human wait when called multiple times (last call wins)', () => {
-    const context = makeContext();
-    const tool = createRequestHumanInputTool({ context });
+  describe('first park request wins (COR-1578)', () => {
+    const pendingMessage = (name: string) =>
+      `Not requested: this step already waits for human signal "${name}". Request it again after that wait ends.`;
 
-    tool.execute({ signalName: 'first-signal' });
-    tool.execute({ signalName: 'second-signal' });
+    it('keeps the first signal and refuses a second one with the exact refusal shape', () => {
+      const context = makeContext();
+      const tool = createRequestHumanInputTool({ context });
 
-    expect(context.pendingHumanWait?.signalName).toBe('second-signal');
+      const first = tool.execute({ signalName: 'a', prompt: 'Approve a?' });
+      const second = tool.execute({ signalName: 'b', prompt: 'Approve b?' });
+
+      expect(first).toEqual({
+        parked: true,
+        signalName: 'a',
+        prompt: 'Approve a?',
+        message: 'Parked waiting for human signal "a". Prompt: Approve a?',
+      });
+      expect(second).toEqual({
+        parked: false,
+        signalName: 'b',
+        refused: true,
+        pendingPark: { kind: 'human-input', signalName: 'a' },
+        message: pendingMessage('a'),
+      });
+      expect(context.pendingHumanWait).toEqual({ signalName: 'a', prompt: 'Approve a?' });
+    });
+
+    it('refuses a repeat of the same signal name the same way', () => {
+      const context = makeContext();
+      const tool = createRequestHumanInputTool({ context });
+
+      tool.execute({ signalName: 'a' });
+      const second = tool.execute({ signalName: 'a' });
+
+      expect(second).toEqual({
+        parked: false,
+        signalName: 'a',
+        refused: true,
+        pendingPark: { kind: 'human-input', signalName: 'a' },
+        message: pendingMessage('a'),
+      });
+      expect(context.pendingHumanWait).toEqual({ signalName: 'a' });
+    });
+
+    it('dispatches exactly one HumanWaitParkedEvent for a refused second call', () => {
+      const context = makeContext('run-1');
+      const emitter = makeEmitter();
+      const tool = createRequestHumanInputTool({ context, emitter });
+      const received: HumanWaitParkedEvent[] = [];
+      emitter.addEventListener(HumanWaitParkedEvent.type, (event) => {
+        received.push(event);
+      });
+
+      tool.execute({ signalName: 'a' });
+      tool.execute({ signalName: 'b' });
+      tool.execute({ signalName: 'a' });
+
+      expect(received.map((event) => event.signalName)).toEqual(['a']);
+    });
+
+    it('refuses a human-input request when a wakeup already holds the step', () => {
+      const context = makeContext('run-1');
+      const emitter = makeEmitter();
+      const humanInput = createRequestHumanInputTool({ context, emitter });
+      const wakeup = createScheduleWakeupTool({ context });
+      const received: HumanWaitParkedEvent[] = [];
+      emitter.addEventListener(HumanWaitParkedEvent.type, (event) => {
+        received.push(event);
+      });
+
+      wakeup.execute({ in: '6h', note: 'check' });
+      const refused = humanInput.execute({ signalName: 'a', prompt: 'Approve?' });
+
+      expect(refused).toEqual({
+        parked: false,
+        signalName: 'a',
+        refused: true,
+        pendingPark: { kind: 'wakeup', duration: '6h' },
+        message:
+          'Not requested: this step already waits for a wakeup in 6h. Request it again after that wait ends.',
+      });
+      expect(context.pendingHumanWait).toBeUndefined();
+      expect(context.pendingWakeup).toEqual({ duration: '6h', note: 'check' });
+      expect(received).toHaveLength(0);
+    });
+
+    it('names a numeric wakeup duration the way the wakeup success message does', () => {
+      const context = makeContext();
+      const humanInput = createRequestHumanInputTool({ context });
+      const wakeup = createScheduleWakeupTool({ context });
+
+      wakeup.execute({ in: 1500 });
+      const refused = humanInput.execute({ signalName: 'a' });
+
+      expect(refused.message).toBe(
+        'Not requested: this step already waits for a wakeup in 1500ms. Request it again after that wait ends.',
+      );
+      expect(refused).toMatchObject({ pendingPark: { kind: 'wakeup', duration: 1500 } });
+    });
+
+    it('runs through a sequential toolbox: first call parks, second is refused, in order', async () => {
+      const context = makeContext('run-1');
+      const raw = createRequestHumanInputTool({ context });
+      const tool = createTool({
+        ...raw,
+        execute: async (input) => await Promise.resolve(raw.execute(input)),
+      });
+      const toolbox = createToolbox([tool]);
+
+      const results = await toolbox.execute(
+        [
+          createToolCall(tool.name, { signalName: 'a' }),
+          createToolCall(tool.name, { signalName: 'b' }),
+        ],
+        { mode: 'sequential' },
+      );
+
+      expect(results.map((result) => result.outcome)).toEqual(['success', 'success']);
+      expect(results[0]?.result).toMatchObject({ parked: true, signalName: 'a' });
+      expect(results[1]?.result).toMatchObject({
+        parked: false,
+        refused: true,
+        signalName: 'b',
+        pendingPark: { kind: 'human-input', signalName: 'a' },
+      });
+    });
+
+    it('describes the rule to the model in the exact sentence', () => {
+      const tool = createRequestHumanInputTool({ context: makeContext() });
+      expect(tool.description).toContain(
+        'Only the first human-input or wakeup request in a step is honored.',
+      );
+    });
   });
 
   describe('F3 / C3 event emission', () => {
@@ -286,6 +422,16 @@ describe('createRequestHumanInputTool', () => {
         DurableCapabilityUnavailableError,
       );
       expect(received).toHaveLength(0);
+    });
+
+    it('throws instead of refusing when a slot is already set (the durable check runs first)', () => {
+      const context = makeContext(undefined, false);
+      context.pendingHumanWait = { signalName: 'existing' };
+      const tool = createRequestHumanInputTool({ context });
+
+      expect(() => tool.execute({ signalName: 'human-response' })).toThrow(
+        DurableCapabilityUnavailableError,
+      );
     });
 
     it('does not overwrite an existing pendingHumanWait slot', () => {

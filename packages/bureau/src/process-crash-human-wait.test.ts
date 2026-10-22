@@ -14,12 +14,16 @@
  * `child.exited`, the marker file, or a bounded condition poll with a tiny real
  * delay, because LMDB's completion callbacks starve under a zero-delay loop.
  */
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { spawnWithHangGuard } from '@lostgradient/testing/hang-guard';
+import {
+  createTemporaryDirectory,
+  removeTemporaryPath,
+} from '@lostgradient/testing/temporary-path';
+import { HumanWaitParkedEvent } from '@lostgradient/operative';
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
@@ -34,6 +38,8 @@ import {
   createHarnessBureau,
   HUMAN_WAIT_PROMPT,
   HUMAN_WAIT_SIGNAL,
+  SECOND_HUMAN_WAIT_PROMPT,
+  SECOND_HUMAN_WAIT_SIGNAL,
 } from './test/process-crash-work-integrity-fixtures';
 import type { Bureau } from './types';
 
@@ -46,21 +52,32 @@ const runtime = createDefaultRuntimeServices();
  * a loaded host, so each backend's scenario runs whole, once, at module scope (see
  * `test/hoisted-scenario.ts`); a failed assertion is captured there and rethrown by its test.
  */
-async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promise<void> {
-  const directory = mkdtempSync(join(tmpdir(), `corvidae-process-crash-human-wait-${backend}-`));
+async function humanWaitScenario(
+  backend: Backend,
+  scope: ScenarioScope,
+  twoCalls: boolean,
+): Promise<void> {
+  const directory = createTemporaryDirectory(`corvidae-process-crash-human-wait-${backend}`);
   const storagePath = join(directory, 'bureau');
   const markerPath = join(directory, 'marker.json');
   let recoverer: Bureau | undefined;
   // A hung scenario never reaches its `finally`, so what it owns is released from here.
   scope.onHang(async () => {
     await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
-    rmSync(directory, { recursive: true, force: true });
+    removeTemporaryPath(directory);
   });
 
   try {
     // Premise: the child died from SIGKILL and left its marker.
     const child = spawnWithHangGuard(
-      ['bun', CHILD, 'human-wait-parked', backend, storagePath, markerPath],
+      [
+        'bun',
+        CHILD,
+        twoCalls ? 'human-wait-two-calls-parked' : 'human-wait-parked',
+        backend,
+        storagePath,
+        markerPath,
+      ],
       {
         stdout: 'pipe',
         stderr: 'pipe',
@@ -71,7 +88,17 @@ async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promis
     const stderr = await new Response(child.stderr).text();
     expect(child.signalCode ?? stderr).toBe('SIGKILL');
     expect(existsSync(markerPath)).toBe(true);
-    const { runId } = JSON.parse(readFileSync(markerPath, 'utf8')) as { runId: string };
+    const { runId, honoredSignal } = JSON.parse(readFileSync(markerPath, 'utf8')) as {
+      runId: string;
+      honoredSignal?: string;
+    };
+    // COR-1578: of the two requests in one step, the child's live review names the honored one.
+    const expectedSignal = twoCalls ? honoredSignal : HUMAN_WAIT_SIGNAL;
+    const expectedPrompt =
+      expectedSignal === SECOND_HUMAN_WAIT_SIGNAL ? SECOND_HUMAN_WAIT_PROMPT : HUMAN_WAIT_PROMPT;
+    const otherSignal =
+      expectedSignal === HUMAN_WAIT_SIGNAL ? SECOND_HUMAN_WAIT_SIGNAL : HUMAN_WAIT_SIGNAL;
+    expect([HUMAN_WAIT_SIGNAL, SECOND_HUMAN_WAIT_SIGNAL]).toContain(expectedSignal as string);
 
     // The dead holder's claim lapses on Weft's own wall clock.
     await new Promise<void>((resolve) => runtime.timers.setTimeout(resolve, CLAIM_TTL_MS * 10));
@@ -104,11 +131,22 @@ async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promis
     const [review] = reviews;
     if (review?.kind !== 'human-wait')
       throw new Error(`expected a human-wait review, got ${review?.kind}`);
-    expect(review.signalName).toBe(HUMAN_WAIT_SIGNAL);
-    expect(review.prompt).toBe(HUMAN_WAIT_PROMPT);
+    expect(review.signalName).toBe(expectedSignal as string);
+    expect(review.prompt).toBe(expectedPrompt);
+    expect(review.id).toBe(`human-wait:${runId}:${expectedSignal}:0`);
+    if (twoCalls) {
+      // The refused request left no park and no review behind.
+      const parkedSignals = (bureau.store.getRun(runId)?.actions ?? [])
+        .filter((action) => action.type === HumanWaitParkedEvent.type)
+        .map((action) => (action.detail as { signalName: string }).signalName);
+      expect(parkedSignals).not.toContain(otherSignal);
+      expect(reviewsFor().some((candidate) => candidate.id.includes(`:${otherSignal}:`))).toBe(
+        false,
+      );
+    }
     const liveness = bureau.getRun(runId)?.liveness;
     expect(liveness?.declaredWait?.reason).toBe('review');
-    expect(liveness?.declaredWait?.dependency).toBe(HUMAN_WAIT_SIGNAL);
+    expect(liveness?.declaredWait?.dependency).toBe(expectedSignal as string);
     // The recovered run is parked, not looping: nothing generated before approval.
     expect(generateCalls).toBe(0);
 
@@ -126,7 +164,7 @@ async function humanWaitScenario(backend: Backend, scope: ScenarioScope): Promis
   } finally {
     // allSettled never rejects, so the directory is always removed after shutdown.
     const reports = await Promise.allSettled(recoverer === undefined ? [] : [recoverer.shutdown()]);
-    rmSync(directory, { recursive: true, force: true });
+    removeTemporaryPath(directory);
     for (const report of reports) {
       expect(report.status).toBe('fulfilled');
       if (report.status === 'fulfilled') expect(report.value.unresolved).toBe(0);
@@ -140,10 +178,24 @@ type Backend = 'sqlite' | 'lmdb';
 const HANG_GUARD_MILLISECONDS = 120_000;
 const outcomes = {
   sqlite: await settleScenario(
-    (scope) => humanWaitScenario('sqlite', scope),
+    (scope) => humanWaitScenario('sqlite', scope, false),
     HANG_GUARD_MILLISECONDS,
   ),
-  lmdb: await settleScenario((scope) => humanWaitScenario('lmdb', scope), HANG_GUARD_MILLISECONDS),
+  lmdb: await settleScenario(
+    (scope) => humanWaitScenario('lmdb', scope, false),
+    HANG_GUARD_MILLISECONDS,
+  ),
+};
+// COR-1578: the same park step with a second, refused request in it.
+const twoCallOutcomes = {
+  sqlite: await settleScenario(
+    (scope) => humanWaitScenario('sqlite', scope, true),
+    HANG_GUARD_MILLISECONDS,
+  ),
+  lmdb: await settleScenario(
+    (scope) => humanWaitScenario('lmdb', scope, true),
+    HANG_GUARD_MILLISECONDS,
+  ),
 };
 
 describe.each(['sqlite', 'lmdb'] as const)(
@@ -151,6 +203,15 @@ describe.each(['sqlite', 'lmdb'] as const)(
   (backend) => {
     it('surfaces the recovered review, waits on it, and resumes exactly once when it is approved', () => {
       expectScenarioPassed(outcomes[backend]);
+    });
+  },
+);
+
+describe.each(['sqlite', 'lmdb'] as const)(
+  'a two-request park step recovers parked on its first request over %s (COR-1578)',
+  (backend) => {
+    it('lists one review for the honored request, none for the refused one, and resumes once when it is approved', () => {
+      expectScenarioPassed(twoCallOutcomes[backend]);
     });
   },
 );

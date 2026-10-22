@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
-import type { PendingHumanWait } from './durable/types';
+import type { PendingHumanWait, PendingWakeup } from './durable/types';
 import { HumanWaitParkedEvent } from './events';
+import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
 
 type HumanInputEventDispatcher = {
   dispatchEvent(event: Event): boolean;
@@ -40,6 +41,20 @@ export interface RequestHumanInputResult {
 }
 
 /**
+ * What `requestHumanInput` returns for a request made after the step already holds a park (COR-1578):
+ * `parked: false`, the signal that was asked for, and the park the step holds. The request took no
+ * slot, dispatched no event, and listed no review.
+ */
+export interface RefusedHumanInputResult extends RefusedParkRequest {
+  parked: false;
+  /** The signal name the refused request asked for. */
+  signalName: string;
+}
+
+/** Either outcome of a `requestHumanInput` call: the run parked, or the step's first park stands. */
+export type RequestHumanInputOutcome = RequestHumanInputResult | RefusedHumanInputResult;
+
+/**
  * The interface the `requestHumanInput` tool needs from its context.
  *
  * Designed for testability: tests pass a plain object instead of a full
@@ -48,6 +63,11 @@ export interface RequestHumanInputResult {
 export interface RequestHumanInputContext {
   /** Mutable slot — the tool writes the human-wait request here. */
   pendingHumanWait: PendingHumanWait | undefined;
+  /**
+   * The `scheduleWakeup` tool's slot, read-only here: a wakeup already requested in this step
+   * refuses a human-input request, because a step parks on at most one request (COR-1578).
+   */
+  readonly pendingWakeup: PendingWakeup | undefined;
   /**
    * Optional run id, used in the emitted event so observers can correlate the
    * park event to a specific run. Falls back to `''` when omitted.
@@ -76,7 +96,7 @@ export interface CreateRequestHumanInputToolOptions {
    * The mutable context the tool writes the human-wait request into. In
    * production this is the `DurableRunDeps` object (the tool and the workflow
    * share the same in-process reference). In tests, pass a plain
-   * `{ pendingHumanWait: undefined }` stub.
+   * `{ pendingHumanWait: undefined, pendingWakeup: undefined, durable: true }` stub.
    */
   context: RequestHumanInputContext;
   /**
@@ -105,6 +125,12 @@ export interface CreateRequestHumanInputToolOptions {
  * this tool from the effective toolbox entirely rather than relying on the
  * thrown error.
  *
+ * A step parks on at most one request: the first human-input or wakeup request to reach `execute`
+ * in a step is honored, and any later one returns a {@link RefusedHumanInputResult} instead of a
+ * parked result. A refusal is a normal tool result, so the step completes and the model reads it in
+ * its next request; it dispatches no event and takes no slot. The durable-capability check still
+ * runs first.
+ *
  * C3 completeness: when an `emitter` is provided, a `HumanWaitParkedEvent` is
  * dispatched BEFORE the tool result is returned so observers see the park event
  * synchronously with the tool call. No event is dispatched when the run is
@@ -130,7 +156,7 @@ export interface CreateRequestHumanInputToolOptions {
  * @example
  * ```ts
  * // Standalone (test):
- * const ctx = { pendingHumanWait: undefined, durable: true };
+ * const ctx = { pendingHumanWait: undefined, pendingWakeup: undefined, durable: true };
  * const tool = createRequestHumanInputTool({ context: ctx });
  * await tool.execute({ signalName: 'human-response', prompt: 'Approve this?' });
  * expect(ctx.pendingHumanWait?.signalName).toBe('human-response');
@@ -143,7 +169,8 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
     name: 'requestHumanInput',
     description:
       'Request human input: park this run until a human sends the named signal. ' +
-      'Use when the agent needs explicit human approval or a human decision before continuing.',
+      'Use when the agent needs explicit human approval or a human decision before continuing. ' +
+      'Only the first human-input or wakeup request in a step is honored.',
 
     /**
      * Zod schema for the tool's input arguments. Armorer's `createToolbox`
@@ -168,9 +195,18 @@ export function createRequestHumanInputTool(options: CreateRequestHumanInputTool
         ),
     }),
 
-    execute(input: RequestHumanInputInput): RequestHumanInputResult {
+    execute(input: RequestHumanInputInput): RequestHumanInputOutcome {
       if (!context.durable) {
         throw new DurableCapabilityUnavailableError('requestHumanInput');
+      }
+
+      // COR-1578 — first request wins: a step that already holds a park refuses this one.
+      const refusal = refuseIfStepIsParked({
+        pendingHumanWait: context.pendingHumanWait,
+        pendingWakeup: context.pendingWakeup,
+      });
+      if (refusal !== undefined) {
+        return { parked: false, signalName: input.signalName, ...refusal };
       }
 
       context.pendingHumanWait = {
