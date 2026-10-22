@@ -9,6 +9,7 @@ import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
 import { readRestJsonBody } from '../rest-body.ts';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import { assertOperationEngineMethods, isOperationFault } from './operation-helpers.ts';
 
 const DEFAULT_UPDATE_TIMEOUT_MS = 30_000;
@@ -33,6 +34,45 @@ const updateWorkflowOutput = z.object({
 
 export type UpdateWorkflowInput = z.infer<typeof updateWorkflowInput>;
 export type UpdateWorkflowOutput = z.infer<typeof updateWorkflowOutput>;
+
+/** Map an error from `submitCoordinatedUpdate` to the operation fault the update surfaces. */
+function toUpdateWorkflowFault(error: unknown): OperationFault {
+  if (isOperationFault(error)) return error;
+  const schemaFault = standardSchemaValidationFault(error);
+  if (schemaFault !== undefined) return schemaFault;
+  if (error instanceof UpdateValidationError) {
+    const fault: OperationFault = {
+      code: 'Unprocessable',
+      message: error.message,
+      data: { reason: error.message },
+    };
+    return fault;
+  }
+  if (error instanceof WorkflowTerminalError) {
+    const fault: OperationFault = {
+      code: 'Unprocessable',
+      message: error.message,
+      data: { reason: error.message },
+    };
+    return fault;
+  }
+  if (error instanceof UpdateTimeoutError) {
+    const fault: OperationFault = {
+      code: 'Timeout',
+      message: error.message,
+      data: { updateId: error.updateId },
+    };
+    return fault;
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const fault: OperationFault = {
+    code: 'EngineFailure',
+    message,
+    data: {},
+  };
+  return fault;
+}
 
 export const updateWorkflowOperation = defineOperation({
   name: 'weft.workflows.update',
@@ -89,41 +129,7 @@ export const updateWorkflowOperation = defineOperation({
         result: result.result,
       };
     } catch (error) {
-      if (isOperationFault(error)) {
-        throw error;
-      }
-      if (error instanceof UpdateValidationError) {
-        const fault: OperationFault = {
-          code: 'Unprocessable',
-          message: error.message,
-          data: { reason: error.message },
-        };
-        throw fault;
-      }
-      if (error instanceof WorkflowTerminalError) {
-        const fault: OperationFault = {
-          code: 'Unprocessable',
-          message: error.message,
-          data: { reason: error.message },
-        };
-        throw fault;
-      }
-      if (error instanceof UpdateTimeoutError) {
-        const fault: OperationFault = {
-          code: 'Timeout',
-          message: error.message,
-          data: { updateId: error.updateId },
-        };
-        throw fault;
-      }
-
-      const message = error instanceof Error ? error.message : String(error);
-      const fault: OperationFault = {
-        code: 'EngineFailure',
-        message,
-        data: {},
-      };
-      throw fault;
+      throw toUpdateWorkflowFault(error);
     }
   },
 });

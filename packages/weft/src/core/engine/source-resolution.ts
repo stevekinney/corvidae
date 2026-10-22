@@ -135,7 +135,7 @@ async function runSharedSourceLoad(
   if (!outcome.ok) {
     throw new WorkflowSourceValidationError(name, revision, outcome.reasons);
   }
-  assertWorkflowSchemas(internals.options.schemaPolicy, outcome.loadedDefinition);
+  assertWorkflowSchemas(internals.options, outcome.loadedDefinition);
 
   if (internals.disposed) {
     throw new EngineDisposedError();
