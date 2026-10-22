@@ -3930,11 +3930,16 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // admitted as an unrelated command in that other session's own ledger.
   const steeringCommandLedger = createSteeringCommandLedger();
   /**
-   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by
-   * `principal -> id`: the in-process counterpart of a cursor's `submitted`, which a fork reads to
-   * carry the request as the parent made it.
+   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by the
+   * session's steering gate and then `principal -> id`: the in-process counterpart of a cursor's
+   * `submitted`, which a fork reads to carry the request as the parent made it. Keyed by the gate,
+   * the entries leave with it when the session is deleted or expires, as its ledger entries do, so
+   * a command id reused afterwards, or a session recreated under the same id, never reads them.
    */
-  const submittedSteeringValues = new Map<string, Map<string, SteeringRequestedValue>>();
+  const submittedSteeringValues = new WeakMap<
+    BureauSteeringGate,
+    Map<string, Map<string, SteeringRequestedValue>>
+  >();
   // Keep the exact host-supplied (or bureau-derived) context for approval
   // resumption. Approval bindings identify the original caller, but are not a
   // substitute for the complete request context and must not mint authority.
@@ -13484,7 +13489,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (session === undefined) return undefined;
     const kv = durableSteeringStore();
     let ledger: ReturnType<typeof createSteeringCommandLedger> = steeringCommandLedger;
-    let selectors = submittedSteeringValues;
+    const gate = steeringGates.get(sessionId);
+    let selectors: Map<string, Map<string, SteeringRequestedValue>> = (gate === undefined
+      ? undefined
+      : submittedSteeringValues.get(gate)) ?? new Map();
     if (kv !== undefined) {
       const cursor = await enqueueSteering(sessionId, () =>
         catchUpSteering(kv, sessionId, session.incarnation),
@@ -13896,13 +13904,19 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     const kv = durableSteeringStore();
     if (kv === undefined) {
-      const outcome = getSessionSteeringGate(sessionId).admit(command, { liveRunIds, now });
+      const gate = getSessionSteeringGate(sessionId);
+      const outcome = gate.admit(command, { liveRunIds, now });
       if (
         outcome.outcome === 'accepted' &&
         'policyRef' in request.requestedValue &&
         request.requestedValue.policyRef !== undefined
       ) {
-        nestedSet(submittedSteeringValues, request.principal, id, request.requestedValue);
+        let submitted = submittedSteeringValues.get(gate);
+        if (submitted === undefined) {
+          submitted = new Map();
+          submittedSteeringValues.set(gate, submitted);
+        }
+        nestedSet(submitted, request.principal, id, request.requestedValue);
       }
       if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
       return outcome;

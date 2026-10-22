@@ -101,9 +101,10 @@ export interface ForkLedgerClaim {
   /**
    * The parent's latest admitted `model` request when the attempt began, as the parent made it;
    * `null` when it had none. `policyRef` is present when the parent chose its model through a
-   * policy profile, and the carried admission then submits that reference, resolved afresh. A
-   * claim written before the field existed has none and carries an explicit override, as it
-   * always did.
+   * policy profile, and the carried admission then submits that reference, resolved afresh; the
+   * `provider` and `model` beside it only record what the policy resolved to when the claim was
+   * made. A claim written before the field existed has none and carries an explicit override, as
+   * it always did.
    */
   readonly override: {
     readonly provider: string | null;

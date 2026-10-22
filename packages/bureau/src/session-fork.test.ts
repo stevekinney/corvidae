@@ -731,6 +731,46 @@ describe('a parent whose model a policy profile chose', () => {
     expect(created?.id).toBe('planned-fork');
   });
 
+  it('forgets a policy request with its session: a command id reused after a delete carries what the new session asked for', async () => {
+    // In-process, the submitted `policyRef` is kept beside the steering gate. Deleting the session
+    // purges its ledger entries, so the same command id is free again; a fork of the next session
+    // must carry that session's explicit choice, not the deleted session's policy.
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        agent: createAgent({
+          name: 'picker',
+          generate: async () => ({ content: 'answer', toolCalls: [] }),
+          allowedCandidates: [OPUS_5_5, OPUS_5],
+        }),
+      },
+      stopWhen: stopWhen.noToolCalls(),
+      storage: { type: 'memory' },
+      modelPolicy: POLICY,
+    });
+    cleanups.push(() => bureau.dispose());
+    const first = await completedSession(bureau, undefined, 'go', 0);
+    const byPolicy = await bureau.submitSteeringCommand(first.sessionId, {
+      id: 'm1',
+      principal: ALICE,
+      requestedValue: { target: 'model', policyRef: 'fast-tier' },
+    });
+    expect(byPolicy.outcome).toBe('accepted');
+    await bureau.deleteSession(first.sessionId);
+
+    const second = await completedSession(bureau, undefined, 'go', 0);
+    const explicit = await bureau.submitSteeringCommand(second.sessionId, {
+      id: 'm1',
+      principal: ALICE,
+      requestedValue: { target: 'model', override: OPUS_5_5.model, provider: OPUS_5_5.provider },
+    });
+    expect(explicit.outcome).toBe('accepted');
+
+    const result = await fork(bureau, second.sessionId, throughOf(second));
+
+    const child = await bureau.getSessionSteering(result.contextId);
+    expect(child?.model?.model).toBe(OPUS_5_5.model);
+  });
+
   it('reads a claim written before it could name a policy as an explicit override', async () => {
     const { bureau, run } = await openOpaque(true);
     await claimFork(bureau, run, 'old-claim', {
