@@ -702,6 +702,11 @@ function createA2AMount(
   bureau.addEventListener('run.removed', (event) => {
     void records.remove(event.runId).catch(() => undefined);
   });
+  // Message text does not outlive its context: deleting one empties its tasks' A2A history, as
+  // it empties their own. Another instance clears a record when it next reads it.
+  bureau.addEventListener('session.deleted', (event) => {
+    void records.clearContext(event.sessionId).catch(() => undefined);
+  });
   const ledger: A2ASendLedger = createPrunedLedger<A2ASendClaim, A2ASendResult>(
     kv,
     A2A_SEND_LEDGER_KEY_PREFIX,

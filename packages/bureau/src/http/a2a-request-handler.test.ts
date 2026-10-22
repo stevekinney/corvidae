@@ -130,3 +130,79 @@ describe('a continuation whose receipt could not be recorded', () => {
     }
   });
 });
+
+describe('a completed task whose reply this instance cannot read yet', () => {
+  it('folds the reply into the history once it can be read, rather than never', async () => {
+    const opened = await openBureau({
+      agents: {
+        asker: createAgent({
+          name: 'asker',
+          generate: async () => ({ content: 'the reply', toolCalls: [] }),
+        }),
+      },
+      publish: ['asker'],
+    });
+    try {
+      let hidden = true;
+      // The same Bureau, seen from an instance the run's reply has not reached yet.
+      const bureau = Object.create(opened.bureau, {
+        getRun: { value: (id: string) => (hidden ? undefined : opened.bureau.getRun(id)) },
+        eventHistory: {
+          value: (...args: Parameters<typeof opened.bureau.eventHistory>) =>
+            hidden
+              ? Promise.resolve({ events: [], hasMore: false, nextCursor: undefined })
+              : opened.bureau.eventHistory(...args),
+        },
+      }) as typeof opened.bureau;
+      const runtime = createDefaultRuntimeServices();
+      const host = buildBureauHandlerHost(opened.bureau, ['asker']);
+      const card = createBureauAgentCard({
+        catalogName: 'asker',
+        displayName: undefined,
+        description: undefined,
+        definitionRevision: 1,
+        skillDescriptors: undefined,
+        security: undefined,
+      });
+      const handler = createBureauA2ARequestHandler({
+        agentName: 'asker',
+        card: () => ({ ...card, supportedInterfaces: [], signatures: [] }),
+        bureau,
+        records: createA2ATaskRecords(textValueStore(new MemoryStorage())),
+        ledger: createCommandLedger<A2ASendClaim, A2ASendResult>({
+          kv: textValueStore(new MemoryStorage()),
+          keyPrefix: A2A_SEND_LEDGER_KEY_PREFIX,
+          clock: runtime.clock,
+          nextConflictId: () => runtime.identifiers.next('conflict'),
+        }),
+        respond: (principal, input) => respondToTask(host, principal, input),
+      });
+      const principal = principalFromApiKey({ subject: 'alice', scopes: [] });
+      const context = () =>
+        new ServerCallContext({ user: new BureauA2AUser(principal), requestedVersion: '1.0' });
+
+      const sent = await handler.sendMessage(
+        {
+          tenant: '',
+          message: userMessage('m-1', 'hello'),
+          configuration: undefined,
+          metadata: undefined,
+        },
+        context(),
+      );
+      if (!('status' in sent)) throw new Error('expected a task');
+      // The settlement recorded no answer for a session run, so this read has no reply.
+      expect(sent.history.map((entry) => entry.messageId)).toEqual(['m-1']);
+
+      hidden = false;
+      const later = await handler.getTask({ tenant: '', id: sent.id }, context());
+
+      expect(later.history.map((entry) => entry.parts[0]?.content)).toEqual([
+        { $case: 'text', value: 'hello' },
+        { $case: 'text', value: 'the reply' },
+      ]);
+    } finally {
+      await opened.dispose();
+    }
+  });
+});

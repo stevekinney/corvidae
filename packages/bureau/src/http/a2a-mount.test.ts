@@ -3,6 +3,7 @@ import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/oper
 import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition } from '../test';
+import { rejectionOf } from '../testing/promise-outcome.test-support.ts';
 import {
   approvalToolbox,
   type OpenedBureau,
@@ -1009,5 +1010,81 @@ describe('the first review pass', () => {
       },
       { handlerOptions: { maxRequestBodyBytes: 1024 } },
     );
+  });
+});
+
+describe('the second review pass', () => {
+  it('answers a path that is not an agent’s interface or discovery route as not found', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const post = (path: string) =>
+        opened.handler(
+          new Request(`http://localhost${path}`, {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'A2A-Version': '1.0',
+              'X-API-Key': 'alice-key',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 1,
+              method: 'SendMessage',
+              params: { message: message('x') },
+            }),
+          }),
+        );
+
+      const extra = await post('/a2a/asker/extra');
+      const malformed = await post('/a2a/%/');
+      const slash = await post('/a2a/asker/');
+
+      expect([extra.status, malformed.status, slash.status]).toEqual([404, 404, 200]);
+      expect(opened.bureau.listRuns()).toHaveLength(1);
+    });
+  });
+
+  it('refuses a signing key that cannot sign when the handler is built', async () => {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, [
+      'sign',
+      'verify',
+    ]);
+    const open = () =>
+      withA2A({ asker: answering('done') }, async () => undefined, {
+        handlerOptions: { signing: { privateKey: pair.privateKey, kid: 'k', alg: 'ES256' } },
+      });
+    const refused = await rejectionOf(open());
+    expect(String(refused)).toContain('extractable');
+  });
+
+  it('empties a task’s A2A history when its context is deleted', async () => {
+    await withA2A({ asker: answering('done') }, async (opened) => {
+      const task = await sendForTask(opened, 'asker', { message: message('private words') });
+      expect(task.history.length).toBeGreaterThan(0);
+
+      await opened.bureau.deleteSession(task.contextId);
+      const read = await call(opened, 'asker', 'GetTask', { id: task.id });
+
+      expect(read.body.result.history ?? []).toEqual([]);
+      expect(JSON.stringify(read.body)).not.toContain('private words');
+    });
+  });
+
+  it('answers a concurrent exact retry by its own returnImmediately, not the first send’s wait', async () => {
+    await withA2A({ asker: parkingUntilAborted }, async (opened) => {
+      const same = message('long');
+      const blocking = send(opened, 'asker', { message: same });
+      await waitForCondition(() => opened.bureau.listRuns().length === 1, 'the run never started');
+
+      const immediate = await send(opened, 'asker', {
+        message: same,
+        configuration: { returnImmediately: true },
+      });
+
+      expect(['TASK_STATE_SUBMITTED', 'TASK_STATE_WORKING']).toContain(
+        immediate.body.result.task.status.state,
+      );
+      await opened.bureau.tasks.cancel(immediate.body.result.task.id, 0);
+      await blocking;
+    });
   });
 });

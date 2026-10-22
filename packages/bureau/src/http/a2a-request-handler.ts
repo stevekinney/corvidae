@@ -86,7 +86,7 @@ import {
   A2UI_EXTENSION_URI,
   DECLARED_EXTENSIONS,
 } from './a2a-agent-card.ts';
-import type { A2ATaskRecords, A2AWireMessage } from './a2a-task-record.ts';
+import { type A2ATaskRecords, type A2AWireMessage, clearedRecord } from './a2a-task-record.ts';
 import {
   agentMessage,
   bureauStateOf,
@@ -136,6 +136,9 @@ const SETTLE_POLL_MS = 1_000;
  * answer that took effect is never resent as session input.
  */
 export type A2ASendClaim = { readonly path?: 'answer' | 'input' | undefined };
+
+/** A send once admitted: the task it created or continued, and how its responses show it. */
+type Admitted = { readonly taskId: string; readonly shape: ProjectionShape };
 
 /** What a completed send's ledger entry holds: the task it created or continued. */
 export type A2ASendResult = { readonly taskId: string };
@@ -314,7 +317,7 @@ export function createBureauA2ARequestHandler(
   const cancelWait = options.cancelWaitMilliseconds ?? 0;
   const timers = options.timers ?? createDefaultRuntimeServices().timers;
   /** Sends being answered in this process, by binding: an identical send waits for the first. */
-  const inFlight = new Map<string, Promise<Task>>();
+  const inFlight = new Map<string, Promise<Admitted>>();
 
   /** The caller's task on this agent, or the not-found answer a denial shares with absence. */
   async function ownTask(taskId: string, owner: Owner): Promise<TaskView> {
@@ -356,9 +359,24 @@ export function createBureauA2ARequestHandler(
 
   /** The task as one response shows it, folding a completed task's reply into its history once. */
   async function respondWith(view: TaskView, shape: ProjectionShape): Promise<Task> {
-    const reply = await replyOf(view);
+    const stored = await bureau.tasks.record(view.id);
     let record = await records.read(view.id);
-    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded) {
+    // A deleted context empties its tasks' own history, and the A2A history goes with it, even on
+    // an instance that did not see the deletion happen.
+    if (record !== undefined && stored !== undefined && stored.history.length === 0) {
+      if (record.history.length > 0 || !record.replyRecorded) {
+        record = await records.update(view.id, (current) =>
+          current.history.length === 0 && current.replyRecorded
+            ? undefined
+            : clearedRecord(current),
+        );
+      }
+    }
+    const reply = await replyOf(view);
+    // The reply is folded in once it can be read: a completed task whose reply is not yet visible
+    // here (its history event has not reached this instance) is folded on a later read.
+    const replyReady = view.status !== 'completed' || (reply !== undefined && reply !== '');
+    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
       record = await records.update(view.id, (current) =>
         current.replyRecorded
           ? undefined
@@ -377,7 +395,6 @@ export function createBureauA2ARequestHandler(
             },
       );
     }
-    const stored = await bureau.tasks.record(view.id);
     return projectTask(
       { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
       shape,
@@ -588,7 +605,7 @@ export function createBureauA2ARequestHandler(
   async function admit(
     params: SendMessageRequest,
     context: ServerCallContext | undefined,
-  ): Promise<Task> {
+  ): Promise<Admitted> {
     const user = userOf(context);
     const owner = ownerOf(context);
     const message = requireMessage(params);
@@ -607,14 +624,7 @@ export function createBureauA2ARequestHandler(
       includeArtifacts: true,
       activated,
     };
-    const answer = async (taskId: string): Promise<Task> => {
-      const view =
-        params.configuration?.returnImmediately === true
-          ? await bureau.tasks.get(taskId)
-          : await settledView(taskId, requestSignalOf(context as ServerCallContext));
-      if (view === undefined) throw taskNotFound(taskId);
-      return respondWith(view, shape);
-    };
+    const answer = (taskId: string): Admitted => ({ taskId, shape });
 
     // The caller's own binding first: an exact retry is owed its task whatever has changed since.
     const located = await ledger.locate(identity);
@@ -696,6 +706,37 @@ export function createBureauA2ARequestHandler(
     return answer(taskId);
   }
 
+  /**
+   * Admits a send once per binding at a time: one that arrives while an identical send is being
+   * admitted waits for that admission only, never for the first send's wait on its task, so a
+   * retry with its own response controls answers by them.
+   */
+  async function admitOnce(
+    params: SendMessageRequest,
+    context: ServerCallContext | undefined,
+  ): Promise<Admitted> {
+    const message = params.message;
+    if (message === undefined) return admit(params, context);
+    const key = [
+      ownerOf(context),
+      message.taskId,
+      message.messageId,
+      context?.requestedVersion ?? '1.0',
+    ].join('\u0000');
+    const running = inFlight.get(key);
+    if (running !== undefined) {
+      await running.catch(() => undefined);
+      return admit(params, context);
+    }
+    const attempt = admit(params, context);
+    inFlight.set(key, attempt);
+    try {
+      return await attempt;
+    } finally {
+      if (inFlight.get(key) === attempt) inFlight.delete(key);
+    }
+  }
+
   return {
     async getAgentCard() {
       return options.card();
@@ -706,29 +747,13 @@ export function createBureauA2ARequestHandler(
     },
 
     async sendMessage(params, context) {
-      // A send that arrives while one with the same binding is being answered waits for it, so
-      // the second never reaches the run-creation ledger while the first holds its claim; it is
-      // then answered on its own, as an exact retry or a conflict.
-      const message = params.message;
-      if (message === undefined) return admit(params, context);
-      const key = [
-        ownerOf(context),
-        message.taskId,
-        message.messageId,
-        context?.requestedVersion ?? '1.0',
-      ].join('\u0000');
-      const running = inFlight.get(key);
-      if (running !== undefined) {
-        await running.catch(() => undefined);
-        return admit(params, context);
-      }
-      const attempt = admit(params, context);
-      inFlight.set(key, attempt);
-      try {
-        return await attempt;
-      } finally {
-        if (inFlight.get(key) === attempt) inFlight.delete(key);
-      }
+      const { taskId, shape } = await admitOnce(params, context);
+      const view =
+        params.configuration?.returnImmediately === true
+          ? await bureau.tasks.get(taskId)
+          : await settledView(taskId, context === undefined ? undefined : requestSignalOf(context));
+      if (view === undefined) throw taskNotFound(taskId);
+      return respondWith(view, shape);
     },
 
     // eslint-disable-next-line require-yield -- streaming is not declared yet, so this only refuses.

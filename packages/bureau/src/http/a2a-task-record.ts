@@ -17,6 +17,9 @@ import type { ConditionalTextValueStore } from '@lostgradient/weft';
 /** The key prefix of a task's A2A record, disjoint from every other prefix the Bureau stores. */
 export const A2A_TASK_RECORD_KEY_PREFIX = 'bureau-a2a-task:v1:';
 
+/** The key prefix of the index of a context's tasks, so deleting the context clears them all. */
+export const A2A_CONTEXT_INDEX_KEY_PREFIX = 'bureau-a2a-context:v1:';
+
 /** The record version this module writes and reads. */
 export const A2A_TASK_RECORD_VERSION = 1;
 
@@ -69,12 +72,31 @@ export interface A2ATaskRecords {
     taskId: string,
     change: (current: A2ATaskRecord) => A2ATaskRecord | undefined,
   ): Promise<A2ATaskRecord | undefined>;
+  /**
+   * Empties the history of every task recorded in `contextId`, for a context that was deleted:
+   * message text does not outlive its context. The task's reply is not folded in afterwards.
+   * Resolves how many records it cleared.
+   */
+  clearContext(contextId: string): Promise<number>;
   /** Deletes a task's record. */
   remove(taskId: string): Promise<void>;
 }
 
+/** A record with its history emptied, as a deleted context leaves it. */
+export function clearedRecord(record: A2ATaskRecord): A2ATaskRecord {
+  return { ...record, history: [], replyRecorded: true };
+}
+
 function keyOf(taskId: string): string {
   return `${A2A_TASK_RECORD_KEY_PREFIX}${encodeURIComponent(taskId)}`;
+}
+
+function contextPrefix(contextId: string): string {
+  return `${A2A_CONTEXT_INDEX_KEY_PREFIX}${encodeURIComponent(contextId)}:`;
+}
+
+function indexKeyOf(contextId: string, taskId: string): string {
+  return `${contextPrefix(contextId)}${encodeURIComponent(taskId)}`;
 }
 
 function parse(taskId: string, raw: string): A2ATaskRecord {
@@ -92,8 +114,44 @@ export function createA2ATaskRecords(kv: ConditionalTextValueStore): A2ATaskReco
     return raw === null ? undefined : parse(taskId, raw);
   }
 
+  async function update(
+    taskId: string,
+    change: (current: A2ATaskRecord) => A2ATaskRecord | undefined,
+  ): Promise<A2ATaskRecord | undefined> {
+    const key = keyOf(taskId);
+    for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
+      const raw = await kv.get(key);
+      if (raw === null) return undefined;
+      const current = parse(taskId, raw);
+      const next = change(current);
+      if (next === undefined) return current;
+      const written = await kv.conditionalBatch(
+        [{ key, expectedValue: raw }],
+        [{ type: 'set', key, value: JSON.stringify(next) }],
+      );
+      if (written) return next;
+    }
+    throw new Error(`The A2A record of task "${taskId}" could not be updated.`);
+  }
+
   return {
     read,
+    update,
+
+    async clearContext(contextId) {
+      let cleared = 0;
+      for (const indexKey of await kv.list(contextPrefix(contextId))) {
+        const taskId = await kv.get(indexKey);
+        if (taskId !== null) {
+          const record = await update(taskId, (current) =>
+            current.history.length === 0 ? undefined : clearedRecord(current),
+          );
+          if (record !== undefined) cleared += 1;
+        }
+        await kv.delete(indexKey);
+      }
+      return cleared;
+    },
 
     async create(record) {
       const key = keyOf(record.taskId);
@@ -102,31 +160,22 @@ export function createA2ATaskRecords(kv: ConditionalTextValueStore): A2ATaskReco
         if (raw !== null) return parse(record.taskId, raw);
         const written = await kv.conditionalBatch(
           [{ key, expectedValue: null }],
-          [{ type: 'set', key, value: JSON.stringify(record) }],
+          [
+            { type: 'set', key, value: JSON.stringify(record) },
+            { type: 'set', key: indexKeyOf(record.contextId, record.taskId), value: record.taskId },
+          ],
         );
         if (written) return record;
       }
       throw new Error(`The A2A record of task "${record.taskId}" could not be written.`);
     },
 
-    async update(taskId, change) {
-      const key = keyOf(taskId);
-      for (let attempt = 0; attempt < MAXIMUM_WRITE_ATTEMPTS; attempt += 1) {
-        const raw = await kv.get(key);
-        if (raw === null) return undefined;
-        const current = parse(taskId, raw);
-        const next = change(current);
-        if (next === undefined) return current;
-        const written = await kv.conditionalBatch(
-          [{ key, expectedValue: raw }],
-          [{ type: 'set', key, value: JSON.stringify(next) }],
-        );
-        if (written) return next;
-      }
-      throw new Error(`The A2A record of task "${taskId}" could not be updated.`);
-    },
-
     async remove(taskId) {
+      const raw = await kv.get(keyOf(taskId));
+      const record = raw === null ? undefined : (JSON.parse(raw) as Partial<A2ATaskRecord>);
+      if (typeof record?.contextId === 'string') {
+        await kv.delete(indexKeyOf(record.contextId, taskId));
+      }
       await kv.delete(keyOf(taskId));
     },
   };

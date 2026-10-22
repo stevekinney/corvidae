@@ -69,9 +69,42 @@ function trimTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
 
+/**
+ * The agent a path addresses, or `undefined` for any path that is not exactly an agent's
+ * interface (`/a2a/<name>`, with or without a trailing slash) or one of its two discovery
+ * routes: an unknown suffix is never read as JSON-RPC, and a malformed escape is not found.
+ */
+function agentOf(pathname: string): string | undefined {
+  const segments = pathname.split('/');
+  if (segments[1] !== 'a2a' || segments[2] === undefined || segments[2] === '') return undefined;
+  const rest = segments.slice(3);
+  const routed =
+    rest.length === 0 ||
+    (rest.length === 1 && rest[0] === '') ||
+    (rest.length === 2 &&
+      rest[0] === '.well-known' &&
+      (rest[1] === 'agent-card.json' || rest[1] === 'jwks.json'));
+  if (!routed) return undefined;
+  try {
+    return decodeURIComponent(segments[2]);
+  } catch {
+    return undefined;
+  }
+}
+
 function notFound(): Response {
   return Response.json({ error: 'Not found' }, { status: 404 });
 }
+
+/** The card of no agent, built only to have the kit check a signing key at construction. */
+const probeCard = createBureauAgentCard({
+  catalogName: 'probe',
+  displayName: undefined,
+  description: undefined,
+  definitionRevision: 0,
+  skillDescriptors: undefined,
+  security: undefined,
+});
 
 /** Creates the mount that serves every published agent over A2A. */
 export function createBureauA2AMount(options: BureauA2AMountOptions): OperationHandlerMount {
@@ -81,6 +114,23 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
   // reads back the principal the handler already resolved.
   const users = new WeakMap<Request, BureauA2AUser>();
   const handlers = new Map<string, { readonly revision: number; readonly handler: A2AHandler }>();
+  // A signing key that cannot sign is a misconfiguration, refused here rather than on the first
+  // request: the kit checks the key when a handler is built, so one is built now and discarded.
+  if (options.signing !== undefined) {
+    createA2AHandler({
+      requestHandler: createBureauA2ARequestHandler({
+        agentName: '',
+        card: () => ({ ...probeCard, supportedInterfaces: [], signatures: [] }),
+        bureau: options.bureau,
+        records: options.records,
+        ledger: options.ledger,
+        respond: options.respond,
+      }),
+      agentCard: probeCard,
+      publicUrl,
+      signing: options.signing,
+    });
+  }
 
   function handlerOf(agentName: string): A2AHandler | undefined {
     const source = options.describe(agentName);
@@ -119,8 +169,8 @@ export function createBureauA2AMount(options: BureauA2AMountOptions): OperationH
     isPublicPath: (pathname) => PUBLIC_ROUTE.test(pathname),
     async fetch(request, context) {
       const pathname = new URL(request.url).pathname;
-      const agentName = decodeURIComponent(pathname.split('/')[2] ?? '');
-      if (agentName === '' || !options.publication.includes(agentName)) return notFound();
+      const agentName = agentOf(pathname);
+      if (agentName === undefined || !options.publication.includes(agentName)) return notFound();
       const handler = handlerOf(agentName);
       if (handler === undefined) return notFound();
       // Without signing there is no key to publish; the kit would read the path as JSON-RPC.
