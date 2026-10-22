@@ -140,36 +140,30 @@ function assertConvergenceTokenProvided(
 }
 
 /**
- * The fault for a rejected signal: an undeclared name or a payload that fails
- * its declared schema. The two error classes are disjoint.
- */
-function signalInputFault(error: unknown): OperationFault | undefined {
-  return undeclaredMessageFault(error) ?? standardSchemaValidationFault(error);
-}
-
-/**
  * Map an engine error thrown by `engine.startOrSignal` to the canonical fault.
  *
  * Routing order (typed errors take precedence over string matching):
  *   1. WorkflowNotRegisteredError   → InvalidParams
- *   2. UndeclaredWorkflowMessageError → Unprocessable (signal outside the declared set)
- *   3. StandardSchemaValidationError → InvalidParams (declared input or signal schema)
- *   4. StartOrSignalConflictError   → Conflict (target already terminal)
- *   5. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
- *   6. WorkflowTeardownPendingError → Conflict (terminal cleanup not done)
- *   7. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
- *   8. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
- *   9. StartWorkflowValidationError → InvalidParams
- *  10. otherwise                    → EngineFailure
+ *   2. StartOrSignalConflictError   → Conflict (target already terminal)
+ *   3. IdempotencyKeyPurgedError    → Conflict (key maps to a purged run)
+ *   4. WorkflowTeardownPendingError → Conflict (terminal cleanup not done)
+ *   5. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
+ *   6. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
+ *   7. StartWorkflowValidationError → InvalidParams
+ *   8. StandardSchemaValidationError → InvalidParams (declared input or signal schema)
+ *   9. otherwise                    → EngineFailure
  */
+/** A start bound to a removed build answers Conflict; a signal the target does not declare, Unprocessable. */
+function removedBuildOrUndeclaredSignalFault(error: unknown): OperationFault | undefined {
+  return workerVersionRemovedFault(error) ?? undeclaredMessageFault(error);
+}
+
 function resolveStartOrSignalWorkflowFault(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
 
   if (error instanceof WorkflowNotRegisteredError) {
     throw invalidParamsFault(message, error.code);
   }
-  const messageFault = signalInputFault(error);
-  if (messageFault !== undefined) throw messageFault;
   if (
     error instanceof StartOrSignalConflictError ||
     error instanceof IdempotencyKeyPurgedError ||
@@ -195,11 +189,13 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   if (error instanceof WorkerStartOverrideRejectedError) {
     throw workerStartOverrideRejectedFault(message);
   }
-  const removedFault = workerVersionRemovedFault(error);
-  if (removedFault !== undefined) throw removedFault;
+  const typedFault = removedBuildOrUndeclaredSignalFault(error);
+  if (typedFault !== undefined) throw typedFault;
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }
+  const schemaFault = standardSchemaValidationFault(error);
+  if (schemaFault !== undefined) throw schemaFault;
 
   const fault: OperationFault = {
     code: 'EngineFailure',

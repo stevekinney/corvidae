@@ -11,9 +11,10 @@
  * `.name` each `signal()`/`update()`/`query()` handle carries, which the
  * contract lists) together with the keys the builder map aliases them to.
  *
- * A workflow whose definition this process does not have — a client-only
- * engine, or a dynamic source revision not resolved here — is not checked:
- * the engine cannot tell what such a workflow declared.
+ * A workflow whose definition this process does not have for the run's own
+ * revision — a client-only engine, a dynamic source revision not resolved
+ * here, or a run pinned to an older revision than the one registered here — is
+ * not checked: the engine cannot tell what that revision declared.
  *
  * @module core/engine/declared-messages
  */
@@ -82,9 +83,13 @@ const MESSAGE_FIELDS = {
 } as const satisfies Record<WorkflowMessageKind, 'signals' | 'updates' | 'queries'>;
 
 /**
- * The builder definition this process runs for `type`: the eagerly registered
- * one, or the dynamic source resolved at `revision`. `undefined` for a type
- * this process has no builder definition for.
+ * The builder definition that declares messages for a run of `type` at
+ * `revision`: the eagerly registered one when its registered revision is the
+ * run's (or the run predates revisions), or the dynamic source resolved at
+ * `revision`. `undefined` when this process has no definition for that exact
+ * revision. In a rolling deployment a run pinned to an older revision may still
+ * be executing elsewhere, and this process's newer definition can declare a
+ * different set, so such a run is left unchecked rather than judged by it.
  */
 function declaringDefinition(
   internals: EngineInternals,
@@ -92,6 +97,8 @@ function declaringDefinition(
   revision: string | undefined,
 ): DeclaredMessageMaps | undefined {
   if (internals.registrations.has(type)) {
+    const registered = internals.registeredCatalogRevisions.get(type);
+    if (revision !== undefined && registered !== revision) return undefined;
     return internals.workflowDefinitionsByName.get(type);
   }
   if (revision === undefined) return undefined;

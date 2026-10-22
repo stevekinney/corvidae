@@ -17,6 +17,7 @@ import {
   type AnyWorkflowDefinition,
   type WorkflowContext,
 } from '../types.ts';
+import { ensureWorkflowCatalogReady } from './catalog-readiness.ts';
 import { UndeclaredWorkflowMessageError } from './declared-messages.ts';
 import { deriveWorkflowDefinitionRevision } from './definition-revision.ts';
 import { ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING, Engine } from './index.ts';
@@ -245,5 +246,34 @@ describe('closed message sets', () => {
     await handle.signal('wireName', 'ignored');
     await handle.signal('localAlias', 'delivered');
     expect(await handle.result()).toBe('delivered');
+  });
+
+  it('leaves a run pinned to an older revision unchecked by a newer registered declaration', async () => {
+    const storage = new MemoryStorage();
+    const revisionA = workflow({ name: 'rolling' })
+      .signals({ approve })
+      .execute(async function* (ctx: WorkflowContext) {
+        return yield* ctx.waitForSignal<string>('approve');
+      });
+    const revisionB = workflow({ name: 'rolling' })
+      .signals({ confirm: signal<string>('confirm') })
+      .execute(async function* (ctx: WorkflowContext) {
+        return yield* ctx.waitForSignal<string>('confirm');
+      });
+
+    await using original = new Engine({ storage });
+    original.register(revisionA);
+    const handle = await original.start('rolling', null);
+    await original[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](handle.id);
+
+    await using rolledOut = new Engine({ storage });
+    rolledOut.register(revisionB);
+    await ensureWorkflowCatalogReady(rolledOut);
+
+    // `approve` is declared by revision A, which the run is pinned to.
+    await rolledOut.signal(handle.id, 'approve', 'from-new-engine');
+    // A run started under revision B is still checked against B.
+    const fresh = await rolledOut.start('rolling', null);
+    await undeclaredOf(rolledOut.signal(fresh.id, 'approve', 'nope'));
   });
 });

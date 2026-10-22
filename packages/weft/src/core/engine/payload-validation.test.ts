@@ -118,14 +118,13 @@ describe('payloadValidation engine option', () => {
     expect(await handle.result()).toEqual({ count: '5' });
   });
 
-  it('rejects an invalid declared signal, and an undeclared one as undeclared', async () => {
+  it('rejects an invalid declared signal, and an undeclared one by the closed signal set', async () => {
     const engine = validatingEngine();
     const handle = await engine.start('checkout', { id: 'o-2' });
     const error = await schemaRejection(engine.signal(handle.id, 'approve', { approved: 'yes' }));
     expect(error.fieldName).toBe('payload');
     expect(error.operation).toBe('weft.workflows.signal');
-    // Declaring signals closes the set, so an undeclared name never reaches
-    // payload validation.
+    // `checkout` declares its signals, so an undeclared name never reaches payload validation.
     expect(await rejectionOf(engine.signal(handle.id, 'undeclared', 'anything'))).toBeInstanceOf(
       UndeclaredWorkflowMessageError,
     );

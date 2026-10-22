@@ -214,13 +214,19 @@ async function buildWorkflowContract(
     string,
     WorkflowActivityContract
   >;
+  const baseContract = manifest.contract;
+  // An engine-provided activity the workflow declares with `.uses()` is already
+  // in `usedActivities`, which `contractHash` excludes. Copying it into the
+  // scoped `activities` would move this worker's contract hash and revision away
+  // from the registry's for the same workflow, so it stays where it is.
+  const usedActivities = baseContract.usedActivities ?? {};
   for (const activityName of sortedActivityNames) {
+    if (Object.hasOwn(usedActivities, activityName)) continue;
     activities[activityName] = toActivityContract(
       findActivityEntry(engine, workflowType, activityName),
     );
   }
 
-  const baseContract = manifest.contract;
   const contractForHash: WorkflowContract =
     Object.keys(activities).length > 0 ? { ...baseContract, activities } : baseContract;
 
