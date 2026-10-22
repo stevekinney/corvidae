@@ -102,9 +102,9 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
       const metadata = evidence?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY] as
         { recordIds: readonly string[] } | undefined;
       recalled.push(
-        evidence === undefined
-          ? undefined
-          : { content: String(evidence.content), recordIds: metadata?.recordIds ?? [] },
+        typeof evidence?.content === 'string'
+          ? { content: evidence.content, recordIds: metadata?.recordIds ?? [] }
+          : undefined,
       );
     }
     return { content: 'noted', toolCalls: [] };
@@ -172,8 +172,10 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
     await build();
     const car = await seed('The user drives an electric automobile.');
     const city = await seed('The user lives in Boston.');
-    expect((await ask(city))?.recordIds[0]).toBe(city);
-    expect((await ask('Which vehicle?'))?.recordIds[0]).toBe(car);
+    const byIdentifier = await ask(city);
+    expect(byIdentifier?.recordIds[0]).toBe(city);
+    const byParaphrase = await ask('Which vehicle?');
+    expect(byParaphrase?.recordIds[0]).toBe(car);
   });
 
   it('recalls the current state, never the superseded one', async () => {
@@ -223,6 +225,7 @@ describe('Bureau runs recall through the retrieval plan (COR-771)', () => {
     // An explicit memory capability that the deployment grant lacks narrows the run to none.
     const powerless = requestContext({ capabilities: ['tools:execute', 'memory:delete'] });
     expect(await ask('Which vehicle?', powerless)).toBeUndefined();
-    expect((await ask('Which vehicle?'))?.recordIds).toHaveLength(1);
+    const authorized = await ask('Which vehicle?');
+    expect(authorized?.recordIds).toHaveLength(1);
   });
 });
