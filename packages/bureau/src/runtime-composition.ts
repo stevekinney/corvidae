@@ -1073,7 +1073,7 @@ export type CatalogAgentRunOptionsResolver = (
    * from the run's snapshot; absent altogether means a run that is starting, which resolves the
    * agent as it is now.
    */
-  recorded?: { readonly agentDefinitionHash: string | undefined },
+  recorded?: CatalogRunRecordedDefinition,
 ) => Promise<CatalogAgentRunOptionsResolution>;
 
 /**
@@ -1126,6 +1126,36 @@ export const SESSION_AGENT_REVISION_METADATA_KEY = 'lastAgentRevision';
  * for a code-defined agent), so a recovered run builds from its snapshot.
  */
 export const SESSION_AGENT_DEFINITION_HASH_METADATA_KEY = 'lastAgentDefinitionHash';
+
+/**
+ * COR-1524, COR-1584 — the definition a run being resumed recorded: the hash of the agent file it
+ * started with (`undefined` for a code-defined agent), and the definition revision it started at
+ * (`undefined` when its record names none). The resolver rebuilds a file agent from the snapshot
+ * under the hash, and the rebuilt agent reports the revision, not the revision the file has
+ * reached since: one snapshot is keyed by content, so it can have been several revisions.
+ */
+export interface CatalogRunRecordedDefinition {
+  readonly agentDefinitionHash: string | undefined;
+  readonly definitionRevision?: number | undefined;
+}
+
+/**
+ * COR-1584 — the definition revision a session's metadata recorded for the definition at `hash`.
+ * A session's metadata names its latest run's definition only, so the revision is the run's own
+ * only when the hash is the one the metadata names; any other run's revision is not recorded
+ * there, and the caller gets `undefined`.
+ */
+export function sessionRecordedRevision(
+  metadata: Readonly<Record<string, unknown>>,
+  hash: unknown,
+): number | undefined {
+  const revision = metadata[SESSION_AGENT_REVISION_METADATA_KEY];
+  return typeof hash === 'string' &&
+    metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY] === hash &&
+    typeof revision === 'number'
+    ? revision
+    : undefined;
+}
 
 type RecoveredScheduleMarker =
   | { status: 'found'; scheduleId: string }
@@ -2142,7 +2172,7 @@ export interface RuntimeComposition {
     agentName: string,
     runId: string,
     principal?: string,
-    recorded?: { readonly agentDefinitionHash: string | undefined },
+    recorded?: CatalogRunRecordedDefinition,
   ): Promise<SessionAgentRunResolution>;
   /**
    * COR-716 — how a run owned by `principalId` handles the media it carries: the
@@ -3659,7 +3689,7 @@ async function buildRuntimeComposition(
     agentName: string,
     runId: string,
     principal?: string,
-    recorded?: { readonly agentDefinitionHash: string | undefined },
+    recorded?: CatalogRunRecordedDefinition,
   ): Promise<SessionAgentRunResolution> {
     const wired = await awaitCatalogAgentRunOptionsResolver(runId);
     if (wired.status === 'absent') {
@@ -3909,6 +3939,7 @@ async function buildRuntimeComposition(
     const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
     const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
       agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
+      definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
     });
     if (resolution.status === 'missing-agent') {
       throw new Error(`${label}: catalog agent "${agentName}" is no longer in the catalog`);
@@ -4335,7 +4366,10 @@ async function buildRuntimeComposition(
         ...(record.principal !== undefined ? { principal: record.principal } : {}),
       },
       runId,
-      { agentDefinitionHash: record.agentDefinitionHash },
+      {
+        agentDefinitionHash: record.agentDefinitionHash,
+        definitionRevision: record.definitionRevision,
+      },
     );
     if (resolution.status === 'missing-agent') {
       return {

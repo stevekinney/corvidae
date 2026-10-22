@@ -318,6 +318,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
     description: entry.agent.description ?? null,
     published: false,
     owner: ownerOrLocal(undefined),
+    definitionRevision: readGenerationProfile(entry.agent).revision,
   });
   // Computed once, here, not lazily per call — "cached, side-effect-free
   // read" (AC9) means a `generationProfile(name)` call is a plain Map

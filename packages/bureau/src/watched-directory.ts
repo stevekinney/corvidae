@@ -76,6 +76,21 @@ export interface WatchedDirectoryOptions<TEntry extends DirectoryEntry> {
   /** The entry for a file that could not be read. */
   readonly unreadable: (id: string, error: unknown, revision: number) => TEntry;
   /**
+   * Runs after a rescan has loaded every entry and before the scan's entries replace the previous
+   * ones, so before `refresh()` resolves and before any listener is told (COR-1584). It resolves
+   * the entries to keep, which the scan then compares with the previous ones: a subsystem whose
+   * entries need an async step (a persisted revision) completes them here. It must not reject; a
+   * rejection fails the scan, which keeps the previous entries. `previous` is the entries the last
+   * scan kept. The scan waits for it: a step that never settles stalls the scan, every `refresh()`
+   * behind it, and `close()`, as a file read that never settles does.
+   */
+  readonly settle?:
+    | ((
+        loaded: ReadonlyMap<string, TEntry>,
+        previous: ReadonlyMap<string, TEntry>,
+      ) => Promise<ReadonlyMap<string, TEntry>>)
+    | undefined;
+  /**
    * Called after every rescan, whether or not it found a change, once the listeners have been
    * told. A subsystem whose work on a change can fail uses it to try again on the next rescan.
    */
@@ -129,13 +144,14 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
   async function scanOnce(): Promise<void> {
     const listing = await operations.listDirectory(directory);
     const revision = options.revision();
-    const next = new Map<string, TEntry>();
+    const loaded = new Map<string, TEntry>();
     for (const item of listing ?? []) {
       if (!item.isFile || item.name.startsWith('.') || !item.name.endsWith(extension)) continue;
       const id = item.name.slice(0, -extension.length);
       const entry = await loadEntry(id, item.name, revision, entries.get(id));
-      if (entry !== undefined) next.set(id, entry);
+      if (entry !== undefined) loaded.set(id, entry);
     }
+    const next = options.settle === undefined ? loaded : await options.settle(loaded, entries);
     const added: string[] = [];
     const changed: string[] = [];
     const removed: string[] = [];
@@ -145,7 +161,7 @@ export function createWatchedDirectory<TEntry extends DirectoryEntry>(
       else if (!options.sameSignature(before, entry)) changed.push(id);
     }
     for (const id of entries.keys()) if (!next.has(id)) removed.push(id);
-    entries = next;
+    entries = new Map(next);
     if (added.length + changed.length + removed.length > 0) {
       for (const listener of listeners) {
         try {

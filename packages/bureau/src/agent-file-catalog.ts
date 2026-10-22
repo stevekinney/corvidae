@@ -15,6 +15,21 @@
  * The directory is watched, rescanned, and backed up by a poll by `watched-directory.ts`, which this
  * catalog shares with the workflow files (COR-1527).
  *
+ * ## Revisions
+ *
+ * A ready file agent carries a `definitionRevision` that rises every time its file's content
+ * changes (COR-1584), kept per identifier by `agent-revision-store.ts`. Each scan settles it after
+ * the files are evaluated and before the scan's entries replace the previous ones, so by the time
+ * `refresh()` resolves or `onChange` fires, the listing, the agent object's generation profile, and
+ * the record all agree. Every scan reads the record of every ready file, so a catalog that missed
+ * another process's edits agrees with the record on its next scan, and a revision that changed
+ * with the content unchanged is a change `onChange` reports. A record that cannot be read or
+ * written leaves the agent listed at its last known revision (1 if none is known) with a
+ * diagnostic naming it, reported when the failure is new rather than on every scan, and the next
+ * scan tries again.
+ * The model catalog is not part of a file's content: a revalidation against a new model catalog
+ * keeps the revision.
+ *
  * @module agent-file-catalog
  */
 
@@ -27,6 +42,7 @@ import {
   createAgent,
   type GenerateFunction,
 } from '@lostgradient/operative';
+import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
 import type { Tool } from 'armorer';
 
 import type { AnyRunnableAgent } from './agent-catalog';
@@ -43,6 +59,7 @@ import {
   parseAgentFile,
 } from './agent-file';
 import { type AgentFileOperations, nodeAgentFileOperations } from './agent-file-operations';
+import { type AgentRevisionRecord, createAgentRevisionStore } from './agent-revision-store';
 import {
   type AgentFileWriter,
   type AgentFileWriteResult,
@@ -85,6 +102,12 @@ export interface AgentListing {
   readonly owner: string;
   /** The SHA-256 of the file's bytes, for a file agent whose file could be read. */
   readonly definitionHash?: string;
+  /**
+   * The revision the agent's definition is at: the generation profile's revision for a
+   * code-defined agent, and the persisted revision (`agent-revision-store.ts`) for a ready file
+   * agent. Absent for an invalid file.
+   */
+  readonly definitionRevision?: number;
   /** Why an `invalid` file cannot run. */
   readonly problem?: AgentFileProblem;
 }
@@ -101,6 +124,12 @@ export interface FileAgentBinding {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /**
+   * The definition revision the agent was built at, which a run keeps on its reference. Absent
+   * for an agent rebuilt from a snapshot for a run that recorded none, so that rebuilding does not
+   * record a revision 1 the run never had.
+   */
+  readonly definitionRevision?: number;
 }
 
 const fileAgentBindings = new WeakMap<object, FileAgentBinding>();
@@ -123,6 +152,12 @@ export interface AgentFileCatalogOptions {
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   readonly operations?: AgentFileOperations | undefined;
+  /**
+   * Where the revision record of each file agent lives (COR-1584). The Bureau's key-value store
+   * when it has one, so the revision survives a restart and is shared by every process on the
+   * store. Defaults to a store that lasts as long as the catalog.
+   */
+  readonly revisionStore?: ConditionalTextValueStore | undefined;
   /** Watch the directory. Defaults to `true`; `false` leaves reloading to {@link AgentFileCatalog.refresh}. */
   readonly watch?: boolean | undefined;
   /** How a directory is watched. Defaults to `fs.watch` without keeping the process alive; a test replaces it. */
@@ -137,7 +172,8 @@ export interface AgentFileCatalog extends AgentFileWriter {
   /**
    * One file agent as it is on disk now: its state and problem, its hash, its exact text, and
    * its parsed definition. `undefined` when the catalog lists no file with that identifier. The
-   * hash, the text, and the state all describe the same bytes.
+   * hash, the text, the state, and the revision all describe the same bytes: a file changed since
+   * the last scan is settled first.
    */
   detail(id: string): Promise<AgentFileDetail | undefined>;
   /** The deployment's tool catalog, by name, as an agent file may name its tools. */
@@ -156,8 +192,13 @@ export interface AgentFileCatalog extends AgentFileWriter {
   refresh(): Promise<void>;
   /** Called after every rescan that added, changed, or removed an agent. Returns its unsubscribe. */
   onChange(listener: (change: AgentCatalogChange) => void): () => void;
-  /** Rebuild the agent a run recorded, from its snapshot, resolving the model and tools afresh. */
-  agentFromSnapshot(snapshot: AgentSnapshot): AnyRunnableAgent;
+  /**
+   * Rebuild the agent a run recorded, from its snapshot, resolving the model and tools afresh. The
+   * agent reports `revision`, the definition revision the run recorded (a snapshot is keyed by
+   * content, so one snapshot can have been several revisions), or 1 when the caller has none, in
+   * which case its binding records none either.
+   */
+  agentFromSnapshot(snapshot: AgentSnapshot, revision?: number): AnyRunnableAgent;
   /** Stop watching and wait for a scan in flight. */
   close(): Promise<void>;
 }
@@ -167,7 +208,11 @@ interface FileEntry {
   readonly hash: string | undefined;
   readonly revision: number;
   readonly definition?: AgentFileDefinition;
+  /** The model the file named, resolved, kept so the agent can be rebuilt at another revision. */
+  readonly descriptor?: BackendDescriptor;
   readonly agent?: AnyRunnableAgent;
+  /** The revision `agent` was built at; this is not `revision`, which is the model catalog's. */
+  readonly definitionRevision?: number;
   readonly problem?: AgentFileProblem;
 }
 
@@ -204,13 +249,36 @@ function isProblem(value: BackendDescriptor | AgentFileProblem): value is AgentF
 }
 
 function sameSignature(left: FileEntry, right: FileEntry): boolean {
-  return left.hash === right.hash && left.problem?.code === right.problem?.code;
+  return (
+    left.hash === right.hash &&
+    left.problem?.code === right.problem?.code &&
+    left.definitionRevision === right.definitionRevision
+  );
 }
+
+/** How many times `detail` settles a file that changed under it before it serves the read as it is. */
+const DETAIL_SETTLE_ATTEMPTS = 3;
 
 export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentFileCatalog {
   const operations = options.operations ?? nodeAgentFileOperations;
   const { directory } = options;
   const owner = ownerOrLocal(undefined);
+  const revisions = createAgentRevisionStore({
+    store: options.revisionStore ?? textValueStore(new MemoryStorage()),
+  });
+  /**
+   * The last record this catalog read or wrote for each identifier: what a file keeps while its
+   * record cannot be read or written, and what an agent is first built at before a scan settles it.
+   */
+  const recorded = new Map<string, AgentRevisionRecord>();
+  /** The files whose record could not be read or written, by the hash they last failed at. */
+  const failedAt = new Map<string, string>();
+  /**
+   * The files whose write was deferred, by every record hash this catalog has deferred against
+   * since it last adopted or wrote a record. A record that alternates between two hashes buys two
+   * deferrals, not one per alternation.
+   */
+  const deferredAgainst = new Map<string, Set<string>>();
 
   function toListing(entry: FileEntry): AgentListing {
     const ready = entry.problem === undefined;
@@ -223,6 +291,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       published: ready && entry.definition?.published === true,
       owner,
       ...(entry.hash === undefined ? {} : { definitionHash: entry.hash }),
+      ...(!ready || entry.definitionRevision === undefined
+        ? {}
+        : { definitionRevision: entry.definitionRevision }),
       ...(entry.problem === undefined ? {} : { problem: entry.problem }),
     };
   }
@@ -277,6 +348,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     hash: string,
     definition: AgentFileDefinition,
     descriptor: BackendDescriptor,
+    revision: number | undefined,
   ): AnyRunnableAgent {
     const tools: Record<string, Tool> = {};
     for (const name of definition.tools) tools[name] = options.tools[name] as Tool;
@@ -286,13 +358,19 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // mint a default instance and stamp its profile from the wall clock.
       runtime: options.runtime,
       name: id,
+      ...(revision === undefined ? {} : { revision }),
       generate: options.resolveGenerate(descriptor),
       ...(definition.description === null ? {} : { description: definition.description }),
       ...(definition.skills.length === 0 ? {} : { skillDescriptors: definition.skills }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
     }) as AnyRunnableAgent;
-    fileAgentBindings.set(agent, { id, hash, definition });
+    fileAgentBindings.set(agent, {
+      id,
+      hash,
+      definition,
+      ...(revision === undefined ? {} : { definitionRevision: revision }),
+    });
     return agent;
   }
 
@@ -324,8 +402,19 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     const checked = checkDeployment(id, definition);
     if ('problem' in checked) return { id, hash, revision, definition, problem: checked.problem };
     try {
-      const agent = buildAgent(id, hash, definition, checked.descriptor);
-      return { id, hash, revision, definition, agent };
+      // Built at the last revision this catalog knows; a changed file is rebuilt at its new one
+      // when the scan settles (`settle`), before anything reads it.
+      const definitionRevision = recorded.get(id)?.revision ?? 1;
+      const agent = buildAgent(id, hash, definition, checked.descriptor, definitionRevision);
+      return {
+        id,
+        hash,
+        revision,
+        definition,
+        descriptor: checked.descriptor,
+        agent,
+        definitionRevision,
+      };
     } catch (error) {
       return { id, hash, revision, definition, problem: modelSetupProblem(definition, error) };
     }
@@ -350,6 +439,96 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
   });
 
+  /**
+   * The revision of the file `id` at `hash`, read from the record on every scan: the record is the
+   * authority, and another process on the same store may have raised it while this catalog was not
+   * looking (a peer's edit and revert between two scans leaves this catalog's last-seen hash equal
+   * to the file's while the record is two revisions on). Reading writes nothing when the record
+   * already describes `hash`.
+   *
+   * A catalog adopts the record freely but writes a new revision only from a reading it can trust
+   * is current. A scan reads the file, and settles it against the store later; a peer may edit and
+   * record the new content in between. If the record describes other content while `hash` is what
+   * this catalog itself last recorded, the scan may be that stale reading, and writing would record
+   * a revert that never happened. The write is deferred once for each record hash: the revision is
+   * kept for this scan, and the next scan decides (a stale reading does not repeat, and a genuine
+   * revert is written then). A catalog that has recorded nothing yet (its first scan after a start)
+   * has no last-recorded hash and never defers: it writes, so the revision it lists always names
+   * the content it lists it with, as after a restart that follows an offline edit. The price is a
+   * narrow race on that first scan, where a stale first read can over-count a peer's edit, and
+   * never lowers a revision. A record that cannot be read or written leaves the last known
+   * revision, or 1, and the next scan tries again; the failure is reported when it is new (the
+   * first after a success, or at a different hash), not on every scan that finds the store still
+   * down.
+   */
+  async function revisionOf(id: string, hash: string): Promise<number> {
+    const known = recorded.get(id);
+    try {
+      const record = await revisions.advance(id, hash, {
+        // Only a catalog whose own last-recorded hash is the file's can tell a stale reading from
+        // a change: a reading that matches what it last recorded is the one a peer may have
+        // overtaken. Once per record hash.
+        defer: (current) =>
+          known?.hash === hash && deferredAgainst.get(id)?.has(current.hash) !== true,
+      });
+      failedAt.delete(id);
+      if (record.hash !== hash) {
+        const against = deferredAgainst.get(id) ?? new Set<string>();
+        against.add(record.hash);
+        deferredAgainst.set(id, against);
+        return known?.revision ?? record.revision;
+      }
+      deferredAgainst.delete(id);
+      recorded.set(id, record);
+      return record.revision;
+    } catch (error) {
+      const kept = known?.revision ?? 1;
+      if (failedAt.get(id) !== hash) {
+        failedAt.set(id, hash);
+        options.diagnose(
+          `The revision of agent file "${id}" could not be recorded, so it stays at ${kept}.`,
+          error,
+        );
+      }
+      return kept;
+    }
+  }
+
+  /** The entry for a ready file, rebuilt at `revision`. */
+  function atRevision(entry: FileEntry, revision: number): FileEntry {
+    const { id, hash, definition, descriptor } = entry;
+    if (hash === undefined || definition === undefined || descriptor === undefined) return entry;
+    try {
+      return {
+        ...entry,
+        agent: buildAgent(id, hash, definition, descriptor, revision),
+        definitionRevision: revision,
+      };
+    } catch (error) {
+      const { revision: catalogRevision } = entry;
+      return {
+        id,
+        hash,
+        revision: catalogRevision,
+        definition,
+        problem: modelSetupProblem(definition, error),
+      };
+    }
+  }
+
+  /** Settles the revision of every ready file in a scan (see the module documentation). */
+  async function settleRevisions(
+    loaded: ReadonlyMap<string, FileEntry>,
+  ): Promise<ReadonlyMap<string, FileEntry>> {
+    const settled = new Map(loaded);
+    for (const [id, entry] of loaded) {
+      if (entry.problem !== undefined || entry.hash === undefined) continue;
+      const revision = await revisionOf(id, entry.hash);
+      if (revision !== entry.definitionRevision) settled.set(id, atRevision(entry, revision));
+    }
+    return settled;
+  }
+
   const directoryWatcher = createWatchedDirectory<FileEntry>({
     directory,
     label: 'agent directory',
@@ -365,6 +544,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     tooLarge,
     unreadable,
     sameSignature,
+    settle: settleRevisions,
   });
   const { refresh } = directoryWatcher;
 
@@ -401,31 +581,41 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     },
 
     async detail(id) {
-      const known = directoryWatcher.entries().get(id);
-      if (known === undefined) return undefined;
-      const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
-      const revision = options.modelCatalog.catalog().revision;
-      let entry: FileEntry;
-      let text: string | undefined;
-      try {
-        const size = await operations.size(path);
-        if (size === undefined) return undefined;
-        if (size > AGENT_FILE_SIZE_LIMIT) {
-          entry = tooLarge(id, size, revision);
-        } else {
-          const bytes = await operations.read(path);
-          if (bytes === undefined) return undefined;
-          const hash = hashAgentFileBytes(bytes);
-          entry =
-            known.hash === hash && known.revision === revision
-              ? known
-              : evaluate(id, bytes, hash, revision);
-          text = decodeAgentFile(bytes);
+      // A file edited since the last scan is settled first, so the text, the hash, and the
+      // revision it returns describe one content: serving the new text at the previous scan's
+      // revision would pair a revision with content it does not name. A file that keeps changing
+      // under the reads is served as evaluated now, as an unsettled read.
+      for (let attempt = 0; ; attempt += 1) {
+        const known = directoryWatcher.entries().get(id);
+        if (known === undefined) return undefined;
+        const path = `${directory}/${id}${AGENT_FILE_EXTENSION}`;
+        const revision = options.modelCatalog.catalog().revision;
+        let entry: FileEntry;
+        let text: string | undefined;
+        try {
+          const size = await operations.size(path);
+          if (size === undefined) return undefined;
+          if (size > AGENT_FILE_SIZE_LIMIT) {
+            entry = tooLarge(id, size, revision);
+          } else {
+            const bytes = await operations.read(path);
+            if (bytes === undefined) return undefined;
+            const hash = hashAgentFileBytes(bytes);
+            if (known.hash !== hash && attempt < DETAIL_SETTLE_ATTEMPTS) {
+              await refresh();
+              continue;
+            }
+            entry =
+              known.hash === hash && known.revision === revision
+                ? known
+                : evaluate(id, bytes, hash, revision);
+            text = decodeAgentFile(bytes);
+          }
+        } catch (error) {
+          entry = unreadable(id, error, revision);
         }
-      } catch (error) {
-        entry = unreadable(id, error, revision);
+        return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
       }
-      return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
     },
 
     tools() {
@@ -442,7 +632,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
 
     onChange: directoryWatcher.onChange,
 
-    agentFromSnapshot(snapshot) {
+    agentFromSnapshot(snapshot, revision) {
       // Not `checkDeployment`: a run resumes as the file it began as even if a code agent has
       // since taken the name. Only what the agent needs to run is checked.
       const checked = checkResources(snapshot.definition);
@@ -454,7 +644,13 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           `The snapshot of "${snapshot.id}" cannot be rebuilt: ${checked.problem.message}`,
         );
       }
-      return buildAgent(snapshot.id, snapshot.hash, snapshot.definition, checked.descriptor);
+      return buildAgent(
+        snapshot.id,
+        snapshot.hash,
+        snapshot.definition,
+        checked.descriptor,
+        revision,
+      );
     },
 
     close: directoryWatcher.close,

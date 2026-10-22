@@ -9,6 +9,7 @@
 import { createManualRuntimeServices, type ManualRuntimeServices } from '@lostgradient/lifecycle';
 import {
   createCheckpointStore,
+  readGenerationProfile,
   createRunEngine,
   createRunWorkflow,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
@@ -16,6 +17,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { AnyRunnableAgent } from './agent-catalog';
 import { readFileAgentBinding } from './agent-file-catalog';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
 import { createAgentSnapshotStore, type AgentSnapshotStore } from './agent-snapshot-store';
@@ -297,6 +299,38 @@ describe('a claim this execution loses', () => {
     expect(reference?.hash).toBe(winnerHash);
     expect(hashes).toEqual([winnerHash]);
     expect(hashes).not.toContain(h.currentHash);
+  });
+
+  it('continues the winner’s run at the revision the winner’s claim recorded, not the catalog’s', async () => {
+    const h = await harness();
+    const winnerHash = await h.holdElsewhere(attempt.runId, 'Winner’s instructions.\n');
+    expect(
+      readGenerationProfile(h.fixture.catalog.find('worker') as AnyRunnableAgent).revision,
+    ).toBe(1);
+    const runtime = await engineRuntime({
+      claimCatalogRunRecoveryRecord: async () => false,
+      loadCatalogRunRecoveryRecord: async () => ({
+        status: 'found',
+        record: {
+          schemaVersion: 1,
+          agentName: 'worker',
+          definitionRevision: 2,
+          input: 'work',
+          agentDefinitionHash: winnerHash,
+          goalAttempt: { goalRunId: attempt.goalRunId, attemptIndex: attempt.attemptIndex },
+          costEstimation: null,
+        },
+      }),
+    });
+
+    const started = h.dispatcher(runtime).startGoalAttemptRun(attempt);
+    await started.durablyStarted;
+    await started.run.result();
+    await settled(h);
+
+    const { reference } = await stored(h.snapshots, attempt.runId);
+    expect(reference?.hash).toBe(winnerHash);
+    expect(reference?.definitionRevision).toBe(2);
   });
 
   it('ties the winner’s snapshot to the run when the winner claimed and died before it held one', async () => {

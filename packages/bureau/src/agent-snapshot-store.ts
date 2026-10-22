@@ -13,6 +13,8 @@
  *   list. The stored definition is validated on read (`agentFileDefinitionSchema`).
  * - `bureau-agent-run:v1:<runId>` holds an {@link AgentRunReference}, the reference that keeps a
  *   snapshot alive until its run's retention ends.
+ *   It also names the definition revision the run started at (COR-1584), because a snapshot is
+ *   keyed by content and cannot.
  *
  * ## Starting a run
  *
@@ -38,6 +40,11 @@
  * a new run on the same definition, and the first can then delete the snapshot. Agent files
  * support one Bureau per store (Interborough is one process), so no cross-instance check is made;
  * a topology with several Bureaus over one store would need a conditional delete.
+ *
+ * That limit is the snapshots' and the run references' only. The revision record of a file agent
+ * (`agent-revision-store.ts`, `bureau-agent-revision:v1:<id>`) is written with a conditional
+ * batch, so it is safe across processes: two Bureaus on one store that see the same change
+ * produce one increment and report the same revision (COR-1584).
  *
  * @module agent-snapshot-store
  */
@@ -70,6 +77,16 @@ export interface AgentRunReference {
   readonly hash: string;
   readonly startedAt: string;
   readonly settledAt?: string;
+  /**
+   * The definition revision (`agent-revision-store.ts`) the run started at (COR-1584). A snapshot
+   * is keyed by content, so one snapshot can have been several revisions, and a session's
+   * metadata names only its latest run's: the run's own reference is where its revision lives.
+   * Absent on a reference written before the field existed, which resumes on the session's
+   * metadata instead. Filled when the reference is written, or by a later hold only if the field is
+   * absent (or was invalid and dropped on read), and never changed once recorded. The reference
+   * stays at `schemaVersion` 1, as the field is additive.
+   */
+  readonly definitionRevision?: number;
 }
 
 /** What a start stores: the file agent as it stood when the run started. */
@@ -77,6 +94,8 @@ export interface AgentSnapshotSource {
   readonly id: string;
   readonly hash: string;
   readonly definition: AgentFileDefinition;
+  /** The definition revision the run starts at, kept on its reference. Not part of the snapshot. */
+  readonly definitionRevision?: number | undefined;
 }
 
 /** One entry of `revisions(id)`. */
@@ -198,7 +217,13 @@ function parseReference(text: string | null): AgentRunReference | undefined {
       typeof value['startedAt'] === 'string' &&
       (value['settledAt'] === undefined || typeof value['settledAt'] === 'string')
     ) {
-      return value as unknown as AgentRunReference;
+      // A revision that is not a positive safe integer is no revision: the reference still reads.
+      const { definitionRevision, ...rest } = value;
+      return (typeof definitionRevision === 'number' &&
+      Number.isSafeInteger(definitionRevision) &&
+      definitionRevision >= 1
+        ? { ...rest, definitionRevision }
+        : rest) as unknown as AgentRunReference;
     }
   } catch {
     // A record that is not JSON is not a reference.
@@ -281,7 +306,21 @@ export function createAgentSnapshotStore(options: AgentSnapshotStoreOptions): Ag
                   id: source.id,
                   hash: source.hash,
                   startedAt: now,
+                  ...(source.definitionRevision === undefined
+                    ? {}
+                    : { definitionRevision: source.definitionRevision }),
                 } satisfies AgentRunReference),
+              );
+            } else if (
+              source.definitionRevision !== undefined &&
+              existing.definitionRevision === undefined
+            ) {
+              // A reference written before revisions, or one whose value was invalid and dropped on
+              // read, gains the revision and keeps its start and its settlement. A revision that is
+              // recorded is the run's own and is never changed by a later hold.
+              await store.set(
+                referenceKey(runId),
+                JSON.stringify({ ...existing, definitionRevision: source.definitionRevision }),
               );
             }
             const current = parseSnapshot(await store.get(key));

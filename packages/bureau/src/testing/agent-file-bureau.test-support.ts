@@ -3,7 +3,7 @@
  * scripted: `scripts` maps a model name to the generate it resolves to, and each generate records
  * what it was offered.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -94,7 +94,14 @@ export async function startFileBureau(options: FileBureauOptions = {}): Promise<
     directory,
     bureau,
     observed,
-    put: (name, text) => writeFile(join(directory, name), text),
+    // Written beside the file and renamed into place, as the Bureau's own writer does: the watcher
+    // scans on its own, and a file read half-written is a different content with a revision of its
+    // own, which a test that counts revisions cannot tell from an edit.
+    async put(name, text) {
+      const temporary = join(directory, `.${crypto.randomUUID()}.tmp`);
+      await writeFile(temporary, text);
+      await rename(temporary, join(directory, name));
+    },
     async dispose() {
       await bureau.dispose();
       if (ownsDirectory) await rm(directory, { recursive: true, force: true });
