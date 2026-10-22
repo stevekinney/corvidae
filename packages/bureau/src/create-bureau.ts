@@ -306,6 +306,14 @@ import {
 } from './owner-of-record';
 import { toScheduleSpec } from './schedule-spec';
 import {
+  decodeScheduleTransition,
+  type PendingScheduleTransition,
+  SCHEDULE_TRANSITION_KEY_PREFIX,
+  scheduleTransitionKey,
+  type ScheduleTransitionKind,
+  scheduleTransitionOperation,
+} from './schedule-transition-outbox';
+import {
   agentStepResultFromRun,
   agentStepResultFromState,
   workflowStepRunId,
@@ -8916,6 +8924,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // pass runs.
     recoveryPassActive = true;
     try {
+      // COR-194 — ahead of the pass, as the session outbox's drain is: a run the pass reattaches
+      // starts at once, and nothing should stand between its reattachment and `createBureau()`
+      // returning.
+      await recordPendingScheduleTransitions().catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not record pending schedule transitions at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
       const report = await recoverDurableRunsPass();
       await reconcileTaskRecords().catch((error: unknown) => {
         diagnose({
@@ -16156,13 +16175,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
+    const durable = runtime.durable;
+    if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    const transition = scheduleTransitionOptions(guard);
-    await (transition === undefined
-      ? runtime.durable.engine.pauseSchedule(scheduleId)
-      : runtime.durable.engine.pauseSchedule(scheduleId, transition));
-    emitter.dispatch(new SchedulePausedEvent(scheduleId));
+    await transitionSchedule('schedule.paused', scheduleId, guard, (transition) =>
+      durable.engine.pauseSchedule(scheduleId, transition),
+    );
     return true;
   }
 
@@ -16170,13 +16188,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
+    const durable = runtime.durable;
+    if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    const transition = scheduleTransitionOptions(guard);
-    await (transition === undefined
-      ? runtime.durable.engine.resumeSchedule(scheduleId)
-      : runtime.durable.engine.resumeSchedule(scheduleId, transition));
-    emitter.dispatch(new ScheduleResumedEvent(scheduleId));
+    await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
+      durable.engine.resumeSchedule(scheduleId, transition),
+    );
     return true;
   }
 
@@ -16184,14 +16201,137 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     scheduleId: string,
     guard?: ScheduleRevisionGuard,
   ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
+    const durable = runtime.durable;
+    if (!durable) return undefined;
     refuseWorkflowSchedule(scheduleId);
-    const transition = scheduleTransitionOptions(guard);
-    await (transition === undefined
-      ? runtime.durable.engine.cancelSchedule(scheduleId)
-      : runtime.durable.engine.cancelSchedule(scheduleId, transition));
-    emitter.dispatch(new ScheduleCancelledEvent(scheduleId));
+    await transitionSchedule('schedule.cancelled', scheduleId, guard, (transition) =>
+      durable.engine.cancelSchedule(scheduleId, transition),
+    );
     return true;
+  }
+
+  /**
+   * COR-194 — commits a schedule transition with its pending record in the same storage write
+   * (`schedule-transition-outbox.ts`), then records it. A transition Weft finds nothing to do for
+   * (pausing a schedule that is not active, resuming an active one) writes nothing, the pending
+   * record included, so it is neither recorded nor dispatched. A record that cannot be written
+   * now stays pending for the boot pass, and the transition itself still succeeds: it committed.
+   */
+  async function transitionSchedule(
+    kind: ScheduleTransitionKind,
+    scheduleId: string,
+    guard: ScheduleRevisionGuard | undefined,
+    apply: (transition: import('@lostgradient/weft').ScheduleTransitionOptions) => Promise<void>,
+  ): Promise<void> {
+    const storage = runtime.durable!.engine.storage;
+    const transition: PendingScheduleTransition = {
+      kind,
+      scheduleId,
+      committedAtMs: runtimeServices.clock.now(),
+    };
+    const key = scheduleTransitionKey(
+      transition,
+      runtimeServices.identifiers.next('schedule-transition'),
+    );
+    await apply({
+      ...scheduleTransitionOptions(guard),
+      additionalOperations: [scheduleTransitionOperation(key, transition)],
+    });
+    // Absent after the call: Weft wrote nothing, or another process's boot pass has already
+    // recorded the transition and removed its pending record.
+    if ((await storage.get(key)) === null) return;
+    try {
+      await recordScheduleTransition(key, transition);
+    } catch (error) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Could not record ${kind} for schedule "${scheduleId}"; it stays pending for the next boot: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * COR-194 — records one pending schedule transition in durable history and the audit trail under
+   * its own key as the dedupe key, removes the pending record, then dispatches the live event. A
+   * write that fails rejects before the pending record is removed, so the transition is recorded
+   * at a later attempt and, through the dedupe key, only once.
+   */
+  async function recordScheduleTransition(
+    key: string,
+    transition: PendingScheduleTransition,
+  ): Promise<void> {
+    const { kind, scheduleId, committedAtMs } = transition;
+    await eventHistoryInstance?.record(
+      { kind: 'schedule', id: scheduleId },
+      kind,
+      { scheduleId },
+      { dedupeKey: key, emittedAtMs: committedAtMs },
+    );
+    await auditTrailInstance?.record({
+      runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
+      type: kind,
+      detail: { scheduleId },
+      timestampMs: committedAtMs,
+      dedupeKey: key,
+    });
+    await runtime.durable!.engine.storage.delete(key);
+    const record = { dedupeKey: key, committedAtMs };
+    try {
+      emitter.dispatch(
+        kind === 'schedule.paused'
+          ? new SchedulePausedEvent(scheduleId, record)
+          : kind === 'schedule.resumed'
+            ? new ScheduleResumedEvent(scheduleId, record)
+            : new ScheduleCancelledEvent(scheduleId, record),
+      );
+    } catch (error) {
+      // A `bureau.toObservable()` subscriber has no isolation of its own (see `drainOutboxEntry`).
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] A bureau.toObservable() subscriber threw on ${kind} for schedule "${scheduleId}":`,
+        cause: error,
+      });
+    }
+  }
+
+  /**
+   * COR-194 — at boot, records every schedule transition a process committed and did not live to
+   * record, in the order each schedule's transitions committed. A record that fails is reported
+   * and left for the next boot; one this build cannot read is reported and removed, since no later
+   * boot could read it either.
+   */
+  async function recordPendingScheduleTransitions(): Promise<void> {
+    const durable = runtime.durable;
+    if (!durable) return;
+    const pending: Array<[string, Uint8Array]> = [];
+    for await (const entry of durable.engine.storage.scan(SCHEDULE_TRANSITION_KEY_PREFIX)) {
+      pending.push(entry);
+    }
+    for (const [key, bytes] of pending) {
+      const transition = decodeScheduleTransition(bytes);
+      if (transition === undefined) {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Removed unreadable pending schedule transition "${key}".`,
+        });
+        await durable.engine.storage.delete(key);
+        continue;
+      }
+      try {
+        await recordScheduleTransition(key, transition);
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not record pending ${transition.kind} for schedule "${transition.scheduleId}"; leaving it for the next boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    }
   }
 
   /** What Weft's pause, resume, and cancel take for a guard: the revision, or nothing at all. */

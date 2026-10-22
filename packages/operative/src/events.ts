@@ -1455,6 +1455,17 @@ export class WakeupScheduledEvent extends Event {
 // ---------------------------------------------------------------------------
 
 /**
+ * COR-194 — what a schedule transition committed through Bureau's transition outbox carries, so a
+ * listener that durably records the event writes it once, however often the outbox replays it.
+ */
+export interface ScheduleTransitionRecord {
+  /** The identity a durable record of this transition is deduplicated by. */
+  readonly dedupeKey: string;
+  /** When the transition committed (`RuntimeServices.clock.now()`), not when it was dispatched. */
+  readonly committedAtMs: number;
+}
+
+/**
  * Emitted when a durable agent schedule is paused. Fires exactly once per
  * successful `pause()` call, from whichever of the three creation paths'
  * handles the caller is holding.
@@ -1462,9 +1473,15 @@ export class WakeupScheduledEvent extends Event {
 export class SchedulePausedEvent extends Event {
   static readonly type = 'schedule.paused' as const;
   readonly scheduleId: string;
-  constructor(scheduleId: string) {
+  /** See {@link ScheduleTransitionRecord.dedupeKey}; absent when no outbox carried the transition. */
+  readonly dedupeKey: string | undefined;
+  /** See {@link ScheduleTransitionRecord.committedAtMs}; absent when no outbox carried the transition. */
+  readonly committedAtMs: number | undefined;
+  constructor(scheduleId: string, record?: ScheduleTransitionRecord) {
     super(SchedulePausedEvent.type);
     this.scheduleId = scheduleId;
+    this.dedupeKey = record?.dedupeKey;
+    this.committedAtMs = record?.committedAtMs;
   }
 }
 
@@ -1475,9 +1492,15 @@ export class SchedulePausedEvent extends Event {
 export class ScheduleResumedEvent extends Event {
   static readonly type = 'schedule.resumed' as const;
   readonly scheduleId: string;
-  constructor(scheduleId: string) {
+  /** See {@link ScheduleTransitionRecord.dedupeKey}; absent when no outbox carried the transition. */
+  readonly dedupeKey: string | undefined;
+  /** See {@link ScheduleTransitionRecord.committedAtMs}; absent when no outbox carried the transition. */
+  readonly committedAtMs: number | undefined;
+  constructor(scheduleId: string, record?: ScheduleTransitionRecord) {
     super(ScheduleResumedEvent.type);
     this.scheduleId = scheduleId;
+    this.dedupeKey = record?.dedupeKey;
+    this.committedAtMs = record?.committedAtMs;
   }
 }
 
@@ -1492,9 +1515,15 @@ export class ScheduleResumedEvent extends Event {
 export class ScheduleCancelledEvent extends Event {
   static readonly type = 'schedule.cancelled' as const;
   readonly scheduleId: string;
-  constructor(scheduleId: string) {
+  /** See {@link ScheduleTransitionRecord.dedupeKey}; absent when no outbox carried the transition. */
+  readonly dedupeKey: string | undefined;
+  /** See {@link ScheduleTransitionRecord.committedAtMs}; absent when no outbox carried the transition. */
+  readonly committedAtMs: number | undefined;
+  constructor(scheduleId: string, record?: ScheduleTransitionRecord) {
     super(ScheduleCancelledEvent.type);
     this.scheduleId = scheduleId;
+    this.dedupeKey = record?.dedupeKey;
+    this.committedAtMs = record?.committedAtMs;
   }
 }
 
