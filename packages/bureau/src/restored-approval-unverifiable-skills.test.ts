@@ -62,7 +62,7 @@ function reportConsumption(toolbox: Toolbox): void {
   Object.defineProperty(toolbox, 'resumeApproval', {
     configurable: true,
     value: async function (this: unknown, ...args: unknown[]) {
-      const result = (await resume.apply(this, args)) as object;
+      const result = await resume.apply(this, args);
       return { ...result, approvalBindingConsumed: true };
     },
   });
