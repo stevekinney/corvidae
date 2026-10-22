@@ -1,6 +1,11 @@
 import { isSpecType, type CallToolResult, type ContentBlock } from '@modelcontextprotocol/server';
 
-import { isToolContent, toolContent, type JSONObject } from '../../protocol';
+import {
+  assertToolResultParts,
+  isToolContent,
+  toolContent,
+  type JSONObject,
+} from '../../protocol';
 import type { ToolResultLike } from '../../types';
 import { mcpBlocksToParts, partsToMcpBlocks } from './parts';
 
@@ -60,6 +65,15 @@ export function toCallToolResult(result: ToolResultLike): CallToolResult {
     return { content: toTextContent(message), isError: true };
   }
 
+  // A materialized or persisted result carries its parts on `parts`, not inside a raw value.
+  if (result.parts !== undefined && !isToolContent(getExecutionValue(result))) {
+    assertToolResultParts(result.parts);
+    const structured = toStructuredContent(result.content);
+    return {
+      content: partsToMcpBlocks(result.parts),
+      ...(structured === undefined ? {} : { structuredContent: structured }),
+    };
+  }
   const executionValue = getExecutionValue(result);
   if (isToolContent(executionValue)) {
     const structured = toStructuredContent(executionValue.value);

@@ -1,9 +1,13 @@
 import type { ToolExecutionResult } from 'armorer';
 import { isToolContent, type ToolResultPart } from 'armorer/protocol';
-import { parseDataUrl } from 'conversationalist';
+import { parseDataUrl, type MediaContent, type Message } from 'conversationalist';
 
 import { GeneratedMediaNotAdmittedError } from './errors';
-import { admitInlineMedia, type StepGeneratedMediaAdmitter } from './generated-media';
+import {
+  admitInlineMedia,
+  type GeneratedMediaAdmitter,
+  type StepGeneratedMediaAdmitter,
+} from './generated-media';
 import { toolResultMessageIdentifier } from './message-identifiers';
 
 /**
@@ -97,7 +101,9 @@ async function admitResult(
   context: { readonly step: number; readonly runId: string | undefined },
 ): Promise<ToolExecutionResult> {
   const parts = result.parts;
-  if (result.outcome !== 'success' || parts === undefined) return result;
+  // Any outcome may carry parts (a hook can return an error result with media), so every
+  // result with parts is checked and admitted, not only a success.
+  if (parts === undefined) return result;
   try {
     assertTrustedSources(parts);
     const inlined = parts.map(inlineDataUrl);
@@ -129,4 +135,38 @@ export async function admitToolResultMedia(
   context: { readonly step: number; readonly runId: string | undefined },
 ): Promise<ToolExecutionResult[]> {
   return Promise.all(results.map((result) => admitResult(admitter, result, context)));
+}
+
+/** What retaining a step's committed tool-result media needs from the step. */
+export interface ToolResultRetentionContext {
+  readonly admitter: GeneratedMediaAdmitter | undefined;
+  readonly runId: string | undefined;
+  readonly conversation: { getMessages(): readonly Message[] };
+}
+
+/**
+ * After a step's tool-result rows are committed, claims the managed assets they reference through
+ * the admitter's `retainCommitted`, as an assistant row's are, so none can expire while the row
+ * exists. Rows are found by call id, which also covers a run with no id (minted row ids).
+ */
+export async function retainToolResultMedia(
+  context: ToolResultRetentionContext,
+  results: readonly ToolExecutionResult[],
+): Promise<void> {
+  const retain = context.admitter?.retainCommitted?.bind(context.admitter);
+  if (retain === undefined) return;
+  const managedByCall = new Map<string, MediaContent[]>();
+  for (const result of results) {
+    const managed = (result.parts ?? []).filter(
+      (part): part is MediaContent => part.type !== 'text' && part.source.kind === 'managed-asset',
+    );
+    if (managed.length > 0) managedByCall.set(result.callId, managed);
+  }
+  if (managedByCall.size === 0) return;
+  for (const message of context.conversation.getMessages()) {
+    const callId = message.role === 'tool-result' ? message.toolResult?.callId : undefined;
+    const parts = callId === undefined ? undefined : managedByCall.get(callId);
+    if (parts === undefined) continue;
+    await retain({ runId: context.runId, messageId: message.id, parts });
+  }
 }

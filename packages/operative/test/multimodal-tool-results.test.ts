@@ -1,3 +1,4 @@
+import { HookRegistry } from '@lostgradient/lifecycle';
 import { createTestToolbox, createTool } from 'armorer';
 import { toolContent, type ToolResultPart } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
@@ -9,6 +10,7 @@ import { createAgent } from '../src/create-agent';
 import { createActiveRun } from '../src/create-run';
 import { createSubagentTool, subagentToolContent } from '../src/create-subagent-tool';
 import { ToolSettledBubbleEvent } from '../src/events';
+import type { OperativeHookMap } from '../src/hooks';
 import {
   buildAnthropicRow,
   buildGeminiRow,
@@ -187,6 +189,51 @@ describe('tool-result media admission', () => {
         { type: 'image', mimeType: 'image/png', redacted: true },
       ],
     });
+  });
+});
+
+describe('tool-result media review fixes', () => {
+  it('retains the managed assets a committed tool-result row references', async () => {
+    const admitter = createScriptedMediaAdmitter({ retention: 'record' });
+    const result = await runWith([inlineImage], { generatedMediaAdmitter: admitter.port }).result;
+    const row = toolResultRow(result.conversation);
+    expect(admitter.retained).toEqual([
+      {
+        runId: 'run-tool-media',
+        messageId: row?.id ?? '',
+        parts: [
+          { ...inlineImage, source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 } },
+        ],
+      },
+    ]);
+  });
+
+  it('admits media a validateToolResult hook adds, on any outcome, before the event shows it', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult) => ({
+      ...toolResult,
+      outcome: 'error' as const,
+      content: 'failed',
+      result: 'failed',
+      parts: [{ type: 'text' as const, text: 'see image' }, inlineImage],
+    }));
+    const active = runWith([{ type: 'text', text: 'ok' }], {
+      generatedMediaAdmitter: admitter.port,
+      hooks,
+    });
+    const recorder = createRunRecorder(active);
+    const result = await active.result;
+    for (const { type, detail } of recorder.events) {
+      expect({ type, leaked: safeStringify(detail).includes(BYTES) }).toEqual({
+        type,
+        leaked: false,
+      });
+    }
+    const toolResult = toolResultRow(result.conversation)?.toolResult;
+    expect(toolResult?.outcome).toBe('error');
+    expect(toolResult?.parts?.[1]).toMatchObject({ source: { kind: 'managed-asset' } });
+    expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
   });
 });
 

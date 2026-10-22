@@ -256,14 +256,16 @@ function toOpenAIToolResultContent(
   toolResult: ToolResult,
   context: MediaExportContext,
 ): string | OpenAITextContentPart[] {
-  if (toolResult.outcome !== 'success' || toolResult.parts === undefined) {
-    return stringifyToolResult(toolResult);
-  }
-  return toolResult.parts.map((part, partIndex) =>
+  if (toolResult.parts === undefined) return stringifyToolResult(toolResult);
+  const parts: OpenAITextContentPart[] = toolResult.parts.map((part, partIndex) =>
     part.type === 'text'
       ? { type: 'text', text: part.text }
       : rejectPart(context, partIndex, part, 'role-not-accepted', part.source.kind),
   );
+  // A non-success result leads with its canonical outcome, which a tool message has no field for.
+  return toolResult.outcome === 'success'
+    ? parts
+    : [{ type: 'text', text: stringifyToolResult({ ...toolResult, content: null }) }, ...parts];
 }
 
 function convertMessageByRole(message: Message, context: MediaExportContext): OpenAIMessage | null {

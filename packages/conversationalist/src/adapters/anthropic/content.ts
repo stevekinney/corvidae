@@ -239,7 +239,8 @@ export function toToolResultBlock(
   toolResult: ToolResult,
   context?: MediaExportContext,
 ): AnthropicToolResultBlock {
-  if (toolResult.outcome === 'success' && toolResult.parts !== undefined) {
+  // Parts are the model-facing payload whatever the outcome; an error keeps them and is flagged.
+  if (toolResult.parts !== undefined) {
     const parts = toolResult.parts;
     const mediaContext =
       context ??
@@ -260,6 +261,7 @@ export function toToolResultBlock(
         }
         return block;
       }),
+      ...(toolResult.outcome === 'success' ? {} : { is_error: true }),
     };
   }
   const payload =

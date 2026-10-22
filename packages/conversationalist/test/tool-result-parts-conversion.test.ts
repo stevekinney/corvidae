@@ -16,6 +16,7 @@ import { UnsupportedContentError } from '../src/errors';
 import type { ToolResultPart } from '../src/multi-modal';
 import type { ConversationHistory } from '../src/types';
 import { getOrderedMessages } from '../src/utilities/message-store';
+import { redactToolResult } from '../src/utilities/tool-results';
 
 /**
  * COR-792: a tool result's ordered parts reach each provider natively or are
@@ -272,5 +273,55 @@ describe('managed-asset parts', () => {
     const { messages, lineage } = toAnthropicMessages(conversation, { sources });
     expect(JSON.stringify(messages)).toContain(PNG);
     expect(lineage[0]).toMatchObject({ assetId: 'asset-1', revision: 1 });
+  });
+});
+
+describe('tool-result parts on other outcomes and redaction', () => {
+  function withErrorResult(parts: ToolResultPart[]): ConversationHistory {
+    const conversation = appendMessages(createConversationHistory({ id: 'tool-error' }), {
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-1', name: 'chart', arguments: {} },
+    });
+    return appendToolResult(conversation, {
+      callId: 'call-1',
+      outcome: 'error',
+      content: null,
+      parts,
+      error: { code: 'E', category: 'internal', retryable: false, message: 'failed' },
+    });
+  }
+
+  it("keeps an error result's parts for every provider and flags the outcome", () => {
+    const conversation = withErrorResult(TEXT_AND_IMAGE);
+    const anthropic = toAnthropicMessages(conversation).messages.at(-1);
+    expect(anthropic?.content).toMatchObject([
+      {
+        type: 'tool_result',
+        is_error: true,
+        content: [{ type: 'text' }, { type: 'image' }, { type: 'text' }],
+      },
+    ]);
+    const gemini = toGeminiMessages(conversation).contents.at(-1);
+    expect(gemini?.parts[0]).toMatchObject({
+      functionResponse: { response: { outcome: 'error', error: { message: 'failed' } } },
+    });
+    const openai = toOpenAIMessages(withErrorResult([{ type: 'text', text: 'why' }])).messages.at(
+      -1,
+    );
+    expect(openai).toMatchObject({
+      role: 'tool',
+      content: [{ type: 'text' }, { type: 'text', text: 'why' }],
+    });
+    const lead = (openai as { content: Array<{ text: string }> }).content[0]?.text ?? '';
+    expect(JSON.parse(lead)).toMatchObject({ outcome: 'error', error: { message: 'failed' } });
+  });
+
+  it('removes parts when a tool result is redacted', () => {
+    const conversation = withToolResult(TEXT_AND_IMAGE);
+    const row = getOrderedMessages(conversation).at(-1);
+    const redacted =
+      row?.toolResult === undefined ? undefined : redactToolResult(row.toolResult, '[redacted]');
+    expect(redacted).toEqual({ callId: 'call-1', outcome: 'success', content: '[redacted]' });
   });
 });

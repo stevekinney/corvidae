@@ -61,4 +61,22 @@ describe('MCP content mapping', () => {
       structuredContent: { content: 'not blocks' },
     });
   });
+
+  it('emits the parts of a materialized result as blocks (server direction)', () => {
+    expect(
+      toCallToolResult({
+        callId: 'c',
+        outcome: 'success',
+        content: { width: 1 },
+        parts: [
+          { type: 'text', text: 'caption' },
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            source: { kind: 'inline', data: image.data, encoding: 'base64' },
+          },
+        ],
+      }),
+    ).toEqual({ content: [text, image], structuredContent: { width: 1 } });
+  });
 });

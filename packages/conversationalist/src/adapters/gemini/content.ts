@@ -191,6 +191,7 @@ export function toFunctionCallPart(toolCall: ToolCall): GeminiFunctionCallPart {
  * checked 2026-10-22).
  */
 function toMultimodalFunctionResponsePart(
+  toolResult: ToolResult,
   parts: NonNullable<ToolResult['parts']>,
   functionName: string,
   context: MediaExportContext,
@@ -207,7 +208,17 @@ function toMultimodalFunctionResponsePart(
     media.push({ inlineData: { ...converted.inlineData, displayName } });
     return { $ref: displayName };
   });
-  return { functionResponse: { name: functionName, response: { output }, parts: media } };
+  // A non-success result keeps its outcome beside the parts, as the canonical payload does.
+  const response =
+    toolResult.outcome === 'success'
+      ? { output }
+      : {
+          output,
+          outcome: toolResult.outcome,
+          ...(toolResult.error ? { error: toolResult.error } : {}),
+          ...(toolResult.action ? { action: toolResult.action } : {}),
+        };
+  return { functionResponse: { name: functionName, response, parts: media } };
 }
 
 /**
@@ -219,8 +230,9 @@ export function toFunctionResponsePart(
   functionName: string,
   context?: MediaExportContext,
 ): GeminiFunctionResponsePart {
-  if (toolResult.outcome === 'success' && toolResult.parts !== undefined) {
+  if (toolResult.parts !== undefined) {
     return toMultimodalFunctionResponsePart(
+      toolResult,
       toolResult.parts,
       functionName,
       context ??

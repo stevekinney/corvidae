@@ -17,7 +17,7 @@ import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './messag
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
 import { explicitAbortReason } from './run-step-utilities';
-import { admitToolResultMedia } from './tool-result-media';
+import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import type { GenerateResponse } from './types';
 
 export interface ToolExecutionDependencies {
@@ -384,14 +384,16 @@ export async function executeTools(
                 elicit,
               });
               if (validated !== undefined && validated !== currentResult) {
-                emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, validated));
-                currentResult = validated;
+                // A replacement can carry new media: admit it before the event shows it.
+                const [admitted] = await admitToolResultMedia(admitter, [validated], mediaContext);
+                const replacement = admitted ?? validated;
+                emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, replacement));
+                currentResult = replacement;
               }
             }
             validatedResults.push(currentResult);
           }
-          // A hook may have replaced a result with one that carries new media.
-          results = await admitToolResultMedia(admitter, validatedResults, mediaContext);
+          results = validatedResults;
         } catch (error) {
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those
@@ -413,6 +415,17 @@ export async function executeTools(
         await conversation.appendToolResultsAsync(results, resultRowBatch(resultRowScope, results));
       } else {
         conversation.appendToolResults(results, resultRowBatch(resultRowScope, results));
+      }
+
+      // The rows now point at the assets they carry; claim them so none expires under the row.
+      try {
+        await retainToolResultMedia(
+          { admitter: deps.generatedMediaAdmitter, runId: deps.runId, conversation },
+          results,
+        );
+      } catch (error) {
+        emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
+        return { kind: 'error', error, errorKind: 'tool' };
       }
 
       emitter?.dispatch(new ToolsExecutedEvent(step, callsToExecute, executedResults));
