@@ -84,8 +84,13 @@ import { BureauError } from '../create-bureau.ts';
 import { TaskListingTokenError } from '../task-list-snapshots.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import type { Bureau } from '../types.ts';
-import { A2A_INPUT_MODES, A2UI_EXTENSION_URI, declaredExtensionsOf } from './a2a-agent-card.ts';
-import type { A2ATaskRecords, A2AWireMessage } from './a2a-task-record.ts';
+import {
+  A2A_INPUT_MODES,
+  A2A_OUTPUT_MODES,
+  A2UI_EXTENSION_URI,
+  declaredExtensionsOf,
+} from './a2a-agent-card.ts';
+import { type A2ATaskRecords, type A2AWireMessage, clearedRecord } from './a2a-task-record.ts';
 import {
   agentMessage,
   bureauStateOf,
@@ -117,6 +122,9 @@ export const A2A_SEND_LEDGER_KEY_PREFIX = 'command-ledger:a2a-send:v1';
 /** The metadata key a continuation names the human wait it answers with. */
 export const SIGNAL_NAME_METADATA_KEY = 'signalName';
 
+/** The metadata key a continuation names the tool approval it decides with, among several. */
+export const CALL_ID_METADATA_KEY = 'callId';
+
 /** The metadata key a continuation to a working task names its delivery mode with. */
 export const DELIVERY_MODE_METADATA_KEY = 'deliveryMode';
 
@@ -135,8 +143,12 @@ const LISTED_HISTORY_LIMIT = 100;
 /** How long a blocking send waits between reads of a task no event has announced. */
 const SETTLE_POLL_MS = 1_000;
 
-/** What a send's ledger entry claims: nothing beyond the binding itself. */
-export type A2ASendClaim = Record<string, never>;
+/**
+ * What a send's ledger entry claims: for a continuation, the path it was admitted by. A retry
+ * of a claim left pending takes the same path, whatever state the task has reached since, so an
+ * answer that took effect is never resent as session input.
+ */
+export type A2ASendClaim = { readonly path?: 'answer' | 'input' | undefined };
 
 /** Which path a send took: a new task, an answer to a wait, or input to a working task. */
 type SendPath = 'create' | 'answer' | 'input';
@@ -375,6 +387,39 @@ function inputReceiptState(state: string): SendReceiptState {
   }
 }
 
+/**
+ * The strict lower bound, in epoch milliseconds, that admits exactly the tasks at or after
+ * `timestamp` (A2A's filter is inclusive; the listing's is strict). Status timestamps have
+ * millisecond resolution, so a whole-millisecond instant moves back one millisecond, and an
+ * instant with a sub-millisecond part stays on its millisecond, which lies before it.
+ */
+export function inclusiveBoundary(timestamp: string): number {
+  const milliseconds = Date.parse(timestamp);
+  const fraction = /\.(\d+)/.exec(timestamp)?.[1] ?? '';
+  return /[1-9]/.test(fraction.slice(3)) ? milliseconds : milliseconds - 1;
+}
+
+/** The most serialized bytes a listed task's history keeps in a listing snapshot. */
+export const LISTED_HISTORY_BYTES = 256 * 1024;
+
+/**
+ * A listed task with its history trimmed, oldest first, to {@link LISTED_HISTORY_BYTES}, so one
+ * task's entry stays well within a snapshot window however large its messages are.
+ */
+function boundedTask(task: unknown): unknown {
+  const record = task as { history?: unknown[] };
+  const history = record.history ?? [];
+  let kept = history.length;
+  let bytes = 0;
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    bytes += new TextEncoder().encode(JSON.stringify(history[index])).byteLength;
+    if (bytes > LISTED_HISTORY_BYTES) break;
+    kept = index;
+  }
+  if (bytes <= LISTED_HISTORY_BYTES) return task;
+  return { ...record, history: history.slice(kept) };
+}
+
 /** Creates the request handler that serves one published agent. */
 export function createBureauA2ARequestHandler(
   options: BureauA2ARequestHandlerOptions,
@@ -431,9 +476,24 @@ export function createBureauA2ARequestHandler(
     shape: ProjectionShape,
     receipt?: Receipt,
   ): Promise<Task> {
-    const reply = await replyOf(view);
+    const stored = await bureau.tasks.record(view.id);
     let record = await records.read(view.id);
-    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded) {
+    // A deleted context empties its tasks' own history, and the A2A history goes with it, even on
+    // an instance that did not see the deletion happen.
+    if (record !== undefined && stored !== undefined && stored.history.length === 0) {
+      if (record.history.length > 0 || !record.replyRecorded) {
+        record = await records.update(view.id, (current) =>
+          current.history.length === 0 && current.replyRecorded
+            ? undefined
+            : clearedRecord(current),
+        );
+      }
+    }
+    const reply = await replyOf(view);
+    // The reply is folded in once it can be read: a completed task whose reply is not yet visible
+    // here (its history event has not reached this instance) is folded on a later read.
+    const replyReady = view.status !== 'completed' || (reply !== undefined && reply !== '');
+    if (record !== undefined && isTerminal(view.status) && !record.replyRecorded && replyReady) {
       record = await records.update(view.id, (current) =>
         current.replyRecorded
           ? undefined
@@ -452,7 +512,6 @@ export function createBureauA2ARequestHandler(
             },
       );
     }
-    const stored = await bureau.tasks.record(view.id);
     const task = projectTask(
       { view, record, reply, acknowledgement: stored?.cleanupAcknowledgement },
       shape,
@@ -564,7 +623,12 @@ export function createBureauA2ARequestHandler(
     }
   }
 
-  async function createTask(message: Message, owner: Owner, version: string): Promise<string> {
+  async function createTask(
+    message: Message,
+    owner: Owner,
+    version: string,
+    onEffect: () => void,
+  ): Promise<string> {
     if (message.contextId !== '') {
       const contextOwner = await bureau.getOwner({ kind: 'session', id: message.contextId });
       // A context another caller owns is answered as if it did not exist, before anything loads it.
@@ -604,6 +668,7 @@ export function createBureauA2ARequestHandler(
         throw invalid(error.message);
       throw error;
     }
+    onEffect();
     await records.create({
       recordVersion: 1,
       taskId: run.id,
@@ -670,9 +735,11 @@ export function createBureauA2ARequestHandler(
     owner: Owner,
     principal: Principal,
     deadline: number | undefined,
+    path: 'answer' | 'input',
+    onEffect: () => void,
   ): Promise<{ readonly path: SendPath; readonly state: SendReceiptState }> {
     let answered: { readonly path: SendPath; readonly state: SendReceiptState };
-    if (view.status === 'input-required') {
+    if (path === 'answer') {
       const data = dataOf(message) as { decision?: unknown; reason?: unknown } | undefined;
       const decision = data?.decision;
       if (
@@ -688,6 +755,10 @@ export function createBureauA2ARequestHandler(
         throw invalid('A reject decision requires a reason.');
       }
       const signalName = message.metadata?.[SIGNAL_NAME_METADATA_KEY];
+      const callId = message.metadata?.[CALL_ID_METADATA_KEY];
+      if (callId !== undefined && typeof callId !== 'string') {
+        throw invalid('metadata.callId must be a string.');
+      }
       const text = textOf(message);
       if (decision === undefined && text === '') {
         throw invalid('An answer needs a text part, or a data part with a decision.');
@@ -698,11 +769,13 @@ export function createBureauA2ARequestHandler(
         ...(decision === undefined ? { answer: text } : { decision }),
         ...(reason === undefined ? {} : { reason }),
         ...(typeof signalName === 'string' ? { signalName } : {}),
+        ...(typeof callId === 'string' ? { callId } : {}),
       });
       if (!input.success)
         throw invalid(input.error.issues[0]?.message ?? 'The answer is not valid.');
       try {
         const result = (await options.respond(principal, input.data)) as { receipt?: unknown };
+        onEffect();
         answered = {
           path: 'answer',
           state: result.receipt === 'superseded' ? 'superseded' : 'applied',
@@ -743,6 +816,7 @@ export function createBureauA2ARequestHandler(
           `The message could not be admitted (${outcome.outcome}).`,
         );
       }
+      onEffect();
       answered = { path: 'input', state: inputReceiptState(outcome.receipt.state) };
     }
     await records.update(view.id, (current) => {
@@ -814,7 +888,27 @@ export function createBureauA2ARequestHandler(
         'This agent does not deliver push notifications.',
       );
     }
-    const continued = continuing ? await checkContinuation(message, owner) : undefined;
+    const outputModes = params.configuration?.acceptedOutputModes ?? [];
+    if (outputModes.length > 0 && !outputModes.some((mode) => A2A_OUTPUT_MODES.includes(mode))) {
+      throw new ContentTypeNotSupportedError(
+        `This agent answers only in ${A2A_OUTPUT_MODES.join(', ')}, which acceptedOutputModes excludes.`,
+      );
+    }
+    // A claim an earlier attempt left pending already took effect, or may have: it is finished
+    // by the path it was admitted on, and the task's state since does not refuse it.
+    const pending =
+      located.state === 'retained' && located.entry.state === 'pending'
+        ? located.entry.claim
+        : undefined;
+    const continued = !continuing
+      ? undefined
+      : pending === undefined
+        ? await checkContinuation(message, owner)
+        : await ownTask(message.taskId, owner);
+    const path: 'answer' | 'input' | undefined =
+      continued === undefined
+        ? undefined
+        : (pending?.path ?? (continued.status === 'input-required' ? 'answer' : 'input'));
     if (continued !== undefined && request.expectedRevision !== undefined) {
       const current = revisionOf(continued.id);
       if (current !== request.expectedRevision) {
@@ -833,7 +927,7 @@ export function createBureauA2ARequestHandler(
 
     let claimed;
     try {
-      claimed = await ledger.claim(identity, digest, {});
+      claimed = await ledger.claim(identity, digest, path === undefined ? {} : { path });
     } catch (error) {
       if (error instanceof BureauLedgerConflictError) {
         const original = await ledger.locate(identity);
@@ -851,6 +945,13 @@ export function createBureauA2ARequestHandler(
     const entry = claimed.entry as Parameters<A2ASendLedger['release']>[0];
     const expired = request.deadline !== undefined && runtime.clock.now() >= request.deadline;
     let result: A2ASendResult;
+    // Whether the command may have taken effect: a run created, a wait answered, an input
+    // admitted. From then on the claim is kept, so a retry finishes it by the same path rather
+    // than claiming afresh against the task's later state.
+    let effected = false;
+    const markEffected = () => {
+      effected = true;
+    };
     try {
       if (continued === undefined) {
         result = expired
@@ -860,7 +961,11 @@ export function createBureauA2ARequestHandler(
               state: 'expired',
               reason: 'deadline-exceeded',
             }
-          : { taskId: await createTask(message, owner, version), path: 'create', state: 'applied' };
+          : {
+              taskId: await createTask(message, owner, version, markEffected),
+              path: 'create',
+              state: 'applied',
+            };
       } else if (expired) {
         // An expired continuation leaves the task as it is, still waiting if it was.
         result = {
@@ -876,22 +981,45 @@ export function createBureauA2ARequestHandler(
           owner,
           user.principal,
           request.deadline,
+          path ?? 'input',
+          markEffected,
         );
         result = { taskId: continued.id, ...answered };
       }
     } catch (error) {
       // Refused before anything was admitted: a retry may claim the binding afresh.
-      if (claimed.outcome === 'claimed') await ledger.release(entry).catch(() => undefined);
+      if (claimed.outcome === 'claimed' && !effected) {
+        await ledger.release(entry).catch(() => undefined);
+      }
       throw error;
     }
     await ledger.complete(entry, result);
     return admitted(result);
   }
 
+  /** Follows an admitted or existing task as a stream, starting from its current snapshot. */
+  function follow(
+    taskId: string,
+    shape: ProjectionShape,
+    context: ServerCallContext | undefined,
+    receipt?: Receipt,
+  ): AsyncGenerator<StreamResponse> {
+    return followTask({
+      bureau,
+      taskId,
+      lastEventId: headerOf(context, 'last-event-id'),
+      durableHistoryActive: shape.activated.has(DURABLE_HISTORY_EXTENSION_URI),
+      snapshot: (view) => respondWith(view, shape, receipt),
+      replyOf,
+      timers,
+      signal: context === undefined ? undefined : requestSignalOf(context),
+    });
+  }
+
   /**
    * Admits a send once per binding at a time: one that arrives while an identical send is being
-   * admitted waits for it, so the second never reaches the run-creation ledger while the first
-   * holds its claim, and is then admitted on its own, as an exact retry or a conflict.
+   * admitted waits for that admission only, never for the first send's wait on its task, so a
+   * retry with its own response controls answers by them.
    */
   async function admitOnce(
     params: SendMessageRequest,
@@ -917,25 +1045,6 @@ export function createBureauA2ARequestHandler(
     } finally {
       if (inFlight.get(key) === attempt) inFlight.delete(key);
     }
-  }
-
-  /** Follows an admitted or existing task as a stream, starting from its current snapshot. */
-  function follow(
-    taskId: string,
-    shape: ProjectionShape,
-    context: ServerCallContext | undefined,
-    receipt?: Receipt,
-  ): AsyncGenerator<StreamResponse> {
-    return followTask({
-      bureau,
-      taskId,
-      lastEventId: headerOf(context, 'last-event-id'),
-      durableHistoryActive: shape.activated.has(DURABLE_HISTORY_EXTENSION_URI),
-      snapshot: (view) => respondWith(view, shape, receipt),
-      replyOf,
-      timers,
-      signal: context === undefined ? undefined : requestSignalOf(context),
-    });
   }
 
   return {
@@ -1041,12 +1150,18 @@ export function createBureauA2ARequestHandler(
           agentName,
           ...(params.contextId === '' ? {} : { contextId: params.contextId }),
           ...(status === undefined ? {} : { status }),
+          // A2A's filter is inclusive ("greater than or equal"), and the listing's is strict:
+          // timestamps have millisecond resolution, so one millisecond earlier is the same set.
           ...(params.statusTimestampAfter === undefined
             ? {}
-            : { statusTimestampAfter: params.statusTimestampAfter }),
+            : {
+                statusTimestampAfter: new Date(
+                  inclusiveBoundary(params.statusTimestampAfter),
+                ).toISOString(),
+              }),
           limit: pageSize,
           ...(params.pageToken === '' ? {} : { pageToken: params.pageToken }),
-          project: async (view) => Task.toJSON(await respondWith(view, widest)),
+          project: async (view) => boundedTask(Task.toJSON(await respondWith(view, widest))),
         });
       } catch (error) {
         if (error instanceof TaskListingTokenError) throw invalid(error.message);

@@ -1,4 +1,5 @@
-import type { Conversation } from 'conversationalist';
+import { sha256HexSync } from '@lostgradient/cryptography';
+import type { Conversation, Message } from 'conversationalist';
 
 import type { SteeringDesiredState } from './durable/types';
 import type { SelectionPlan } from './providers/selection';
@@ -227,6 +228,29 @@ export interface SkillActivationBinding {
 }
 
 /**
+ * The metadata key on the message that carries a governed-memory recall's
+ * evidence (COR-41, COR-771). The recall stamps the bundle's `bundleRevision`
+ * and `contentDigest` (`sha256:<hex>` of the message content) under it, which
+ * is how the sealer learns which bundle a turn consumed without being handed
+ * the bundle itself.
+ */
+export const MEMORY_EVIDENCE_METADATA_KEY = 'memoryEvidence';
+
+/** The fields the sealer reads from a message's {@link MEMORY_EVIDENCE_METADATA_KEY} entry. */
+export interface MemoryEvidenceMessageMetadata {
+  readonly bundleRevision: string;
+  readonly contentDigest: string;
+}
+
+function memoryEvidenceMetadata(message: Message): MemoryEvidenceMessageMetadata | undefined {
+  const entry = message.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+  const { bundleRevision, contentDigest } = entry as Record<string, unknown>;
+  if (typeof bundleRevision !== 'string' || typeof contentDigest !== 'string') return undefined;
+  return { bundleRevision, contentDigest };
+}
+
+/**
  * Per-message trust for the conversation source.
  *
  * `role` plus `toolResult` presence recovers most of the distinction a
@@ -251,7 +275,9 @@ function conversationTrustVector(conversation: Conversation): string {
   const sequence: string[] = [];
   for (const message of conversation.getMessages()) {
     let tier: 'o' | 'a' | 'r';
-    if (message.toolResult !== undefined) {
+    // A governed-memory evidence row is retrieved content, exactly as the
+    // memory-evidence source records it, not operator-authored text.
+    if (message.toolResult !== undefined || memoryEvidenceMetadata(message) !== undefined) {
       tier = 'r';
       counts.retrieved += 1;
     } else if (message.role === 'assistant') {
@@ -271,6 +297,45 @@ function conversationTrustVector(conversation: Conversation): string {
 
 const INCLUDED: ContextSourceDisposition = { kind: 'included' };
 const ABSENT: ContextSourceDisposition = { kind: 'absent-by-composition' };
+
+/**
+ * The memory-evidence source: which governed-memory bundle this turn's
+ * context carries. A bundle counts only while its message still holds exactly
+ * the content its digest names, so a compaction that rewrote it, or a redaction
+ * that withdrew it, can never leave the epoch attesting to evidence the model
+ * no longer sees. Two different intact bundles at once are flagged as
+ * excluded: the turn would be reading a stale bundle beside the current one.
+ */
+function memoryEvidenceSource(conversation: Conversation): ContextSourceRecord {
+  const tagged = conversation.getMessages().flatMap((message) => {
+    const metadata = memoryEvidenceMetadata(message);
+    return metadata === undefined ? [] : [{ message, metadata }];
+  });
+  const base = {
+    sourceId: 'memory-evidence',
+    trust: 'untrusted-retrieved',
+    precedence: 3,
+    availability: 'degraded-ok',
+    redaction: 'digest-only',
+  } as const;
+  const latest = tagged.at(-1)?.metadata;
+  if (latest === undefined) return { ...base, disposition: ABSENT };
+  const intact = tagged.filter(
+    ({ message, metadata }) =>
+      typeof message.content === 'string' &&
+      `sha256:${sha256HexSync(message.content)}` === metadata.contentDigest,
+  );
+  // The newest tagged row is the bundle the turn means to carry; an older intact
+  // row never stands in for it when the newest one was rewritten.
+  const latestIntact = intact.at(-1)?.message === tagged.at(-1)?.message;
+  const revisions = new Set(intact.map(({ metadata }) => metadata.bundleRevision));
+  let disposition: ContextSourceDisposition = INCLUDED;
+  if (!latestIntact) disposition = { kind: 'excluded', reason: 'memory-evidence-modified' };
+  else if (revisions.size > 1) {
+    disposition = { kind: 'excluded', reason: 'stale-memory-evidence-in-context' };
+  }
+  return { ...base, disposition, revision: latest.bundleRevision, digest: latest.contentDigest };
+}
 
 /**
  * Seals one epoch from already-resolved inputs. Pure and synchronous: it
@@ -386,6 +451,7 @@ export function sealContextEpoch(input: SealContextEpochInput): EffectiveContext
                 .join('\n'),
             ),
     },
+    memoryEvidenceSource(input.conversation),
     {
       sourceId: 'agent-instructions',
       trust: 'trusted-operator',

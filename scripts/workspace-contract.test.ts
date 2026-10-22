@@ -183,8 +183,9 @@ describe('internal workspace architecture', () => {
       // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
       // under the memory-scaled concurrency instead of waiting on each other stage by stage. The
       // applications' builds stay out: the playground's static export alone takes about five
-      // minutes, and `bun run build` and the Vercel project's own build still run it.
-      'turbo run lint typecheck test:self test test:browser-fixtures test:coverage',
+      // minutes, and `bun run build` and the Vercel project's own build still run it. `test:gate`
+      // runs each package's suite once: its coverage run where it has one, its `test` otherwise.
+      'turbo run lint typecheck test:self test:gate test:browser-fixtures',
       // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
       // report (warnings only) reads the fast phase's reports.
       'bun run test:slow',
@@ -215,8 +216,15 @@ describe('internal workspace architecture', () => {
     // Enumerated rather than recursive on purpose: `./scripts/**/*.test.ts` also matches
     // `scripts/browser-fixtures`, whose suites need `prepare-manifest.ts` first and run under
     // the separate `test:browser-fixtures` gate.
+    // The chef plumbing scripts' real-process suites are `*.slow.test.ts` files: the fast lane
+    // ignores them and `test:self:slow` runs them, serially after the parallel phase, through
+    // `test:slow` (COR-1499).
     expect(scripts['test:self']).toBe(
-      'bun scripts/bun-test-junit.ts --report-name=self --parallel=4 ./scripts/*.test.ts ./scripts/terminal/*.test.ts',
+      "bun scripts/bun-test-junit.ts --report-name=self --parallel=4 --path-ignore-patterns='**/*.slow.test.ts' ./scripts/*.test.ts ./scripts/terminal/*.test.ts ./scripts/chef/*.test.ts",
+    );
+    expect(scripts['test:self:slow']).toBe('bun test ./scripts/chef/*.slow.test.ts');
+    expect(scripts['test:slow']).toBe(
+      "bun scripts/run-exclusively.ts 'turbo run test:slow test:self:slow --concurrency=1'",
     );
     // The guard runs `bun audit --audit-level=high` with only the exceptions registered in
     // scripts/audit-exceptions.ts, and fails when one goes stale, expires, or widens.
@@ -457,7 +465,7 @@ describe('internal workspace architecture', () => {
   });
 
   test('project skills have one canonical owner for both providers', async () => {
-    for (const name of ['add-dependency', 'add-workspace', 'validate-monorepo']) {
+    for (const name of ['add-dependency', 'add-workspace', 'chef', 'validate-monorepo']) {
       const canonicalDirectory = join(root, '.agents/skills', name);
       const canonicalStatus = await lstat(canonicalDirectory);
       expect(canonicalStatus.isSymbolicLink()).toBe(false);

@@ -93,7 +93,7 @@ describe('createBureauHandler options', () => {
     });
   });
 
-  it.each(['publicUrl', 'discoveryUrl', 'signing', 'cors', 'rateLimitKey', 'limits'])(
+  it.each(['cors', 'rateLimitKey', 'limits'])(
     'does not accept the deferred option %s',
     async (name) => {
       await withBureau({}, (bureau) => {
@@ -103,6 +103,24 @@ describe('createBureauHandler options', () => {
       });
     },
   );
+
+  it('refuses A2A options that are malformed, or that need publicUrl without it (COR-903)', async () => {
+    await withBureau({}, (bureau) => {
+      const build = (options: Record<string, unknown>) => () =>
+        createBureauHandler(bureau, { unauthenticatedAccess: 'allow', ...options } as never);
+      expect(build({ publicUrl: 'not a url' })).toThrow(/publicUrl must be an absolute http/);
+      expect(build({ publicUrl: 'https://example.test/?x=1' })).toThrow(/no query or fragment/);
+      expect(build({ publicUrl: 'ftp://example.test' })).toThrow(/http or https/);
+      expect(build({ discoveryUrl: 'https://example.test' })).toThrow(
+        /discoveryUrl needs publicUrl/,
+      );
+      expect(build({ signing: {} })).toThrow(/signing needs publicUrl/);
+      expect(build({ publicUrl: 'https://example.test', discoveryUrl: 'nope' })).toThrow(
+        /discoveryUrl must be an absolute http/,
+      );
+      expect(build({ publicUrl: 'https://example.test' })).not.toThrow();
+    });
+  });
 
   it('rejects an unauthenticatedAccess value that is neither reject nor allow', async () => {
     await withBureau({}, (bureau) => {

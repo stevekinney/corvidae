@@ -64,6 +64,8 @@ export const queryKeys = {
     revisions: (id: string) => ['agents', 'revisions', id] as const,
     /** The models and tools an agent may name (`bureau.agents.catalog`). */
     catalog: () => ['agents', 'catalog'] as const,
+    /** The models a session of one agent may be switched to (`bureau.agents.models`). */
+    models: (agentName: string) => ['agents', 'models', agentName] as const,
   },
   /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
   workflowCatalog: {
