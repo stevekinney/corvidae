@@ -11,6 +11,7 @@ import {
   stringify,
 } from './functions.ts';
 import type { A2uiRenderContext } from './render-context.ts';
+import { compileSafePattern } from './safe-regexp.ts';
 import type { A2uiComponent, A2uiJsonValue } from './types.ts';
 
 /** One child to render: a component id and the scope its relative paths resolve in. */
@@ -319,13 +320,12 @@ export function timeOutOfRange(
   return (lower !== undefined && time < lower) || (upper !== undefined && time > upper);
 }
 
-/** Whether `value` matches `pattern`, or `undefined` when the pattern is not a valid one. */
+/**
+ * Whether `value` matches `pattern`, run in linear time, or `undefined` when
+ * the pattern is not a valid one or needs backtracking.
+ */
 export function matchesPattern(pattern: string, value: string): boolean | undefined {
-  try {
-    return new RegExp(pattern).test(value);
-  } catch {
-    return undefined;
-  }
+  return compileSafePattern(pattern)?.test(value);
 }
 
 /** An A2UI icon name as words: `shoppingCart` → `Shopping cart`. */

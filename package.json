@@ -104,6 +104,7 @@
     "prosemirror-view": "^1.41.3",
     "publint": "^0.3.24",
     "qrcode": "^1.5.4",
+    "re2js": "^2.8.6",
     "rehype-katex": "^7.0.1",
     "rehype-sanitize": "^6.0.0",
     "rehype-stringify": "^10.0.1",

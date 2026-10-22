@@ -50,6 +50,9 @@ describe('node helpers', () => {
     expect(matchesPattern('^a', 'abc')).toBe(true);
     expect(matchesPattern('^b', 'abc')).toBe(false);
     expect(matchesPattern('(', 'abc')).toBeUndefined();
+    // A TextField's validationRegexp runs in linear time too.
+    expect(matchesPattern('^(a+)+$', `${'a'.repeat(5000)}!`)).toBe(false);
+    expect(matchesPattern('^(a)\\1$', 'aa')).toBeUndefined();
   });
 
   test('iconLabel turns an icon name into words', () => {

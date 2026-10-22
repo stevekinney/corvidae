@@ -15,13 +15,14 @@
   },
   "dependencies": {
     "@ag-ui/core": "catalog:",
+    "@lostgradient/cinder": "workspace:*",
+    "@lostgradient/markdown": "workspace:*",
     "conversationalist": "workspace:*",
     "decode-named-character-reference": "catalog:",
     "micromark-util-decode-numeric-character-reference": "catalog:",
-    "zod": "catalog:",
-    "@lostgradient/cinder": "workspace:*",
-    "@lostgradient/markdown": "workspace:*",
-    "svelte": "catalog:"
+    "re2js": "catalog:",
+    "svelte": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@floating-ui/dom": "catalog:",

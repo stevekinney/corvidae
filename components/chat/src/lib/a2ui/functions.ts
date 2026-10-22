@@ -9,6 +9,7 @@
  * expression grammar, and `openUrl` opens only `http:` and `https:` URLs.
  */
 import { resolvePath } from './data-model.svelte.ts';
+import { compileSafePattern } from './safe-regexp.ts';
 import type { A2uiJsonValue } from './types.ts';
 
 /** What resolving a dynamic value can read and report. */
@@ -145,12 +146,14 @@ function required(value: unknown): boolean {
 }
 
 function regex(value: unknown, pattern: unknown, context: A2uiEvaluationContext): boolean {
-  try {
-    return new RegExp(stringify(pattern)).test(stringify(value));
-  } catch {
-    context.report(`regex: "${stringify(pattern)}" is not a valid pattern`);
+  const compiled = compileSafePattern(stringify(pattern));
+  if (compiled === undefined) {
+    context.report(
+      `regex: "${stringify(pattern)}" is not a valid pattern, or needs backreferences or lookaround, which do not run`,
+    );
     return false;
   }
+  return compiled.test(stringify(value));
 }
 
 function length(value: unknown, min: unknown, max: unknown): boolean {
