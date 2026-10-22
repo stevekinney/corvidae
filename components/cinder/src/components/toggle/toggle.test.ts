@@ -596,9 +596,9 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
   });
 
   test('a coarse pointer sizes the hit area to at least 2.75rem by 2.75rem', () => {
-    const coarse = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n  \}/);
-    expect(coarse?.[1], 'no (pointer: coarse) block').toBeDefined();
-    expect(coarse![1]).toContain('.cinder-toggle');
-    expect(coarse![1].match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    const coarse = css.match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
+    expect(coarse, 'no (pointer: coarse) block').not.toBe('');
+    expect(coarse).toContain('.cinder-toggle');
+    expect(coarse.match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
   });
 });
