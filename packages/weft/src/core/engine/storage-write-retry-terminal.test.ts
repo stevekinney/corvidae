@@ -11,6 +11,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { KEYS } from '../../storage/interface.ts';
 import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
+import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
 import type { WorkflowState } from '../types.ts';
@@ -87,6 +88,7 @@ describe('a terminal write never overwrites another writer', () => {
     const run = await startParked(steps, workflowId);
     const key = KEYS.workflow(workflowId);
     let othersBytes: Uint8Array | undefined;
+    let readsBeforeRetry = 0;
     run.refusing.refuse({
       matches: putsWorkflowStatus(workflowId, 'completed'),
       times: 1,
@@ -95,12 +97,14 @@ describe('a terminal write never overwrites another writer', () => {
         change(state);
         othersBytes = encode(state);
         await run.refusing.base.put(key, othersBytes);
+        readsBeforeRetry = run.refusing.readCount(key);
       },
     });
     await run.engine.signal(workflowId, 'go', 'x');
-    await run.refusing.whenAttempts(1, putsWorkflowStatus(workflowId, 'completed'));
-    // The retry reads the record and finds a change that is not its own; give it every turn it needs.
-    for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
+    // The retry's first act is to read the record; wait for that read, then let what it decides
+    // run to its end (it is all promise continuations from there, with no timer).
+    await run.refusing.whenReads(key, readsBeforeRetry + 1);
+    for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
     return { run, key, othersBytes: othersBytes! };
   }
 
@@ -302,6 +306,10 @@ describe('disposal during an attempt', () => {
     releaseAttempt.resolve();
 
     expect(await rejectionOf(run.result)).toBeInstanceOf(EngineDisposedError);
+    // A further attempt would follow the wait that disposal ends; give its zero-length timer, which
+    // was armed first, its turn before counting.
+    await yieldToPortableEventLoop();
+    await sleepForTesting(1);
     await yieldToPortableEventLoop();
     // The attempt in flight when the engine was disposed was the last.
     expect(run.refusing.attemptsMatching(putsCheckpoint('dispose-in-flight'))).toHaveLength(2);

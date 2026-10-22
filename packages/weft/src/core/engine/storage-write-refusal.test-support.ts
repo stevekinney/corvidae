@@ -61,6 +61,10 @@ export type RefusingStorage = {
   arm(): void;
   /** Add a rule; the first rule that matches a write and still has uses left handles it. */
   refuse(rule: WriteRefusal): void;
+  /** How many reads of `key` were made while armed, refused ones included. */
+  readCount(key: string): number;
+  /** Resolves once at least `count` reads of `key` have been made while armed. */
+  whenReads(key: string, count: number): Promise<void>;
   /** Refuse the next `times` reads of `key`, as a storage that cannot answer reads does. */
   refuseReads(key: string, times: number): void;
   /** Stop refusing, as a recovering engine over the same storage would find it. */
@@ -132,6 +136,8 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
   const attempts: WriteAttempt[] = [];
   const attemptWaiters: Array<{ settled: () => boolean; resolve: () => void }> = [];
   const readRefusals = new Map<string, number>();
+  const readCounts = new Map<string, number>();
+  const readWaiters: Array<{ key: string; count: number; resolve: () => void }> = [];
   let armed = false;
 
   const record = (attempt: WriteAttempt): void => {
@@ -150,6 +156,14 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
         (member as (...rest: unknown[]) => unknown).apply(target, args);
       if (method === 'get') {
         return async (...args: unknown[]) => {
+          if (armed) {
+            const read = String(args[0]);
+            const count = (readCounts.get(read) ?? 0) + 1;
+            readCounts.set(read, count);
+            for (const waiter of readWaiters) {
+              if (waiter.key === read && count >= waiter.count) waiter.resolve();
+            }
+          }
           const remaining = armed ? (readRefusals.get(String(args[0])) ?? 0) : 0;
           if (remaining > 0) {
             readRefusals.set(String(args[0]), remaining - 1);
@@ -193,6 +207,13 @@ export function createRefusingStorage(base: MemoryStorage): RefusingStorage {
     disarm: () => {
       armed = false;
     },
+    readCount: (key) => readCounts.get(key) ?? 0,
+    whenReads: (key, count) =>
+      (readCounts.get(key) ?? 0) >= count
+        ? Promise.resolve()
+        : new Promise<void>((resolve) => {
+            readWaiters.push({ key, count, resolve });
+          }),
     refuseReads: (key, times) => {
       readRefusals.set(key, times);
     },
