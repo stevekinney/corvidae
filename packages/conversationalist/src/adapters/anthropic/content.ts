@@ -254,7 +254,13 @@ export function toToolResultBlock(
       type: 'tool_result',
       tool_use_id: toolResult.callId,
       content: parts.map((part, partIndex) => {
-        if (part.type === 'text') return { type: 'text', text: part.text };
+        if (part.type === 'text') {
+          return {
+            type: 'text',
+            text: part.text,
+            ...(part.citations !== undefined ? { citations: part.citations } : {}),
+          };
+        }
         const block = toAnthropicMedia(part, partIndex, mediaContext);
         if (block.type !== 'image' && block.type !== 'document') {
           return rejectPart(mediaContext, partIndex, part, 'part-type-not-accepted');

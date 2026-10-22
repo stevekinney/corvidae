@@ -6,6 +6,8 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';
+import { createContextAssembler } from '../src/context/assembly.ts';
+import { createTokenBudget } from '../src/context/token-budget.ts';
 import { createAgent } from '../src/create-agent';
 import { createActiveRun } from '../src/create-run';
 import { createSubagentTool, subagentToolContent } from '../src/create-subagent-tool';
@@ -311,5 +313,38 @@ describe('sub-agent media', () => {
       { type: 'text', text: 'A chart.' },
       { ...inlineImage, source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 } },
     ]);
+  });
+});
+
+describe('tool-result media in context assembly', () => {
+  it("costs a tool result's media under its row and part, and its text as text", () => {
+    const positions: string[] = [];
+    const conversation = new Conversation();
+    conversation.appendToolCall({ id: 'call-a', name: 'chart', arguments: {} });
+    conversation.appendToolResult({
+      callId: 'call-a',
+      outcome: 'success',
+      content: null,
+      parts: [{ type: 'text', text: 'see' }, inlineImage],
+    });
+    const row = conversation.getMessages().find((message) => message.role === 'tool-result');
+    const result = createContextAssembler()({
+      conversation,
+      budget: createTokenBudget({
+        maxTokens: 100_000,
+        mediaCostEstimator: (part, position) => {
+          positions.push(`${position.messageId}:${position.partIndex}:${part.type}`);
+          return {
+            ...position,
+            modality: part.type,
+            outcome: 'estimated',
+            tokens: 50,
+            basis: 'catalog-estimate',
+          };
+        },
+      }),
+    });
+    expect(positions).toEqual([`${row?.id}:1:image`]);
+    expect(result.mediaCosts).toEqual([expect.objectContaining({ partIndex: 1, tokens: 50 })]);
   });
 });

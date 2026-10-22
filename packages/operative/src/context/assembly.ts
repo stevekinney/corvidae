@@ -96,6 +96,21 @@ function estimateMessage(
         ? message.toolResult.content
         : JSON.stringify(message.toolResult.content);
     tokens += estimator(resultContent);
+    // A result's parts are what the model reads: text as text, media through the media
+    // estimator under the same `messageId:partIndex` key its resolution uses.
+    message.toolResult.parts?.forEach((part, partIndex) => {
+      if (part.type === 'text') {
+        tokens += estimator(part.text);
+        return;
+      }
+      const outcome = mediaCostEstimator(part, { messageId: message.id, partIndex });
+      mediaOutcomes.push(outcome);
+      tokens += estimator(portableMediaText(part));
+      if (outcome.outcome === 'estimated') {
+        tokens += outcome.tokens;
+        mediaTokens += outcome.tokens;
+      }
+    });
   }
 
   return {

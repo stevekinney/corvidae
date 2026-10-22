@@ -8,12 +8,14 @@ import { resolvedSourceKey } from '../src/adapters/media';
 import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
 import { partitionMessages } from '../src/compaction/preservation';
+import { stripToolResultDetails } from '../src/compaction/stripping';
 import {
   appendMessages,
   appendToolResult,
   createConversationHistory,
   deserializeConversationHistory,
 } from '../src/conversation';
+import { simpleTokenEstimator } from '../src/environment';
 import { UnsupportedContentError } from '../src/errors';
 import type { ToolResultPart } from '../src/multi-modal';
 import { messageMediaParts } from '../src/multi-modal';
@@ -387,5 +389,29 @@ describe('tool-result parts reach every media consumer', () => {
       error: { message: 'failed' },
       parts: [{ type: 'text', text: 'why' }],
     });
+  });
+});
+
+describe('tool-result parts in compaction, estimation, and replay', () => {
+  it('strips parts with content before a tool result is summarized', () => {
+    const row = getOrderedMessages(withToolResult(TEXT_AND_IMAGE)).at(-1);
+    const [stripped] = stripToolResultDetails(row === undefined ? [] : [row]);
+    expect(stripped?.toolResult?.parts).toBeUndefined();
+    expect(JSON.stringify(stripped)).not.toContain('Before the chart.');
+  });
+
+  it("counts a tool result's parts in the token estimate", () => {
+    const row = getOrderedMessages(withToolResult([{ type: 'text', text: 'x'.repeat(400) }])).at(
+      -1,
+    );
+    expect(row === undefined ? 0 : simpleTokenEstimator(row)).toBeGreaterThanOrEqual(100);
+  });
+
+  it('keeps citations on Anthropic tool_result text', () => {
+    const citations = [{ type: 'char_location', cited_text: 'a' }];
+    const { messages } = toAnthropicMessages(
+      withToolResult([{ type: 'text', text: 'cited', citations }]),
+    );
+    expect(JSON.stringify(messages.at(-1))).toContain('char_location');
   });
 });

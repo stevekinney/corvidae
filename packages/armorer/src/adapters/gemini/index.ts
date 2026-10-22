@@ -5,6 +5,7 @@ import { isAsyncIterable } from '../../type-guards';
 import type { ToolCallInput, ToolResultLike } from '../../types';
 import { importToolSchema } from '../imported-schema';
 import { normalizeToSerializedDefinitions, type ToolRegistryLike } from '../shared';
+import { geminiToolResultParts, toolResultParts } from '../tool-result-parts';
 import type {
   GeminiFunctionDeclaration,
   GeminiFunctionResponsePart,
@@ -112,12 +113,7 @@ export function formatGeminiToolResults(
     }
   }
 
-  return resultList.map((result) => ({
-    functionResponse: {
-      name: resolveGeminiToolName(result, options),
-      response: normalizeGeminiResponse(result),
-    },
-  }));
+  return resultList.map((result) => toFunctionResponsePart(result, options));
 }
 
 export async function formatGeminiToolResultsAsync(
@@ -189,6 +185,28 @@ function convertFunctionCall(
     name: functionCall.name,
     arguments: functionCall.args ?? {},
   };
+}
+
+function toFunctionResponsePart(
+  result: ToolResultLike,
+  options: GeminiFormatToolResultsOptions,
+): GeminiFunctionResponsePart {
+  const name = resolveGeminiToolName(result, options);
+  const parts = toolResultParts(result);
+  if (parts === undefined) {
+    return { functionResponse: { name, response: normalizeGeminiResponse(result) } };
+  }
+  const { output, parts: media } = geminiToolResultParts(parts);
+  const response =
+    result.outcome === 'success'
+      ? { output }
+      : {
+          output,
+          outcome: result.outcome,
+          ...(result.error ? { error: result.error } : {}),
+          ...(result.action ? { action: result.action } : {}),
+        };
+  return { functionResponse: { name, response, parts: media } };
 }
 
 function normalizeGeminiResponse(result: ToolResultLike): Record<string, unknown> {

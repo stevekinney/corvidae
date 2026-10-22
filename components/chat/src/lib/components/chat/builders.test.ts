@@ -30,7 +30,7 @@ describe('chat conversation builders', () => {
     const conversation = createConversationHistory({ id: 'conversation-builders' });
 
     expect(conversation).toMatchObject({
-      schemaVersion: 6,
+      schemaVersion: 7,
       id: 'conversation-builders',
       metadata: {},
       ids: [],

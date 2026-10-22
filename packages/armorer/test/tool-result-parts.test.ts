@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
+import { formatAnthropicToolResults } from '../src/adapters/anthropic';
+import { formatGeminiToolResults } from '../src/adapters/gemini';
+import { formatOpenAIToolResults } from '../src/adapters/openai';
 import { createTool } from '../src/create-tool';
 import { createToolbox } from '../src/create-toolbox';
 import { createToolResultCache } from '../src/idempotency/create-tool-result-cache';
@@ -214,5 +217,35 @@ describe('tool-result parts contract', () => {
     expect(resumed.outcome).toBe('success');
     expect(resumed.parts).toEqual(PARTS);
     expect(resumed.content).toBeNull();
+  });
+
+  it('sends parts through the provider formatters, and refuses what a provider cannot carry', async () => {
+    const result = await createToolbox([chartTool()]).execute({
+      id: 'call-4',
+      name: 'chart',
+      arguments: { series: 'sales' },
+    });
+    // The PDF part is a managed asset: Anthropic needs inline bytes, so it is refused, not dropped.
+    expect(() => formatAnthropicToolResults(result)).toThrow(
+      /Anthropic cannot carry tool-result part 3/,
+    );
+    expect(formatAnthropicToolResults({ ...result, parts: PARTS.slice(0, 3) })[0]?.content).toEqual(
+      [
+        { type: 'text', text: 'Here is the chart:' },
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' },
+        },
+        { type: 'text', text: 'and the source data.' },
+      ],
+    );
+    expect(() => formatOpenAIToolResults(result)).toThrow(/OpenAI cannot carry tool-result part 1/);
+    const textOnly = { ...result, parts: [{ type: 'text' as const, text: 'one' }] };
+    expect(formatOpenAIToolResults(textOnly)[0]?.content).toBe('one');
+    const gemini = formatGeminiToolResults({ ...result, parts: PARTS.slice(0, 3) })[0];
+    expect(gemini?.functionResponse.response).toEqual({
+      output: ['Here is the chart:', { $ref: 'part-1' }, 'and the source data.'],
+    });
+    expect(gemini?.functionResponse.parts).toHaveLength(1);
   });
 });
