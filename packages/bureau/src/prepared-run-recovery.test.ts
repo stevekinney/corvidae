@@ -6,7 +6,7 @@
  * result would never settle.
  */
 import { createDefaultRuntimeServices, HookRegistry } from '@lostgradient/lifecycle';
-import { createAgent, type OperativeHookMap } from '@lostgradient/operative';
+import { createAgent, createSessionStore, type OperativeHookMap } from '@lostgradient/operative';
 import {
   type BatchOperation,
   type ConditionalBatchCondition,
@@ -14,6 +14,8 @@ import {
   resolveStorage,
   type Storage,
   type StorageConfiguration,
+  textValueStore,
+  yieldToPortableEventLoop,
 } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
@@ -222,6 +224,61 @@ describe('a run prepared and never launched, recovered at the next boot (COR-297
       sessionId: run.sessionId,
     });
     expect(next.sessionId).toBe(run.sessionId);
+  });
+
+  it('settles the run’s task at the same boot, even when its cancel lands late', async () => {
+    const fixture = newFixture();
+    const run = await prepareWithoutLaunching(fixture.configuration);
+    const realCancel = Engine.prototype.cancel;
+    const cancel = spyOn(Engine.prototype, 'cancel').mockImplementation(async function (
+      this: Engine,
+      workflowId: string,
+    ) {
+      if (workflowId === run.id) {
+        for (let turn = 0; turn < 5; turn += 1) await yieldToPortableEventLoop();
+      }
+      return realCancel.call(this, workflowId);
+    });
+    cleanups.push(() => cancel.mockRestore());
+
+    const restarted = await open(fixture.configuration);
+    await restarted.waitForRecovery!();
+    cancel.mockRestore();
+
+    const task = await restarted.tasks.get(run.id);
+    expect(task?.status).toBe('canceled');
+  });
+
+  it('leaves the session alone when another run has taken it over since recovery classified it', async () => {
+    const fixture = newFixture();
+    const run = await prepareWithoutLaunching(fixture.configuration);
+    const storage = await resolveStorage(fixture.configuration);
+    cleanups.push(() => storage[Symbol.dispose]());
+    const sessions = createSessionStore(
+      textValueStore(storage, { disposeUnderlyingStorage: false }),
+    );
+    const realGet = Engine.prototype.get;
+    let reads = 0;
+    const get = spyOn(Engine.prototype, 'get').mockImplementation(async function (
+      this: Engine,
+      workflowId: string,
+    ) {
+      // The second read of the run is the status read, after the session was classified: another
+      // process starts a run on the session in between.
+      if (workflowId === run.id && ++reads === 2) {
+        await sessions.updateMetadata(run.sessionId, { lastRunId: 'another-run' });
+      }
+      return realGet.call(this, workflowId);
+    });
+    cleanups.push(() => get.mockRestore());
+
+    const restarted = await open(fixture.configuration);
+    await restarted.waitForRecovery!();
+    get.mockRestore();
+
+    const session = await restarted.getSession(run.sessionId);
+    expect(session?.metadata['lastRunId']).toBe('another-run');
+    expect(session?.metadata['lastRunStatus']).toBe('running');
   });
 
   it('dispatches a cancel verdict with the prepared-not-launched rejection, never a reattach', async () => {

@@ -9126,6 +9126,9 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       );
 
       const orphanCancellations: Array<{ runId: string; cancel: Promise<void> }> = [];
+      // COR-297 — the cancels of runs prepared and never launched, which the task reconciliation
+      // after this pass must see terminal: nothing else settles those runs' tasks.
+      const preparedCancellations: Promise<void>[] = [];
       const sessionStore = runtime.sessionStore;
       for (const { handle, metadata, ...rest } of resolved) {
         // The awaited recovery hook already registered owned interactive runs
@@ -9280,11 +9283,24 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           ownedSessionId !== undefined
         ) {
           try {
-            await sessionStore.updateMetadata(ownedSessionId, {
-              lastRunStatus: 'aborted',
-              lastFinishReason: 'aborted',
-              lastError: `Run "${handle.id}" was prepared but never launched before its process stopped.`,
-            });
+            // Fenced to the incarnation that was classified and to this run still being its running
+            // one: another process may have started a run on the session, or recreated it, since.
+            await sessionStore.update(ownedSessionId, (session) =>
+              session !== undefined &&
+              session.incarnation === classifiedIncarnation &&
+              session.metadata['lastRunId'] === handle.id &&
+              session.metadata['lastRunStatus'] === 'running'
+                ? {
+                    ...session,
+                    metadata: {
+                      ...session.metadata,
+                      lastRunStatus: 'aborted',
+                      lastFinishReason: 'aborted',
+                      lastError: `Run "${handle.id}" was prepared but never launched before its process stopped.`,
+                    },
+                  }
+                : undefined,
+            );
           } catch (error) {
             diagnose({
               level: 'error',
@@ -9454,17 +9470,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             // its failure must be surfaced for operators. engine.cancel terminalizes
             // the run and rejects its waiter — covering metadata-less / read-failed /
             // foreign-input / orphaned-session residue without store.register'ing it.
-            orphanCancellations.push({
-              runId: handle.id,
-              cancel: durable.engine.cancel(handle.id).then(async () => {
-                // COR-1476 — a cancelled run owes its session's input the same
-                // settlement as one that ended on its own.
-                if (ownedSessionId !== undefined) {
-                  await settleSessionInputsAfterRunEnd(ownedSessionId, handle.id);
-                }
-                return undefined;
-              }),
+            const cancel = durable.engine.cancel(handle.id).then(async () => {
+              // COR-1476 — a cancelled run owes its session's input the same
+              // settlement as one that ended on its own.
+              if (ownedSessionId !== undefined) {
+                await settleSessionInputsAfterRunEnd(ownedSessionId, handle.id);
+              }
+              return undefined;
             });
+            orphanCancellations.push({ runId: handle.id, cancel });
+            if (classification.rejection === 'prepared-not-launched') {
+              preparedCancellations.push(cancel.catch(() => undefined));
+            }
           }
           // 'skip' — ownership unknown; leave the run to resume without live visibility.
         }
@@ -9489,6 +9506,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           },
         );
       }
+      // Cancelling a record that never launched is a single write, so boot waits for these. Only
+      // when there are any: a reattached run starts at once, and an extra turn here would hold
+      // `createBureau()` back while it runs.
+      if (preparedCancellations.length > 0) await Promise.all(preparedCancellations);
     } finally {
       durable.engine.removeEventListener(WorkflowRecoverySkippedEvent.type, onRecoverySkipped);
       // AB-241 review finding: the post-recovery loop above is the LAST
