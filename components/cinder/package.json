@@ -18,6 +18,8 @@
     "validate:consumer": "bun scripts/validate-consumers.ts",
     "tokens:audit": "bun scripts/check-component-css-token-usage.ts",
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
+    "a2ui-catalog:generate": "bun scripts/generate-a2ui-catalog.ts",
+    "a2ui-catalog:check": "bun scripts/generate-a2ui-catalog.ts --check",
     "components:generate": "bun scripts/generate-component-artifacts.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
     "check:test-cleanup": "bun scripts/check-test-cleanup.ts",
