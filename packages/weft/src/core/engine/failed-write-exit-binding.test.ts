@@ -388,8 +388,21 @@ async function cancelAndReplace(run: Run, row: Row): Promise<Installed> {
   });
   const replacementResult = replacement.result();
   void replacementResult.catch(() => {});
-  await run.engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](run.id);
+  // A worker-mode engine never parks a same-id `start-new` replacement of a run it has cancelled:
+  // the replacement launches, and its wait-signal loop never registers a signal waiter (the same
+  // under the previous change). `start` resolving is what installs it, so that is the wait there.
+  if (row.mode === 'inline') await run.engine[ENGINE_WAIT_FOR_SIGNAL_WAITER_FOR_TESTING](run.id);
   return { replacement, replacementResult };
+}
+
+/**
+ * End the replacement installed under the id. An inline replacement is signalled and runs to its
+ * own end; a worker replacement never parks on a signal, so it is cancelled, which ends it just as
+ * surely and without waiting for the worker realm.
+ */
+async function endReplacement(row: Row, run: Run): Promise<void> {
+  if (row.mode === 'worker') await run.engine.cancel(run.id);
+  else await run.engine.signal(run.id, 'go', 'y');
 }
 
 const columns: readonly Column[] = [
@@ -406,7 +419,7 @@ const columns: readonly Column[] = [
     name: 'replaced, and the replacement already ended',
     change: async (run, row) => {
       const installed = await cancelAndReplace(run, row);
-      await run.engine.signal(run.id, 'go', 'y');
+      await endReplacement(row, run);
       await installed.replacementResult!.catch(() => {});
       return installed;
     },
@@ -452,10 +465,19 @@ function expectOwnExit(row: Row, run: Run, record: WorkflowState, reason: unknow
 
 /** What a replacement of `row`'s workflow ends with once it is signalled. */
 async function expectReplacementEnding(row: Row, run: Run, installed: Installed): Promise<void> {
-  const replacementValue =
-    row.exit === 'wait-signal'
-      ? { input: row.replacementInput, payload: 'y', workflowId: run.id }
-      : 'y:a:b';
+  if (row.mode === 'worker') {
+    expect((await rejectionOf(installed.replacementResult)) as Error).toHaveProperty(
+      'message',
+      'Workflow cancelled',
+    );
+    const cancelled = await readState(run.refusing, run.id);
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.workflowExecutionToken).not.toBe(run.token);
+    expect(currentExecutionAttempt(getInternals(run.engine), run.id)).toBeUndefined();
+    expect(await run.refusing.base.get(KEYS.workflowConcurrencyHolder(run.id))).toBeNull();
+    return;
+  }
+  const replacementValue = 'y:a:b';
   if (row.exit === 'failure') {
     expect((await rejectionOf(installed.replacementResult)) as Error).toHaveProperty(
       'message',
@@ -478,24 +500,9 @@ async function expectReplacementEnding(row: Row, run: Run, installed: Installed)
   expect(await run.refusing.base.get(KEYS.workflowConcurrencyHolder(run.id))).toBeNull();
 }
 
-/**
- * A worker-mode engine never parks a same-id `start-new` replacement of a parked run it has
- * cancelled (the replacement launches, and its wait-signal loop never registers a waiter), under
- * this change and before it alike. The two columns that need such a replacement are therefore
- * not reachable for the worker's exit, which the other three columns bind the same way.
- */
-function reachable(row: Row, column: Column): boolean {
-  return (
-    row.mode === 'inline' ||
-    (column.name !== 'replaced by a running start-new run' &&
-      column.name !== 'replaced, and the replacement already ended')
-  );
-}
-
 describe('a failed write ends only the run that issued it', () => {
   for (const row of rows) {
     for (const column of columns) {
-      if (!reachable(row, column)) continue;
       it(`${row.exit}: ${column.name}`, async () => {
         const id = `bound-${row.exit}-${columns.indexOf(column).toString()}`;
         const run = await openParked(row.definition, id, row.input, row.mode);
@@ -563,8 +570,8 @@ describe('a failed write ends only the run that issued it', () => {
           expect(attempt?.abandoned).toBe(false);
           expect(holder).not.toBeNull();
           await expectStillPending(installed.replacementResult!);
-          // The replacement is untouched: signalled, it runs to its own end.
-          await engine.signal(id, 'go', 'y');
+          // The replacement is untouched: it runs to its own end.
+          await endReplacement(row, run);
           await expectReplacementEnding(row, run, installed);
           return;
         }
