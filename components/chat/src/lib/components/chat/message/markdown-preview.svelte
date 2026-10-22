@@ -6,6 +6,8 @@
     content: string;
     class?: string;
     markdownNode?: MarkdownNodeOverride | undefined;
+    /** `false` renders each image as its alt text, so the content loads nothing. Default `true`. */
+    images?: boolean | undefined;
   };
 
   export type MarkdownSegment =
@@ -58,13 +60,24 @@
     };
   }
 
-  /** Preserves placeholder ancestors so nested markdown nodes remain overridable. */
+  /**
+   * Preserves placeholder ancestors so nested markdown nodes remain overridable.
+   * With `images: false`, each image becomes its alt text while the markup is
+   * still inert, so nothing it names is ever fetched.
+   */
   export function segmentRenderedMarkdown(
     html: string,
     ownerDocument: Document = document,
+    options: { readonly images?: boolean | undefined } = {},
   ): MarkdownSegment[] {
     const template = ownerDocument.createElement('template');
     template.innerHTML = html;
+    if (options.images === false) {
+      for (const image of template.content.querySelectorAll('img')) {
+        image.replaceWith(ownerDocument.createTextNode(image.getAttribute('alt') ?? ''));
+      }
+      for (const source of template.content.querySelectorAll('picture, source')) source.remove();
+    }
     return Array.from(template.content.childNodes, (child, index) =>
       segmentNode(child, index, ownerDocument),
     );
@@ -76,7 +89,13 @@
   import { CodeBlock } from '@lostgradient/cinder';
   import { preloadMarkdownPipeline } from './markdown-pipeline.ts';
 
-  let { content, markdownNode, class: className, ...rest }: ChatMarkdownPreviewProps = $props();
+  let {
+    content,
+    markdownNode,
+    images = true,
+    class: className,
+    ...rest
+  }: ChatMarkdownPreviewProps = $props();
 
   let renderedHtml = $state('');
   let segments = $state<MarkdownSegment[]>([]);
@@ -129,7 +148,7 @@
             // committing HTML that doesn't match the current props.
             if (!cancelled && snapshot === content) {
               renderedHtml = result.html;
-              segments = segmentRenderedMarkdown(result.html);
+              segments = segmentRenderedMarkdown(result.html, document, { images });
             }
           } catch {
             if (!cancelled && snapshot === content) renderedHtml = '';

@@ -787,4 +787,50 @@ describe('review fixes', () => {
 
     expect(screen.getByRole('button', { name: 'Review' }).hasAttribute('disabled')).toBe(true);
   });
+
+  test('malformed options and tabs are skipped, and a Button never wraps another control', async () => {
+    const actions: A2uiAction[] = [];
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'malformed',
+        components: [
+          { id: 'root', component: 'Column', children: ['pick', 'tabs', 'outer'] },
+          {
+            id: 'pick',
+            component: 'ChoicePicker',
+            label: 'Pick',
+            options: [null, { label: 'One', value: 'one' }],
+            value: [],
+          },
+          { id: 'tabs', component: 'Tabs', tabs: [null, { title: 'First', child: 'first' }] },
+          { id: 'first', component: 'Text', text: 'First tab' },
+          {
+            id: 'outer',
+            component: 'Button',
+            child: 'row',
+            action: { event: { name: 'outer' } },
+          },
+          { id: 'row', component: 'Row', children: ['inner'] },
+          {
+            id: 'inner',
+            component: 'Button',
+            child: 'inner-text',
+            action: { event: { name: 'inner' } },
+          },
+          { id: 'inner-text', component: 'Text', text: 'Inner' },
+        ],
+        onAction: (action: A2uiAction) => actions.push(action),
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(screen.getByRole('tab', { name: 'First' })).not.toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Inner' }));
+    await flush();
+    expect(actions.map((action) => action.name)).toEqual(['inner']);
+    expect(container.querySelectorAll('button button')).toHaveLength(0);
+    expect(diagnostics.some((entry) => entry.message.includes('interactive'))).toBe(true);
+  });
 });

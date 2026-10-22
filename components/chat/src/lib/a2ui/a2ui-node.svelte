@@ -228,6 +228,36 @@
     }
   }
 
+  const INTERACTIVE_COMPONENTS: ReadonlySet<string> = new Set([
+    'Button',
+    'TextField',
+    'CheckBox',
+    'ChoicePicker',
+    'Slider',
+    'DateTimeInput',
+    'Modal',
+    'Tabs',
+  ]);
+
+  /** Whether `childId`'s subtree holds a control, reported once when it does. */
+  function holdsInteractive(childId: unknown, seen: readonly string[] = []): boolean {
+    if (typeof childId !== 'string' || seen.includes(childId)) return false;
+    const node = context.component(childId);
+    if (node === undefined) return false;
+    if (INTERACTIVE_COMPONENTS.has(node.component)) {
+      report(`a Button's child holds the interactive "${node.component}" "${node.id}"`);
+      return true;
+    }
+    const nested = [...seen, childId];
+    const children = node['children'];
+    const ids = Array.isArray(children)
+      ? children
+      : typeof children === 'object' && children !== null
+        ? [Reflect.get(children, 'componentId')]
+        : [];
+    return [node['child'], ...ids].some((descendant) => holdsInteractive(descendant, nested));
+  }
+
   /** An icon-only Button's name: its icon's name in words, since the icon itself is hidden. */
   function iconButtonLabel(childId: unknown = prop('child')): string | undefined {
     const childComponent = typeof childId === 'string' ? context.component(childId) : undefined;
@@ -257,7 +287,12 @@
     if (!Array.isArray(raw)) return [];
     const seen = new Set<string>();
     const options: { value: string; label: string }[] = [];
-    for (const option of raw as { label?: unknown; value?: unknown }[]) {
+    for (const entry of raw as unknown[]) {
+      if (typeof entry !== 'object' || entry === null) {
+        report('a ChoicePicker option is not an object; it is skipped');
+        continue;
+      }
+      const option = entry as { label?: unknown; value?: unknown };
       if (typeof option.value !== 'string') continue;
       if (seen.has(option.value)) {
         report(`ChoicePicker option "${option.value}" is listed more than once; the first is kept`);
@@ -315,7 +350,9 @@
       {#if inline}
         <span class="a2ui-inline-text">{plainText(content)}</span>
       {:else if variant === 'body' || variant === 'caption'}
-        <Text {variant} as="div" class="a2ui-text"><MarkdownPreview {content} /></Text>
+        <Text {variant} as="div" class="a2ui-text"
+          ><MarkdownPreview {content} images={false} /></Text
+        >
       {:else}
         <Text {variant} class="a2ui-text">{plainText(content)}</Text>
       {/if}
@@ -415,7 +452,10 @@
       <Card class="a2ui-leaf">{@render child(prop('child'))}</Card>
     {:else if type === 'Tabs'}
       {@const tabs = Array.isArray(prop('tabs'))
-        ? (prop('tabs') as { title?: unknown; child?: unknown }[])
+        ? (prop('tabs') as unknown[]).filter(
+            (tab): tab is { title?: unknown; child?: unknown } =>
+              typeof tab === 'object' && tab !== null,
+          )
         : []}
       <Tabs bind:value={selectedTab} class="a2ui-leaf">
         <TabList>
@@ -459,6 +499,10 @@
       >
         {@render child(prop('content'))}
       </Modal>
+    {:else if type === 'Button' && holdsInteractive(prop('child'))}
+      <!-- A control inside a button would be pressed through it, dispatching both
+           actions, so the child renders on its own and the Button is dropped. -->
+      {@render child(prop('child'))}
     {:else if type === 'Button'}
       <Button
         variant={mapEnum(
