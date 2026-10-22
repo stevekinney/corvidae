@@ -482,13 +482,18 @@ export function createInteractiveSurfaces(
     ) {
       return loaded;
     }
-    await freezeOne(
-      taskId,
-      surfaceId,
-      task.settled === 'canceled' ? 'cancelled' : 'task-ended',
-      `task-settled:${taskId}`,
-    );
-    return load(taskId, surfaceId);
+    const reason = task.settled === 'canceled' ? 'cancelled' : 'task-ended';
+    const persisted = await freezeOne(taskId, surfaceId, reason, `task-settled:${taskId}`);
+    const reloaded = await load(taskId, surfaceId);
+    // A freeze that lost every race still leaves the task ended: the command sees the surface
+    // closed, as the next read that does commit the freeze will record it.
+    if (persisted || reloaded === undefined || reloaded.stored.surface.state === 'closed') {
+      return reloaded;
+    }
+    return {
+      text: reloaded.text,
+      stored: { ...reloaded.stored, surface: frozen(reloaded.stored.surface, reason) },
+    };
   }
 
   function accepted(

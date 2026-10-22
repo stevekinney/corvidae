@@ -568,6 +568,36 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('never admits an action on an ended task whose freeze cannot be written', async () => {
+    const runtime = createManualRuntimeServices();
+    const memory = new MemoryStorage();
+    const writable = { value: true };
+    const storage = new Proxy(memory, {
+      get(target, property, receiver) {
+        if (property === 'conditionalBatch' && !writable.value) return async () => false;
+        const value: unknown = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const task: { current: InteractiveSurfaceTask } = { current: { owner: OWNER } };
+    const surfaces = createInteractiveSurfaces({
+      storage,
+      history: createDurableEventHistory(storage, runtime),
+      task: async () => task.current,
+      now: () => runtime.clock.now(),
+    });
+    await surfaces.create(createCommand());
+    task.current = { owner: OWNER, settled: 'canceled' };
+    writable.value = false;
+
+    const outcome = await surfaces.act(actionRequest()).then(
+      (receipt) => receipt.outcome,
+      () => 'storage failure',
+    );
+
+    expect(outcome).not.toBe('accepted');
+  });
+
   it('freezes a surface whose task ended unseen when it is next read', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

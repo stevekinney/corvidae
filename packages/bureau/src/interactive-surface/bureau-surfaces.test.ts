@@ -107,6 +107,9 @@ describe('interactive surfaces on a Bureau', () => {
           outcome: 'found',
           surface: { data: { window: 'tonight' }, dataRevision: 2, owner: OWNER },
         });
+        // Revision 2 is the update; the run the shutdown aborted froze the surface at revision 3.
+        expect(receipt.outcome === 'found' && receipt.surface.revision).toBe(3);
+        expect(receipt.outcome === 'found' && receipt.surface.liveness).toBe('frozen');
       } finally {
         await second.dispose();
       }
