@@ -160,6 +160,17 @@ describe('a caller condition on a key Weft reserves', () => {
   });
 });
 
+describe('the test storage that bounds a runaway retry', () => {
+  it('rejects a conditional batch past its cap, so a regression fails instead of hanging', async () => {
+    const { a, engineA } = await openEngines();
+    a.capConditionalBatches(a.conditionalBatches);
+
+    const error = await rejectionOf(engineA.pauseSchedule(SCHEDULE_ID));
+
+    expect(error).toMatchObject({ message: 'conditional batch cap exceeded' });
+  });
+});
+
 describe('the timer rule that a schedule is still as the tick left it', () => {
   it('abandons a tick whose occurrence another engine fired first (nextFireAt moved, revision did not)', async () => {
     const { clock, shared, b, engineA, engineB } = await openEngines();
