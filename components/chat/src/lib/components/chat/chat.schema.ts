@@ -245,6 +245,12 @@ const schema = {
           'Called when the user resolves an action-required approval. The complete\nresolution payload is forwarded unchanged. When an adapter is also wired,\nChat calls `adapter.resolveToolApproval(toolCallId, resolution)` first and\nuses this callback only when the adapter does not implement that method.',
       },
       {
+        name: 'onInputSubmit',
+        reason: 'function-or-snippet',
+        description:
+          "Called when the user submits the form for an action-required tool result\nthat requests input. Chat renders the action's JSON Schema with Cinder's\n`SchemaForm` and calls this only with a value that passed validation. A\nrejected promise keeps the form open so the user can try again. Without\nthis callback, Chat shows the request's message but no form.",
+      },
+      {
         name: 'uploadAttachment',
         reason: 'function-or-snippet',
         description:

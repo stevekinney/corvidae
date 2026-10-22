@@ -92,11 +92,6 @@
           pair.result.action?.message ?? 'This tool call requires action.',
         ),
       ];
-      if (pair.result.action?.type === 'input' && pair.result.action.schema !== undefined) {
-        details.push(
-          codeDetail(`${detailPrefix}-schema`, 'Input schema', pair.result.action.schema),
-        );
-      }
       return details;
     }
 
