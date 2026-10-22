@@ -554,10 +554,12 @@ export {
 export {
   assistantMessageIdentifier,
   parseAssistantMessageIdentifier,
+  parseStepRowIdentifier,
   signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
 } from './message-identifiers';
+export type { StepRowIdentifier } from './message-identifiers';
 export * from './session/index';
 export { MissingRunOptionsError } from './session/session-handle-types';
 export * from './store';

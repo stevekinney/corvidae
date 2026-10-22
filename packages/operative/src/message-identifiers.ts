@@ -59,6 +59,38 @@ export function parseAssistantMessageIdentifier(
   return Number.isSafeInteger(step) ? { runId: match[1]!, step } : undefined;
 }
 
+/** What a row id of a run's step names (COR-1560). */
+export interface StepRowIdentifier {
+  readonly runId: string;
+  readonly step: number;
+  /**
+   * `step` for the step's own id (its assistant text row, or the first call's row of a step with
+   * no text), `call` for a `:call:` row, `result` for a `:result:` row.
+   */
+  readonly kind: 'step' | 'call' | 'result';
+  /** The call a `call` or `result` row belongs to. */
+  readonly callId?: string;
+}
+
+/**
+ * Every row id a run's step mints, read back: the inverse of {@link assistantMessageIdentifier},
+ * {@link toolCallMessageIdentifiers} and {@link toolResultMessageIdentifier} together. A row id
+ * that is no step's (an input row, a signal row, a conversation's own id, any other form) is
+ * `undefined`. The step id is `step` whatever row holds it, so a caller that needs to tell a text
+ * row from a call row reads the row's role.
+ */
+export function parseStepRowIdentifier(id: string): StepRowIdentifier | undefined {
+  const row = /^(.+):step:(\d+):(call|result):(.+)$/.exec(id);
+  if (row !== null) {
+    const step = Number(row[2]);
+    return Number.isSafeInteger(step)
+      ? { runId: row[1]!, step, kind: row[3] === 'call' ? 'call' : 'result', callId: row[4]! }
+      : undefined;
+  }
+  const parsed = parseAssistantMessageIdentifier(id);
+  return parsed === undefined ? undefined : { ...parsed, kind: 'step' };
+}
+
 /** The id of the `tool-result` row for `callId` in `step`, or `undefined` for a run with no id. */
 export function toolResultMessageIdentifier(
   runId: string | undefined,

@@ -8,7 +8,9 @@ import {
   assistantMessageIdentifier,
   inputMessageIdentifier,
   parseAssistantMessageIdentifier,
+  parseStepRowIdentifier,
   signalMessageIdentifier,
+  toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
 } from './message-identifiers';
 
@@ -49,6 +51,52 @@ describe('parseAssistantMessageIdentifier', () => {
       'run:step:1 ',
     ]) {
       expect(parseAssistantMessageIdentifier(id)).toBeUndefined();
+    }
+  });
+});
+
+describe('parseStepRowIdentifier', () => {
+  it('reads back the run, the step and the kind of every row id a step mints', () => {
+    for (const runId of ['run-1-3f2a', 'a:b:c', 'run:step:9']) {
+      const step = assistantMessageIdentifier(runId, 2)!;
+      expect(parseStepRowIdentifier(step)).toEqual({ runId, step: 2, kind: 'step' });
+      expect(
+        parseStepRowIdentifier(toolCallMessageIdentifiers(step, [{ id: 'c-1' }], true)![0]!),
+      ).toEqual({
+        runId,
+        step: 2,
+        kind: 'call',
+        callId: 'c-1',
+      });
+      expect(parseStepRowIdentifier(toolResultMessageIdentifier(runId, 2, 'c-1')!)).toEqual({
+        runId,
+        step: 2,
+        kind: 'result',
+        callId: 'c-1',
+      });
+    }
+  });
+
+  it('reads the call row that stands in for a step with no text as the step id', () => {
+    const step = assistantMessageIdentifier('run-1', 1)!;
+    const [first] = toolCallMessageIdentifiers(step, [{ id: 'c-9' }], false)!;
+
+    expect(first).toBe(step);
+    expect(parseStepRowIdentifier(first!)).toEqual({ runId: 'run-1', step: 1, kind: 'step' });
+  });
+
+  it('is undefined for the rows that are no step’s, and for an id in no such form', () => {
+    for (const id of [
+      inputMessageIdentifier('run-1')!,
+      signalMessageIdentifier('run-1', 'human-response', 0)!,
+      'conversation-1-abc',
+      '',
+      'run:step:',
+      'run:step:1:call:',
+      'run:step:1:result:',
+      'run:step:x:call:c',
+    ]) {
+      expect(parseStepRowIdentifier(id)).toBeUndefined();
     }
   });
 });

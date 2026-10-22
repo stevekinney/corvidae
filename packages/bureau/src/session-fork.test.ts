@@ -334,30 +334,39 @@ describe('a message that is not a branch point', () => {
     expect(await sessionCount(bureau)).toBe(1);
   });
 
-  it('refuses a fork when the final assistant message has a tool call with no result', async () => {
-    const bureau = await openBureau();
-    const runId = 'run-crafted';
+  /** One row of a crafted run: its id and role, and the call it makes or answers. */
+  type CraftedRow = {
+    readonly id: string;
+    readonly role: 'user' | 'assistant' | 'tool-call' | 'tool-result';
+    readonly content?: string;
+    readonly call?: string;
+  };
+
+  /** A session holding exactly `rows`, and the registry's record of its one completed run. */
+  async function craftRun(bureau: Bureau<AgentDefinitions>, runId: string, rows: CraftedRow[]) {
     const conversation = new Conversation(createConversationHistory());
-    conversation.appendMessages({ role: 'user', content: 'go', id: 'user-1' } as never);
-    conversation.appendMessages({
-      role: 'assistant',
-      content: 'calling',
-      id: `${runId}:step:0`,
-    } as never);
-    conversation.appendMessages({
-      role: 'tool-call',
-      content: '',
-      id: `${runId}:step:0:call:c-1`,
-      toolCall: { id: 'c1', name: 'noop', arguments: {} },
-    } as never);
-    const session = createAgentSession({
-      id: 'crafted',
-      agentName: 'agent',
-      conversationHistory: conversation.current,
-      metadata: { sessionOwner: ALICE },
-      runs: [],
-    });
-    await bureau.sessionStore!.save(session);
+    for (const row of rows) {
+      conversation.appendMessages({
+        role: row.role,
+        content: row.content ?? '',
+        id: row.id,
+        ...(row.role === 'tool-call' && row.call !== undefined
+          ? { toolCall: { id: row.call, name: 'noop', arguments: {} } }
+          : {}),
+        ...(row.role === 'tool-result' && row.call !== undefined
+          ? { toolResult: { callId: row.call, outcome: 'success', content: 'ok' } }
+          : {}),
+      } as never);
+    }
+    await bureau.sessionStore!.save(
+      createAgentSession({
+        id: 'crafted',
+        agentName: 'agent',
+        conversationHistory: conversation.current,
+        metadata: { sessionOwner: ALICE },
+        runs: [],
+      }),
+    );
     const saved = (await bureau.getSession('crafted'))!;
     await bureau.tasks.recordAdmission({
       taskId: runId,
@@ -373,11 +382,78 @@ describe('a message that is not a branch point', () => {
       finishReason: 'stop-condition',
       message: null,
     });
+  }
 
-    expect(await refusalOf(fork(bureau, 'crafted', `${runId}:step:0`))).toBe(
+  const R = 'run-crafted';
+  const user: CraftedRow = { id: 'user-1', role: 'user', content: 'go' };
+  const step0: CraftedRow[] = [
+    { id: `${R}:step:0`, role: 'assistant', content: 'thinking' },
+    { id: `${R}:step:0:call:c-1`, role: 'tool-call', call: 'c-1' },
+    { id: `${R}:step:0:result:c-1`, role: 'tool-result', call: 'c-1' },
+  ];
+
+  it('refuses a fork when the final assistant message has a tool call with no result', async () => {
+    const bureau = await openBureau();
+    await craftRun(bureau, R, [
+      user,
+      { id: `${R}:step:0`, role: 'assistant', content: 'calling' },
+      { id: `${R}:step:0:call:c-1`, role: 'tool-call', call: 'c-1' },
+    ]);
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:0`))).toBe(
       'branch-with-unresolved-tool-call',
     );
     expect(await sessionCount(bureau)).toBe(1);
+  });
+
+  it('judges a run by its steps: an earlier step is not a branch point, and a final step that is only a tool call with no result is an unresolved one', async () => {
+    const bureau = await openBureau();
+    // Step 0 is text and an answered call. Step 1 is a tool call only, so the call's row carries the
+    // step's own id, and it has no result.
+    await craftRun(bureau, R, [
+      user,
+      ...step0,
+      { id: `${R}:step:1`, role: 'tool-call', call: 'c-2' },
+    ]);
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:0`, 'through-0'))).toBe(
+      'not-a-branch-point',
+    );
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:1`, 'through-1'))).toBe(
+      'branch-with-unresolved-tool-call',
+    );
+    expect(await sessionCount(bureau)).toBe(1);
+  });
+
+  it('refuses a final step that has no text, even when its call was answered', async () => {
+    const bureau = await openBureau();
+    await craftRun(bureau, R, [
+      user,
+      ...step0,
+      { id: `${R}:step:1`, role: 'tool-call', call: 'c-2' },
+      { id: `${R}:step:1:result:c-2`, role: 'tool-result', call: 'c-2' },
+    ]);
+
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:1`))).toBe('not-a-branch-point');
+    expect(await refusalOf(fork(bureau, 'crafted', `${R}:step:0`, 'through-0'))).toBe(
+      'not-a-branch-point',
+    );
+  });
+
+  it('counts the first call of a final step with text and a call under its own id', async () => {
+    const bureau = await openBureau();
+    await craftRun(bureau, R, [
+      user,
+      { id: `${R}:step:0`, role: 'assistant', content: 'calling' },
+      { id: `${R}:step:0:call:c-1`, role: 'tool-call', call: 'c-1' },
+      { id: `${R}:step:0:result:c-1`, role: 'tool-result', call: 'c-1' },
+      { id: `${R}:step:1`, role: 'assistant', content: 'done' },
+    ]);
+
+    const result = await fork(bureau, 'crafted', `${R}:step:1`);
+
+    const child = await bureau.getSession(result.contextId);
+    expect(child?.conversationHistory.ids.at(-1)).toBe(`${R}:step:1`);
   });
 });
 

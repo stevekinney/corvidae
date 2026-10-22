@@ -17,7 +17,7 @@
  * @module session-fork
  */
 
-import { type AgentSession, parseAssistantMessageIdentifier } from '@lostgradient/operative';
+import { type AgentSession, parseStepRowIdentifier } from '@lostgradient/operative';
 
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { type ConditionalTextValueStore, MemoryStorage, textValueStore } from '@lostgradient/weft';
@@ -113,15 +113,14 @@ export async function assertBranchPoint(
     throw new SessionForkRefusedError(reason, message);
   };
   const history = session.conversationHistory;
-  const message = history.messages[throughMessageId];
-  if (message === undefined || !history.ids.includes(throughMessageId)) {
+  if (history.messages[throughMessageId] === undefined || !history.ids.includes(throughMessageId)) {
     return refuse('message-not-found', `The context holds no message "${throughMessageId}".`);
   }
-  const step = parseAssistantMessageIdentifier(throughMessageId);
-  if (step === undefined || message.role !== 'assistant') {
-    return refuse('not-a-branch-point', 'Only an assistant reply of a run can be branched from.');
+  const through = parseStepRowIdentifier(throughMessageId);
+  if (through === undefined || through.kind !== 'step') {
+    return refuse('not-a-branch-point', "Only the reply of a run's step can be branched from.");
   }
-  const { runId } = step;
+  const { runId } = through;
   const record = await evidence.record(runId);
   if (
     record === undefined ||
@@ -131,16 +130,6 @@ export async function assertBranchPoint(
     return refuse(
       'not-a-branch-point',
       'The run that made this reply is not known to this context.',
-    );
-  }
-  const final = history.ids.findLast((id) => {
-    const parsed = parseAssistantMessageIdentifier(id);
-    return parsed?.runId === runId && history.messages[id]?.role === 'assistant';
-  });
-  if (final !== throughMessageId) {
-    return refuse(
-      'not-a-branch-point',
-      'Only the final assistant reply of a run can be branched from.',
     );
   }
   const approvals = await evidence.pendingApprovals(runId);
@@ -153,24 +142,58 @@ export async function assertBranchPoint(
   if (status === undefined) {
     return refuse('not-a-branch-point', 'The run that made this reply has not ended.');
   }
-  const answered = new Set(
-    history.ids.flatMap((id) => {
-      const callId = history.messages[id]?.toolResult?.callId;
-      return callId === undefined ? [] : [callId];
-    }),
-  );
-  const unresolved = history.ids.some((id) => {
-    const row = history.messages[id];
-    return (
-      row?.role === 'tool-call' &&
-      id.startsWith(`${throughMessageId}:call:`) &&
-      row.toolCall !== undefined &&
-      !answered.has(row.toolCall.id)
-    );
-  });
-  if (unresolved) {
-    return refuse('branch-with-unresolved-tool-call', 'The reply has a tool call with no result.');
+  const steps = stepsOfRun(history, runId);
+  const finalStep = Math.max(...steps.keys());
+  const last = steps.get(finalStep);
+  if (through.step !== finalStep || last === undefined) {
+    return refuse('not-a-branch-point', 'Only the final step of a run can be branched from.');
   }
+  if ([...last.calls].some((callId) => !last.answered.has(callId))) {
+    return refuse(
+      'branch-with-unresolved-tool-call',
+      'The final step has a tool call with no result.',
+    );
+  }
+  // The fork ends at the step's text row, so a step that has none leaves nothing to end at.
+  if (!last.hasText) {
+    return refuse('not-a-branch-point', 'The final step of the run has no reply text.');
+  }
+}
+
+/** What one step of a run left in the history: whether it has text, and its calls and their results. */
+interface StepRows {
+  hasText: boolean;
+  readonly calls: Set<string>;
+  readonly answered: Set<string>;
+}
+
+/**
+ * The rows of every step of `runId` in `history`, by step number, read through Operative's own
+ * row identifier parser. A step with no text stores its first tool call under the step's own id,
+ * so a `tool-call` row at a step id is a call, and an `assistant` row there is the text. Results
+ * are matched by the call they answer, from the row itself.
+ */
+function stepsOfRun(
+  history: AgentSession['conversationHistory'],
+  runId: string,
+): Map<number, StepRows> {
+  const steps = new Map<number, StepRows>();
+  for (const id of history.ids) {
+    const parsed = parseStepRowIdentifier(id);
+    const row = history.messages[id];
+    if (parsed?.runId !== runId || row === undefined) continue;
+    let rows = steps.get(parsed.step);
+    if (rows === undefined) {
+      rows = { hasText: false, calls: new Set(), answered: new Set() };
+      steps.set(parsed.step, rows);
+    }
+    if (row.role === 'assistant' && parsed.kind === 'step') rows.hasText = true;
+    if (row.role === 'tool-call' && row.toolCall !== undefined) rows.calls.add(row.toolCall.id);
+    if (row.role === 'tool-result' && row.toolResult !== undefined) {
+      rows.answered.add(row.toolResult.callId);
+    }
+  }
+  return steps;
 }
 
 /**
