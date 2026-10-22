@@ -2,18 +2,18 @@
 
 Prevent cascading failures by tracking error rates and temporarily disabling failing tools.
 
-```typescript
+```typescript file=circuit-breaker.ts
 import { createToolbox, createMiddleware } from 'armorer';
 
 type CircuitState = 'closed' | 'open' | 'half-open';
 
-interface CircuitBreakerConfiguration {
-  failureThreshold: number; // Number of failures before opening
-  resetTimeout: number; // Time in ms before attempting recovery
-  halfOpenRequests: number; // Requests to try in half-open state
+export interface CircuitBreakerConfiguration {
+  failureThreshold?: number; // Number of failures before opening
+  resetTimeout?: number; // Time in ms before attempting recovery
+  halfOpenRequests?: number; // Requests to try in half-open state
 }
 
-function createCircuitBreaker(configuration: CircuitBreakerConfiguration) {
+export function createCircuitBreaker(configuration: CircuitBreakerConfiguration) {
   const { failureThreshold = 5, resetTimeout = 60000, halfOpenRequests = 3 } = configuration;
 
   const circuits = new Map<
@@ -122,6 +122,9 @@ const toolbox = createToolbox([], {
 Add observability to track circuit state changes:
 
 ```typescript
+import { createToolbox } from 'armorer';
+import { createCircuitBreaker, type CircuitBreakerConfiguration } from './circuit-breaker.ts';
+
 function createCircuitBreakerWithEvents(configuration: CircuitBreakerConfiguration) {
   const middleware = createCircuitBreaker(configuration);
   const eventTarget = new EventTarget();
@@ -142,7 +145,8 @@ const breaker = createCircuitBreakerWithEvents({
 });
 
 breaker.addEventListener('circuit-opened', (event) => {
-  console.log('Circuit opened for tool:', event.detail.toolName);
+  const { toolName } = (event as CustomEvent<{ toolName: string }>).detail;
+  console.log('Circuit opened for tool:', toolName);
 });
 
 const toolbox = createToolbox([], {

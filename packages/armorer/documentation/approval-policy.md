@@ -10,7 +10,9 @@ Bolting these together (`allowDangerous: boolean`, `readOnly: boolean`) collapse
 ## The model
 
 ```typescript
-import { createToolbox } from 'armorer';
+import { createToolbox, type Tool } from 'armorer';
+
+declare const tools: readonly Tool[];
 
 const toolbox = createToolbox(tools, {
   approvalPolicy: {

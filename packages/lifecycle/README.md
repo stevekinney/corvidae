@@ -38,12 +38,16 @@ A type-safe wrapper around the native `EventTarget`. `M` is a record mapping eve
 import { TypedEventTarget } from '@lostgradient/lifecycle';
 
 class ProgressEvent extends Event {
+  declare readonly type: 'progress';
+
   constructor(public readonly percent: number) {
     super('progress');
   }
 }
 
 class DoneEvent extends Event {
+  declare readonly type: 'done';
+
   constructor() {
     super('done');
   }
@@ -135,11 +139,26 @@ stream.produce();
 **Signature:**
 
 ```typescript
-function eventIterator<E extends Event>(
+import {
+  eventIterator,
+  type EventIteratorOptions,
+  type EventMap,
+  type TypedEventTarget,
+} from '@lostgradient/lifecycle';
+
+// Typed overload: the event type is inferred from the target's event map.
+const typed: <M extends EventMap, K extends keyof M & string>(
+  target: TypedEventTarget<M>,
+  type: K,
+  options?: EventIteratorOptions,
+) => AsyncIterableIterator<M[K]> = eventIterator;
+
+// Untyped overload: any EventTarget yields plain Events.
+const untyped: (
   target: EventTarget,
   type: string,
   options?: EventIteratorOptions,
-): AsyncIterableIterator<E>;
+) => AsyncIterableIterator<Event> = eventIterator;
 ```
 
 Adapts any `EventTarget` into an `AsyncIterableIterator`. Events are buffered in a pull-based queue (default capacity: 256 events). The iterator terminates when the provided `AbortSignal` fires or when the caller calls `iterator.return()`.
@@ -150,12 +169,12 @@ Adapts any `EventTarget` into an `AsyncIterableIterator`. Events are buffered in
 - **`bufferSize`**: `number`—maximum number of unconsumed events to buffer before dropping new ones (default `256`).
 
 ```typescript
-import { eventIterator } from '@lostgradient/lifecycle';
+import { TypedEventTarget, eventIterator } from '@lostgradient/lifecycle';
 
 const controller = new AbortController();
-const target = new EventTarget();
+const target = new TypedEventTarget<{ message: MessageEvent }>();
 
-const iterator = eventIterator<MessageEvent>(target, 'message', {
+const iterator = eventIterator(target, 'message', {
   signal: controller.signal,
 });
 
@@ -179,11 +198,25 @@ controller.abort();
 **Signature:**
 
 ```typescript
-function eventObservable<E extends Event>(
+import {
+  eventObservable,
+  type EventMap,
+  type EventObservableOptions,
+  type ObservableLike,
+  type TypedEventTarget,
+} from '@lostgradient/lifecycle';
+
+const typed: <M extends EventMap, K extends keyof M & string>(
+  target: TypedEventTarget<M>,
+  type: K,
+  options?: EventObservableOptions,
+) => ObservableLike<M[K]> = eventObservable;
+
+const untyped: (
   target: EventTarget,
   type: string,
   options?: EventObservableOptions,
-): ObservableLike<E>;
+) => ObservableLike<Event> = eventObservable;
 ```
 
 Returns a TC39-style `ObservableLike` for a single event type on any `EventTarget`. The observable completes when the optional `AbortSignal` fires or when `subscription.unsubscribe()` is called.
@@ -193,12 +226,12 @@ Returns a TC39-style `ObservableLike` for a single event type on any `EventTarge
 - **`signal`**: `AbortSignal`—combined with the subscription's own controller via `AbortSignal.any()`.
 
 ```typescript
-import { eventObservable } from '@lostgradient/lifecycle';
+import { TypedEventTarget, eventObservable } from '@lostgradient/lifecycle';
 
-const target = new EventTarget();
+const target = new TypedEventTarget<{ click: MouseEvent }>();
 const controller = new AbortController();
 
-const subscription = eventObservable<MouseEvent>(target, 'click', {
+const subscription = eventObservable(target, 'click', {
   signal: controller.signal,
 }).subscribe({
   next(event) {
@@ -221,11 +254,25 @@ controller.abort();
 **Signature:**
 
 ```typescript
-function allEventsObservable<E extends Event>(
+import {
+  allEventsObservable,
+  type EventMap,
+  type EventObservableOptions,
+  type ObservableLike,
+  type TypedEventTarget,
+} from '@lostgradient/lifecycle';
+
+const typed: <M extends EventMap, K extends keyof M & string>(
+  target: TypedEventTarget<M>,
+  eventTypes: readonly K[],
+  options?: EventObservableOptions,
+) => ObservableLike<M[K]> = allEventsObservable;
+
+const untyped: (
   target: EventTarget,
   eventTypes: readonly string[],
   options?: EventObservableOptions,
-): ObservableLike<E>;
+) => ObservableLike<Event> = allEventsObservable;
 ```
 
 Like `eventObservable()`, but subscribes to multiple event types at once and merges them into a single stream. All event types share one subscription and one `unsubscribe()` call.
@@ -235,13 +282,11 @@ import { allEventsObservable } from '@lostgradient/lifecycle';
 
 const target = new EventTarget();
 
-const subscription = allEventsObservable<Event>(target, [
-  'mousedown',
-  'mouseup',
-  'click',
-]).subscribe((event) => {
-  console.log(event.type); // 'mousedown' | 'mouseup' | 'click'
-});
+const subscription = allEventsObservable(target, ['mousedown', 'mouseup', 'click']).subscribe(
+  (event) => {
+    console.log(event.type); // 'mousedown' | 'mouseup' | 'click'
+  },
+);
 
 // One call cleans up all three listeners
 subscription.unsubscribe();
@@ -256,8 +301,13 @@ subscription.unsubscribe();
 A wrapper event that carries an original event under a new prefixed type string. `originalEvent` holds a reference to the unwrapped event.
 
 ```typescript
-constructor(type: string, originalEvent: TOriginal)
-readonly originalEvent: TOriginal
+import { ForwardedEvent } from '@lostgradient/lifecycle';
+
+// constructor(type: string, originalEvent: TOriginal)
+const forwarded = new ForwardedEvent('worker.message', new MessageEvent('message', { data: 1 }));
+
+// readonly originalEvent: TOriginal
+const original: MessageEvent = forwarded.originalEvent;
 ```
 
 **`forwardEvents()`**
@@ -265,12 +315,14 @@ readonly originalEvent: TOriginal
 **Signature:**
 
 ```typescript
-function forwardEvents(
+import { forwardEvents, type ForwardableSource } from '@lostgradient/lifecycle';
+
+const forward: (
   source: ForwardableSource,
   target: EventTarget,
   prefix: string,
   options?: { signal?: AbortSignal },
-): { stop(): void };
+) => { stop(): void } = forwardEvents;
 ```
 
 Subscribes to every event on `source` (via `source.toObservable()`) and re-dispatches each one as a `ForwardedEvent` on `target` with the event type prefixed as `"${prefix}.${event.type}"`. Returns a handle with a `stop()` method to cancel forwarding.
@@ -278,6 +330,8 @@ Subscribes to every event on `source` (via `source.toObservable()`) and re-dispa
 `ForwardableSource`:
 
 ```typescript
+import type { ObservableLike } from '@lostgradient/lifecycle';
+
 interface ForwardableSource {
   toObservable(): ObservableLike<Event>;
 }
@@ -353,7 +407,7 @@ A priority-ordered registry for named async hooks. `M` maps hook names to their 
 
 **Registration identity.** `HookRegistrationOptions.id` names one registration, so an observer can correlate the same hook across invocations and across runs. Supply one when you have a meaningful name; otherwise the registry assigns `<hookName>#<n>` from a counter that never reuses a value, so an id is never recycled after an unregistration. Prefer an explicit id for a hook registered inside a conditional block — a generated number renumbers whenever an earlier block does not register, so the same hook would answer to different names depending on configuration.
 
-```typescript
+```typescript file=build-hooks.ts
 import { HookRegistry } from '@lostgradient/lifecycle';
 
 type BuildHooks = {
@@ -361,7 +415,7 @@ type BuildHooks = {
   'after-compile': (output: string) => void;
 };
 
-const hooks = new HookRegistry<BuildHooks>({
+export const hooks = new HookRegistry<BuildHooks>({
   onError: (error, { hookName }) => {
     console.warn(`Hook ${hookName} threw, continuing`, error);
     return 'continue';
@@ -401,6 +455,8 @@ Tiers are named, not inferred. A tier builds its registry with `new HookRegistry
 `observe(observer)` reports what happens to a registry's membership and to its handlers, without being able to change any of it. Returns an unsubscribe function.
 
 ```typescript
+import { hooks } from './build-hooks.ts';
+
 const stop = hooks.observe((observation) => {
   switch (observation.kind) {
     case 'registered':
@@ -434,9 +490,11 @@ stop();
 **Signature:**
 
 ```typescript
-function mergeHookRegistries<M extends HookMap>(
+import { mergeHookRegistries, type HookMap, type HookRegistry } from '@lostgradient/lifecycle';
+
+const merge: <M extends HookMap>(
   ...registries: (HookRegistry<M> | undefined)[]
-): HookRegistry<M>;
+) => HookRegistry<M> = mergeHookRegistries;
 ```
 
 Combines multiple `HookRegistry` instances into a new registry. Registries listed earlier receive a higher priority offset (increments of 1000 per position), so handlers from the first registry run before those from later ones at equal declared priority. `undefined` entries are silently skipped, making it safe to spread optional hook sources.

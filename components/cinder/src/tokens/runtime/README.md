@@ -30,18 +30,27 @@ type ThemeSources = {
 It returns one of two shapes:
 
 ```ts
+import type { EvaluatedProvenance, ThemeEvaluation } from '@lostgradient/cinder/tokens/runtime';
+
+declare const provenance: EvaluatedProvenance;
+
 // Success
-{
+const success: ThemeEvaluation = {
   ok: true,
-  revision,
-  contexts,       // [{ id: 'light/default', theme: 'light', motion: 'default' }, ...]
-  properties,     // context id -> { '--cinder-...': 'css value' }, keys in code-unit order
+  revision: 1,
+  contexts: [{ id: 'light/default', theme: 'light', motion: 'default' }], // ...all six
+  // context id -> { '--cinder-...': 'css value' }, keys in code-unit order
+  properties: { 'light/default': { '--cinder-accent-background': 'var(--cinder-blue-600)' } },
   diagnostics: [],
-  provenance,     // EvaluatedProvenance, below
-}
+  provenance, // EvaluatedProvenance, below
+};
 
 // Failure
-{ ok: false, revision, diagnostics }
+const failure: ThemeEvaluation = {
+  ok: false,
+  revision: 1,
+  diagnostics: [{ revision: 1, severity: 'error', path: '$', reason: 'resolver is not an object' }],
+};
 ```
 
 A failure carries no property map and no provenance. The six contexts are `light|dark` crossed with `default|reduced|forced-reduced-motion`; the two forced contexts are computed from source like the others, and the context id is `<theme>/<motion>`.
@@ -83,6 +92,8 @@ A color is projected in the space it is authored in: `oklch` and `srgb` as befor
 `provenance` is `{ revision, contexts, layerStacks, tokens }`. `revision` is the revision of the sources it was computed from, so a consumer can drop a result that no longer matches the current sources. `tokens[contextId]` lists one record per token:
 
 ```ts
+import type { TokenContextProvenance, TokenLocation } from '@lostgradient/cinder/tokens/runtime';
+
 type TokenEvaluation = {
   path: string;
   provenance: TokenContextProvenance; // winner, ordered layers, effective type and origin, inputs

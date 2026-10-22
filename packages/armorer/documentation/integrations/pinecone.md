@@ -14,25 +14,69 @@ Install the required dependencies:
 bun add @pinecone-database/pinecone openai
 ```
 
+## The Pinecone Client Members These Examples Use
+
+The examples below import Pinecone's client from a local `pinecone.ts` that declares only the members they call, so they type-check without `@pinecone-database/pinecone` installed. In your project, import `Pinecone` from `'@pinecone-database/pinecone'` instead.
+
+```typescript file=pinecone.ts
+export type RecordMetadata = Record<string, string | number | boolean | string[]>;
+
+export interface PineconeRecord {
+  id: string;
+  values: number[];
+  metadata?: RecordMetadata;
+}
+
+export interface QueryResponse {
+  matches: { id: string; score?: number; metadata?: RecordMetadata }[];
+}
+
+export interface Index {
+  upsert(records: PineconeRecord[]): Promise<void>;
+  query(options: {
+    vector: number[];
+    topK: number;
+    includeMetadata?: boolean;
+    filter?: Record<string, unknown>;
+  }): Promise<QueryResponse>;
+  deleteMany(filter: Record<string, unknown>): Promise<void>;
+}
+
+export interface Pinecone {
+  index(name: string): Index;
+  listIndexes(): Promise<{ indexes?: { name: string }[] }>;
+  createIndex(options: {
+    name: string;
+    dimension: number;
+    metric: 'cosine' | 'euclidean' | 'dotproduct';
+    spec: { serverless: { cloud: 'aws' | 'gcp' | 'azure'; region: string } };
+  }): Promise<void>;
+}
+
+export declare const Pinecone: new (options: { apiKey: string }) => Pinecone;
+```
+
 ## Basic Pinecone Integration
 
 Here's a minimal example using Pinecone as vector storage for Toolbox tool embeddings:
 
-```typescript
-import { createToolbox, createTool } from 'armorer';
-import { Pinecone } from '@pinecone-database/pinecone';
+```typescript file=basic.ts
+import { createToolbox, type Tool } from 'armorer';
 import OpenAI from 'openai';
-import { z } from 'zod';
+import { Pinecone } from './pinecone.ts';
+
+// Your tools
+declare const tools: readonly Tool[];
 
 // Initialize clients
-const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+const pinecone = new Pinecone({ apiKey: process.env['PINECONE_API_KEY']! });
 const openai = new OpenAI();
 
 // Get an existing index
-const index = pinecone.index('toolbox-tools');
+export const index = pinecone.index('toolbox-tools');
 
 // Create an embedder that uses OpenAI
-async function embed(texts: string[]): Promise<number[][]> {
+export async function embed(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const response = await openai.embeddings.create({
@@ -44,7 +88,7 @@ async function embed(texts: string[]): Promise<number[][]> {
 }
 
 // Create the toolbox with embedding support
-const toolbox = createToolbox([], { embed });
+export const toolbox = createToolbox(tools, { embed });
 
 // Helper to upsert tool embeddings to Pinecone
 async function syncToolToPinecone(toolName: string): Promise<void> {
@@ -59,23 +103,31 @@ async function syncToolToPinecone(toolName: string): Promise<void> {
 
   const embeddings = await embed(fields.map((f) => f.text));
 
+  // Pair each field with its embedding
   await index.upsert(
-    fields.map((field, i) => ({
-      id: `${toolName}:${field.field}`,
-      values: embeddings[i],
-      metadata: {
-        toolName,
-        field: field.field,
-        text: field.text,
-      },
-    })),
+    fields.flatMap((field, i) => {
+      const values = embeddings[i];
+      return values
+        ? [
+            {
+              id: `${toolName}:${field.field}`,
+              values,
+              metadata: {
+                toolName,
+                field: field.field,
+                text: field.text,
+              },
+            },
+          ]
+        : [];
+    }),
   );
 }
 
-// Sync tools to Pinecone on registration
-toolbox.addEventListener('registered', async (event) => {
-  await syncToolToPinecone(event.detail.name);
-});
+// Index the toolbox's tools in Pinecone
+for (const tool of toolbox.tools()) {
+  await syncToolToPinecone(tool.name);
+}
 ```
 
 ## Semantic Search with Pinecone
@@ -83,8 +135,11 @@ toolbox.addEventListener('registered', async (event) => {
 Use Pinecone vector queries to find semantically similar tools:
 
 ```typescript
+import { embed, index, toolbox } from './basic.ts';
+
 async function findToolsBySemanticQuery(query: string, topK: number = 5): Promise<string[]> {
   const [queryEmbedding] = await embed([query]);
+  if (!queryEmbedding) return [];
 
   const results = await index.query({
     vector: queryEmbedding,
@@ -93,9 +148,9 @@ async function findToolsBySemanticQuery(query: string, topK: number = 5): Promis
   });
 
   const toolNames = new Set<string>();
-  for (const match of results.matches ?? []) {
-    const toolName = match.metadata?.toolName as string;
-    if (toolName) {
+  for (const match of results.matches) {
+    const toolName = match.metadata?.['toolName'];
+    if (typeof toolName === 'string') {
       toolNames.add(toolName);
     }
   }
@@ -105,7 +160,7 @@ async function findToolsBySemanticQuery(query: string, topK: number = 5): Promis
 
 // Usage
 const toolNames = await findToolsBySemanticQuery('send a message to someone');
-const tools = toolNames.map((name) => toolbox.getTool(name)).filter(Boolean);
+const tools = toolNames.map((name) => toolbox.getTool(name)).filter((tool) => tool !== undefined);
 ```
 
 ## Hybrid Search: Pinecone + Toolbox Filters
@@ -114,12 +169,15 @@ For more precise results, combine Pinecone retrieval with Toolbox filtering:
 
 ```typescript
 import { queryTools, type Tool } from 'armorer';
+import { embed, index, toolbox } from './basic.ts';
 
 async function hybridToolSearch(
   query: string,
   filters?: { tags?: string[]; metadata?: Record<string, unknown> },
 ): Promise<Tool[]> {
   const [queryEmbedding] = await embed([query]);
+  if (!queryEmbedding) return [];
+
   const pineconeResults = await index.query({
     vector: queryEmbedding,
     topK: 20,
@@ -127,9 +185,9 @@ async function hybridToolSearch(
   });
 
   const candidateNames = new Set<string>();
-  for (const match of pineconeResults.matches ?? []) {
-    const toolName = match.metadata?.toolName as string;
-    if (toolName) {
+  for (const match of pineconeResults.matches) {
+    const toolName = match.metadata?.['toolName'];
+    if (typeof toolName === 'string') {
       candidateNames.add(toolName);
     }
   }
@@ -143,8 +201,8 @@ async function hybridToolSearch(
   }
 
   return queryTools(candidates, {
-    tags: filters.tags ? { all: filters.tags } : undefined,
-    metadata: filters.metadata ? { eq: filters.metadata } : undefined,
+    ...(filters.tags && { tags: { all: filters.tags } }),
+    ...(filters.metadata && { metadata: { eq: filters.metadata } }),
   });
 }
 
@@ -158,15 +216,15 @@ const tools = await hybridToolSearch('notify user', {
 
 ```typescript
 import { createToolbox, createTool, type Tool } from 'armorer';
-import { Pinecone } from '@pinecone-database/pinecone';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { Pinecone } from './pinecone.ts';
 
 const PINECONE_INDEX = 'toolbox-tools';
 const EMBEDDING_MODEL = 'text-embedding-3-small';
 const EMBEDDING_DIMENSIONS = 1536;
 
-const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY! });
+const pinecone = new Pinecone({ apiKey: process.env['PINECONE_API_KEY']! });
 const openai = new OpenAI();
 
 async function embed(texts: string[]): Promise<number[][]> {
@@ -202,14 +260,13 @@ async function ensureIndex(): Promise<void> {
   }
 }
 
-async function createPineconeToolbox() {
+async function createPineconeToolbox(tools: readonly Tool[]) {
   await ensureIndex();
 
   const index = pinecone.index(PINECONE_INDEX);
-  const toolbox = createToolbox([], { embed });
+  const toolbox = createToolbox(tools, { embed });
 
-  toolbox.addEventListener('registered', async (event) => {
-    const tool = event.detail;
+  for (const tool of toolbox.tools()) {
     const fields = [
       { field: 'name', text: tool.name },
       { field: 'description', text: tool.description },
@@ -219,24 +276,33 @@ async function createPineconeToolbox() {
     const embeddings = await embed(fields.map((f) => f.text));
 
     await index.upsert(
-      fields.map((field, i) => ({
-        id: `${tool.name}:${field.field}`,
-        values: embeddings[i],
-        metadata: {
-          toolName: tool.name,
-          field: field.field,
-          text: field.text,
-          tags: tool.tags ?? [],
-        },
-      })),
+      fields.flatMap((field, i) => {
+        const values = embeddings[i];
+        return values
+          ? [
+              {
+                id: `${tool.name}:${field.field}`,
+                values,
+                metadata: {
+                  toolName: tool.name,
+                  field: field.field,
+                  text: field.text,
+                  tags: [...(tool.tags ?? [])],
+                },
+              },
+            ]
+          : [];
+      }),
     );
-  });
+  }
 
   return {
     toolbox,
 
     async search(query: string, limit = 10): Promise<Tool[]> {
       const [queryEmbedding] = await embed([query]);
+      if (!queryEmbedding) return [];
+
       const results = await index.query({
         vector: queryEmbedding,
         topK: limit * 3,
@@ -246,9 +312,9 @@ async function createPineconeToolbox() {
       const seen = new Set<string>();
       const tools: Tool[] = [];
 
-      for (const match of results.matches ?? []) {
-        const toolName = match.metadata?.toolName as string;
-        if (toolName && !seen.has(toolName)) {
+      for (const match of results.matches) {
+        const toolName = match.metadata?.['toolName'];
+        if (typeof toolName === 'string' && !seen.has(toolName)) {
           seen.add(toolName);
           const tool = toolbox.getTool(toolName);
           if (tool) {
@@ -262,51 +328,43 @@ async function createPineconeToolbox() {
     },
 
     async deleteTool(toolName: string): Promise<void> {
-      await index.deleteMany({
-        filter: { toolName: { $eq: toolName } },
-      });
+      await index.deleteMany({ toolName: { $eq: toolName } });
     },
   };
 }
 
-const { toolbox, search } = await createPineconeToolbox();
-
-createTool(
-  {
-    name: 'send-email',
-    description: 'Send an email message to one or more recipients',
-    input: z.object({
-      to: z.array(z.string().email()),
-      subject: z.string(),
-      body: z.string(),
-    }),
-    tags: ['communication', 'email'],
-    async execute({ to, subject, body }) {
-      console.log(`Sending email to ${to.join(', ')}`);
-      return { sent: true, recipients: to.length };
-    },
+const sendEmail = createTool({
+  name: 'send-email',
+  description: 'Send an email message to one or more recipients',
+  input: z.object({
+    to: z.array(z.string().email()),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  tags: ['communication', 'email'],
+  async execute({ to, subject, body }) {
+    console.log(`Sending email to ${to.join(', ')}`);
+    return { sent: true, recipients: to.length };
   },
-  toolbox,
-);
+});
 
-createTool(
-  {
-    name: 'schedule-meeting',
-    description: 'Create a calendar event and invite attendees',
-    input: z.object({
-      title: z.string(),
-      startTime: z.string().datetime(),
-      duration: z.number().describe('Duration in minutes'),
-      attendees: z.array(z.string().email()),
-    }),
-    tags: ['calendar', 'scheduling'],
-    async execute({ title, startTime, duration, attendees }) {
-      console.log(`Scheduling: ${title}`);
-      return { scheduled: true, eventId: 'evt_123' };
-    },
+const scheduleMeeting = createTool({
+  name: 'schedule-meeting',
+  description: 'Create a calendar event and invite attendees',
+  input: z.object({
+    title: z.string(),
+    startTime: z.string().datetime(),
+    duration: z.number().describe('Duration in minutes'),
+    attendees: z.array(z.string().email()),
+  }),
+  tags: ['calendar', 'scheduling'],
+  async execute({ title, startTime, duration, attendees }) {
+    console.log(`Scheduling: ${title}`);
+    return { scheduled: true, eventId: 'evt_123' };
   },
-  toolbox,
-);
+});
+
+const { toolbox, search } = await createPineconeToolbox([sendEmail, scheduleMeeting]);
 
 const tools = await search('I need to contact my team');
 console.log(

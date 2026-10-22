@@ -5,7 +5,7 @@
 Toolbox provides typed event streams at two levels:
 
 - **Tool events**: emitted by individual tools during validation, execution, and output handling.
-- **Toolbox events**: emitted by the registry for registration lifecycle, execution lifecycle, and bubbled tool events.
+- **Toolbox events**: emitted by the registry for discovery, execution lifecycle, and bubbled tool events.
 
 Both tools and toolboxes support the same event APIs:
 
@@ -49,44 +49,50 @@ const summarize = createTool({
   name: 'summarize',
   description: 'Summarize text',
   input: z.object({ text: z.string() }),
-  async execute({ text }, { dispatch }) {
-    dispatch({ type: 'progress', detail: { percent: 50, message: 'Summarizing...' } });
+  async execute({ text }, { progress }) {
+    progress({ percent: 50, message: 'Summarizing...' });
     return text.slice(0, 50);
   },
 });
 
 summarize.addEventListener('execute-start', (event) => {
-  console.log('start', event.detail.params);
+  console.log('start', event.params);
 });
 
 summarize.addEventListener('execute-success', (event) => {
-  console.log('success', event.detail.result);
+  console.log('success', event.result);
 });
 
 summarize.addEventListener('progress', (event) => {
-  console.log('progress', event.detail.percent, event.detail.message);
+  console.log('progress', event.percent, event.message);
 });
 ```
 
 ## Dispatching Events from Tools
 
-Inside a tool's `execute` function, use `context.dispatch` to emit events.
+Inside a tool's `execute` function, use `context.dispatch` to emit events. It takes an `Event`; the tool event classes exported from `armorer` build the standard ones. `context.progress(...)` is a shorthand for dispatching a `ToolProgressEvent`.
 
 ```typescript
-async execute(params, { dispatch }) {
-  dispatch({ type: 'status-update', detail: { status: 'queued' } });
-  dispatch({ type: 'log', detail: { level: 'info', message: 'Starting work' } });
-  dispatch({ type: 'output-chunk', detail: { chunk: { partial: true } } });
-  return { done: true };
-}
+import { ToolLogEvent, ToolOutputChunkEvent, ToolStatusUpdateEvent, createTool } from 'armorer';
+import { z } from 'zod';
+
+const worker = createTool({
+  name: 'worker',
+  description: 'Do some work',
+  input: z.object({}),
+  async execute(params, { dispatch }) {
+    dispatch(new ToolStatusUpdateEvent({ status: 'queued' }));
+    dispatch(new ToolLogEvent({ level: 'info', message: 'Starting work' }));
+    dispatch(new ToolOutputChunkEvent({ chunk: { partial: true } }));
+    return { done: true };
+  },
+});
 ```
 
 ## Toolbox Events
 
 Toolbox emits registry-level events:
 
-- `registering`
-- `registered`
 - `call`
 - `complete`
 - `error`
@@ -120,22 +126,18 @@ Example:
 ```typescript
 import { createToolbox } from 'armorer';
 
-const toolbox = createToolbox();
-
-toolbox.addEventListener('registered', (event) => {
-  console.log('registered', event.detail.name);
-});
+const toolbox = createToolbox([]);
 
 toolbox.addEventListener('call', (event) => {
-  console.log('call', event.detail.call.name);
+  console.log('call', event.call.name);
 });
 
 toolbox.addEventListener('status:update', (event) => {
-  console.log(`${event.detail.name}: ${event.detail.status}`);
+  console.log(`${event.name}: ${event.status}`);
 });
 
 toolbox.addEventListener('progress', (event) => {
-  console.log(event.detail.tool.name, event.detail.percent, event.detail.message);
+  console.log(event.tool.name, event.percent, event.message);
 });
 ```
 
@@ -144,19 +146,22 @@ toolbox.addEventListener('progress', (event) => {
 You can consume event streams reactively:
 
 ```typescript
-const unsubscribe = toolbox.once('registered', (event) => {
-  console.log('first registration', event.detail.name);
+import type { AnyToolbox } from 'armorer';
+
+declare const toolbox: AnyToolbox;
+
+toolbox.once('complete', (event) => {
+  console.log('first completion', event.tool.name);
 });
 
 const subscription = toolbox.subscribe('call', (event) => {
-  console.log('called', event.detail.call.name);
+  console.log('called', event.call.name);
 });
 
 for await (const event of toolbox.events('error')) {
-  console.error('execution error', event.detail.result.error);
+  console.error('execution error', event.result.error);
 }
 
-unsubscribe();
 subscription.unsubscribe();
 ```
 

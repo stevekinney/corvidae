@@ -122,29 +122,47 @@ Paths are relative to `packages/weft/src/`. The split is clean: everything that 
 
 ### Proposed: option B
 
-```ts partial
+```ts
 // packages/weft/src/server/handler/operation-handler.ts (new, COR-1299)
 // Exported from @lostgradient/weft's "." entry point through
-// src/server/handler/index.ts → src/server/handler.ts → src/index.ts:83.
+// src/server/handler/index.ts → src/server/handler.ts → src/index.ts.
+import {
+  createOperationHandler,
+  getPrincipalOperation,
+  unauthenticatedLocalAuthContext,
+  type OperationHandler,
+  type OperationHandlerOptions,
+} from '@lostgradient/weft';
 
-export type OperationHandlerOptions<Host> = {
-  /** The whole catalog this handler serves. Weft's own operations are not added. */
-  readonly operations: ReadonlyArray<RegistrableOperation<NoInfer<Host>>>;
-  /** Delivered as `host` to every `invoke` and `authorize` call. */
-  readonly host: Host;
-  /** Resolves the caller. Omitted: every request is anonymous and only `public` operations pass. A single-user host admits every request with `async () => unauthenticatedLocalAuthContext()`. */
-  readonly authenticate?: (request: Request) => Promise<AuthContext | Response>;
-  /** Same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers. */
-  readonly cors?: CorsOptions;
-  /** Adapters that claim a path prefix ahead of catalog routing. See decision 4. */
-  readonly mounts?: ReadonlyArray<OperationHandlerMount<NoInfer<Host>>>;
-  readonly discoveryInfo?: DiscoveryInfo;
-  readonly maxRequestBodyBytes?: number;
-};
+// The fields this decision proposes, picked from the shipped options type:
+// - operations: the whole catalog this handler serves; Weft's own operations are not added.
+// - host: delivered as `host` to every `invoke` and `authorize` call.
+// - authenticate: `(request) => Promise<AuthContext | Response>`. Omitted, every
+//   request is anonymous and only `public` operations pass.
+// - cors: same validation and defaults as `ServeOptions.cors`; omitted means no CORS headers.
+// - mounts: adapters that claim a path prefix ahead of catalog routing. See decision 4.
+type ProposedOperationHandlerOptions<Host> = Pick<
+  OperationHandlerOptions<Host>,
+  | 'operations'
+  | 'host'
+  | 'authenticate'
+  | 'cors'
+  | 'mounts'
+  | 'discoveryInfo'
+  | 'maxRequestBodyBytes'
+>;
 
-export function createOperationHandler<Host>(
-  options: OperationHandlerOptions<Host>,
-): (request: Request) => Promise<Response>;
+const create: <Host>(options: ProposedOperationHandlerOptions<Host>) => OperationHandler =
+  createOperationHandler;
+
+// A single-user host admits every request as the local principal.
+const handler = create({
+  operations: [getPrincipalOperation],
+  host: {},
+  authenticate: async () => unauthenticatedLocalAuthContext(),
+});
+const response = await handler(new Request('http://localhost/v1/health'));
+console.log(response.status); // 200
 ```
 
 `NoInfer` makes `Host` come from `host` alone. Because `RegistrableOperation.dispatch` is a function-typed property (`server/operation-catalog/types.ts:349-352`), an operation is checked contravariantly: one that needs `{ bureauFeeds }` is accepted by a handler whose host is `{ bureauFeeds, runFeeds }`, and rejected by a handler whose host lacks `bureauFeeds`. A missing host capability becomes a compile error at the call to `createOperationHandler`, not a runtime cast failure.
@@ -180,46 +198,75 @@ The generic SSE route is the piece COR-1299 adds to Weft's transport plumbing. I
 
 ### Proposed: option B, subject to the owner's ruling on COR-1299's test criterion
 
-```ts partial
+```ts
 // packages/weft/src/server/operation-catalog/types.ts (COR-1299)
-export type OperationContext<Input, Host = unknown> = {
-  readonly input: Input;
-  readonly principal: Principal;
-  readonly host: Host;
-  readonly transport: TransportKind;
+import type { OperationContext, OperationHandlerOptions, Principal } from '@lostgradient/weft';
+
+type TransportKind = OperationContext<unknown>['transport'];
+// `DispatchContext` is not exported; it is the context every registrable operation's `dispatch` receives.
+type RegistrableOperation<Host> = OperationHandlerOptions<Host>['operations'][number];
+type DispatchContext<Host = unknown> = Parameters<RegistrableOperation<Host>['dispatch']>[1];
+
+type FeedHost = { readonly bureauFeeds: ReadonlyMap<string, unknown> };
+
+declare const principal: Principal;
+
+// OperationContext<Input, Host = unknown>: `host` in place of `engine`.
+const context: OperationContext<{ bureauId: string }, FeedHost> = {
+  input: { bureauId: 'bureau-1' },
+  principal,
+  host: { bureauFeeds: new Map() },
+  transport: 'http-rest',
 };
 
-export type DispatchContext<Host = unknown> = {
-  readonly principal: Principal;
-  readonly host: Host;
-  readonly transport: TransportKind;
-  readonly registry: OperationRegistry;
-  readonly pipelineTrace?: PipelineTrace;
-};
+// DispatchContext<Host = unknown>: the same `host` slot, plus the registry and an optional trace.
+declare const dispatchContext: DispatchContext<FeedHost>;
+const host: FeedHost = dispatchContext.host;
+const transport: TransportKind = dispatchContext.transport;
+console.log(context.host.bureauFeeds.size, host, transport, dispatchContext.registry);
+console.log(dispatchContext.pipelineTrace); // optional
 ```
 
 `defineOperation` gains a `Host` type parameter that flows into `invoke` and `authorize`, and `RegistrableOperation<Host = unknown>` carries it into `dispatch`. Weft's own operations keep `Host = unknown`, keep narrowing with `assertOperationEngineMethods`, and keep receiving the `Engine` from `handleRequest` and `serve()`, so their behavior does not change. Typing Weft's own catalog against a `WeftHost` is a possible follow-up, not part of COR-1299.
 
 Bureau's operation then reads the host without a cast:
 
-```ts partial
-// packages/bureau/src/bureau-events-operation.ts (COR-1299)
+```ts
+// packages/bureau/src/bureau-events-operation.ts (COR-1299), reduced to a unary
+// operation: the real one is a subscription, and it reads `host` the same way.
+import { defineOperation } from '@lostgradient/weft';
+import { z } from 'zod';
+
+// Stand-ins for Bureau's own types, covering only what the operation reads.
+interface BureauEventRegistry {
+  get(bureauId: string): { readonly latestCursor: string } | undefined;
+}
+
 export type BureauEventsOperationHost = {
   readonly bureauFeeds: BureauEventRegistry;
-  readonly runtime?: Pick<RuntimeServices, 'identifiers'>;
 };
 
-export const bureauEventsSubscriptionOperation = defineOperation<
-  typeof bureauEventsSubscriptionInput,
-  typeof bureauEventsSubscriptionEnvelope,
-  typeof bureauEventEnvelopeSchema,
+const bureauEventsInput = z.object({ bureauId: z.string() });
+const bureauEventsOutput = z.object({ latestCursor: z.string().nullable() });
+
+export const bureauEventsOperation = defineOperation<
+  typeof bureauEventsInput,
+  typeof bureauEventsOutput,
   BureauEventsOperationHost
 >({
-  // ...unchanged fields, with transports.http: true...
-  invoke: ({ input, host }) => {
+  name: 'bureau.events.latest',
+  mcpExposable: false,
+  summary: 'Read the latest cursor of a Bureau event feed',
+  destructive: false,
+  inputSchema: bureauEventsInput,
+  outputSchema: bureauEventsOutput,
+  access: { kind: 'public' },
+  transports: { http: true, jsonRpcHttp: true, jsonRpcWebSocket: false, jsonRpcStdio: false },
+  unknownKeyPolicy: { http: 'reject', jsonRpc: 'reject' },
+  invoke: async ({ input, host }) => {
+    // `host` is typed as BureauEventsOperationHost: no cast.
     const bureauFeed = host.bureauFeeds.get(input.bureauId);
-    const runtime = host.runtime ?? createDefaultRuntimeServices();
-    // ...
+    return { latestCursor: bureauFeed?.latestCursor ?? null };
   },
 });
 ```
@@ -258,27 +305,23 @@ On the Weft side, `operation-handler.ts` lives under `packages/weft/src/server/h
 
 This is the pattern `serve()` already uses for its non-catalog protocols: `/mcp` and `/jsonrpc` are claimed in `server/runtime/authentication-bridge.ts:184-196` and `:253-263`, before `handleRequest` and outside the REST table.
 
-```ts partial
-export type OperationHandlerMount<Host> = {
-  /** Path prefix this adapter owns, for example `/a2a` or `/ag-ui`. */
-  readonly pathPrefix: string;
-  /** Exact paths under any prefix that skip `authenticate`, for example `/.well-known/agent-card.json`. */
-  readonly publicPaths?: ReadonlyArray<string>;
-  readonly fetch: (
-    request: Request,
-    context: OperationHandlerMountContext<Host>,
-  ) => Promise<Response>;
-};
+```ts
+import type { OperationHandlerMount, OperationHandlerMountContext } from '@lostgradient/weft';
 
-export type OperationHandlerMountContext<Host> = {
-  readonly principal: Principal;
-  /** Runs one catalog operation through the full pipeline, as this principal. */
-  readonly dispatch: (operationName: string, input: unknown) => Promise<DispatchResult<unknown>>;
-  /** Same, for `subscription` operations. */
-  readonly subscribe: (
-    operationName: string,
-    input: unknown,
-  ) => ReturnType<typeof executeSubscription>;
+const a2aMount: OperationHandlerMount = {
+  // Path prefix this adapter owns, for example `/a2a` or `/ag-ui`.
+  pathPrefix: '/a2a',
+  // Exact paths under any prefix that skip `authenticate`.
+  publicPaths: ['/.well-known/agent-card.json'],
+  fetch: async (request: Request, context: OperationHandlerMountContext) => {
+    // `context.principal` is the resolved caller. `context.dispatch` runs one catalog
+    // operation through the full pipeline as that principal; `context.subscribe` does
+    // the same for `subscription` operations.
+    const result = await context.dispatch('weft.system.principal', {});
+    return result.ok
+      ? Response.json(result.value)
+      : Response.json({ fault: result.fault.code }, { status: 403 });
+  },
 };
 ```
 

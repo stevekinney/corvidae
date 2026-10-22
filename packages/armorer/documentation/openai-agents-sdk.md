@@ -54,10 +54,10 @@ console.log(result.finalOutput);
 The conversion automatically classifies tools and returns lists for permission control:
 
 ```typescript
-import type { Toolbox } from 'armorer';
+import type { AnyToolbox } from 'armorer';
 import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
 
-declare const toolbox: Toolbox;
+declare const toolbox: AnyToolbox;
 
 const { tools, toolNames, mutatingToolNames, dangerousToolNames } =
   await toOpenAIAgentTools(toolbox);
@@ -78,10 +78,10 @@ Tools are classified as:
 Override tool properties during conversion:
 
 ```typescript
-import type { Toolbox } from 'armorer';
+import type { AnyToolbox } from 'armorer';
 import { toOpenAIAgentTools } from 'armorer/open-ai/agents';
 
-declare const toolbox: Toolbox;
+declare const toolbox: AnyToolbox;
 
 const { tools } = await toOpenAIAgentTools(toolbox, {
   toolConfiguration: (tool) => ({
@@ -155,41 +155,44 @@ console.log(deleteDecision); // { behavior: 'deny', message: 'Use --dangerous to
 ### Gate Options
 
 ```typescript
-import type { Tool, Toolbox } from 'armorer';
-import type { OpenAIAgentToolConfiguration } from 'armorer/open-ai/agents';
+import type { AnyToolbox, Tool } from 'armorer';
+import type { OpenAIAgentToolConfiguration, OpenAIToolGateOptions } from 'armorer/open-ai/agents';
 
-type OpenAIToolGateOptions = {
-  // The registry, tool, or array of tools to gate
-  registry: Toolbox | Tool | readonly Tool[];
+declare const toolbox: AnyToolbox;
+declare function renameTool(tool: Tool): OpenAIAgentToolConfiguration;
+
+const options: OpenAIToolGateOptions = {
+  // The toolbox, tool, or array of tools to gate
+  registry: toolbox,
 
   // Enable read-only mode (denies all mutating tools)
-  readOnly?: boolean;
+  readOnly: false,
 
   // Allow mutating tools (default: !readOnly)
-  allowMutation?: boolean;
+  allowMutation: true,
 
   // Allow dangerous tools (default: true)
-  allowDangerous?: boolean;
+  allowDangerous: true,
 
   // Classify builtin tools that aren't in the registry
-  builtin?: {
-    readOnly?: string[];
-    mutating?: string[];
-    dangerous?: string[];
-  };
+  builtin: {
+    readOnly: ['View'],
+    mutating: ['Edit'],
+    dangerous: ['Bash'],
+  },
 
   // Allow tools not in registry or builtin lists (default: false)
-  allowUnknown?: boolean;
+  allowUnknown: false,
 
   // Custom tool configuration (for name overrides)
-  toolConfiguration?: (tool: Tool) => OpenAIAgentToolConfiguration;
+  toolConfiguration: renameTool,
 
   // Custom deny messages
-  messages?: {
-    mutating?: string;
-    dangerous?: string;
-    unknown?: (toolName: string) => string;
-  };
+  messages: {
+    mutating: 'Pass --apply to allow mutating tools.',
+    dangerous: 'Pass --dangerous to allow this tool.',
+    unknown: (toolName) => `Tool not allowed: ${toolName}`,
+  },
 };
 ```
 
@@ -198,10 +201,10 @@ type OpenAIToolGateOptions = {
 When working with agent systems that have their own builtin tools (like file system access), use the `builtin` option to classify them:
 
 ```typescript
-import type { Toolbox } from 'armorer';
+import type { AnyToolbox } from 'armorer';
 import { createOpenAIToolGate } from 'armorer/open-ai/agents';
 
-declare const toolbox: Toolbox;
+declare const toolbox: AnyToolbox;
 
 const toolGate = createOpenAIToolGate({
   registry: toolbox,

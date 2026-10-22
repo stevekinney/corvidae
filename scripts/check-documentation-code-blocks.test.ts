@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -6,8 +7,11 @@ import { join, resolve } from 'node:path';
 import {
   checkCodeBlocks,
   extractCodeBlocks,
+  findDocuments,
+  manifestModuleMap,
   publishedModuleMap,
   runDocumentationCodeBlockCheck,
+  type PublishedPackageSurface,
 } from './check-documentation-code-blocks.ts';
 
 const fence = '```';
@@ -32,17 +36,16 @@ describe('extractCodeBlocks', () => {
       fence,
     ].join('\n');
 
-    const { blocks, partialCount, problems } = extractCodeBlocks('guide.md', markdown);
+    const { blocks, problems } = extractCodeBlocks('guide.md', markdown);
 
     expect(problems).toEqual([]);
-    expect(partialCount).toBe(0);
     expect(blocks.map(({ line, fileName, source }) => ({ line, fileName, source }))).toEqual([
       { line: 2, fileName: 'line-2.ts', source: 'const a = 1;' },
       { line: 13, fileName: 'line-13.ts', source: 'const b = 3;' },
     ]);
   });
 
-  test('skips partial blocks and names blocks with file=', () => {
+  test('names blocks with file= and accepts no attribute that skips a block', () => {
     const markdown = [
       `${fence}ts partial`,
       'engine.start();',
@@ -52,11 +55,11 @@ describe('extractCodeBlocks', () => {
       fence,
     ].join('\n');
 
-    const { blocks, partialCount, problems } = extractCodeBlocks('guide.md', markdown);
+    const { blocks, problems } = extractCodeBlocks('guide.md', markdown);
 
-    expect(problems).toEqual([]);
-    expect(partialCount).toBe(1);
-    expect(blocks.map((block) => block.fileName)).toEqual(['greeting.ts']);
+    // An opt-out attribute is unknown like any other, and its block is still checked.
+    expect(problems).toEqual(['guide.md:1: unknown code-block attribute "partial"']);
+    expect(blocks.map((block) => block.fileName)).toEqual(['line-1.ts', 'greeting.ts']);
   });
 
   test('rejects unknown attributes and duplicate file names', () => {
@@ -137,7 +140,11 @@ describe('checking a fixture package', () => {
     await rm(packageRoot, { recursive: true, force: true });
   });
 
-  test('runs over README and documentation against the published surface file', async () => {
+  test('runs over every Markdown document against the published surface file', async () => {
+    await Bun.write(
+      join(packageRoot, 'package.json'),
+      JSON.stringify({ name: 'fixture', exports: { '.': './src/index.ts' } }),
+    );
     await Bun.write(
       join(packageRoot, 'surface.json'),
       JSON.stringify({
@@ -154,27 +161,47 @@ describe('checking a fixture package', () => {
         `${fence}ts`,
         "import { extra } from 'fixture/extra';",
         fence,
-        `${fence}ts partial`,
+        `${fence}bash`,
         'engine;',
         fence,
       ].join('\n'),
     );
     await Bun.write(
-      join(packageRoot, 'documentation/guides/guide.md'),
+      join(packageRoot, 'src/guide.md'),
       ['# Guide', `${fence}ts`, "import { greet } from 'fixture';", 'greet(1);', fence].join('\n'),
     );
 
     const result = await runDocumentationCodeBlockCheck(
       packageRoot,
       join(packageRoot, 'surface.json'),
-      'fixture',
     );
 
     expect(result.problems).toHaveLength(1);
-    expect(result.problems[0]).toStartWith('documentation/guides/guide.md:4:7 - error TS2345:');
-    expect(result.summary).toBe(
-      'Checked 2 documentation code blocks in 2 documents (1 partial blocks skipped); 1 problems.',
+    expect(result.problems[0]).toStartWith('src/guide.md:4:7 - error TS2345:');
+    expect(result.summary).toBe('Checked 2 documentation code blocks in 2 documents; 1 problems.');
+  });
+
+  test('falls back to the package.json exports when the surface has no map for the package', async () => {
+    const surface = join(packageRoot, 'generated-surface.json');
+    await Bun.write(
+      surface,
+      JSON.stringify({ packages: { fixture: { exports: { generator: 'fixture' } } } }),
     );
+
+    const result = await runDocumentationCodeBlockCheck(packageRoot, surface);
+
+    // `fixture/extra` is published, but the manifest exports only `.`.
+    expect(result.problems.map((problem) => problem.split(' - ')[0])).toEqual([
+      'README.md:2:23',
+      'src/guide.md:4:7',
+    ]);
+  });
+
+  test('skips dependencies and generated output when finding documents', async () => {
+    await Bun.write(join(packageRoot, 'node_modules/dependency/README.md'), '# Dependency\n');
+    await Bun.write(join(packageRoot, 'dist/README.md'), '# Built\n');
+
+    expect(findDocuments(packageRoot)).toEqual(['README.md', 'src/guide.md']);
   });
 
   test('fails when the package has no readable tsconfig.json', () => {
@@ -197,6 +224,17 @@ describe('checking a fixture package', () => {
       fence,
     ].join('\n');
     const { blocks } = extractCodeBlocks('guide.md', markdown);
+
+    expect(checkCodeBlocks(packageRoot, blocks, modules)).toEqual([]);
+  });
+
+  test('loads the ambient declarations the workspace compiles with', async () => {
+    await Bun.write(
+      join(packageRoot, 'src/component.d.ts'),
+      "declare module '*.svelte' {\n  const component: () => void;\n  export default component;\n}\n",
+    );
+    const markdown = [`${fence}ts`, "import Button from './button.svelte';", 'Button();', fence];
+    const { blocks } = extractCodeBlocks('guide.md', markdown.join('\n'));
 
     expect(checkCodeBlocks(packageRoot, blocks, modules)).toEqual([]);
   });
@@ -231,33 +269,81 @@ describe('checking a fixture package', () => {
 });
 
 describe('publishedModuleMap', () => {
-  const weftRoot = resolve(import.meta.dir, '..');
+  const repositoryRoot = resolve(import.meta.dir, '..');
+  const weftRoot = join(repositoryRoot, 'packages/weft');
 
   test('maps every published Weft specifier to its source file', async () => {
-    const surface = await Bun.file(
-      resolve(weftRoot, '../../scripts/published-exports.json'),
-    ).json();
+    const surface = await Bun.file(join(repositoryRoot, 'scripts/published-exports.json')).json();
 
     const modules = publishedModuleMap(surface, '@lostgradient/weft', weftRoot);
 
-    expect(modules.get('@lostgradient/weft')).toBe(join(weftRoot, 'src/index.ts'));
-    expect(modules.get('@lostgradient/weft/storage/sqlite')).toBe(
+    expect(modules?.get('@lostgradient/weft')).toBe(join(weftRoot, 'src/index.ts'));
+    expect(modules?.get('@lostgradient/weft/storage/sqlite')).toBe(
       join(weftRoot, 'src/storage/sqlite.ts'),
     );
-    expect(modules.get('@lostgradient/weft/testing')).toBe(join(weftRoot, 'src/testing/index.ts'));
+    expect(modules?.get('@lostgradient/weft/testing')).toBe(join(weftRoot, 'src/testing/index.ts'));
   });
 
-  test('fails when the surface has no entry for the package', () => {
-    expect(() => publishedModuleMap({ packages: {} }, 'fixture', weftRoot)).toThrow(
-      'The published package surface has no entry for fixture.',
-    );
+  test('maps every TypeScript export of every published package to an existing source file', async () => {
+    const surface: PublishedPackageSurface = await Bun.file(
+      join(repositoryRoot, 'scripts/published-exports.json'),
+    ).json();
+    const roots: Record<string, string> = {
+      '@lostgradient/cinder': 'components/cinder',
+      '@lostgradient/editor': 'components/editor',
+      '@lostgradient/markdown': 'packages/markdown',
+      '@lostgradient/weft': 'packages/weft',
+    };
+    expect(Object.keys(surface.packages).toSorted()).toEqual(Object.keys(roots));
+
+    for (const [name, directory] of Object.entries(roots)) {
+      const modules = publishedModuleMap(surface, name, join(repositoryRoot, directory));
+      // Cinder's snapshot names the generator that derives its map, so it resolves through its manifest.
+      if (name === '@lostgradient/cinder') {
+        expect(modules, name).toBeUndefined();
+        continue;
+      }
+      expect(modules?.get(name), name).toBeDefined();
+      for (const source of modules?.values() ?? []) expect(existsSync(source), source).toBe(true);
+    }
+  });
+
+  test('prefers a source condition and skips JSON and stylesheet exports', () => {
+    const editorRoot = join(repositoryRoot, 'components/editor');
+    const surface = {
+      packages: {
+        fixture: {
+          exports: {
+            '.': { types: './dist/index.d.ts', bun: './src/lib/index.ts' },
+            './package.json': './package.json',
+            './examples': './dist/examples.json',
+            './styles': { types: './dist/review-editor.css.d.ts' },
+          },
+        },
+      },
+    };
+
+    const modules = publishedModuleMap(surface, 'fixture', editorRoot);
+
+    expect([...(modules ?? [])]).toEqual([['fixture', join(editorRoot, 'src/lib/index.ts')]]);
+  });
+
+  test('returns undefined when the surface has no exports map for the package', () => {
+    expect(publishedModuleMap({ packages: {} }, 'fixture', weftRoot)).toBeUndefined();
+    expect(
+      publishedModuleMap(
+        { packages: { fixture: { exports: { generator: 'fixture' } } } },
+        'fixture',
+        weftRoot,
+      ),
+    ).toBeUndefined();
   });
 
   test('fails when a published export has no declaration target under dist', () => {
     const surface = { packages: { fixture: { exports: { './bad': './lib/bad.js' } } } };
 
     expect(() => publishedModuleMap(surface, 'fixture', weftRoot)).toThrow(
-      'fixture export "./bad" has no ./dist/*.d.ts types target.',
+      'fixture export "./bad" has no TypeScript source.',
     );
   });
 
@@ -267,7 +353,21 @@ describe('publishedModuleMap', () => {
     };
 
     expect(() => publishedModuleMap(surface, 'fixture', weftRoot)).toThrow(
-      'fixture export "./missing" has no source for ./dist/missing.d.ts.',
+      'fixture export "./missing" has no TypeScript source.',
     );
+  });
+});
+
+describe('manifestModuleMap', () => {
+  test('maps each manifest export to its specifier', () => {
+    const modules = manifestModuleMap('/workspace', {
+      name: 'fixture',
+      exports: { '.': './src/index.ts', './protocol': './src/protocol/index.ts' },
+    });
+
+    expect([...modules]).toEqual([
+      ['fixture', '/workspace/src/index.ts'],
+      ['fixture/protocol', '/workspace/src/protocol/index.ts'],
+    ]);
   });
 });

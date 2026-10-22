@@ -3,7 +3,7 @@
 Manage shared resources like database connections or API clients.
 
 ```typescript
-import { createTool } from 'armorer';
+import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 // Generic resource pool
@@ -86,7 +86,7 @@ const queryDatabase = createTool({
   description: 'Execute a database query',
   input: z.object({ sql: z.string() }),
   async execute({ sql }, context) {
-    const { dbPool } = context as { dbPool: ResourcePool<DbConnection> };
+    const { dbPool } = context as typeof context & { dbPool: ResourcePool<DbConnection> };
     const connection = await dbPool.acquire();
 
     try {
@@ -111,6 +111,9 @@ process.on('SIGTERM', async () => {
 ## Resource Cleanup with Tool Lifecycle
 
 ```typescript
+import { createTool } from 'armorer';
+import { z } from 'zod';
+
 // Create a tool with cleanup logic
 function createResourceTool<TInput extends object, TOutput>(configuration: {
   name: string;

@@ -71,13 +71,13 @@ const result = await branch(
   [
     {
       condition: (p) => p.amount > 10000,
-      tool: async (p) => processLargeTransaction(p),
+      tool: async (p) => ({ tier: 'large', amount: p.amount }),
     },
     {
       condition: (p) => p.amount > 1000,
-      tool: async (p) => processMediumTransaction(p),
+      tool: async (p) => ({ tier: 'medium', amount: p.amount }),
     },
   ],
-  async (p) => processSmallTransaction(p), // default
+  async (p) => ({ tier: 'small', amount: p.amount }), // default
 );
 ```

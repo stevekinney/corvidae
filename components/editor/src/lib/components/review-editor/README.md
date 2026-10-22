@@ -85,6 +85,10 @@ Restoring against different content is survivable. Because every restored thread
 The same is true while editing. Deleting anchored text orphans its thread instead of destroying it, because a deletion and the first half of a cut-and-paste are indistinguishable at the moment the text disappears, and re-anchoring is debounced 300ms — faster than anyone cutting a paragraph and pasting it back. Check `anchor.status` to tell the two states apart:
 
 ```ts
+import type { Thread } from '@lostgradient/editor';
+
+declare const threads: Thread[];
+
 const orphaned = threads.filter((thread) => thread.anchor.status === 'orphaned');
 ```
 

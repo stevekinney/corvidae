@@ -1,5 +1,5 @@
 {
-  "documentation": "The published `exports` map of each public package, which corvidae's own checks resolve subpaths against: Weft's documentation code-block check and Markdown's import-graph test. Corvidae workspace manifests export only `.`, so this file stands in for the published map. It is a snapshot taken when the mirror tooling moved to stevekinney/corvidae-mirror (where `src/package-surface.json` is the authoritative copy); update it by hand when a backport changes a package's exports.",
+  "documentation": "The published `exports` map of each public package, which corvidae's own checks resolve subpaths against: the documentation code-block check (`scripts/check-documentation-code-blocks.ts`) and Markdown's import-graph test. Corvidae workspace manifests export only `.`, so this file stands in for the published map. It is a snapshot taken when the mirror tooling moved to stevekinney/corvidae-mirror (where `src/package-surface.json` is the authoritative copy); update it by hand when a backport changes a package's exports.",
   "packages": {
     "@lostgradient/weft": {
       "exports": {

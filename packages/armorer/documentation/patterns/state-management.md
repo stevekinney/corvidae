@@ -2,12 +2,12 @@
 
 Maintain persistent state across tool executions.
 
-```typescript
+```typescript file=state-management.ts
 import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 // State store
-class StateStore {
+export class StateStore {
   private state = new Map<string, any>();
 
   get<T>(key: string): T | undefined {
@@ -41,14 +41,14 @@ class StateStore {
 }
 
 // Create stateful tools
-const stateStore = new StateStore();
+export const stateStore = new StateStore();
 
 const setCounter = createTool({
   name: 'set-counter',
   description: 'Set counter value',
   input: z.object({ value: z.number() }),
   async execute({ value }, context) {
-    const { stateStore } = context as { stateStore: StateStore };
+    const { stateStore } = context as typeof context & { stateStore: StateStore };
     stateStore.set('counter', value);
     return { counter: value };
   },
@@ -59,7 +59,7 @@ const incrementCounter = createTool({
   description: 'Increment counter',
   input: z.object({ by: z.number().optional() }),
   async execute({ by = 1 }, context) {
-    const { stateStore } = context as { stateStore: StateStore };
+    const { stateStore } = context as typeof context & { stateStore: StateStore };
     stateStore.update<number>('counter', (current = 0) => current + by);
     return { counter: stateStore.get('counter') };
   },
@@ -70,7 +70,7 @@ const getCounter = createTool({
   description: 'Get counter value',
   input: z.object({}),
   async execute(_params, context) {
-    const { stateStore } = context as { stateStore: StateStore };
+    const { stateStore } = context as typeof context & { stateStore: StateStore };
     return { counter: stateStore.get('counter') ?? 0 };
   },
 });
@@ -100,6 +100,9 @@ stateStore.fromJSON(snapshot);
 ## State Middleware with Auto-Persistence
 
 ```typescript
+import { createMiddleware, createToolbox } from 'armorer';
+import { stateStore, type StateStore } from './state-management.ts';
+
 function createStatePersistenceMiddleware(
   stateStore: StateStore,
   persistFn: (state: Record<string, any>) => Promise<void>,

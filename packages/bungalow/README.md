@@ -29,7 +29,7 @@ bungalow.database; // <root>/database.sqlite
 bungalow.configuration; // <root>/configuration.json
 bungalow.directory('agents'); // <root>/agents, created 0700 if absent
 
-bungalow.writeSecret('api-key', value); // <root>/secrets/api-key, mode 0600
+bungalow.writeSecret('api-key', 'sk-example'); // <root>/secrets/api-key, mode 0600
 bungalow.readSecret('api-key'); // the value, or undefined when never written
 
 bungalow.close();

@@ -36,8 +36,10 @@ wss://server.example.com/api/v1/tasks/:queue/stream
 
 The TypeScript `RemoteWorker` accepts the full URL via its `serverUrl` option:
 
-```ts partial
-import { RemoteWorker } from '@lostgradient/weft';
+```ts
+import { RemoteWorker, type RemoteWorkerActivityFunction } from '@lostgradient/weft';
+
+declare const sendEmail: RemoteWorkerActivityFunction;
 
 using worker = new RemoteWorker({
   serverUrl: 'ws://localhost:7233/api/v1/tasks/default/stream',
@@ -504,16 +506,23 @@ The conformance runner verifies registration acknowledgement, echo task completi
 The JSON report has this shape. A run that aborts before its first verdict, such as a worker that never registers, reports a single failed check named `conformance` that carries the error message.
 
 ```ts
-type ConformanceReport = {
-  ok: boolean; // true only when every check passed
-  protocolVersion: number; // the protocol the sandbox server spoke
-  supportedProtocolVersions: number[];
-  checks: Array<{
-    name: string; // 'register', 'task completion', 'heartbeat', 'cancellation',
+import type { ClientOperationTypes } from '@lostgradient/weft';
+
+// The CLI's JSON report is the operation's report without its target and timestamps.
+type ConformanceReport = Omit<
+  ClientOperationTypes['weft.conformance.report']['output'],
+  'target' | 'startedAt' | 'completedAt'
+>;
+
+const report: ConformanceReport = {
+  ok: false, // true only when every check passed
+  protocolVersion: 8, // the protocol the sandbox server spoke
+  supportedProtocolVersions: [8],
+  checks: [
+    // name is 'register', 'task completion', 'heartbeat', 'cancellation',
     // 'reconnect', 'revision echo', 'graceful shutdown', or 'conformance'
-    ok: boolean;
-    message: string;
-  }>;
+    { name: 'conformance', ok: false, message: 'worker never registered' },
+  ],
 };
 ```
 

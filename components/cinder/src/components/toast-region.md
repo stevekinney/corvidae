@@ -71,6 +71,10 @@ Import the hook from the toast-region subpath. Call `useToast()` from anywhere i
 `show()` returns a `string` — the assigned toast id. Capture it to enable targeted dismiss:
 
 ```ts
+import type { ToastApi } from '@lostgradient/cinder';
+
+declare const toast: ToastApi; // from useToast()
+
 const id = toast.show('Saving…', { duration: 0 });
 // …later, when the operation completes:
 toast.dismiss(id);
@@ -83,6 +87,11 @@ Auto-generated ids (`cinder-toast-N`) are instance-local: stable for the lifetim
 Use `toast.promise()` when one operation needs a sticky loading notification that turns into success or error output.
 
 ```ts
+import type { ToastApi } from '@lostgradient/cinder';
+
+declare const toast: ToastApi; // from useToast()
+declare function saveSettings(): Promise<void>;
+
 toast.promise(saveSettings(), {
   id: 'settings-save',
   loading: 'Saving settings...',
@@ -104,6 +113,12 @@ Pass `icon` to show a leading visual marker next to the message. The icon is dec
 ```
 
 ```ts
+import type { ToastApi } from '@lostgradient/cinder';
+import type { Snippet } from 'svelte';
+
+declare const toast: ToastApi; // from useToast()
+declare const savedIcon: Snippet;
+
 toast.show('Settings saved.', {
   variant: 'success',
   icon: savedIcon,
@@ -115,6 +130,11 @@ toast.show('Settings saved.', {
 Pass `action: { label, onAction, keepOpen? }` to render a button after the message.
 
 ```ts
+import type { ToastApi } from '@lostgradient/cinder';
+
+declare const toast: ToastApi; // from useToast()
+declare function restoreItem(): void;
+
 toast.show('Item moved to trash.', {
   variant: 'info',
   action: {
@@ -160,6 +180,11 @@ There are six ways a toast leaves the screen:
 - **Clear-all** via `toast.dismissAll()`. Clears polite **and** assertive stacks together.
 
 ```ts
+import type { ToastApi } from '@lostgradient/cinder';
+
+declare const toast: ToastApi; // from useToast()
+declare const id: string; // returned by show()
+
 toast.dismiss(id); // remove a specific toast
 toast.dismissAll(); // clear everything in this region
 ```

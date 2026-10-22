@@ -2,12 +2,12 @@
 
 Maintain conversation context and user sessions across tool executions.
 
-```typescript
-import { createToolbox, createTool, withContext } from 'armorer';
+```typescript file=session-management.ts
+import { createToolbox, createTool } from 'armorer';
 import { z } from 'zod';
 
 // Session store interface
-interface Session {
+export interface Session {
   id: string;
   userId: string;
   conversationHistory: Array<{ role: string; content: string }>;
@@ -15,7 +15,7 @@ interface Session {
   metadata: Record<string, unknown>;
 }
 
-class SessionManager {
+export class SessionManager {
   private sessions = new Map<string, Session>();
 
   createSession(userId: string): Session {
@@ -60,14 +60,26 @@ class SessionManager {
   }
 }
 
-// Create session-aware toolbox
-const sessionManager = new SessionManager();
+// Create session-aware tool
+const getUserPreferences = createTool({
+  name: 'get-user-preferences',
+  description: 'Get user preferences from session',
+  input: z.object({ sessionId: z.string() }),
+  async execute({ sessionId }, context) {
+    const { sessionManager } = context as typeof context & { sessionManager: SessionManager };
+    const session = sessionManager.getSession(sessionId);
+    return session?.metadata['preferences'] ?? {};
+  },
+});
 
-const toolbox = createToolbox([], {
+// Create session-aware toolbox
+export const sessionManager = new SessionManager();
+
+const toolbox = createToolbox([getUserPreferences], {
   context: { sessionManager },
   policy: {
     async beforeExecute(context) {
-      const sessionId = context.params?.sessionId;
+      const { sessionId } = context.params as { sessionId?: string };
       if (!sessionId) {
         return { allow: false, reason: 'Missing sessionId' };
       }
@@ -84,24 +96,9 @@ const toolbox = createToolbox([], {
   },
 });
 
-// Create session-aware tool
-const getUserPreferences = createTool(
-  {
-    name: 'get-user-preferences',
-    description: 'Get user preferences from session',
-    input: z.object({ sessionId: z.string() }),
-    async execute({ sessionId }, context) {
-      const { sessionManager } = context as { sessionManager: SessionManager };
-      const session = sessionManager.getSession(sessionId);
-      return session?.metadata.preferences ?? {};
-    },
-  },
-  toolbox,
-);
-
 // Usage
 const session = sessionManager.createSession('user-123');
-session.metadata.preferences = { theme: 'dark', language: 'en' };
+session.metadata['preferences'] = { theme: 'dark', language: 'en' };
 
 const result = await toolbox.execute({
   name: 'get-user-preferences',
@@ -114,6 +111,10 @@ const result = await toolbox.execute({
 Automatically inject session context into all tools:
 
 ```typescript
+import { createMiddleware, createTool, createToolbox } from 'armorer';
+import { z } from 'zod';
+import { sessionManager, type Session, type SessionManager } from './session-management.ts';
+
 function createSessionMiddleware(sessionManager: SessionManager) {
   return createMiddleware((toolConfiguration) => {
     const originalExecute = toolConfiguration.execute;
@@ -148,24 +149,21 @@ function createSessionMiddleware(sessionManager: SessionManager) {
 }
 
 // Usage
-const toolbox = createToolbox([], {
-  middleware: [createSessionMiddleware(sessionManager)],
+const tool = createTool({
+  name: 'session-aware-tool',
+  description: 'Access session automatically',
+  input: z.object({
+    sessionId: z.string(),
+    action: z.string(),
+  }),
+  async execute({ action }, context) {
+    const { session } = context as typeof context & { session: Session };
+    console.log(`User ${session.userId} performed: ${action}`);
+    return { success: true };
+  },
 });
 
-const tool = createTool(
-  {
-    name: 'session-aware-tool',
-    description: 'Access session automatically',
-    input: z.object({
-      sessionId: z.string(),
-      action: z.string(),
-    }),
-    async execute({ action }, context) {
-      const { session } = context as { session: Session };
-      console.log(`User ${session.userId} performed: ${action}`);
-      return { success: true };
-    },
-  },
-  toolbox,
-);
+const toolbox = createToolbox([tool], {
+  middleware: [createSessionMiddleware(sessionManager)],
+});
 ```

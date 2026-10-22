@@ -49,7 +49,7 @@ console.log(weather.calls); // [{ city: 'Chicago' }]
 
 ## `createTestRegistry()`
 
-Creates a `Toolbox` configured for tests with execution history tracking.
+Creates a `Toolbox` from optional tool entries, configured for tests with execution history tracking.
 
 Returned value (`TestRegistry`):
 
@@ -62,11 +62,10 @@ Returned value (`TestRegistry`):
 ```typescript
 import { createMockTool, createTestRegistry } from 'armorer';
 
-const toolbox = createTestRegistry();
 const greet = createMockTool({ name: 'greet' });
+const toolbox = createTestRegistry([greet]);
 
 greet.mockResolve({ message: 'hello' });
-toolbox.register(greet);
 
 await toolbox.execute({ name: 'greet', arguments: {} });
 
@@ -82,13 +81,12 @@ import { createMockTool, createTestRegistry } from 'armorer';
 
 describe('agent workflow', () => {
   it('records calls and results', async () => {
-    const toolbox = createTestRegistry();
     const lookupUser = createMockTool<{ id: string }, { id: string; role: string }>({
       name: 'lookup-user',
     });
+    const toolbox = createTestRegistry([lookupUser]);
 
     lookupUser.mockResolve({ id: 'u1', role: 'admin' });
-    toolbox.register(lookupUser);
 
     const result = await toolbox.execute({
       name: 'lookup-user',
