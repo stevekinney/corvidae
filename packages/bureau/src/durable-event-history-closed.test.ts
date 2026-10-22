@@ -96,7 +96,7 @@ describe('the close notification of a history subscription', () => {
     await settleSubscription();
 
     expect(subscription.closed).toBe(true);
-    expect(closed).toEqual([]);
+    expect(closed).toHaveLength(0);
   });
 
   it('is not called when the subscriber aborts its signal', async () => {
@@ -112,6 +112,6 @@ describe('the close notification of a history subscription', () => {
     await settleSubscription();
 
     expect(subscription.closed).toBe(true);
-    expect(closed).toEqual([]);
+    expect(closed).toHaveLength(0);
   });
 });
