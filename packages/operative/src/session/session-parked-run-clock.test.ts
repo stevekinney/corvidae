@@ -51,12 +51,14 @@ describe('createParkedRunEngine — parked runs ignore the host clock (COR-1610)
         const state = await engine.get(runId);
         return state !== null && state.status !== 'running' && state.status !== 'pending';
       });
-      expect((await engine.get(runId))?.status).toBe('running');
+      const parkedState = await engine.get(runId);
+      expect(parkedState?.status).toBe('running');
       expect(await storage.has(parkedSleepTimerKey(runId))).toBe(true);
 
       // Only an explicit scheduler tick fires the parked sleep.
       await settleParkedRun(engine, runId);
-      expect((await engine.get(runId))?.status).toBe('completed');
+      const firedState = await engine.get(runId);
+      expect(firedState?.status).toBe('completed');
     } finally {
       engine[Symbol.dispose]();
     }
