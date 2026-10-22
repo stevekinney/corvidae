@@ -142,7 +142,7 @@ export const agentFileFrontmatterSchema = z
  * includes the default `model`, compared as the literal string the file wrote. Each failure is
  * at the entry's own path, `models.<index>`, or at `models` for the list as a whole.
  */
-function checkModelsList(
+export function checkModelsList(
   frontmatter: { readonly model: string; readonly models?: readonly string[] | null | undefined },
   context: z.RefinementCtx,
 ): void {

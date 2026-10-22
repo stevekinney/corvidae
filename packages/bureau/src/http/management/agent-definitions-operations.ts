@@ -40,6 +40,7 @@ import {
   agentSkillDescriptorSchema,
   AgentFileConflictError,
   AgentFileError,
+  checkModelsList,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
 } from '../../agent-file.ts';
@@ -117,6 +118,8 @@ const definitionOutputSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   model: z.string(),
+  /** The models a session of the agent may be switched to (COR-1559); `null` when the file lists none. */
+  models: z.array(z.string()).nullable(),
   tools: z.array(z.string()),
   skills: z.array(agentSkillDescriptorSchema),
   published: z.boolean(),
@@ -133,21 +136,31 @@ const agentDetailSchema = agentListingSchema.extend({
  * is offered is changed only by `publish` and `withdraw`, so an editor that rewrites a definition
  * can never withdraw an agent by leaving a field out.
  */
-const definitionInputSchema = z.strictObject({
-  name: z.string().optional(),
-  description: z.string().nullable().optional(),
-  model: z.string().min(1),
-  tools: z.array(z.string().min(1)).optional(),
-  skills: z.array(agentSkillDescriptorSchema).optional(),
-  instructions: z.string(),
-});
+const definitionInputSchema = z
+  .strictObject({
+    name: z.string().optional(),
+    description: z.string().nullable().optional(),
+    model: z.string().min(1),
+    /**
+     * The models a session may be switched to (COR-1559), checked as a file's frontmatter is: each
+     * entry `<provider>/<name>`, unique, the list not empty and including `model`. On `update`,
+     * omitting it keeps the list the file has, as `published` is kept, and `null` removes it.
+     */
+    models: z.array(z.string()).nullable().optional(),
+    tools: z.array(z.string().min(1)).optional(),
+    skills: z.array(agentSkillDescriptorSchema).optional(),
+    instructions: z.string(),
+  })
+  .superRefine((definition, context) => checkModelsList(definition, context));
 
 /**
  * The definition to write, from what the caller sent. Zod types an optional key as possibly
- * `undefined`; the schema never produces one that is present as `undefined`.
+ * `undefined`; the schema never produces one that is present as `undefined`. A `null` list is no
+ * list.
  */
 function definitionOf(input: z.infer<typeof definitionInputSchema>): AgentFileDefinitionInput {
-  return input as AgentFileDefinitionInput;
+  const { models, ...rest } = input;
+  return { ...rest, ...(models == null ? {} : { models }) } as AgentFileDefinitionInput;
 }
 
 const writeResultSchema = z.object({ id: z.string(), hash: z.string() });
@@ -202,6 +215,7 @@ function definitionView(definition: AgentFileDefinition) {
     name: definition.name,
     description: definition.description,
     model: definition.model,
+    models: definition.models === undefined ? null : [...definition.models],
     tools: [...definition.tools],
     skills: definition.skills.map(skillView),
     published: definition.published,
@@ -403,7 +417,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and whether the agent is published does not change. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and whether the agent is published does not change. A `definition` that omits `models` keeps the list the file has, and `models: null` removes it. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -425,9 +439,16 @@ export const agentDefinitionsUpdateOperation = defineOperation<
       // The definition the caller supplies has no `published`: the file keeps the state it has.
       const current = await definitions.agents.detail(input.id);
       const published = current?.definition?.published;
+      // Likewise the list of models: an editor that does not know the field must not erase it.
+      const models =
+        input.definition.models === undefined ? current?.definition?.models : undefined;
       const result = await definitions.agents.update(
         input.id,
-        { ...definitionOf(input.definition), ...(published === undefined ? {} : { published }) },
+        {
+          ...definitionOf(input.definition),
+          ...(published === undefined ? {} : { published }),
+          ...(models === undefined ? {} : { models }),
+        },
         { expectedHash: input.expectedHash },
       );
       if (result.hash !== input.expectedHash) {
