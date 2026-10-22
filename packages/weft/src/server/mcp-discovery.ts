@@ -47,7 +47,11 @@ type StdioTransport = {
 };
 
 export type McpDiscoveryDocument = {
-  readonly schemaVersion: 1;
+  /**
+   * 2 since COR-1311: the endpoint keeps no session, so the Streamable HTTP
+   * transport lists only POST and no longer names a session header.
+   */
+  readonly schemaVersion: 2;
   readonly protocol: 'model-context-protocol';
   readonly protocolVersion: typeof MCP_PROTOCOL_VERSION;
   /** The 2025-era revision the endpoint also serves, through the `initialize` handshake. */
@@ -77,7 +81,7 @@ export type McpDiscoveryDocument = {
 export function generateMcpDiscovery(options: McpDiscoveryOptions): McpDiscoveryDocument {
   const { origin } = options;
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     protocol: 'model-context-protocol',
     protocolVersion: MCP_PROTOCOL_VERSION,
     legacyProtocolVersion: MCP_LEGACY_PROTOCOL_VERSION,

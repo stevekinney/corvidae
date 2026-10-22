@@ -8,7 +8,7 @@ describe('MCP discovery document', () => {
     const document = generateMcpDiscovery({ origin: 'https://api.example.com' });
 
     expect(document).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       protocol: 'model-context-protocol',
       protocolVersion: '2026-07-28',
       legacyProtocolVersion: '2025-11-25',
