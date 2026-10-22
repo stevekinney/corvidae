@@ -86,33 +86,64 @@ export function resolveSchemaPolicy(
   return policy;
 }
 
+export function resolvePayloadValidation(
+  options: EngineConstructorOptions | undefined,
+): ResolvedOptions['payloadValidation'] {
+  const mode = options?.payloadValidation ?? 'none';
+  if (mode !== 'none' && mode !== 'inbound') {
+    throw new Error('options.payloadValidation must be "none" or "inbound" when provided');
+  }
+  return mode;
+}
+
+/** Whether a schema field leaves a gap the active policy rejects. */
+type SchemaGap = (schema: unknown) => boolean;
+
+const isUndeclared: SchemaGap = (schema) => schema === undefined;
+
+/** A declared schema with no runtime validator: it describes JSON Schema only. */
+const cannotValidate: SchemaGap = (schema) =>
+  schema !== undefined &&
+  typeof (schema as { '~standard'?: { validate?: unknown } })['~standard']?.validate !== 'function';
+
 function collectFields(
-  missing: string[],
+  gaps: string[],
   prefix: string,
   definition: SchemaFields,
   fields: ReadonlyArray<keyof SchemaFields>,
+  isGap: SchemaGap,
 ): void {
   for (const field of fields) {
-    if (definition[field] === undefined) missing.push(`${prefix}${field}`);
+    if (isGap(definition[field])) gaps.push(`${prefix}${field}`);
   }
 }
 
 function collectNamed(
-  missing: string[],
+  gaps: string[],
   group: string,
   definitions: Readonly<Record<string, NamedSchemaFields>> | undefined,
   fields: ReadonlyArray<keyof SchemaFields>,
+  isGap: SchemaGap,
 ): void {
   if (definitions === undefined) return;
   const sorted = Object.values(definitions).toSorted((left, right) =>
     left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
   );
   for (const definition of sorted) {
-    collectFields(missing, `${group}.${definition.name}.`, definition, fields);
+    collectFields(gaps, `${group}.${definition.name}.`, definition, fields, isGap);
   }
 }
 
 const BOTH = ['inputSchema', 'outputSchema'] as const;
+const INPUT = ['inputSchema'] as const;
+
+type WorkflowMessageMaps = {
+  readonly activities?: Readonly<Record<string, NamedSchemaFields>>;
+  readonly signals?: Readonly<Record<string, NamedSchemaFields>>;
+  readonly updates?: Readonly<Record<string, NamedSchemaFields>>;
+  readonly queries?: Readonly<Record<string, NamedSchemaFields>>;
+  readonly uses?: Readonly<Record<string, NamedSchemaFields>>;
+};
 
 /**
  * Every schema `definition` leaves undeclared, as dotted paths: its own input
@@ -123,34 +154,58 @@ const BOTH = ['inputSchema', 'outputSchema'] as const;
  */
 export function collectMissingWorkflowSchemas(definition: WorkflowDefinition): string[] {
   const missing: string[] = [];
-  collectFields(missing, '', definition, BOTH);
+  collectFields(missing, '', definition, BOTH, isUndeclared);
   if (definition.finalizer !== undefined) {
-    collectFields(missing, 'finalizer.', definition.finalizer as SchemaFields, BOTH);
+    collectFields(missing, 'finalizer.', definition.finalizer as SchemaFields, BOTH, isUndeclared);
   }
-  const maps = definition as {
-    readonly activities?: Readonly<Record<string, NamedSchemaFields>>;
-    readonly signals?: Readonly<Record<string, NamedSchemaFields>>;
-    readonly updates?: Readonly<Record<string, NamedSchemaFields>>;
-    readonly queries?: Readonly<Record<string, NamedSchemaFields>>;
-    readonly uses?: Readonly<Record<string, NamedSchemaFields>>;
-  };
-  collectNamed(missing, 'signals', maps.signals, ['inputSchema']);
-  collectNamed(missing, 'updates', maps.updates, BOTH);
-  collectNamed(missing, 'queries', maps.queries, BOTH);
-  collectNamed(missing, 'activities', maps.activities, BOTH);
-  collectNamed(missing, 'uses', maps.uses, BOTH);
+  const maps = definition as WorkflowMessageMaps;
+  collectNamed(missing, 'signals', maps.signals, INPUT, isUndeclared);
+  collectNamed(missing, 'updates', maps.updates, BOTH, isUndeclared);
+  collectNamed(missing, 'queries', maps.queries, BOTH, isUndeclared);
+  collectNamed(missing, 'activities', maps.activities, BOTH, isUndeclared);
+  collectNamed(missing, 'uses', maps.uses, BOTH, isUndeclared);
   return missing;
 }
 
-/** Throw {@link DefinitionSchemaRequiredError} when `policy` is `'required'` and `definition` omits a schema. */
+/**
+ * Every inbound schema `definition` declares without a runtime validator: its
+ * own input, and each signal's, update's, and query's input.
+ */
+function collectUnvalidatableInboundSchemas(definition: WorkflowDefinition): string[] {
+  const gaps: string[] = [];
+  collectFields(gaps, '', definition, INPUT, cannotValidate);
+  const maps = definition as WorkflowMessageMaps;
+  collectNamed(gaps, 'signals', maps.signals, INPUT, cannotValidate);
+  collectNamed(gaps, 'updates', maps.updates, INPUT, cannotValidate);
+  collectNamed(gaps, 'queries', maps.queries, INPUT, cannotValidate);
+  return gaps;
+}
+
+/**
+ * Enforce the registration-time half of both schema options: throw
+ * {@link DefinitionSchemaRequiredError} when `schemaPolicy` is `'required'`
+ * and `definition` omits a schema, and a `TypeError` when `payloadValidation`
+ * is `'inbound'` and an inbound schema has no runtime validator to run.
+ */
 export function assertWorkflowSchemas(
-  policy: ResolvedOptions['schemaPolicy'],
+  options: Pick<ResolvedOptions, 'schemaPolicy' | 'payloadValidation'>,
   definition: WorkflowDefinition,
 ): void {
-  if (policy !== 'required') return;
-  const missing = collectMissingWorkflowSchemas(definition);
-  if (missing.length > 0) {
-    throw new DefinitionSchemaRequiredError('workflow', definition.name, missing);
+  if (options.schemaPolicy === 'required') {
+    const missing = collectMissingWorkflowSchemas(definition);
+    if (missing.length > 0) {
+      throw new DefinitionSchemaRequiredError('workflow', definition.name, missing);
+    }
+  }
+  if (options.payloadValidation === 'inbound') {
+    const unvalidatable = collectUnvalidatableInboundSchemas(definition);
+    if (unvalidatable.length > 0) {
+      throw new TypeError(
+        `The engine validates inbound payloads (payloadValidation: 'inbound'), but workflow ` +
+          `"${definition.name}" declares schemas with no runtime validator: ` +
+          `${unvalidatable.join(', ')}. Use a Standard Schema validator such as Zod or Valibot.`,
+      );
+    }
   }
 }
 
@@ -161,7 +216,7 @@ export function assertActivitySchemas(
 ): void {
   if (policy !== 'required') return;
   const missing: string[] = [];
-  collectFields(missing, '', definition, BOTH);
+  collectFields(missing, '', definition, BOTH, isUndeclared);
   if (missing.length > 0) {
     throw new DefinitionSchemaRequiredError('activity', definition.name, missing);
   }

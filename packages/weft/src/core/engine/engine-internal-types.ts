@@ -68,6 +68,8 @@ export interface ResolvedOptions {
   inlineLaunchSchedulingMode: 'event-loop' | 'manual';
   /** Resolved form of `EngineOptions.schemas`. */
   schemaPolicy: 'optional' | 'required';
+  /** Resolved form of `EngineOptions.payloadValidation`. */
+  payloadValidation: 'none' | 'inbound';
   checkpointHistory: number;
   checkpointSizeWarningThreshold: number;
   maxNestingDepth: number;

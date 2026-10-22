@@ -36,6 +36,7 @@ describe('engine update helpers', () => {
     const persisted = createUpdateRequest({ updateId: 'update-persisted', createdAt: 1_000 });
     const deliver = mock(async (_workflowId: string, _request: UpdateRequest) => false);
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: null,
       workflowClaimRegistry: null,
       updateWaiters: new Map(),
@@ -76,6 +77,7 @@ describe('engine update helpers', () => {
 
   it('throws the coordinated response error returned by update()', async () => {
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: null,
       workflowClaimRegistry: null,
       updateWaiters: new Map(),
@@ -116,6 +118,7 @@ describe('engine update helpers', () => {
   it('delivers a pending update found after waiter registration', async () => {
     const deleteRequest = mock(async () => {});
     const internals = {
+      options: { payloadValidation: 'none' },
       updateCoordinator: { deleteRequest },
       updateWaiters: new Map(),
       updateWaitersByWorkflow: new Map<string, Set<string>>(),
@@ -172,6 +175,7 @@ describe('engine update helpers', () => {
 
   it('resolves a worker-mode waiter without requiring inline workflow adoption', async () => {
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: null,
       updateCoordinator: { deleteRequest: mock(async () => {}) },
       updateWaiters: new Map(),
@@ -213,6 +217,7 @@ describe('engine update helpers', () => {
     const waiter = mock(() => {});
     const waiterKey = 'workflow-1:rename';
     const internals = {
+      options: { payloadValidation: 'none' },
       updateCoordinator: { deleteRequest: mock(async () => {}) },
       updateWaiters: new Map([[waiterKey, waiter]]),
       updateWaitersByWorkflow: new Map<string, Set<string>>([['workflow-1', new Set([waiterKey])]]),
@@ -247,6 +252,7 @@ describe('engine update helpers', () => {
   it('does not delete a pending update after a successor replaces the run during lookup', async () => {
     const deleteRequest = mock(async () => {});
     const internals = {
+      options: { payloadValidation: 'none' },
       durableInlineOperations: new Map([
         ['workflow-1', { operationId: 'op-1', type: 'wait-update', workflowExecutionToken: 'old' }],
       ]),
@@ -295,6 +301,7 @@ describe('engine update helpers', () => {
     const completeOperation = mock(() => {});
     const deleteRequest = mock(async () => {});
     const internals = {
+      options: { payloadValidation: 'none' },
       durableInlineOperations: new Map([
         ['workflow-1', { operationId: 'op-1', type: 'wait-update', workflowExecutionToken: 'old' }],
       ]),
@@ -338,6 +345,7 @@ describe('engine update helpers', () => {
     const waiter = mock(() => {});
     const waiterKey = 'workflow-1:rename';
     const internals = {
+      options: { payloadValidation: 'none' },
       storage: new MemoryStorage(),
       workflowClaimRegistry: null,
       updateCoordinator: { deleteRequest: mock(async () => {}) },
@@ -367,6 +375,7 @@ describe('engine update helpers', () => {
     const key = KEYS.update('workflow-1', 'update-1');
     await storage.put(key, Uint8Array.of(1));
     const internals = {
+      options: { payloadValidation: 'none' },
       storage,
       pendingAtomicWorkflowCommitSideEffects: new Map(),
     } as any;
@@ -387,6 +396,7 @@ describe('engine update helpers', () => {
     const successorWaiter = mock(() => {});
     const completeOperation = mock(() => {});
     const internals = {
+      options: { payloadValidation: 'none' },
       storage: {
         get: async (requestedKey: string) => {
           internals.updateWaiters.set('workflow-1:rename', successorWaiter);
@@ -435,6 +445,7 @@ describe('engine update helpers', () => {
     const waiterKey = 'workflow-1:rename';
     const updateRequest = createUpdateRequest();
     const internals = {
+      options: { payloadValidation: 'none' },
       // `EngineInternals.workflowClaimRegistry` is `WorkflowClaimRegistry | null`
       // and is always initialized to `null` in production. Omitting it left it
       // `undefined`, which the ADR 0002 wake fence's `=== null` check correctly
@@ -484,6 +495,7 @@ describe('engine update helpers', () => {
     const updateRequest = createUpdateRequest();
     const waiterKey = 'workflow-1:rename';
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { waitForWorkflowAdvance: () => advance.promise },
       workflowClaimRegistry: null,
       updateCoordinator: { deleteRequest: mock(async () => {}) },
@@ -558,6 +570,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
   it('returns handled: true when a live context has the handler', async () => {
     const handler = mock(async (payload: unknown) => `handled:${String(payload)}`);
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => ({ updateHandlers: new Map([['rename', handler]]) }) },
       conditionWaiters: new Map(),
       // EngineInternals types this as `WorkflowClaimRegistry | null`, never
@@ -578,6 +591,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
 
   it('returns reason: "no-handler" when a live context exists but has no matching handler', async () => {
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => ({ updateHandlers: new Map() }) },
       workflowClaimRegistry: null,
     } as any;
@@ -595,6 +609,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
 
   it('returns reason: "no-handler" when no context exists and no other engine claims the workflow', async () => {
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => undefined },
       workflowClaimRegistry: null,
     } as any;
@@ -625,6 +640,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
       },
     ]);
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => undefined },
       workflowClaimRegistry: fakeClaimRegistry(null),
       storage,
@@ -644,6 +660,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
   it('invokes the handler without any ownership read when no claim registry is installed', async () => {
     const handler = mock(async (payload: unknown) => `handled:${String(payload)}`);
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => ({ updateHandlers: new Map([['rename', handler]]) }) },
       conditionWaiters: new Map(),
       workflowClaimRegistry: null,
@@ -677,6 +694,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
     ]);
     const handler = mock(async (payload: unknown) => `handled:${String(payload)}`);
     const internals = {
+      options: { payloadValidation: 'none' },
       // A deposed engine keeps its live Context — and its registered
       // handlers — until some later fenced write unwinds the execution.
       inlineStrategy: { getContext: () => ({ updateHandlers: new Map([['rename', handler]]) }) },
@@ -718,6 +736,7 @@ describe('tryInlineUpdateHandler ownership distinguishability', () => {
       },
     ]);
     const internals = {
+      options: { payloadValidation: 'none' },
       inlineStrategy: { getContext: () => undefined },
       workflowClaimRegistry: fakeClaimRegistry(null),
       storage,
@@ -761,6 +780,7 @@ describe('tryWaitingUpdateHandler ownership recheck (WFT-79)', () => {
     const updateWaitersByWorkflow = new Map<string, Set<string>>();
 
     const internals = {
+      options: { payloadValidation: 'none' },
       // No handler registered for "rename" — tryInlineUpdateHandler falls
       // through to 'no-handler' (not 'not-owned-locally') so update()
       // proceeds into tryWaitingUpdateHandler.

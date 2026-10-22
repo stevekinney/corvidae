@@ -20,6 +20,7 @@ import type {
 import type { OperationFault } from '../operation-fault.ts';
 import { defineOperation } from '../operation-registry.ts';
 import type { UnknownRestBinding } from '../rest-bindings.ts';
+import { standardSchemaValidationFault } from '../standard-schema-validation-fault.ts';
 import {
   invalidParamsFault,
   undeclaredMessageFault,
@@ -149,7 +150,8 @@ function assertConvergenceTokenProvided(
  *   5. WorkerStartOverrideRejectedError → Conflict (`reason: "override-token-rejected"`)
  *   6. WorkerDeploymentVersionRemovedError → Conflict (`reason: "version-removed"`)
  *   7. StartWorkflowValidationError → InvalidParams
- *   8. otherwise                    → EngineFailure
+ *   8. StandardSchemaValidationError → InvalidParams (declared input or signal schema)
+ *   9. otherwise                    → EngineFailure
  */
 function resolveStartOrSignalWorkflowFault(error: unknown): never {
   const message = error instanceof Error ? error.message : String(error);
@@ -189,6 +191,8 @@ function resolveStartOrSignalWorkflowFault(error: unknown): never {
   if (error instanceof StartWorkflowValidationError) {
     throw invalidParamsFault(message);
   }
+  const schemaFault = standardSchemaValidationFault(error);
+  if (schemaFault !== undefined) throw schemaFault;
 
   const fault: OperationFault = {
     code: 'EngineFailure',
