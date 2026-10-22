@@ -252,6 +252,19 @@ describe('tool-result parts contract', () => {
     expect(gemini?.functionResponse.parts).toHaveLength(1);
   });
 
+  it('keeps a text part’s citations in Anthropic tool_result blocks', async () => {
+    const result = await createToolbox([chartTool()]).execute({
+      id: 'call-cite',
+      name: 'chart',
+      arguments: { series: 'sales' },
+    });
+    const citations = [{ type: 'char_location', cited_text: 'x', start_char_index: 0 }];
+    const cited = { ...result, parts: [{ type: 'text' as const, text: 'see', citations }] };
+    expect(formatAnthropicToolResults(cited)[0]?.content).toEqual([
+      { type: 'text', text: 'see', citations },
+    ]);
+  });
+
   it('formats a settled result with parts the same way through every async formatter', async () => {
     const result = await createToolbox([chartTool()]).execute({
       id: 'call-async',

@@ -1,4 +1,9 @@
-import { assertToolResultParts, isToolContent, type ToolResultPart } from '../protocol';
+import {
+  assertToolResultParts,
+  isToolContent,
+  type JSONValue,
+  type ToolResultPart,
+} from '../protocol';
 
 /**
  * How Armorer's provider formatters (`formatOpenAIToolResults`,
@@ -43,7 +48,7 @@ export function textOfToolResultParts(provider: string, parts: readonly ToolResu
 
 /** An Anthropic `tool_result` content block a part becomes. */
 export type AnthropicToolResultContentBlock =
-  | { type: 'text'; text: string }
+  | { type: 'text'; text: string; citations?: JSONValue }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } };
 
@@ -52,7 +57,13 @@ export function anthropicToolResultBlocks(
   parts: readonly ToolResultPart[],
 ): AnthropicToolResultContentBlock[] {
   return parts.map((part, index): AnthropicToolResultContentBlock => {
-    if (part.type === 'text') return { type: 'text', text: part.text };
+    if (part.type === 'text') {
+      return {
+        type: 'text',
+        text: part.text,
+        ...(part.citations !== undefined ? { citations: part.citations } : {}),
+      };
+    }
     const { source } = part;
     if (source.kind !== 'inline' || source.encoding !== 'base64' || part.mimeType === undefined) {
       return refuse('Anthropic', part, index, 'only inline base64 media with a MIME type is sent');

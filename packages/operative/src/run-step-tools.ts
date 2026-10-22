@@ -406,13 +406,18 @@ export async function executeTools(
                 results,
                 elicit,
               });
-              if (validated !== undefined && validated !== currentResult) {
-                // A replacement can carry new media: admit it before the event shows it.
-                const [admitted] = await admitToolResultMedia(admitter, [validated], mediaContext);
-                const replacement = admitted ?? validated;
-                emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, replacement));
-                currentResult = replacement;
-              }
+              const replaced = validated !== undefined && validated !== currentResult;
+              // A hook can replace the result or mutate it in place, so whatever it leaves is
+              // admitted before the event shows it or the row keeps it; media admitted already
+              // is a managed asset and passes through unchanged.
+              const [admitted] = await admitToolResultMedia(
+                admitter,
+                [replaced ? validated : currentResult],
+                mediaContext,
+              );
+              const next = admitted ?? (replaced ? validated : currentResult);
+              if (replaced) emitter?.dispatch(new ToolResultValidatedEvent(step, snapshot, next));
+              currentResult = next;
             }
             validatedResults.push(currentResult);
           }

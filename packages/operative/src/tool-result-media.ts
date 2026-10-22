@@ -141,7 +141,9 @@ export async function admitToolResultMedia(
 export interface ToolResultRetentionContext {
   readonly admitter: GeneratedMediaAdmitter | undefined;
   readonly runId: string | undefined;
-  readonly conversation: { getMessages(): readonly Message[] };
+  readonly conversation: {
+    getMessages(options?: { includeHidden?: boolean }): readonly Message[];
+  };
 }
 
 /**
@@ -163,7 +165,8 @@ export async function retainToolResultMedia(
     if (managed.length > 0) managedByCall.set(result.callId, managed);
   }
   if (managedByCall.size === 0) return;
-  for (const message of context.conversation.getMessages()) {
+  // A plugin may hide a committed row; a hidden row still references its assets.
+  for (const message of context.conversation.getMessages({ includeHidden: true })) {
     const callId = message.role === 'tool-result' ? message.toolResult?.callId : undefined;
     const parts = callId === undefined ? undefined : managedByCall.get(callId);
     if (parts === undefined) continue;

@@ -21,6 +21,7 @@ import {
 import { describeInputMedia, evaluateInputMedia } from '../src/providers/selection';
 import { createMockGenerate, createRunRecorder } from '../src/test/index';
 import { createScriptedMediaAdmitter } from '../src/testing/generated-media.test-support';
+import { retainToolResultMedia } from '../src/tool-result-media';
 import type { GenerateResponse, RunOptions } from '../src/types';
 
 /**
@@ -231,6 +232,63 @@ describe('tool-result media review fixes', () => {
         ],
       },
     ]);
+  });
+
+  it('admits media a validateToolResult hook adds by mutating the result in place', async () => {
+    const admitter = createScriptedMediaAdmitter();
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async (toolResult) => {
+      Object.assign(toolResult, {
+        parts: [{ type: 'text', text: 'see image' }, inlineImage] satisfies ToolResultPart[],
+      });
+    });
+    const result = await runWith([{ type: 'text', text: 'ok' }], {
+      generatedMediaAdmitter: admitter.port,
+      hooks,
+    }).result;
+    const toolResult = toolResultRow(result.conversation)?.toolResult;
+    expect(toolResult?.parts?.[1]).toMatchObject({ source: { kind: 'managed-asset' } });
+    expect(JSON.stringify(result.conversation.getMessages())).not.toContain(BYTES);
+  });
+
+  it('retains the managed assets of a tool-result row a plugin hid', async () => {
+    const managed = {
+      ...inlineImage,
+      source: { kind: 'managed-asset' as const, assetId: 'asset-9', revision: 1 },
+    };
+    const conversation = new Conversation();
+    conversation.appendToolCall({ id: 'call-hidden', name: 'chart', arguments: {} });
+    conversation.appendToolResult(
+      { callId: 'call-hidden', outcome: 'success', content: null, parts: [managed] },
+      { hidden: true },
+    );
+    const retained: string[] = [];
+    await retainToolResultMedia(
+      {
+        admitter: {
+          admit: async () => {
+            throw new Error('not used');
+          },
+          retainCommitted: async ({ messageId }) => {
+            retained.push(messageId);
+          },
+        },
+        runId: 'run-hidden',
+        conversation,
+      },
+      [
+        {
+          callId: 'call-hidden',
+          toolCallId: 'call-hidden',
+          toolName: 'chart',
+          outcome: 'success',
+          content: null,
+          result: null,
+          parts: [managed],
+        },
+      ],
+    );
+    expect(retained).toHaveLength(1);
   });
 
   it('admits media a validateToolResult hook adds, on any outcome, before the event shows it', async () => {
