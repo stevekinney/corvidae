@@ -25,15 +25,42 @@ export function parkedSignalName(result: ParkableResult): string | undefined {
     : undefined;
 }
 
-/** The parks one step's results hold, counted by the rule above. */
-export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): number {
-  let count = 0;
+/** A park one step's results hold: the signal it waits on, and the prompt it asked with. */
+export type HumanWaitPark = {
+  readonly signalName: string;
+  readonly prompt: string | undefined;
+};
+
+/**
+ * The parks one step's results hold, in order, counted by the rule above: consecutive parked
+ * results on one signal are one park, and its prompt is the first result's. The one place that rule
+ * is written, so a count of parks, the ordinal a park's review id carries and the prompt a rebuilt
+ * review shows cannot disagree.
+ */
+export function humanWaitParks(results: ReadonlyArray<ParkableResult>): HumanWaitPark[] {
+  const parks: HumanWaitPark[] = [];
   let previous: string | undefined;
   for (const result of results) {
     const signalName = parkedSignalName(result);
     if (signalName === undefined) continue;
-    if (previous !== signalName) count += 1;
+    if (previous !== signalName) {
+      const value = result.result as { prompt?: unknown };
+      parks.push({
+        signalName,
+        prompt: typeof value.prompt === 'string' ? value.prompt : undefined,
+      });
+    }
     previous = signalName;
   }
-  return count;
+  return parks;
+}
+
+/** The signal name of each park one step's results hold, in order (see {@link humanWaitParks}). */
+export function humanWaitParkSignalNames(results: ReadonlyArray<ParkableResult>): string[] {
+  return humanWaitParks(results).map((park) => park.signalName);
+}
+
+/** The parks one step's results hold, counted by the rule above. */
+export function countHumanWaitParks(results: ReadonlyArray<ParkableResult>): number {
+  return humanWaitParks(results).length;
 }

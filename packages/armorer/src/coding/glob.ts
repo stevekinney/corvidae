@@ -7,6 +7,7 @@ import type { RootJail } from './jail';
 /** Default cap on the number of paths returned. */
 export const DEFAULT_GLOB_MAX_RESULTS = 500;
 
+/** Options for {@link createGlobTool}. */
 export interface CreateGlobToolOptions {
   /** Root jail all matched paths are resolved against. */
   jail: RootJail;
@@ -16,6 +17,7 @@ export interface CreateGlobToolOptions {
   defaultMaxResults?: number;
 }
 
+/** The `glob` tool's result: matched repository-relative paths, and whether `maxResults` cut them off. */
 export interface GlobResult {
   paths: string[];
   truncated: boolean;

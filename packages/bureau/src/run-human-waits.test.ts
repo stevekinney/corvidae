@@ -20,7 +20,7 @@ const PARKED_STEP = {
   ],
 };
 
-function build(engine: Pick<RegistryAgnosticEngine, 'get'>) {
+function build(engine: Pick<RegistryAgnosticEngine, 'get'>, clock = { now: 1_000 }) {
   const diagnostics: Diagnostic[] = [];
   const dependencies: RunHumanWaitsDependencies = {
     store: { getRun: () => undefined },
@@ -28,7 +28,7 @@ function build(engine: Pick<RegistryAgnosticEngine, 'get'>) {
     runAttribution: new Map(),
     engine: () => engine as RegistryAgnosticEngine,
     checkpointSteps: async () => [PARKED_STEP],
-    now: () => 1_000,
+    now: () => clock.now,
     recordDecision: async () => undefined,
     createError: (message) => new Error(message),
     durableNotConfigured: () => new Error('no durable engine'),
@@ -88,5 +88,66 @@ describe('attach', () => {
     expect(diagnostics[0]).toMatchObject({ level: 'error', scope: 'recovery' });
     expect(diagnostics[0]?.message).toContain('run-1');
     expect(diagnostics[0]?.message).toContain('storage read failed');
+  });
+});
+
+describe('rereadClosed', () => {
+  const GRACE = 100;
+  const stillParked = {
+    get: async () => ({ status: 'suspended', waitingForSignals: ['answer'] }) as never,
+  };
+
+  it('asks again when the grace of a young park ends, and does not ask the engine before then', async () => {
+    let engineReads = 0;
+    const clock = { now: 1_000 };
+    const { waits } = build(
+      {
+        get: async () => {
+          engineReads += 1;
+          return { status: 'suspended', waitingForSignals: ['answer'] } as never;
+        },
+      },
+      clock,
+    );
+    await waits.attach('run-1', { agentName: 'asker' }, SERVICES);
+    engineReads = 0;
+
+    clock.now = 1_050;
+    expect(await waits.rereadClosed('run-1', GRACE)).toEqual({ retryAt: 1_100 });
+    expect(engineReads).toBe(0);
+  });
+
+  it('counts the exact end of the grace as ended, so the time it asked for reads the park', async () => {
+    const clock = { now: 1_000 };
+    const { waits } = build(stillParked, clock);
+    await waits.attach('run-1', { agentName: 'asker' }, SERVICES);
+
+    clock.now = 1_100;
+
+    // Verified standing: neither a close nor another retry time.
+    expect(await waits.rereadClosed('run-1', GRACE)).toEqual({});
+  });
+
+  it('names the park closed once the grace has ended and the engine no longer parks the run on it', async () => {
+    const clock = { now: 1_000 };
+    const engineState = { waitingForSignals: ['answer'] };
+    const { waits } = build(
+      { get: async () => ({ status: 'suspended', ...engineState }) as never },
+      clock,
+    );
+    await waits.attach('run-1', { agentName: 'asker' }, SERVICES);
+    engineState.waitingForSignals = [];
+
+    clock.now = 1_100;
+
+    expect(await waits.rereadClosed('run-1', GRACE)).toEqual({
+      closed: 'human-wait:run-1:answer:0',
+    });
+  });
+
+  it('has nothing to say of a run it holds no park for', async () => {
+    const { waits } = build(stillParked);
+
+    expect(await waits.rereadClosed('run-9', GRACE)).toEqual({});
   });
 });

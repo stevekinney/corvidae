@@ -11,6 +11,7 @@ export const DEFAULT_GREP_MAX_FILE_BYTES = 1_048_576; // 1 MiB
 
 const SAFE_REGEX_FLAGS = new Set(['i', 'm', 's']);
 
+/** Options for {@link createGrepTool}. */
 export interface CreateGrepToolOptions {
   /** Root jail all scanned paths are resolved against. */
   jail: RootJail;
@@ -22,6 +23,7 @@ export interface CreateGrepToolOptions {
   maxFileBytes?: number;
 }
 
+/** One line that matched the `grep` tool's pattern. */
 export interface GrepMatch {
   /** Repository-relative path of the matching file. */
   path: string;
@@ -30,6 +32,7 @@ export interface GrepMatch {
   text: string;
 }
 
+/** The `grep` tool's result: its matches, how many files it scanned, and whether `maxMatches` cut them off. */
 export interface GrepResult {
   matches: GrepMatch[];
   filesScanned: number;

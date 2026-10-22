@@ -65,8 +65,13 @@ describe('public API contract', () => {
     expect(root.normalizeTextQuery('  PUBLIC Tool  ')?.query).toBe('public tool');
   });
 
-  it('exports the root and the dependency-free protocol subpath, nothing else', () => {
-    expect(pkg.exports).toEqual({ '.': './src/index.ts', './protocol': './src/protocol/index.ts' });
+  it('exports the root and the subpaths that keep optional dependencies out of it, nothing else', () => {
+    expect(pkg.exports).toEqual({
+      '.': './src/index.ts',
+      './protocol': './src/protocol/index.ts',
+      './open-ai/agents': './src/adapters/open-ai/agents/index.ts',
+      './coding': './src/coding/index.ts',
+    });
   });
 
   it('exposes lazy provider import helpers on createToolbox', () => {

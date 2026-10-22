@@ -7,7 +7,7 @@
  */
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type DurableEventOwner, type Subscription } from '@lostgradient/operative';
-import { resolveStorage, type Storage } from '@lostgradient/weft';
+import { createFleetEventFeed, resolveStorage, type Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import {
@@ -47,9 +47,19 @@ afterEach(async () => {
 const runOwner = (id: string): DurableEventOwner => ({ kind: 'run', id });
 const closing = (reviewId: string) => ({ reviewId, runId: 'ignored', principal: 'p', kind: 'x' });
 
-async function openHistory(): Promise<{ history: DurableEventHistory; storage: Storage }> {
+/**
+ * A history over fresh memory storage. A test that stores a record the history cannot decode passes
+ * `diagnostics`, so the skip the history reports is collected rather than printed.
+ */
+async function openHistory(
+  diagnostics?: BureauDiagnostic[],
+): Promise<{ history: DurableEventHistory; storage: Storage }> {
   const storage = await resolveStorage({ type: 'memory' });
-  const history = createDurableEventHistory(storage, createManualRuntimeServices());
+  const history = createDurableEventHistory(
+    storage,
+    createManualRuntimeServices(),
+    diagnostics === undefined ? undefined : (diagnostic) => diagnostics.push(diagnostic),
+  );
   cleanups.push(() => history.dispose());
   return { history, storage };
 }
@@ -58,7 +68,7 @@ function openFollower(
   history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
   overrides: {
     closeReview?: (runId: string, reviewId: string, kind: string) => Promise<void>;
-    reread?: (runId: string) => Promise<void>;
+    reread?: (runId: string) => Promise<number | undefined>;
     diagnostics?: BureauDiagnostic[];
     retryDelayMilliseconds?: number;
   } = {},
@@ -76,7 +86,9 @@ function openFollower(
       overrides.reread ??
       (async (runId) => {
         reread.push(runId);
+        return undefined;
       }),
+    now: () => Date.now(),
     timers: {
       setTimeout: (callback, ms) => setTimeout(callback, ms),
       clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -632,6 +644,7 @@ describe('a followed fire that cannot be read', () => {
       history: flaky.history,
       closeReview: async () => undefined,
       reread: async () => undefined,
+      now: () => Date.now(),
       timers: {
         setTimeout: (callback, ms) => {
           const handle = setTimeout(() => {
@@ -668,6 +681,7 @@ function recordingTimers(holdMilliseconds?: number) {
   return {
     requested,
     live,
+    now: () => Date.now(),
     timers: {
       setTimeout: (callback: () => void, ms?: number) => {
         requested.push(ms ?? 0);
@@ -713,6 +727,7 @@ describe('a followed fire whose subscription keeps ending', () => {
         history: endingLater,
         closeReview: async () => undefined,
         reread: async () => undefined,
+        now: () => Date.now(),
         timers: {
           setTimeout: (callback, ms) => setTimeout(callback, ms),
           clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -757,6 +772,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       history: endsAtOnce,
       closeReview: async () => undefined,
       reread: async () => undefined,
+      now: () => Date.now(),
       timers,
       diagnose: () => undefined,
       attempts: 3,
@@ -810,6 +826,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       history: endable,
       closeReview: async () => undefined,
       reread: async () => undefined,
+      now: () => Date.now(),
       timers,
       diagnose: () => undefined,
       attempts: 3,
@@ -853,6 +870,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       history: endable,
       closeReview: async () => undefined,
       reread: async () => undefined,
+      now: () => Date.now(),
       timers,
       diagnose: () => undefined,
       attempts: 3,
@@ -895,6 +913,7 @@ describe('a followed fire whose subscription keeps ending', () => {
       history,
       closeReview: async () => undefined,
       reread: async () => undefined,
+      now: () => Date.now(),
       timers: {
         setTimeout: (callback, ms) => setTimeout(callback, ms),
         clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -917,6 +936,375 @@ describe('a followed fire whose subscription keeps ending', () => {
 
     expect(follower.followed()).toEqual([]);
     expect(opened.filter((subscription) => !subscription.closed)).toHaveLength(0);
+  });
+});
+
+describe('a followed fire whose reviews cannot all be verified', () => {
+  function followerWithRereads(
+    history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
+    reread: (runId: string) => Promise<number | undefined>,
+    live = new Set<ReturnType<typeof setTimeout>>(),
+  ) {
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async () => undefined,
+      reread,
+      now: () => Date.now(),
+      timers: {
+        setTimeout: (callback, ms) => {
+          const handle = setTimeout(() => {
+            live.delete(handle);
+            callback();
+          }, ms);
+          live.add(handle);
+          return handle;
+        },
+        clearTimeout: (handle) => {
+          live.delete(handle as ReturnType<typeof setTimeout>);
+          clearTimeout(handle as ReturnType<typeof setTimeout>);
+        },
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 1,
+      maximumRetryDelayMilliseconds: 1,
+    });
+    cleanups.push(() => follower.dispose());
+    return { follower, live };
+  }
+
+  it('reads a fire again when the grace it asked for ends, outside what settled() waits for', async () => {
+    const { history } = await openHistory();
+    const times: number[] = [];
+    const { follower, live } = followerWithRereads(history, async () => {
+      times.push(Date.now());
+      // The first read finds a review too young to verify: ask again in 60 ms.
+      return times.length === 1 ? Date.now() + 60 : undefined;
+    });
+
+    follower.follow('fire-a');
+    await follower.settled();
+    await follower.reread('fire-a');
+    const settledAt = Date.now();
+
+    // `settled()` did not wait for the grace, and a timer is armed for it.
+    expect(times).toHaveLength(1);
+    expect(live.size).toBeGreaterThan(0);
+    await eventually(() => (times.length >= 2 ? true : undefined), 'the grace to end');
+    expect(times[1]! - times[0]!).toBeGreaterThanOrEqual(50);
+    expect(Date.now() - settledAt).toBeGreaterThanOrEqual(0);
+    await sleep(50);
+    expect(times).toHaveLength(2);
+    expect(live.size).toBe(0);
+  });
+
+  it('clears the grace wait when the fire is unfollowed and when it is disposed', async () => {
+    const { history } = await openHistory();
+    const { follower, live } = followerWithRereads(history, async () => Date.now() + 60_000);
+
+    follower.follow('fire-a');
+    follower.follow('fire-b');
+    await follower.settled();
+    await follower.reread('fire-a');
+    await follower.reread('fire-b');
+    const armed = live.size;
+    follower.unfollow('fire-a');
+    const afterUnfollow = live.size;
+    await follower.dispose();
+
+    expect(armed).toBeGreaterThanOrEqual(2);
+    expect(afterUnfollow).toBe(armed - 1);
+    expect(live.size).toBe(0);
+  });
+
+  it('reads a fire again when an event of its subscription cannot be decoded', async () => {
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
+    const rereads: string[] = [];
+    const { follower } = followerWithRereads(history, async (runId) => {
+      rereads.push(runId);
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    rereads.length = 0;
+
+    // A stored record that is not the wrapper the history writes.
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+
+    await eventually(() => (rereads.length > 0 ? true : undefined), 'the fire to be read again');
+    expect(rereads).toEqual(['fire-a']);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
+  });
+
+  it('reads a fire again when its catch-up page skips a record it cannot decode', async () => {
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+    const rereads: string[] = [];
+    const { follower } = followerWithRereads(history, async (runId) => {
+      rereads.push(runId);
+      return undefined;
+    });
+
+    follower.follow('fire-a');
+    await follower.settled();
+
+    expect(rereads).toEqual(['fire-a']);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
+  });
+
+  it('marks a fire for reconciliation when the read an undecodable event asks for fails', async () => {
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
+    let calls = 0;
+    const { follower } = followerWithRereads(history, async () => {
+      calls += 1;
+      if (calls === 1) throw new Error('storage unavailable');
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    calls = 0;
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+
+    // The first read fails; the reconciliation it marks reads the fire's history, which skips the
+    // same record and so reads the fire again, and that one succeeds.
+    await eventually(() => (calls >= 2 ? true : undefined), 'the fire to be reconciled');
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('a read the follower started beside its reconciliation', () => {
+  function slowFollower(
+    history: Pick<DurableEventHistory, 'page' | 'subscribeEventHistoryOfOwners'>,
+    reread: (runId: string) => Promise<number | undefined>,
+  ) {
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async () => undefined,
+      reread,
+      now: () => Date.now(),
+      timers: {
+        setTimeout: (callback, ms) => setTimeout(callback, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 1,
+      maximumRetryDelayMilliseconds: 1,
+    });
+    cleanups.push(() => follower.dispose());
+    return follower;
+  }
+
+  it('is waited for by dispose when a grace started it', async () => {
+    const { history } = await openHistory();
+    const gate = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const follower = slowFollower(history, async (runId) => {
+      calls.push(runId);
+      if (calls.length === 1) return Date.now() + 20;
+      await gate.promise;
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    await follower.reread('fire-a');
+    await eventually(() => (calls.length >= 2 ? true : undefined), 'the grace read to start');
+
+    let disposed = false;
+    const disposing = follower.dispose().then(() => {
+      disposed = true;
+    });
+    await sleep(50);
+    expect(disposed).toBe(false);
+    gate.resolve();
+    await disposing;
+
+    expect(disposed).toBe(true);
+  });
+
+  it('is waited for by dispose when a skipped record started it', async () => {
+    const skipped: BureauDiagnostic[] = [];
+    const { history, storage } = await openHistory(skipped);
+    const gate = Promise.withResolvers<void>();
+    const calls: string[] = [];
+    const follower = slowFollower(history, async (runId) => {
+      calls.push(runId);
+      await gate.promise;
+      return undefined;
+    });
+    follower.follow('fire-a');
+    await follower.settled();
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+    await eventually(() => (calls.length >= 1 ? true : undefined), 'the skipped record’s read');
+
+    let disposed = false;
+    const disposing = follower.dispose().then(() => {
+      disposed = true;
+    });
+    await sleep(50);
+    expect(disposed).toBe(false);
+    gate.resolve();
+    await disposing;
+
+    expect(disposed).toBe(true);
+    expect(skipped.some((entry) => entry.message.includes('Skipped corrupt durable record'))).toBe(
+      true,
+    );
+  });
+});
+
+describe('a history page whose skip handler throws', () => {
+  it('still answers the page, and reports the handler', async () => {
+    const { history, storage } = await openHistory();
+    const diagnostics: BureauDiagnostic[] = [];
+    const reporting = createDurableEventHistory(storage, createManualRuntimeServices(), (entry) =>
+      diagnostics.push(entry),
+    );
+    cleanups.push(() => reporting.dispose());
+    await history.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+    const rawFeed = createFleetEventFeed(storage);
+    await rawFeed.append({
+      kind: 'review.approved',
+      workflowId: 'run:fire-a',
+      emittedAtMs: 0,
+      payload: 'not-a-wrapper',
+    });
+    rawFeed.dispose();
+
+    const page = await reporting.page(runOwner('fire-a'), {
+      onSkipped: () => {
+        throw new Error('the handler failed');
+      },
+    });
+
+    if (!('events' in page)) throw new Error('expected a page');
+    expect(page.events).toHaveLength(1);
+    expect(diagnostics.some((entry) => entry.message.includes('page skip handler'))).toBe(true);
+  });
+});
+
+describe('a reaction that took the fire’s local copy away and then failed to notify', () => {
+  it('finishes its notification with the backoff, until it succeeds', async () => {
+    const { history } = await openHistory();
+    const calls: string[] = [];
+    const diagnostics: BureauDiagnostic[] = [];
+    let failures = 2;
+    const holder: { follower?: FireReviewFollower } = {};
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async (runId, reviewId) => {
+        calls.push(`${runId}|${reviewId}`);
+        // The first attempt releases the review, which unfollows the fire, and then fails to tell.
+        holder.follower?.unfollow(runId);
+        if (failures > 0) {
+          failures -= 1;
+          throw new Error('the task could not be read');
+        }
+      },
+      reread: async () => undefined,
+      now: () => Date.now(),
+      timers: {
+        setTimeout: (callback, ms) => setTimeout(callback, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+      diagnose: (diagnostic) => diagnostics.push(diagnostic),
+      attempts: 3,
+      retryDelayMilliseconds: 1,
+      maximumRetryDelayMilliseconds: 5,
+    });
+    holder.follower = follower;
+    cleanups.push(() => follower.dispose());
+    follower.follow('fire-a');
+    await follower.settled();
+
+    await history.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+
+    await eventually(
+      () => (calls.length >= 3 ? true : undefined),
+      'the notification to be retried',
+    );
+    // One error per failed attempt, and none once it succeeded.
+    await sleep(30);
+    expect(calls).toEqual([
+      'fire-a|approval:fire-a:1',
+      'fire-a|approval:fire-a:1',
+      'fire-a|approval:fire-a:1',
+    ]);
+    expect(
+      diagnostics.filter((entry) => entry.message.includes('Could not tell those following')),
+    ).toHaveLength(2);
+  });
+
+  it('stops retrying once it is disposed', async () => {
+    const { history } = await openHistory();
+    let calls = 0;
+    const holder: { follower?: FireReviewFollower } = {};
+    const follower = createFireReviewFollower({
+      history,
+      closeReview: async (runId) => {
+        calls += 1;
+        holder.follower?.unfollow(runId);
+        throw new Error('the task could not be read');
+      },
+      reread: async () => undefined,
+      now: () => Date.now(),
+      timers: {
+        setTimeout: (callback, ms) => setTimeout(callback, ms),
+        clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+      },
+      diagnose: () => undefined,
+      attempts: 3,
+      retryDelayMilliseconds: 1,
+      maximumRetryDelayMilliseconds: 5,
+    });
+    holder.follower = follower;
+    follower.follow('fire-a');
+    await follower.settled();
+    await history.record(runOwner('fire-a'), 'review.approved', closing('approval:fire-a:1'));
+    await eventually(() => (calls >= 3 ? true : undefined), 'a few attempts');
+
+    await follower.dispose();
+    const atDispose = calls;
+    await sleep(50);
+
+    expect(calls).toBe(atDispose);
   });
 });
 

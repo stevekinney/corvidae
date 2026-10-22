@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
-import { countHumanWaitParks, parkedSignalName } from './human-wait-parks';
+import {
+  countHumanWaitParks,
+  humanWaitParkSignalNames,
+  parkedSignalName,
+} from './human-wait-parks';
 
 const parked = (signalName: string) => ({
   toolName: 'requestHumanInput',
@@ -37,5 +41,16 @@ describe('parkedSignalName', () => {
     expect(
       parkedSignalName({ toolName: 'other', result: { parked: true, signalName: 'x' } }),
     ).toBeUndefined();
+  });
+});
+
+describe('humanWaitParkSignalNames', () => {
+  it('names each park once, by the rule that counts them', () => {
+    expect(humanWaitParkSignalNames([])).toEqual([]);
+    expect(
+      humanWaitParkSignalNames([parked('a'), { toolName: 'lookup' }, parked('a'), parked('b')]),
+    ).toEqual(['a', 'b']);
+    const results = [parked('s'), parked('s'), parked('t')];
+    expect(humanWaitParkSignalNames(results)).toHaveLength(countHumanWaitParks(results));
   });
 });

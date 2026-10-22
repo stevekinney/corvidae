@@ -19,6 +19,11 @@ import {
   type InlineLaunchQueueCallbacks,
 } from './inline-launch-queue.ts';
 import { getInternals } from './internals.ts';
+import {
+  hasQueuedInlineWorkflowStart,
+  hasQueuedOrLaunchingInlineWorkflowStart,
+  recordInlineWorkflowStartQueued,
+} from './local-execution.ts';
 import { buildRegistrationEntry } from './registration.ts';
 
 async function revisionFor(definition: WorkflowDefinition): Promise<string> {
@@ -55,6 +60,7 @@ function seedQueuedInlineStart(
     onStarted: () => {
       settled = true;
     },
+    launch: recordInlineWorkflowStartQueued(internals, workflowId),
   };
   // Drop any start already queued for this id (e.g. from a prior engine.start in
   // the same test) so the seeded entry is the only one — avoids a double-start
@@ -63,8 +69,6 @@ function seedQueuedInlineStart(
     (start) => start.workflowId !== workflowId,
   );
   internals.queuedInlineWorkflowStarts.push(queued);
-  internals.queuedInlineWorkflowStartIds.add(workflowId);
-  internals.queuedOrLaunchingInlineWorkflowStartIds.add(workflowId);
   return { fired: () => settled };
 }
 
@@ -593,10 +597,9 @@ describe('dropQueuedInlineWorkflowStart settles defer:false awaiters', () => {
       onStarted: () => {
         settled = true;
       },
+      launch: recordInlineWorkflowStartQueued(internals, 'cancelled-while-queued'),
     };
     internals.queuedInlineWorkflowStarts.push(queued);
-    internals.queuedInlineWorkflowStartIds.add(queued.workflowId);
-    internals.queuedOrLaunchingInlineWorkflowStartIds.add(queued.workflowId);
 
     const dropped = dropQueuedInlineWorkflowStart(internals, 'cancelled-while-queued');
 
@@ -717,10 +720,8 @@ describe('onStarted fires on every flush terminal path', () => {
     expect(internals.queuedInlineWorkflowStarts.length).toBe(0);
     // The membership indexes must not still claim the discarded start, or
     // isInlineWorkflowLocallyOwned would report a torn-down run as live.
-    expect(internals.queuedInlineWorkflowStartIds.has('aborted-before-flush')).toBe(false);
-    expect(internals.queuedOrLaunchingInlineWorkflowStartIds.has('aborted-before-flush')).toBe(
-      false,
-    );
+    expect(hasQueuedInlineWorkflowStart(internals, 'aborted-before-flush')).toBe(false);
+    expect(hasQueuedOrLaunchingInlineWorkflowStart(internals, 'aborted-before-flush')).toBe(false);
     engine[Symbol.dispose]();
   });
 });
