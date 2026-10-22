@@ -103,6 +103,16 @@ export const ACCESSIBLE_NAME_OVERRIDES: Readonly<Record<string, string>> = {
   progress: 'ariaLabel',
 };
 
+/**
+ * Name candidates that carry something other than a name on a component, and
+ * the A2UI property each maps to instead. Other name candidates are dropped,
+ * since the A2UI `label` already carries the name. Progress's `label` is its
+ * `aria-valuetext`, which A2UI calls `valueText`.
+ */
+export const RENAMED_NAME_CANDIDATES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  progress: { label: 'valueText' },
+};
+
 /** The A2UI property that carries the accessible name on every entry. */
 export const A2UI_LABEL_PROPERTY = 'label';
 
@@ -260,10 +270,22 @@ function buildEntry(
     };
   }
 
+  const renames = RENAMED_NAME_CANDIDATES[id] ?? {};
   const mapped: Record<string, JsonObject> = {};
   for (const [name, source] of Object.entries(schema.properties)) {
     if (name === nameSource) continue;
     if (isExcludedProperty(name) || unsupported.has(name)) continue;
+    const renamed = renames[name];
+    if (renamed !== undefined) {
+      const property = mapProperty(source);
+      if (property === undefined) {
+        return { error: `${info.name} (${id}): renamed property '${name}' has no A2UI mapping` };
+      }
+      property['description'] =
+        `${typeof property['description'] === 'string' ? `${property['description']} ` : ''}Maps to Cinder '${name}'.`;
+      mapped[renamed] = property;
+      continue;
+    }
     if (ACCESSIBLE_NAME_SOURCES.includes(name)) continue;
     if (name === 'component' || name === 'accessibility') {
       return {
@@ -285,7 +307,10 @@ function buildEntry(
   for (const name of Object.keys(mapped).toSorted()) properties[name] = mapped[name] ?? {};
 
   const required = new Set<string>(['component', A2UI_LABEL_PROPERTY]);
-  for (const name of schema.required ?? []) if (name in mapped) required.add(name);
+  for (const name of schema.required ?? []) {
+    const target = renames[name] ?? name;
+    if (target in mapped) required.add(target);
+  }
 
   return {
     entry: {

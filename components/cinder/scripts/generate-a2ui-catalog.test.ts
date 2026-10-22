@@ -116,6 +116,15 @@ describe('buildA2uiCatalog', () => {
     );
   });
 
+  it("keeps Progress's value text under valueText instead of dropping it", () => {
+    const allOf = catalog.components['Progress']?.['allOf'] as Array<{
+      properties?: Record<string, { description?: string }>;
+    }>;
+    const properties = allOf[1]?.properties ?? {};
+    expect(properties['valueText']?.description).toContain("Cinder 'label'");
+    expect(Object.keys(properties)).not.toContain('ariaLabel');
+  });
+
   it('fails when an allowlisted component is listed twice', () => {
     expect(() => buildA2uiCatalog(syntheticInputs({ allowlist: ['meter', 'meter'] }))).toThrow(
       'meter: listed more than once in the allowlist',

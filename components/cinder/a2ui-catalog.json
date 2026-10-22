@@ -223,6 +223,10 @@
               "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicNumber",
               "description": "Current progress value. Omit for indeterminate."
             },
+            "valueText": {
+              "$ref": "https://a2ui.org/specification/v0_9/common_types.json#/$defs/DynamicString",
+              "description": "Human-readable status, exposed as `aria-valuetext`. NOT the accessible\nname — supply `ariaLabel` or `ariaLabelledby` for that. Maps to Cinder 'label'."
+            },
             "variant": {
               "type": "string",
               "description": "Visual variant. Default `bar`.",
