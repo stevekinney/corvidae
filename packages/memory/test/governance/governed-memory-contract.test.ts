@@ -5,6 +5,7 @@ import { registerDurabilityContract } from './governed-contract-durability';
 import { registerIsolationContract } from './governed-contract-isolation';
 import { registerPoisoningContract } from './governed-contract-poisoning';
 import { registerRaceContract } from './governed-contract-races';
+import { registerRetrievalContract } from './governed-contract-retrieval';
 import { registerSharingContract } from './governed-contract-sharing';
 
 /**
@@ -22,4 +23,5 @@ for (const backend of ['in-memory', 'weft'] as const) {
   registerDurabilityContract(backend);
   registerRaceContract(backend);
   registerDerivationContract(backend);
+  registerRetrievalContract(backend);
 }

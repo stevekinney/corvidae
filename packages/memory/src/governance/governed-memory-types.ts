@@ -4,7 +4,7 @@ import type { Embedder } from 'armorer';
 import type { MemoryRecordStorage } from '../memory-record-storage';
 import type { TextSearchProvider } from '../text-search-provider';
 import type { MemoryAuthority } from './authority';
-import type { MemoryEvidence } from './evidence';
+import type { MemoryEvidence, MemoryEvidenceKind } from './evidence';
 import type { MemoryGovernanceLedger } from './ledger';
 import type {
   AsynchronousDeletionTarget,
@@ -14,8 +14,15 @@ import type {
   MemoryGovernanceEvent,
 } from './ledger-types';
 import type { MemoryClass, MemoryGovernancePolicy, MemorySourceKind } from './policy';
-import type { MemoryVisibility } from './predicate';
+import type { MemoryRedaction, MemoryVisibility } from './predicate';
 import type { DerivedRecordKind, GovernedMemoryRecord } from './record-governance';
+import type {
+  MemoryPolicyFilter,
+  MemoryRecallStopReason,
+  MemoryRetrievalPlan,
+  MemoryRetrievalPlanInput,
+  MemoryRetrievalStage,
+} from './retrieval-plan';
 
 /**
  * Where to look for one record. Every component is a selector inside the scope
@@ -111,14 +118,139 @@ export interface GovernedSearchHit {
 export interface RecallForModelOptions extends GovernedSearchOptions {
   /** The run or session context records were evicted from; evicted records never come back into it. */
   readonly contextId?: string;
+  /** The retrieval plan to run: a built plan, or the input to build one. Defaults to the default plan. */
+  readonly plan?: MemoryRetrievalPlan | MemoryRetrievalPlanInput;
+  /** Stops the recall at its next stage boundary, with stop reason `canceled`. */
+  readonly signal?: AbortSignal;
 }
 
-/** What a model is allowed to see from a recall: labeled evidence, and only a count of what was withheld. */
+/**
+ * Why a candidate the caller may read was not selected. The admission reasons
+ * (`evicted`, `trust-below-minimum`, `retention-expired`, `content-policy`) are
+ * the ones counted in a bundle's `withheld`.
+ */
+export type MemoryRecallExclusionReason =
+  | 'purpose-mismatch'
+  | 'class-mismatch'
+  | 'trust-below-minimum'
+  | 'retention-expired'
+  | 'evicted'
+  | 'not-active'
+  | 'index-invalidated'
+  | 'superseded'
+  | 'outside-time'
+  | 'entity-mismatch'
+  | 'source-mismatch'
+  | 'run-mismatch'
+  | 'candidate-budget'
+  | 'below-minimum-score'
+  | 'content-policy';
+
+/** A candidate's score from each scoring stage, and the fused score admission ranks by. */
+export interface MemoryRecallStageScores {
+  readonly exact: number;
+  readonly lexical: number;
+  readonly semantic: number;
+  readonly fused: number;
+}
+
+/**
+ * One record the caller is authorized to read that the recall considered.
+ * `revision` is the record's storage version and content digest, so a replay
+ * can tell a changed record from the one this recall saw.
+ */
+export interface MemoryRecallCandidate {
+  readonly recordId: string;
+  readonly revision: string;
+  readonly kind: MemoryEvidenceKind;
+  readonly selection: 'selected' | 'excluded' | 'not-reached';
+  /** Present once a scoring stage scored the candidate; a candidate filtered out first has none. */
+  readonly scores?: MemoryRecallStageScores;
+}
+
+/** Why one candidate was left out, and the filter or stage that left it out. */
+export interface MemoryRecallExclusion {
+  readonly recordId: string;
+  readonly revision: string;
+  readonly reason: MemoryRecallExclusionReason;
+  readonly stage: MemoryPolicyFilter | MemoryRetrievalStage | 'budget' | 'admission';
+}
+
+/** What one selected stage did: `applied`, `skipped` (nothing to do), or `unavailable` (no backing primitive). */
+export interface MemoryRecallStageReport {
+  readonly stage: MemoryRetrievalStage;
+  readonly status: 'applied' | 'skipped' | 'unavailable';
+  readonly detail?: string;
+}
+
+/** How many records one pre-scoring policy filter left out. */
+export interface MemoryRecallFilterReport {
+  readonly filter: MemoryPolicyFilter;
+  readonly excluded: number;
+}
+
+/** A record that disagrees with a selected one: a superseded predecessor, or a conflicting candidate. */
+export interface MemoryRecallContradiction {
+  readonly recordId: string;
+  readonly contradicts: string;
+  readonly kind: 'historical-projection' | 'conflicting-candidate';
+}
+
+/** How fresh one selected record is: when it was observed, last stored, and how old it was at recall. */
+export interface MemoryRecallFreshness {
+  readonly recordId: string;
+  readonly eventAt: number;
+  readonly updatedAt: number;
+  readonly ageMilliseconds: number;
+}
+
+/** What a recall spent against its plan's budgets. */
+export interface MemoryRecallSpend {
+  readonly tokens: number;
+  readonly latencyMilliseconds: number;
+  readonly cost: number;
+  readonly candidates: number;
+  readonly iterations: number;
+}
+
+/**
+ * An explainable recall. A model sees only `rendered`: labeled evidence. The
+ * rest tells the caller why: the plan and policy revisions it ran under, the
+ * candidates it was authorized to consider with their scores by stage, why
+ * each excluded one was left out, what disagrees with what it selected, and
+ * why it stopped.
+ *
+ * `revision` is content-addressed: it digests the plan and policy revisions,
+ * the query digest, the ordered selected records with their revisions and
+ * kinds, and the ordered exclusions, and nothing time-dependent, so two
+ * recalls that selected the same evidence for the same reasons share it.
+ * `contentDigest` digests `rendered` exactly as a model receives it.
+ */
 export interface MemoryEvidenceBundle {
   readonly operationId: string;
   readonly evidence: readonly MemoryEvidence[];
+  /** How many candidates recall admission withheld: evicted, below the trust minimum, expired, or flagged. */
   readonly withheld: number;
   readonly rendered: string;
+  readonly revision: string;
+  readonly plan: MemoryRetrievalPlan;
+  readonly planRevision: string;
+  readonly policyRevision: string;
+  readonly queryDigest: string;
+  readonly stopReason: MemoryRecallStopReason;
+  readonly candidates: readonly MemoryRecallCandidate[];
+  readonly exclusions: readonly MemoryRecallExclusion[];
+  readonly filters: readonly MemoryRecallFilterReport[];
+  readonly stages: readonly MemoryRecallStageReport[];
+  readonly reformulations: readonly string[];
+  readonly contradictions: readonly MemoryRecallContradiction[];
+  readonly redactions: readonly {
+    readonly recordId: string;
+    readonly redaction: MemoryRedaction;
+  }[];
+  readonly freshness: readonly MemoryRecallFreshness[];
+  readonly spent: MemoryRecallSpend;
+  readonly contentDigest: string;
 }
 
 export interface MemoryExportResult extends MemoryOperationResult {
