@@ -28,6 +28,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { defaultRunner, parseOptions, type Runner, UsageError } from './process-runner.ts';
 import { resolveMainCheckout, resolveWorktreeRoot } from './repository-locations.ts';
 
@@ -71,7 +72,7 @@ function attempt(find: () => string): string | undefined {
 
 export function defaultCredentialDependencies(): CredentialDependencies {
   return {
-    environment: process.env,
+    environment: rootScriptEnvironment(),
     runner: defaultRunner,
     platform: process.platform,
     hasSecurity: () => Bun.which('security') !== null,
@@ -132,7 +133,7 @@ function validateName(name: string): void {
 /** Look NAME up in the documented order. Never throws for an unavailable value. */
 export function resolveCredential(
   name: string,
-  options: { keychainService?: string } = {},
+  options: { keychainService?: string | undefined } = {},
   partial: Partial<CredentialDependencies> = {},
 ): Resolution {
   validateName(name);
@@ -177,7 +178,7 @@ export interface CredentialRunDependencies extends CredentialDependencies {
 
 function defaultExecute(command: string[], environment: Record<string, string>): number {
   const result = Bun.spawnSync(command, {
-    env: { ...process.env, ...environment },
+    env: { ...rootScriptEnvironment(), ...environment },
     stdin: 'inherit',
     stdout: 'inherit',
     stderr: 'inherit',

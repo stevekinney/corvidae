@@ -110,9 +110,9 @@ export function findWorktreeProcesses(
 }
 
 export interface LeftoversRequest {
-  lockPattern?: string;
-  worktrees?: string[];
-  pids?: number[];
+  lockPattern?: string | undefined;
+  worktrees?: string[] | undefined;
+  pids?: number[] | undefined;
 }
 
 export function findLeftovers(
@@ -172,15 +172,15 @@ export function run(
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const config = loadRepositoryConfig(parsed.values.config ?? DEFAULT_CONFIGURATION_PATH);
+  const config = loadRepositoryConfig(parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH);
   let pids: number[] = [];
-  if (parsed.values.pids !== undefined) {
-    pids = parsed.values.pids.split(',').map((item) => Number(item.trim()));
+  if (parsed.values['pids'] !== undefined) {
+    pids = parsed.values['pids'].split(',').map((item) => Number(item.trim()));
     if (pids.some((pid) => !Number.isInteger(pid) || pid <= 0))
       throw new UsageError('--pids takes a comma-separated list of process ids.');
   }
   const report = findLeftovers(
-    { lockPattern: config.lockPattern, worktrees: parsed.repeated.worktree, pids },
+    { lockPattern: config.lockPattern, worktrees: parsed.repeated['worktree'], pids },
     dependencies,
   );
   return {

@@ -157,10 +157,10 @@ export interface CreateOptions {
   provider: string;
   name: string;
   branch: string;
-  base?: string;
-  installLog?: string;
-  scopePaths?: string[];
-  scopeOutput?: string;
+  base?: string | undefined;
+  installLog?: string | undefined;
+  scopePaths?: string[] | undefined;
+  scopeOutput?: string | undefined;
 }
 
 export interface CreateResult {
@@ -345,7 +345,7 @@ export function run(
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const json = parsed.flags.has('json');
-  const configPath = parsed.values.config ?? DEFAULT_CONFIGURATION_PATH;
+  const configPath = parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH;
   const provider = requireOption(parsed, 'provider');
   const name = requireOption(parsed, 'name');
   try {
@@ -356,7 +356,7 @@ export function run(
           provider,
           name,
           branch: requireOption(parsed, 'branch'),
-          base: parsed.values.base,
+          base: parsed.values['base'],
           installLog: parsed.values['install-log'],
           scopePaths: parsed.values['scope-paths']?.split(',').filter((item) => item !== ''),
           scopeOutput: parsed.values['scope-output'],

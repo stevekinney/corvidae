@@ -178,7 +178,7 @@ export interface GateRunOptions {
   configPath: string;
   worktree: string;
   log: string;
-  command?: string;
+  command?: string | undefined;
 }
 
 export interface GateRunResult {
@@ -317,10 +317,10 @@ export function run(
     if (parsed.positionals.length > 0)
       throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
     const options: GateRunOptions = {
-      configPath: parsed.values.config ?? DEFAULT_CONFIGURATION_PATH,
+      configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
       worktree: requireOption(parsed, 'worktree'),
       log: requireOption(parsed, 'log'),
-      command: parsed.values.command,
+      command: parsed.values['command'],
     };
     const result = runGate(options, dependencies);
     return {

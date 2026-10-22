@@ -7,12 +7,14 @@
 //
 // This module is a library; it has no command line.
 
+import { rootScriptEnvironment } from '../environment-configuration.ts';
+
 export class UsageError extends Error {}
 
 export interface RunnerOptions {
-  cwd?: string;
-  input?: string;
-  env?: Record<string, string>;
+  cwd?: string | undefined;
+  input?: string | undefined;
+  env?: Record<string, string> | undefined;
 }
 
 export interface RunnerResult {
@@ -23,6 +25,15 @@ export interface RunnerResult {
 
 export type Runner = (command: string[], options?: RunnerOptions) => RunnerResult;
 
+/** The environment without its unset entries, which `Bun.spawnSync` does not accept. */
+function definedEntries(environment: Record<string, string | undefined>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(environment).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+}
+
 /**
  * Run `command` to completion with `Bun.spawnSync`. A command that cannot start (a missing
  * program, a missing working directory) is reported as exit 127 with the reason in `stderr`
@@ -31,8 +42,10 @@ export type Runner = (command: string[], options?: RunnerOptions) => RunnerResul
 export const defaultRunner: Runner = (command, options = {}) => {
   try {
     const result = Bun.spawnSync(command, {
-      cwd: options.cwd,
-      env: options.env === undefined ? undefined : { ...process.env, ...options.env },
+      ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+      ...(options.env === undefined
+        ? {}
+        : { env: definedEntries({ ...rootScriptEnvironment(), ...options.env }) }),
       stdin: options.input === undefined ? 'ignore' : Buffer.from(options.input),
       stdout: 'pipe',
       stderr: 'pipe',

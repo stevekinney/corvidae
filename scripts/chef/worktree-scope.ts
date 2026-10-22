@@ -424,18 +424,18 @@ export function main(argv: string[]): number {
       );
     }
     const flags = parseFlags(rest);
-    const configuration = readConfiguration(flags.configuration);
+    const configuration = readConfiguration(flags['configuration']);
 
     if (command === 'capture') {
-      if (!flags.output) throw new UsageError('missing required --output argument');
-      const evidence = capture(configuration, flags.output);
+      if (!flags['output']) throw new UsageError('missing required --output argument');
+      const evidence = capture(configuration, flags['output']);
       console.log(
         JSON.stringify(
           {
             ok: true,
             captureId: evidence.captureId,
             head: evidence.head,
-            output: resolvePath(flags.output),
+            output: resolvePath(flags['output']),
           },
           null,
           2,
@@ -444,8 +444,8 @@ export function main(argv: string[]): number {
       return 0;
     }
 
-    if (!flags.before) throw new UsageError('missing required --before argument');
-    const report = verify(configuration, readEvidence(flags.before));
+    if (!flags['before']) throw new UsageError('missing required --before argument');
+    const report = verify(configuration, readEvidence(flags['before']));
     console.log(JSON.stringify(report, null, 2));
     return report.errors.length > 0 ? 1 : 0;
   } catch (error) {

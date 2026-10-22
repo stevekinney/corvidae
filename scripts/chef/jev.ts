@@ -171,7 +171,7 @@ function probabilityOf(value: unknown): number | undefined {
 export function interpretAnswer(mode: Mode, wire: unknown): Interpreted | string {
   if (!isRecord(wire)) return 'the answer is not an object';
   if (mode.type === 'yes-no') {
-    const yes = wire.type === 'noul' ? probabilityOf(wire.noul) : undefined;
+    const yes = wire['type'] === 'noul' ? probabilityOf(wire['noul']) : undefined;
     if (yes === undefined) return 'the yes/no answer has no probability';
     const answer = yes >= 0.5 ? 'yes' : 'no';
     return {
@@ -181,26 +181,26 @@ export function interpretAnswer(mode: Mode, wire: unknown): Interpreted | string
     };
   }
   if (mode.type === 'choice') {
-    const choice = wire.type === 'choice' ? wire.choice : undefined;
+    const choice = wire['type'] === 'choice' ? wire['choice'] : undefined;
     if (typeof choice !== 'string' || !Object.hasOwn(mode.options, choice))
       return 'the choice answer names no option that was offered';
-    if (!isRecord(wire.probabilities)) return 'the choice answer has no probabilities';
+    if (!isRecord(wire['probabilities'])) return 'the choice answer has no probabilities';
     const probabilities: Record<string, number> = {};
     for (const key of Object.keys(mode.options)) {
-      const probability = probabilityOf(wire.probabilities[key]);
+      const probability = probabilityOf(wire['probabilities'][key]);
       if (probability === undefined) return `the choice answer has no probability for "${key}"`;
       probabilities[key] = probability;
     }
     return { answer: choice, probability: probabilities[choice] ?? 0, probabilities };
   }
-  const score = wire.type === 'score' ? wire.score : undefined;
+  const score = wire['type'] === 'score' ? wire['score'] : undefined;
   if (typeof score !== 'number' || !Number.isFinite(score)) return 'the scale answer has no score';
-  if (!isRecord(wire.probabilities)) return 'the scale answer has no probabilities';
+  if (!isRecord(wire['probabilities'])) return 'the scale answer has no probabilities';
   const lastIndex = mode.levels.length - 1;
   const index = Math.min(Math.max(Math.round(score), 0), lastIndex);
   const probabilities: Record<string, number> = {};
   for (const [position, level] of mode.levels.entries()) {
-    const probability = probabilityOf(wire.probabilities[String(position)]);
+    const probability = probabilityOf(wire['probabilities'][String(position)]);
     if (probability === undefined)
       return `the scale answer has no probability for level "${level}"`;
     probabilities[level] = probability;
@@ -264,11 +264,11 @@ async function exchange(
     } catch {
       return { ok: false, reason: 'the response is not JSON' };
     }
-    if (!isRecord(json) || typeof json.model !== 'string' || !isRecord(json.answers))
+    if (!isRecord(json) || typeof json['model'] !== 'string' || !isRecord(json['answers']))
       return { ok: false, reason: 'the response has an unexpected shape' };
-    if (json.answers[QUESTION_KEY] === undefined)
+    if (json['answers'][QUESTION_KEY] === undefined)
       return { ok: false, reason: 'Jev declined to answer the question' };
-    return { ok: true, model: json.model, wire: json.answers[QUESTION_KEY] };
+    return { ok: true, model: json['model'], wire: json['answers'][QUESTION_KEY] };
   }
   return { ok: false, reason: 'HTTP 429 after one retry' };
 }
@@ -397,32 +397,32 @@ export async function run(
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const question = parsed.values.question?.trim() ?? '';
+  const question = parsed.values['question']?.trim() ?? '';
   if (question === '') throw new UsageError('--question is required.');
 
-  const kind = parsed.values.kind ?? 'routine';
+  const kind = parsed.values['kind'] ?? 'routine';
   if (kind !== 'routine' && kind !== 'owner')
     throw new UsageError('--kind must be routine or owner.');
   const threshold =
-    parsed.values.threshold === undefined
+    parsed.values['threshold'] === undefined
       ? defaultThreshold(kind)
-      : parseThreshold(parsed.values.threshold);
+      : parseThreshold(parsed.values['threshold']);
 
   const modes = [
     parsed.flags.has('yes-no'),
-    (parsed.repeated.choice?.length ?? 0) > 0,
-    parsed.values.scale !== undefined,
+    (parsed.repeated['choice']?.length ?? 0) > 0,
+    parsed.values['scale'] !== undefined,
   ].filter(Boolean).length;
   if (modes !== 1) throw new UsageError('Name exactly one of --yes-no, --choice or --scale.');
   const mode: Mode = parsed.flags.has('yes-no')
     ? { type: 'yes-no' }
-    : parsed.values.scale === undefined
-      ? { type: 'choice', options: parseChoices(parsed.repeated.choice ?? []) }
-      : { type: 'scale', levels: parseScale(parsed.values.scale) };
+    : parsed.values['scale'] === undefined
+      ? { type: 'choice', options: parseChoices(parsed.repeated['choice'] ?? []) }
+      : { type: 'scale', levels: parseScale(parsed.values['scale']) };
 
-  if ((parsed.values.state === undefined) === (parsed.values['state-file'] === undefined))
+  if ((parsed.values['state'] === undefined) === (parsed.values['state-file'] === undefined))
     throw new UsageError('Name exactly one of --state or --state-file.');
-  let state = parsed.values.state ?? '';
+  let state = parsed.values['state'] ?? '';
   if (parsed.values['state-file'] !== undefined) {
     const path = parsed.values['state-file'];
     if (!existsSync(path)) throw new UsageError(`No such state file: ${path}`);
@@ -431,7 +431,7 @@ export async function run(
   if (state.trim() === '') throw new UsageError('The state is empty.');
 
   let record: string | null;
-  if (parsed.values.record !== undefined) record = parsed.values.record;
+  if (parsed.values['record'] !== undefined) record = parsed.values['record'];
   else {
     try {
       const dependencies = { ...defaultJevDependencies(), ...partial };
@@ -447,7 +447,7 @@ export async function run(
     code,
     output: parsed.flags.has('json')
       ? JSON.stringify({ ...decision, cleared: decision.outcome === 'decided' })
-      : record === null && parsed.values.record === undefined
+      : record === null && parsed.values['record'] === undefined
         ? `${renderDecision(decision)}\nWARNING: not in a Git repository, so no record was written; pass --record.`
         : renderDecision(decision),
   };

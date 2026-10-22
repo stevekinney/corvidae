@@ -91,7 +91,7 @@ export function validateRepositoryConfig(
   const repository = text(source, record, 'repository');
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))
     throw new UsageError(`${source}: "repository" must look like owner/name.`);
-  const roots = record.worktreeRoots;
+  const roots = record['worktreeRoots'];
   if (roots === null || typeof roots !== 'object' || Array.isArray(roots))
     throw new UsageError(`${source}: "worktreeRoots" must be an object with a path per provider.`);
   const worktreeRoots = {} as Record<Provider, string>;
@@ -120,8 +120,8 @@ export function validateRepositoryConfig(
     affectedCheckCommand: text(source, record, 'affectedCheckCommand'),
     mergeMethod: mergeMethod as MergeMethod,
   };
-  if (record.gateWrapper !== undefined) config.gateWrapper = text(source, record, 'gateWrapper');
-  if (record.lockPattern !== undefined) {
+  if (record['gateWrapper'] !== undefined) config.gateWrapper = text(source, record, 'gateWrapper');
+  if (record['lockPattern'] !== undefined) {
     config.lockPattern = text(source, record, 'lockPattern');
     try {
       void new RegExp(config.lockPattern);

@@ -377,7 +377,7 @@ export function run(
             ].join('\n'),
       };
     }
-    const path = parsed.values.file;
+    const path = parsed.values['file'];
     if (path === undefined || path === '') throw new UsageError('--file is required.');
     if (!existsSync(path)) throw new UsageError(`No such file: ${path}`);
     const targets = parseReplies(readFileSync(path, 'utf8'));

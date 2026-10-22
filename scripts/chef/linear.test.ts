@@ -109,11 +109,11 @@ function fakeLinear() {
   function handle(operation: string, variables: Record<string, any>): unknown {
     switch (operation) {
       case 'IssueRead': {
-        const issue = find(variables.id);
+        const issue = find(variables['id']);
         return { issue: issue === undefined ? null : view(issue) };
       }
       case 'IssueComments': {
-        const issue = find(variables.id);
+        const issue = find(variables['id']);
         if (issue === undefined) return { issue: null };
         // Newest first, the opposite of the order the code must impose.
         const nodes = comments.filter((comment) => comment.issueId === issue.id).toReversed();
@@ -127,7 +127,7 @@ function fakeLinear() {
         };
       }
       case 'TeamStates': {
-        const ids: string[] = variables.filter.team.id.in;
+        const ids: string[] = variables['filter'].team.id.in;
         return {
           workflowStates: {
             nodes: states.filter((state) => ids.includes(state.team.id)),
@@ -135,15 +135,15 @@ function fakeLinear() {
         };
       }
       case 'IssueSetState': {
-        const issue = find(variables.id)!;
-        if (!switches.ignoreStateUpdate) issue.stateId = variables.stateId;
+        const issue = find(variables['id'])!;
+        if (!switches.ignoreStateUpdate) issue.stateId = variables['stateId'];
         return { issueUpdate: { success: true } };
       }
       case 'CommentPost': {
         const comment = {
           id: `c-${(counter += 1)}`,
-          issueId: variables.issueId,
-          body: switches.mangleComment ? `${variables.body}!!` : variables.body,
+          issueId: variables['issueId'],
+          body: switches.mangleComment ? `${variables['body']}!!` : variables['body'],
           createdAt: `2026-10-22T11:${String(comments.length).padStart(2, '0')}:00Z`,
         };
         comments.push(comment);
@@ -152,7 +152,7 @@ function fakeLinear() {
         };
       }
       case 'CommentRead': {
-        const comment = comments.find((candidate) => candidate.id === variables.id);
+        const comment = comments.find((candidate) => candidate.id === variables['id']);
         if (comment === undefined) return { comment: null };
         return {
           comment: {
@@ -163,20 +163,20 @@ function fakeLinear() {
         };
       }
       case 'IssueSetDescription': {
-        const issue = find(variables.id)!;
+        const issue = find(variables['id'])!;
         // Linear escapes punctuation and rewrites bullets.
         if (!switches.ignoreDescription)
-          issue.description = String(variables.description)
+          issue.description = String(variables['description'])
             .replace(/^\* /gm, '- ')
             .replace(/_/g, '\\_');
         return { issueUpdate: { success: true } };
       }
       case 'TeamByKey': {
-        const team = teams.find((candidate) => candidate.key === variables.filter.key.eq);
+        const team = teams.find((candidate) => candidate.key === variables['filter'].key.eq);
         return { teams: { nodes: team === undefined ? [] : [team] } };
       }
       case 'DuplicateTitle': {
-        const filter = variables.filter;
+        const filter = variables['filter'];
         const nodes = issues.filter(
           (issue) =>
             issue.title.toLowerCase() === filter.title.eqIgnoreCase.toLowerCase() &&
@@ -198,12 +198,12 @@ function fakeLinear() {
           issueLabels: {
             nodes: labels.filter(
               (label) =>
-                label.name.toLowerCase() === variables.filter.name.eqIgnoreCase.toLowerCase(),
+                label.name.toLowerCase() === variables['filter'].name.eqIgnoreCase.toLowerCase(),
             ),
           },
         };
       case 'IssueMake': {
-        const input = variables.input;
+        const input = variables['input'];
         const issue: FakeIssue = {
           id: `uuid-${(counter += 1)}`,
           identifier: `COR-${counter}`,
@@ -224,11 +224,11 @@ function fakeLinear() {
         };
       }
       case 'IssueCreated': {
-        const issue = find(variables.id);
+        const issue = find(variables['id']);
         return { issue: issue === undefined ? null : view(issue) };
       }
       case 'IssueRelations': {
-        const issue = find(variables.id);
+        const issue = find(variables['id']);
         if (issue === undefined) return { issue: null };
         return {
           issue: {
@@ -254,7 +254,7 @@ function fakeLinear() {
         };
       }
       case 'RelationMake': {
-        if (!switches.dropRelation) relations.push(variables.input);
+        if (!switches.dropRelation) relations.push(variables['input']);
         return { issueRelationCreate: { success: true } };
       }
       default:
@@ -273,7 +273,7 @@ function fakeLinear() {
     log.push({
       operation,
       variables: body.variables,
-      authorization: headers.authorization ?? null,
+      authorization: headers['authorization'] ?? null,
     });
     try {
       return Response.json({ data: handle(operation, body.variables) });

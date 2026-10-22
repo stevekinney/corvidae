@@ -314,30 +314,6 @@ export function readManifest(path: string): Manifest {
   return manifest;
 }
 
-function readAccounting(path: string): Accounting {
-  let raw: string;
-  try {
-    raw = readFileSync(path, 'utf8');
-  } catch (error) {
-    throw new BoundaryError(`cannot read accounting file: ${path} (${String(error)})`);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new BoundaryError(`accounting file is not valid JSON: ${path} (${String(error)})`);
-  }
-  const accounting = parsed as Accounting;
-  if (
-    typeof accounting.captureId !== 'string' ||
-    !Array.isArray(accounting.removals) ||
-    !Array.isArray(accounting.moves)
-  ) {
-    throw new BoundaryError(`accounting file is not a recognized accounting document: ${path}`);
-  }
-  return accounting;
-}
-
 export function verify(
   config: BoundaryConfiguration,
   beforeManifest: Manifest,
@@ -512,14 +488,14 @@ function main(argv: string[]): number {
   try {
     if (command === 'capture') {
       const config = readJsonArgument(
-        flags.configuration,
+        flags['configuration'],
         'configuration',
       ) as BoundaryConfiguration;
-      if (!flags.output) throw new BoundaryError('missing required --output argument');
-      const manifest = capture(config, flags.output);
+      if (!flags['output']) throw new BoundaryError('missing required --output argument');
+      const manifest = capture(config, flags['output']);
       console.log(
         JSON.stringify(
-          { ok: true, captureId: manifest.captureId, output: resolvePath(flags.output) },
+          { ok: true, captureId: manifest.captureId, output: resolvePath(flags['output']) },
           null,
           2,
         ),
@@ -529,13 +505,13 @@ function main(argv: string[]): number {
 
     if (command === 'verify') {
       const config = readJsonArgument(
-        flags.configuration,
+        flags['configuration'],
         'configuration',
       ) as BoundaryConfiguration;
-      if (!flags.before) throw new BoundaryError('missing required --before argument');
-      const beforeManifest = readManifest(flags.before);
-      const accounting = flags.accounting
-        ? (readJsonArgument(flags.accounting, 'accounting') as Accounting)
+      if (!flags['before']) throw new BoundaryError('missing required --before argument');
+      const beforeManifest = readManifest(flags['before']);
+      const accounting = flags['accounting']
+        ? (readJsonArgument(flags['accounting'], 'accounting') as Accounting)
         : undefined;
       const report = verify(config, beforeManifest, accounting);
       console.log(JSON.stringify(report, null, 2));

@@ -22,6 +22,7 @@
 // 2 invalid CLI usage (including an unavailable LINEAR_API_KEY).
 
 import { existsSync, readFileSync } from 'node:fs';
+import { rootScriptEnvironment } from '../environment-configuration.ts';
 import { resolveCredential } from './credentials.ts';
 import { parseOptions, UsageError } from './process-runner.ts';
 
@@ -46,11 +47,11 @@ export interface LinearClient {
 /** A client over the injected `fetch`; the key goes only into the Authorization header. */
 export function createClient(dependencies: LinearDependencies = {}): LinearClient {
   const send: FetchLike = dependencies.fetch ?? ((url, init) => fetch(url, init));
-  const environment = dependencies.environment ?? process.env;
+  const environment = dependencies.environment ?? rootScriptEnvironment();
   const resolveKey = dependencies.resolveKey ?? (() => resolveCredential('LINEAR_API_KEY').value);
   return {
     async request<T>(document: string, variables: Record<string, unknown> = {}): Promise<T> {
-      const key = environment.LINEAR_API_KEY || resolveKey();
+      const key = environment['LINEAR_API_KEY'] || resolveKey();
       if (key === undefined || key === '')
         throw new UsageError(
           'LINEAR_API_KEY is unavailable: it is not in the environment, the macOS Keychain (service linear-api) or a .env file; see credentials.ts.',
@@ -202,7 +203,7 @@ async function resolveState(
   client: LinearClient,
   team: { id: string; parent: { id: string } | null },
   name: string,
-): Promise<{ state?: WorkflowState; available: string[] }> {
+): Promise<{ state?: WorkflowState | undefined; available: string[] }> {
   const ids = team.parent === null ? [team.id] : [team.id, team.parent.id];
   const data = await client.request<{
     workflowStates: { nodes: WorkflowState[] };

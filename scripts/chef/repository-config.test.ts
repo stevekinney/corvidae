@@ -51,28 +51,31 @@ describe('validateRepositoryConfig', () => {
   });
 
   test('names each invalid field', () => {
-    expectInvalid((value) => delete value.repository, '"repository"');
-    expectInvalid((value) => (value.repository = 'no-slash'), 'owner/name');
-    expectInvalid((value) => (value.defaultBranch = ''), '"defaultBranch"');
-    expectInvalid((value) => (value.checkout = '/somewhere'), 'unknown field "checkout"');
-    expectInvalid((value) => (value.worktreeRoots = []), '"worktreeRoots"');
-    expectInvalid((value) => (value.worktreeRoots = { claude: '/a' }), '"codex"');
-    expectInvalid((value) => (value.worktreeRoots = { claude: '/a', codex: 'b' }), 'absolute path');
+    expectInvalid((value) => delete value['repository'], '"repository"');
+    expectInvalid((value) => (value['repository'] = 'no-slash'), 'owner/name');
+    expectInvalid((value) => (value['defaultBranch'] = ''), '"defaultBranch"');
+    expectInvalid((value) => (value['checkout'] = '/somewhere'), 'unknown field "checkout"');
+    expectInvalid((value) => (value['worktreeRoots'] = []), '"worktreeRoots"');
+    expectInvalid((value) => (value['worktreeRoots'] = { claude: '/a' }), '"codex"');
     expectInvalid(
-      (value) => (value.worktreeRoots = { claude: '/a', codex: '/b', other: '/c' }),
+      (value) => (value['worktreeRoots'] = { claude: '/a', codex: 'b' }),
+      'absolute path',
+    );
+    expectInvalid(
+      (value) => (value['worktreeRoots'] = { claude: '/a', codex: '/b', other: '/c' }),
       'not a known provider',
     );
-    expectInvalid((value) => (value.manifestName = 3), '"manifestName"');
-    expectInvalid((value) => delete value.installCommand, '"installCommand"');
-    expectInvalid((value) => delete value.gateCommand, '"gateCommand"');
-    expectInvalid((value) => delete value.affectedCheckCommand, '"affectedCheckCommand"');
-    expectInvalid((value) => (value.mergeMethod = 'fast-forward'), 'squash, merge, rebase');
-    expectInvalid((value) => (value.gateWrapper = ''), '"gateWrapper"');
-    expectInvalid((value) => (value.lockPattern = '('), 'valid regular expression');
+    expectInvalid((value) => (value['manifestName'] = 3), '"manifestName"');
+    expectInvalid((value) => delete value['installCommand'], '"installCommand"');
+    expectInvalid((value) => delete value['gateCommand'], '"gateCommand"');
+    expectInvalid((value) => delete value['affectedCheckCommand'], '"affectedCheckCommand"');
+    expectInvalid((value) => (value['mergeMethod'] = 'fast-forward'), 'squash, merge, rebase');
+    expectInvalid((value) => (value['gateWrapper'] = ''), '"gateWrapper"');
+    expectInvalid((value) => (value['lockPattern'] = '('), 'valid regular expression');
   });
 
   test('rejects an unknown field so a typo cannot pass silently', () => {
-    expectInvalid((value) => (value.gateComand = 'x'), 'unknown field "gateComand"');
+    expectInvalid((value) => (value['gateComand'] = 'x'), 'unknown field "gateComand"');
   });
 
   test('rejects a non-object', () => {

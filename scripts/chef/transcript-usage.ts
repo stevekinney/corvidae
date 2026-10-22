@@ -106,12 +106,15 @@ function parseLines(text: string): Record<string, unknown>[] {
 export function detectProvider(entries: Record<string, unknown>[]): Provider | undefined {
   for (const entry of entries.slice(0, 50)) {
     if (
-      entry.type === 'session_meta' ||
-      entry.type === 'event_msg' ||
-      entry.type === 'turn_context'
+      entry['type'] === 'session_meta' ||
+      entry['type'] === 'event_msg' ||
+      entry['type'] === 'turn_context'
     )
       return 'codex';
-    if ((entry.type === 'assistant' || entry.type === 'user') && typeof entry.message === 'object')
+    if (
+      (entry['type'] === 'assistant' || entry['type'] === 'user') &&
+      typeof entry['message'] === 'object'
+    )
       return 'claude-code';
   }
   return undefined;
@@ -125,28 +128,30 @@ export function claudeCodeCalls(entries: Record<string, unknown>[]): ModelCall[]
   const calls = new Map<string, ModelCall>();
   const toolIds = new Map<string, Set<string>>();
   for (const entry of entries) {
-    if (entry.type !== 'assistant') continue;
-    const message = entry.message as Record<string, unknown> | undefined;
-    const usage = message?.usage as Record<string, unknown> | undefined;
-    const id = message?.id;
+    if (entry['type'] !== 'assistant') continue;
+    const message = entry['message'] as Record<string, unknown> | undefined;
+    const usage = message?.['usage'] as Record<string, unknown> | undefined;
+    const id = message?.['id'];
     if (usage === undefined || typeof id !== 'string') continue;
     // Claude Code writes `<synthetic>` entries for messages no model produced (an interrupted
     // turn, for example); they carry no usage and are not calls.
-    if (message?.model === '<synthetic>') continue;
+    if (message?.['model'] === '<synthetic>') continue;
     const tools = toolIds.get(id) ?? new Set<string>();
-    for (const block of Array.isArray(message?.content) ? (message.content as unknown[]) : []) {
+    for (const block of Array.isArray(message?.['content'])
+      ? (message['content'] as unknown[])
+      : []) {
       const content = block as Record<string, unknown> | null;
-      if (content?.type === 'tool_use')
-        tools.add(typeof content.id === 'string' ? content.id : String(tools.size));
+      if (content?.['type'] === 'tool_use')
+        tools.add(typeof content['id'] === 'string' ? content['id'] : String(tools.size));
     }
     toolIds.set(id, tools);
     calls.set(id, {
-      model: typeof message?.model === 'string' ? message.model : 'unknown',
-      uncachedInput: numberAt(usage.input_tokens),
-      cacheWrite: numberAt(usage.cache_creation_input_tokens),
-      cacheRead: numberAt(usage.cache_read_input_tokens),
-      output: numberAt(usage.output_tokens),
-      timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : undefined,
+      model: typeof message?.['model'] === 'string' ? message['model'] : 'unknown',
+      uncachedInput: numberAt(usage['input_tokens']),
+      cacheWrite: numberAt(usage['cache_creation_input_tokens']),
+      cacheRead: numberAt(usage['cache_read_input_tokens']),
+      output: numberAt(usage['output_tokens']),
+      timestamp: typeof entry['timestamp'] === 'string' ? entry['timestamp'] : undefined,
       toolCalls: tools.size,
     });
   }
@@ -163,24 +168,25 @@ export function codexCalls(entries: Record<string, unknown>[]): ModelCall[] {
   let model = 'unknown';
   let lastTotal = -1;
   for (const entry of entries) {
-    const payload = entry.payload as Record<string, unknown> | undefined;
-    if (entry.type === 'turn_context' && typeof payload?.model === 'string') model = payload.model;
-    if (entry.type !== 'event_msg' || payload?.type !== 'token_count') continue;
-    const info = payload.info as Record<string, unknown> | null | undefined;
-    const last = info?.last_token_usage as Record<string, unknown> | undefined;
+    const payload = entry['payload'] as Record<string, unknown> | undefined;
+    if (entry['type'] === 'turn_context' && typeof payload?.['model'] === 'string')
+      model = payload['model'];
+    if (entry['type'] !== 'event_msg' || payload?.['type'] !== 'token_count') continue;
+    const info = payload['info'] as Record<string, unknown> | null | undefined;
+    const last = info?.['last_token_usage'] as Record<string, unknown> | undefined;
     const total = numberAt(
-      (info?.total_token_usage as Record<string, unknown> | undefined)?.total_tokens,
+      (info?.['total_token_usage'] as Record<string, unknown> | undefined)?.['total_tokens'],
     );
     if (last === undefined || total <= lastTotal) continue;
     lastTotal = total;
-    const cached = numberAt(last.cached_input_tokens);
+    const cached = numberAt(last['cached_input_tokens']);
     calls.push({
       model,
-      uncachedInput: Math.max(0, numberAt(last.input_tokens) - cached),
-      cacheWrite: numberAt(last.cache_write_input_tokens),
+      uncachedInput: Math.max(0, numberAt(last['input_tokens']) - cached),
+      cacheWrite: numberAt(last['cache_write_input_tokens']),
       cacheRead: cached,
-      output: numberAt(last.output_tokens),
-      timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : undefined,
+      output: numberAt(last['output_tokens']),
+      timestamp: typeof entry['timestamp'] === 'string' ? entry['timestamp'] : undefined,
       toolCalls: undefined,
     });
   }
@@ -192,8 +198,8 @@ function labelFor(path: string): string {
   if (meta !== path && existsSync(meta)) {
     try {
       const parsed = JSON.parse(readFileSync(meta, 'utf8')) as Record<string, unknown>;
-      if (typeof parsed.description === 'string' && parsed.description !== '')
-        return parsed.description;
+      if (typeof parsed['description'] === 'string' && parsed['description'] !== '')
+        return parsed['description'];
     } catch {
       // An unreadable sidecar leaves the file name as the label.
     }

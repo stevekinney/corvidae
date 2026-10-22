@@ -54,7 +54,7 @@ function server(responses: (Response | Error)[]) {
   const fetchLike: FetchLike = async (url, init) => {
     sent.push({
       url,
-      authorization: String((init.headers as Record<string, string>).Authorization),
+      authorization: String((init.headers as Record<string, string>)['Authorization']),
       body: JSON.parse(init.body as string),
     });
     const response = responses[Math.min(next, responses.length - 1)];
@@ -321,7 +321,7 @@ describe('decide', () => {
     expect(result.code).toBe(0);
     expect(result.output).toContain('DECIDED: none (p=0.97)');
     expect(sent[0]?.body.state).toBe('from a file');
-    expect(sent[0]?.body.questions.decision).toEqual({
+    expect(sent[0]?.body.questions['decision']).toEqual({
       type: 'score',
       instructions: 'How much?',
       criteria: ['none', 'light', 'full'],

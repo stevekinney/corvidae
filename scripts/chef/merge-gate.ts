@@ -306,7 +306,7 @@ export function run(
   const pr = requireOption(parsed, 'pr');
   if (!/^[1-9]\d*$/.test(pr)) throw new UsageError(`"${pr}" is not a pull request number.`);
   const options: MergeGateOptions = {
-    configPath: parsed.values.config ?? DEFAULT_CONFIGURATION_PATH,
+    configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
     pr: Number(pr),
     worktree: requireOption(parsed, 'worktree'),
     gateLog: requireOption(parsed, 'gate-log'),

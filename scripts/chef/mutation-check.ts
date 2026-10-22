@@ -240,16 +240,16 @@ export function readSpec(path: string): Mutation[] {
       if (typeof item[field] !== 'string')
         throw new UsageError(`${where} needs a string "${field}".`);
     }
-    if (item.cwd !== undefined && typeof item.cwd !== 'string')
+    if (item['cwd'] !== undefined && typeof item['cwd'] !== 'string')
       throw new UsageError(`${where}: cwd must be a string.`);
     return {
-      name: item.name as string,
-      file: item.file as string,
-      from: item.from as string,
-      to: item.to as string,
-      command: item.command as string,
-      ...(typeof item.cwd === 'string' ? { cwd: item.cwd } : {}),
-      expect: expectationOf(item.expect, where),
+      name: item['name'] as string,
+      file: item['file'] as string,
+      from: item['from'] as string,
+      to: item['to'] as string,
+      command: item['command'] as string,
+      ...(typeof item['cwd'] === 'string' ? { cwd: item['cwd'] } : {}),
+      expect: expectationOf(item['expect'], where),
     };
   });
 }
@@ -266,12 +266,12 @@ export function run(
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const values = parsed.values;
   let mutations: Mutation[];
-  if (values.spec !== undefined) {
+  if (values['spec'] !== undefined) {
     for (const conflicting of ['file', 'from', 'to', 'command', 'cwd', 'expect', 'name']) {
       if (values[conflicting] !== undefined)
         throw new UsageError(`--spec cannot be combined with --${conflicting}.`);
     }
-    mutations = readSpec(values.spec);
+    mutations = readSpec(values['spec']);
   } else {
     for (const name of ['file', 'from', 'to', 'command']) {
       // `--to` may be empty (deleting the guard), so only absence is an error.
@@ -280,17 +280,17 @@ export function run(
     }
     mutations = [
       {
-        name: values.name ?? basename(values.file as string),
-        file: values.file as string,
-        from: values.from as string,
-        to: values.to as string,
-        command: values.command as string,
-        ...(values.cwd === undefined ? {} : { cwd: values.cwd }),
-        expect: expectationOf(values.expect, '--expect'),
+        name: values['name'] ?? basename(values['file'] as string),
+        file: values['file'] as string,
+        from: values['from'] as string,
+        to: values['to'] as string,
+        command: values['command'] as string,
+        ...(values['cwd'] === undefined ? {} : { cwd: values['cwd'] }),
+        expect: expectationOf(values['expect'], '--expect'),
       },
     ];
   }
-  const results = runMutations(mutations, values.log, dependencies);
+  const results = runMutations(mutations, values['log'], dependencies);
   const stopped = results.length < mutations.length;
   const ok = !stopped && results.every((result) => result.matched);
   return {
