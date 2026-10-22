@@ -57,7 +57,9 @@ async function loadExample(
     const update = message['updateComponents'] as { components: A2uiComponent[] } | undefined;
     for (const component of update?.components ?? []) byId.set(component.id, component);
     const data = message['updateDataModel'] as { path?: string; value?: A2uiJsonValue } | undefined;
-    if (data !== undefined) model.set(data.path ?? '/', data.value ?? null);
+    // A2UI's wire names the whole model `/`; the data model is strict RFC 6901.
+    if (data !== undefined)
+      model.set(data.path === undefined || data.path === '/' ? '' : data.path, data.value ?? null);
   }
   return { components: [...byId.values()], dataModel: model.snapshot() };
 }

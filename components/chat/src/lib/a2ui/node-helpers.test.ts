@@ -1,6 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 
-import { dateTimeForControl, elementId, iconLabel, matchesPattern } from './node-helpers.ts';
+import {
+  dateTimeForControl,
+  elementId,
+  iconLabel,
+  matchesPattern,
+  plainText,
+} from './node-helpers.ts';
 import type { A2uiRenderContext } from './render-context.ts';
 
 describe('node helpers', () => {
@@ -13,6 +19,13 @@ describe('node helpers', () => {
     // A zoned value is shown in local time (UTC under the test runner).
     expect(dateTimeForControl('2025-12-15T17:00:00Z', 'minute')).toBe('2025-12-15T17:00');
     expect(dateTimeForControl('not a date', 'day')).toBeUndefined();
+  });
+
+  test('plainText keeps intraword underscores, as CommonMark does', () => {
+    expect(plainText('save_file_as')).toBe('save_file_as');
+    expect(plainText('snake__case__name')).toBe('snake__case__name');
+    expect(plainText('an _emphasized_ and __strong__ word')).toBe('an emphasized and strong word');
+    expect(plainText('a*b*c and **bold**')).toBe('abc and bold');
   });
 
   test('matchesPattern reports an invalid pattern as undefined', () => {

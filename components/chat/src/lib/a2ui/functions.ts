@@ -356,6 +356,8 @@ export function interpolate(template: string, context: A2uiEvaluationContext): s
   return output;
 }
 
+const KEYWORDS: Readonly<Record<string, boolean | null>> = { true: true, false: false, null: null };
+
 class ExpressionParser {
   position: number;
 
@@ -406,19 +408,11 @@ class ExpressionParser {
       this.position += word[0].length + 1;
       return this.call(word[0]);
     }
-    for (const [keyword, value] of [
-      ['true', true],
-      ['false', false],
-      ['null', null],
-    ] as const) {
-      if (word?.[0] === keyword) {
-        this.position += keyword.length;
-        return value;
-      }
-    }
     const path = /^[^\s}),]+/.exec(rest);
     if (path === null) throw new Error(`expected an expression at ${this.position}`);
     this.position += path[0].length;
+    // A keyword is a literal only as a whole token: `true/value` is a relative path.
+    if (Object.hasOwn(KEYWORDS, path[0])) return KEYWORDS[path[0]];
     return this.context.read(resolvePath(path[0], this.context.scope));
   }
 

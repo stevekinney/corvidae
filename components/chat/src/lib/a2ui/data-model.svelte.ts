@@ -41,9 +41,12 @@ function assign(container: Container, segment: string, value: A2uiJsonValue): vo
   else container[segment] = value;
 }
 
-/** Splits a JSON Pointer into its unescaped segments. `''` and `'/'` are the root. */
+/**
+ * Splits a JSON Pointer into its unescaped segments. `''` is the whole
+ * document; `'/'` is the member whose key is empty (RFC 6901).
+ */
 export function pointerSegments(pointer: string): string[] {
-  if (pointer === '' || pointer === '/') return [];
+  if (pointer === '') return [];
   return pointer
     .replace(/^\//, '')
     .split('/')
@@ -56,14 +59,14 @@ export function pointerSegments(pointer: string): string[] {
  */
 export function resolvePath(path: string, scope: string): string {
   if (path.startsWith('/')) return path;
-  if (path === '' || path === '.') return scope === '' ? '/' : scope;
-  return `${scope === '/' ? '' : scope}/${path}`;
+  if (path === '' || path === '.') return scope;
+  return `${scope}/${path}`;
 }
 
 /** Appends one escaped segment to a pointer. */
 export function childPointer(pointer: string, segment: string | number): string {
   const escaped = String(segment).replaceAll('~', '~0').replaceAll('/', '~1');
-  return `${pointer === '/' ? '' : pointer}/${escaped}`;
+  return `${pointer}/${escaped}`;
 }
 
 /** A surface's data model. Reads are reactive; writes notify `onChange`. */

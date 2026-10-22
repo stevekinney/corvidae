@@ -170,12 +170,18 @@ export function toJsonValue(value: unknown): A2uiJsonValue {
   return null;
 }
 
-/** Strips common Markdown markers, for text that renders inline. */
+/**
+ * Strips common Markdown markers, for text that renders inline. As in
+ * CommonMark, `*` emphasizes inside a word but `_` does not, so `save_file_as`
+ * keeps its underscores.
+ */
 export function plainText(markdown: string): string {
   return markdown
     .replace(/^#{1,6}\s+/gm, '')
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')
-    .replace(/(\*|_)(.*?)\1/g, '$2')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/(?<![\p{L}\p{N}_])__(.+?)__(?![\p{L}\p{N}_])/gu, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/(?<![\p{L}\p{N}_])_(.+?)_(?![\p{L}\p{N}_])/gu, '$1')
     .replace(/`([^`]*)`/g, '$1')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
 }

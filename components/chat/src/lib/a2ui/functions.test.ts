@@ -51,6 +51,18 @@ describe('basic catalog functions', () => {
     );
   });
 
+  it('formatString reads a relative path that starts with a keyword as a path', () => {
+    const scope = context({ true: { value: 'yes' }, nullable: 'n', falsey: 'f' });
+
+    expect(
+      callFunction(
+        'formatString',
+        { value: '${true/value} ${nullable} ${falsey} ${true} ${not(value: false)}' },
+        scope,
+      ),
+    ).toBe('yes n f true true');
+  });
+
   it('required rejects null, undefined, the empty string, and the empty array', () => {
     const scope = context();
     for (const value of [null, undefined, '', []]) {
