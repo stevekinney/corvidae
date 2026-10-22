@@ -115,6 +115,7 @@
         "src/core/engine/async-activity-records.ts",
         "src/core/engine/internals.ts",
         "src/core/engine/lifecycle/prepare-and-launch.ts",
+        "src/core/engine/lifecycle/start.ts",
         "src/core/engine/handles.ts",
         "src/core/engine/workflow-claim-registry.ts",
         "src/core/engine/construction.ts",

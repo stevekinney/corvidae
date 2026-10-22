@@ -15,6 +15,7 @@ import type { StartOrSignalOptions, StartOrSignalSignal } from '../../types.ts';
 import { WorkflowAlreadyExistsError } from '../errors.ts';
 import { type StartOrSignalOutcome, type WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
+import { validateSignalPayloads } from '../payload-validation.ts';
 import { buildCreateBatchSignalOperations } from '../signals.ts';
 import { StartIdempotencyRaceLostError } from './start-commit-errors.ts';
 import { type BuildIdempotentStartOperations } from './start-commit.ts';
@@ -125,6 +126,14 @@ export async function createWithSignalOrFallback(
   callbacks: StartOrSignalCallbacks,
 ): Promise<StartOrSignalResult> {
   const idempotencyKey = options?.idempotencyKey;
+  // The initial signal is written in the create batch, so it never passes the
+  // live signal path's validation; check it against `type`'s declared signal.
+  if (internals.options.payloadValidation === 'inbound') {
+    const { entry } = await callbacks.resolveExecutableRegistration(type);
+    await validateSignalPayloads(internals, entry, [
+      { signalName: signalSpec.name, payload: signalSpec.payload },
+    ]);
+  }
   // A caller-`id` loser whose winner aborts pre-commit retries its own create. The
   // loop only re-iterates on that rare abort; the common case returns on the first
   // pass. The keyed and committed-winner paths never loop.
