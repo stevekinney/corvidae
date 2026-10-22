@@ -174,15 +174,14 @@ describe('a new chat', () => {
 describe('quoting an agent’s reply', () => {
   /**
    * Waits until the run is over, which is when Chat stops offering Stop. A message sent before that
-   * is a follow-up to the run in flight, and these tests are about the message that starts one.
-   * `waitFor` on the button's removal crashes Bun 1.4.2 here, so this polls on a bounded timer.
+   * is a follow-up to the run in flight, and these tests are about the message that starts one. The
+   * wait asserts a boolean, not the element's absence: a failed `expect` on an element makes Bun
+   * print the whole DOM, which crashes Bun 1.4.2 (`scripts/check-wait-for-element-assertions.ts`).
    */
   async function settled(container: HTMLElement): Promise<void> {
-    for (let attempt = 0; attempt < 100; attempt += 1) {
-      if (container.querySelector('[aria-label="Stop generating"]') === null) return;
-      await new Promise((resolve) => setTimeout(resolve, 20));
-    }
-    throw new Error('The run did not end.');
+    await waitFor(() =>
+      expect(container.querySelector('[aria-label="Stop generating"]') === null).toBe(true),
+    );
   }
 
   /** A Bureau whose agent answers `reply`, recording the body of every run it is asked to start. */

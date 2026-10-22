@@ -5,7 +5,7 @@
  * in the order they were quoted, ahead of the typed text. The case runs at a phone's width and a
  * desktop's, with axe passing on the open Quote popover, the chips, and the reloaded transcript.
  */
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
@@ -53,12 +53,6 @@ async function selectInReply(page: Page, index: number, text: string): Promise<v
   );
 }
 
-/** The text of each block quote in `row`, in the order it appears. */
-async function quotesOf(row: Locator): Promise<string[]> {
-  const texts = await row.locator('blockquote').allTextContents();
-  return texts.map((text) => text.trim());
-}
-
 for (const viewport of VIEWPORTS) {
   test(`quotes two excerpts from two replies and sends them, at ${viewport.width} pixels`, async ({
     page,
@@ -99,13 +93,18 @@ for (const viewport of VIEWPORTS) {
     // The echo says what it received: both block quotes in order, then the typed text.
     await expect(replies).toHaveCount(3);
     await expect(replies.last()).toContainText(TYPED);
-    expect(await quotesOf(replies.last())).toEqual([FIRST_EXCERPT, SECOND_EXCERPT]);
+    // Chat shows the raw text first and swaps in the rendered Markdown a moment later, so the
+    // block quotes are read with an assertion that retries.
+    await expect(replies.last().locator('blockquote')).toHaveText([FIRST_EXCERPT, SECOND_EXCERPT]);
     const echoed = (await replies.last().textContent()) ?? '';
     expect(echoed.indexOf(FIRST_EXCERPT)).toBeLessThan(echoed.indexOf(SECOND_EXCERPT));
     expect(echoed.indexOf(SECOND_EXCERPT)).toBeLessThan(echoed.indexOf(TYPED));
     // The chips left with the send, and the person's own row shows the same two quotes.
     await expect(chips).toHaveCount(0);
-    expect(await quotesOf(page.locator(USER_ROW).last())).toEqual([FIRST_EXCERPT, SECOND_EXCERPT]);
+    await expect(page.locator(USER_ROW).last().locator('blockquote')).toHaveText([
+      FIRST_EXCERPT,
+      SECOND_EXCERPT,
+    ]);
 
     // Reloaded, the thread shows the sent message with both excerpts as block quotes.
     await page.reload();
@@ -113,7 +112,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator(USER_ROW)).toHaveCount(3);
     const sent = page.locator(USER_ROW).last();
     await expect(sent).toContainText(TYPED);
-    expect(await quotesOf(sent)).toEqual([FIRST_EXCERPT, SECOND_EXCERPT]);
+    await expect(sent.locator('blockquote')).toHaveText([FIRST_EXCERPT, SECOND_EXCERPT]);
     await checkA11y(`the reloaded quoted message, at ${viewport.width} pixels`);
   });
 }

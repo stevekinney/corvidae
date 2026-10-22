@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
 import {
+  ECHO_NOTHING_TO_REPEAT,
   HUMAN_INPUT_PROMPT,
   HUMAN_INPUT_SIGNAL,
   NEVER_PASSING_VALIDATOR,
@@ -103,6 +104,9 @@ describe('the seeded agents', () => {
     // A second turn on the same agent repeats that turn's message, not the first one.
     const again = await host.bureau.run('echo', 'Another message').result();
     expect(again.content).toBe('Another message');
+    // A message with no text leaves nothing to repeat, and the echo says so.
+    const nothing = await host.bureau.run('echo', '').result();
+    expect(nothing.content).toBe(ECHO_NOTHING_TO_REPEAT);
   });
 
   test('request-human-input, dispatched without a session, parks and resumes by its run id', async () => {

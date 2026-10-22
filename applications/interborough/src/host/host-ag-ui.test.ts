@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
+import { SEEDED_AGENT_NAMES } from './seed.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -77,6 +78,20 @@ describe('extra agents', () => {
     const types = await runEventTypes(host, 'extra', 'thread-extra');
     expect(types[0]).toBe('RUN_STARTED');
     expect(types.at(-1)).toBe('RUN_FINISHED');
+  });
+
+  test('an extra agent named like a seeded agent stops the host and names the agent, rather than being replaced', async () => {
+    for (const name of SEEDED_AGENT_NAMES) {
+      const home = await mkdtemp(join(tmpdir(), 'interborough-ag-ui-'));
+      directories.push(home);
+      await expect(
+        startHost({
+          environment: { INTERBOROUGH_HOME: home },
+          port: 0,
+          extraAgents: { agents: { [name]: extraAgent }, published: [name] },
+        }),
+      ).rejects.toThrow(`The extra agent "${name}" has the name of a seeded agent`);
+    }
   });
 
   test('an extra agent that is not published is refused, and the seeded ones are unchanged', async () => {
