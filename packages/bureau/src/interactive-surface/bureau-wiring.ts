@@ -21,6 +21,8 @@ export interface BureauInteractiveSurfacesOptions {
   /** Epoch milliseconds. */
   readonly now: () => number;
   readonly diagnose: DiagnosticSink;
+  /** The ids of the reviews a task holds open: the authority on review ownership. */
+  readonly reviewIdsOf: (taskId: string) => Promise<ReadonlySet<string>>;
 }
 
 /**
@@ -48,6 +50,7 @@ export function createBureauInteractiveSurfaces(
       return { owner: view.owner, settled, contextId: view.contextId };
     },
     now: options.now,
+    reviewIdsOf: options.reviewIdsOf,
     watchTask: (taskId, listener) => {
       tasks.onSettled(taskId, (_view, record) => {
         if (record.settled !== undefined) listener(record.settled.status);

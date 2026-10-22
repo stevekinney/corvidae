@@ -17144,6 +17144,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     tasks,
     now: runtimeServices.clock.now,
     diagnose,
+    // A review belongs to the run Bureau holds it for: this process's pending reviews, and a run's
+    // human waits derived from durable state when another process holds the run.
+    reviewIdsOf: async (taskId) => {
+      const local = [...listPendingReviews(), ...runHumanWaits.list()].filter(
+        (review) => review.runId === taskId,
+      );
+      const waits = await pendingHumanWaitsOfRun(taskId);
+      return new Set([...local, ...waits].map((review) => review.id));
+    },
   });
   // COR-1621: a review another process closes is read from the shared history by one subscription
   // per process, whether or not any client follows a task.

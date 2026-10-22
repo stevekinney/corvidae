@@ -30,6 +30,7 @@ function harness(
   tasks: Record<string, InteractiveSurfaceTask> = {
     [TASK]: { owner: OWNER, contextId: 'session-1' },
   },
+  extra: Partial<Parameters<typeof createInteractiveSurfaces>[0]> = {},
 ) {
   const runtime = createManualRuntimeServices();
   const storage = new MemoryStorage();
@@ -42,6 +43,7 @@ function harness(
     task: async (taskId) => table.get(taskId),
     now: () => runtime.clock.now(),
     watchTask: (taskId, listener) => settledListeners.set(taskId, listener),
+    ...extra,
   });
   async function events(taskId = TASK) {
     const page = await history.page({ kind: 'run', id: taskId }, { limit: 100 });
@@ -175,14 +177,6 @@ describe('creating a surface', () => {
       createCommand({ representation: { kind: 'input-form', schema: { type: 'string' } } }),
       createCommand({
         representation: { kind: 'input-form', schema: { type: 'object', minProperties: 'x' } },
-      }),
-      createCommand({
-        representation: {
-          kind: 'a2ui',
-          specificationVersion: 'v0.9.1',
-          catalogId: 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
-          components: [{ id: 'title', component: 'Text', text: 'no root' }],
-        },
       }),
       createCommand({
         representation: {
@@ -936,6 +930,65 @@ describe('closing, cancellation, and cleanup', () => {
         createCommand({ commandId: 'long', surfaceId: 'long', audience: ['p'.repeat(300)] }),
       ),
     ).toMatchObject({ reason: 'invalid' });
+  });
+
+  it('decides review ownership from the reviews the task holds, when it is told them', async () => {
+    const reviews = new Map([['agent-run-1', new Set(['human-wait:agent-run-1:approval:gate:0'])]]);
+    const { surfaces } = harness(undefined, {
+      reviewIdsOf: async (taskId) => reviews.get(taskId) ?? new Set(),
+    });
+    const review = (reviewId: string, commandId: string) =>
+      surfaces.create(
+        createCommand({
+          commandId,
+          surfaceId: commandId,
+          actions: [
+            { name: 'approve', intent: 'approve', continuation: { type: 'review', reviewId } },
+          ],
+        }),
+      );
+
+    // A signal name may hold a colon; the task's own pending wait is accepted.
+    expect(await review('human-wait:agent-run-1:approval:gate:0', 'own')).toMatchObject({
+      outcome: 'accepted',
+    });
+    // A well-formed id the task does not hold is refused.
+    expect(await review('approval:agent-run-1:call-9', 'unheld')).toMatchObject({
+      reason: 'invalid',
+    });
+  });
+
+  it('refuses a create that lands after its task’s surfaces were removed', async () => {
+    const { surfaces, storage } = harness();
+    await surfaces.removeTask(TASK);
+    expect(await surfaces.create(createCommand())).toMatchObject({ reason: 'not-found' });
+    const left: string[] = [];
+    for await (const key of storage.keys('bureau-surface:')) left.push(key);
+    expect(left).toEqual([]);
+  });
+
+  it('refuses a calendar-invalid action timestamp, and accepts a components delta without root', async () => {
+    const { surfaces } = harness();
+    await surfaces.create(createCommand());
+    expect(await surfaces.act(actionRequest({ timestamp: '2023-02-29T00:00:00Z' }))).toMatchObject({
+      reason: 'invalid',
+    });
+
+    expect(
+      await surfaces.create(
+        createCommand({
+          commandId: 'a2ui',
+          surfaceId: 'a2ui',
+          actions: [],
+          representation: {
+            kind: 'a2ui',
+            specificationVersion: 'v0.9.1',
+            catalogId: 'https://a2ui.org/specification/v0_9/catalogs/basic/catalog.json',
+            components: [{ id: 'title', component: 'Text', text: 'Before root' }],
+          },
+        }),
+      ),
+    ).toMatchObject({ outcome: 'accepted' });
   });
 
   it('lets an aborted signal end the wait while a read is stuck', async () => {

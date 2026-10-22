@@ -190,6 +190,37 @@ describe('interactive surfaces on a Bureau', () => {
     }
   });
 
+  it('refuses a review continuation the task does not hold, however well formed', async () => {
+    const fixture = createSqliteStorageFixture({ runtime: createDefaultRuntimeServices() });
+    const bureau = await open(fixture.configuration);
+    try {
+      const taskId = await startTask(bureau);
+      const receipt = await surfacesOf(bureau).create(
+        {
+          type: 'surface.create',
+          contractVersion: version,
+          commandId: 'create-review',
+          taskId,
+          surfaceId: 'approve',
+          summary: 'Approve the call.',
+          representation: { kind: 'input-form', schema: { type: 'object' } },
+          actions: [
+            {
+              name: 'approve',
+              intent: 'approve',
+              continuation: { type: 'review', reviewId: `approval:${taskId}:call-1` },
+            },
+          ],
+        },
+        { principal: OWNER },
+      );
+      expect(receipt).toMatchObject({ outcome: 'rejected', reason: 'invalid' });
+    } finally {
+      await bureau.dispose();
+      await fixture.dispose();
+    }
+  });
+
   it('has no surfaces without persistent storage', async () => {
     const bureau = await createBureau<AgentDefinitions>({
       agents: { worker: createAgent({ generate: parks }) },

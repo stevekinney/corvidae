@@ -119,6 +119,12 @@ export interface InteractiveSurfacesOptions {
     | undefined;
   /** Hears a freeze that failed after its task settled; the next read retries it. */
   readonly onFreezeError?: ((taskId: string, error: unknown) => void) | undefined;
+  /**
+   * The ids of the reviews a task holds open. When given, a review continuation
+   * must name one of them, which is the authority on which run a review belongs
+   * to; without it, the review id's grammar decides (see `assertOwnContinuations`).
+   */
+  readonly reviewIdsOf?: ((taskId: string) => Promise<ReadonlySet<string>>) | undefined;
 }
 
 /**
@@ -248,6 +254,15 @@ function digestOf(value: unknown): string {
   return `sha256:${sha256HexSync(canonicalJson(value))}`;
 }
 
+/**
+ * Marks a task whose surfaces were removed. It lives outside the task's prefix,
+ * so removing the prefix keeps it, and every commit is conditioned on its
+ * absence: a command checked before the removal cannot write after it.
+ */
+function removedKey(taskId: string): string {
+  return `bureau-removed-surfaces:v1:${encodeStorageKeyComponent(taskId)}`;
+}
+
 function surfacePrefix(taskId: string): string {
   return `${INTERACTIVE_SURFACE_KEY_PREFIX}${encodeStorageKeyComponent(taskId)}:`;
 }
@@ -275,35 +290,43 @@ function withoutValue(
 }
 
 /**
- * Fails unless every action continues this task: a review named for this
- * task's run, or a signal to this task's own session. A surface's author may
- * be the model, so a continuation naming another task is refused here rather
- * than handed to the caller to dispatch.
+ * Fails unless every action continues this task: a review this task holds, or
+ * a signal to this task's own session. A surface's author may be the model, so
+ * a continuation naming another task is refused here rather than handed to the
+ * caller to dispatch.
  *
- * A run id can itself hold colons (a session run is `<sessionId>:<sequence>`,
- * and a session id may hold more), so no parse of a review id can find where a
- * run id ends. The grammar fixes it instead: after `approval:<taskId>:` comes
- * a call id with no colon, and after `human-wait:<taskId>:` a signal name with
- * no colon and an ordinal. Any review id with one more segment, whichever run
- * it names, is refused rather than guessed at.
+ * Both a run id and a wait's signal name can hold colons, so no grammar can say
+ * which run a review id names. `reviewIdsOf` is the authority when it is given:
+ * the review must be one the task holds open. Without it (a store used on its
+ * own), the review id must read `approval:<taskId>:<callId>` or
+ * `human-wait:<taskId>:<signalName>:<ordinal>` with no colon in the call id or
+ * signal name, and anything else is refused rather than guessed at.
  */
-function assertOwnContinuations(
+async function assertOwnContinuations(
   actions: readonly InteractiveSurfaceActionDefinition[],
   taskId: string,
   task: InteractiveSurfaceTask,
-): void {
+  reviewIdsOf: ((taskId: string) => Promise<ReadonlySet<string>>) | undefined,
+): Promise<void> {
+  let held: ReadonlySet<string> | undefined;
   for (const action of actions) {
     const continuation = action.continuation;
     if (continuation.type === 'review') {
       const reviewId = continuation.reviewId;
-      const approval = `approval:${taskId}:`;
-      const wait = `human-wait:${taskId}:`;
-      const own =
-        (reviewId.startsWith(approval) && /^[^:]+$/.test(reviewId.slice(approval.length))) ||
-        (reviewId.startsWith(wait) && /^[^:]+:\d+$/.test(reviewId.slice(wait.length)));
+      let own: boolean;
+      if (reviewIdsOf === undefined) {
+        const approval = `approval:${taskId}:`;
+        const wait = `human-wait:${taskId}:`;
+        own =
+          (reviewId.startsWith(approval) && /^[^:]+$/.test(reviewId.slice(approval.length))) ||
+          (reviewId.startsWith(wait) && /^[^:]+:\d+$/.test(reviewId.slice(wait.length)));
+      } else {
+        held ??= await reviewIdsOf(taskId);
+        own = held.has(reviewId);
+      }
       if (!own) {
         throw new InteractiveSurfaceValidationError(
-          `action "${action.name}" continues a review of another task`,
+          `action "${action.name}" continues a review this task does not hold`,
         );
       }
     } else if (task.contextId === undefined || continuation.sessionId !== task.contextId) {
@@ -312,6 +335,33 @@ function assertOwnContinuations(
       );
     }
   }
+}
+
+/**
+ * Whether an ISO 8601 date-time names a real calendar date and time of day:
+ * `Date.parse` normalizes `2023-02-29` to March 1 rather than refusing it.
+ */
+function isCalendarDateTime(value: string): boolean {
+  const [year, month, day, hour, minute, second] = value.slice(0, 19).split(/[-T:]/).map(Number);
+  if (
+    year === undefined ||
+    month === undefined ||
+    day === undefined ||
+    hour === undefined ||
+    minute === undefined ||
+    second === undefined
+  ) {
+    return false;
+  }
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day &&
+    hour < 24 &&
+    minute < 60 &&
+    second < 60
+  );
 }
 
 /** An action's A2UI provenance: the component that raised it and when, each optional. */
@@ -329,6 +379,9 @@ function readActionProvenance(record: Record<string, unknown>): {
   ) {
     throw new InteractiveSurfaceValidationError('timestamp must be an ISO 8601 date-time');
   }
+  if (timestamp !== undefined && !isCalendarDateTime(timestamp)) {
+    throw new InteractiveSurfaceValidationError('timestamp must name a real date and time');
+  }
   return {
     ...(source === undefined
       ? {}
@@ -336,6 +389,9 @@ function readActionProvenance(record: Record<string, unknown>): {
     ...(timestamp === undefined ? {} : { timestamp }),
   };
 }
+
+/** Thrown inside a commit when the task's surfaces were removed; it answers `not-found`. */
+class TaskRemoved extends Error {}
 
 /** Thrown inside a commit when the projection moved; the caller re-reads. */
 class LostRace extends Error {}
@@ -429,6 +485,7 @@ export function createInteractiveSurfaces(
     const key = surfaceKey(taskId, surfaceId);
     const conditions: ConditionalBatchCondition[] = [
       { key, expectedValue: expected === null ? null : new TextEncoder().encode(expected) },
+      { key: removedKey(taskId), expectedValue: null },
     ];
     const operations: BatchOperation[] = [
       { type: 'put', key, value: new TextEncoder().encode(JSON.stringify(next)) },
@@ -441,6 +498,7 @@ export function createInteractiveSurfaces(
       });
       cursor = envelope.cursor;
     } catch (error: unknown) {
+      if ((await store.get(removedKey(taskId))) !== null) throw new TaskRemoved();
       if ((await store.get(key)) !== expected) throw new LostRace();
       throw error;
     }
@@ -528,6 +586,8 @@ export function createInteractiveSurfaces(
         );
         return 'frozen';
       } catch (error: unknown) {
+        // A removed task's surfaces are gone, which is as closed as they get.
+        if (error instanceof TaskRemoved) return 'closed';
         if (!(error instanceof LostRace)) throw error;
       }
     }
@@ -658,6 +718,7 @@ export function createInteractiveSurfaces(
       if (error instanceof InteractiveSurfaceValidationError) {
         return rejection(error.reason, error.message);
       }
+      if (error instanceof TaskRemoved) return rejection('not-found');
       throw error;
     }
   }
@@ -740,7 +801,7 @@ export function createInteractiveSurfaces(
       );
       const digest = digestOf(record);
 
-      assertOwnContinuations(actions, taskId, task);
+      await assertOwnContinuations(actions, taskId, task, options.reviewIdsOf);
       // Watch before committing, so a settlement after this point freezes the new surface.
       watch(taskId);
 
@@ -828,7 +889,9 @@ export function createInteractiveSurfaces(
       }
       const digest = digestOf(record);
 
-      if (changes.actions !== undefined) assertOwnContinuations(changes.actions, taskId, task);
+      if (changes.actions !== undefined) {
+        await assertOwnContinuations(changes.actions, taskId, task, options.reviewIdsOf);
+      }
 
       return retrying(async () => {
         const loaded = await current(task, taskId, surfaceId);
@@ -1303,6 +1366,8 @@ export function createInteractiveSurfaces(
   async function removeTask(taskId: string): Promise<void> {
     settlements.delete(taskId);
     watched.delete(taskId);
+    // The marker first: a command already past its checks then fails its commit.
+    await store.set(removedKey(taskId), '1');
     await store.deletePrefix(surfacePrefix(taskId));
   }
 

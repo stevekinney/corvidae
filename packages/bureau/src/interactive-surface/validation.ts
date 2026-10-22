@@ -306,9 +306,6 @@ function readA2ui(value: Record<string, unknown>): InteractiveSurfaceRepresentat
     ids.add(id);
     return entry;
   });
-  if (ids.size > 0 && !ids.has('root')) {
-    fail('representation.components must include the component "root" once it has any');
-  }
   const theme =
     value['theme'] === undefined
       ? undefined

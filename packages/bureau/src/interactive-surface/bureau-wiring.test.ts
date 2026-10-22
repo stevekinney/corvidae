@@ -27,6 +27,7 @@ describe('createBureauInteractiveSurfaces', () => {
       tasks: registry('input-required'),
       now: () => runtime.clock.now(),
       diagnose: () => undefined,
+      reviewIdsOf: async () => new Set([`approval:${TASK}:call-1`]),
     });
     if (surfaces === undefined) throw new Error('surfaces need storage and history');
 
