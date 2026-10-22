@@ -1468,7 +1468,9 @@ export interface ScheduleTransitionRecord {
 /**
  * Emitted when a durable agent schedule is paused. Fires exactly once per
  * successful `pause()` call, from whichever of the three creation paths'
- * handles the caller is holding.
+ * handles the caller is holding. Bureau's `pauseSchedule` fires it only when
+ * the schedule was active, so the call changed it (COR-194): pausing a
+ * schedule that is already paused succeeds and fires nothing.
  */
 export class SchedulePausedEvent extends Event {
   static readonly type = 'schedule.paused' as const;
@@ -1487,7 +1489,9 @@ export class SchedulePausedEvent extends Event {
 
 /**
  * Emitted when a previously paused durable agent schedule is resumed. Fires
- * exactly once per successful `resume()` call.
+ * exactly once per successful `resume()` call. Bureau's `resumeSchedule` fires
+ * it only when the schedule was paused (COR-194): resuming an active schedule
+ * succeeds and fires nothing.
  */
 export class ScheduleResumedEvent extends Event {
   static readonly type = 'schedule.resumed' as const;

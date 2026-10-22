@@ -8924,17 +8924,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // pass runs.
     recoveryPassActive = true;
     try {
-      // COR-194 — ahead of the pass, as the session outbox's drain is: a run the pass reattaches
-      // starts at once, and nothing should stand between its reattachment and `createBureau()`
-      // returning.
-      await recordPendingScheduleTransitions().catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not record pending schedule transitions at boot: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
       const report = await recoverDurableRunsPass();
       await reconcileTaskRecords().catch((error: unknown) => {
         diagnose({
@@ -11983,6 +11972,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           cause: error,
         });
       }
+      // COR-194 — a schedule transition whose record failed after its commit is retried here.
+      try {
+        await recordPendingScheduleTransitions();
+      } catch (error: unknown) {
+        diagnose({
+          level: 'error',
+          scope: 'durable-maintenance',
+          message: `[bureau] Manual schedule-transition drain pass failed: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
       // COR-1476 — the backstop: input left open with no live run, by a run-end
       // settlement that never ran, is cancelled here.
       try {
@@ -12244,6 +12244,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             level: 'error',
             scope: 'durable-maintenance',
             message: `[bureau] Automatic session-outbox drain pass failed: ${serializeUnknownError(error)}`,
+            cause: error,
+          });
+        }
+        // COR-194 — a schedule transition whose record failed after its commit is retried here.
+        try {
+          await recordPendingScheduleTransitions();
+        } catch (error: unknown) {
+          diagnose({
+            level: 'error',
+            scope: 'durable-maintenance',
+            message: `[bureau] Automatic schedule-transition drain pass failed: ${serializeUnknownError(error)}`,
             cause: error,
           });
         }
@@ -16237,16 +16248,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       ...scheduleTransitionOptions(guard),
       additionalOperations: [scheduleTransitionOperation(key, transition)],
     });
-    // Absent after the call: Weft wrote nothing, or another process's boot pass has already
-    // recorded the transition and removed its pending record.
-    if ((await storage.get(key)) === null) return;
+    // Everything after the commit is a failure to record, never a failure of the transition.
     try {
+      // Absent after the call: Weft wrote nothing, or another pass has already recorded the
+      // transition and removed its pending record.
+      if ((await storage.get(key)) === null) return;
       await recordScheduleTransition(key, transition);
     } catch (error) {
       diagnose({
         level: 'error',
         scope: 'durable-maintenance',
-        message: `[bureau] Could not record ${kind} for schedule "${scheduleId}"; it stays pending for the next boot: ${serializeUnknownError(error)}`,
+        message: `[bureau] Could not record ${kind} for schedule "${scheduleId}"; it stays pending for the next drain: ${serializeUnknownError(error)}`,
         cause: error,
       });
     }
@@ -16259,6 +16271,21 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * at a later attempt and, through the dedupe key, only once.
    */
   async function recordScheduleTransition(
+    key: string,
+    transition: PendingScheduleTransition,
+  ): Promise<void> {
+    // The live drain and a maintenance pass can reach the same key; the writes would deduplicate,
+    // but the live event would be dispatched twice.
+    if (scheduleTransitionsRecording.has(key)) return;
+    scheduleTransitionsRecording.add(key);
+    try {
+      await writeScheduleTransition(key, transition);
+    } finally {
+      scheduleTransitionsRecording.delete(key);
+    }
+  }
+
+  async function writeScheduleTransition(
     key: string,
     transition: PendingScheduleTransition,
   ): Promise<void> {
@@ -16297,11 +16324,15 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     }
   }
 
+  /** COR-194 — the pending schedule transitions this process is recording now. */
+  const scheduleTransitionsRecording = new Set<string>();
+
   /**
-   * COR-194 — at boot, records every schedule transition a process committed and did not live to
-   * record, in the order each schedule's transitions committed. A record that fails is reported
-   * and left for the next boot; one this build cannot read is reported and removed, since no later
-   * boot could read it either.
+   * COR-194 — records every schedule transition still pending: one a process committed and did not
+   * live to record, or one whose record failed after its commit. Each schedule's transitions are
+   * recorded in the order they committed, and a failure defers the rest of that schedule's to a
+   * later pass, so its history is never written out of order. A record this build cannot read is
+   * reported and kept, since a build that can may read it later.
    */
   async function recordPendingScheduleTransitions(): Promise<void> {
     const durable = runtime.durable;
@@ -16310,24 +16341,28 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     for await (const entry of durable.engine.storage.scan(SCHEDULE_TRANSITION_KEY_PREFIX)) {
       pending.push(entry);
     }
+    const deferredSchedules = new Set<string>();
     for (const [key, bytes] of pending) {
+      const scheduleSegment = key.slice(SCHEDULE_TRANSITION_KEY_PREFIX.length).split(':')[0];
+      if (deferredSchedules.has(scheduleSegment ?? '')) continue;
       const transition = decodeScheduleTransition(bytes);
       if (transition === undefined) {
+        deferredSchedules.add(scheduleSegment ?? '');
         diagnose({
           level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Removed unreadable pending schedule transition "${key}".`,
+          scope: 'durable-maintenance',
+          message: `[bureau] Left pending schedule transition "${key}" in place: this build cannot read it.`,
         });
-        await durable.engine.storage.delete(key);
         continue;
       }
       try {
         await recordScheduleTransition(key, transition);
       } catch (error) {
+        deferredSchedules.add(scheduleSegment ?? '');
         diagnose({
           level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not record pending ${transition.kind} for schedule "${transition.scheduleId}"; leaving it for the next boot: ${serializeUnknownError(error)}`,
+          scope: 'durable-maintenance',
+          message: `[bureau] Could not record pending ${transition.kind} for schedule "${transition.scheduleId}"; leaving it and the schedule's later transitions for the next drain: ${serializeUnknownError(error)}`,
           cause: error,
         });
       }
@@ -18593,6 +18628,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       cause: error,
     });
   }
+  // COR-194 — authority-independent like the session outbox, so it runs here, before recovery is
+  // deferred or started: a run recovery reattaches starts at once, and nothing should stand between
+  // its reattachment and `createBureau()` returning.
+  await recordPendingScheduleTransitions().catch((error: unknown) => {
+    diagnose({
+      level: 'error',
+      scope: 'recovery',
+      message: `[bureau] Could not record pending schedule transitions at boot: ${serializeUnknownError(error)}`,
+      cause: error,
+    });
+  });
   // Orphaned steering logs are independent of run recovery, so they are
   // swept at boot even when that recovery is deferred; in the background,
   // and awaited by shutdown before the backend closes.

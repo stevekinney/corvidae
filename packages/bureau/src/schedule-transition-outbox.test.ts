@@ -211,7 +211,7 @@ describe('schedule transitions through the outbox (COR-194)', () => {
     ).toBeUndefined();
   });
 
-  it('removes a pending record it cannot read at boot, and boots', async () => {
+  it('keeps a pending record it cannot read at boot, and boots', async () => {
     const fixture = newFixture();
     await close(await open(fixture));
     const key = `${SCHEDULE_TRANSITION_KEY_PREFIX}unreadable`;
@@ -224,6 +224,52 @@ describe('schedule transitions through the outbox (COR-194)', () => {
 
     await close(await open(fixture));
 
-    expect(await pendingKeys(fixture)).toEqual([]);
+    expect(await pendingKeys(fixture)).toEqual([key]);
+  });
+
+  it("defers a schedule's later transitions behind one it cannot record, and records other schedules'", async () => {
+    const fixture = newFixture();
+    const first = await open(fixture);
+    const blocked = await createSchedule(first);
+    const other = await createSchedule(first);
+    await close(first);
+    const unreadable = `${SCHEDULE_TRANSITION_KEY_PREFIX}${encodeURIComponent(blocked)}:0000000000000001:first`;
+    const later = { kind: 'schedule.paused', scheduleId: blocked, committedAtMs: 2 } as const;
+    const laterKey = scheduleTransitionKey(later, 'second');
+    const storage = await resolveStorage(fixture.configuration);
+    try {
+      await storage.put(unreadable, encode({ schemaVersion: 2 }));
+      const operation = scheduleTransitionOperation(laterKey, later);
+      if (operation.type !== 'put') throw new Error('expected a put');
+      await storage.put(laterKey, operation.value);
+    } finally {
+      storage[Symbol.dispose]();
+    }
+    const otherKey = await commitWithoutRecording(fixture, 'schedule.paused', other);
+
+    const restarted = await open(fixture);
+
+    expect(await transitionKinds(restarted, blocked)).toEqual([]);
+    expect(await transitionKinds(restarted, other)).toEqual(['schedule.paused']);
+    await close(restarted);
+    const left = await pendingKeys(fixture);
+    expect(left).toContain(unreadable);
+    expect(left).toContain(laterKey);
+    expect(left).not.toContain(otherKey);
+  });
+
+  it('records a transition left pending in a running process at the next durable maintenance pass', async () => {
+    const fixture = newFixture();
+    const bureau = await open(fixture);
+    const scheduleId = await createSchedule(bureau);
+
+    const key = await commitWithoutRecording(fixture, 'schedule.paused', scheduleId);
+    expect(await transitionKinds(bureau, scheduleId)).toEqual([]);
+    await bureau.runDurableMaintenance();
+
+    expect(await transitionKinds(bureau, scheduleId)).toEqual(['schedule.paused']);
+    expect(await auditTypes(bureau, scheduleId)).toEqual(['schedule.paused']);
+    await close(bureau);
+    expect(await pendingKeys(fixture)).not.toContain(key);
   });
 });
