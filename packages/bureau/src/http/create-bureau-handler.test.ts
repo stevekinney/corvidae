@@ -122,6 +122,20 @@ describe('createBureauHandler options', () => {
     });
   });
 
+  it('refuses to serve A2A over a taskRetention shorter than a send binding is kept (COR-903)', async () => {
+    await withBureau({}, (bureau) => {
+      const retaining = (taskRetention: TestBureau['taskRetention']) => () =>
+        createBureauHandler(
+          Object.create(bureau, { taskRetention: { value: taskRetention } }) as TestBureau,
+          { unauthenticatedAccess: 'allow', publicUrl: 'https://example.test' },
+        );
+      expect(bureau.taskRetention).toEqual({ olderThan: 30 * 86_400_000 });
+      expect(retaining({ olderThan: 86_399_999 })).toThrow(/taskRetention to be at least/);
+      expect(retaining({ olderThan: 86_400_000 })).not.toThrow();
+      expect(retaining('forever')).not.toThrow();
+    });
+  });
+
   it('rejects an unauthenticatedAccess value that is neither reject nor allow', async () => {
     await withBureau({}, (bureau) => {
       expect(() =>

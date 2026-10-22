@@ -54,7 +54,11 @@ import {
   mediaCapabilitiesOf,
 } from '../agent-catalog.ts';
 import { describeAgentModels } from '../agent-models.ts';
-import { type CommandLedger, createCommandLedger } from '../command-ledger.ts';
+import {
+  COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS,
+  type CommandLedger,
+  createCommandLedger,
+} from '../command-ledger.ts';
 import { isReservedOwnerSubject } from '../owner-of-record.ts';
 import { type AgUiOptions, createAgUiMount } from './ag-ui-mount.ts';
 import { createBureauA2AMount } from './a2a-mount.ts';
@@ -159,6 +163,7 @@ export type BureauHandlerSource = Pick<
   Bureau,
   | 'id'
   | 'hasExplicitId'
+  | 'taskRetention'
   | 'kv'
   | 'eventFeed'
   | 'runEventFeeds'
@@ -478,7 +483,7 @@ function assertA2AUrl(name: string, value: unknown): void {
   }
 }
 
-function assertA2A(options: BureauHandlerOptions): void {
+function assertA2A(bureau: BureauHandlerSource, options: BureauHandlerOptions): void {
   if (options.publicUrl === undefined) {
     if (options.discoveryUrl !== undefined) fail('discoveryUrl needs publicUrl, which mounts A2A');
     if (options.signing !== undefined) fail('signing needs publicUrl, which mounts A2A');
@@ -486,6 +491,20 @@ function assertA2A(options: BureauHandlerOptions): void {
   }
   assertA2AUrl('publicUrl', options.publicUrl);
   if (options.discoveryUrl !== undefined) assertA2AUrl('discoveryUrl', options.discoveryUrl);
+  // An exact retry of a send resolves through its binding to the task it created, so the task
+  // has to outlive the binding: a binding left pointing at a removed task would answer a retry
+  // with not-found, or start the work again.
+  const retention = bureau.taskRetention;
+  if (
+    retention !== 'forever' &&
+    retention.olderThan < COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS
+  ) {
+    fail(
+      `serving A2A needs the Bureau's taskRetention to be at least the ` +
+        `${COMMAND_LEDGER_DEFAULT_TERMINAL_RETENTION_MS} ms a send's idempotency binding is kept ` +
+        `(got ${retention.olderThan} ms)`,
+    );
+  }
 }
 
 function assertAssets(bureau: BureauHandlerSource): void {
@@ -890,7 +909,7 @@ export function createBureauHandler(
   assertAuthentication(options.authentication, unauthenticatedAccess);
   assertPublish(bureau, options.publish);
   assertAgUi(bureau, options);
-  assertA2A(options);
+  assertA2A(bureau, options);
   assertAssets(bureau);
   assertMaxRequestBodyBytes(options.maxRequestBodyBytes);
   assertBureauId(bureau);

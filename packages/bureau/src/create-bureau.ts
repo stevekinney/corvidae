@@ -18065,6 +18065,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   const bureau: Bureau<D> = {
     id: bureauId,
     hasExplicitId: options.id !== undefined,
+    taskRetention: options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS },
     hasDurableEngine: runCreationLedger !== undefined,
     eventFeed,
     runEventFeeds,
