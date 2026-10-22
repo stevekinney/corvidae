@@ -592,6 +592,61 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         }
       });
 
+      it('refuses a plan whose revision could not tell it apart from another', () => {
+        for (const asOf of [Number.NaN, Number.NEGATIVE_INFINITY]) {
+          expect(() => createMemoryRetrievalPlan({ constraints: { asOf } })).toThrow('finite');
+        }
+        expect(() => createMemoryRetrievalPlan({ minimumScore: -0.5 })).toThrow('positive');
+        expect(() => createMemoryRetrievalPlan({ stages: ['exact-lexical', 'semantic'] })).toThrow(
+          'rank-fusion',
+        );
+      });
+
+      it('ignores asOf when the plan leaves the temporal filter out', async () => {
+        const boston = await write('The user lives in Boston.');
+        const before = fixture.runtime.clock.now();
+        await fixture.runtime.advance(DAY);
+        await fixture.memory.forget(principalA, {
+          mode: 'supersession',
+          locator: at(boston),
+          successor: {
+            content: 'The user lives in Denver.',
+            collection: 'notes',
+            source: 'conversation',
+          },
+        });
+        const bundle = await fixture.memory.recallForModel(principalA, 'which city', {
+          collection: 'notes',
+          plan: { stages: ['semantic'], constraints: { asOf: before } },
+        });
+        expect(ids(bundle)).not.toContain(boston);
+        expect(exclusionFor(bundle, boston)?.reason).toBe('superseded');
+      });
+
+      it('records no below-minimum exclusions when the first scoring pass fails', async () => {
+        await write('The user drives an electric automobile.');
+        const broken = fixture.restart({
+          embedder: () => {
+            throw new Error('embedder offline');
+          },
+        });
+        const bundle = await broken.recallForModel(principalA, 'vehicle', { collection: 'notes' });
+        expect(bundle.stopReason).toBe('failed');
+        expect(bundle.exclusions).toEqual([]);
+        expect(bundle.candidates.map((item) => item.selection)).toEqual(['not-reached']);
+      });
+
+      it('compares counterevidence only within the candidate budget', async () => {
+        await write('The user prefers an aisle seat.');
+        await fixture.runtime.advance(1000);
+        await write('The user prefers a window seat.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'seat', {
+          collection: 'notes',
+          plan: { budgets: { maxCandidates: 1 } },
+        });
+        expect(bundle.contradictions).toEqual([]);
+      });
+
       it('runs the whole recall under the policy in force when it started', async () => {
         let memory: GovernedFixture['memory'] | undefined;
         const switching: InputDetector = {

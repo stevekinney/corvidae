@@ -71,6 +71,7 @@ interface RecallRun {
   filterInput?: FilterInput;
   /** Lineage sources resolved from outside the recalled collection, reported beside its own candidates. */
   readonly expanded: RecallCandidate[];
+  budgeted: readonly RecallCandidate[];
   filters: readonly MemoryRecallFilterReport[];
   cost: number;
   tokens: number;
@@ -332,7 +333,8 @@ function findCounterevidence(run: RecallRun): void {
         kind: 'historical-projection',
       });
     }
-    for (const other of filtered.eligible) {
+    // Only candidates the candidate budget let in are compared, so the budget bounds this stage too.
+    for (const other of run.budgeted) {
       if (run.selected.has(other.record.id)) continue;
       if (other.read.governance.contentDigest === selected.read.governance.contentDigest) continue;
       if (candidateSimilarity(selected, other) < run.plan.conflictSimilarity) continue;
@@ -390,12 +392,15 @@ async function executePlan(run: RecallRun, query: string): Promise<void> {
     run.exclusions.push(recallExclusion(candidate, 'budget', 'candidate-budget'));
   }
   run.considered = budgeted.length;
+  run.budgeted = budgeted;
   for (const stage of ['exact-lexical', 'semantic', 'rank-fusion'] as const) {
     report(run, stage, budgeted.length > 0 ? 'applied' : 'skipped');
   }
   const below = await scoringPasses(run, query, budgeted);
   await expandProvenance(run);
   for (const candidate of below) {
+    // A failed pass scored nothing, so nothing it left behind fell below the minimum.
+    if (run.stopReason === 'failed') break;
     if (run.selected.has(candidate.record.id)) continue;
     run.exclusions.push(recallExclusion(candidate, 'admission', 'below-minimum-score'));
   }
@@ -542,6 +547,7 @@ export async function recallForModel(
     contradictions: [],
     conflicting: new Set(),
     expanded: [],
+    budgeted: [],
     filters: [],
     cost: 0,
     tokens: 0,

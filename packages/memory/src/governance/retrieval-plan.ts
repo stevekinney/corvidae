@@ -165,6 +165,13 @@ function orderedStages(stages: readonly MemoryRetrievalStage[]): MemoryRetrieval
   if (!stages.includes('exact-lexical') && !stages.includes('semantic')) {
     throw new MemoryRetrievalPlanError('A retrieval plan needs exact-lexical or semantic scoring.');
   }
+  if (
+    stages.includes('exact-lexical') &&
+    stages.includes('semantic') &&
+    !stages.includes('rank-fusion')
+  ) {
+    throw new MemoryRetrievalPlanError('Two scoring stages need rank-fusion to combine them.');
+  }
   return MEMORY_RETRIEVAL_STAGES.filter((stage) => stages.includes(stage));
 }
 
@@ -181,16 +188,6 @@ export function createMemoryRetrievalPlan(
   const stages = orderedStages(input.stages ?? MEMORY_RETRIEVAL_STAGES);
   const budgets = { ...DEFAULT_MEMORY_RETRIEVAL_BUDGETS, ...input.budgets };
   validateBudgets(budgets);
-  for (const [name, value] of [
-    ['minimumScore', input.minimumScore ?? 0],
-    ['conflictSimilarity', input.conflictSimilarity ?? 0.9],
-  ] as const) {
-    // A non-finite threshold would digest as `null`, so two plans that behave
-    // differently could share a revision.
-    if (!Number.isFinite(value)) {
-      throw new MemoryRetrievalPlanError(`Retrieval ${name} must be a finite number.`);
-    }
-  }
   const given = input.constraints ?? {};
   const constraints: MemoryRetrievalConstraints = {
     ...(given.asOf === undefined ? {} : { asOf: given.asOf }),
@@ -208,7 +205,25 @@ export function createMemoryRetrievalPlan(
     minimumScore: input.minimumScore ?? 0,
     conflictSimilarity: input.conflictSimilarity ?? 0.9,
   };
+  assertDigestable(body, 'plan');
+  if (body.minimumScore < 0) {
+    throw new MemoryRetrievalPlanError('Retrieval minimumScore must be 0 (disabled) or positive.');
+  }
   return deepFreeze({ ...body, revision: `sha256:${sha256HexSync(JSON.stringify(body))}` });
+}
+
+/**
+ * Every number in a plan must be finite: `JSON.stringify` writes `NaN` and
+ * both infinities as `null`, so a non-finite value would let two plans that
+ * behave differently share one revision.
+ */
+function assertDigestable(value: unknown, path: string): void {
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    throw new MemoryRetrievalPlanError(`Retrieval ${path} must be a finite number.`);
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [key, nested] of Object.entries(value)) assertDigestable(nested, `${path}.${key}`);
+  }
 }
 
 function deepFreeze<T>(value: T): T {

@@ -153,7 +153,8 @@ function historicalAdmitted(plan: MemoryRetrievalPlan, candidate: RecallCandidat
   const invalidatedAt = candidate.read.governance.invalidatedAt;
   if (invalidatedAt === undefined) return true;
   const { asOf, includeHistorical } = plan.constraints;
-  if (asOf !== undefined) return invalidatedAt > asOf;
+  // `asOf` belongs to the temporal filter: a plan without that stage ignores it.
+  if (asOf !== undefined && plan.stages.includes('temporal-filter')) return invalidatedAt > asOf;
   return includeHistorical;
 }
 
