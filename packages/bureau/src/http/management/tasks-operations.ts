@@ -10,15 +10,15 @@
  * @module tasks-operations
  */
 
-import { defineOperation, type Principal } from '@lostgradient/weft';
+import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
+import { TaskListingTokenError } from '../../task-list-snapshots.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   DEFAULT_PAGE_LIMIT,
-  pageFields,
   resourceNotFound,
   taskStateSchema,
   taskViewSchema,
@@ -60,12 +60,22 @@ const tasksListInput = z.object({
   contextId: z.string().min(1).optional(),
   agentName: z.string().min(1).optional(),
   status: taskStateSchema.optional(),
-  ...pageFields,
+  /** Only tasks whose status timestamp is strictly after this instant. */
+  statusTimestampAfter: z.iso.datetime({ offset: true }).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  pageToken: z.string().min(1).optional(),
 });
 const tasksListOutput = z.object({
   tasks: z.array(taskViewSchema),
-  nextOffset: z.number().int().nullable(),
+  nextPageToken: z.string().nullable(),
 });
+
+/** The identity a listing's snapshot belongs to: the owner key, or the credential's own subject. */
+function listingPrincipalOf(principal: Principal): string {
+  const owner = ownerOfPrincipal(principal);
+  if (owner !== undefined) return owner;
+  return `${principal.method}:${'subject' in principal ? (principal.subject ?? '') : ''}`;
+}
 
 export const tasksListOperation = defineOperation<
   typeof tasksListInput,
@@ -76,7 +86,7 @@ export const tasksListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List tasks',
   description:
-    'Lists the caller’s own tasks, newest first; a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation. Pages with `limit` (1 to 100, default 50) and `offset`; `nextOffset` is `null` on the last page.',
+    'Lists the caller’s own tasks, most recently changed first (by status timestamp, then task id); a caller holding `bureau.tasks:read` lists every owner’s. `contextId` returns only that context’s tasks in its current incarnation, and `statusTimestampAfter` (ISO 8601) only tasks whose status timestamp is strictly later. Pages with `limit` (1 to 100, default 50, free to change between pages) and `pageToken`; `nextPageToken` is `null` when no entries remain. The first page of a listing with a next page records the listing, and every later page returns the tasks exactly as they matched then, so a task that changes mid-enumeration keeps its place and appears once; a task removed since is skipped, so a page can hold fewer than `limit` tasks. A token is opaque, valid for 15 minutes from the first page, and only with the principal, reach, and filters (`contextId`, `agentName`, `status`, `statusTimestampAfter`) it was issued for, and only while the context is the incarnation it was issued for; any other token is `InvalidParams`. A principal holds at most 16 live listings, and starting another ends its oldest.',
   destructive: false,
   tags: ['Tasks'],
   inputSchema: tasksListInput,
@@ -90,19 +100,36 @@ export const tasksListOperation = defineOperation<
     const everyOwner = holdsScope(principal, 'bureau.tasks:read');
     const owner = everyOwner ? undefined : ownerOfPrincipal(principal);
     // A principal that can own nothing owns no task.
-    if (!everyOwner && owner === undefined) return { tasks: [], nextOffset: null };
-    const page = await host.tasks.list({
-      ...(owner === undefined ? {} : { owner }),
-      ...(input.contextId === undefined ? {} : { contextId: input.contextId }),
-      ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
-      ...(input.status === undefined ? {} : { status: input.status }),
-      limit: input.limit ?? DEFAULT_PAGE_LIMIT,
-      offset: input.offset ?? 0,
-    });
-    return {
-      tasks: page.tasks.map((task) => ({ ...task, openWaits: [...task.openWaits] })),
-      nextOffset: page.nextOffset,
-    };
+    if (!everyOwner && owner === undefined) return { tasks: [], nextPageToken: null };
+    try {
+      const page = await host.tasks.list({
+        principal: listingPrincipalOf(principal),
+        ...(owner === undefined ? {} : { owner }),
+        ...(input.contextId === undefined ? {} : { contextId: input.contextId }),
+        ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
+        ...(input.status === undefined ? {} : { status: input.status }),
+        ...(input.statusTimestampAfter === undefined
+          ? {}
+          : { statusTimestampAfter: input.statusTimestampAfter }),
+        ...(input.pageToken === undefined ? {} : { pageToken: input.pageToken }),
+        limit: input.limit ?? DEFAULT_PAGE_LIMIT,
+      });
+      return {
+        tasks: page.tasks.map((task) => ({ ...task, openWaits: [...task.openWaits] })),
+        nextPageToken: page.nextPageToken,
+      };
+    } catch (error) {
+      if (!(error instanceof TaskListingTokenError)) throw error;
+      throw {
+        code: 'InvalidParams',
+        message: error.message,
+        data: {
+          issues: [
+            { path: ['pageToken'], message: error.message, code: `page-token-${error.reason}` },
+          ],
+        },
+      } satisfies OperationFault;
+    }
   },
 });
 

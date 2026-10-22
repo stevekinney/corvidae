@@ -218,7 +218,7 @@ describe('an agent step', () => {
     expect(stepRunId.startsWith('workflow-agent-')).toBe(true);
     expect(await harness.bureau.getOwner({ kind: 'run', id: stepRunId })).toBe('anonymous:local');
     // Not a task, and no context was created for it.
-    const page = await harness.bureau.tasks.list({ limit: 100, offset: 0 });
+    const page = await harness.bureau.tasks.enumerate({ limit: 100, offset: 0 });
     expect(page.tasks.map((task) => task.id)).not.toContain(stepRunId);
     expect(await harness.bureau.tasks.record(stepRunId)).toBeUndefined();
     expect(await harness.bureau.getSession(stepRunId)).toBeUndefined();
