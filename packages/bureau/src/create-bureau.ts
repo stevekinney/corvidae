@@ -8679,6 +8679,42 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * durable catalog run with no task record is given one. A run still in flight is left to the
    * recovery that reattaches it, which settles it as it ends.
    */
+  /**
+   * COR-1594 — the boot's announcement of every settled fire within the event retention window
+   * whose `schedule.fire.settled` event was never appended.
+   */
+  async function announceUnannouncedFireEnds(
+    history: NonNullable<typeof eventHistoryInstance>,
+  ): Promise<void> {
+    // Event retention removes an event together with its deduplication marker, so a fire settled
+    // before its cutoff has neither, by design, and is not announced again at every boot. Under
+    // `'forever'` nothing is retired, so there is no bound.
+    const cutoff = eventRetentionCutoff();
+    for (const record of await tasks.settledFires()) {
+      if (cutoff !== undefined && Date.parse(record.settled?.at ?? '') < cutoff) continue;
+      const owner = { kind: 'run', id: record.taskId } as const;
+      if (
+        await history.wasRecorded(
+          owner,
+          SCHEDULE_FIRE_SETTLED_EVENT_KIND,
+          scheduleFireSettledDedupeKey(record.taskId),
+        )
+      ) {
+        continue;
+      }
+      try {
+        await appendFireSettledEvent(record);
+      } catch (error) {
+        diagnose({
+          level: 'error',
+          scope: 'task-registry',
+          message: `[bureau] Could not record in the history how schedule fire "${record.taskId}" ended: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      }
+    }
+  }
+
   async function reconcileTaskRecords(): Promise<void> {
     const durable = runtime.durable;
     if (!durable) return;
@@ -8747,34 +8783,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // COR-1594: a fire whose settlement was written but whose history event never was, because its
     // process died between the two, would leave a stream open on another process for ever. The
     // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
+    // A read that fails here is reported and leaves the pass to the next boot; the steps after it
+    // still run.
     if (eventHistoryInstance !== undefined) {
-      // Event retention removes an event together with its deduplication marker, so a fire settled
-      // before its cutoff has neither, by design, and is not announced again at every boot. Under
-      // `'forever'` nothing is retired, so there is no bound.
-      const cutoff = eventRetentionCutoff();
-      for (const record of await tasks.settledFires()) {
-        if (cutoff !== undefined && Date.parse(record.settled?.at ?? '') < cutoff) continue;
-        const owner = { kind: 'run', id: record.taskId } as const;
-        if (
-          await eventHistoryInstance.wasRecorded(
-            owner,
-            SCHEDULE_FIRE_SETTLED_EVENT_KIND,
-            scheduleFireSettledDedupeKey(record.taskId),
-          )
-        ) {
-          continue;
-        }
-        try {
-          await appendFireSettledEvent(record);
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'task-registry',
-            message: `[bureau] Could not record in the history how schedule fire "${record.taskId}" ended: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        }
-      }
+      await announceUnannouncedFireEnds(eventHistoryInstance).catch((error: unknown) => {
+        diagnose({
+          level: 'error',
+          scope: 'recovery',
+          message: `[bureau] Could not announce the ends of settled schedule fires at boot: ${serializeUnknownError(error)}`,
+          cause: error,
+        });
+      });
     }
     // COR-1622: the open closes of every canceled fire, settled or not.
     await retryCanceledFireCloses().catch((error: unknown) => {

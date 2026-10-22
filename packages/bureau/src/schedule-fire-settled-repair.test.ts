@@ -5,6 +5,7 @@
  *
  * Nothing here waits on a wall clock (see `schedule-fire-stream.test-support.ts`).
  */
+import type { Storage } from '@lostgradient/weft';
 import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
@@ -160,5 +161,73 @@ describe('a fire cancelled by a process that holds no run for it', () => {
 
     expect(statusesOf(frames)).toEqual(['working', 'canceled']);
     expect(await settledEventsOf(canceller, fireId)).toHaveLength(1);
+  });
+});
+
+/** Fails the first read of a fire's settled-event deduplication marker, as a storage fault does. */
+function failingSettledMarkerRead(storage: Storage): Storage {
+  let armed = true;
+  return new Proxy(storage, {
+    get(target, property) {
+      const member = Reflect.get(target, property, target) as unknown;
+      if (typeof member !== 'function') return member;
+      const call = (...args: unknown[]) =>
+        (member as (...a: unknown[]) => unknown).apply(target, args);
+      if (property !== 'get') return call;
+      return (key: string, ...rest: unknown[]) => {
+        if (
+          armed &&
+          key.startsWith('outbox-dedupe:') &&
+          key.includes(SCHEDULE_FIRE_SETTLED_EVENT_KIND)
+        ) {
+          armed = false;
+          return Promise.reject(new Error('transient storage error on the marker read'));
+        }
+        return call(key, ...rest);
+      };
+    },
+  });
+}
+
+describe('a boot whose announcement of settled fires cannot read', () => {
+  it('reports that pass and goes on with the rest of the boot', async () => {
+    const { gate, parked, generate } = parkedGenerate();
+    const path = harness.nextDatabasePath();
+    const holder = await harness.open({
+      ...fireBureauOptions(generate, 'holder'),
+      storage: await harness.sqliteStorage(path),
+    });
+    const { fireId } = await fireOnce(holder, OWNER.alice);
+    await parked.promise;
+    gate.resolve();
+    await settled(holder, fireId);
+    await pollUntil(async () => {
+      const events = await settledEventsOf(holder, fireId);
+      return events.length === 1 ? true : undefined;
+    }, 'the settled event');
+    await holder.dispose();
+
+    // The next boot's pass fails at its first marker read. It is reported as that pass's failure,
+    // not as the task reconciliation's, so the steps after it in that reconciliation still ran.
+    const messages: string[] = [];
+    await harness.open({
+      ...fireBureauOptions(generate, 'restart'),
+      storage: await harness.sqliteStorage(path, failingSettledMarkerRead),
+      onDiagnostic: (diagnostic) => {
+        messages.push(diagnostic.message);
+      },
+    });
+    await pollUntil(
+      () =>
+        messages.some((message) =>
+          message.includes('Could not announce the ends of settled schedule fires at boot'),
+        )
+          ? true
+          : undefined,
+      'the pass to report its failure',
+    );
+    expect(messages.some((message) => message.includes('Could not reconcile task records'))).toBe(
+      false,
+    );
   });
 });
