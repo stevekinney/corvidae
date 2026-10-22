@@ -33,6 +33,7 @@ import {
   releaseFreshlyAcquiredResumeClaim,
   type StandaloneClaimAcquireResult,
 } from './standalone-claim-acquire.ts';
+import { WorkflowNotResumableError } from './workflow-not-resumable-error.ts';
 
 /**
  * An out-parameter this call populates with the epoch of a claim it freshly
@@ -232,9 +233,7 @@ function resumableState(workflowId: string, stateBytes: Uint8Array | null): Work
   }
   const state = decodeWorkflowState(stateBytes);
   if (state.status !== 'running' && state.status !== 'suspended') {
-    throw new Error(
-      `Cannot resume workflow "${workflowId}": status is "${state.status}", expected "running" or "suspended"`,
-    );
+    throw new WorkflowNotResumableError(workflowId, state.status);
   }
   return state;
 }
