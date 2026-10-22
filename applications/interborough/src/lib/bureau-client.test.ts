@@ -14,6 +14,7 @@ import {
   listContexts,
   sendContextInput,
   steerContext,
+  type SteerOutcome,
 } from './bureau-client.ts';
 import { classifyFault } from './faults.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
@@ -246,13 +247,14 @@ describe('switching a session’s model and branching it', () => {
   });
 
   test('steerContext reads every outcome the Bureau admits or refuses with', async () => {
-    for (const answer of [
+    const answers: ReadonlyArray<Record<string, unknown> & { outcome: SteerOutcome['outcome'] }> = [
       { outcome: 'accepted', command: {} },
       { outcome: 'replayed', command: {} },
       { outcome: 'conflict', conflict: {} },
       { outcome: 'session-terminal', sessionId: 'c1' },
       { outcome: 'unsupported-capability', reason: 'No steering.' },
-    ]) {
+    ];
+    for (const answer of answers) {
       const stub = answering(result(answer));
       const outcome = await withStub(stub.fetch, () =>
         steerContext({
