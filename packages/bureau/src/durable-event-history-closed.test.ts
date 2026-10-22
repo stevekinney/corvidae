@@ -10,12 +10,13 @@ import {
   resolveStorage,
   yieldToPortableEventLoop,
 } from '@lostgradient/weft';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, jest } from 'bun:test';
 
 import { createDurableEventHistory, type DurableEventHistory } from './durable-event-history';
 
 const cleanups: Array<() => void> = [];
 afterEach(() => {
+  jest.useRealTimers();
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
 
@@ -33,9 +34,13 @@ async function openHistory() {
   return { storage, history, diagnostics };
 }
 
-/** Lets the subscription's loop run to its end, with no timer. */
+/**
+ * Lets the subscription's loop run to its end. The feed's live poll is a raw `setTimeout`, so a
+ * test that waits on it runs on fake timers, which this advances a poll interval at a time.
+ */
 async function settleSubscription(subscription: { readonly closed: boolean }): Promise<void> {
   for (let turn = 0; turn < 200 && !subscription.closed; turn += 1) {
+    if (jest.isFakeTimers()) jest.advanceTimersByTime(100);
     await yieldToPortableEventLoop();
   }
   for (let turn = 0; turn < 10; turn += 1) await yieldToPortableEventLoop();
@@ -59,6 +64,7 @@ describe('the close notification of a history subscription', () => {
   });
 
   it('is called once when a stored record is corrupt', async () => {
+    jest.useFakeTimers();
     const { storage, history } = await openHistory();
     const closed: unknown[] = [];
     const subscription = history.subscribeEventHistory(owner, () => {}, {

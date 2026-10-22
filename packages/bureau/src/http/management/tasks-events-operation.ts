@@ -461,9 +461,34 @@ function followScheduleFire(
         historySubscription = host.taskHistory.subscribeEventHistory(
           { kind: 'run', id: taskId },
           (event) => {
-            if (event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND) {
+            // The end itself, or a gap: retention overtook the subscription, so events were lost,
+            // possibly the end. Either way the record says whether the fire is over.
+            if (
+              event.kind === SCHEDULE_FIRE_SETTLED_EVENT_KIND ||
+              event.kind === DURABLE_HISTORY_GAP_KIND
+            ) {
               readAgain().catch((error: unknown) => queue.fail(error));
             }
+          },
+          {
+            // The subscription ended on an error (a storage fault) and will deliver nothing more,
+            // so the settled event can no longer be waited for. The record is read once more: a
+            // fire that is over finishes the stream, and any other ends it with an error, so the
+            // client reconnects and a new subscription follows the history from its tail.
+            onClosed: (cause) => {
+              if (ended) return;
+              readAgain()
+                .then(() => {
+                  if (ended) return;
+                  queue.fail(
+                    new Error(
+                      `The history of task "${taskId}" can no longer be followed; reconnect to follow it again.`,
+                      { cause },
+                    ),
+                  );
+                })
+                .catch((error: unknown) => queue.fail(error));
+            },
           },
         );
         await readAgain();

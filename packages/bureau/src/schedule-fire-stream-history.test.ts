@@ -80,8 +80,10 @@ describe('a peer stream whose history subscription is closed by a read fault', (
       ...fireBureauOptions(generate, 'holder'),
       storage: await harness.sqliteStorage(path),
     });
+    const diagnostics: string[] = [];
     const peer = await harness.open({
       ...fireBureauOptions(generate, 'peer'),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       storage: await harness.sqliteStorage(path, (storage) => fault.wrap(storage)),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice);
@@ -98,6 +100,7 @@ describe('a peer stream whose history subscription is closed by a read fault', (
     const frames = await stream.frames;
 
     expect(fault.failed).toBe(1);
+    expect(diagnostics.some((message) => message.includes('ended with an error'))).toBe(true);
     expect(statusesOf(frames)).toEqual(['working', 'completed']);
   });
 
@@ -110,8 +113,10 @@ describe('a peer stream whose history subscription is closed by a read fault', (
       ...fireBureauOptions(generate, 'holder'),
       storage: await harness.sqliteStorage(path),
     });
+    const diagnostics: string[] = [];
     const peer = await harness.open({
       ...fireBureauOptions(generate, 'peer'),
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.message),
       storage: await harness.sqliteStorage(path, (storage) => fault.wrap(storage)),
     });
     const { fireId } = await fireOnce(holder, OWNER.alice);
