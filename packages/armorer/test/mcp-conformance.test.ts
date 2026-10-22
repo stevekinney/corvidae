@@ -332,14 +332,11 @@ describe.each(eras)('MCP conformance ($era era)', ({ era, mode, version }) => {
       // Without a serverId, a resource link cannot be referenced and the call fails.
       const unidentified = await fromMcpClientTools(client);
       const unidentifiedMedia = unidentified.find((tool) => tool.name === 'media');
-      expect(
-        (
-          await createToolbox(unidentifiedMedia ? [unidentifiedMedia] : []).execute({
-            name: 'media',
-            arguments: {},
-          })
-        ).error?.message,
-      ).toMatch(/no serverId was configured/);
+      const failed = await createToolbox(unidentifiedMedia ? [unidentifiedMedia] : []).execute({
+        name: 'media',
+        arguments: {},
+      });
+      expect(failed.error?.message).toMatch(/no serverId was configured/);
     } finally {
       await client.close();
     }

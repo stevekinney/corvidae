@@ -111,8 +111,8 @@ describe('tool-result parts contract', () => {
           return toolContent(parts);
         },
       });
-      return (await createToolbox([tool]).execute({ name: 'digested', arguments: {} }))
-        .outputDigest;
+      const result = await createToolbox([tool]).execute({ name: 'digested', arguments: {} });
+      return result.outputDigest;
     };
     const first = await digest(PARTS);
     expect(first).toEqual(expect.any(String));
