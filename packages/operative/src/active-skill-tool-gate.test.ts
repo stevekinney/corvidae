@@ -101,7 +101,7 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
 
   it('answers a refused call in a run, settles it as an error, and lets the next step see it', async () => {
     const { gated, executed } = harness();
-    const seenByNextStep: string[] = [];
+    const seenByNextStep: Array<{ callId: string; outcome: string; code?: string }> = [];
     const generate: GenerateFunction = async (context) => {
       if (context.step === 0) {
         return {
@@ -110,7 +110,12 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
         };
       }
       for (const message of context.conversation.getMessages()) {
-        if (message.role === 'tool-result') seenByNextStep.push(JSON.stringify(message.content));
+        if (message.toolResult === undefined) continue;
+        seenByNextStep.push({
+          callId: message.toolResult.callId,
+          outcome: message.toolResult.outcome,
+          ...(message.toolResult.error === undefined ? {} : { code: message.toolResult.error.code }),
+        });
       }
       return { content: 'done', toolCalls: [] };
     };
@@ -131,7 +136,9 @@ describe('withActiveSkillToolPolicy as an execution gate (COR-1628)', () => {
     expect(settled.map((event) => [event.toolCallId, event.status])).toEqual([
       ['call-write', 'error'],
     ]);
-    expect(seenByNextStep.join('\n')).toContain(REFUSAL('write'));
+    expect(seenByNextStep).toEqual([
+      { callId: 'call-write', outcome: 'error', code: 'SKILL_TOOL_DENIED' },
+    ]);
   });
 
   it('throws the SKILL_TOOL_DENIED ToolError under errorMode failFast, as Armorer does', async () => {
