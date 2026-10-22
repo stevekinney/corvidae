@@ -13,6 +13,7 @@ import { clonePlain } from './clone-plain.ts';
 import { deepFreeze } from './deep-freeze.ts';
 import type { DefinitionSchema } from './definition-schema.ts';
 import type { QueryDefinition, SignalDefinition, UpdateDefinition } from './message-handles.ts';
+import { findMessageNameCollision } from './message-name-collisions.ts';
 import { validateWorkflowOrActivityName } from './name-grammar.ts';
 import type { RetentionPolicy } from './retry-retention.ts';
 import type { SearchAttributeSchema } from './search-attributes.ts';
@@ -170,22 +171,18 @@ export class WorkflowBuilderImpl<TName extends string> {
 
   /**
    * Add a chain method's entries to the ones the builder already carries from
-   * `createWorkflowFactory`. A key the factory already declared is rejected,
-   * not overridden, so a shared entry means the same thing in every workflow.
-   * Message maps also compare runtime names, which registration re-keys by.
+   * `createWorkflowFactory`. An entry occupying any name a shared entry
+   * occupies, its key or its runtime name, is rejected rather than overriding
+   * it, so a shared entry means the same thing in every workflow.
    */
   #merge<T>(method: ChainMethodName, current: Record<string, T>, added: Record<string, T>) {
-    const runtimeName = (entry: T) =>
-      method === 'activities' || method === 'uses' ? undefined : (entry as { name: string }).name;
-    const sharedNames = new Set(Object.values(current).map(runtimeName));
-    for (const [key, entry] of Object.entries(added)) {
-      const name = runtimeName(entry);
-      if (Object.hasOwn(current, key) || (name !== undefined && sharedNames.has(name))) {
-        const as = name === undefined || name === key ? '' : ` with runtime name "${name}"`;
-        throw new WorkflowBuilderError(
-          `workflow("${this.#options.name}"): .${method}() declares "${key}"${as}, which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
-        );
-      }
+    const collision = findMessageNameCollision(current, added);
+    if (collision !== undefined) {
+      const { key, name } = collision;
+      const as = name === key ? '' : ` with runtime name "${name}"`;
+      throw new WorkflowBuilderError(
+        `workflow("${this.#options.name}"): .${method}() declares "${key}"${as}, which the workflow factory already declares. Shared entries cannot be overridden; give this one a different name.`,
+      );
     }
     return { ...current, ...added };
   }

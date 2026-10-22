@@ -27,6 +27,7 @@ import type {
   SignalDefinition,
   UpdateDefinition,
 } from './types/message-handles.ts';
+import { findMessageNameCollisionWithin } from './types/message-name-collisions.ts';
 import type {
   ActivityMap,
   NormalizeActivities,
@@ -37,6 +38,7 @@ import type {
 import {
   normalizeUsesMap,
   type SharedWorkflowEntries,
+  WorkflowBuilderError,
   type WorkflowBuilderOptions,
 } from './types/workflow-builder-runtime.ts';
 import type { InitialBuilderState, WorkflowBuilder } from './types/workflow-builder.ts';
@@ -236,6 +238,14 @@ export function createWorkflowFactory<
     updates: snapshot(entries.updates as Record<string, UpdateDefinition> | undefined),
     queries: snapshot(entries.queries as Record<string, QueryDefinition> | undefined),
   };
+  for (const kind of ['signals', 'updates', 'queries'] as const) {
+    const collision = findMessageNameCollisionWithin(shared[kind] ?? {});
+    if (collision !== undefined) {
+      throw new WorkflowBuilderError(
+        `createWorkflowFactory(): ${kind} entry "${collision.key}" occupies the name "${collision.name}", which another shared entry already uses as its key or runtime name`,
+      );
+    }
+  }
 
   const workflow = <const TName extends string>(options: WorkflowBuilderOptions<TName>) =>
     createWorkflowBuilder(options, shared) as unknown as WorkflowBuilder<

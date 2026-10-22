@@ -190,6 +190,29 @@ describe('createWorkflowFactory() — conflicts and validation', () => {
     ).toThrow(WorkflowBuilderError);
   });
 
+  it('rejects a local key that is a shared runtime name, and the reverse', () => {
+    const { workflow: aliased } = createWorkflowFactory({
+      signals: { factoryAlias: signal<{ a: string }>('approve') },
+    });
+    const keyClash = aliased({ name: 'cross' }) as unknown as Untyped;
+    expect(() => keyClash['signals']!({ approve: signal<{ b: number }>('local') })).toThrow(
+      '.signals() declares "approve", which the workflow factory already declares',
+    );
+    const nameClash = aliased({ name: 'cross' }) as unknown as Untyped;
+    expect(() => nameClash['signals']!({ other: signal('factoryAlias') })).toThrow(
+      '.signals() declares "other" with runtime name "factoryAlias", which the workflow factory already declares',
+    );
+  });
+
+  it('rejects shared message maps whose entries occupy the same name', () => {
+    expect(() =>
+      createWorkflowFactory({ signals: { first: signal('second'), second: signal('third') } }),
+    ).toThrow('signals entry "second" occupies the name "second"');
+    expect(() =>
+      createWorkflowFactory({ queries: { first: query('shared'), second: query('shared') } }),
+    ).toThrow(WorkflowBuilderError);
+  });
+
   it('validates shared activities like .uses() does', () => {
     expect(() => createWorkflowFactory({ activities: { salute: greet } as never })).toThrow(
       /\.uses\(\): entry "salute" must be an activity definition named "salute"/,
