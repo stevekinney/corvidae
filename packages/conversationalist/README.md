@@ -1100,6 +1100,8 @@ conversationHistory = await appendToolResultsAsync(conversationHistory, results)
 
 Shared tool types and materializers are provided by `armorer/protocol`, a dependency-free subpath of Armorer, and re-exported by both packages.
 
+See [Using `armorer` with `conversationalist`](documentation/armorer-integration.md) for complete OpenAI, Anthropic, and Gemini tool loops.
+
 ## Events
 
 For how conversation observation and disposal fit with run, tool, and runtime ownership, see [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md).
@@ -1417,6 +1419,7 @@ A stale candidate is discarded and rescheduled in a new window up to `maxStaleRe
 ## Documentation
 
 - [API Reference](documentation/api-reference.md)
+- [Using `armorer` with `conversationalist`](documentation/armorer-integration.md) - Complete OpenAI, Anthropic, and Gemini tool loops
 - [Runtime contracts across Corvidae](../../documentation/runtime-contracts.md) - Cross-package state, tool, run, and cleanup ownership
 
 ## Development
