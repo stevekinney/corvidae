@@ -688,6 +688,71 @@ describe('closing, cancellation, and cleanup', () => {
     });
   });
 
+  it('leaves nothing behind when a task is removed while a commit writes its cursor', async () => {
+    for (let turns = 0; turns < 40; turns += 1) {
+      const { surfaces, storage } = harness();
+      await surfaces.create(createCommand());
+      const updating = surfaces.update(updateCommand());
+      for (let turn = 0; turn < turns; turn += 1) await Promise.resolve();
+      await surfaces.removeTask(TASK);
+      await updating;
+
+      const left: string[] = [];
+      for await (const key of storage.keys('')) if (key.includes('bureau-surface')) left.push(key);
+      expect({ turns, left }).toEqual({ turns, left: [] });
+    }
+  });
+
+  it('accepts a review of a session run whose id holds a colon, and refuses one of another run', async () => {
+    const runId = 'session-1:0';
+    const { surfaces } = harness({ [runId]: { owner: OWNER, contextId: 'session-1' } });
+    const review = (reviewId: string, commandId: string) =>
+      surfaces.create(
+        createCommand({
+          commandId,
+          surfaceId: commandId,
+          taskId: runId,
+          actions: [
+            {
+              name: 'approve',
+              intent: 'approve',
+              continuation: { type: 'review', reviewId },
+            },
+          ],
+        }),
+      );
+
+    expect(await review(`approval:${runId}:call-1`, 'own')).toMatchObject({ outcome: 'accepted' });
+    expect(await review('approval:session-1:1:call-1', 'other')).toMatchObject({
+      reason: 'invalid',
+    });
+  });
+
+  it('refuses a nested $id, but not a property named $id', async () => {
+    const { surfaces } = harness();
+    const nested = await surfaces.create(
+      createCommand({
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', properties: { value: { $id: 'nested', type: 'string' } } },
+        },
+      }),
+    );
+    const named = await surfaces.create(
+      createCommand({
+        commandId: 'create-2',
+        surfaceId: 'named',
+        representation: {
+          kind: 'input-form',
+          schema: { type: 'object', properties: { $id: { type: 'string' } } },
+        },
+      }),
+    );
+
+    expect(nested).toMatchObject({ reason: 'invalid' });
+    expect(named).toMatchObject({ outcome: 'accepted' });
+  });
+
   it('lets an aborted signal end the wait while a read is stuck', async () => {
     const { surfaces, table } = harness();
     await surfaces.create(createCommand());

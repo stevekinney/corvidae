@@ -1038,6 +1038,35 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
    * settled (a write that changed something else) tells no one. A listener that throws is its
    * own failure, never the write's.
    */
+  async function recordSettlement(
+    taskId: string,
+    settlement: Parameters<TaskRegistry['recordSettled']>[1],
+  ): Promise<boolean> {
+    const captured: { settled?: TaskRecord } = {};
+    const recorded = await track(
+      update(taskId, (record) => {
+        // A task has more than one writer of its settlement (the action that ended the run,
+        // and the catalog hook that carries the answer), so the answer is never lost to
+        // whichever lands last. Only a catalog task and a schedule fire record one: a session
+        // run's answer lives in its durable history, and a fire writes none there.
+        const answer =
+          record.incarnation === '' || record.kind === 'schedule-fire'
+            ? (settlement.answer ?? record.settled?.answer)
+            : undefined;
+        const { answer: _ignored, ...rest } = settlement;
+        const next: TaskRecord = {
+          ...record,
+          settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
+        };
+        captured.settled = next;
+        return next;
+      }),
+    );
+    if (recorded) await announceSettled(taskId);
+    if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
+    return recorded;
+  }
+
   async function announceSettled(taskId: string): Promise<void> {
     const waiting = settledListeners.get(taskId);
     if (waiting === undefined || waiting.size === 0) return;
@@ -1129,30 +1158,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
       return bound;
     },
 
-    async recordSettled(taskId, settlement) {
-      const captured: { settled?: TaskRecord } = {};
-      const recorded = await track(
-        update(taskId, (record) => {
-          // A task has more than one writer of its settlement (the action that ended the run,
-          // and the catalog hook that carries the answer), so the answer is never lost to
-          // whichever lands last. Only a catalog task and a schedule fire record one: a session
-          // run's answer lives in its durable history, and a fire writes none there.
-          const answer =
-            record.incarnation === '' || record.kind === 'schedule-fire'
-              ? (settlement.answer ?? record.settled?.answer)
-              : undefined;
-          const { answer: _ignored, ...rest } = settlement;
-          const next: TaskRecord = {
-            ...record,
-            settled: { ...rest, ...(answer === undefined ? {} : { answer }) },
-          };
-          captured.settled = next;
-          return next;
-        }),
-      );
-      if (recorded) await announceSettled(taskId);
-      if (recorded && captured.settled !== undefined) await recordFireSettled(captured.settled);
-      return recorded;
+    recordSettled(taskId, settlement) {
+      // The whole settlement is tracked, its announcement included, so `flush()` (and so
+      // `idle()`) also waits for what a settlement listener starts, such as a surface freeze.
+      return track(recordSettlement(taskId, settlement));
     },
 
     async unsettledFiresOfContext(contextId, incarnation) {

@@ -214,10 +214,17 @@ export class InteractiveSurfaceSchemaCompiler {
       return cached;
     }
     if (Object.hasOwn(schema, '$id')) fail(`${where} must not declare $id`);
+    // Ajv registers each nested `$id` it finds in a real subschema position
+    // (not a property named `$id`, nor annotation data), so a new entry in its
+    // references is a nested `$id`, which would move base URIs and `$ref`
+    // resolution, and collide across surfaces sharing this compiler.
+    const known = new Set(Object.keys(this.#ajv.refs));
+    const nestedIds = (): string[] => Object.keys(this.#ajv.refs).filter((ref) => !known.has(ref));
     let validate: ValidateFunction;
     try {
       validate = this.#ajv.compile(schema);
     } catch (error: unknown) {
+      for (const ref of nestedIds()) this.#ajv.removeSchema(ref);
       // A schema's regular expressions run on Bureau's event loop when a value
       // is admitted, and an untrusted author can write one that backtracks for
       // seconds, so v1 refuses them.
@@ -227,6 +234,12 @@ export class InteractiveSurfaceSchemaCompiler {
       fail(
         `${where} is not a valid JSON Schema: ${error instanceof Error ? error.message : String(error)}`,
       );
+    }
+    const added = nestedIds();
+    if (added.length > 0) {
+      for (const ref of added) this.#ajv.removeSchema(ref);
+      this.#ajv.removeSchema(schema);
+      fail(`${where} must not declare $id`);
     }
     // An asynchronous schema validates to a Promise; admission validates synchronously.
     if (Reflect.get(validate, '$async') === true)

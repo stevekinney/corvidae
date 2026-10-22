@@ -288,8 +288,11 @@ function assertOwnContinuations(
   for (const action of actions) {
     const continuation = action.continuation;
     if (continuation.type === 'review') {
-      const [kind, runId] = continuation.reviewId.split(':');
-      if ((kind !== 'approval' && kind !== 'human-wait') || runId !== taskId) {
+      // A run id can itself hold colons (a session run is `<sessionId>:<sequence>`),
+      // so the review id is matched by its known prefix rather than split.
+      const reviewId = continuation.reviewId;
+      const ownPrefixes = [`approval:${taskId}:`, `human-wait:${taskId}:`];
+      if (!ownPrefixes.some((prefix) => reviewId.startsWith(prefix))) {
         throw new InteractiveSurfaceValidationError(
           `action "${action.name}" continues a review of another task`,
         );
@@ -328,8 +331,18 @@ export function createInteractiveSurfaces(
   }
 
   /** Records the committing event's cursor, unless a later revision already has. */
-  async function writeCursor(surface: InteractiveSurface, cursor: string): Promise<void> {
+  /**
+   * Records `cursor` for `surface`'s revision, only while the projection still
+   * reads `committed`: once a later commit or the task's removal has replaced
+   * it, this write is stale, and a removal can never be followed by a cursor.
+   */
+  async function writeCursor(
+    surface: InteractiveSurface,
+    cursor: string,
+    committed: string,
+  ): Promise<void> {
     const key = cursorKey(surface.taskId, surface.surfaceId);
+    const projection = surfaceKey(surface.taskId, surface.surfaceId);
     const next = JSON.stringify({ revision: surface.revision, cursor } satisfies StoredCursor);
     for (let attempt = 0; attempt < MAX_COMMIT_ATTEMPTS; attempt += 1) {
       const recorded = await store.get(key);
@@ -341,12 +354,16 @@ export function createInteractiveSurfaces(
       }
       if (
         await store.conditionalBatch(
-          [{ key, expectedValue: recorded }],
+          [
+            { key, expectedValue: recorded },
+            { key: projection, expectedValue: committed },
+          ],
           [{ type: 'put', key, value: next }],
         )
       ) {
         return;
       }
+      if ((await store.get(projection)) !== committed) return;
     }
   }
 
@@ -377,8 +394,9 @@ export function createInteractiveSurfaces(
     const conditions: ConditionalBatchCondition[] = [
       { key, expectedValue: expected === null ? null : new TextEncoder().encode(expected) },
     ];
+    const committed = JSON.stringify(next);
     const operations: BatchOperation[] = [
-      { type: 'put', key, value: new TextEncoder().encode(JSON.stringify(next)) },
+      { type: 'put', key, value: new TextEncoder().encode(committed) },
     ];
     let cursor: string;
     try {
@@ -392,7 +410,7 @@ export function createInteractiveSurfaces(
       throw error;
     }
     // Only an event that committed a revision names that revision's cursor.
-    if (advancesRevision) await writeCursor(next.surface, cursor);
+    if (advancesRevision) await writeCursor(next.surface, cursor, committed);
     return cursor;
   }
 

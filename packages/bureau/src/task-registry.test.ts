@@ -1088,6 +1088,23 @@ describe('a schedule fire in the registry (COR-1482)', () => {
     expect(told).toEqual(['fire-1:failed', 'fire-2:canceled']);
   });
 
+  it('flushes a settlement only after its listeners have heard it', async () => {
+    const { registry } = build();
+    await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
+    const told: string[] = [];
+    registry.onSettled('fire-1', (view) => told.push(view.status));
+
+    void registry.recordSettled('fire-1', {
+      at: '2026-10-18T00:00:01.000Z',
+      status: 'completed',
+      finishReason: 'stop',
+      message: null,
+    });
+    await registry.flush();
+
+    expect(told).toEqual(['completed']);
+  });
+
   it('survives a listener that throws, diagnosing it', async () => {
     const { registry, diagnostics } = build();
     await admit(registry, 'fire-1', { incarnation: '', kind: 'schedule-fire' });
