@@ -100,7 +100,8 @@ describe('a pending approval restored after a restart', () => {
       store: kv,
       nowISO: () => '2026-10-18T00:00:00.000Z',
     });
-    const named = (revision: number) => (options.referencesNameRevision ? { revision } : {});
+    const named = (revision: number) =>
+      options.referencesNameRevision ? { definitionRevision: revision } : {};
     await snapshots.recordRun(
       { id: 'alpha-file', hash: 'hash-two', definition: definition('Older run.\n'), ...named(2) },
       'run-older',

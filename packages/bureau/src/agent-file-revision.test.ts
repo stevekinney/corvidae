@@ -395,6 +395,106 @@ describe('a catalog that missed an intermediate edit', () => {
   });
 });
 
+describe('a scan that read the file just before a peer’s edit', () => {
+  /**
+   * `left` reads the file at version one, and its settle reaches the store only after `right`
+   * recorded version two. `left` must not write a revert that never happened.
+   */
+  async function staleScan() {
+    const directory = sharedDirectory();
+    const shared = newStore();
+    let gate: { reached: () => void; release: Promise<void> } | undefined;
+    const leftStore: ConditionalTextValueStore = {
+      ...shared,
+      async get(key) {
+        if (gate !== undefined && key.startsWith(AGENT_REVISION_KEY_PREFIX)) {
+          const held = gate;
+          gate = undefined;
+          held.reached();
+          await held.release;
+        }
+        return shared.get(key);
+      },
+    };
+    const left = await start({ directory, revisionStore: leftStore });
+    const right = await start({ directory, revisionStore: shared });
+    await left.put('helper.md', versionOne);
+    await Promise.all([left.catalog.refresh(), right.catalog.refresh()]);
+
+    const release = Promise.withResolvers<void>();
+    const reached = Promise.withResolvers<void>();
+    gate = { reached: reached.resolve, release: release.promise };
+    const leftScan = left.catalog.refresh();
+    await reached.promise;
+    await left.put('helper.md', versionTwo);
+    await right.catalog.refresh();
+    release.resolve();
+    await leftScan;
+    return { left, right, shared };
+  }
+
+  it('does not write a revert: one edit raises the record by one', async () => {
+    const { left, right, shared } = await staleScan();
+
+    expect(await recordedRevisionOf(shared)).toBe(2);
+    await left.catalog.refresh();
+    await right.catalog.refresh();
+
+    expect(await recordedRevisionOf(shared)).toBe(2);
+    expect([revisionOf(left), revisionOf(right)]).toEqual([2, 2]);
+    expect([profileRevisionOf(left), profileRevisionOf(right)]).toEqual([2, 2]);
+  });
+
+  it('keeps its revision for that scan rather than listing one raised by the revert it did not write', async () => {
+    const { left } = await staleScan();
+
+    expect(revisionOf(left)).toBe(1);
+  });
+
+  it('still raises the revision for a revert both catalogs saw', async () => {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const left = await start({ directory, revisionStore });
+    const right = await start({ directory, revisionStore });
+    const seen: Array<[number | undefined, number | undefined]> = [];
+
+    for (const text of [versionOne, versionTwo, versionOne]) {
+      await left.put('helper.md', text);
+      await Promise.all([left.catalog.refresh(), right.catalog.refresh()]);
+      seen.push([revisionOf(left), revisionOf(right)]);
+    }
+
+    expect(seen).toEqual([
+      [1, 1],
+      [2, 2],
+      [3, 3],
+    ]);
+    expect(await recordedRevisionOf(revisionStore)).toBe(3);
+  });
+
+  it('writes a revert a peer never saw one scan later, when the record still holds the other content', async () => {
+    const directory = sharedDirectory();
+    const revisionStore = newStore();
+    const left = await start({ directory, revisionStore });
+    const right = await start({ directory, revisionStore });
+    await left.put('helper.md', versionOne);
+    await Promise.all([left.catalog.refresh(), right.catalog.refresh()]);
+    await left.put('helper.md', versionTwo);
+    await right.catalog.refresh();
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+    // The file goes back to version one before the left catalog scans, and the right one is gone.
+    await left.put('helper.md', versionOne);
+
+    await left.catalog.refresh();
+    expect(revisionOf(left)).toBe(1);
+    expect(await recordedRevisionOf(revisionStore)).toBe(2);
+    await left.catalog.refresh();
+
+    expect(revisionOf(left)).toBe(3);
+    expect(await recordedRevisionOf(revisionStore)).toBe(3);
+  });
+});
+
 describe('a revision record that cannot be read or written', () => {
   /** A store that fails the way `mode` says while `failing.value` is true. */
   function failingStore(mode: 'read' | 'write' | 'malformed') {

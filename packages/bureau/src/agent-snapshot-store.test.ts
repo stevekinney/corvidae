@@ -239,18 +239,18 @@ describe('a start that has not been held', () => {
 /** The revision a run's reference holds, or `undefined`. */
 async function revisionOf(store: ReturnType<typeof setup>['store'], runId: string) {
   const reference = await store.reference(runId);
-  return reference?.revision;
+  return reference?.definitionRevision;
 }
 
 describe('the revision a run started at (COR-1584)', () => {
   it('is kept on the run’s reference, with the hash it belongs to', async () => {
     const { store } = setup();
     await store.recordRun(
-      { id: 'helper', hash: 'aa', revision: 2, definition: definition('one') },
+      { id: 'helper', hash: 'aa', definitionRevision: 2, definition: definition('one') },
       'run-1',
     );
     await store.recordRun(
-      { id: 'helper', hash: 'aa', revision: 4, definition: definition('one') },
+      { id: 'helper', hash: 'aa', definitionRevision: 4, definition: definition('one') },
       'run-2',
     );
 
@@ -273,7 +273,7 @@ describe('the revision a run started at (COR-1584)', () => {
     const reference = await store.reference('run-old');
 
     expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
-    expect(reference?.revision).toBeUndefined();
+    expect(reference?.definitionRevision).toBeUndefined();
     const open = await store.unsettledReferences();
     expect(open.map((entry) => entry.runId)).toEqual(['run-old']);
   });
@@ -287,17 +287,17 @@ describe('the revision a run started at (COR-1584)', () => {
         id: 'helper',
         hash: 'aa',
         startedAt: '2026-10-01T00:00:00.000Z',
-        revision: stored,
+        definitionRevision: stored,
       }),
     );
 
     const reference = await store.reference('run-odd');
 
     expect(reference).toMatchObject({ id: 'helper', hash: 'aa' });
-    expect(reference?.revision).toBeUndefined();
+    expect(reference?.definitionRevision).toBeUndefined();
   });
 
-  it('is written by a hold of the same snapshot at another revision, keeping the start and the settlement', async () => {
+  it('is filled by a hold of the same snapshot when the reference has none, keeping the start and the settlement', async () => {
     const { clock, store } = setup();
     await store.recordRun({ id: 'helper', hash: 'aa', definition: definition('one') }, 'run-1');
     await store.settleRun('run-1');
@@ -305,17 +305,59 @@ describe('the revision a run started at (COR-1584)', () => {
     clock.now += DAY;
 
     await store.recordRun(
-      { id: 'helper', hash: 'aa', revision: 3, definition: definition('one') },
+      { id: 'helper', hash: 'aa', definitionRevision: 3, definition: definition('one') },
       'run-1',
     );
 
-    expect(await store.reference('run-1')).toEqual({ ...before, revision: 3 } as typeof before);
+    expect(await store.reference('run-1')).toEqual({
+      ...before,
+      definitionRevision: 3,
+    } as typeof before);
   });
+
+  it('is filled by a hold when the stored value was invalid and dropped on read', async () => {
+    const { backing, store } = setup();
+    await backing.set(
+      `${AGENT_RUN_REFERENCE_KEY_PREFIX}run-odd`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        startedAt: '2026-10-01T00:00:00.000Z',
+        definitionRevision: 0,
+      }),
+    );
+
+    await store.recordRun(
+      { id: 'helper', hash: 'aa', definitionRevision: 5, definition: definition('one') },
+      'run-odd',
+    );
+
+    expect(await revisionOf(store, 'run-odd')).toBe(5);
+  });
+
+  it.each([2, 4])(
+    'is never changed by a hold at revision %p once it is recorded',
+    async (later) => {
+      const { store } = setup();
+      await store.recordRun(
+        { id: 'helper', hash: 'aa', definitionRevision: 3, definition: definition('one') },
+        'run-1',
+      );
+
+      await store.recordRun(
+        { id: 'helper', hash: 'aa', definitionRevision: later, definition: definition('one') },
+        'run-1',
+      );
+
+      expect(await revisionOf(store, 'run-1')).toBe(3);
+    },
+  );
 
   it('is not erased by a hold that names none', async () => {
     const { store } = setup();
     await store.recordRun(
-      { id: 'helper', hash: 'aa', revision: 3, definition: definition('one') },
+      { id: 'helper', hash: 'aa', definitionRevision: 3, definition: definition('one') },
       'run-1',
     );
 

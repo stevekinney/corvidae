@@ -330,7 +330,7 @@ describe('a claim this execution loses', () => {
 
     const { reference } = await stored(h.snapshots, attempt.runId);
     expect(reference?.hash).toBe(winnerHash);
-    expect(reference?.revision).toBe(2);
+    expect(reference?.definitionRevision).toBe(2);
   });
 
   it('ties the winner’s snapshot to the run when the winner claimed and died before it held one', async () => {

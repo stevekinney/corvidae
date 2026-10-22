@@ -76,7 +76,7 @@ describe('agentForRecordedRun', () => {
     );
 
     const { agent, binding } = await runtime.agentForRecordedRun('helper', 'aa');
-    expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION, revision: 1 });
+    expect(binding).toEqual({ id: 'helper', hash: 'aa', definition: DEFINITION });
     expect(readFileAgentBinding(agent)?.definition.instructions).toBe('Recorded instructions.\n');
     expect(agent).not.toBe(fixture.catalog.find('helper'));
   });
@@ -99,6 +99,22 @@ describe('agentForRecordedRun', () => {
 
     expect(current && readGenerationProfile(current).revision).toBe(3);
     expect(readGenerationProfile(agent).revision).toBe(2);
+  });
+
+  it('rebuilds the agent with no recorded revision as revision 1, and records none for it', async () => {
+    const { runtime } = await start();
+    await runtime.snapshots.recordRun(
+      { id: 'helper', hash: 'aa', definition: DEFINITION },
+      'run-1',
+    );
+
+    const { agent, binding } = await runtime.agentForRecordedRun('helper', 'aa');
+
+    expect(readGenerationProfile(agent).revision).toBe(1);
+    expect(binding.definitionRevision).toBeUndefined();
+    await runtime.recordBoundRun(binding, 'run-2');
+    const reference = await runtime.snapshots.reference('run-2');
+    expect(reference?.definitionRevision).toBeUndefined();
   });
 
   it('rebuilds a snapshot whose file is gone, and whose name a code agent has since taken', async () => {

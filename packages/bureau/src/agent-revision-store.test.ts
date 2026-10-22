@@ -180,6 +180,40 @@ describe('the persisted revision of a file agent', () => {
     expect(await store.get('bureau-agent-revision:v1:researcher')).toBe(stored);
   });
 
+  it('writes nothing and answers the record that stands when the caller defers', async () => {
+    const store = memoryStore();
+    const revisions = createAgentRevisionStore({ store });
+    await revisions.advance('researcher', HASH_A);
+    const seen: string[] = [];
+
+    const answered = await revisions.advance('researcher', HASH_B, {
+      defer: (current) => {
+        seen.push(current.hash);
+        return true;
+      },
+    });
+
+    expect(answered).toEqual({ revision: 1, hash: HASH_A });
+    expect(seen).toEqual([HASH_A]);
+    expect(await revisions.read('researcher')).toEqual({ revision: 1, hash: HASH_A });
+  });
+
+  it('writes when the caller does not defer, and is not asked when the record already holds the hash or none exists', async () => {
+    const revisions = createAgentRevisionStore({ store: memoryStore() });
+    let asked = 0;
+    const defer = () => {
+      asked += 1;
+      return false;
+    };
+
+    await revisions.advance('researcher', HASH_A, { defer });
+    await revisions.advance('researcher', HASH_A, { defer });
+    const raised = await revisions.advance('researcher', HASH_B, { defer });
+
+    expect(raised).toEqual({ revision: 2, hash: HASH_B });
+    expect(asked).toBe(1);
+  });
+
   it('refuses to advance for a hash that is not a SHA-256 in lowercase hex, and writes nothing', async () => {
     const store = memoryStore();
     const revisions = createAgentRevisionStore({ store });
