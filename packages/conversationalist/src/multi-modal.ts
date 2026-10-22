@@ -239,10 +239,26 @@ function copyMediaContent(part: MediaContent): MediaContent {
 }
 
 /**
+ * Why a row cannot exist, when its content and its result's `parts` both carry media: the two
+ * lists number their parts from 0, and a resolved source is keyed by message id and part index,
+ * so their media would collide. `createMessage` throws it and the message schemas reject it.
+ */
+export function twoMediaListsProblem(message: {
+  readonly content: string | ReadonlyArray<MultiModalContent>;
+  readonly toolResult?: { readonly parts?: ReadonlyArray<ToolResultPart> | undefined } | undefined;
+}): string | undefined {
+  const partsHoldMedia = message.toolResult?.parts?.some((part) => part.type !== 'text') ?? false;
+  if (!partsHoldMedia || typeof message.content === 'string') return undefined;
+  return message.content.some(isMediaContent)
+    ? "A tool-result row cannot carry media in both its content and its result's parts."
+    : undefined;
+}
+
+/**
  * Every media part a message carries, with where it sits: its own content, then, for a
- * tool-result row, its result's `parts`. A row's two lists never both hold media (a tool-result
- * row's content is empty), so `partIndex` is unique within the message and keys a resolved source
- * the way the provider adapters read it. Anything that looks for a message's media (compaction,
+ * tool-result row, its result's `parts`. A row's two lists never both hold media
+ * ({@link twoMediaListsProblem}), so `partIndex` is unique within the message and keys a resolved
+ * source the way the provider adapters read it. Anything that looks for a message's media (compaction,
  * redaction, asset claims, media admission) reads it here, so no payload is missed.
  */
 export function messageMediaParts(message: {

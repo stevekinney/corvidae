@@ -415,3 +415,50 @@ describe('tool-result parts in compaction, estimation, and replay', () => {
     expect(JSON.stringify(messages.at(-1))).toContain('char_location');
   });
 });
+
+describe('one media list per tool-result row', () => {
+  const imageContent = {
+    type: 'image' as const,
+    mimeType: 'image/png',
+    source: { kind: 'inline' as const, data: PNG, encoding: 'base64' as const },
+  };
+
+  it('refuses a row whose content and result parts both carry media', () => {
+    const conversation = appendMessages(createConversationHistory({ id: 'both-lists' }), {
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-1', name: 'chart', arguments: {} },
+    });
+    expect(() =>
+      appendToolResult(
+        conversation,
+        { callId: 'call-1', outcome: 'success', content: null, parts: TEXT_AND_IMAGE },
+        { content: [imageContent] },
+      ),
+    ).toThrow(/media in both its content and its result's parts/);
+  });
+
+  it('rejects a stored row whose content and result parts both carry media', () => {
+    const stored = structuredClone(withToolResult(TEXT_AND_IMAGE)) as ConversationHistory & {
+      messages: Record<string, { role: string; content: unknown }>;
+    };
+    const row = Object.values(stored.messages).find((message) => message.role === 'tool-result')!;
+    row.content = [imageContent];
+    expect(() => deserializeConversationHistory(stored)).toThrow();
+  });
+
+  it('still accepts media in a result row’s content when its parts carry none', () => {
+    const conversation = appendMessages(createConversationHistory({ id: 'content-only' }), {
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-1', name: 'chart', arguments: {} },
+    });
+    expect(() =>
+      appendToolResult(
+        conversation,
+        { callId: 'call-1', outcome: 'success', content: null },
+        { content: [imageContent] },
+      ),
+    ).not.toThrow();
+  });
+});

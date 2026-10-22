@@ -210,6 +210,29 @@ describe('tool-result media review fixes', () => {
     ]);
   });
 
+  it('retains the admitted media of a row committed after a validateToolResult hook throws', async () => {
+    const admitter = createScriptedMediaAdmitter({ retention: 'record' });
+    const hooks = new HookRegistry<OperativeHookMap>();
+    hooks.on('validateToolResult', async () => {
+      throw new Error('validation failed');
+    });
+    const result = await runWith([inlineImage], {
+      generatedMediaAdmitter: admitter.port,
+      hooks,
+    }).result;
+    const row = toolResultRow(result.conversation);
+    expect(row?.toolResult?.parts?.[0]).toMatchObject({ source: { kind: 'managed-asset' } });
+    expect(admitter.retained).toEqual([
+      {
+        runId: 'run-tool-media',
+        messageId: row?.id ?? '',
+        parts: [
+          { ...inlineImage, source: { kind: 'managed-asset', assetId: 'asset-1', revision: 1 } },
+        ],
+      },
+    ]);
+  });
+
   it('admits media a validateToolResult hook adds, on any outcome, before the event shows it', async () => {
     const admitter = createScriptedMediaAdmitter();
     const hooks = new HookRegistry<OperativeHookMap>();

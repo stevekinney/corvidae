@@ -8,6 +8,7 @@ import type {
   TextContent,
   ToolResultPart,
 } from './multi-modal';
+import { twoMediaListsProblem } from './multi-modal';
 import type {
   ConversationHistory as Conversation,
   ConversationStatus,
@@ -429,6 +430,14 @@ export const tokenUsageSchema = z.object({
   cacheReadTokens: z.number().int().min(0).optional(),
 }) satisfies z.ZodType<TokenUsage>;
 
+function rejectTwoMediaLists(
+  message: Parameters<typeof twoMediaListsProblem>[0],
+  context: z.RefinementCtx,
+): void {
+  const problem = twoMediaListsProblem(message);
+  if (problem !== undefined) context.addIssue({ code: 'custom', message: problem });
+}
+
 /**
  * Zod schema for message input payloads.
  */
@@ -444,7 +453,8 @@ export const messageInputSchema = z
     goalCompleted: z.boolean().optional(),
     cacheBoundary: z.boolean().optional(),
   })
-  .strict() satisfies z.ZodType<MessageInput>;
+  .strict()
+  .superRefine(rejectTwoMediaLists) satisfies z.ZodType<MessageInput>;
 
 /**
  * Zod schema for messages.
@@ -464,7 +474,8 @@ export const messageSchema = z
     goalCompleted: z.boolean().optional(),
     cacheBoundary: z.boolean().optional(),
   })
-  .strict() satisfies z.ZodType<Message>;
+  .strict()
+  .superRefine(rejectTwoMediaLists) satisfies z.ZodType<Message>;
 
 /**
  * Zod schema for conversation status values.
