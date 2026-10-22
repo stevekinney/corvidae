@@ -33,9 +33,15 @@
  * - A rejected append is tried again, as a session persistence write is. One that still fails is
  *   diagnosed.
  * - A process that dies between writing the settlement and appending the event leaves none. Every
- *   boot reads the settled fires, finds the ones whose event was never appended (the deduplication
- *   marker is absent), and appends it, so a stream open on another process ends at the next boot of
- *   any Bureau on the store. This also covers a fire settled before this event existed.
+ *   boot reads the settled fires, finds the ones inside the event retention window whose event was
+ *   never appended (the deduplication marker is absent), and appends it, dated where the fire ended
+ *   (`emittedAtMs` is the settlement's own time), so a stream open on another process ends at the
+ *   next boot of any Bureau on the store. This also covers a fire settled before this event
+ *   existed, but only inside the window.
+ * - A fire settled before the retention cutoff (`now` less `BureauOptions.eventRetention`) is left
+ *   alone. Retention removes an event together with its deduplication marker, so such a fire has
+ *   neither by design, and announcing it again would record one fire's end once per retention
+ *   cycle. With events kept for ever, nothing is retired and there is no bound.
  *
  * What is not covered is the time until that boot: a stream open on a peer across a dead
  * settler's window hears nothing until then, and a client that reconnects reads the settled record

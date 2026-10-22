@@ -8240,6 +8240,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       runId: record.taskId,
       status: record.settled.status,
     };
+    const endedAt = Date.parse(record.settled.at);
     let lastError: unknown;
     for (let attempt = 1; attempt <= SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS; attempt += 1) {
       try {
@@ -8247,7 +8248,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           { kind: 'run', id: record.taskId },
           SCHEDULE_FIRE_SETTLED_EVENT_KIND,
           payload,
-          { dedupeKey: scheduleFireSettledDedupeKey(record.taskId) },
+          {
+            dedupeKey: scheduleFireSettledDedupeKey(record.taskId),
+            // Dated where the fire ended, so a repair at a later boot does not move the end.
+            ...(Number.isFinite(endedAt) ? { emittedAtMs: endedAt } : {}),
+          },
         );
         return;
       } catch (error) {
@@ -8333,7 +8338,12 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // process died between the two, would leave a stream open on another process for ever. The
     // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
     if (eventHistoryInstance !== undefined) {
+      // Event retention removes an event together with its deduplication marker, so a fire settled
+      // before its cutoff has neither, by design, and is not announced again at every boot. Under
+      // `'forever'` nothing is retired, so there is no bound.
+      const cutoff = eventRetentionCutoff();
       for (const record of await tasks.settledFires()) {
+        if (cutoff !== undefined && Date.parse(record.settled?.at ?? '') < cutoff) continue;
         const owner = { kind: 'run', id: record.taskId } as const;
         if (
           await eventHistoryInstance.wasRecorded(
@@ -10672,9 +10682,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function retainEventHistory(): Promise<void> {
     if (!eventHistoryInstance) return;
+    const cutoff = eventRetentionCutoff();
+    if (cutoff === undefined) return;
+    await eventHistoryInstance.retainBefore(cutoff);
+  }
+
+  /**
+   * The instant (epoch milliseconds) before which {@link BureauOptions.eventRetention} retires an
+   * event, or `undefined` when events are kept for ever.
+   */
+  function eventRetentionCutoff(): number | undefined {
     const retention = options.eventRetention ?? { olderThan: DEFAULT_EVENT_RETENTION_MS };
-    if (retention === 'forever') return;
-    await eventHistoryInstance.retainBefore(runtimeServices.clock.now() - retention.olderThan);
+    return retention === 'forever' ? undefined : runtimeServices.clock.now() - retention.olderThan;
   }
 
   /**

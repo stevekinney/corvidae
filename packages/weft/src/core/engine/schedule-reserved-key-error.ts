@@ -1,11 +1,12 @@
 import { WeftError } from '../weft-error.ts';
 
 /**
- * Thrown by `pauseSchedule`, `resumeSchedule`, `cancelSchedule`, and `updateSchedule` when the
- * caller's `extraConditions` name a key under one of Weft's reserved prefixes
- * (`WEFT_RESERVED_KEY_PREFIXES`), the schedule's own key among them. The conditions guard the
- * caller's own keys; the schedule's own write is conditioned by the engine, and a condition of the
- * caller's on a key the engine owns could never be told apart from the engine's. Nothing was
+ * Thrown by `pauseSchedule`, `resumeSchedule`, and `cancelSchedule` when the caller's
+ * `extraConditions` or `additionalOperations` name a key under one of Weft's reserved prefixes
+ * (`WEFT_RESERVED_KEY_PREFIXES`), the schedule's own key among them. Both are for the caller's own
+ * keys: the schedule's own write is conditioned by the engine, a condition of the caller's on a key
+ * the engine owns could never be told apart from the engine's, and an operation of the caller's on
+ * one would write the engine's keys through the very transition that guards them. Nothing was
  * written.
  *
  * @example
@@ -30,8 +31,8 @@ export class ScheduleReservedKeyError extends WeftError<'ScheduleReservedKeyErro
   constructor(scheduleId: string, key: string) {
     super(
       'ScheduleReservedKeyError',
-      `The extraConditions of a transition of schedule "${scheduleId}" name "${key}", which is ` +
-        'under a key prefix Weft reserves. Condition only keys of your own.',
+      `The extraConditions or additionalOperations of a transition of schedule "${scheduleId}" ` +
+        `name "${key}", which is under a key prefix Weft reserves. Use keys of your own.`,
     );
     this.scheduleId = scheduleId;
     this.key = key;

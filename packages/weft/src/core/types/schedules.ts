@@ -258,7 +258,8 @@ export interface ScheduleTransitionOptions {
   expectedRevision?: number;
   /**
    * Caller-owned put/delete operations committed atomically with the schedule
-   * state transition.
+   * state transition. A key under one of Weft's reserved prefixes
+   * (`WEFT_RESERVED_KEY_PREFIXES`) is refused with {@link ScheduleReservedKeyError}.
    */
   additionalOperations?: BatchOperation[];
   /**

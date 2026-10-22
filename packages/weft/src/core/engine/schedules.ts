@@ -31,7 +31,7 @@ import {
 import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
-  assertCallerOwnedTransitionConditions,
+  assertCallerOwnedTransitionKeys,
   coerceExpectedScheduleRevision,
   coerceScheduleId,
   normalizeScheduleFilter,
@@ -255,7 +255,7 @@ export async function pauseSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
+  assertCallerOwnedTransitionKeys(normalizedScheduleId, options);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,
@@ -292,7 +292,7 @@ export async function resumeSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
+  assertCallerOwnedTransitionKeys(normalizedScheduleId, options);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,
@@ -331,7 +331,7 @@ export async function cancelSchedule(
 ): Promise<void> {
   const normalizedScheduleId = coerceScheduleId(scheduleId, 'scheduleId');
   const expectedRevision = coerceExpectedScheduleRevision(options?.expectedRevision);
-  assertCallerOwnedTransitionConditions(normalizedScheduleId, options?.extraConditions);
+  assertCallerOwnedTransitionKeys(normalizedScheduleId, options);
   await runScheduleTransition(
     internals,
     normalizedScheduleId,

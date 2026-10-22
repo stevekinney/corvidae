@@ -1,4 +1,4 @@
-import type { ConditionalBatchCondition } from '../../../storage/interface.ts';
+import type { BatchOperation, ConditionalBatchCondition } from '../../../storage/interface.ts';
 import { WEFT_RESERVED_KEY_PREFIXES } from '../../../storage/key-prefixes.ts';
 import { parseCronExpression } from '../../schedule.ts';
 import { parseDuration } from '../../scheduler.ts';
@@ -94,19 +94,27 @@ export function coerceExpectedScheduleRevision(expectedRevision: unknown): numbe
 }
 
 /**
- * The `extraConditions` a caller passed to a schedule transition (COR-1594): each must name a key of
- * the caller's own. A key under one of Weft's reserved prefixes is refused with
- * {@link ScheduleReservedKeyError}, the schedule's own key among them, because the engine
- * conditions the schedule's own write itself and a caller's condition on a key the engine owns is
- * not the caller's to make.
+ * The keys a caller named in the options of a schedule transition (COR-1594): each condition in
+ * `extraConditions` and each operation in `additionalOperations` must name a key of the caller's
+ * own. A key under one of Weft's reserved prefixes is refused with {@link ScheduleReservedKeyError},
+ * the schedule's own key among them, because the engine conditions the schedule's own write itself,
+ * a caller's condition on a key the engine owns is not the caller's to make, and a caller's
+ * operation on one would write it through the transition that guards it.
  */
-export function assertCallerOwnedTransitionConditions(
+export function assertCallerOwnedTransitionKeys(
   scheduleId: string,
-  extraConditions: readonly ConditionalBatchCondition[] | undefined,
+  options: {
+    readonly extraConditions?: readonly ConditionalBatchCondition[] | undefined;
+    readonly additionalOperations?: readonly BatchOperation[] | undefined;
+  } = {},
 ): void {
-  for (const condition of extraConditions ?? []) {
-    if (WEFT_RESERVED_KEY_PREFIXES.some((prefix) => condition.key.startsWith(prefix))) {
-      throw new ScheduleReservedKeyError(scheduleId, condition.key);
+  const keys = [
+    ...(options.extraConditions ?? []).map((condition) => condition.key),
+    ...(options.additionalOperations ?? []).map((operation) => operation.key),
+  ];
+  for (const key of keys) {
+    if (WEFT_RESERVED_KEY_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      throw new ScheduleReservedKeyError(scheduleId, key);
     }
   }
 }
