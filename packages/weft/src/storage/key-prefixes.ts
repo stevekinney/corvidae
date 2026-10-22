@@ -67,6 +67,7 @@ export const WEFT_RESERVED_KEY_PREFIXES = [
   'start-idem:',
   'state:',
   'tag:',
+  'timer-idx:',
   'tool-effect:',
   'upd:',
   'uph:',

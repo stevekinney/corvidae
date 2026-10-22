@@ -475,17 +475,18 @@ function followScheduleFire(
             // so the settled event can no longer be waited for. The record is read once more: a
             // fire that is over finishes the stream, and any other ends it with an error, so the
             // client reconnects and a new subscription follows the history from its tail.
-            onClosed: (cause) => {
+            onClosed: () => {
               if (ended) return;
               void (async () => {
                 await readAgain();
                 if (ended) return;
-                queue.fail(
-                  new Error(
-                    `The history of task "${taskId}" can no longer be followed; reconnect to follow it again.`,
-                    { cause },
-                  ),
-                );
+                // The control plane's own fault for a server that cannot serve a request now but
+                // may later, so a client can tell "reconnect" from a server defect.
+                queue.fail({
+                  code: 'Unavailable',
+                  message: `The history of task "${taskId}" can no longer be followed; reconnect to follow it again`,
+                  data: { reason: 'history-unavailable' },
+                });
               })().catch((error: unknown) => queue.fail(error));
             },
           },
@@ -584,7 +585,7 @@ export const tasksEventsOperation = defineOperation<
   tags: ['Tasks'],
   inputSchema: tasksEventsInput,
   outputSchema: tasksEventsEnvelope,
-  producibleFaults: ['InvalidParams', 'NotFound', 'UnsupportedCapability'],
+  producibleFaults: ['InvalidParams', 'NotFound', 'Unavailable', 'UnsupportedCapability'],
   eventSchema: taskEventSchema,
   access: { kind: 'authenticated' },
   discoverable: true,

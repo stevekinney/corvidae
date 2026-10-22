@@ -348,6 +348,11 @@ export interface DurableEventHistorySubscribeOptions {
    * learns of that here instead of waiting for an event that cannot come. Not called when the
    * subscriber ends the subscription itself (`unsubscribe()`, or aborting `signal`). A throw from
    * the callback is reported to the diagnostic sink and otherwise ignored.
+   *
+   * It reports an error, and only an error. A subscription whose live buffer overflows also ends
+   * without the subscriber having asked, and that end is not reported: it needs a subscriber
+   * that cannot keep up with a feed it is not filtered from, and a subscription to one owner is
+   * filtered before it is buffered, so only that owner's own events and a gap count.
    */
   onClosed?: ((error: unknown) => void) | undefined;
 }

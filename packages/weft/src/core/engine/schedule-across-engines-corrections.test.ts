@@ -230,14 +230,19 @@ describe('a pause or cancel that a caller condition refuses', () => {
     });
   }
 
-  it('still removes the timer when the transition commits', async () => {
-    const { shared, engineA } = await openEngines();
+  for (const name of ['pause', 'cancel'] as const) {
+    it(`${name}: still removes the timer when the transition commits`, async () => {
+      const { shared, engineA } = await openEngines();
 
-    await engineA.pauseSchedule(SCHEDULE_ID);
+      await (name === 'pause' ? engineA.pauseSchedule : engineA.cancelSchedule).call(
+        engineA,
+        SCHEDULE_ID,
+      );
 
-    expect(await timerArmed(shared)).toBe(false);
-    expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
-  });
+      expect(await timerArmed(shared)).toBe(false);
+      expect(await shared.get(`timer-idx:${createScheduleTimerId(SCHEDULE_ID)}`)).toBeNull();
+    });
+  }
 });
 
 describe('the scheduler timer index is a key Weft reserves', () => {

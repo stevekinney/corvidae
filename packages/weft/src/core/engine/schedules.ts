@@ -23,11 +23,7 @@ import { ScheduleHandle } from './schedule-handle.ts';
 import { getNextScheduleOccurrence } from './schedule-occurrence.ts';
 import type { ScheduledRunStartOptions } from './schedule-run.ts';
 import { runScheduleTransition } from './schedule-state-operations.ts';
-import {
-  createScheduleTimerId,
-  matchesScheduleFilter,
-  paginateScheduleSummaries,
-} from './state-utilities.ts';
+import { matchesScheduleFilter, paginateScheduleSummaries } from './state-utilities.ts';
 import { writeScheduleState } from './storage-io.ts';
 import { decodeScheduleState } from './validation/schedule-decode.ts';
 import {
@@ -174,17 +170,6 @@ export function toScheduleSummary(state: ScheduleState): ScheduleSummary {
 }
 
 /**
- * What a timer cancel is conditioned on: the schedule bytes the transition decided from, so a
- * transition that read a schedule another process has since changed removes no timer that
- * process armed (COR-1594). `undefined` when the storage cannot condition a write.
- */
-function timerConditions(
-  readConditions: ConditionalBatchCondition[],
-): ConditionalBatchCondition[] | undefined {
-  return readConditions.length > 0 ? readConditions : undefined;
-}
-
-/**
  * A write's pinned-revision fence (WFT-20), if it has one, with the conditions on the bytes the
  * write was decided from (COR-1594) ahead of it. The read conditions are judged first and never
  * reach the fence's typed error.
@@ -262,11 +247,6 @@ export async function pauseSchedule(
     expectedRevision,
     async (state, readConditions) => {
       if (state.status !== 'active') return;
-      await internals.scheduler.cancel(
-        createScheduleTimerId(normalizedScheduleId),
-        normalizedScheduleId,
-        timerConditions(readConditions),
-      );
       const now = internals.options.getNow();
       const updatedState: ScheduleState = {
         ...state,
@@ -276,8 +256,11 @@ export async function pauseSchedule(
         nextFireAt: getNextScheduleOccurrence(state, now),
         queuedRuns: [],
       };
+      // The timer goes in the guarded write itself (COR-1594), so a transition that is refused,
+      // by the caller's own conditions or by a failed write, leaves the timer where it was.
       await writeScheduleState(internals, updatedState, {
         includeTimer: false,
+        replaceTimerFrom: state,
         ...scheduleTransitionWriteOptions(options, readConditions),
       });
     },
@@ -337,13 +320,6 @@ export async function cancelSchedule(
     normalizedScheduleId,
     expectedRevision,
     async (state, readConditions) => {
-      if (state.status === 'active') {
-        await internals.scheduler.cancel(
-          createScheduleTimerId(normalizedScheduleId),
-          normalizedScheduleId,
-          timerConditions(readConditions),
-        );
-      }
       const updatedState: ScheduleState = {
         ...state,
         status: 'cancelled',
@@ -352,8 +328,10 @@ export async function cancelSchedule(
         nextFireAt: null,
         queuedRuns: [],
       };
+      // As for a pause, the timer of an active schedule goes in the guarded write.
       await writeScheduleState(internals, updatedState, {
         includeTimer: false,
+        ...(state.status === 'active' && { replaceTimerFrom: state }),
         ...scheduleTransitionWriteOptions(options, readConditions),
       });
     },
