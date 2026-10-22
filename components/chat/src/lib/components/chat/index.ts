@@ -230,10 +230,10 @@ export type {
 
 // MCP App host: a sandboxed iframe behind a host-mediated JSON-RPC postMessage bridge.
 export {
-  McpApp,
   buildMcpAppContentSecurityPolicy,
   buildMcpAppDocument,
   createMcpAppBridge,
+  McpApp,
   resolveMcpAppPermissions,
   sanitizeDeclaredSources,
 } from './mcp-app/index.ts';
