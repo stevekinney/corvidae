@@ -447,22 +447,6 @@ export async function completeWorkflow(
         ? crypto.randomUUID()
         : undefined;
 
-      // Batch the completion state write with attribute index cleanup into a
-      // single storage transaction to reduce round-trips on the hot path.
-      const updatedState = buildCompletedWorkflowState(
-        internals,
-        state,
-        result,
-        now,
-        terminalCleanupToken,
-      );
-      const completionOperations = buildBaseCompletionOperations(
-        internals,
-        workflowId,
-        state,
-        updatedState,
-      );
-
       // Prefer the in-memory checkpoint's search attributes when available so
       // the completion hot path avoids an extra storage read in the common
       // case. Recovered workflows still fall back to storage if the checkpoint
@@ -474,19 +458,33 @@ export async function completeWorkflow(
           currentAttributes = decode(attributeBytes) as Record<string, SearchAttributeValue>;
         }
       }
-      appendSearchAttributeOperations(completionOperations, workflowId, currentAttributes);
 
-      if (terminalCleanupToken !== undefined) {
-        completionOperations.push(
-          ...buildTerminalCleanupTimerOperations(
-            internals,
-            workflowId,
-            false,
-            now,
-            terminalCleanupToken,
-          ),
+      // Batch the completion state write with attribute index cleanup into a
+      // single storage transaction to reduce round-trips on the hot path.
+      const buildOperations = (base: WorkflowState): BatchOperation[] => {
+        const updatedState = buildCompletedWorkflowState(
+          internals,
+          base,
+          result,
+          now,
+          terminalCleanupToken,
         );
-      }
+        const operations = buildBaseCompletionOperations(internals, workflowId, base, updatedState);
+        appendSearchAttributeOperations(operations, workflowId, currentAttributes);
+        if (terminalCleanupToken !== undefined) {
+          operations.push(
+            ...buildTerminalCleanupTimerOperations(
+              internals,
+              workflowId,
+              false,
+              now,
+              terminalCleanupToken,
+            ),
+          );
+        }
+        return operations;
+      };
+      const completionOperations = buildOperations(state);
 
       // completeWorkflow is a SELF-transition (ADR 0002): this engine is
       // finishing its own workflow.
@@ -495,6 +493,9 @@ export async function completeWorkflow(
         // A refused write is retried in process; if every attempt fails the run fails as a
         // `system` failure with `CheckpointCommitFailedError` (see `handleStrategyMessage`).
         retryRefusedWrite: 'completion',
+        // Another writer that changed the record while the run was still `running` (a tag edit,
+        // say) does not stop it completing: the completion is built again over that fresher record.
+        rebuildOperations: buildOperations,
       });
       // Captured synchronously, immediately after the commit resolves — see
       // `releaseWorkflowClaimAfterTerminalSettlement`'s doc for why this

@@ -14,9 +14,11 @@ import { yieldToPortableEventLoop } from '../../testing/event-loop.ts';
 import { sleepForTesting } from '../../testing/fake-timers.test-support.ts';
 import { rejectionOf } from '../../testing/promise-outcome.test-support.ts';
 import { decode, encode } from '../codec/api.ts';
+import { WorkflowCompletedEvent } from '../events.ts';
 import type { WorkflowState } from '../types.ts';
 import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
 import { EngineDisposedError } from './errors.ts';
+import { abandonedExecutionAttemptCount } from './execution-attempts.ts';
 import { WorkflowHandle } from './handles.ts';
 import { getInternals } from './internals.ts';
 import {
@@ -83,113 +85,83 @@ describe('a terminal write that landed is never sent again', () => {
 });
 
 describe('a terminal write never overwrites another writer', () => {
-  /** Another writer replaces the workflow record at the moment the completion's first attempt fails. */
-  async function interferedCompletion(
-    workflowId: string,
-    change: (state: WorkflowState) => Uint8Array | void,
-  ) {
-    const run = await startParked(steps, workflowId);
-    const key = KEYS.workflow(workflowId);
-    let othersBytes: Uint8Array | undefined;
-    let readsBeforeRetry = 0;
-    const changed = Promise.withResolvers<void>();
+  it('builds the completion again over a change made while the run was still running, and keeps it', async () => {
+    const run = await startParked(steps, 'rebuilt');
+    await using engine = run.engine;
+    const key = KEYS.workflow('rebuilt');
     run.refusing.refuse({
-      matches: putsWorkflowStatus(workflowId, 'completed'),
+      matches: putsWorkflowStatus('rebuilt', 'completed'),
       times: 1,
       before: async () => {
         const state = decode((await run.refusing.base.get(key))!) as WorkflowState;
-        othersBytes = change(state) ?? encode(state);
-        await run.refusing.base.put(key, othersBytes);
-        readsBeforeRetry = run.refusing.readCount(key);
-        changed.resolve();
+        state.tags = ['edited-elsewhere'];
+        await run.refusing.base.put(key, encode(state));
       },
     });
-    await run.engine.signal(workflowId, 'go', 'x');
-    // The retry's first act is to read the record; wait for that read, then let what it decides
-    // run to its end (it is all promise continuations from there, with no timer).
-    await changed.promise;
-    await run.refusing.whenReads(key, readsBeforeRetry + 1);
-    for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
-    return { run, key, othersBytes: othersBytes! };
-  }
 
-  it('leaves a change another writer made between the attempts', async () => {
-    const { run, key, othersBytes } = await interferedCompletion('interfered', (state) => {
-      state.updatedAt += 1;
-    });
-    await using engine = run.engine;
+    await engine.signal('rebuilt', 'go', 'x');
 
-    expect(await run.refusing.base.get(key)).toEqual(othersBytes);
-    // Only the first attempt was made: the retry read the record and sent nothing over the change.
-    expect(
-      run.refusing.attemptsMatching(putsWorkflowStatus('interfered', 'completed')),
-    ).toHaveLength(1);
-    expect(engine).toBeDefined();
+    expect(await run.result).toBe('x:a:b');
+    const record = await readState(run.refusing, 'rebuilt');
+    expect(record.status).toBe('completed');
+    expect(record.tags).toEqual(['edited-elsewhere']);
   });
 
-  it('does not overwrite a record it cannot read', async () => {
-    const { run, key, othersBytes } = await interferedCompletion(
-      'unreadable-record',
-      () => new Uint8Array([0xc1, 0xc1, 0xc1]),
-    );
+  it('ends the run visibly, and leaves the record, when it cannot be read as a workflow record', async () => {
+    const run = await startParked(steps, 'unreadable-record');
     await using engine = run.engine;
-
-    expect(await run.refusing.base.get(key)).toEqual(othersBytes);
-    expect(
-      run.refusing.attemptsMatching(putsWorkflowStatus('unreadable-record', 'completed')),
-    ).toHaveLength(1);
-    expect(engine).toBeDefined();
-  });
-
-  it('does not overwrite a change made between its read and its send', async () => {
-    const run = await startParked(steps, 'changed-after-read');
-    await using engine = run.engine;
-    const key = KEYS.workflow('changed-after-read');
-    let othersBytes: Uint8Array | undefined;
+    const key = KEYS.workflow('unreadable-record');
+    const garbage = new Uint8Array([0xc1, 0xc1, 0xc1]);
     run.refusing.refuse({
-      matches: putsWorkflowStatus('changed-after-read', 'completed'),
+      matches: putsWorkflowStatus('unreadable-record', 'completed'),
+      times: 1,
+      before: () => run.refusing.base.put(key, garbage),
+    });
+
+    await engine.signal('unreadable-record', 'go', 'x');
+    const reason = await rejectionOf(run.result);
+
+    expect(reason).toBeInstanceOf(CheckpointCommitFailedError);
+    expect(await run.refusing.base.get(key)).toEqual(garbage);
+    expect(abandonedExecutionAttemptCount(getInternals(engine))).toBe(1);
+  });
+
+  it('reads the record once more after a send loses its guard, and finds its own write landed', async () => {
+    // One retry only: if the loss were not followed by a read, the budget would be spent and the
+    // run would be ended through the failure path, with no completed event of its own.
+    const run = await startParked(steps, 'landed-before-send', { delays: [0] });
+    await using engine = run.engine;
+    const key = KEYS.workflow('landed-before-send');
+    const completions: unknown[] = [];
+    engine.addEventListener(WorkflowCompletedEvent.type, (event) => completions.push(event));
+    run.refusing.refuse({
+      matches: putsWorkflowStatus('landed-before-send', 'completed'),
       times: 1,
     });
-    // The retry reads the record, finds it as it decided, and sends: another writer changes the
-    // record just before that send reaches the store, so the send loses its guard.
+    // The first attempt's write lands on the server after the retry has read the record and before
+    // its send arrives, so the send loses its guard to the run's own write.
     run.refusing.refuse({
-      matches: putsWorkflowStatus('changed-after-read', 'completed'),
+      matches: putsWorkflowStatus('landed-before-send', 'completed'),
       mode: 'pass',
       times: 1,
       before: async () => {
-        const state = decode((await run.refusing.base.get(key))!) as WorkflowState;
-        state.updatedAt += 1;
-        othersBytes = encode(state);
-        await run.refusing.base.put(key, othersBytes);
+        const first = run.refusing.attempts.find((attempt) =>
+          putsWorkflowStatus('landed-before-send', 'completed')(attempt.operations),
+        );
+        const own = first?.operations.find(
+          (operation) => operation.type === 'put' && operation.key === key,
+        );
+        if (own?.type === 'put') await run.refusing.base.put(key, own.value);
       },
     });
 
-    await engine.signal('changed-after-read', 'go', 'x');
-    await run.refusing.whenAttempts(2, putsWorkflowStatus('changed-after-read', 'completed'));
-    for (let turn = 0; turn < 3; turn += 1) await yieldToPortableEventLoop();
+    await engine.signal('landed-before-send', 'go', 'x');
 
-    expect(await run.refusing.base.get(key)).toEqual(othersBytes ?? null);
+    expect(await run.result).toBe('x:a:b');
+    expect(completions).toHaveLength(1);
     expect(
-      run.refusing.attemptsMatching(putsWorkflowStatus('changed-after-read', 'completed')),
+      run.refusing.attemptsMatching(putsWorkflowStatus('landed-before-send', 'completed')),
     ).toHaveLength(2);
-  });
-
-  it('does not mistake another writer’s record with the same status for its own write', async () => {
-    const { run, key, othersBytes } = await interferedCompletion('look-alike', (state) => {
-      state.status = 'completed';
-      state.result = 'another engine’s result';
-    });
-    await using engine = run.engine;
-
-    // A record that says `completed` but is not this batch's bytes is not this write landing: the
-    // waiter does not settle with this run's value, and the other writer's record stands.
-    const settled = await Promise.race([
-      run.result.then(() => 'settled' as const),
-      yieldToPortableEventLoop().then(() => 'pending' as const),
-    ]);
-    expect(settled).toBe('pending');
-    expect(await run.refusing.base.get(key)).toEqual(othersBytes);
-    expect(engine).toBeDefined();
   });
 });
 
@@ -383,7 +355,7 @@ describe('the error message', () => {
 
     expect(reason).toBeInstanceOf(CheckpointCommitFailedError);
     expect(reason.message).toBe(
-      'Workflow "generic-message" checkpoint write was refused by storage on all 5 attempts.',
+      'Workflow "generic-message" checkpoint write was not committed after 5 attempts.',
     );
     expect(reason.message).not.toContain('wf_secret_table');
     expect((reason.cause as Error).message).toContain('wf_secret_table');

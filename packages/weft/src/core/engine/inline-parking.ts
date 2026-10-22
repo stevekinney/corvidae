@@ -1,11 +1,6 @@
 import type { ContextOperationRequest } from '../context.ts';
 import { hasExposedAccessors, hasUpdateHandlers } from '../context/context-presence.ts';
 import type { WorkerOutboundMessage, WorkflowState } from '../types.ts';
-import { CheckpointCommitFailedError } from './checkpoint-commit-failed-error.ts';
-import { abandonWorkflowAfterCheckpointConflict } from './checkpoint-conflict-abandon.ts';
-import { WorkflowCheckpointConflictError } from './checkpoint-conflict-error.ts';
-import { CheckpointEncodingError } from './checkpoint-encoding-error.ts';
-import { bootstrapWorkflowResultResolver } from './handle-result.ts';
 import { beginInFlightOperation, endInFlightOperation } from './in-flight-operation.ts';
 import type { EngineInternals } from './internals.ts';
 import {
@@ -19,10 +14,18 @@ import {
   rejectSleepTimerAcknowledgements,
 } from './sleep-timer-acknowledgements.ts';
 import {
+  endRunAfterFailedWrite,
+  endRunAfterStrategyError,
+  isTerminalWaiterPending,
+  settleUnsettledTerminalMessage,
+  terminalWriteOf,
+} from './terminal-run-exit.ts';
+import {
   completeWorkflow as completeWorkflowFromTermination,
   failWorkflow as failWorkflowFromTermination,
   type TerminationCallbacks,
 } from './termination.ts';
+import { captureTerminatedRun } from './termination/settle-refused-terminal.ts';
 
 export type ParkedWorkflowResumeDisposition = 'resumable' | 'terminal-or-missing' | 'corrupt';
 
@@ -255,7 +258,14 @@ async function dispatchStrategyMessage(
         if (operation.type === 'wait-signal' && internals.inlineStrategy === null) {
           void callbacks.processOperation(message.workflowId, operation).catch((error: unknown) => {
             const failedError = error instanceof Error ? error : new Error(String(error));
-            return failRunOrAbandon(internals, message.workflowId, failedError, callbacks);
+            return endRunAfterFailedWrite(
+              internals,
+              message.workflowId,
+              callbacks,
+              failedError,
+              'checkpoint',
+              failedError,
+            );
           });
           break;
         }
@@ -271,76 +281,32 @@ async function dispatchStrategyMessage(
   }
 }
 
-/**
- * Fail the workflow as a `system` failure with `error`. When the failure write is itself refused on
- * every attempt, nothing durable can be written, so stop driving the generation locally instead:
- * the pending `result()` rejects with that {@link CheckpointCommitFailedError}, the durable record
- * stays `running`, and the next boot recovers the run from its last committed checkpoint.
- */
-async function failRunOrAbandon(
-  internals: EngineInternals,
-  workflowId: string,
-  error: Error,
-  callbacks: InlineParkingCallbacks,
-): Promise<void> {
-  try {
-    await failWorkflowFromTermination(
-      internals,
-      workflowId,
-      error,
-      callbacks.createTerminationCallbacks(),
-      'system',
-    );
-    await settleFromTerminalRecord(internals, workflowId, error);
-  } catch (failureError) {
-    if (
-      !(failureError instanceof CheckpointCommitFailedError) ||
-      failureError.write !== 'failure'
-    ) {
-      throw failureError;
-    }
-    abandonWorkflowAfterCheckpointConflict(internals, failureError);
-  }
-}
-
-/**
- * A completion whose write landed but whose retries were all refused leaves the durable record
- * `completed` while the failure that follows has nothing to write, since the record is already
- * terminal. `result()` would then never settle in this process, which is what the retry exists to
- * prevent. When the stored record is terminal, settle the waiter from that stored outcome, the one
- * a `result()` requested later reads too. A record still `running` leaves the waiter pending.
- */
-async function settleFromTerminalRecord(
-  internals: EngineInternals,
-  workflowId: string,
-  error: Error,
-): Promise<void> {
-  if (!(error instanceof CheckpointCommitFailedError) || error.write !== 'completion') return;
-  const waiter = internals.resultResolvers.get(workflowId);
-  if (waiter === undefined) return;
-  await bootstrapWorkflowResultResolver(internals, workflowId, waiter);
-}
-
 export async function handleStrategyMessage(
   internals: EngineInternals,
   message: WorkerOutboundMessage,
   callbacks: InlineParkingCallbacks,
 ): Promise<void> {
+  const terminalWrite = terminalWriteOf(message);
+  // The run as it stands before the terminal commit, which releases what identifies it.
+  const run =
+    terminalWrite === undefined ? undefined : captureTerminatedRun(internals, message.workflowId);
   try {
     await dispatchStrategyMessage(internals, message, callbacks);
+    // A terminal message that returned with its run's waiter still pending did not settle it.
+    if (run !== undefined && isTerminalWaiterPending(internals, message.workflowId, run)) {
+      await settleUnsettledTerminalMessage(internals, message.workflowId, callbacks, run);
+    }
   } catch (error) {
     rejectSleepTimerAcknowledgements(internals, message.workflowId, error);
     // The inline strategy contains a handler's rejection so one workflow's failure cannot take
     // down the engine, and recovery runs only at boot, so what is left alone here stays un-driven
-    // until the next restart. Each error below therefore ends the run here instead.
+    // until the next restart. Every error below therefore ends the run here instead; see
+    // `endRunAfterFailedWrite` for how, and for the one case that stays `running` durably.
     //
-    // A storage write the engine needs (the checkpoint batch, or the terminal `wf:` write of a
-    // completion) that storage refused on every attempt is a `CheckpointCommitFailedError`:
-    // `commitCheckpoint` and the terminal commit already retried it, five attempts over 750 ms. It
-    // fails the workflow as a `system` failure, so `result()` rejects with it. The failure write is
-    // retried the same way; if that is refused too, nothing durable can be written, so the
-    // generation is abandoned locally and the run stays `running` durably until the next boot,
-    // the one case that does.
+    // A storage write the engine needs (the checkpoint batch, or a terminal `wf:` write) that
+    // storage refused on every attempt is a `CheckpointCommitFailedError`: the write already
+    // retried, five attempts over 750 ms. Any other error out of a terminal message ends the run
+    // the same way, because the terminal write is the last thing that can settle it.
     //
     // A checkpoint that cannot be encoded is not retryable, since the same state fails on every
     // resume, so left alone it would stay `running` with `result()` pending forever. Fail the
@@ -351,16 +317,13 @@ export async function handleStrategyMessage(
     // abandoned the run where it detected the loss (this engine stops driving it and settles its
     // local handle); all that is left is to write nothing: failing the workflow here would
     // overwrite the winner.
-    if (error instanceof WorkflowCheckpointConflictError) return;
-    if (error instanceof CheckpointCommitFailedError && error.write === 'failure') {
-      abandonWorkflowAfterCheckpointConflict(internals, error);
-      return;
-    }
-    if (!(
-      error instanceof CheckpointEncodingError || error instanceof CheckpointCommitFailedError
-    )) {
-      throw error;
-    }
-    await failRunOrAbandon(internals, message.workflowId, error, callbacks);
+    await endRunAfterStrategyError(
+      internals,
+      message.workflowId,
+      callbacks,
+      error,
+      terminalWrite,
+      run,
+    );
   }
 }

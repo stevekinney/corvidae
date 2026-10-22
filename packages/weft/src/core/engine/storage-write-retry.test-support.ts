@@ -49,23 +49,26 @@ export type Run = {
 
 /**
  * Start `definition` over a refusing storage, park it on its signal, then arm the storage. Under
- * `ownership: 'lease'` the engine holds the lease, so every write carries the epoch fence.
+ * an ownership mode the engine holds the lease or the run's claim, so every write carries the epoch fence.
  */
 export async function startParked(
   definition: typeof steps | typeof failsAfterSignal,
   workflowId: string,
-  options: { readonly delays?: readonly number[]; readonly ownership?: 'lease' } = {},
+  options: {
+    readonly delays?: readonly number[];
+    readonly ownership?: 'lease' | 'workflow-lease';
+  } = {},
 ): Promise<Run> {
   const refusing = createRefusingStorage(new MemoryStorage());
   const engine: Engine =
-    options.ownership === 'lease'
+    options.ownership !== undefined
       ? ((await Engine.create({
           storage: refusing.storage,
           workflows: { [definition.name]: definition } as { 'retry-steps': typeof steps },
-          ownership: 'lease',
+          ownership: options.ownership,
         })) as unknown as Engine)
       : new Engine({ storage: refusing.storage });
-  if (options.ownership !== 'lease') engine.register(definition as typeof steps);
+  if (options.ownership === undefined) engine.register(definition as typeof steps);
   getInternals(engine).storageWriteRetryDelaysForTesting = options.delays ?? NO_WAIT;
   const handle = await engine.start(definition.name, null, { id: workflowId });
   const result = handle.result();

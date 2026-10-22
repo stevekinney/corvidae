@@ -18,5 +18,7 @@ export type WorkflowStateCommitCallback = (
     includePendingAtomicSideEffects?: boolean;
     /** Retry a refused write in process; see `commitSelfWorkflowStateOperations`. */
     retryRefusedWrite?: 'completion' | 'failure';
+    /** Rebuild the batch over a fresher record of the same run; see `commitSelfWorkflowStateOperations`. */
+    rebuildOperations?: (fresh: WorkflowState) => BatchOperation[];
   },
 ) => Promise<void>;

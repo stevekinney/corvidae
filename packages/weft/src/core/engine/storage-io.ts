@@ -144,6 +144,8 @@ type WorkflowStateCommitOptions = {
   extraConditions?: ConditionalBatchCondition[];
   /** Retry a refused write in process, as this terminal write; read only by the self commit. */
   retryRefusedWrite?: 'completion' | 'failure';
+  /** Rebuild the operations over a fresher record of the same run; read only with a retry. */
+  rebuildOperations?: (fresh: WorkflowState) => BatchOperation[];
 };
 
 /**
@@ -160,6 +162,8 @@ function buildWorkflowStateCommit(
 ): {
   operations: BatchOperation[];
   conditions: ConditionalBatchCondition[];
+  /** The staged side-effect operations the commit folded in; a rebuilt batch carries them too. */
+  sideEffectOperations: BatchOperation[];
   hasPendingSideEffects: boolean;
   restoreSideEffects: () => void;
 } {
@@ -170,17 +174,15 @@ function buildWorkflowStateCommit(
         internals.checkpoints?.get(workflowId)?.workflowExecutionToken,
       )
     : undefined;
-  const operationsWithSideEffects =
-    pendingSideEffects === undefined
-      ? operations
-      : [...operations, ...pendingSideEffects.operations];
+  const sideEffectOperations = pendingSideEffects?.operations ?? [];
   const storageSupportsConditionalBatch = internals.storage.capabilities().conditionalBatch;
   const conditions = storageSupportsConditionalBatch
     ? [...(pendingSideEffects?.conditions ?? []), ...(options.extraConditions ?? [])]
     : [];
   return {
-    operations: operationsWithSideEffects,
+    operations: [...operations, ...sideEffectOperations],
     conditions,
+    sideEffectOperations,
     hasPendingSideEffects: pendingSideEffects !== undefined,
     restoreSideEffects: () => {
       if (pendingSideEffects !== undefined) {
@@ -254,8 +256,7 @@ export async function commitSelfWorkflowStateOperations(
         onLostRace,
       );
     } catch (error) {
-      // A refused write is retried in process when the caller asked for it. The retry starts from
-      // this catch, so a first-time commit adds no promise turn; the batch keeps its side effects.
+      // A refused write is retried in process when asked: from this catch, so no extra promise turn.
       if (options.retryRefusedWrite === undefined) throw error;
       await retryTerminalWorkflowStateWrite(
         internals,
@@ -265,6 +266,8 @@ export async function commitSelfWorkflowStateOperations(
         commit.conditions,
         error,
         onLostRace,
+        options.rebuildOperations,
+        commit.sideEffectOperations,
       );
     }
   } catch (error) {
