@@ -40,6 +40,22 @@ import {
 } from '@lostgradient/weft';
 
 import { isRunFailureFinishReason } from './runtime-composition';
+import {
+  compareListingKeys,
+  createTaskListingStore,
+  decodeListingToken,
+  encodeListingToken,
+  fitsListingWindow,
+  isAfterListingKey,
+  listingEntryBytes,
+  TASK_LISTING_LIFETIME_MILLISECONDS,
+  TaskListingTokenError,
+  type TaskListingEntry,
+  type TaskListingFilters,
+  type TaskListingKey,
+  type TaskListingRecord,
+  type TaskListingScope,
+} from './task-list-snapshots';
 import type { CancelDurableRunOutcome, PendingReview } from './types';
 
 /** The key prefix of a task's record. */
@@ -225,13 +241,45 @@ export interface TaskCancelOutcome {
   readonly reason?: 'already-terminal';
 }
 
-/** A page of tasks. */
+/** A page of tasks, by offset: what {@link TaskRegistry.enumerate} answers. */
 export interface TaskPage {
   readonly tasks: readonly TaskView[];
   readonly nextOffset: number | null;
 }
 
-/** What `list` filters and pages by. */
+/** A page of a snapshot-consistent listing (COR-1304). */
+export interface TaskListPage<T = TaskView> {
+  readonly tasks: readonly T[];
+  /** Opaque; `null` when no entries remain. */
+  readonly nextPageToken: string | null;
+}
+
+/** What {@link TaskRegistry.list} filters and pages by. */
+export interface TaskListQuery<T = TaskView> {
+  /**
+   * Who is listing: the caller's identity, which owns the listing's snapshot and counts toward
+   * the per-principal cap. It is the caller's owner key when it has one.
+   */
+  readonly principal: string;
+  /** Only this owner's tasks; omit for the every-owner reach (`bureau.tasks:read`). */
+  readonly owner?: string | undefined;
+  readonly contextId?: string | undefined;
+  readonly agentName?: string | undefined;
+  readonly status?: TaskState | undefined;
+  /** Only tasks whose status timestamp is strictly after this ISO 8601 instant. */
+  readonly statusTimestampAfter?: string | undefined;
+  /** Entries per page. It is not bound to the snapshot, so it may vary between pages. */
+  readonly limit: number;
+  readonly pageToken?: string | undefined;
+  /**
+   * What each entry is, computed once from the entry's view when the snapshot is built and
+   * returned from the snapshot on every later page. It must return JSON-serializable data.
+   * Omitted, an entry is its {@link TaskView}.
+   */
+  readonly project?: ((view: TaskView) => T | Promise<T>) | undefined;
+}
+
+/** What `enumerate` filters and pages by. */
 export interface TaskQuery {
   /** Only this owner's tasks; omit for every owner's. */
   readonly owner?: string | undefined;
@@ -244,6 +292,22 @@ export interface TaskQuery {
 
 /** The task registry a Bureau exposes as `Bureau.tasks`. */
 export interface TaskRegistry {
+  /**
+   * Lists tasks, most recently changed first (`TaskView.updatedAt` descending, then id
+   * descending), as a snapshot-consistent listing (COR-1304). The first page that has a next page
+   * records the ordered listing; its `nextPageToken` names that record, and every later page is
+   * read from it, so a task that changes or is created mid-enumeration neither moves nor repeats.
+   * A task removed since is skipped, so a page may hold fewer than `limit` entries. A refused
+   * token throws a {@link TaskListingTokenError}.
+   */
+  list<T = TaskView>(query: TaskListQuery<T>): Promise<TaskListPage<T>>;
+  /**
+   * Every task matching `query`, newest first by creation, by offset. For the Bureau's own
+   * enumerations: it records no snapshot and counts toward no cap.
+   */
+  enumerate(query: TaskQuery): Promise<TaskPage>;
+  /** Deletes the expired task-listing snapshots without reading them. Resolves how many keys. */
+  expireListings(): Promise<number>;
   /** Writes the record of a task about to start. */
   recordAdmission(admission: TaskAdmission): Promise<void>;
   /** Removes a record whose task never started. */
@@ -364,7 +428,6 @@ export interface TaskRegistry {
   ownerOf(taskId: string): Promise<string | undefined>;
   /** A task's record, as stored. */
   record(taskId: string): Promise<TaskRecord | undefined>;
-  list(query: TaskQuery): Promise<TaskPage>;
   /**
    * What each context is doing, answered for the whole set in one query, from the context's
    * latest task alone. Only the tasks of the context's incarnation count (see
@@ -751,6 +814,183 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
     return records;
   }
 
+  async function matchingViews(
+    query: Pick<TaskQuery, 'owner' | 'contextId' | 'agentName' | 'status'>,
+  ): Promise<TaskView[]> {
+    let records =
+      query.contextId === undefined ? await allRecords() : await recordsOfContext(query.contextId);
+    if (query.contextId !== undefined) {
+      // Only the context's current incarnation: a context deleted and recreated
+      // under the same id is a new one, and its predecessor's tasks are not its own.
+      const current = await host.currentIncarnation(query.contextId);
+      records = records.filter((record) => belongsToIncarnation(record, current));
+    }
+    if (query.owner !== undefined) {
+      records = records.filter((record) => record.owner === query.owner);
+    }
+    if (query.agentName !== undefined) {
+      records = records.filter((record) => record.agentName === query.agentName);
+    }
+    const grouped = reviewsByRun(host.pendingReviews());
+    const views = records.map((record) => viewOf(record, grouped.get(record.taskId)));
+    return query.status === undefined
+      ? views
+      : views.filter((view) => view.status === query.status);
+  }
+
+  const listings = createTaskListingStore({
+    kv,
+    now: () => Date.parse(clock.nowISO()),
+  });
+
+  /**
+   * The key a view sorts by in a snapshotted listing. The status timestamp is `updatedAt`: the
+   * settlement's time once the task settled, otherwise the time of the run's latest recorded
+   * action, otherwise its creation. A working task's timestamp therefore also moves on actions
+   * that are not status changes, and a review opening or closing moves the status without moving
+   * it; no separate status-change time is persisted.
+   */
+  function listingKeyOf(view: TaskView): TaskListingKey {
+    return { at: Date.parse(view.updatedAt), id: view.id };
+  }
+
+  function filtersOf(query: TaskListQuery<unknown>): TaskListingFilters {
+    return {
+      contextId: query.contextId ?? null,
+      agentName: query.agentName ?? null,
+      status: query.status ?? null,
+      statusTimestampAfter:
+        query.statusTimestampAfter === undefined ? null : Date.parse(query.statusTimestampAfter),
+    };
+  }
+
+  /** One fresh window: the matching views strictly after `after`, projected, within the bounds. */
+  async function buildWindow<T>(
+    query: TaskListQuery<T>,
+    scope: TaskListingScope,
+    after: TaskListingKey | null,
+  ): Promise<{ entries: TaskListingEntry<T>[]; continuation: TaskListingKey | null }> {
+    const { statusTimestampAfter } = scope.filters;
+    const views = await matchingViews(query);
+    const keyed = views
+      .map((view) => ({ view, key: listingKeyOf(view) }))
+      .filter(
+        ({ key }) =>
+          (statusTimestampAfter === null || key.at > statusTimestampAfter) &&
+          (after === null || isAfterListingKey(key, after)),
+      )
+      .toSorted((left, right) => compareListingKeys(left.key, right.key));
+    const entries: TaskListingEntry<T>[] = [];
+    let bytes = 0;
+    for (const { view, key } of keyed) {
+      const value = query.project === undefined ? (view as T) : await query.project(view);
+      const entry = { ...key, value };
+      const entryBytes = listingEntryBytes(entry);
+      if (!fitsListingWindow(entries.length, bytes, entryBytes)) {
+        const last = entries.at(-1);
+        return { entries, continuation: last === undefined ? null : { at: last.at, id: last.id } };
+      }
+      entries.push(entry);
+      bytes += entryBytes;
+    }
+    return { entries, continuation: null };
+  }
+
+  /** The page of `record` starting at `position`, skipping tasks removed since the snapshot. */
+  async function pageOf<T>(
+    record: TaskListingRecord<T>,
+    position: number,
+    limit: number,
+  ): Promise<TaskListPage<T>> {
+    const end = position + limit;
+    const tasks: T[] = [];
+    for (const entry of record.entries.slice(position, end)) {
+      if (await kv.has(recordKey(entry.id))) tasks.push(entry.value);
+    }
+    let nextPageToken: string | null = null;
+    if (end < record.entries.length || record.continuation !== null) {
+      nextPageToken = encodeListingToken({
+        listingId: record.listingId,
+        window: record.window,
+        expiresAt: record.expiresAt,
+        position: Math.min(end, record.entries.length),
+      });
+    }
+    return { tasks, nextPageToken };
+  }
+
+  async function startListing<T>(
+    query: TaskListQuery<T>,
+    scope: TaskListingScope,
+  ): Promise<TaskListPage<T>> {
+    const incarnation =
+      query.contextId === undefined
+        ? null
+        : ((await host.currentIncarnation(query.contextId)) ?? '');
+    const createdAt = Date.parse(clock.nowISO());
+    const window = await buildWindow(query, scope, null);
+    const record: TaskListingRecord<T> = {
+      ...scope,
+      listingId: identifiers.next('task-listing'),
+      window: 0,
+      incarnation,
+      createdAt,
+      expiresAt: createdAt + TASK_LISTING_LIFETIME_MILLISECONDS,
+      ...window,
+    };
+    const page = await pageOf(record, 0, query.limit);
+    // A listing that fits its first page has no next page and leaves nothing behind.
+    if (page.nextPageToken !== null) await listings.save(record);
+    return page;
+  }
+
+  /** The window after `previous`, built once: a retried token finds the one already stored. */
+  async function nextWindow<T>(
+    query: TaskListQuery<T>,
+    scope: TaskListingScope,
+    previous: TaskListingRecord<T>,
+  ): Promise<TaskListingRecord<T>> {
+    const window = previous.window + 1;
+    const stored = await listings.find<T>(scope, previous.listingId, previous.expiresAt, window);
+    if (stored !== undefined) return stored;
+    const built = await buildWindow(query, scope, previous.continuation);
+    const record: TaskListingRecord<T> = { ...previous, window, ...built };
+    await listings.save(record);
+    return record;
+  }
+
+  async function continueListing<T>(
+    query: TaskListQuery<T>,
+    scope: TaskListingScope,
+    pageToken: string,
+  ): Promise<TaskListPage<T>> {
+    const token = decodeListingToken(pageToken);
+    let record = await listings.load<T>(token, scope);
+    if (query.contextId !== undefined) {
+      const current = (await host.currentIncarnation(query.contextId)) ?? '';
+      if (current !== record.incarnation) throw new TaskListingTokenError('context-changed');
+    }
+    let { position } = token;
+    if (position >= record.entries.length) {
+      // The window is spent: the token after its last entry starts the next window.
+      if (record.continuation === null) return { tasks: [], nextPageToken: null };
+      record = await nextWindow(query, scope, record);
+      position = 0;
+    }
+    return pageOf(record, position, query.limit);
+  }
+
+  async function listSnapshotted<T = TaskView>(query: TaskListQuery<T>): Promise<TaskListPage<T>> {
+    const scope: TaskListingScope = {
+      principal: query.principal,
+      reach: query.owner === undefined ? 'every-owner' : 'own',
+      filters: filtersOf(query),
+    };
+    return query.pageToken === undefined
+      ? startListing(query, scope)
+      : continueListing(query, scope, query.pageToken);
+  }
+
   async function watchCleanup(
     taskId: string,
     closed: Promise<CleanupAcknowledgement>,
@@ -1057,25 +1297,8 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
 
     record: read,
 
-    async list(query) {
-      let records =
-        query.contextId === undefined
-          ? await allRecords()
-          : await recordsOfContext(query.contextId);
-      if (query.contextId !== undefined) {
-        // Only the context's current incarnation: a context deleted and recreated
-        // under the same id is a new one, and its predecessor's tasks are not its own.
-        const current = await host.currentIncarnation(query.contextId);
-        records = records.filter((record) => belongsToIncarnation(record, current));
-      }
-      if (query.owner !== undefined)
-        records = records.filter((record) => record.owner === query.owner);
-      if (query.agentName !== undefined) {
-        records = records.filter((record) => record.agentName === query.agentName);
-      }
-      const grouped = reviewsByRun(host.pendingReviews());
-      let views = records.map((record) => viewOf(record, grouped.get(record.taskId)));
-      if (query.status !== undefined) views = views.filter((view) => view.status === query.status);
+    enumerate: async (query) => {
+      const views = await matchingViews(query);
       views.sort((left, right) =>
         left.createdAt === right.createdAt
           ? left.id < right.id
@@ -1090,6 +1313,10 @@ export function createTaskRegistry(options: CreateTaskRegistryOptions): TaskRegi
         query.offset + query.limit < views.length ? query.offset + query.limit : null;
       return { tasks: page, nextOffset };
     },
+
+    list: listSnapshotted,
+
+    expireListings: () => listings.expire(),
 
     async activityOf(contextIds, incarnations) {
       const live = host.liveTasksOfContexts(contextIds);
