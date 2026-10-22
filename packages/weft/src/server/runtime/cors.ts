@@ -64,7 +64,12 @@ export interface CorsOptions {
   readonly allowedOrigins?: ReadonlyArray<string> | ((origin: string) => boolean);
   /** Methods advertised in preflight responses. Defaults to the common verbs plus `OPTIONS`. */
   readonly allowedMethods?: ReadonlyArray<string>;
-  /** Request headers a client may send. Defaults to `Authorization, Content-Type, Last-Event-ID, Cache-Control`. */
+  /**
+   * Request headers a client may send. Defaults to `Authorization, Content-Type, Last-Event-ID,
+   * Cache-Control` plus the MCP request headers `Mcp-Protocol-Version`, `Mcp-Method`, and
+   * `Mcp-Name`, which a browser MCP client sends to `/mcp`. An explicit list replaces the default,
+   * so include those three when it should admit browser MCP clients.
+   */
   readonly allowedHeaders?: ReadonlyArray<string>;
   /** Response headers exposed to client scripts via `Access-Control-Expose-Headers`. */
   readonly exposedHeaders?: ReadonlyArray<string>;
@@ -80,6 +85,10 @@ const DEFAULT_ALLOWED_HEADERS = [
   'Content-Type',
   'Last-Event-ID',
   'Cache-Control',
+  // A 2026-07-28 MCP client names its protocol, method, and tool in headers the SDK requires.
+  'Mcp-Protocol-Version',
+  'Mcp-Method',
+  'Mcp-Name',
 ] as const;
 const DEFAULT_MAX_AGE_SECONDS = 600;
 const WILDCARD_ORIGIN = '*';

@@ -34,6 +34,11 @@ export type McpToolResult = {
  */
 export type McpToolCallContext = McpAccessContext & {
   readonly signal?: AbortSignal | undefined;
+  /**
+   * Receives work a call starts and does not await, such as cancelling the workflow of a call the
+   * client cancelled, so the entry that owns the connection can wait for it before closing.
+   */
+  readonly trackPendingWork?: ((work: Promise<unknown>) => void) | undefined;
 };
 
 type ToolImplementation = {
@@ -168,6 +173,7 @@ function buildToolImplementations(engine: Engine): ToolImplementation[] {
           timeoutMs,
           signal: context.signal,
           cancel: () => context.engine.cancel(handle.id),
+          trackPendingWork: context.trackPendingWork,
         });
         if (outcome.status === 'timed-out') {
           return workflowToolStillRunningResult(handle.id, timeoutMs);
@@ -239,6 +245,7 @@ async function waitForWorkflowToolResult(
     timeoutMs: number;
     signal?: AbortSignal | undefined;
     cancel: () => Promise<void>;
+    trackPendingWork?: ((work: Promise<unknown>) => void) | undefined;
   },
 ): Promise<WorkflowToolResultWaitOutcome> {
   if (options.signal?.aborted) {
@@ -260,9 +267,10 @@ async function waitForWorkflowToolResult(
       : new Promise<never>((_resolve, reject) => {
           const abort = () => {
             reject(new McpToolExecutionError('Workflow cancelled'));
-            options.cancel().catch((error: unknown) => {
+            const cancellation = options.cancel().catch((error: unknown) => {
               console.warn('MCP workflow tool cancellation failed:', error);
             });
+            options.trackPendingWork?.(cancellation);
           };
           options.signal?.addEventListener('abort', abort, { once: true });
           cleanupAbortListener = () => options.signal?.removeEventListener('abort', abort);

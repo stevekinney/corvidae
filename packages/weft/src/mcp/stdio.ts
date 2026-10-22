@@ -175,6 +175,13 @@ async function serveConnection(
   await using feed = new McpChangeFeed(engine);
   const transport = new StreamLineTransport(write);
   const principal = principalFromStdioLocal();
+  // Work a call starts and does not await (cancelling the workflow of a cancelled call) must
+  // finish before the session ends, or the process can exit with the workflow still running.
+  const pendingWork = new Set<Promise<unknown>>();
+  const trackPendingWork = (work: Promise<unknown>): void => {
+    pendingWork.add(work);
+    void work.finally(() => pendingWork.delete(work));
+  };
   const connection = serveStdio(
     createMcpServerFactory({
       engine,
@@ -182,6 +189,7 @@ async function serveConnection(
       lifetime: 'connection',
       feed,
       registrars: options.registrars ?? [],
+      trackPendingWork,
     }),
     { transport },
   );
@@ -199,6 +207,7 @@ async function serveConnection(
   }
   if (buffer.trim().length > 0) transport.receive(buffer);
   await transport.settled();
+  await Promise.allSettled(pendingWork);
   await connection.close();
 }
 

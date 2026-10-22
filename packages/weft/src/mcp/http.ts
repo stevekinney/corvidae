@@ -30,6 +30,11 @@ export type McpEndpointOptions = {
   readonly maxBodyBytes?: number;
   /** Registers further tools or prompts on every server instance the endpoint builds. */
   readonly registrars?: McpServerRegistrar | ReadonlyArray<McpServerRegistrar>;
+  /**
+   * The most `subscriptions/listen` streams the endpoint keeps open at once, across every
+   * caller; a further listen is refused in-band. Defaults to the SDK's 1024.
+   */
+  readonly maxSubscriptions?: number;
 };
 
 /**
@@ -75,6 +80,9 @@ export class McpEndpoint implements AsyncDisposable {
       {
         legacy: 'stateless',
         maxRequestBodySize: this.#maxBodyBytes,
+        ...(options.maxSubscriptions === undefined
+          ? {}
+          : { maxSubscriptions: options.maxSubscriptions }),
       },
     );
     const notify = this.#handler.notify;

@@ -81,6 +81,8 @@ export type McpServerFactoryOptions = {
   readonly lifetime: 'request' | 'connection';
   readonly feed?: McpChangeFeed;
   readonly registrars?: ReadonlyArray<McpServerRegistrar>;
+  /** Receives work a tool call starts and does not await; see `McpToolCallContext`. */
+  readonly trackPendingWork?: ((work: Promise<unknown>) => void) | undefined;
 };
 
 const SERVER_INFO = { name: 'weft', title: 'Weft', version: VERSION };
@@ -115,7 +117,7 @@ function buildServer(options: McpServerFactoryOptions, request: McpRequestContex
       },
     },
   });
-  const tools = new ProjectedTools(server, context);
+  const tools = new ProjectedTools(server, context, options.trackPendingWork);
   registerResourceHandlers(server, context, subscriptions);
   for (const registrar of options.registrars ?? []) registrar(server, context);
   if (options.lifetime === 'connection' && options.feed !== undefined) {
@@ -140,10 +142,16 @@ class ProjectedTools {
   readonly #server: McpServer;
   readonly #context: McpServerContext;
   readonly #registered = new Map<string, { signature: string; tool: RegisteredTool }>();
+  readonly #trackPendingWork: ((work: Promise<unknown>) => void) | undefined;
 
-  constructor(server: McpServer, context: McpServerContext) {
+  constructor(
+    server: McpServer,
+    context: McpServerContext,
+    trackPendingWork: ((work: Promise<unknown>) => void) | undefined,
+  ) {
     this.#server = server;
     this.#context = context;
+    this.#trackPendingWork = trackPendingWork;
     this.synchronize();
   }
 
@@ -183,6 +191,7 @@ class ProjectedTools {
           principal: context.principal,
           authRequired: context.authRequired,
           signal: handlerContext.mcpReq.signal,
+          trackPendingWork: this.#trackPendingWork,
         });
         return {
           content: result.content.map((block) => ({ ...block })),

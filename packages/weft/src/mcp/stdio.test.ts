@@ -764,6 +764,71 @@ describe('runMcpStdioSession', () => {
     engine[Symbol.dispose]();
   });
 
+  it('finishes cancelling the workflow of a cancelled call before the session ends', async () => {
+    const engine = createEngine();
+    const input = controllableInput();
+    const output = collectingOutput();
+
+    const session = runMcpStdioSession({
+      input: input.stream,
+      output: output.stream,
+      engine,
+      admission: { kind: 'allow-unauthenticated-local-admin' },
+    });
+
+    input.send({
+      jsonrpc: '2.0',
+      id: 'init',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2025-11-25',
+        capabilities: {},
+        clientInfo: { name: 'stdio-test', version: '1.0.0' },
+      },
+    });
+    await waitForLine(output, (line) => line.id === 'init');
+    input.send({ jsonrpc: '2.0', method: 'notifications/initialized' });
+
+    input.send({
+      jsonrpc: '2.0',
+      id: 'pending',
+      method: 'tools/call',
+      params: { name: 'hold_for_stdio_cancel', arguments: { input: { value: 'cancel' } } },
+    });
+
+    let workflowId = '';
+    await waitForCondition(
+      async () => {
+        const workflows = await engine.list({ type: 'hold-for-stdio-cancel' });
+        workflowId = workflows.items.find((entry) => entry.status === 'running')?.id ?? '';
+        return workflowId.length > 0;
+      },
+      { timeoutMs: 2_000, intervalMs: 10, label: 'running stdio workflow' },
+    );
+
+    let cancellations = 0;
+    const cancel = engine.cancel.bind(engine);
+    engine.cancel = async (...parameters: Parameters<typeof engine.cancel>) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      cancellations += 1;
+      return cancel(...parameters);
+    };
+    input.send({
+      jsonrpc: '2.0',
+      method: 'notifications/cancelled',
+      params: { requestId: 'pending', reason: 'stdio test cancellation' },
+    });
+
+    // Close input at once: the session must still finish the (slowed) cancellation first.
+    input.close();
+    const result = await session;
+    expect(result.exitCode).toBe(0);
+    expect(cancellations).toBe(1);
+    const cancelled = await engine.get(workflowId);
+    expect(cancelled?.status).toBe('cancelled');
+    engine[Symbol.dispose]();
+  });
+
   it('ignores invalid cancellation notifications and keeps the stdio session alive', async () => {
     const input = controllableInput();
     const output = collectingOutput();
