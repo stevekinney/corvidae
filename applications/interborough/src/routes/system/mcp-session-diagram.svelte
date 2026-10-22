@@ -1,8 +1,9 @@
 <script lang="ts">
   /**
-   * MCP session-protocol sequence diagram (plan §7.3 app-local net-new: "one
-   * static themed SVG (initialize → token → continued requests → 403 on
-   * mismatch)"; design `Weft UI.dc.html` "System" § DISCOVERY). Static
+   * MCP request-protocol sequence diagram (plan §7.3 app-local net-new: "one
+   * static themed SVG"; design `Weft UI.dc.html` "System" § DISCOVERY). Since
+   * COR-1311 the endpoint keeps no session: initialize negotiates a protocol
+   * version, and every later request carries its own credential. Static
    * and app-local by design — this documents the wire choreography every MCP
    * client goes through, not a data-driven render of anything the server
    * exposes.
@@ -12,7 +13,7 @@
 <svg
   viewBox="0 0 360 190"
   role="img"
-  aria-label="MCP session protocol: client sends initialize, server returns a session token, the client includes the token on subsequent requests, and a missing or mismatched token gets a 403."
+  aria-label="MCP request protocol: client sends initialize, server answers with the negotiated protocol version, every later request carries its own credential, and a request without one gets a 401."
   class="weft-mcp-diagram"
 >
   <text x="4" y="14" class="weft-mcp-diagram__lane-label">Client</text>
@@ -34,7 +35,7 @@
     >initialize →</text
   >
 
-  <!-- <- session token -->
+  <!-- <- protocol version -->
   <line
     x1="20"
     y1="80"
@@ -51,10 +52,10 @@
     y="72"
     text-anchor="end"
     class="weft-mcp-diagram__arrow-label weft-mcp-diagram__arrow-label--success"
-    >← session token</text
+    >← protocol version</text
   >
 
-  <!-- request + token -> -->
+  <!-- request + credential -> -->
   <line
     x1="4"
     y1="118"
@@ -67,10 +68,10 @@
     class="weft-mcp-diagram__arrowhead weft-mcp-diagram__arrowhead--accent"
   />
   <text x="4" y="110" class="weft-mcp-diagram__arrow-label weft-mcp-diagram__arrow-label--accent"
-    >request + token →</text
+    >request + credential →</text
   >
 
-  <!-- <- 403 if missing/mismatched -->
+  <!-- <- 401 without a credential -->
   <line
     x1="20"
     y1="156"
@@ -87,7 +88,7 @@
     y="148"
     text-anchor="end"
     class="weft-mcp-diagram__arrow-label weft-mcp-diagram__arrow-label--danger"
-    >← 403 if missing/mismatched</text
+    >← 401 without a credential</text
   >
 
   <circle cx="4" cy="42" r="4" class="weft-mcp-diagram__dot weft-mcp-diagram__dot--accent" />

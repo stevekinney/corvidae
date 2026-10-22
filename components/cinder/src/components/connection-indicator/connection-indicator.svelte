@@ -27,7 +27,6 @@
   import RefreshCcwDot from '@lucide/svelte/icons/refresh-ccw-dot';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-  import Wifi from '@lucide/svelte/icons/wifi';
   import WifiOff from '@lucide/svelte/icons/wifi-off';
   import { classNames } from '../../utilities/class-names.ts';
   import type {
@@ -44,9 +43,10 @@
     closed: 'Closed',
   };
 
-  const statusIcons: Record<ConnectionIndicatorStatus, typeof Wifi> = {
+  // `live` has no icon: the pulsing dot is its whole glyph, and the "Live" label still names the
+  // state, so the state is never carried by color alone (WCAG 1.4.1).
+  const statusIcons: Record<Exclude<ConnectionIndicatorStatus, 'live'>, typeof Loader> = {
     connecting: Loader,
-    live: Wifi,
     reconnecting: RefreshCw,
     polling: RefreshCcwDot,
     stale: TriangleAlert,
@@ -77,7 +77,7 @@
       ? undefined
       : (normalizedAriaLabel ?? `Connection: ${resolvedLabel}`),
   );
-  const Icon = $derived(statusIcons[status]);
+  const Icon = $derived(status === 'live' ? undefined : statusIcons[status]);
 </script>
 
 <div
@@ -90,12 +90,13 @@
   aria-label={resolvedAriaLabel}
   aria-labelledby={normalizedAriaLabelledby}
 >
-  {#if status === 'live'}
+  {#if Icon === undefined}
     <span class="cinder-connection-indicator__dot" aria-hidden="true"></span>
+  {:else}
+    <span class="cinder-connection-indicator__icon" aria-hidden="true">
+      <Icon size={13} strokeWidth={2.25} />
+    </span>
   {/if}
-  <span class="cinder-connection-indicator__icon" aria-hidden="true">
-    <Icon size={13} strokeWidth={2.25} />
-  </span>
   <span class="cinder-connection-indicator__label">{resolvedLabel}</span>
   {#if status === 'reconnecting' && attempt}
     <span class="cinder-connection-indicator__attempt">{@render attempt()}</span>

@@ -1,5 +1,6 @@
 import { createDefaultRuntimeServices, type RuntimeServices } from '@lostgradient/lifecycle';
 
+import { assertToolResultParts, isToolContent, type ToolResultPart } from './content-parts';
 import type {
   JSONValue,
   ToolAction,
@@ -51,7 +52,7 @@ export function materializeToolResult(toolResult: ToolResultInput): ToolResult {
     );
   }
 
-  return stripRuntimeToolResultFields(toolResult, normalizeJSONValue(toolResult.content));
+  return stripRuntimeToolResultFields(toolResult, toolResult.content);
 }
 
 export function materializeToolResults(toolResults: ReadonlyArray<ToolResultInput>): ToolResult[] {
@@ -65,11 +66,11 @@ export async function materializeToolResultAsync(
   const streamingPayload = getStreamingPayload(toolResult);
   if (!streamingPayload) {
     if (options.signal?.aborted) throw toAbortError(options.signal);
-    return stripRuntimeToolResultFields(toolResult, normalizeJSONValue(toolResult.content));
+    return stripRuntimeToolResultFields(toolResult, toolResult.content);
   }
 
   const chunks = await collectAsyncIterable(streamingPayload, options.signal);
-  return stripRuntimeToolResultFields(toolResult, normalizeJSONValue(chunks));
+  return stripRuntimeToolResultFields(toolResult, chunks);
 }
 
 export async function materializeToolResultsAsync(
@@ -81,11 +82,31 @@ export async function materializeToolResultsAsync(
   );
 }
 
-function stripRuntimeToolResultFields(toolResult: ToolResultInput, content: JSONValue): ToolResult {
+/**
+ * A result's `content` and `parts`: explicit `parts` win; otherwise a
+ * {@link ToolContent} payload splits into its parts and its JSON value.
+ */
+function resolveContentAndParts(
+  toolResult: ToolResultInput,
+  payload: unknown,
+): { content: JSONValue; parts?: ToolResultPart[] } {
+  if (toolResult.parts !== undefined) {
+    assertToolResultParts(toolResult.parts);
+    return { content: normalizeJSONValue(payload), parts: [...toolResult.parts] };
+  }
+  if (isToolContent(payload)) {
+    return { content: normalizeJSONValue(payload.value ?? null), parts: [...payload.parts] };
+  }
+  return { content: normalizeJSONValue(payload) };
+}
+
+function stripRuntimeToolResultFields(toolResult: ToolResultInput, payload: unknown): ToolResult {
+  const { content, parts } = resolveContentAndParts(toolResult, payload);
   return {
     callId: toolResult.callId,
     outcome: toolResult.outcome,
     content,
+    ...(parts === undefined ? {} : { parts }),
     ...(toolResult.error
       ? {
           error: {

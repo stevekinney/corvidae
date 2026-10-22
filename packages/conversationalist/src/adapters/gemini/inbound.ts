@@ -7,7 +7,11 @@ import type {
   ToolResult,
 } from '../../types';
 import { createMediaPart, inlineBase64Source, modalityFromMimeType, sourceFromUrl } from '../media';
-import { isCanonicalToolResultPayload, toJSONValue } from '../shared';
+import {
+  fromCanonicalToolResultPayload,
+  isCanonicalToolResultPayload,
+  toJSONValue,
+} from '../shared';
 import type {
   GeminiConversation,
   GeminiFileDataPart,
@@ -48,16 +52,9 @@ function parseFunctionResponse(callId: string, response: Record<string, unknown>
 }
 
 function toCanonicalToolResult(callId: string, value: JSONValue): ToolResult | undefined {
-  if (!isCanonicalToolResultPayload(value)) return undefined;
-  return {
-    callId,
-    outcome: value.outcome,
-    content: value.content,
-    ...(value.error ? { error: value.error } : {}),
-    ...(value.action ? { action: value.action } : {}),
-    ...(typeof value.inputDigest === 'string' ? { inputDigest: value.inputDigest } : {}),
-    ...(typeof value.outputDigest === 'string' ? { outputDigest: value.outputDigest } : {}),
-  };
+  return isCanonicalToolResultPayload(value)
+    ? fromCanonicalToolResultPayload(callId, value)
+    : undefined;
 }
 
 function toWrappedToolResult(callId: string, value: JSONValue): ToolResult | undefined {

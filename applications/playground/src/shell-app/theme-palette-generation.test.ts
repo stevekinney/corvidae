@@ -174,7 +174,7 @@ describe('palette proposals over the shipped baseline', () => {
   test('pins accent proposals for both modes, labeled OKLCH', () => {
     const proposal = proposalFor(fresh());
     expect(textOf(proposal, 'light', 'accent.solid')).toBe('oklch(0.68469 0.14787 237.322)');
-    expect(textOf(proposal, 'light', 'accent.text')).toBe('oklch(0.63469 0.139 237.322)');
+    expect(textOf(proposal, 'light', 'accent.text')).toBe('oklch(0.61469 0.13419 237.322)');
     expect(textOf(proposal, 'dark', 'accent.solid')).toBe('oklch(0.68469 0.14787 237.322)');
     expect(textOf(proposal, 'dark', 'accent.text')).toBe('oklch(0.68469 0.14787 237.322)');
     for (const role of proposal.modes.light) {
@@ -187,10 +187,10 @@ describe('palette proposals over the shipped baseline', () => {
   test('pins a status family and a neutral family', () => {
     const success = proposalFor(fresh(), 'success', 'oklch(0.62 0.2 150)');
     expect(textOf(success, 'light', 'status.success.solid')).toBe('oklch(0.62 0.17 150)');
-    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(1 0 150)');
+    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.965 0.05603 150)');
     expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.12 0.033 150)');
     const neutral = proposalFor(fresh(), 'neutral', '#6b7280');
-    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(0.994 0.0026 264.364)');
+    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(0.998 0 264.364)');
     expect(textOf(neutral, 'dark', 'text.default')).toBe('oklch(0.92 0.02336 264.364)');
   });
 

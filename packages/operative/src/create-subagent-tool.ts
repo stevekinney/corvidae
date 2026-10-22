@@ -1,6 +1,8 @@
 import type { TypedEventTarget } from '@lostgradient/lifecycle';
 import type { ToolContext } from 'armorer';
 import { createTool } from 'armorer';
+import { toolContent, type ToolContent } from 'armorer/protocol';
+import { isMediaContent, type MultiModalContent } from 'conversationalist';
 import type { ZodType } from 'zod';
 
 import type { SuccessfulRunResult } from './agent-run';
@@ -297,6 +299,38 @@ export type CreateSubagentToolOptions<
   ToToolOutputOption<TOutput, THasOutput, TToolOutput>;
 
 /**
+ * COR-792: the default projection returns the child's text, and so refuses a
+ * child whose result carries media: dropping it would silently return only
+ * text. Supply `toToolOutput` (for example {@link subagentToolContent}) to
+ * project media.
+ */
+function textOnlyToolOutput(
+  agentName: string,
+  result: { readonly content: string; readonly parts: readonly MultiModalContent[] },
+): string {
+  if (result.parts.some(isMediaContent)) {
+    throw new Error(
+      `Sub-agent "${agentName}" returned media parts, which the default projection cannot carry; supply toToolOutput (for example subagentToolContent) to project them.`,
+    );
+  }
+  return result.content;
+}
+
+/**
+ * A `toToolOutput` projection that carries a child's media: its text (the
+ * summary in `'summary'` mode) followed by every media part of its result, in
+ * order, as tool-result parts. The parts are the child's admitted
+ * managed-asset references, so no bytes cross into the parent.
+ */
+export function subagentToolContent(result: {
+  readonly content: string;
+  readonly parts: readonly MultiModalContent[];
+}): ToolContent {
+  const media = result.parts.filter(isMediaContent);
+  return toolContent([{ type: 'text', text: result.content }, ...media]);
+}
+
+/**
  * Creates a tool that delegates execution to a sub-agent.
  *
  * F1: When `parentContext` is supplied the tool emits a `ChildWorkflowStartedEvent`
@@ -331,7 +365,7 @@ export function createSubagentTool<
     // to `string`; TypeScript can't see that the omitted-option branch and
     // the `string` default coincide.
     toToolOutput = (result: SuccessfulRunResult<TOutput, THasOutput>) =>
-      result.content as unknown as TToolOutput,
+      textOnlyToolOutput(agentName, result) as unknown as TToolOutput,
     returnMode = 'summary',
     // `defaultSubagentSummarizer` only ever reads `.content` — a field
     // `RunResultBase` (and therefore every `SuccessfulRunResult<O, H>`

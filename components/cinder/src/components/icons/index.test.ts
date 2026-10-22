@@ -6,7 +6,7 @@ import * as icons from './index.ts';
 
 setupHappyDom();
 const { render, cleanup } = await import('@testing-library/svelte');
-const { Link, LinkIcon } = await import('@lostgradient/cinder');
+const { Link, LinkIcon, SendHorizontal } = await import('@lostgradient/cinder');
 
 describe('icons/index', () => {
   it('exposes the Link icon separately from the Link component through the package root', () => {
@@ -15,6 +15,19 @@ describe('icons/index', () => {
     try {
       expect(result.container.querySelector('svg')?.getAttribute('aria-label')).toBe('Insert link');
       expect(result.container.querySelector('a')).toBeNull();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('exports SendHorizontal, the composer send glyph, from the package root and the icon set', () => {
+    expect(icons.SendHorizontal).toBe(SendHorizontal);
+    expect(icons.SendHorizontal).not.toBe(icons.ArrowUp);
+    const result = render(SendHorizontal, { 'aria-label': 'Send' });
+    try {
+      const svg = result.container.querySelector('svg');
+      expect(svg?.getAttribute('class')).toContain('lucide-send-horizontal');
+      expect(svg?.getAttribute('aria-label')).toBe('Send');
     } finally {
       cleanup();
     }

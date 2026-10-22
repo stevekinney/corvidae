@@ -24,7 +24,8 @@ import {
 } from '../core/task-ledger/task-ledger.ts';
 import type { RetryPolicy, WorkflowContext } from '../core/types.ts';
 import { workflow } from '../core/types.ts';
-import { MCP_PROTOCOL_VERSION } from '../mcp/protocol.ts';
+import { readJsonRpcResponse } from '../mcp/mcp-client.test-support.ts';
+import { MCP_LEGACY_PROTOCOL_VERSION, MCP_PROTOCOL_VERSION } from '../mcp/protocol.ts';
 import { METRICS } from '../observability/metrics.ts';
 import type { Storage as WeftStorage } from '../storage/interface.ts';
 import { KEYS } from '../storage/interface.ts';
@@ -490,6 +491,8 @@ describe('serve', () => {
       const discoveryResponse = await fetch(`${server.url}/.well-known/mcp.json`);
       expect(discoveryResponse.status).toBe(200);
       const discovery = (await discoveryResponse.json()) as {
+        protocolVersion?: string;
+        legacyProtocolVersion?: string;
         transports?: { streamableHttp?: { url?: string; methods?: string[] } };
         discovery?: { tools?: { method?: string } };
       };
@@ -498,66 +501,45 @@ describe('serve', () => {
       // front door strips it back to canonical `/mcp` before routing, so
       // fetching `endpoint` below exercises the full round-trip.
       expect(endpoint).toBe(`${server.url}/api/mcp`);
-      expect(discovery.transports?.streamableHttp?.methods).toEqual(['POST', 'GET', 'DELETE']);
+      expect(discovery.transports?.streamableHttp?.methods).toEqual(['POST']);
+      expect(discovery.protocolVersion).toBe(MCP_PROTOCOL_VERSION);
 
       const authorization = { Authorization: `Bearer ${apiKey}` };
-      const methodNotAllowed = await fetch(endpoint!, {
-        method: 'PUT',
-        headers: authorization,
-      });
-      expect(methodNotAllowed.status).toBe(405);
-      expect(methodNotAllowed.headers.get('allow')).toBe('POST, GET, DELETE');
+      // Every exchange is one POST: nothing else is served, as discovery says.
+      for (const method of ['PUT', 'GET', 'DELETE']) {
+        const notAllowed = await fetch(endpoint!, {
+          method,
+          headers: { ...authorization, accept: 'text/event-stream' },
+        });
+        expect(notAllowed.status).toBe(405);
+      }
 
-      const getWithoutSession = await fetch(endpoint!, {
-        method: 'GET',
-        headers: { ...authorization, accept: 'text/event-stream' },
-      });
-      expect(getWithoutSession.status).not.toBe(405);
-
+      const headers = {
+        ...authorization,
+        accept: 'application/json, text/event-stream',
+        'content-type': 'application/json',
+      };
       const initializeResponse = await fetch(endpoint!, {
         method: 'POST',
-        headers: {
-          ...authorization,
-          accept: 'application/json, text/event-stream',
-          'content-type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 'initialize',
           method: 'initialize',
           params: {
-            protocolVersion: MCP_PROTOCOL_VERSION,
+            protocolVersion: discovery.legacyProtocolVersion,
             capabilities: {},
             clientInfo: { name: 'weft-test-client', version: '1.0.0' },
           },
         }),
       });
       expect(initializeResponse.status).toBe(200);
-      const sessionId = initializeResponse.headers.get('Mcp-Session-Id');
-      expect(sessionId).toBeTruthy();
-      // A static API key is the shared `api-key-caller`, so the session needs
-      // its continuation token as well as the credential.
-      const sessionToken = initializeResponse.headers.get('Mcp-Session-Token');
-      expect(sessionToken).toBeTruthy();
-
-      const sessionHeaders = {
-        ...authorization,
-        'Mcp-Session-Token': sessionToken!,
-        accept: 'application/json, text/event-stream',
-        'content-type': 'application/json',
-        'Mcp-Protocol-Version': MCP_PROTOCOL_VERSION,
-        'Mcp-Session-Id': sessionId!,
-      };
-      const initializedResponse = await fetch(endpoint!, {
-        method: 'POST',
-        headers: sessionHeaders,
-        body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
-      });
-      expect(initializedResponse.status).toBe(202);
+      const initialized = await readJsonRpcResponse(initializeResponse);
+      expect(initialized.result).toMatchObject({ protocolVersion: MCP_LEGACY_PROTOCOL_VERSION });
 
       const toolsResponse = await fetch(endpoint!, {
         method: 'POST',
-        headers: sessionHeaders,
+        headers: { ...headers, 'Mcp-Protocol-Version': MCP_LEGACY_PROTOCOL_VERSION },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 'tools',
@@ -566,18 +548,12 @@ describe('serve', () => {
         }),
       });
       expect(toolsResponse.status).toBe(200);
-      const toolsBody = (await toolsResponse.json()) as {
+      const toolsBody = (await readJsonRpcResponse(toolsResponse)) as {
         result?: { tools?: unknown[] };
         error?: unknown;
       };
       expect(toolsBody.error).toBeUndefined();
       expect(Array.isArray(toolsBody.result?.tools)).toBe(true);
-
-      const deleteResponse = await fetch(endpoint!, {
-        method: 'DELETE',
-        headers: sessionHeaders,
-      });
-      expect(deleteResponse.status).toBe(204);
     } finally {
       console.warn = originalWarn;
       if (originalNodeEnv !== undefined) Bun.env['NODE_ENV'] = originalNodeEnv;

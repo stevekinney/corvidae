@@ -96,7 +96,8 @@ export interface AnthropicToolUseBlock {
 export interface AnthropicToolResultBlock {
   type: 'tool_result';
   tool_use_id: string;
-  content: string;
+  /** Text, or ordered text, image, and document blocks for a result that carries parts. */
+  content: string | Array<AnthropicTextBlock | AnthropicImageBlock | AnthropicDocumentBlock>;
   is_error?: boolean;
 }
 

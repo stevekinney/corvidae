@@ -460,6 +460,7 @@
         "@electric-sql/pglite": "catalog:",
         "@libsql/client": "catalog:",
         "@lostgradient/environmentalist": "catalog:",
+        "@modelcontextprotocol/server": "catalog:",
         "@msgpack/msgpack": "catalog:",
         "@neondatabase/serverless": "catalog:",
         "@noble/hashes": "catalog:",

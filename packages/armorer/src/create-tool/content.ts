@@ -3,6 +3,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import type { JsonValue } from '../core/serialization/json';
 import { assertJsonValue } from '../core/serialization/json';
 import type { ToolDigestOptions } from '../is-tool';
+import { isToolContent, type ToolResultPart } from '../protocol';
 
 export function normalizeDigestOptions(input?: ToolDigestOptions): {
   input: boolean;
@@ -20,6 +21,18 @@ export function normalizeDigestOptions(input?: ToolDigestOptions): {
 
 export function computeDigest(value: unknown, _algorithm: 'sha256'): string {
   return sha256HexSync(stableStringify(value) ?? '');
+}
+
+/**
+ * A successful execution's `content` and `parts`. A {@link ToolContent}
+ * return value splits into its ordered parts and its JSON value; anything
+ * else is normalized into `content` alone.
+ */
+export function successContent(value: unknown): { content: JsonValue; parts?: ToolResultPart[] } {
+  if (isToolContent(value)) {
+    return { content: normalizeToolContent(value.value ?? null), parts: [...value.parts] };
+  }
+  return { content: normalizeToolContent(value) };
 }
 
 export function normalizeToolContent(value: unknown): JsonValue {

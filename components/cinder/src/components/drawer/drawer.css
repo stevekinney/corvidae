@@ -46,6 +46,28 @@
     pointer-events: auto;
   }
 
+  /* A non-modal drawer is a side panel, so it reads as a region of the page rather than a raised
+   * sheet: the panel is the inset surface, and the header, body and footer are transparent so that
+   * one surface shows through (COR-1552). Modal drawers keep the raised panel and the stacked
+   * surfaces above. */
+  .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__panel {
+    background: var(--cinder-surface-inset);
+  }
+
+  .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__header {
+    background: transparent;
+  }
+
+  .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__body {
+    --_cinder-scroll-fade-color: var(--cinder-surface-inset);
+
+    background: transparent;
+  }
+
+  .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__footer {
+    background: transparent;
+  }
+
   /* Without this, the backdrop had no FROM state to transition from on open —
    it fades out on close (via the rule above) but snapped to full opacity
    instantly on open, which read as an asymmetric "eases out, pops in". */
