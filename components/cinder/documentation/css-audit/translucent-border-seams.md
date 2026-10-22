@@ -21,9 +21,9 @@ Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heav
 
 | Tier | Alpha | Job | Gate |
 | --- | --- | --- | --- |
-| `--cinder-border-muted` | 5% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.1:1) and below `border.control` |
-| `--cinder-border` | 9% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.4:1) and below `border.control` |
-| `--cinder-border-strong` | 15% | Emphasized structure: containers and dividers that need more weight than `border` | Perceptible (1.4:1) and below `border.control` |
+| `--cinder-border-muted` | 5% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.06:1) and below `border.control` |
+| `--cinder-border` | 9% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.14:1) and below `border.control` |
+| `--cinder-border-strong` | 15% | Emphasized structure: containers and dividers that need more weight than `border` | Perceptible (1.3:1) and below `border.control` |
 | `--cinder-border-control` | 48% | Control boundaries: text fields (through `--cinder-control-border`), the Checkbox and Radio box, and any indicator that is the only outline of something interactive | WCAG 1.4.11, 3:1 on all four surfaces in both themes |
 | `--cinder-border-control-hover` | 58% | The hovered control boundary, and anything that used `border.strong` as a control hover | WCAG 1.4.11 |
 
