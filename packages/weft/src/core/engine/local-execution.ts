@@ -96,19 +96,30 @@ export function recordLaunchPending(internals: EngineInternals, workflowId: stri
   return recordPendingLaunch(internals, workflowId);
 }
 
-/** The launching start handed its run to the strategy (a worker has it): the marker is over. */
-export function settleLaunchPending(internals: EngineInternals, workflowId: string): void {
-  internals.queuedOrLaunchingInlineWorkflowStartIds.delete(workflowId);
-  pendingLaunches.get(internals)?.delete(workflowId);
+/**
+ * Settles the launch's own marker. Every settlement goes through its record, never through the id
+ * alone, so a launch never settles a record a later start of the same id made.
+ */
+function settleOwnPendingLaunch(internals: EngineInternals, launch: PendingLaunch): void {
+  const launches = pendingLaunches.get(internals);
+  if (launches?.get(launch.workflowId) !== launch) return;
+  internals.queuedOrLaunchingInlineWorkflowStartIds.delete(launch.workflowId);
+  launches.delete(launch.workflowId);
 }
 
 /**
  * The launching start launched. An inline launch has queued its start, which took the marker over
  * under the same id, so the queue now owns it; a worker launch has handed the run to the worker,
- * which never enqueues, so the marker is settled here.
+ * which never enqueues, so its own marker is settled here. A `start-new` replacement that recorded
+ * its marker while this launch awaited keeps that marker.
  */
-export function handOverPendingLaunch(internals: EngineInternals, workflowId: string): void {
-  if (internals.inlineStrategy === null) settleLaunchPending(internals, workflowId);
+export function handOverPendingLaunch(
+  internals: EngineInternals,
+  launch: PendingLaunch | undefined,
+): void {
+  if (launch !== undefined && internals.inlineStrategy === null) {
+    settleOwnPendingLaunch(internals, launch);
+  }
 }
 
 /** Whether `launch` is still the record under its id, and the id was not handed to the queue. */
@@ -145,7 +156,7 @@ export async function letGoOfPendingLaunch(
       // Best-effort: a thrown release leaves the claim to expire, which any engine then takes over.
     }
   }
-  if (stillHoldsPendingLaunch(internals, launch)) settleLaunchPending(internals, launch.workflowId);
+  if (stillHoldsPendingLaunch(internals, launch)) settleOwnPendingLaunch(internals, launch);
 }
 
 /**

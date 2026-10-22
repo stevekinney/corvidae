@@ -266,7 +266,7 @@ export async function startDelayedWorkflow(
       registration,
     );
     handedOver = true;
-    handOverPendingLaunch(internals, entry.workflowId);
+    handOverPendingLaunch(internals, launch);
   } finally {
     if (!handedOver) await letGoOfPendingLaunch(internals, launch);
   }

@@ -60,9 +60,9 @@ import { commitFencedEngineWrite } from '../fenced-write.ts';
 import type { WorkflowHandle } from '../handles.ts';
 import type { EngineInternals } from '../internals.ts';
 import {
+  handOverPendingLaunch,
   letGoOfPendingLaunch,
   recordLaunchPending,
-  settleLaunchPending,
   type PendingLaunch,
 } from '../local-execution.ts';
 import { validateInboundPayload } from '../payload-validation.ts';
@@ -438,7 +438,7 @@ export async function launchPreparedWorkflow(
         callbacks,
       );
       handedOver = true;
-      if (internals.inlineStrategy === null) settleLaunchPending(internals, context.workflowId);
+      handOverPendingLaunch(internals, launch);
       return handle;
     } finally {
       if (!handedOver) await letGoOfPendingLaunch(internals, launch);
