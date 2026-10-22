@@ -321,6 +321,7 @@ describe('parseCommandLine', () => {
     ['capture', '--configuration'],
     // An option that lost its value to the next option.
     ['capture', '--configuration', 'c', '--output', '--configuration', 'd'],
+    ['capture', '--configuration', 'c', '--output', '--bogus'],
     // `--accounting` belongs to verify only.
     ['capture', '--configuration', 'c', '--output', 'o', '--accounting', 'a'],
   ];
