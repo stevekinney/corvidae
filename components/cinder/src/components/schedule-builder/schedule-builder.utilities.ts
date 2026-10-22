@@ -37,9 +37,12 @@ export const CRON_FIELDS: readonly {
   { name: 'Day of week', min: 0, max: 6, hint: '0–6 (Sun–Sat)' },
 ];
 
-/** The default value used when the consumer passes none. */
+/**
+ * The default value used when the consumer passes none: daily at 09:00, which is what the Presets
+ * panel's Daily kind authors, so the summary, the Cron tab's seed and the upcoming runs all agree.
+ */
 export function defaultScheduleValue(): ScheduleValue {
-  return { mode: 'interval', every: 15, unit: 'minutes' };
+  return { mode: 'cron', expression: '0 9 * * *' };
 }
 
 /** Singularize an interval unit for "every 1 X" phrasing. */
@@ -140,14 +143,8 @@ export function parseTime(time: string): { hour: number; minute: number } {
 }
 
 // ---------------------------------------------------------------------------
-// Preset lowering — presets are sugar that lower to a cron or interval value.
+// Preset lowering — presets are sugar that lower to a cron value.
 // ---------------------------------------------------------------------------
-
-/** "every N minutes/hours" → an interval value. */
-export function lowerEveryN(every: number, unit: ScheduleIntervalUnit): ScheduleValue {
-  const safeEvery = Number.isInteger(every) && every > 0 ? every : 1;
-  return { mode: 'interval', every: safeEvery, unit };
-}
 
 /** "daily at HH:MM" → a cron value. */
 export function lowerDailyAt(time: string): ScheduleValue {
@@ -294,6 +291,22 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
+/** A day of the month as an English ordinal: 1st, 2nd, 3rd, 4th, 11th to 13th, 21st, 22nd, 23rd. */
+function ordinal(day: number): string {
+  const teen = day % 100;
+  if (teen >= 11 && teen <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
 /** Whether a cron token is a single integer within the inclusive `[min, max]` range. */
 function isFixedInRange(token: string, min: number, max: number): boolean {
   if (!/^\d+$/.test(token)) return false;
@@ -313,15 +326,15 @@ export function describeValue(value: ScheduleValue): string {
   // A "fixed" field must be a single integer WITHIN its cron range: an
   // out-of-range digit token like `99` is invalid (validateCronField rejects it
   // and preview is disabled), so the always-visible summary must not present
-  // `Daily at 99:00` or `Monthly on day 99` as if it were a real cadence.
+  // `Repeats every day at 99:00` or `Repeats every month on the 99th` as if it were a real cadence.
   const timeIsFixed = isFixedInRange(minute, 0, 59) && isFixedInRange(hour, 0, 23);
   const at = timeIsFixed ? ` at ${pad2(Number(hour))}:${pad2(Number(minute))}` : '';
 
-  // The "Weekly"/"Monthly" phrasings imply a single fire per day, so they only
+  // The weekly and monthly phrasings imply a single fire per day, so they only
   // hold when BOTH minute and hour are fixed. A schedule like `* * * * 1` or
   // `0 * * * 1` fires every minute / every hour on Mondays — calling that
-  // "Weekly on Monday" understates the cadence — so those fall through to the
-  // raw cron summary below. ("Daily" already requires a fixed time.)
+  // "Repeats every week on Monday" understates the cadence — so those fall through to the
+  // raw cron summary below. (The daily phrasing already requires a fixed time.)
 
   // Weekly: fixed day-of-week and a fixed time, wildcards elsewhere.
   if (timeIsFixed && dom === '*' && month === '*' && dow !== '*' && /^[\d,]+$/.test(dow)) {
@@ -335,16 +348,16 @@ export function describeValue(value: ScheduleValue): string {
     const allDaysInRange = dayNumbers.every((day) => Number.isInteger(day) && day >= 0 && day <= 6);
     if (allDaysInRange) {
       const names = dayNumbers.map((day) => DOW_NAMES[day] ?? '').join(', ');
-      return `Weekly on ${names}${at}`;
+      return `Repeats every week on ${names}${at}`;
     }
   }
   // Monthly: an in-range fixed day-of-month and a fixed time.
   if (timeIsFixed && isFixedInRange(dom, 1, 31) && month === '*' && dow === '*') {
-    return `Monthly on day ${dom}${at}`;
+    return `Repeats every month on the ${ordinal(Number(dom))}${at}`;
   }
   // Daily: wildcards on day fields, fixed time.
   if (dom === '*' && month === '*' && dow === '*' && timeIsFixed) {
-    return `Daily${at}`;
+    return `Repeats every day${at}`;
   }
   return `Cron: ${joinCron([minute, hour, dom, month, dow])}`;
 }

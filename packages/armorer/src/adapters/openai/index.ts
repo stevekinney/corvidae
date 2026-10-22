@@ -10,6 +10,7 @@ import {
   normalizeToSerializedDefinitions,
   type ToolRegistryLike,
 } from '../shared';
+import { textOfToolResultParts, toolResultParts } from '../tool-result-parts';
 import type { JSONSchema, OpenAITool, OpenAIToolCall, OpenAIToolMessage } from './types';
 
 export type {
@@ -184,7 +185,11 @@ export function formatOpenAIToolResults(
         'formatOpenAIToolResults does not support streaming results. Use formatOpenAIToolResultsAsync or execute without { stream: true }.',
       );
     }
-    const content = stringifyToolContent(result.content);
+    const parts = toolResultParts(result);
+    const content =
+      parts === undefined
+        ? stringifyToolContent(result.content)
+        : textOfToolResultParts('OpenAI', parts);
 
     return {
       role: 'tool',
@@ -206,10 +211,14 @@ export async function formatOpenAIToolResultsAsync(
     list.map(async (result) => {
       const stream = getStreamingPayload(result) ?? null;
       const contentSource = stream !== null ? await collectAsyncIterable(stream) : result.content;
+      const parts = stream === null ? toolResultParts(result) : undefined;
       return {
         role: 'tool' as const,
         tool_call_id: getToolCallId(result),
-        content: stringifyToolContent(contentSource),
+        content:
+          parts === undefined
+            ? stringifyToolContent(contentSource)
+            : textOfToolResultParts('OpenAI', parts),
       };
     }),
   );

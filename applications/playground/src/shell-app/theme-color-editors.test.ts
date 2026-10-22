@@ -157,9 +157,9 @@ describe('the color editor', () => {
     expect(text('color-space')).toBe('OKLCH');
     expect(text('color-alpha')).toBe('1');
     expect(text('color-gamut')).toBe('Inside sRGB and Display P3');
-    expect(text('color-authored-text')).toBe('oklch(0.5 0.22 270)');
+    expect(text('color-authored-text')).toBe('oklch(0.52 0.24 272)');
     expect(text('color-background')).toContain('surface.base');
-    expect(text('compare-light')).toContain('oklch(0.5 0.22 270)');
+    expect(text('compare-light')).toContain('oklch(0.52 0.24 272)');
     expect(text('compare-dark')).toContain('oklch(0.72 0.14 270)');
     const labels = [...target.querySelectorAll('dt')].map((node) => node.textContent);
     expect(labels).toContain('Shipped');
@@ -173,9 +173,9 @@ describe('the color editor', () => {
     const { controller } = await open('accent.solid');
     const id = 'theme-builder-color-accent-solid';
     await type(`${id}-l-input`, '0.55');
-    expect(byId<HTMLInputElement>(`${id}-text`)!.value).toBe('oklch(0.55 0.22 270)');
+    expect(byId<HTMLInputElement>(`${id}-text`)!.value).toBe('oklch(0.55 0.24 272)');
     await type(`${id}-alpha-input`, '0.5');
-    expect(byId<HTMLInputElement>(`${id}-text`)!.value).toBe('oklch(0.55 0.22 270 / 0.5)');
+    expect(byId<HTMLInputElement>(`${id}-text`)!.value).toBe('oklch(0.55 0.24 272 / 0.5)');
     await type(`${id}-text`, 'oklch(0.6 0.1 250)');
     expect(byId<HTMLInputElement>(`${id}-l-input`)!.value).toBe('0.6');
     expect(byId<HTMLInputElement>(`${id}-c-input`)!.value).toBe('0.1');
@@ -364,9 +364,9 @@ describe('dependent roles', () => {
 describe('the border-ink editor previews every tier it drives', () => {
   test('alphaStepsOf finds the five border tiers, lightest first', () => {
     expect(alphaStepsOf(summaryEnvelope, 'border.ink')).toEqual([
-      { path: 'border.muted', alpha: 0.1 },
-      { path: 'border', alpha: 0.2 },
-      { path: 'border.strong', alpha: 0.32 },
+      { path: 'border.muted', alpha: 0.05 },
+      { path: 'border', alpha: 0.09 },
+      { path: 'border.strong', alpha: 0.15 },
       { path: 'border.control', alpha: 0.48 },
       { path: 'border.control.hover', alpha: 0.58 },
     ]);

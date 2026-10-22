@@ -53,6 +53,10 @@ A typical screen reader announcement when the switch receives focus:
 
 Exact phrasing varies by screen reader and browser pairing, but `role="switch"` with `aria-checked` is the intended semantic pairing for this visual control.
 
+## Target Size
+
+The visible track is 32 × 18px, and the button's own box is larger than the track. With a fine pointer the box is 32 × 24px, which keeps the 24px floor of WCAG 2.5.8 on the element itself. Under `(any-pointer: coarse)` the box is 44 × 44px (WCAG 2.5.5) while the drawn track stays 32 × 18px: the extra size is padding around the track, not a pseudo-element, so `getBoundingClientRect()` measures it. The focus ring wraps the button's box, so it sits a few pixels outside the visible track.
+
 ## Forced Colors Mode (Windows High Contrast)
 
 The CSS uses `outline` rather than `box-shadow` for the focus ring in Forced Colors Mode. `box-shadow` is suppressed by Windows High Contrast Mode, making a `box-shadow`-only ring invisible to users who depend on it. The `@media (forced-colors: active)` block in `toggle.css` switches to a solid `outline` using the `ButtonText` system color.

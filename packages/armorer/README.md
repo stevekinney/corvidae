@@ -90,6 +90,37 @@ Materialization preserves an existing identifier. It normalizes non-JSON values 
 
 `materializeToolResult` rejects a live stream because a synchronous call cannot wait for its chunks. Use `await materializeToolResultAsync(result, { signal })` to collect an async iterable before producing the record. The resulting `content` is an array of collected chunks, normalized as JSON; this API does not forward a live stream to the caller. The plural asynchronous helper collects results concurrently with `Promise.all`, so supply cancellation when the owner can stop waiting, and avoid collecting unbounded streams into one protocol record.
 
+**Text and media parts.** A tool can answer with ordered text and media parts instead of, or beside, a JSON value. It returns `toolContent(parts, { value })`, and Armorer produces a result whose `parts` are those parts, in order, and whose `content` is `value` (or `null`). A result that carries only JSON has no `parts`, exactly as before. The part types (`TextContent`, `ImageContent`, `AudioContent`, `VideoContent`, `DocumentContent`, `FileContent`, and their `ContentSource`) are defined here and re-exported unchanged by Conversationalist.
+
+```typescript
+import { createTool } from 'armorer';
+import { toolContent } from 'armorer/protocol';
+import { z } from 'zod';
+
+declare const pngBase64: string;
+
+export const chart = createTool({
+  name: 'chart',
+  description: 'Draws a sales chart',
+  input: z.object({ quarter: z.string() }),
+  async execute({ quarter }) {
+    return toolContent(
+      [
+        { type: 'text', text: `Sales for ${quarter}:` },
+        {
+          type: 'image',
+          mimeType: 'image/png',
+          source: { kind: 'inline', data: pngBase64, encoding: 'base64' },
+        },
+      ],
+      { value: { quarter } },
+    );
+  },
+});
+```
+
+`toolContent` validates the parts' shape, and the value it returns is plain JSON, so a cached or persisted copy is recognized again after a JSON round trip: an idempotent replay returns the same parts. Inline bytes are only a hand-off format. Operative admits them as managed assets before a result reaches the conversation or its step events, and the events that fire before admission (Armorer's tool and toolbox lifecycle events and Operative's `tool.settled`) show a media part through `redactToolResultPart`: its type, MIME type, size, and asset identity, never its bytes. Over MCP, `fromMcpTools` turns a result's non-text blocks into these parts and `toMcpTools` turns parts back into the same blocks; see the MCP guide.
+
 ## Embedding vectors
 
 The root export also owns the shared embedding contract that Memory and Operative's embedding providers use: `Embedder`, `EmbeddingVector`, and `EmbeddingVectorLike` describe providers and their vectors, `isEmbeddingVector` validates unknown arrays and typed arrays at trust boundaries, `computeEmbeddingVectorMagnitude` computes the Euclidean norm, and `cosineSimilarity` compares equal-length finite vectors.

@@ -1,0 +1,17 @@
+{
+  "components/chat/src/lib/session/stream-event-codec-encoding-projection.ts": "Projects a settled tool result onto chat's versioned stream wire (version 3) without parts: rendering parts in chat is outside COR-792, and adding them to the wire is that follow-up's change, not a silent drop of a field the wire carries.",
+  "packages/armorer/src/adapters/anthropic/index.ts": "formatAnthropicToolResults sends parts as text, image, and PDF blocks through toolResultParts; any other part is refused.",
+  "packages/armorer/src/adapters/gemini/index.ts": "formatGeminiToolResults sends parts as inline functionResponse.parts referenced by $ref; any other part is refused.",
+  "packages/armorer/src/adapters/open-ai/agents/index.ts": "A result with parts reaches the agent as their text through toolResultParts; a media part is refused. content is read only for an error message.",
+  "packages/armorer/src/adapters/openai/index.ts": "formatOpenAIToolResults sends text parts in order through toolResultParts; a media part is refused.",
+  "packages/armorer/src/integrations/mcp/content.ts": "toCallToolResult converts parts to MCP blocks, for errors too; parseMcpCallResult produces parts.",
+  "packages/armorer/src/protocol/materialization.ts": "Materialization carries parts beside content (resolveContentAndParts).",
+  "packages/conversationalist/src/adapters/ag-ui/tool-result.ts": "A result with parts travels with its structured result, parts included, in the embedded metadata.",
+  "packages/conversationalist/src/adapters/anthropic/content.ts": "toToolResultBlock sends parts, for any outcome, as text (with citations), image, and document blocks.",
+  "packages/conversationalist/src/adapters/gemini/content.ts": "toFunctionResponsePart sends parts as inline functionResponse.parts referenced by $ref, for any outcome.",
+  "packages/conversationalist/src/adapters/shared.ts": "stringifyToolResult serves results without parts; each adapter routes a result with parts to its parts path first.",
+  "packages/conversationalist/src/conversation/serialization.ts": "normalizeToolResult copies parts beside content.",
+  "packages/conversationalist/src/plugins/pii-redaction.ts": "Redacts parts' text and media fields beside content.",
+  "packages/operative/src/conditions/predicates.ts": "The loop fingerprint reads parts in place of content when a result has them.",
+  "packages/operative/src/context/assembly.ts": "estimateMessage costs text parts as text and media parts through the media cost estimator."
+}

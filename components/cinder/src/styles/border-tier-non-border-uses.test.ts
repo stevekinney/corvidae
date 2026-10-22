@@ -199,7 +199,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/chat/src/lib/components/chat/message/parts/suggestion-part.svelte': [
     {
-      declaration: '--cinder-chat-suggestion-border: var(--cinder-border-strong);',
+      declaration: '--cinder-chat-suggestion-border: var(--cinder-border-control);',
       category: 'alias',
     },
   ],

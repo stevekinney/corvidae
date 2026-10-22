@@ -137,6 +137,12 @@ export type FromMCPToolsOptions = {
    * the server sends none. Defaults to `true`.
    */
   progress?: boolean;
+  /**
+   * Identifies the MCP server these tools came from. A `resource_link` in a
+   * call result becomes an `mcp-resource` part that references this server;
+   * without it such a result is rejected rather than turned into a URL.
+   */
+  serverId?: string;
 };
 
 export function toMcpTools(
@@ -169,7 +175,7 @@ export function fromMcpTools(
         const callResult = await executeMcpTool(mcpTool, params, options, context);
         return options.formatResult
           ? options.formatResult(callResult, mcpTool)
-          : parseMcpCallResult(callResult);
+          : parseMcpCallResult(callResult, { serverId: options.serverId });
       },
     };
     return createTool(createOptions);

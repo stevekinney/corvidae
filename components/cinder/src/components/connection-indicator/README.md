@@ -1,8 +1,8 @@
 # ConnectionIndicator
 
-Small standalone status pill for a live connection. Renders one of six states — `connecting`, `live`, `reconnecting`, `polling`, `stale`, `closed` — as an icon plus a text label, so status is never conveyed by color alone.
+Small standalone status pill for a live connection. Renders one of six states — `connecting`, `live`, `reconnecting`, `polling`, `stale`, `closed` — as a text label plus an icon (or, for `live`, a pulsing dot), so status is never conveyed by color alone.
 
-`live` shows a small pulsing dot (a static dot under `prefers-reduced-motion: reduce`). `polling` is deliberately quieter than `live`: no motion, a lighter label weight, and its own icon, so it can't be mistaken for push. `reconnecting` accepts an optional `attempt` snippet for showing a retry count like "attempt 3 of 5".
+`live` shows only a small pulsing dot, with no icon (a static dot under `prefers-reduced-motion: reduce`). `polling` is deliberately quieter than `live`: no motion, a lighter label weight, and its own icon, so it can't be mistaken for push. `reconnecting` accepts an optional `attempt` snippet for showing a retry count like "attempt 3 of 5".
 
 Use `ConnectionIndicator` for a compact, self-contained pill that reports transport health. Use `StatusDot` for annotating a static entity's state (a row, a user, a deployment) instead of a live transport. Use `Feed`'s log arm for a full event log rather than a single status pill.
 

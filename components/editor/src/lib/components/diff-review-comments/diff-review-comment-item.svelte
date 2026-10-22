@@ -197,12 +197,12 @@
 
   .diff-review-comment-item-badge-resolved {
     background: var(--cinder-status-success-subtle);
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
 
   .diff-review-comment-item-badge-outdated {
     background: var(--cinder-status-warning-subtle);
-    color: var(--cinder-status-warning-solid);
+    color: var(--cinder-status-warning-text);
   }
 
   .diff-review-comment-item-body {

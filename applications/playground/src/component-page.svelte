@@ -2438,7 +2438,7 @@
     .dx-iconbtn:hover {
       background: var(--cinder-surface-hover);
       color: var(--cinder-text-default);
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-border-control);
     }
   }
   .dx-iconbtn:focus-visible {
@@ -2565,7 +2565,7 @@
     }
   }
   .dx-import__copy[data-copied] {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
   }
   .dx-import__copy:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
@@ -2764,7 +2764,7 @@
     }
   }
   .dx-viewport__size[aria-pressed='true'] {
-    border-color: var(--cinder-border-strong);
+    border-color: var(--cinder-border-control);
     background: var(--cinder-surface-canvas);
     color: var(--cinder-text-default);
   }
@@ -3365,11 +3365,11 @@
     color: var(--cinder-text-muted);
   }
   .dx-guide__list--use :global(svg) {
-    color: var(--cinder-status-success-solid);
+    color: var(--cinder-status-success-text);
     margin-top: 1px;
   }
   .dx-guide__list--avoid :global(svg) {
-    color: var(--cinder-status-danger-solid);
+    color: var(--cinder-status-danger-text);
     margin-top: 1px;
   }
   .dx-guide__alt {
@@ -3861,7 +3861,7 @@
   }
   @media (hover: hover) {
     .dx-rel:hover {
-      border-color: var(--cinder-border-strong);
+      border-color: var(--cinder-border-control);
       transform: translateY(-2px);
       box-shadow: var(--cinder-shadow-md);
     }

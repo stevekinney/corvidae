@@ -55,7 +55,7 @@
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border-strong);
+    border: 1px solid var(--cinder-border-control);
     border-radius: var(--cinder-radius-full);
     cursor: pointer;
     transition:

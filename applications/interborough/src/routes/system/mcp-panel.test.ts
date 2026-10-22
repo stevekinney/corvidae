@@ -65,15 +65,14 @@ describe('McpPanel', () => {
     scripted.routeExactUrl(
       'http://weft.test/mcp',
       { jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26' } },
-      { headers: { 'Mcp-Session-Id': 'sess_abc12345', 'Mcp-Session-Token': 'tok_secret' } },
+      { headers: { 'cache-control': 'no-cache' } },
     );
 
     const { findByRole, findByText } = await renderMcpPanel();
 
     await fireEvent.click(await findByRole('button', { name: 'Test' }));
 
-    expect(await findByText('mcp-session-id: sess_abc12345', { exact: false })).not.toBeNull();
-    expect(await findByText('mcp-session-token: tok_secret', { exact: false })).not.toBeNull();
+    expect(await findByText('cache-control: no-cache', { exact: false })).not.toBeNull();
   });
 
   test('a transport failure during Test MCP session shows the fault banner', async () => {
