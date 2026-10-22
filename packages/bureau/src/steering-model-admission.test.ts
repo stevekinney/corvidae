@@ -3,7 +3,13 @@
  * allows, decides it when it is admitted rather than at the step boundary, and applies it from
  * the run's next step and to the session's later runs, across a restart.
  */
-import { stopWhen, createAgent } from '@lostgradient/operative';
+import {
+  createAgent,
+  createModelCatalog,
+  createRoutingGenerate,
+  stopWhen,
+  withBackendDescriptors,
+} from '@lostgradient/operative';
 import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/temporary-path';
 import { afterEach, describe, expect, it } from 'bun:test';
 
@@ -372,5 +378,95 @@ describe('a steering log written before the provider field existed', () => {
       model: { provider: null, model: 'claude-opus-5' },
       configVersion: 1,
     });
+  });
+});
+
+describe('a routed or opaque agent lists no models', () => {
+  const rows = createModelCatalog().descriptors;
+  const rowOf = (choice: { provider: string; model: string }) =>
+    rows.find((row) => row.provider === choice.provider && row.model === choice.model)!;
+
+  function routedAgent(used: string[]) {
+    const route = (name: string, choice: { provider: string; model: string }) => ({
+      name,
+      generate: withBackendDescriptors(async () => {
+        used.push(name);
+        return { content: name, toolCalls: [] as never[] };
+      }, [rowOf(choice)]),
+    });
+    return createAgent({
+      name: 'routed',
+      generate: createRoutingGenerate({
+        routes: [route('fast', OPUS_5), route('smart', OPUS_5_5)],
+        strategy: () => ({ route: 'smart', reason: 'its own choice' }),
+        fallback: 'fast',
+      }),
+    });
+  }
+
+  async function open(agent: ReturnType<typeof createAgent>, name: string, withPolicy = false) {
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: { [name]: agent },
+      stopWhen: stopWhen.noToolCalls(),
+      storage: { type: 'memory' },
+      ...(withPolicy
+        ? {
+            modelPolicy: {
+              policyRevision: 1,
+              users: { 'fast-tier': { exactOverride: { model: 'claude-opus-5' } } },
+            },
+          }
+        : {}),
+    });
+    cleanups.push(() => bureau.dispose());
+    const run = await bureau.createRun({ message: 'go', agentName: name, principal: 'alice' });
+    await waitForRunState(bureau, run.id);
+    return { bureau, run };
+  }
+
+  it('refuses a model override for an opaque agent with model-not-allowed', async () => {
+    const { bureau, run } = await open(
+      createAgent({ name: 'opaque', generate: async () => ({ content: 'ok', toolCalls: [] }) }),
+      'opaque',
+    );
+
+    const outcome = await steer(bureau, run.sessionId, 'opaque-switch', OPUS_5.model);
+
+    expect(outcome).toMatchObject({
+      outcome: 'rejected',
+      failure: { reason: 'model-not-allowed' },
+    });
+  });
+
+  it('refuses a model override for a routed agent with model-not-allowed', async () => {
+    const used: string[] = [];
+    const { bureau, run } = await open(routedAgent(used), 'routed');
+
+    const model = await steer(bureau, run.sessionId, 'routed-switch', OPUS_5.model);
+
+    expect(model).toMatchObject({ outcome: 'rejected', failure: { reason: 'model-not-allowed' } });
+  });
+
+  it('still runs on the model the routed agent’s own routing chooses', async () => {
+    const used: string[] = [];
+    await open(routedAgent(used), 'routed');
+
+    expect(used).toEqual(['smart']);
+  });
+
+  it('does not refuse a model a policy profile resolves, for an opaque agent', async () => {
+    const { bureau, run } = await open(
+      createAgent({ name: 'opaque', generate: async () => ({ content: 'ok', toolCalls: [] }) }),
+      'opaque',
+      true,
+    );
+
+    const outcome = await bureau.submitSteeringCommand(run.sessionId, {
+      id: 'by-policy',
+      principal: 'alice',
+      requestedValue: { target: 'model', policyRef: 'fast-tier' },
+    });
+
+    expect(outcome.outcome).toBe('accepted');
   });
 });

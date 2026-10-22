@@ -13262,11 +13262,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   }
 
   /**
-   * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`. An agent
-   * that declares what it allows (a selectable or fixed one, and every file agent) is held to
-   * it; one that does not (routed, opaque, or a name this Bureau cannot find) is bounded by the
-   * deployment's catalog alone, which the caller has already checked. A file agent's model must
-   * also be one the host's resolver can set up: a model it cannot is not allowed.
+   * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`: the
+   * model must be one `bureau.agents.models` lists for it. A routed or opaque agent lists none, so
+   * every override is refused; only an agent this Bureau cannot find is left to the deployment's
+   * catalog, which the caller has already checked. A file agent's model must also be one the
+   * host's resolver can set up: a model it cannot is not allowed.
    */
   function agentAllowsModel(
     agentName: string,
@@ -13276,7 +13276,6 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     if (agent === undefined) return true;
     const descriptors = modelCatalog.catalog().descriptors;
     const allowed = describeAgentModels(agent, descriptors);
-    if (!allowed.restricts) return true;
     if (!allowsModelOverride(allowed.models, override)) return false;
     if (readFileAgentBinding(agent) === undefined || resolveAgentGenerate === undefined) {
       return true;
@@ -13591,10 +13590,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // uses, so a name this Bureau cannot run is refused at admission rather
     // than surfacing as an unresolvable agent at the next run's step 0.
     //
-    // `policy-denied` rather than a new failure reason: this deployment's
-    // own catalog is what refuses the change, which is what that reason
-    // already means. Widening the exported `SteeringCommandFailure` union
-    // is a contract change owned by the steering-types issue, not this one.
+    // `policy-denied`: this deployment's own catalog is what refuses the
+    // change, which is what that reason already means. (COR-1559 has since
+    // widened the union with `model-not-allowed`, `stale-revision` and
+    // `shutting-down`, for the reasons that name something `policy-denied`
+    // does not.)
     if (
       steeringTarget === 'agent-identity' &&
       agentsSnapshot[request.requestedValue.override] === undefined
@@ -13745,11 +13745,14 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
       }
-      // COR-1559: the model is also held to what the session's agent allows, decided now rather
-      // than at a step boundary, and refused through the log like any refusal so a retry is
-      // answered the same.
+      // COR-1559: a model a caller names is also held to what the session's agent allows, decided
+      // now rather than at a step boundary, and refused through the log like any refusal so a retry
+      // is answered the same. Only a steering override is held to it: a model a policy profile
+      // resolved is the profile's choice, and one the agent's own routing makes at a step never
+      // passes through admission at all.
       if (
         steeringTarget === 'model' &&
+        configurationRequest.policyRef === undefined &&
         override !== undefined &&
         !agentAllowsModel(session.agentName, { model: override, provider: overrideProvider })
       ) {

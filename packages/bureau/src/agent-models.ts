@@ -49,12 +49,6 @@ export interface AgentModels {
    * agent whose generate attaches no single model.
    */
   readonly default: AgentModelChoice | null;
-  /**
-   * Whether admission holds a `model` override to `models`. A selectable or fixed agent declares
-   * what it allows, so an override outside it is refused. A routed or opaque agent declares
-   * nothing, so only the deployment's catalog bounds it.
-   */
-  readonly restricts: boolean;
 }
 
 function choiceOf(descriptor: BackendDescriptor): AgentModelChoice {
@@ -92,7 +86,6 @@ export function describeAgentModels(
         allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map(choiceOf),
       ),
       default: isDescriptor(resolved) ? choiceOf(resolved) : null,
-      restricts: true,
     };
   }
   const profile = readGenerationProfile(agent);
@@ -113,7 +106,6 @@ export function describeAgentModels(
       selectable: true,
       models: distinct(rows.map(choiceOf)),
       default: attached,
-      restricts: true,
     };
   }
   if (profile.mode === 'fixed') {
@@ -122,10 +114,9 @@ export function describeAgentModels(
       selectable: false,
       models: attached === null ? [] : [attached],
       default: attached,
-      restricts: true,
     };
   }
-  return { kind: profile.mode, selectable: false, models: [], default: null, restricts: false };
+  return { kind: profile.mode, selectable: false, models: [], default: null };
 }
 
 /**
