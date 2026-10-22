@@ -6,6 +6,7 @@ import type {
   MemoryEvidenceBundle,
   MemoryRecordLocator,
 } from '../../src/governance/governed-memory-types';
+import { createMemoryGovernancePolicy } from '../../src/governance/policy';
 import {
   createMemoryRetrievalPlan,
   MEMORY_POLICY_FILTERS,
@@ -16,6 +17,7 @@ import {
   DAY,
   type GovernedBackend,
   type GovernedFixture,
+  platformGovernance,
   principalA,
   principalB,
   recordIdOf,
@@ -345,16 +347,65 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
         expect(bundle.spent.candidates).toBe(1);
       });
 
-      it('stops as sufficient when the token budget is filled', async () => {
+      it('stops as sufficient when the token budget is filled, counting the whole rendering', async () => {
         const first = await write('The user drives an electric automobile.');
         await write('The user drives an electric automobile, too.');
+        const alone = await fixture.memory.recallForModel(principalA, first, {
+          collection: 'notes',
+          limit: 1,
+        });
+        // The envelope and preamble count, not only the record's own content.
+        expect(alone.spent.tokens).toBe(Math.ceil(alone.rendered.length / 4));
         const bundle = await fixture.memory.recallForModel(principalA, first, {
           collection: 'notes',
-          plan: { budgets: { maxTokens: 12 } },
+          plan: { budgets: { maxTokens: alone.spent.tokens } },
         });
         expect(ids(bundle)).toEqual([first]);
         expect(bundle.stopReason).toBe('sufficient');
-        expect(bundle.spent.tokens).toBeLessThanOrEqual(12);
+        expect(Math.ceil(bundle.rendered.length / 4)).toBeLessThanOrEqual(alone.spent.tokens);
+        const tooSmall = await fixture.memory.recallForModel(principalA, first, {
+          collection: 'notes',
+          plan: { budgets: { maxTokens: alone.spent.tokens - 1 } },
+        });
+        expect(tooSmall).toMatchObject({ evidence: [], stopReason: 'exhausted' });
+      });
+
+      it('admits a negative fused score when the minimum score is disabled', async () => {
+        fixture = await createGovernedFixture(backend, {
+          governed: {
+            embedder: (texts) => texts.map((text) => (text === 'opposite' ? [-1, 0] : [1, 0])),
+          },
+        });
+        const record = await write('Something unrelated.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'opposite', {
+          collection: 'notes',
+          plan: { stages: ['semantic', 'rank-fusion', 'reformulation'] },
+        });
+        expect(ids(bundle)).toEqual([record]);
+        expect(bundle.candidates[0]?.scores?.fused).toBeLessThan(0);
+        expect(bundle.reformulations).toEqual([]);
+      });
+
+      it('clears every selection when a later scoring pass fails', async () => {
+        const jazz = await write('The user enjoys jazz.');
+        // An exact phrase match, so the first pass selects it before the reformulation fails.
+        const exact = await write('Notes on what about the jazz club.');
+        const broken = fixture.restart({
+          embedder: (texts) => {
+            if (texts.includes('jazz')) throw new Error('embedder offline');
+            return texts.map(conceptVector);
+          },
+        });
+        const bundle = await broken.recallForModel(principalA, 'what about the jazz', {
+          collection: 'notes',
+          plan: { minimumScore: 1 },
+        });
+        expect(bundle).toMatchObject({ evidence: [], stopReason: 'failed', redactions: [] });
+        expect(bundle.candidates.filter((item) => item.selection === 'selected')).toEqual([]);
+        expect(bundle.candidates.map((item) => item.recordId).toSorted()).toEqual(
+          [jazz, exact].toSorted(),
+        );
+        expect(bundle.candidates.find((item) => item.recordId === exact)?.scores?.exact).toBe(1);
       });
 
       it('stops as exhausted when the cost budget runs out before a detector scan', async () => {
@@ -454,6 +505,68 @@ export function registerRetrievalContract(backend: GovernedBackend): void {
     });
 
     describe('the explainable bundle', () => {
+      it('runs the whole recall under the policy in force when it started', async () => {
+        let memory: GovernedFixture['memory'] | undefined;
+        const switching: InputDetector = {
+          name: 'switching',
+          detect: async () => {
+            // A policy change lands while the recall is mid-admission.
+            await memory!.activatePolicy(
+              platformGovernance,
+              createMemoryGovernancePolicy({ revision: 'governance:2' }),
+            );
+            return { triggered: false, confidence: 0, category: 'none' };
+          },
+        };
+        fixture = await createGovernedFixture(backend, {
+          governed: { embedder: conceptEmbedder },
+          policy: { recall: { detectors: [switching] } },
+        });
+        memory = fixture.memory;
+        await write('The user drives an electric automobile.');
+        const bundle = await fixture.memory.recallForModel(principalA, 'vehicle', {
+          collection: 'notes',
+        });
+        expect(bundle.policyRevision).toBe('governance:1');
+        expect(fixture.memory.policyRevision).toBe('governance:2');
+      });
+
+      it('rebuilds a plan it is handed, so a mutated or forged plan runs under its true revision', async () => {
+        await write('The user drives an electric automobile.');
+        const plan = createMemoryRetrievalPlan();
+        expect(Object.isFrozen(plan)).toBe(true);
+        expect(Object.isFrozen(plan.budgets)).toBe(true);
+        expect(() => {
+          (plan.budgets as { maxCandidates: number }).maxCandidates = 1;
+        }).toThrow();
+        const forged = { ...plan, revision: 'sha256:forged', minimumScore: 5 };
+        const bundle = await fixture.memory.recallForModel(principalA, 'vehicle', {
+          collection: 'notes',
+          plan: forged,
+        });
+        expect(bundle.planRevision).toBe(createMemoryRetrievalPlan({ minimumScore: 5 }).revision);
+        expect(bundle.evidence).toEqual([]);
+      });
+
+      it('expands a summary to a source stored in another collection, under the same filters', async () => {
+        const source = await write('Lockbox code is kept with the building manager.');
+        const summary = await recordIdOf(
+          fixture.memory.write(principalA, 'Jazz concert summary.', {
+            collection: 'summaries',
+            source: 'conversation',
+            derivedFrom: { kind: 'summary', sources: [at(source)] },
+          }),
+        );
+        const bundle = await fixture.memory.recallForModel(principalA, 'jazz', {
+          collection: 'summaries',
+        });
+        expect(ids(bundle)).toEqual([summary, source]);
+        const colleague = await fixture.memory.recallForModel(principalB, 'jazz', {
+          collection: 'summaries',
+        });
+        expect(ids(colleague)).not.toContain(source);
+      });
+
       it('records revisions, digests, redactions, and freshness, and replays to the same revision', async () => {
         const car = await write('The user drives an electric automobile.');
         await fixture.runtime.advance(1000);

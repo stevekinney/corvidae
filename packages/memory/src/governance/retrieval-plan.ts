@@ -116,7 +116,7 @@ export interface MemoryRetrievalPlan {
   readonly stages: readonly MemoryRetrievalStage[];
   readonly budgets: MemoryRetrievalBudgets;
   readonly constraints: MemoryRetrievalConstraints;
-  /** Admission skips a candidate whose fused score is below this; `0` admits any. */
+  /** Admission skips a candidate whose fused score is below this; `0` disables the threshold and admits any score. */
   readonly minimumScore: number;
   /** Cosine similarity at or above which an unselected record counts as conflicting with a selected one. */
   readonly conflictSimilarity: number;
@@ -169,10 +169,11 @@ function orderedStages(stages: readonly MemoryRetrievalStage[]): MemoryRetrieval
 }
 
 /**
- * Builds a versioned retrieval plan. Stages always run in
+ * Builds a versioned retrieval plan, deeply frozen. Stages always run in
  * {@link MEMORY_RETRIEVAL_STAGES} order whatever order the input lists them
  * in, so the plan, and therefore its revision, does not depend on how the
- * caller spelled it.
+ * caller spelled it. Recall rebuilds every plan it is handed with this
+ * function, so a revision always digests the plan that actually ran.
  */
 export function createMemoryRetrievalPlan(
   input: MemoryRetrievalPlanInput = {},
@@ -197,7 +198,15 @@ export function createMemoryRetrievalPlan(
     minimumScore: input.minimumScore ?? 0,
     conflictSimilarity: input.conflictSimilarity ?? 0.9,
   };
-  return { ...body, revision: `sha256:${sha256HexSync(JSON.stringify(body))}` };
+  return deepFreeze({ ...body, revision: `sha256:${sha256HexSync(JSON.stringify(body))}` });
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const nested of Object.values(value)) deepFreeze(nested);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 /** The plan a recall runs when its caller supplies none. */

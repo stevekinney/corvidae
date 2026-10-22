@@ -16,11 +16,14 @@ import type {
   RecallForModelOptions,
 } from './governed-memory-types';
 import { capabilityAllowed, evictionContext, scopesFor } from './governed-reads';
+import type { MemoryGovernancePolicy } from './policy';
 import {
   type FilteredCandidates,
+  type FilterInput,
   filterRecallCandidates,
   type RecallCandidate,
   recallExclusion,
+  resolveLineageSource,
 } from './recall-candidates';
 import { candidateSimilarity, scoreCandidates, type ScoredCandidate } from './recall-scoring';
 import {
@@ -54,6 +57,8 @@ interface RecallRun {
   readonly operationId: string;
   readonly startedAt: number;
   readonly limit: number;
+  /** The one policy snapshot every filter, detector, and recorded revision of this recall uses. */
+  readonly policy: MemoryGovernancePolicy;
   readonly evidence: MemoryEvidence[];
   readonly selected: Map<string, RecallCandidate>;
   readonly scores: Map<string, MemoryRecallStageScores>;
@@ -63,6 +68,7 @@ interface RecallRun {
   readonly contradictions: MemoryRecallContradiction[];
   readonly conflicting: Set<string>;
   filtered?: FilteredCandidates;
+  filterInput?: FilterInput;
   filters: readonly MemoryRecallFilterReport[];
   cost: number;
   tokens: number;
@@ -71,9 +77,21 @@ interface RecallRun {
   stopReason: MemoryRecallStopReason | undefined;
 }
 
+/**
+ * The plan to run, always rebuilt from its fields: a caller-held plan whose
+ * fields were changed after it was built, or an object that only claims a
+ * revision, runs as what it says and is recorded under that plan's true revision.
+ */
 function resolvePlan(plan: RecallForModelOptions['plan']): MemoryRetrievalPlan {
   if (plan === undefined) return DEFAULT_MEMORY_RETRIEVAL_PLAN;
-  return 'revision' in plan ? plan : createMemoryRetrievalPlan(plan);
+  const { stages, budgets, constraints, minimumScore, conflictSimilarity } = plan;
+  return createMemoryRetrievalPlan({
+    ...(stages === undefined ? {} : { stages }),
+    ...(budgets === undefined ? {} : { budgets }),
+    ...(constraints === undefined ? {} : { constraints }),
+    ...(minimumScore === undefined ? {} : { minimumScore }),
+    ...(conflictSimilarity === undefined ? {} : { conflictSimilarity }),
+  });
 }
 
 function digest(text: string): string {
@@ -149,11 +167,15 @@ async function admitOne(
   score: number,
 ): Promise<MemoryRecallStopReason | undefined> {
   const { budgets } = run.plan;
-  const tokens = Math.ceil(candidate.record.content.length / 4);
-  if (run.tokens + tokens > budgets.maxTokens) {
+  // The whole prospective rendering counts, envelope and preamble included,
+  // because that is what reaches the model.
+  const tokens = Math.ceil(
+    renderMemoryEvidence([...run.evidence, evidenceFrom(candidate, score)]).length / 4,
+  );
+  if (tokens > budgets.maxTokens) {
     return run.evidence.length > 0 ? 'sufficient' : 'exhausted';
   }
-  const policy = run.context.policy();
+  const { policy } = run;
   if (policy.recall.detectors.length > 0) {
     if (run.cost + 1 > budgets.maxCost) return 'exhausted';
     run.cost += 1;
@@ -173,7 +195,7 @@ async function admitOne(
     run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy'));
     return undefined;
   }
-  run.tokens += tokens;
+  run.tokens = tokens;
   run.selected.set(candidate.record.id, candidate);
   run.evidence.push(evidenceFrom(candidate, score));
   return undefined;
@@ -192,7 +214,7 @@ async function admitRanked(
       continue;
     }
     if (run.stopReason !== undefined || stopped(run)) continue;
-    if (scores.fused < run.plan.minimumScore) {
+    if (run.plan.minimumScore > 0 && scores.fused < run.plan.minimumScore) {
       below.push(candidate);
       continue;
     }
@@ -230,8 +252,12 @@ async function scoringPasses(
       pass = await scoreCandidates(run.context, run.plan, current, pending);
     } catch {
       // The embedder or text-search provider failed: the recall fails closed
-      // with no evidence. A ledger failure is not caught, so it still escapes.
+      // with no evidence, and nothing an earlier pass selected stays selected.
+      // A ledger failure is not caught, so it still escapes.
       run.stopReason = 'failed';
+      run.evidence.length = 0;
+      run.selected.clear();
+      run.tokens = 0;
       return pending;
     }
     run.cost += pass.cost;
@@ -260,11 +286,17 @@ async function scoringPasses(
 async function expandProvenance(run: RecallRun): Promise<void> {
   if (!run.plan.stages.includes('provenance-expansion')) return;
   const eligible = new Map(run.filtered!.eligible.map((item) => [item.record.id, item]));
+  const listed = new Set(run.filtered!.authorized.map((item) => item.record.id));
   let expanded = 0;
   for (const selected of run.selected.values()) {
     for (const source of selected.read.governance.lineage?.sources ?? []) {
-      const candidate = eligible.get(source.id);
-      if (candidate === undefined || run.selected.has(source.id)) continue;
+      if (run.selected.has(source.id)) continue;
+      // A source in the recalled collection already went through every filter;
+      // one stored elsewhere is resolved and filtered by the same rules here.
+      const candidate = listed.has(source.id)
+        ? eligible.get(source.id)
+        : await resolveLineageSource(run.filterInput!, source);
+      if (candidate === undefined) continue;
       if (run.evidence.length >= run.limit || stopped(run)) break;
       const before = run.evidence.length;
       run.stopReason = await admitOne(run, candidate, 0);
@@ -320,10 +352,16 @@ async function executePlan(run: RecallRun, query: string): Promise<void> {
         ),
   );
   const scopes = scopesFor(context, authority, options.collection, options.visibility ?? 'all');
-  const filtered = await filterRecallCandidates(
-    { context, authority, options, plan, evicted },
-    scopes,
-  );
+  const filterInput: FilterInput = {
+    context,
+    policy: run.policy,
+    authority,
+    options,
+    plan,
+    evicted,
+  };
+  const filtered = await filterRecallCandidates(filterInput, scopes);
+  run.filterInput = filterInput;
   run.filtered = filtered;
   run.filters = filtered.filters;
   run.exclusions.push(...filtered.exclusions);
@@ -378,7 +416,7 @@ async function finish(
     run.stopReason ?? (run.evidence.length >= run.limit ? 'sufficient' : 'exhausted');
   const evidence = stopReason === 'failed' ? [] : run.evidence;
   const rendered = renderMemoryEvidence(evidence);
-  const policyRevision = context.policy().revision;
+  const policyRevision = run.policy.revision;
   const queryDigest = digest(query);
   const contentDigest = digest(rendered);
   const withheld = run.exclusions.filter((exclusion) => WITHHELD.has(exclusion.reason)).length;
@@ -486,6 +524,7 @@ export async function recallForModel(
     operationId: context.operationId(),
     startedAt: context.now(),
     limit: options.limit ?? 5,
+    policy: context.policy(),
     evidence: [],
     selected: new Map(),
     scores: new Map(),

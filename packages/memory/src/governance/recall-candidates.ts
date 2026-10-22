@@ -7,9 +7,12 @@ import type {
   MemoryRecallFilterReport,
   RecallForModelOptions,
 } from './governed-memory-types';
-import { resolveTenantPolicy, trustAtLeast } from './policy';
+import { resolveTenantPolicy, trustAtLeast, type MemoryGovernancePolicy } from './policy';
 import { decideMemoryAccess, type MemoryDenialReason, type MemoryRedaction } from './predicate';
-import { readRecordGovernance } from './record-governance';
+import {
+  readRecordGovernance,
+  type MemoryRecordSourceReference as RecordReference,
+} from './record-governance';
 import { retentionExpiry } from './retention';
 import {
   MEMORY_POLICY_FILTERS,
@@ -62,6 +65,10 @@ export function revisionOf(resolved: ResolvedRecord): string {
   return `${resolved.record.version}:${resolved.read.governance.contentDigest}`;
 }
 
+function candidateOf(resolved: ResolvedRecord, redaction: MemoryRedaction): RecallCandidate {
+  return { ...resolved, redaction, revision: revisionOf(resolved), kind: kindOf(resolved) };
+}
+
 /**
  * Lists every record in the caller's scopes and keeps those the shared
  * predicate lets it search, counting each denial against the filter it
@@ -86,19 +93,16 @@ async function authorizedCandidates(
         denials.set(filter, (denials.get(filter) ?? 0) + 1);
         continue;
       }
-      authorized.push({
-        ...resolved,
-        redaction: decision.redaction,
-        revision: revisionOf(resolved),
-        kind: kindOf(resolved),
-      });
+      authorized.push(candidateOf(resolved, decision.redaction));
     }
   }
   return authorized;
 }
 
-interface FilterInput {
+/** What the filters read. `policy` is the one snapshot the whole recall runs under. */
+export interface FilterInput {
   readonly context: GovernanceContext;
+  readonly policy: MemoryGovernancePolicy;
   readonly authority: MemoryAuthority;
   readonly options: RecallForModelOptions;
   readonly plan: MemoryRetrievalPlan;
@@ -114,7 +118,7 @@ type Verdict = readonly [MemoryPolicyFilter, MemoryRecallExclusionReason] | unde
 function policyVerdict(input: FilterInput, candidate: RecallCandidate, now: number): Verdict {
   const { governance } = candidate.read;
   const { constraints } = input.plan;
-  const policy = input.context.policy();
+  const { policy } = input;
   if (
     constraints.purposes.length > 0 &&
     !constraints.purposes.includes(governance.attribution.purpose)
@@ -257,4 +261,23 @@ export async function filterRecallCandidates(
     filters: MEMORY_POLICY_FILTERS.map((filter) => ({ filter, excluded: counts.get(filter) ?? 0 })),
     constraintStages: appliedConstraintStages(input.plan),
   };
+}
+
+/**
+ * Resolves a selected derived record's lineage source wherever it is stored,
+ * including another collection, and returns it only when the same predicate,
+ * policy filters, and supersession rule the recall applied to its own
+ * candidates would have let it through.
+ */
+export async function resolveLineageSource(
+  input: FilterInput,
+  reference: RecordReference,
+): Promise<RecallCandidate | undefined> {
+  const resolved = await input.context.load(input.authority.tenantId, reference);
+  if (resolved === undefined) return undefined;
+  const decision = decideMemoryAccess(input.authority, 'search', resourceOf(resolved));
+  if (!decision.allowed) return undefined;
+  const candidate = candidateOf(resolved, decision.redaction);
+  if (policyVerdict(input, candidate, input.context.now()) !== undefined) return undefined;
+  return historicalAdmitted(input.plan, candidate) ? candidate : undefined;
 }
