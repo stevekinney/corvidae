@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from './hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
+import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -531,14 +532,51 @@ test('every cacheable package task reaches transit, so its key follows its depen
   expect(uncovered).toEqual([]);
 });
 
-test('a coverage run waits for its own package test', async () => {
-  // Both run the same files, and some tests write fixed fixture paths inside the source tree
-  // (Cinder's components.test.ts), so the two runs of one package must never overlap.
+test("the validate gate runs each package's suite once, through its coverage run where it has one", async () => {
+  // A package's `test:coverage` runs the same files as its `test`, so the gate runs only the
+  // coverage run there, and `test:coverage` no longer waits for `test`. Some tests write fixed
+  // fixture paths inside the source tree (Cinder's components.test.ts), so the two runs of one
+  // package must then never share a turbo invocation, where they could overlap.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { dependsOn?: string[] }> = configuration.tasks;
-  const coverageTasks = Object.keys(tasks).filter((key) => key.endsWith('#test:coverage'));
-  expect(coverageTasks.length).toBeGreaterThan(0);
-  for (const key of coverageTasks) expect(tasks[key]?.dependsOn, key).toContain('test');
+  expect(tasks['test:gate']?.dependsOn).toEqual(['transit', 'test']);
+
+  const coveragePackages: string[] = [];
+  for await (const path of new Bun.Glob(
+    `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
+  ).scan({ cwd: root })) {
+    const manifest = await Bun.file(join(root, path)).json();
+    if (manifest.scripts?.['test:coverage'] !== undefined) coveragePackages.push(manifest.name);
+  }
+  expect(coveragePackages.length).toBeGreaterThan(0);
+  for (const name of coveragePackages) {
+    // Without its own gate entry, the package's coverage floor would silently leave validate.
+    const gate = tasks[`${name}#test:gate`]?.dependsOn ?? [];
+    expect(gate, name).toContain('transit');
+    expect(gate, name).toContain('test:coverage');
+    expect(gate, name).not.toContain('test');
+    expect(tasks[`${name}#test:coverage`]?.dependsOn ?? [], name).not.toContain('test');
+  }
+
+  const { scripts = {} } = await Bun.file(join(root, 'package.json')).json();
+  for (const [name, script] of Object.entries<string>(scripts)) {
+    for (const invocation of script.match(/turbo run [^&']+/g) ?? []) {
+      const names = invocation.split(/\s+/).slice(2);
+      expect(names.includes('test') && names.includes('test:coverage'), name).toBe(false);
+    }
+  }
+});
+
+test("Interborough's gate runs the host suite its coverage run leaves out", async () => {
+  // Its coverage run measures the UI suite only, so the gate adds `test:host`, which must stay the
+  // first half of `test`, or the gate and the plain suite would test different files.
+  const manifest = await Bun.file(join(root, 'applications/interborough/package.json')).json();
+  expect(manifest.scripts['test']).toStartWith(`${manifest.scripts['test:host']} && `);
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  expect(configuration.tasks['@lostgradient/interborough#test:coverage'].dependsOn).toEqual([
+    'transit',
+    'test:host',
+  ]);
 });
 
 test('the root self-tests are keyed on the workspace files they validate', async () => {
@@ -568,7 +606,7 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
   const manifest = await Bun.file(join(root, 'testing/evaluation/package.json')).json();
   expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
   expect(configuration.tasks['@lostgradient/evaluation#test:coverage']).toMatchObject({
-    dependsOn: ['transit', 'test'],
+    dependsOn: ['transit'],
     outputs: expect.arrayContaining(['coverage/**']),
   });
 });

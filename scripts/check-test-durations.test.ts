@@ -8,6 +8,7 @@ import {
   budgetFailures,
   judgeDurations,
   laneProblems,
+  measuresWorkspace,
   parseJunit,
   verdict,
 } from './check-test-durations.ts';
@@ -343,5 +344,22 @@ describe('the on-demand check measures before it enforces', () => {
     expect(scripts['validate']).toContain('bun run report:test-durations');
     expect(scripts['validate']).not.toContain('measure:test-durations');
     expect(scripts['report:test-durations']).not.toContain('--force');
+  });
+});
+
+describe('measuresWorkspace', () => {
+  test('the report mode skips a workspace that validate gates through its coverage run', () => {
+    // validate's `test:gate` runs only `test:coverage` there, so no fast-lane report exists in a
+    // fresh worktree; reading for one would fail the report as a wiring problem.
+    const gatedThroughCoverage = {
+      test: 'bun ../../scripts/bun-test-junit.ts',
+      'test:coverage': 'bun test --coverage',
+    };
+    expect(measuresWorkspace('report', gatedThroughCoverage)).toBe(false);
+    expect(measuresWorkspace('report', { test: 'bun ../../scripts/bun-test-junit.ts' })).toBe(true);
+  });
+
+  test('the enforce mode, which reruns every test first, measures every workspace', () => {
+    expect(measuresWorkspace('enforce', { test: 'x', 'test:coverage': 'y' })).toBe(true);
   });
 });
