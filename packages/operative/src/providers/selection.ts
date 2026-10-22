@@ -129,7 +129,7 @@ import type {
   MultiModalContent,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { isMediaContent } from 'conversationalist';
+import { isMediaContent, messageMediaParts } from 'conversationalist';
 
 import { mimeFamilyOf, sourceByteLength } from '../context/media-cost.ts';
 
@@ -201,28 +201,6 @@ export interface InputMediaRequirement {
   readonly count: number;
   /** `true` for a part a tool result carries, which needs the backend's `toolResultModalities`. */
   readonly inToolResult?: true | undefined;
-}
-
-/**
- * A message's media parts and where each sits: its own content, then, for a
- * tool-result row, its result's `parts`. A row's two lists never both hold
- * media (a tool-result row's content is empty), so `partIndex` stays unique
- * within the message and keys a resolved source the same way an adapter reads it.
- */
-export function messageMediaParts(message: {
-  readonly content: string | readonly MultiModalContent[];
-  readonly toolResult?: { readonly parts?: readonly MultiModalContent[] | undefined } | undefined;
-}): Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> {
-  const found: Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> = [];
-  if (typeof message.content !== 'string') {
-    message.content.forEach((part, partIndex) => {
-      if (isMediaContent(part)) found.push({ part, partIndex, inToolResult: false });
-    });
-  }
-  message.toolResult?.parts?.forEach((part, partIndex) => {
-    if (isMediaContent(part)) found.push({ part, partIndex, inToolResult: true });
-  });
-  return found;
 }
 
 /** One media part of a conversation and what it requires of a backend. */

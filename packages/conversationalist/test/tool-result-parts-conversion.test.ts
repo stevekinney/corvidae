@@ -5,7 +5,9 @@ import { toAnthropicMessages } from '../src/adapters/anthropic/outbound';
 import { toAnthropicMessagesForSdk } from '../src/adapters/anthropic/sdk';
 import { toGeminiMessages } from '../src/adapters/gemini/outbound';
 import { resolvedSourceKey } from '../src/adapters/media';
+import { fromOpenAIMessages } from '../src/adapters/openai/inbound';
 import { toOpenAIMessages } from '../src/adapters/openai/outbound';
+import { partitionMessages } from '../src/compaction/preservation';
 import {
   appendMessages,
   appendToolResult,
@@ -14,6 +16,8 @@ import {
 } from '../src/conversation';
 import { UnsupportedContentError } from '../src/errors';
 import type { ToolResultPart } from '../src/multi-modal';
+import { messageMediaParts } from '../src/multi-modal';
+import { createPIIRedactionPlugin } from '../src/plugins/pii-redaction';
 import type { ConversationHistory } from '../src/types';
 import { getOrderedMessages } from '../src/utilities/message-store';
 import { redactToolResult } from '../src/utilities/tool-results';
@@ -323,5 +327,65 @@ describe('tool-result parts on other outcomes and redaction', () => {
     const redacted =
       row?.toolResult === undefined ? undefined : redactToolResult(row.toolResult, '[redacted]');
     expect(redacted).toEqual({ callId: 'call-1', outcome: 'success', content: '[redacted]' });
+  });
+});
+
+describe('tool-result parts reach every media consumer', () => {
+  it('lists tool-result media beside content media', () => {
+    expect(
+      messageMediaParts({ content: '', toolResult: { parts: TEXT_AND_IMAGE } }).map(
+        ({ partIndex, inToolResult }) => [partIndex, inToolResult],
+      ),
+    ).toEqual([[1, true]]);
+  });
+
+  it('preserves a tool result carrying media through compaction', () => {
+    let conversation = withToolResult(TEXT_AND_IMAGE);
+    for (let index = 0; index < 6; index += 1) {
+      conversation = appendMessages(conversation, { role: 'user', content: `filler ${index}` });
+    }
+    const { preserved } = partitionMessages(conversation, { preserveRecentCount: 2 });
+    expect(preserved.some((message) => message.toolResult?.parts !== undefined)).toBe(true);
+    expect(preserved.some((message) => message.role === 'tool-call')).toBe(true);
+  });
+
+  it('redacts PII in tool-result parts', () => {
+    const plugin = createPIIRedactionPlugin();
+    const redacted = plugin({
+      role: 'tool-result',
+      content: '',
+      toolResult: {
+        callId: 'call-1',
+        outcome: 'success',
+        content: null,
+        parts: [
+          { type: 'text', text: 'Mail jane@example.com' },
+          { ...(TEXT_AND_IMAGE[1] as ToolResultPart & { type: 'image' }), alt: 'jane@example.com' },
+        ],
+      },
+    });
+    expect(JSON.stringify(redacted)).not.toContain('jane@example.com');
+  });
+
+  it('round-trips an OpenAI error result with parts, outcome included', () => {
+    const conversation = appendMessages(createConversationHistory({ id: 'round-trip' }), {
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-1', name: 'chart', arguments: {} },
+    });
+    const withError = appendToolResult(conversation, {
+      callId: 'call-1',
+      outcome: 'error',
+      content: null,
+      parts: [{ type: 'text', text: 'why' }],
+      error: { code: 'E', category: 'internal', retryable: false, message: 'failed' },
+    });
+    const imported = fromOpenAIMessages(toOpenAIMessages(withError).messages);
+    const result = getOrderedMessages(imported).at(-1)?.toolResult;
+    expect(result).toMatchObject({
+      outcome: 'error',
+      error: { message: 'failed' },
+      parts: [{ type: 'text', text: 'why' }],
+    });
   });
 });

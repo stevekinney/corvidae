@@ -24,6 +24,7 @@ import {
   type Message,
   type MultiModalContent,
   mergeAGUIMessages,
+  messageMediaParts,
 } from 'conversationalist';
 
 import { MEMORY_EVIDENCE_METADATA_KEY } from '../memory-evidence-metadata.ts';
@@ -208,9 +209,8 @@ function withoutReservedMetadata(row: Message): Message {
 export function managedAssetIdsOf(rows: ReadonlyArray<Message>): string[] {
   const ids = new Set<string>();
   for (const row of rows) {
-    if (typeof row.content === 'string') continue;
-    for (const part of row.content) {
-      if ('source' in part && part.source.kind === 'managed-asset') ids.add(part.source.assetId);
+    for (const { part } of messageMediaParts(row)) {
+      if (part.source.kind === 'managed-asset') ids.add(part.source.assetId);
     }
   }
   return [...ids];

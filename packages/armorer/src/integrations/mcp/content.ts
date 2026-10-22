@@ -1,11 +1,6 @@
 import { isSpecType, type CallToolResult, type ContentBlock } from '@modelcontextprotocol/server';
 
-import {
-  assertToolResultParts,
-  isToolContent,
-  toolContent,
-  type JSONObject,
-} from '../../protocol';
+import { assertToolResultParts, isToolContent, toolContent, type JSONObject } from '../../protocol';
 import type { ToolResultLike } from '../../types';
 import { mcpBlocksToParts, partsToMcpBlocks } from './parts';
 
@@ -61,6 +56,11 @@ function isCallToolResultShape(value: unknown): value is CallToolResultShape {
 /** Converts an Armorer tool result into an MCP `CallToolResult` (server direction). */
 export function toCallToolResult(result: ToolResultLike): CallToolResult {
   if (result.outcome === 'error') {
+    // An error that carries parts sends them, in order, flagged as an error.
+    if (result.parts !== undefined) {
+      assertToolResultParts(result.parts);
+      return { content: partsToMcpBlocks(result.parts), isError: true };
+    }
     const message = result.error?.message ?? stringifyResult(result.content);
     return { content: toTextContent(message), isError: true };
   }

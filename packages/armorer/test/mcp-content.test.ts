@@ -79,4 +79,16 @@ describe('MCP content mapping', () => {
       }),
     ).toEqual({ content: [text, image], structuredContent: { width: 1 } });
   });
+
+  it('sends the parts of an error result, flagged as an error (server direction)', () => {
+    expect(
+      toCallToolResult({
+        callId: 'c',
+        outcome: 'error',
+        content: null,
+        parts: [{ type: 'text', text: 'caption' }],
+        error: { code: 'E', category: 'internal', retryable: false, message: 'failed' },
+      }),
+    ).toEqual({ content: [text], isError: true });
+  });
 });

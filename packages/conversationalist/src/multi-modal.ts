@@ -238,6 +238,29 @@ function copyMediaContent(part: MediaContent): MediaContent {
   };
 }
 
+/**
+ * Every media part a message carries, with where it sits: its own content, then, for a
+ * tool-result row, its result's `parts`. A row's two lists never both hold media (a tool-result
+ * row's content is empty), so `partIndex` is unique within the message and keys a resolved source
+ * the way the provider adapters read it. Anything that looks for a message's media (compaction,
+ * redaction, asset claims, media admission) reads it here, so no payload is missed.
+ */
+export function messageMediaParts(message: {
+  readonly content: string | ReadonlyArray<MultiModalContent>;
+  readonly toolResult?: { readonly parts?: ReadonlyArray<ToolResultPart> | undefined } | undefined;
+}): Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> {
+  const found: Array<{ part: MediaContent; partIndex: number; inToolResult: boolean }> = [];
+  if (typeof message.content !== 'string') {
+    message.content.forEach((part, partIndex) => {
+      if (isMediaContent(part)) found.push({ part, partIndex, inToolResult: false });
+    });
+  }
+  message.toolResult?.parts?.forEach((part, partIndex) => {
+    if (part.type !== 'text') found.push({ part, partIndex, inToolResult: true });
+  });
+  return found;
+}
+
 /** Copies one tool-result part, as {@link copyMultiModalContent} copies any part. */
 export function copyToolResultPart(part: ToolResultPart): ToolResultPart {
   return part.type === 'text'

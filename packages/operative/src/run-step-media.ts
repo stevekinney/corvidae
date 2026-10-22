@@ -58,7 +58,7 @@ import type {
   ResolvedMediaSource,
   ResolvedMediaSources,
 } from 'conversationalist';
-import { mimeTypeFitsModality, parseDataUrl } from 'conversationalist';
+import { messageMediaParts, mimeTypeFitsModality, parseDataUrl } from 'conversationalist';
 
 import { createCatalogMediaCostEstimator, sourceByteLength } from './context/media-cost';
 import type { MediaCostEstimator, MediaCostOutcome, UnadmittedMediaCost } from './context/types';
@@ -73,7 +73,6 @@ import {
   evaluateInputMedia,
   type InputMediaRequirement,
   locateInputMedia,
-  messageMediaParts,
 } from './providers/selection';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { explicitAbortReason } from './run-step-utilities';

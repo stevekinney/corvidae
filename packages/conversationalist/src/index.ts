@@ -259,6 +259,7 @@ export {
   copyMultiModalContent,
   isMediaContent,
   mediaDisplayUrl,
+  messageMediaParts,
   renderMediaPlaceholder,
 } from './multi-modal';
 export type {
