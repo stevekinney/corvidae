@@ -795,19 +795,22 @@ describe('resume on a peer', () => {
             await peer.handler(resumeRequest([answer(parked.reviewId, 'staging')], 'client-run-2')),
           );
 
+          // The answer is a row of the opening snapshot, and no user-role text is streamed for it.
           expect(typesOf(frames)).toEqual([
             EventType.RUN_STARTED,
-            EventType.TEXT_MESSAGE_START,
-            EventType.TEXT_MESSAGE_CONTENT,
-            EventType.TEXT_MESSAGE_END,
             EventType.MESSAGES_SNAPSHOT,
             EventType.STATE_SNAPSHOT,
             EventType.MESSAGES_SNAPSHOT,
             EventType.RUN_FINISHED,
           ]);
-          expect(frames[1]!.event).toMatchObject({ role: 'user' });
-          expect(String((frames[2]!.event as { delta?: unknown }).delta)).toContain('staging');
-          expect(messageTexts(frames[6])).toContain('Deploying to staging.');
+          const answerRow = (
+            frames[1]!.event as { messages: Array<{ id: string; role: string; content: string }> }
+          ).messages.find(
+            (message) => message.id === `${parked.nativeRunId}:signal:human-response:0`,
+          );
+          expect(answerRow).toMatchObject({ role: 'user' });
+          expect(String(answerRow?.content)).toContain('staging');
+          expect(messageTexts(frames[3])).toContain('Deploying to staging.');
           expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
           expect(harness.generate.calls).toHaveLength(2);
           expect(lastRequestText(harness)).toContain('staging');
