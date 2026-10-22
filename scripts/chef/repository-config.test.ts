@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -95,7 +95,10 @@ describe('loadRepositoryConfig', () => {
     const config = loadRepositoryConfig();
     expect(DEFAULT_CONFIGURATION_PATH).toBe(join(import.meta.dir, 'repository.json'));
     // Portable: no account name, no personal path, and the main checkout is not configured.
-    expect(JSON.stringify(config)).not.toContain('/Users/');
+    const raw = readFileSync(DEFAULT_CONFIGURATION_PATH, 'utf8');
+    expect(raw).not.toContain('/Users/');
+    expect(raw).toContain('"~/.agent-worktrees/claude/corvidae"');
+    expect(raw).not.toContain('"checkout"');
     expect(config.worktreeRoots.claude).toBe(join(homedir(), '.agent-worktrees/claude/corvidae'));
     expect(config.worktreeRoots.codex).toBe(join(homedir(), '.agent-worktrees/codex/corvidae'));
     expect(config.repository).toBe('stevekinney/corvidae');
