@@ -7292,9 +7292,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // The four configuration targets resolve through the shipped AB-64
     // selector rather than a steering-only validation path: one
     // `planSelection` call validates the override against the live catalog.
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },
@@ -7352,9 +7354,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         { target: Target }
       >;
     };
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },
@@ -7578,9 +7582,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   it('is idempotent at the value: re-steering the same model does not advance configVersion (AB-200)', async () => {
     // A client retrying with a fresh command id must not inflate the
     // version and invalidate every other caller's expectedRevision.
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },

@@ -176,13 +176,23 @@ function isSteeringCommand(value: unknown): value is ImplementedSteeringCommand 
     target !== 'effort' ||
     requested['override'] === undefined ||
     (typeof requested['override'] === 'string' && EFFORTS.has(requested['override']));
+  // COR-1559: only a `model` override may name a provider, and it names it as text. A record
+  // written before the field existed has none.
+  const providerIsValid =
+    requested['provider'] === undefined ||
+    (target === 'model' &&
+      typeof requested['override'] === 'string' &&
+      typeof requested['provider'] === 'string');
   // `pause`/`resume` carry no value at all; every other target exactly one.
   const valueShapeIsValid =
     target === 'pause' || target === 'resume'
-      ? requested['override'] === undefined && requested['policyRef'] === undefined
+      ? requested['override'] === undefined &&
+        requested['policyRef'] === undefined &&
+        requested['provider'] === undefined
       : (target === 'agent-identity' || CONFIGURATION_TARGETS.has(target)) &&
         hasOneValue &&
-        effortIsValid;
+        effortIsValid &&
+        providerIsValid;
   return (
     valueShapeIsValid &&
     typeof value['id'] === 'string' &&
@@ -210,6 +220,9 @@ const FAILURE_REASONS = new Set([
   'run-ambiguous',
   'authorization-revoked',
   'policy-denied',
+  'model-not-allowed',
+  'stale-revision',
+  'shutting-down',
   'deadline-passed',
 ]);
 
@@ -226,20 +239,21 @@ function isSteeringFailure(value: unknown): boolean {
 
 /**
  * A refusal Bureau decides before the gate: an unresolvable or uncatalogued
- * request (`policy-denied`), or an identity selector it cannot resolve
+ * request (`policy-denied`), a `model` the session's agent does not allow
+ * (`model-not-allowed`, COR-1559), or an identity selector it cannot resolve
  * (`selector-unavailable`). Nothing else is ever logged as `refused`; any
- * other outcome would replay a decision no process made.
+ * other outcome would replay a decision no process made. `stale-revision` is
+ * decided by the gate and `shutting-down` is never decided at all, so neither
+ * is a refusal.
  */
 function isRefusalOutcome(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value['outcome'] === 'unsupported-capability') {
     return value['reason'] === 'selector-unavailable';
   }
-  return (
-    value['outcome'] === 'rejected' &&
-    isSteeringFailure(value['failure']) &&
-    (value['failure'] as { reason: unknown }).reason === 'policy-denied'
-  );
+  if (value['outcome'] !== 'rejected' || !isSteeringFailure(value['failure'])) return false;
+  const { reason } = value['failure'] as { reason: unknown };
+  return reason === 'policy-denied' || reason === 'model-not-allowed';
 }
 
 /**
@@ -273,14 +287,19 @@ function hasValidSubmittedValue(parsed: Record<string, unknown>): boolean {
 /**
  * `selector-unavailable` is refused for exactly one kind of command: an
  * `agent-identity` command naming a `policyRef`, which Bureau cannot yet
- * resolve. `policy-denied` can be refused for any target, a `pause` or
+ * resolve, and `model-not-allowed` for a `model` override. `policy-denied` can be refused for any target, a `pause` or
  * `resume` included: an `expectedRevision` JSON cannot represent is refused
  * that way, before the gate, for every target.
  */
 function refusalFitsCommand(outcome: unknown, command: ImplementedSteeringCommand): boolean {
-  if ((outcome as { outcome: unknown }).outcome !== 'unsupported-capability') return true;
+  const refusal = outcome as { outcome: unknown; failure?: { reason?: unknown } };
   const requested = command.requestedValue as { target: string; policyRef?: unknown };
-  return requested.target === 'agent-identity' && typeof requested.policyRef === 'string';
+  if (refusal.outcome === 'unsupported-capability') {
+    return requested.target === 'agent-identity' && typeof requested.policyRef === 'string';
+  }
+  // `model-not-allowed` is refused for a `model` override and nothing else (COR-1559).
+  if (refusal.failure?.reason === 'model-not-allowed') return requested.target === 'model';
+  return true;
 }
 
 function parseEvent(raw: string, sequence: number, sessionId: string): SteeringLogEvent {

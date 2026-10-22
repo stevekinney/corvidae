@@ -180,3 +180,25 @@ describe('composeGenerationSelectionRecord', () => {
     expect(record?.divergence).toEqual([]);
   });
 });
+
+describe('a model override that names its provider (COR-1559)', () => {
+  it('reports the model override’s provider as the effective provider', () => {
+    const record = composeGenerationSelectionRecord(
+      selectedPlan({ provider: 'anthropic', model: 'claude-opus-5' }),
+      steering({ model: 'claude-opus-5-5', modelProvider: 'openai' }),
+    );
+
+    expect(record?.effective.provider).toBe('openai');
+    expect(record?.effective.model).toBe('claude-opus-5-5');
+    expect(record?.divergence.map((entry) => entry.field)).toEqual(['provider', 'model']);
+  });
+
+  it('lets a provider command win over the model override’s provider', () => {
+    const record = composeGenerationSelectionRecord(
+      undefined,
+      steering({ model: 'claude-opus-5-5', modelProvider: 'openai', provider: 'gemini' }),
+    );
+
+    expect(record?.effective.provider).toBe('gemini');
+  });
+});

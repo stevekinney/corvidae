@@ -9,6 +9,7 @@
  * name: Researcher
  * description: Finds sources
  * model: anthropic/claude-sonnet-4-5
+ * models: [anthropic/claude-sonnet-4-5, openai/gpt-4.1]
  * tools: [lookup-order]
  * published: false
  * ---
@@ -48,6 +49,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'name',
   'description',
   'model',
+  'models',
   'tools',
   'skills',
   'published',
@@ -94,31 +96,93 @@ function unique(values: readonly string[]): boolean {
   return new Set(values).size === values.length;
 }
 
+/** Whether `entry` is written `<provider>/<model-or-alias>`: text on both sides of the first `/`. */
+function isModelEntry(entry: string): boolean {
+  const separator = entry.indexOf('/');
+  return separator > 0 && separator < entry.length - 1;
+}
+
 /**
  * The frontmatter of an agent file. Unknown top-level keys are allowed so a file may carry
  * fields another tool reads; Bureau keeps them when it rewrites the file and ignores them.
  */
-export const agentFileFrontmatterSchema = z.looseObject({
-  /** A display label. Defaults to the identifier. Need not be unique. */
-  name: z.string().trim().min(1).nullish(),
-  description: z.string().nullish(),
-  /** `<provider>/<model-or-alias>`, split on the first `/`; checked against the model catalog. */
-  model: z.string().min(1),
-  /** Names from the deployment's tool catalog. */
-  tools: z
-    .array(z.string().min(1))
-    .refine(unique, { message: 'tool names must be unique' })
-    .nullish(),
-  /** Descriptive Agent Card skills (COR-1301), never executable skills. */
-  skills: z
-    .array(agentSkillDescriptorSchema)
-    .refine((skills) => unique(skills.map((skill) => skill.id)), {
-      message: 'skill ids must be unique',
-    })
-    .nullish(),
-  /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
-  published: z.boolean().nullish(),
-});
+export const agentFileFrontmatterSchema = z
+  .looseObject({
+    /** A display label. Defaults to the identifier. Need not be unique. */
+    name: z.string().trim().min(1).nullish(),
+    description: z.string().nullish(),
+    /** `<provider>/<model-or-alias>`, split on the first `/`; checked against the model catalog. */
+    model: z.string().min(1),
+    /**
+     * The models a session of this agent may be switched to (COR-1559), each written like `model`.
+     * It narrows the choice; without it the deployment's catalog applies. Checked by
+     * {@link checkModelsList} when the file is parsed, never against the catalog.
+     */
+    models: z.array(z.string()).nullish(),
+    /** Names from the deployment's tool catalog. */
+    tools: z
+      .array(z.string().min(1))
+      .refine(unique, { message: 'tool names must be unique' })
+      .nullish(),
+    /** Descriptive Agent Card skills (COR-1301), never executable skills. */
+    skills: z
+      .array(agentSkillDescriptorSchema)
+      .refine((skills) => unique(skills.map((skill) => skill.id)), {
+        message: 'skill ids must be unique',
+      })
+      .nullish(),
+    /** Whether the agent may be offered over the network. A strict boolean; defaults to `false`. */
+    published: z.boolean().nullish(),
+  })
+  .superRefine((frontmatter, context) => checkModelsList(frontmatter, context));
+
+/**
+ * The checks a `models` list must pass, which hold whatever the model catalog holds (COR-1559):
+ * every entry is `<provider>/<name>`, non-empty and unique, and the list is not empty and
+ * includes the default `model`, compared as the literal string the file wrote. Each failure is
+ * at the entry's own path, `models.<index>`, or at `models` for the list as a whole.
+ */
+export function checkModelsList(
+  frontmatter: { readonly model: string; readonly models?: readonly string[] | null | undefined },
+  context: z.RefinementCtx,
+): void {
+  const { models, model } = frontmatter;
+  if (models === undefined || models === null) return;
+  if (models.length === 0) {
+    context.addIssue({
+      code: 'custom',
+      path: ['models'],
+      message: 'models must list at least one model; leave it out to allow the whole catalog',
+    });
+    return;
+  }
+  const seen = new Set<string>();
+  for (const [index, entry] of models.entries()) {
+    if (entry === '') {
+      context.addIssue({ code: 'custom', path: ['models', index], message: 'must not be empty' });
+    } else if (!isModelEntry(entry)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['models', index],
+        message: `"${entry}" must be written <provider>/<model>`,
+      });
+    } else if (seen.has(entry)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['models', index],
+        message: `"${entry}" is listed more than once`,
+      });
+    }
+    seen.add(entry);
+  }
+  if (!models.includes(model)) {
+    context.addIssue({
+      code: 'custom',
+      path: ['models'],
+      message: `models must include the default model "${model}"`,
+    });
+  }
+}
 
 /**
  * A definition as a snapshot stores it. Read back with the defaults a later field would need, so
@@ -129,6 +193,8 @@ export const agentFileDefinitionSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().default(null),
   model: z.string().min(1),
+  /** The models a session may be switched to (COR-1559); absent for a snapshot that has none. */
+  models: z.array(z.string().min(1)).optional(),
   tools: z.array(z.string().min(1)).default([]),
   skills: z.array(agentSkillDescriptorSchema).default([]),
   published: z.boolean().default(false),
@@ -143,6 +209,12 @@ export interface AgentFileDefinition {
   readonly name: string;
   readonly description: string | null;
   readonly model: string;
+  /**
+   * The models a session of the agent may be switched to (COR-1559), each `<provider>/<name>` as
+   * `model` is, and including `model`. Absent when the file lists none: the deployment's model
+   * catalog then applies.
+   */
+  readonly models?: readonly string[];
   readonly tools: readonly string[];
   readonly skills: readonly AgentSkillDescriptor[];
   readonly published: boolean;
@@ -154,6 +226,8 @@ export interface AgentFileDefinitionInput {
   readonly name?: string | undefined;
   readonly description?: string | null | undefined;
   readonly model: string;
+  /** See {@link AgentFileDefinition.models}. Omitting it on an update removes it, as for `tools`. */
+  readonly models?: readonly string[] | undefined;
   readonly tools?: readonly string[] | undefined;
   readonly skills?: readonly AgentSkillDescriptor[] | undefined;
   readonly published?: boolean | undefined;
@@ -244,6 +318,7 @@ function toDefinition(
     name: frontmatter.name ?? id,
     description: frontmatter.description ?? null,
     model: frontmatter.model,
+    ...(frontmatter.models == null ? {} : { models: frontmatter.models }),
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     skills: (frontmatter.skills ?? []) as readonly AgentSkillDescriptor[],
@@ -334,6 +409,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
     known['description'] = definition.description;
   }
   known['model'] = definition.model;
+  if (definition.models !== undefined) known['models'] = [...definition.models];
   if (definition.tools !== undefined && definition.tools.length > 0) {
     known['tools'] = [...definition.tools];
   }
@@ -362,6 +438,7 @@ export function resolveAgentFileDefinition(
     name: input.name ?? id,
     description: input.description ?? null,
     model: input.model,
+    ...(input.models === undefined ? {} : { models: input.models }),
     tools: input.tools ?? [],
     skills: input.skills ?? [],
     published: input.published ?? false,
