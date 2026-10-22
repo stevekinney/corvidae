@@ -57,9 +57,8 @@ async function loadExample(
     const update = message['updateComponents'] as { components: A2uiComponent[] } | undefined;
     for (const component of update?.components ?? []) byId.set(component.id, component);
     const data = message['updateDataModel'] as { path?: string; value?: A2uiJsonValue } | undefined;
-    // A2UI's wire names the whole model `/`; the data model is strict RFC 6901.
-    if (data !== undefined)
-      model.set(data.path === undefined || data.path === '/' ? '' : data.path, data.value ?? null);
+    // No vendored example names a path, and `''` is the whole model (RFC 6901).
+    if (data !== undefined) model.set(data.path ?? '', data.value ?? null);
   }
   return { components: [...byId.values()], dataModel: model.snapshot() };
 }
@@ -978,7 +977,7 @@ describe('control fixes', () => {
 
   test('a number TextField writes its bound path as the user types', async () => {
     const changes: A2uiJsonValue[] = [];
-    render(A2uiSurface, {
+    const view = render(A2uiSurface, {
       props: {
         surfaceId: 'typing',
         components: [
@@ -1003,6 +1002,12 @@ describe('control fixes', () => {
 
     expect(changes.at(-1)).toEqual({ count: '42' });
     expect(field.value).toBe('42');
+
+    // Once the user leaves the field, a server update shows again.
+    await fireEvent.focusOut(field);
+    await view.rerender({ dataModel: { count: '7' } });
+    await flush();
+    expect(field.value).toBe('7');
   });
 
   test('a time-only DateTimeInput enforces its min and max', async () => {
