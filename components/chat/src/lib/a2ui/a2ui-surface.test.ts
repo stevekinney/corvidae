@@ -917,3 +917,148 @@ describe('review fixes', () => {
     expect(screen.getByRole('button', { name: 'Open' }).hasAttribute('disabled')).toBe(true);
   });
 });
+
+describe('control fixes', () => {
+  test('a ChoicePicker option with an empty value is reported and not offered', async () => {
+    const diagnostics: A2uiDiagnostic[] = [];
+    const { container } = render(A2uiSurface, {
+      props: {
+        surfaceId: 'empty-option',
+        components: [
+          {
+            id: 'root',
+            component: 'ChoicePicker',
+            label: 'Size',
+            options: [
+              { label: 'None', value: '' },
+              { label: 'Small', value: 's' },
+            ],
+            value: { path: '/size' },
+          },
+        ],
+        dataModel: { size: [] },
+        onDiagnostic: (diagnostic: A2uiDiagnostic) => diagnostics.push(diagnostic),
+      },
+    });
+    await flush();
+
+    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(1);
+    expect(screen.queryByLabelText('None')).toBeNull();
+    expect(diagnostics.some((entry) => entry.message.includes('empty value'))).toBe(true);
+  });
+
+  test('a Slider over a fractional range steps by a fraction of it', async () => {
+    const changes: A2uiJsonValue[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'fraction',
+        components: [
+          {
+            id: 'root',
+            component: 'Slider',
+            label: 'Opacity',
+            min: 0,
+            max: 1,
+            value: { path: '/opacity' },
+          },
+        ],
+        dataModel: { opacity: 0.5 },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const slider = screen.getByRole('slider', { name: /Opacity/ });
+    expect(slider.getAttribute('aria-valuenow')).toBe('0.5');
+
+    await fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    await flush();
+
+    expect(changes.at(-1)).toEqual({ opacity: 0.51 });
+  });
+
+  test('a number TextField writes its bound path as the user types', async () => {
+    const changes: A2uiJsonValue[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'typing',
+        components: [
+          {
+            id: 'root',
+            component: 'TextField',
+            label: 'Count',
+            variant: 'number',
+            value: { path: '/count' },
+          },
+        ],
+        dataModel: { count: '1' },
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+    const field = screen.getByRole('spinbutton', { name: /Count/ }) as HTMLInputElement;
+
+    await fireEvent.focus(field);
+    await fireEvent.input(field, { target: { value: '42' } });
+    await flush();
+
+    expect(changes.at(-1)).toEqual({ count: '42' });
+    expect(field.value).toBe('42');
+  });
+
+  test('a time-only DateTimeInput enforces its min and max', async () => {
+    const components = (value: string): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'DateTimeInput',
+        label: 'Start',
+        enableTime: true,
+        min: '09:00',
+        max: '17:00',
+        value,
+      },
+    ];
+    const view = render(A2uiSurface, {
+      props: { surfaceId: 'time-range', components: components('08:30') },
+    });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).toBe('true');
+
+    await view.rerender({ components: components('12:00') });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).not.toBe('true');
+
+    await view.rerender({ components: components('17:30') });
+    await flush();
+    expect(screen.getByLabelText('Start').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  test('a server update that removes the selected tab selects the first', async () => {
+    const tabs = (count: number): A2uiComponent[] => [
+      {
+        id: 'root',
+        component: 'Tabs',
+        tabs: Array.from({ length: count }, (_entry, index) => ({
+          title: `Tab ${index + 1}`,
+          child: `panel-${index + 1}`,
+        })),
+      },
+      ...Array.from({ length: count }, (_entry, index): A2uiComponent => ({
+        id: `panel-${index + 1}`,
+        component: 'Text',
+        text: `Panel ${index + 1}`,
+        variant: 'h2',
+      })),
+    ];
+    const view = render(A2uiSurface, { props: { surfaceId: 'tabs', components: tabs(3) } });
+    await flush();
+    await fireEvent.click(screen.getByRole('tab', { name: 'Tab 3' }));
+    await flush();
+    expect(screen.getByRole('tab', { name: 'Tab 3' }).getAttribute('aria-selected')).toBe('true');
+
+    await view.rerender({ components: tabs(2) });
+    await flush();
+
+    expect(screen.getByRole('tab', { name: 'Tab 1' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('Panel 1')).not.toBeNull();
+  });
+});

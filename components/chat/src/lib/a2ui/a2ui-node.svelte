@@ -74,6 +74,8 @@
     resolveString,
     resolveStringList,
     runAction,
+    sliderStep,
+    timeOutOfRange,
   } from './node-helpers.ts';
   import { getA2uiRenderContext } from './render-context.ts';
   import type { A2uiComponent, A2uiJsonValue } from './types.ts';
@@ -297,6 +299,11 @@
       }
       const option = entry as { label?: unknown; value?: unknown };
       if (typeof option.value !== 'string') continue;
+      if (option.value === '') {
+        // Cinder's single-choice controls use `''` for no selection, so no control could pick it.
+        report('a ChoicePicker option has an empty value; it is skipped');
+        continue;
+      }
       if (seen.has(option.value)) {
         report(`ChoicePicker option "${option.value}" is listed more than once; the first is kept`);
         continue;
@@ -312,6 +319,55 @@
 
   // ── Tabs ──
   let selectedTab = $state('0');
+  const tabs = $derived(
+    component?.component === 'Tabs' && Array.isArray(prop('tabs'))
+      ? (prop('tabs') as unknown[]).filter(
+          (tab): tab is { title?: unknown; child?: unknown } =>
+            typeof tab === 'object' && tab !== null,
+        )
+      : [],
+  );
+
+  // A server update that removes the selected tab leaves the first one selected.
+  $effect.pre(() => {
+    if (Number(selectedTab) >= tabs.length) selectedTab = '0';
+  });
+
+  // ── Number TextField ──
+  /**
+   * The number a focused number field shows. Cinder's NumberInput replaces the
+   * text being typed whenever its value changes, so while the user types into a
+   * field that writes its model on each keystroke, the field keeps the value it
+   * had when focused; the commit on blur brings it back in step.
+   */
+  let heldNumber = $state<{ value: number | null } | undefined>(undefined);
+
+  /** Writes a number field's model as the user types, not only when they commit. */
+  function writeWhileTyping(input: HTMLInputElement): () => void {
+    const hold = () => {
+      const current = read('value');
+      heldNumber = {
+        value: typeof current === 'number' ? current : (resolveNumber(current, evaluation) ?? null),
+      };
+    };
+    // `focusout` follows `blur`, so the field's own commit on blur runs first.
+    const release = () => {
+      heldNumber = undefined;
+    };
+    const write = () => {
+      const typed = input.value.trim();
+      if (typed === '') setLocal('value', '');
+      else if (Number.isFinite(Number(typed))) setLocal('value', String(Number(typed)));
+    };
+    input.addEventListener('focus', hold);
+    input.addEventListener('focusout', release);
+    input.addEventListener('input', write);
+    return () => {
+      input.removeEventListener('focus', hold);
+      input.removeEventListener('focusout', release);
+      input.removeEventListener('input', write);
+    };
+  }
 
   /** Opens the dialog, remembering the control that opened it so focus can return there. */
   function openModal(event: MouseEvent): void {
@@ -454,12 +510,6 @@
     {:else if type === 'Card'}
       <Card class="a2ui-leaf">{@render child(prop('child'))}</Card>
     {:else if type === 'Tabs'}
-      {@const tabs = Array.isArray(prop('tabs'))
-        ? (prop('tabs') as unknown[]).filter(
-            (tab): tab is { title?: unknown; child?: unknown } =>
-              typeof tab === 'object' && tab !== null,
-          )
-        : []}
       <Tabs bind:value={selectedTab} class="a2ui-leaf">
         <TabList>
           {#each tabs as tab, index (index)}
@@ -575,9 +625,14 @@
           id={domId}
           label={nameOr(text('label'), 'Number')}
           {...describedBy}
-          value={typeof value === 'number' ? value : (resolveNumber(value, evaluation) ?? null)}
+          value={heldNumber === undefined
+            ? typeof value === 'number'
+              ? value
+              : (resolveNumber(value, evaluation) ?? null)
+            : heldNumber.value}
           {...optional('error', error)}
           class="a2ui-leaf"
+          inputAttachment={writeWhileTyping}
           onValueChange={(next: number | null) =>
             setLocal('value', next === null ? '' : String(next))}
         />
@@ -685,23 +740,29 @@
           class="a2ui-leaf"
         />
       {:else}
+        <!-- Select documents `undefined` as nothing selected, though its exact
+             optional type does not admit it; `''` would make it warn instead. -->
         <Select
           id={domId}
           {label}
           {...describedBy}
           {options}
           bind:value={
-            () => selected[0] ?? '', (next) => setLocal('value', next === '' ? [] : [next])
+            () => selected[0] as string,
+            (next) => setLocal('value', next === undefined ? [] : [next])
           }
           {...optional('error', checkMessage)}
           class="a2ui-leaf"
         />
       {/if}
     {:else if type === 'Slider'}
+      {@const min = resolveNumber(prop('min'), evaluation) ?? 0}
+      {@const max = resolveNumber(prop('max'), evaluation) ?? 100}
       <Slider
         label={nameOr(text('label'), 'Value')}
-        min={resolveNumber(prop('min'), evaluation) ?? 0}
-        max={resolveNumber(prop('max'), evaluation) ?? 100}
+        {min}
+        {max}
+        step={sliderStep(min, max)}
         bind:value={
           () =>
             resolveNumber(read('value'), evaluation) ?? resolveNumber(prop('min'), evaluation) ?? 0,
@@ -723,7 +784,13 @@
           bind:value={
             () => dateTimeForControl(value, 'time') ?? '', (next) => setLocal('value', next)
           }
-          {...optional('error', checkMessage)}
+          {...optional(
+            'error',
+            checkMessage ??
+              (timeOutOfRange(value, text('min'), text('max'))
+                ? 'The time is outside the allowed range.'
+                : undefined),
+          )}
           class="a2ui-leaf"
         />
       {:else}

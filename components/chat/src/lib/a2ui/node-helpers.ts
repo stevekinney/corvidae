@@ -252,6 +252,29 @@ export function dateTimeForControl(
   return date === undefined ? undefined : `${date}T${time ?? '00:00'}`;
 }
 
+/**
+ * A Slider's step: 1 for a range of 100 or more, and a power of ten a
+ * hundredth of the range below that, so a 0-to-1 slider moves by 0.01
+ * rather than snapping to its ends.
+ */
+export function sliderStep(min: number, max: number): number {
+  const span = max - min;
+  if (!(span > 0)) return 1;
+  return Math.min(1, 10 ** Math.floor(Math.log10(span / 100)));
+}
+
+/**
+ * Whether a time value falls outside `min` or `max`, each an ISO 8601 time or
+ * date-time whose time part bounds it. A bound that has no time is ignored.
+ */
+export function timeOutOfRange(value: unknown, min: string, max: string): boolean {
+  const time = dateTimeForControl(value, 'time');
+  if (time === undefined) return false;
+  const lower = dateTimeForControl(min, 'time');
+  const upper = dateTimeForControl(max, 'time');
+  return (lower !== undefined && time < lower) || (upper !== undefined && time > upper);
+}
+
 /** Whether `value` matches `pattern`, or `undefined` when the pattern is not a valid one. */
 export function matchesPattern(pattern: string, value: string): boolean | undefined {
   try {
