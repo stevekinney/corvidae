@@ -53,6 +53,17 @@ describe('where a branch came from', () => {
     expect(router.pathname).toBe('/chat/parent-1');
   });
 
+  test('leaves a modified click to the browser, which opens the link its own way', async () => {
+    stub = installBureauStub({
+      'bureau.contexts.get': () => contextDetailFixture('parent-1', { title: 'Plan the week' }),
+    });
+    const { findByRole } = mount();
+
+    await fireEvent.click(await findByRole('link', { name: 'Plan the week' }), { ctrlKey: true });
+
+    expect(router.pathname).toBe('/chat/branch-1');
+  });
+
   test('says so without a link when the parent has been deleted', async () => {
     stub = installBureauStub({
       'bureau.contexts.get': () => {

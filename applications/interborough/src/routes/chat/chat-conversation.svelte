@@ -172,7 +172,6 @@
   }
 
   async function branchFrom(messageId: string): Promise<void> {
-    if (branching) return;
     branching = true;
     branchFailure = undefined;
     try {

@@ -154,6 +154,23 @@ describe('which models the picker offers', () => {
     await waitFor(() => expect(none.container.querySelector('select') === null).toBe(true));
   });
 
+  test('shows a session’s model that the agent no longer lists, so the picker never shows another', async () => {
+    serve();
+    const { container } = mount({ current: { provider: 'anthropic', model: 'claude-retired-1' } });
+
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    expect(shownModel(container)).toBe('claude-retired-1');
+    expect(picker(container).selectedOptions[0]?.disabled).toBe(true);
+  });
+
+  test('matches a model the session was switched to without a provider by its name', async () => {
+    serve();
+    const { container } = mount({ current: { provider: null, model: 'claude-haiku-4-5' } });
+
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    expect(shownModel(container)).toBe('claude-haiku-4-5');
+  });
+
   test('says the model is the agent’s default when the session has none and the agent names none', async () => {
     serve({ defaultModel: null });
     const { container } = mount({ current: null });
@@ -239,6 +256,16 @@ describe('choosing a model', () => {
       'model-not-allowed',
       { outcome: 'rejected', failure: { failedAt: 'now', reason: 'model-not-allowed' } },
       COPY.modelNotAllowed,
+    ],
+    [
+      'a catalog that no longer holds the model',
+      { outcome: 'rejected', failure: { failedAt: 'now', reason: 'policy-denied' } },
+      COPY.modelNotAllowed,
+    ],
+    [
+      'a session that has ended, refused as a rejection',
+      { outcome: 'rejected', failure: { failedAt: 'now', reason: 'session-terminal' } },
+      COPY.sessionTerminal,
     ],
     [
       'session-terminal',

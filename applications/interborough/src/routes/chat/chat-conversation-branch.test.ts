@@ -139,6 +139,26 @@ describe('Branch from here', () => {
   }
 });
 
+describe('a refused branch', () => {
+  test('is told once, and the alert can be dismissed', async () => {
+    serve(TURNS, {
+      'bureau.contexts.fork': () => {
+        throw new StubFault('Unavailable', 503, 'The Bureau is not answering.');
+      },
+    });
+    const { findByText, findAllByRole, findByRole, queryByText } = mount();
+    await findByText('Second answer');
+    const [first] = await findAllByRole('button', BRANCH);
+    if (first === undefined) throw new Error('The first reply offers no branch.');
+
+    await fireEvent.click(first);
+    await findByText(CHAT_COPY.branch.fault);
+    await fireEvent.click(await findByRole('button', { name: 'Dismiss alert' }));
+
+    await waitFor(() => expect(queryByText(CHAT_COPY.branch.fault) === null).toBe(true));
+  });
+});
+
 describe('a branch’s header', () => {
   test('says where the session was branched from, with a link to the parent', async () => {
     serve(TURNS, {
@@ -188,6 +208,49 @@ describe('the model picker in a session’s composer', () => {
     expect(served.calls.find((call) => call.method === 'bureau.agents.models')?.params).toEqual({
       agentName: 'assistant',
     });
+  });
+
+  test('switches the session, reads it again, and shows the model the session has afterwards', async () => {
+    const models = [
+      { provider: 'anthropic', model: 'claude-sonnet-5', displayName: 'claude-sonnet-5' },
+      { provider: 'anthropic', model: 'claude-haiku-4-5', displayName: 'claude-haiku-4-5' },
+    ];
+    let switched = false;
+    const served = serve(TURNS, {
+      'bureau.agents.models': () => ({ selectable: true, models, default: models[0] }),
+      'bureau.contexts.get': () => ({
+        ...CONTEXT,
+        model: switched ? { provider: 'anthropic', model: 'claude-haiku-4-5' } : null,
+        configVersion: switched ? 2 : 1,
+      }),
+      'bureau.contexts.steer': () => {
+        switched = true;
+        return { outcome: 'accepted', command: {} };
+      },
+    });
+    const { container, findByText } = mount();
+    await findByText('Second answer');
+    await waitFor(() => expect(container.querySelector('select') === null).toBe(false));
+    const select = container.querySelector('select');
+    if (select === null) throw new Error('The picker did not render.');
+    expect(select.value.endsWith('claude-sonnet-5')).toBe(true);
+
+    const haiku = [...select.options].find((option) => option.value.endsWith('claude-haiku-4-5'));
+    if (haiku === undefined) throw new Error('The picker lists no claude-haiku-4-5.');
+    await fireEvent.change(select, { target: { value: haiku.value } });
+
+    await waitFor(() =>
+      expect(served.calls.filter((call) => call.method === 'bureau.contexts.steer')).toHaveLength(
+        1,
+      ),
+    );
+    const steer = served.calls.find((call) => call.method === 'bureau.contexts.steer');
+    expect(steer?.params['expectedRevision']).toBe(1);
+    // The session is read again after the switch, which is where the new model comes from.
+    await waitFor(() => expect(select.value.endsWith('claude-haiku-4-5')).toBe(true));
+    await waitFor(() =>
+      expect(served.calls.filter((call) => call.method === 'bureau.contexts.get').length).toBe(2),
+    );
   });
 
   test('is not there when the agent allows one model', async () => {
