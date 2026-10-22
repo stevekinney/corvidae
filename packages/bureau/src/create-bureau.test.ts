@@ -5860,9 +5860,9 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
 
     // Spy on the engine-level void methods so we don't need a real schedule in storage.
     const engineProtoTyped = realEngineProto as {
-      pauseSchedule: (id: string) => Promise<void>;
-      resumeSchedule: (id: string) => Promise<void>;
-      cancelSchedule: (id: string) => Promise<void>;
+      pauseSchedule: (id: string, options?: unknown) => Promise<void>;
+      resumeSchedule: (id: string, options?: unknown) => Promise<void>;
+      cancelSchedule: (id: string, options?: unknown) => Promise<void>;
     };
     const pauseSpy = spyOn(engineProtoTyped, 'pauseSchedule').mockResolvedValue(undefined);
     const resumeSpy = spyOn(engineProtoTyped, 'resumeSchedule').mockResolvedValue(undefined);
@@ -5883,10 +5883,14 @@ describe('createBureau schedule management sentinel (regression PRRT_kwDORvupsc6
         expect(await bureau.resumeSchedule('sched-1')).toBe(true);
         expect(await bureau.cancelSchedule('sched-1')).toBe(true);
 
-        // Confirm the engine methods were actually called through.
-        expect(pauseSpy).toHaveBeenCalledWith('sched-1');
-        expect(resumeSpy).toHaveBeenCalledWith('sched-1');
-        expect(cancelSpy).toHaveBeenCalledWith('sched-1');
+        // Confirm the engine methods were actually called through, each carrying its pending
+        // transition record (COR-194).
+        const carriesOutbox = expect.objectContaining({
+          additionalOperations: [expect.objectContaining({ type: 'put' })],
+        });
+        expect(pauseSpy).toHaveBeenCalledWith('sched-1', carriesOutbox);
+        expect(resumeSpy).toHaveBeenCalledWith('sched-1', carriesOutbox);
+        expect(cancelSpy).toHaveBeenCalledWith('sched-1', carriesOutbox);
       } finally {
         bureau.dispose();
       }
