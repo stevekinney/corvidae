@@ -74,6 +74,13 @@ function procedureInvariant(record: ProcedureRecord): TransitionRefusal | undefi
   if (!payload.steps.some((step) => step.causal)) {
     return violation('procedure.causal-step-claimed', record, 'claims no step caused its outcome.');
   }
+  if (payload.approval.required !== (payload.approval.scope === 'high-impact')) {
+    return violation(
+      'procedure.approval-follows-scope',
+      record,
+      'requires approval when its scope says otherwise, or the reverse.',
+    );
+  }
   if (
     payload.approval.scope === 'high-impact' &&
     (!payload.approval.required || payload.provenance.review === undefined)

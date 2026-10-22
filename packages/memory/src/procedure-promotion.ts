@@ -14,7 +14,8 @@ import {
 } from './procedure-candidate';
 import type { TransitionEngine } from './transition-engine';
 import type { TransitionResult } from './transition-outcome';
-import type { TransitionProposal } from './transition-proposal';
+import { type TransitionProposal, transitionDigest } from './transition-proposal';
+import type { TransitionReceipt } from './transition-receipt';
 
 /**
  * What one validation run found. `fixture` is the exact fixture it ran and
@@ -142,12 +143,17 @@ export type ProcedurePromotion =
     }
   | { readonly status: 'rejected'; readonly result: TransitionResult };
 
-/** The options with the review decision and the validator's identity copied and frozen. */
+/**
+ * Every caller input copied and frozen, so nothing external code changes while
+ * the validator runs can reach what is checked, signed, or stored: the authority,
+ * the candidate, the review, the ids, and the replaced revision. Only the engine
+ * and the validator's `validate` stay live.
+ */
 function freezeOptions(options: PromoteProcedureOptions): PromoteProcedureOptions {
-  const { validator, review } = options;
+  const { validator, engine, ...data } = options;
   return {
-    ...options,
-    ...(review === undefined ? {} : { review: deepFreeze(structuredClone(review)) }),
+    ...deepFreeze(structuredClone(data)),
+    engine,
     ...(validator === undefined
       ? {}
       : {
@@ -159,6 +165,33 @@ function freezeOptions(options: PromoteProcedureOptions): PromoteProcedureOption
           }),
         }),
   };
+}
+
+function withoutReview(options: PromoteProcedureOptions): PromoteProcedureOptions {
+  const { review: _review, ...rest } = options;
+  return rest;
+}
+
+function promotedReference(options: PromoteProcedureOptions): ProjectionReference {
+  return { id: options.id, revision: options.replaces === undefined ? 1 : options.replaces + 1 };
+}
+
+/**
+ * The replay of a promotion whose operation already committed, when its receipt
+ * names this procedure's revision. Any other use of the operation id is left to
+ * the engine, which reports it as a conflict.
+ */
+function replayed(
+  options: PromoteProcedureOptions,
+  receipt: TransitionReceipt,
+): ProcedurePromotion | undefined {
+  const procedure = promotedReference(options);
+  const names = receipt.projections.some(
+    (projection) => projection.id === procedure.id && projection.revision === procedure.revision,
+  );
+  return names
+    ? { status: 'promoted', procedure, result: { outcome: 'committed', receipt, replayed: true } }
+    : undefined;
 }
 
 function deepFreeze<T>(value: T): T {
@@ -266,7 +299,6 @@ function promotionProposal(
 async function verifiedSources(
   options: PromoteProcedureOptions,
   candidate: ProcedureCandidate,
-  settled: boolean,
 ): Promise<{ readonly refusal: ProcedurePromotion } | { readonly sources: ProjectionSource[] }> {
   if (candidate.tenantId !== options.authority.tenantId) {
     return {
@@ -290,10 +322,6 @@ async function verifiedSources(
       },
     };
   }
-  // A promotion that already committed replays its receipt: its episodes are not
-  // re-read, since one revoked since then cannot undo a commit that happened, and the
-  // engine still refuses a retry that is not the same proposal.
-  if (settled) return { sources: [...candidate.sources] };
   try {
     assertDistinctEpisodes(candidate.successfulEpisodes, candidate.failedEpisodes);
     const sources = await readCurrentEpisodes(
@@ -322,7 +350,15 @@ function reviewGate(
 ): ProcedurePromotion | undefined {
   if (candidate.draft.scope !== 'high-impact') return undefined;
   const { review } = options;
+  // The approval permits one exact transition: everything it will write, under
+  // which authority, replacing which revision. A decision signs that proposal's
+  // digest, taken without the review it will carry, so it cannot carry over to
+  // any other.
+  const proposalDigest = transitionDigest(
+    promotionProposal(withoutReview(options), candidate, validator, run),
+  );
   const unsigned = {
+    proposalDigest,
     procedureId: options.id,
     operationId: options.operationId,
     title: candidate.draft.title,
@@ -332,6 +368,7 @@ function reviewGate(
     fixtureDigest: digestOfText(run.fixture),
     observationDigest: digestOfText(run.evidence),
     candidateDigest: digestOfText(JSON.stringify(candidate)),
+    replaces: options.replaces ?? null,
   };
   const request = { ...unsigned, requestDigest: digestOfText(JSON.stringify(unsigned)) };
   if (review === undefined) return { status: 'pending-review', request };
@@ -370,11 +407,14 @@ export async function promoteProcedure(
   // Everything external code could change while the validator runs is fixed now:
   // the candidate, the review decision, and the validator's identity.
   const frozen = freezeOptions(options);
-  const snapshot = structuredClone(options.candidate);
-  const settled =
-    (await options.engine.getReceipt(options.authority.tenantId, options.operationId)) !==
-    undefined;
-  const verified = await verifiedSources(frozen, snapshot, settled);
+  // A promotion that already committed replays its receipt. Nothing runs again:
+  // not the episode reads, which a later revocation would fail, and not the
+  // validator, whose result may have changed since.
+  const settled = await frozen.engine.getReceipt(frozen.authority.tenantId, frozen.operationId);
+  const replay = settled === undefined ? undefined : replayed(frozen, settled);
+  if (replay !== undefined) return replay;
+  const snapshot = structuredClone(frozen.candidate);
+  const verified = await verifiedSources(frozen, snapshot);
   if ('refusal' in verified) return verified.refusal;
   // The stored sources are the episodes' evidence as just read, never the candidate's claim.
   const candidate = deepFreeze({ ...snapshot, sources: verified.sources });
@@ -392,14 +432,7 @@ export async function promoteProcedure(
   }
   const gate = reviewGate(frozen, candidate, validator, run);
   if (gate !== undefined) return gate;
-  const result = await options.engine.submit(promotionProposal(frozen, candidate, validator, run));
+  const result = await frozen.engine.submit(promotionProposal(frozen, candidate, validator, run));
   if (result.outcome !== 'committed') return { status: 'rejected', result };
-  return {
-    status: 'promoted',
-    procedure: {
-      id: options.id,
-      revision: options.replaces === undefined ? 1 : options.replaces + 1,
-    },
-    result,
-  };
+  return { status: 'promoted', procedure: promotedReference(frozen), result };
 }

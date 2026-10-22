@@ -492,6 +492,121 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       });
     });
 
+    it('binds an approval to the exact proposal, the revision it replaces included', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      harness.clock.advance(1000);
+      const highImpact = await extractProcedureCandidate({
+        storage: harness.storage,
+        tenantId: TENANT,
+        namespace: NAMESPACE,
+        draft: draft({ scope: 'high-impact', sideEffects: ['restarts production'] }),
+        successfulEpisodes: [{ id: 'episode-0', revision: 1 }],
+      });
+      const pending = await promote(highImpact, {
+        validator: validator(),
+        operationId: 'replace-1',
+        replaces: 1,
+      });
+      if (pending.status !== 'pending-review') throw new Error('pending');
+      const approval = review(true, pending.request.requestDigest);
+      const elsewhere = await promote(highImpact, {
+        validator: validator(),
+        operationId: 'replace-1',
+        replaces: 2,
+        review: approval,
+      });
+      expect(elsewhere).toMatchObject({ status: 'refused', reason: 'review-mismatch' });
+      const approved = await promote(highImpact, {
+        validator: validator(),
+        operationId: 'replace-1',
+        replaces: 1,
+        review: approval,
+      });
+      expect(approved).toMatchObject({ status: 'promoted', procedure: { revision: 2 } });
+    });
+
+    it('writes under the authority it was called with, whatever happens to it while validation runs', async () => {
+      const candidate = await candidateFrom(1);
+      const mutable = structuredClone(authority) as { tenantId: string };
+      const switching: ProcedureValidator = {
+        ...validator(),
+        validate: async (seen) => {
+          mutable.tenantId = 'tenant-b';
+          return validator().validate(seen);
+        },
+      };
+      const promotion = await promote(candidate, {
+        validator: switching,
+        authority: mutable as typeof authority,
+      });
+      expect(promotion.status).toBe('promoted');
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toBeDefined();
+    });
+
+    it('replays a settled promotion without running its validator again', async () => {
+      const candidate = await candidateFrom(1);
+      await promote(candidate, { validator: validator() });
+      let ran = false;
+      const changed: ProcedureValidator = {
+        ...validator(),
+        validate: async () => {
+          ran = true;
+          return { outcome: 'failed', fixture: 'f', evidence: 'it changed' };
+        },
+      };
+      const retried = await promote(candidate, { validator: changed });
+      expect(retried).toMatchObject({
+        status: 'promoted',
+        result: { outcome: 'committed', replayed: true },
+      });
+      expect(ran).toBe(false);
+    });
+
+    it('refuses an outcome recorded before the revision it applied, writing nothing', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      const error = await rejectionOf(
+        recordProcedureOutcome({
+          engine: harness.engine,
+          authority,
+          namespace: NAMESPACE,
+          procedure: { id: 'procedure-1', revision: 1 },
+          operationId: 'outcome-early',
+          episodeId: 'episode-early',
+          outcome: 'succeeded',
+          summary: 'Claimed before the procedure existed.',
+          projectorRevision: 'episode-projector:1',
+          at: harness.clock.now() - 1,
+        }),
+      );
+      expect(error).toBeInstanceOf(ProcedureLifecycleError);
+      expect(await harness.storage.getEvidence(TENANT, 'outcome-early:outcome')).toBeUndefined();
+    });
+
+    it('refuses a hand-written procedure whose approval requirement contradicts its scope', async () => {
+      await promote(await candidateFrom(1), { validator: validator() });
+      const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
+      if (stored?.kind !== 'procedure' || !('version' in stored.payload)) throw new Error('v2');
+      const result = await harness.engine.submit({
+        kind: 'create-projection',
+        operationId: 'contradictory-approval',
+        tenantId: TENANT,
+        authority,
+        projections: [
+          {
+            id: 'procedure-contradictory',
+            tenantId: TENANT,
+            namespace: NAMESPACE,
+            kind: 'procedure',
+            projectorRevision: 'procedure-projector:1',
+            sources: stored.sources,
+            confidence: 0.5,
+            payload: { ...stored.payload, approval: { scope: 'routine', required: true } },
+          },
+        ],
+      });
+      expect(JSON.stringify(result)).toContain('procedure.approval-follows-scope');
+    });
+
     it('refuses to retire anything but a procedure', async () => {
       await candidateFrom(1);
       harness.clock.advance(1000);

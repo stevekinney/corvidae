@@ -1,4 +1,4 @@
-import type { ProjectionReference } from './evidence-projection-schema';
+import type { EvidenceProjectionRecord, ProjectionReference } from './evidence-projection-schema';
 import { digestOfText } from './evidence-schema';
 import type { MemoryAuthority } from './governance/authority';
 import type { TransitionEngine } from './transition-engine';
@@ -53,7 +53,7 @@ async function assertProcedure(
   tenantId: string,
   namespace: string,
   procedure: ProjectionReference,
-): Promise<void> {
+): Promise<EvidenceProjectionRecord> {
   const target = await engine.storage.getProjectionRevision(
     tenantId,
     namespace,
@@ -67,6 +67,7 @@ async function assertProcedure(
       detail: `${namespace}/${procedure.id}@${procedure.revision} is not a procedure revision.`,
     });
   }
+  return target;
 }
 
 async function submitAll(
@@ -97,7 +98,15 @@ export async function recordProcedureOutcome(
 ): Promise<ProcedureOutcomeRecord> {
   const { authority, engine, namespace } = options;
   const { at } = options;
-  await assertProcedure(engine, authority.tenantId, namespace, options.procedure);
+  const target = await assertProcedure(engine, authority.tenantId, namespace, options.procedure);
+  // An application cannot end before the revision it applied existed; nothing is written for one that claims to.
+  if (at < target.transition.at) {
+    throw new ProcedureLifecycleError({
+      outcome: 'rejected',
+      reason: 'temporal-inconsistency',
+      detail: `The outcome at ${at} precedes ${namespace}/${options.procedure.id}@${options.procedure.revision} (${target.transition.at}).`,
+    });
+  }
   const text = JSON.stringify({
     procedure: `${namespace}/${options.procedure.id}@${options.procedure.revision}`,
     outcome: options.outcome,
