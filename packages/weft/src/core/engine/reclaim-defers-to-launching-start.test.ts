@@ -57,8 +57,6 @@ class RacingStorage extends MemoryStorage {
   /** When set, the next conditional batch that writes the run as `running` is refused once. */
   refuseNextRunningWrite = false;
   refusedRunningWrites = 0;
-  /** Scans of the run's async-activity records: a reclaim reloads them only once it has decided to replay. */
-  asyncActivityScans = 0;
   /**
    * When set, runs once storage has applied a conditional batch that writes the run as `running`,
    * before that batch call returns to the launch: a continuation it queues runs ahead of the launch's.
@@ -79,13 +77,15 @@ class RacingStorage extends MemoryStorage {
       this.reachedHolderScan.resolve();
       await gate.promise;
     }
-    if (prefix.startsWith(KEYS.asyncActivity(WORKFLOW_ID, ''))) this.asyncActivityScans++;
     yield* super.scan(prefix, options);
   }
 
   /**
    * The hold and the fault apply to a key however it is read: `get`, or `has` (`storageHas`). A held
-   * read resumes as promptly as a backend can answer, in the turn after its release.
+   * read resumes as promptly as a backend can answer, in the turn after its release. `get` returns
+   * the chained promise rather than being an `async` method on purpose: an `async` wrapper adds a
+   * turn, and the race tests below would then decide which continuation runs first by enqueue order
+   * rather than by the order the engine imposes.
    */
   #interceptRead(key: string): Promise<void> {
     if (key === this.holdReadOf) {
@@ -367,9 +367,9 @@ describe('a reclaim that resumes inside the commit that makes a launch visible a
   // The listing's exclude set predates the start's claim, and the pass resumes once storage has
   // applied the launch's `running` batch and before that batch call returns to the launch, so the
   // pass's continuation runs ahead of the launch's own (Codex 4343853738). The pass must defer at
-  // its first check: a pass that decides to replay reloads the run's async-activity records first,
-  // and its replay then defers again on the marker, so the reload is what shows the first check met
-  // a run with no marker.
+  // its first check. A pass that decided to replay would still be stopped later, by the replay's own
+  // deferral on the marker, so the observation is whether the pass reached the replay at all, through
+  // the engine's replay seam.
   it('defers to a prepared launch at its first check, and the launch drives the run once', async () => {
     const storage = new RacingStorage();
     const clock = createClock();
@@ -377,6 +377,10 @@ describe('a reclaim that resumes inside the commit that makes a launch visible a
     const probe = probeFor(storage);
     probe.hold = Promise.withResolvers<void>();
     const counts = countEvents(engine);
+    let replaysReached = 0;
+    getInternals(engine).reclaimReplayGateForTesting = async () => {
+      replaysReached++;
+    };
 
     const listing = await holdReclaimListing(engine, storage);
     const prepared = await engine.prepare('counted', null, {
@@ -398,11 +402,14 @@ describe('a reclaim that resumes inside the commit that makes a launch visible a
     probe.hold.resolve();
     expect(await handle.result()).toBe('ran');
     expect(result.reclaim).toMatchObject(RECLAIMED);
-    expect(storage.asyncActivityScans).toBe(0);
+    expect(replaysReached).toBe(0);
     expect(probe.runs).toBe(1);
     expect(counts).toEqual({ started: 1, resumed: 0 });
   });
 
+  // The delayed fire records its marker in the same synchronous block that records the claim it
+  // folded, so no reclaim can see that claim held without the marker: this test documents an
+  // interleaving the code already excludes, and keeps the end-to-end outcome pinned if that changes.
   it('defers to a delayed fire at its first check, and the fire drives the run once', async () => {
     const storage = new RacingStorage();
     const clock = createClock();
@@ -410,6 +417,10 @@ describe('a reclaim that resumes inside the commit that makes a launch visible a
     const probe = probeFor(storage);
     probe.hold = Promise.withResolvers<void>();
     const counts = countEvents(engine);
+    let replaysReached = 0;
+    getInternals(engine).reclaimReplayGateForTesting = async () => {
+      replaysReached++;
+    };
     await engine.start('counted', null, { id: WORKFLOW_ID, startAt: START_AT });
     clock.now = START_AT;
 
@@ -423,7 +434,7 @@ describe('a reclaim that resumes inside the commit that makes a launch visible a
     probe.hold.resolve();
     expect(await engine.getHandle(WORKFLOW_ID).result()).toBe('ran');
     expect(result.reclaim).toMatchObject(RECLAIMED);
-    expect(storage.asyncActivityScans).toBe(0);
+    expect(replaysReached).toBe(0);
     expect(probe.runs).toBe(1);
     expect(counts).toEqual({ started: 1, resumed: 0 });
   });
