@@ -993,6 +993,67 @@ test.describe('chat harness — mounts cleanly', () => {
 
     expect(cinderCardCounts).toEqual([1, 1]);
   });
+
+  test('Chat input requests render a Cinder SchemaForm that submits only valid values', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext({
+      baseURL: environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN,
+      reducedMotion: 'reduce',
+      viewport: { width: 1280, height: 900 },
+    });
+    const diagnostics: string[] = [];
+    try {
+      const page = await context.newPage();
+      page.on('pageerror', (error) => diagnostics.push(error.stack ?? error.message));
+      page.on('console', (message) => {
+        if (message.type() === 'error' || message.type() === 'warning') {
+          diagnostics.push(`${message.type()}: ${message.text()}`);
+        }
+      });
+      await page.goto(fixtureRoute('chat'), { waitUntil: 'load' });
+      await page.waitForSelector('#app > *', { state: 'visible', timeout: 20_000 });
+      const inputChat = page.locator('#fixture-tool-input-chat');
+      await expect(inputChat).toBeVisible();
+
+      async function submissions(): Promise<unknown[]> {
+        const logText = await page.getByTestId('input-submission-log').textContent();
+        return JSON.parse(logText ?? '[]') as unknown[];
+      }
+
+      const request = inputChat.getByRole('region', {
+        name: 'Input requested by book_meeting_room',
+      });
+      await expect(request).toBeVisible();
+      await expect(request.getByText('Which room, and for how many people?')).toBeVisible();
+      const room = request.getByRole('textbox', { name: /Room/ });
+      const attendees = request.getByRole('spinbutton', { name: /Attendees/ });
+
+      await attendees.fill('0');
+      await request.getByRole('button', { name: 'Submit' }).click();
+      await expect(room).toHaveAttribute('aria-invalid', 'true');
+      await expect(room).toBeFocused();
+      expect(await submissions()).toEqual([]);
+
+      await room.fill('Atlas');
+      await attendees.fill('4');
+      // Commit the number and let the cleared error messages settle before clicking.
+      await attendees.blur();
+      await expect(room).not.toHaveAttribute('aria-invalid', 'true');
+      await request.getByRole('button', { name: 'Submit' }).click();
+      await expect
+        .poll(submissions)
+        .toEqual([{ toolCallId: 'call-book-room', value: { room: 'Atlas', attendees: 4 } }]);
+      await expect(request.getByRole('status')).toHaveText('Input submitted.');
+      await expect(request.locator('form')).toHaveCount(0);
+
+      expect(diagnostics, 'Chat input fixture must not emit browser errors or warnings').toEqual(
+        [],
+      );
+    } finally {
+      await context.close();
+    }
+  });
 });
 test.describe('chat harness — submit and reply', () => {
   test('a composer submit appends a user message and an auto-reply lands', async ({ browser }) => {

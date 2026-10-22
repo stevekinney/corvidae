@@ -8,6 +8,7 @@
   import ToolCallPart from './parts/tool-call-part.svelte';
   import ToolResultPart from './parts/tool-result-part.svelte';
   import ToolApprovalPart from './parts/tool-approval-part.svelte';
+  import ToolInputPart from './parts/tool-input-part.svelte';
   import ReasoningPart from './parts/reasoning-part.svelte';
   import StepPart from './parts/step-part.svelte';
   import SuggestionPart from './parts/suggestion-part.svelte';
@@ -24,6 +25,7 @@
     expanded = false,
     onToggle,
     onApprovalResolve,
+    onInputSubmit,
     reasoningExpanded = false,
     onreasoning,
     stepsExpanded = true,
@@ -89,6 +91,8 @@
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}
     <ToolApprovalPart {part} {onApprovalResolve} />
+  {:else if part.type === 'tool-input'}
+    <ToolInputPart {part} {onInputSubmit} />
   {:else if part.type === 'reasoning'}
     <ReasoningPart {part} expanded={reasoningExpanded} onToggle={onreasoning} />
   {:else if part.type === 'transcript-entry'}

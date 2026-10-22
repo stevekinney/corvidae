@@ -200,7 +200,7 @@ describe('renderer — per-part rendering', () => {
     expect(alert?.textContent).toContain('it failed');
   });
 
-  test('renders standalone input action prompt and schema on the neutral tool-result view', () => {
+  test('renders an input action that reaches the neutral tool-result view as its prompt only', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {
         parts: [
@@ -228,11 +228,37 @@ describe('renderer — per-part rendering', () => {
 
     expect(container.querySelector('[data-cinder-tool-approval]')).toBeNull();
     expect(container.textContent).toContain('Provide a deployment reason');
-    expect(container.querySelector('[aria-label="Requested input schema"]')).not.toBeNull();
-    expect(container.textContent).toContain('reason');
+    expect(container.textContent).not.toContain('required');
+    expect(container.querySelector('pre, code')).toBeNull();
   });
 
-  test('renders paired input action prompt and schema inside the neutral tool-call details', () => {
+  test('renders a tool-input part as a Cinder SchemaForm', () => {
+    const { container } = render(ChatMessagePartsRenderer, {
+      props: {
+        onInputSubmit: () => undefined,
+        parts: [
+          {
+            type: 'tool-input',
+            key: 'm:tool-input:input',
+            toolCallId: 'input',
+            toolName: 'collect_input',
+            message: 'Provide a deployment reason',
+            schema: {
+              type: 'object',
+              properties: { reason: { type: 'string', title: 'Reason' } },
+              required: ['reason'],
+            },
+          },
+        ],
+      },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-input]')).not.toBeNull();
+    expect(container.querySelector('form.cinder-schema-form')).not.toBeNull();
+    expect(container.textContent).toContain('Provide a deployment reason');
+  });
+
+  test('renders a paired input action prompt, without its schema, inside the tool-call details', () => {
     const { container } = render(ChatMessagePartsRenderer, {
       props: {
         expanded: true,
@@ -264,8 +290,7 @@ describe('renderer — per-part rendering', () => {
 
     expect(container.querySelector('[data-cinder-tool-approval]')).toBeNull();
     expect(container.textContent).toContain('Provide a deployment reason');
-    expect(container.textContent).toContain('Input schema');
-    expect(container.textContent).toContain('reason');
+    expect(container.textContent).not.toContain('Input schema');
   });
 
   test('renders a tool-approval part through the shared Cinder card', () => {
