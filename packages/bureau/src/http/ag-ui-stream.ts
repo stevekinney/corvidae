@@ -27,7 +27,7 @@ import { type ConversationHistory, type Message, toAGUIToolMessage } from 'conve
 import type { BureauChildRecord } from '../child-topology-store.ts';
 import type { Bureau, PendingReview, RunDetail, ServerFrame } from '../types.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
-import { snapshotMessages } from './ag-ui-messages.ts';
+import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { openPeerStream } from './ag-ui-peer-stream.ts';
 import {
   errorOf,
@@ -96,13 +96,13 @@ export type OpenRunStream = {
    */
   readonly preludeEvents?: (() => Event[]) | undefined;
   /**
-   * The rows a human's answer just appended to the run's conversation, announced
-   * as user messages ahead of the step that answers them. No recorded event
-   * carries such a row (it is neither a step's text nor a tool call), so the
-   * resume that delivered the answer says what it was.
+   * The rows a human's answer just appended to the run's conversation. No recorded
+   * event carries such a row (it is neither a step's text nor a tool call), so the
+   * resume that delivered the answer says what it was. The opening `MESSAGES_SNAPSHOT`
+   * carries each one the conversation does not hold yet, as a row of its own, ahead of
+   * the step that answers it.
    */
-  readonly answerRows?:
-    ReadonlyArray<{ readonly id: string; readonly content: string }> | undefined;
+  readonly answerRows?: ReadonlyArray<AnswerRow> | undefined;
   /**
    * The interrupts the resume that opened this stream answered. A process that does not hold the
    * run reads its human waits from durable state, which can still show an answered one pending
@@ -753,13 +753,15 @@ export function openRunStream(
     ]);
     // A run Bureau no longer holds has no events to replay, so a start retried
     // against it is shown the conversation as well, as an attach is.
-    if (request.messagesSnapshot || detail === undefined) {
+    const answerRows = request.answerRows ?? [];
+    if (request.messagesSnapshot || detail === undefined || answerRows.length > 0) {
+      // The answers a resume delivered ride in the snapshot (a row the run has not appended yet).
       projector.holds(conversation?.ids ?? []);
       writeEvents([
         stamp(
           {
             type: EventType.MESSAGES_SNAPSHOT,
-            messages: conversation === undefined ? [] : snapshotMessages(conversation),
+            messages: snapshotMessagesWithAnswers(conversation, answerRows),
           },
           stampContext,
           { durable: false, ...(fence === undefined ? {} : { cursor: fence }) },
@@ -768,28 +770,6 @@ export function openRunStream(
     }
     writeEvents([stateSnapshot(snapshot)]);
     lastState = stateKey(snapshot);
-    // The answer a resume just delivered, unless the conversation the snapshot
-    // carries already holds it (a run that has moved on since).
-    for (const row of request.answerRows ?? []) {
-      if (conversation?.ids.includes(row.id) === true) continue;
-      writeEvents([
-        stamp(
-          { type: EventType.TEXT_MESSAGE_START, messageId: row.id, role: 'user' },
-          stampContext,
-          {
-            durable: false,
-          },
-        ),
-        stamp(
-          { type: EventType.TEXT_MESSAGE_CONTENT, messageId: row.id, delta: row.content },
-          stampContext,
-          { durable: false },
-        ),
-        stamp({ type: EventType.TEXT_MESSAGE_END, messageId: row.id }, stampContext, {
-          durable: false,
-        }),
-      ]);
-    }
     writeEvents(request.preludeEvents?.() ?? []);
 
     // Replay what the client has not seen, through the same projection the live

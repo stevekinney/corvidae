@@ -49,7 +49,7 @@ export function composeGenerationSelectionRecord(
   // `SteeringDesiredState`'s own fields are optional precisely so a
   // single-field command can exist.
   const effective: GenerationBackendRecord = {
-    provider: steering?.provider ?? selected?.provider,
+    provider: steering?.provider ?? steering?.modelProvider ?? selected?.provider,
     model: steering?.model ?? selected?.model,
     route: steering?.route ?? selected?.route,
     effort: steering?.effort ?? selected?.effort,

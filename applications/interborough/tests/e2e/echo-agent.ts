@@ -4,7 +4,8 @@
  * and admits the image it sends back. Its hand-written `generate` answers a message that carries
  * images with one inline image part for each image in that message and says how many it echoed.
  * The Bureau admits each part it returns as a new asset, so a returned image has an identifier of
- * its own and is never the one that was sent.
+ * its own and is never the one that was sent. It is `echo-image`, because `echo` is the seeded agent
+ * that repeats a message's text (`src/host/seed.ts`), which the quote spec talks to.
  */
 import {
   createAgent,
@@ -16,7 +17,7 @@ import {
   type GenerateResponse,
 } from '@lostgradient/operative';
 
-export const ECHO_AGENT_NAME = 'echo';
+export const IMAGE_ECHO_AGENT_NAME = 'echo-image';
 
 /** What the echo says when it was sent no image. */
 export const ECHO_NOTHING_REPLY = 'There was no image to echo.';
@@ -61,8 +62,8 @@ async function echo(context: GenerateContext): Promise<GenerateResponse> {
 
 export function createEchoAgents() {
   return {
-    [ECHO_AGENT_NAME]: createAgent({
-      name: ECHO_AGENT_NAME,
+    [IMAGE_ECHO_AGENT_NAME]: createAgent({
+      name: IMAGE_ECHO_AGENT_NAME,
       description: 'Sends back each image it is given.',
       generate: withBackendDescriptors(echo, [imageOutputDescriptor()]),
       stopWhen: stopWhen.noToolCalls(),

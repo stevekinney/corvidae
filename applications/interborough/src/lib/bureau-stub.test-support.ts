@@ -166,6 +166,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       name: 'Researcher',
       description: 'Finds and cites sources',
       model: 'anthropic/sonnet',
+      models: null,
       tools: ['lookup-order'],
       skills: [
         {

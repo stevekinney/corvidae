@@ -92,6 +92,9 @@ import {
   TaskDispatchedEvent,
   TaskPreemptedEvent,
   SESSION_OWNER_METADATA_KEY,
+  createSessionHandle,
+  ForkThroughMessageError,
+  SKILL_TOOL_DENIED_CODE,
 } from '@lostgradient/operative';
 import {
   SkillActivatedEvent,
@@ -180,6 +183,8 @@ import { createChildTopologyStore } from './child-topology-store';
 import {
   type CreatedRunSummary,
   createRunCreationLedger,
+  BureauLedgerConflictError,
+  digestCommandPayload,
   digestRunCreationPayload,
   type RunCreationAttempt,
   type RunCreationObservation,
@@ -400,6 +405,18 @@ import {
   normalizeRunRequestContext,
   recoveredRequestContextFromMetadata,
 } from './session-request-context';
+import { allowsModelOverride, describeAgentModels } from './agent-models';
+import {
+  assertBranchPoint,
+  createForkLedger,
+  FORK_OPERATION_VERSION,
+  type ForkLedgerClaim,
+  type ForkLedgerFailure,
+  type ForkLedgerResult,
+  type ForkSessionRequest,
+  type ForkSessionResult,
+  SessionForkRefusedError,
+} from './session-fork';
 import {
   answerSteeringRetry,
   type BureauSteeringGate,
@@ -410,7 +427,9 @@ import {
   isConfigurationTarget,
   type SteeringCommandAdmissionOutcome,
   type SteeringCommandRequest,
+  type SessionSteeringState,
   type SteeringRefusal,
+  steersIdleSession,
 } from './steering';
 import {
   appendSteeringLogEvent,
@@ -970,7 +989,23 @@ class ApprovalOutcomeNotWrittenError extends BureauError {
   }
 }
 
-export { ApprovalOutcomeNotWrittenError, BureauError };
+/**
+ * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
+ * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
+ * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
+ */
+class BureauShuttingDownError extends BureauError {
+  /** When Bureau refused the command, as an ISO timestamp of its runtime clock. */
+  readonly at: string;
+
+  constructor(message: string, at: string) {
+    super(message, 'CONFLICT');
+    this.name = 'BureauShuttingDownError';
+    this.at = at;
+  }
+}
+
+export { ApprovalOutcomeNotWrittenError, BureauError, BureauShuttingDownError };
 
 /**
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
@@ -1850,6 +1885,19 @@ function hasMaintenanceSurface(surface: {
  * (COR-1613, COR-1622): five minutes, the cadence of Weft's own retention sweep.
  */
 export const EXPIRY_SWEEP_INTERVAL_MILLISECONDS = 300_000;
+
+/**
+ * Whether a resumed approval's error result proves the call never ran, so the review stays
+ * pending: the toolbox reports its approval binding unconsumed (COR-1579), or, for a toolbox with
+ * no approval store that reports no consumption at all, the run's skill gate refused the call with
+ * `SKILL_TOOL_DENIED` (COR-1628).
+ */
+function resumeRefusedBeforeExecution(result: object): boolean {
+  // A toolbox that reports consumption has the final word: a consumed binding means the call ran,
+  // whatever code its error carries.
+  if ('approvalBindingConsumed' in result) return result.approvalBindingConsumed === false;
+  return (result as { error?: { code?: string } }).error?.code === SKILL_TOOL_DENIED_CODE;
+}
 
 /**
  * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
@@ -3487,6 +3535,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     const same =
       asked['target'] === first['target'] &&
       asked['override'] === first['override'] &&
+      asked['provider'] === first['provider'] &&
       asked['policyRef'] === first['policyRef'];
     return same ? { ...command, requestedValue: decided } : command;
   }
@@ -3894,6 +3943,17 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
   // a DIFFERENT session must resolve to `session-mismatch`, not be silently
   // admitted as an unrelated command in that other session's own ledger.
   const steeringCommandLedger = createSteeringCommandLedger();
+  /**
+   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by the
+   * session's steering gate and then `principal -> id`: the in-process counterpart of a cursor's
+   * `submitted`, which a fork reads to carry the request as the parent made it. Keyed by the gate,
+   * the entries leave with it when the session is deleted or expires, as its ledger entries do, so
+   * a command id reused afterwards, or a session recreated under the same id, never reads them.
+   */
+  const submittedSteeringValues = new WeakMap<
+    BureauSteeringGate,
+    Map<string, Map<string, SteeringRequestedValue>>
+  >();
   // Keep the exact host-supplied (or bureau-derived) context for approval
   // resumption. Approval bindings identify the original caller, but are not a
   // substitute for the complete request context and must not mint authority.
@@ -5955,7 +6015,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    */
   async function retryCanceledFireCloses(): Promise<void> {
     for (let offset = 0; ;) {
-      const page = await tasks.list({ status: 'canceled', limit: 100, offset });
+      const page = await tasks.enumerate({ status: 'canceled', limit: 100, offset });
       for (const view of page.tasks) await closeOpenReviewsOfCanceledFire(view.id);
       if (page.nextOffset === null) break;
       offset = page.nextOffset;
@@ -11213,6 +11273,18 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
    * Resolves how many tasks it removed.
    */
   async function retainTasks(): Promise<number> {
+    // COR-1304 — the expired `bureau.tasks.list` snapshots go with every pass, whatever the
+    // retention, and are deleted by key alone. A failure here never stops task retention.
+    try {
+      await tasks.expireListings();
+    } catch (error: unknown) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Expired task-listing snapshots could not be deleted: ${serializeUnknownError(error)}`,
+        cause: error,
+      });
+    }
     const retention = options.taskRetention ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
     if (retention === 'forever') return 0;
     const cutoff = runtimeServices.clock.now() - retention.olderThan;
@@ -11976,6 +12048,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       }
       try {
         await runCreationLedger?.prune();
+        await forkLedger.prune();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -12240,6 +12313,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         // COR-424 — expired run-creation receipts ride the same pass.
         try {
           await runCreationLedger?.prune();
+          await forkLedger.prune();
         } catch (error: unknown) {
           diagnose({
             level: 'error',
@@ -13233,7 +13307,10 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // disposes either; once shutdown starts, none begins.
     if (durableSteeringStore() === undefined) return admitSteeringRequest(sessionId, snapshot);
     if (runAdmissionClosed) {
-      throw new BureauError('Cannot steer: Bureau is shutting down.', 'CONFLICT');
+      throw new BureauShuttingDownError(
+        'Cannot steer: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
     }
     const submission = admitSteeringRequest(sessionId, snapshot);
     inFlightSteeringSubmissions.add(submission);
@@ -13242,6 +13319,276 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     } finally {
       inFlightSteeringSubmissions.delete(submission);
     }
+  }
+
+  /**
+   * COR-1559 — whether `agentName`'s agent allows a session to be switched to `override`: the
+   * model must be one `bureau.agents.models` lists for it. A routed or opaque agent lists none, so
+   * every override is refused; only an agent this Bureau cannot find is left to the deployment's
+   * catalog, which the caller has already checked. A file agent's model must also be one the
+   * host's resolver can set up: a model it cannot is not allowed.
+   */
+  function agentAllowsModel(
+    agentName: string,
+    override: { readonly model: string; readonly provider?: string | undefined },
+  ): boolean {
+    const agent = agentCatalog.find(agentName);
+    if (agent === undefined) return true;
+    const descriptors = modelCatalog.catalog().descriptors;
+    const allowed = describeAgentModels(agent, descriptors);
+    if (!allowsModelOverride(allowed.models, override)) return false;
+    if (readFileAgentBinding(agent) === undefined || resolveAgentGenerate === undefined) {
+      return true;
+    }
+    const row = descriptors.find(
+      (descriptor) =>
+        descriptor.model === override.model &&
+        (override.provider === undefined || descriptor.provider === override.provider) &&
+        allowsModelOverride(allowed.models, {
+          model: descriptor.model,
+          provider: descriptor.provider,
+        }),
+    );
+    if (row === undefined) return false;
+    try {
+      resolveAgentGenerate(row);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * COR-1560 — the fork command ledger: an exact retry of `forkSession`, even after a restart,
+   * returns the original result and creates nothing more. It keeps its entries in this Bureau's
+   * store, or in memory for an ephemeral one, under a key prefix of its own.
+   */
+  const forkLedger = createForkLedger(runtime.kv, runtimeServices);
+  /** Fork attempts this process is running, by ledger identity, so a concurrent retry waits for one. */
+  const inFlightForks = new Map<string, { digest: string; result: Promise<ForkSessionResult> }>();
+
+  async function forkSession(
+    sessionId: string,
+    request: ForkSessionRequest,
+  ): Promise<ForkSessionResult> {
+    if (runAdmissionClosed) {
+      throw new BureauShuttingDownError(
+        'Cannot fork: Bureau is shutting down.',
+        runtimeServices.clock.nowISO(),
+      );
+    }
+    const identity = {
+      callerId: request.owner,
+      target: sessionId,
+      requestId: request.commandId,
+      operationVersion: FORK_OPERATION_VERSION,
+    };
+    const digest = digestCommandPayload({ throughMessageId: request.throughMessageId });
+    const key = JSON.stringify([identity.callerId, identity.target, identity.requestId]);
+    const running = inFlightForks.get(key);
+    if (running !== undefined) {
+      if (running.digest !== digest) throw forkConflict(request);
+      return running.result;
+    }
+    const attempt = runForkAttempt(sessionId, request, identity, digest);
+    inFlightForks.set(key, { digest, result: attempt });
+    try {
+      return await attempt;
+    } finally {
+      inFlightForks.delete(key);
+    }
+  }
+
+  function forkConflict(request: ForkSessionRequest): SessionForkRefusedError {
+    return new SessionForkRefusedError(
+      'command-conflict',
+      `The command "${request.commandId}" was already used to branch from another message.`,
+    );
+  }
+
+  async function runForkAttempt(
+    sessionId: string,
+    request: ForkSessionRequest,
+    identity: Parameters<typeof forkLedger.claim>[0],
+    digest: string,
+  ): Promise<ForkSessionResult> {
+    const sessions = runtime.sessionStore;
+    if (sessions === undefined) {
+      throw new BureauError('This Bureau keeps no sessions to branch.', 'BAD_REQUEST');
+    }
+    // A command already answered is answered again without judging the branch point afresh: the
+    // parent may have changed since, and the retry must see what the first attempt made.
+    const located = await forkLedger.locate(identity);
+    const retained = located.state === 'retained' ? located.entry : undefined;
+    if (retained?.state === 'completed' && retained.payloadDigest === digest) {
+      return answerOfFork(retained.result);
+    }
+    const session = await sessions.load(sessionId);
+    if (session === undefined)
+      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
+    if (retained === undefined) {
+      await assertBranchPoint(session, request.throughMessageId, {
+        record: (runId) => tasks.record(runId),
+        pendingApprovals: async (runId) => {
+          const live = listPendingReviews()
+            .filter((review) => review.kind === 'tool-approval' && review.runId === runId)
+            .map((review) => review.id);
+          const view = await tasks.get(runId);
+          const durable = (view?.openWaits ?? [])
+            .filter((wait) => wait.kind === 'tool-approval')
+            .map((wait) => wait.reviewId);
+          return [...new Set([...live, ...durable])];
+        },
+      });
+    }
+    const parentSteering = await getSessionSteering(sessionId);
+    const parentRequest = await latestModelRequest(sessionId);
+    let outcome: Awaited<ReturnType<typeof forkLedger.claim>>;
+    try {
+      outcome = await forkLedger.claim(identity, digest, {
+        contextId: runtimeServices.identifiers.next('session'),
+        override: parentRequest ?? parentSteering?.model ?? null,
+      });
+    } catch (error) {
+      if (error instanceof BureauLedgerConflictError) throw forkConflict(request);
+      throw error;
+    }
+    if (outcome.entry.state === 'completed') return answerOfFork(outcome.entry.result);
+    const claim = outcome.entry.claim;
+    // The identifier is the claim's, so an attempt that died after forking finds its fork, and one
+    // that died before it makes the fork under the identifier the ledger already holds.
+    try {
+      await createSessionHandle(sessionId, {
+        store: sessions,
+        agentName: session.agentName,
+        runtime: runtimeServices,
+      }).fork({
+        throughMessageId: request.throughMessageId,
+        id: claim.contextId,
+        owner: request.owner,
+      });
+    } catch (error) {
+      // The parent was deleted, or the message with it, after the checks: nothing was created. The
+      // command settles to that failure rather than staying pending, so a retry is refused alike.
+      if (!(error instanceof ForkThroughMessageError)) throw error;
+      const failure: ForkLedgerFailure = {
+        failure: { reason: 'message-not-found', message: error.message },
+      };
+      await forkLedger.complete(outcome.entry, failure);
+      return answerOfFork(failure);
+    }
+    const carried =
+      claim.override === null
+        ? null
+        : await submitSteeringCommand(claim.contextId, {
+            id: `${request.commandId}:model`,
+            principal: request.owner,
+            // As the parent asked: a policy reference is submitted as a reference, and resolved
+            // afresh like any carried request; otherwise the explicit override.
+            requestedValue:
+              claim.override.policyRef === undefined
+                ? {
+                    target: 'model',
+                    override: claim.override.model,
+                    ...(claim.override.provider === null
+                      ? {}
+                      : { provider: claim.override.provider }),
+                  }
+                : { target: 'model', policyRef: claim.override.policyRef },
+          });
+    const result: ForkSessionResult = { contextId: claim.contextId, carriedOverride: carried };
+    const completed = await forkLedger.complete(outcome.entry, result);
+    return answerOfFork(completed.result);
+  }
+
+  /**
+   * The session's latest admitted `model` request as it was made, from the steering record itself
+   * (COR-1560): the accepted command with the highest version, and, where Bureau resolved a
+   * `policyRef` into that command, the reference the caller submitted. A durable Bureau reads the
+   * folded log; an in-process one reads its ledger and the references it kept. `undefined` when
+   * the session has had no model request.
+   */
+  async function latestModelRequest(
+    sessionId: string,
+  ): Promise<ForkLedgerClaim['override'] | undefined> {
+    const session = await runtime.sessionStore?.load(sessionId);
+    if (session === undefined) return undefined;
+    const kv = durableSteeringStore();
+    let ledger: ReturnType<typeof createSteeringCommandLedger> = steeringCommandLedger;
+    const gate = steeringGates.get(sessionId);
+    let selectors: Map<string, Map<string, SteeringRequestedValue>> = (gate === undefined
+      ? undefined
+      : submittedSteeringValues.get(gate)) ?? new Map();
+    if (kv !== undefined) {
+      const cursor = await enqueueSteering(sessionId, () =>
+        catchUpSteering(kv, sessionId, session.incarnation),
+      );
+      ledger = cursor.ledger;
+      selectors = cursor.submitted;
+    }
+    let latest: { principal: string; id: string; version: number; at: string } | undefined;
+    for (const [principal, commands] of ledger) {
+      for (const [id, command] of commands) {
+        if (command.sessionId !== sessionId || command.requestedValue.target !== 'model') continue;
+        if (command.state !== 'accepted' && command.state !== 'applied') continue;
+        if (
+          latest === undefined ||
+          command.configVersion > latest.version ||
+          (command.configVersion === latest.version && command.requestedAt > latest.at)
+        ) {
+          latest = { principal, id, version: command.configVersion, at: command.requestedAt };
+        }
+      }
+    }
+    if (latest === undefined) return undefined;
+    const resolved = ledger.get(latest.principal)?.get(latest.id)?.requestedValue;
+    if (resolved?.target !== 'model' || resolved.override === undefined) return undefined;
+    const selector = selectors.get(latest.principal)?.get(latest.id);
+    const policyRef =
+      selector !== undefined && 'policyRef' in selector ? selector.policyRef : undefined;
+    return {
+      provider: resolved.provider ?? null,
+      model: resolved.override,
+      ...(policyRef === undefined ? {} : { policyRef }),
+    };
+  }
+
+  /** What a ledger result answers: the fork, or the refusal the command settled to. */
+  function answerOfFork(result: ForkLedgerResult): ForkSessionResult {
+    if ('failure' in result) {
+      throw new SessionForkRefusedError(result.failure.reason, result.failure.message);
+    }
+    return structuredClone(result);
+  }
+
+  async function getSessionSteering(sessionId: string): Promise<SessionSteeringState | undefined> {
+    const session = runtime.sessionStore ? await runtime.sessionStore.load(sessionId) : undefined;
+    if (session === undefined) return undefined;
+    const kv = durableSteeringStore();
+    let gate: BureauSteeringGate | undefined;
+    if (kv === undefined) {
+      gate = steeringGates.get(sessionId);
+    } else {
+      try {
+        const cursor = await enqueueSteering(sessionId, () =>
+          catchUpSteering(kv, sessionId, session.incarnation),
+        );
+        gate = cursor.gate;
+      } catch (error) {
+        // A session deleted while its log was read has no steering to report.
+        const afterFailure = await runtime.sessionStore?.load(sessionId);
+        if (afterFailure?.incarnation !== session.incarnation) return undefined;
+        throw error;
+      }
+    }
+    const desired = gate?.getDesiredState();
+    return {
+      model:
+        desired?.model === undefined
+          ? null
+          : { provider: desired.modelProvider ?? null, model: desired.model },
+      configVersion: gate?.getConfigVersion() ?? 0,
+    };
   }
 
   async function admitSteeringRequest(
@@ -13309,6 +13656,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         session,
         request.principal,
         request.runId,
+        steersIdleSession(request.requestedValue),
       );
       if (preAdmission.verdict === 'not-found') return { outcome: 'not-found' };
       if (preAdmission.verdict === 'session-terminal') {
@@ -13384,10 +13732,11 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     // uses, so a name this Bureau cannot run is refused at admission rather
     // than surfacing as an unresolvable agent at the next run's step 0.
     //
-    // `policy-denied` rather than a new failure reason: this deployment's
-    // own catalog is what refuses the change, which is what that reason
-    // already means. Widening the exported `SteeringCommandFailure` union
-    // is a contract change owned by the steering-types issue, not this one.
+    // `policy-denied`: this deployment's own catalog is what refuses the
+    // change, which is what that reason already means. (COR-1559 has since
+    // widened the union with `model-not-allowed`, `stale-revision` and
+    // `shutting-down`, for the reasons that name something `policy-denied`
+    // does not.)
     if (
       steeringTarget === 'agent-identity' &&
       agentsSnapshot[request.requestedValue.override] === undefined
@@ -13500,9 +13849,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         ) satisfies ImplementedSteeringCommand['requestedValue'];
       }
       const { descriptors } = modelCatalog.catalog();
+      // COR-1559: a `model` override may name the provider that serves the model. It is held to
+      // the catalog, and below to the agent, as the pair when it does, and as the name alone
+      // (every record written before the field existed) when it does not.
+      const overrideProvider =
+        steeringTarget === 'model'
+          ? (configurationRequest as { provider?: string | undefined }).provider
+          : undefined;
       const known =
         steeringTarget === 'model'
-          ? descriptors.some((descriptor) => descriptor.model === override)
+          ? descriptors.some(
+              (descriptor) =>
+                descriptor.model === override &&
+                (overrideProvider === undefined || descriptor.provider === overrideProvider),
+            )
           : steeringTarget === 'provider'
             ? descriptors.some((descriptor) => descriptor.provider === override)
             : steeringTarget === 'effort'
@@ -13523,6 +13883,25 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
           {
             outcome: 'rejected',
             failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'policy-denied' },
+          },
+          configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
+        );
+      }
+      // COR-1559: a model a caller names is also held to what the session's agent allows, decided
+      // now rather than at a step boundary, and refused through the log like any refusal so a retry
+      // is answered the same. Only a steering override is held to it: a model a policy profile
+      // resolved is the profile's choice, and one the agent's own routing makes at a step never
+      // passes through admission at all.
+      if (
+        steeringTarget === 'model' &&
+        configurationRequest.policyRef === undefined &&
+        override !== undefined &&
+        !agentAllowsModel(session.agentName, { model: override, provider: overrideProvider })
+      ) {
+        return refuseSteering(
+          {
+            outcome: 'rejected',
+            failure: { failedAt: runtimeServices.clock.nowISO(), reason: 'model-not-allowed' },
           },
           configurationRequest.policyRef === undefined ? undefined : resolvedRequestedValue,
         );
@@ -13551,7 +13930,20 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
 
     const kv = durableSteeringStore();
     if (kv === undefined) {
-      const outcome = getSessionSteeringGate(sessionId).admit(command, { liveRunIds, now });
+      const gate = getSessionSteeringGate(sessionId);
+      const outcome = gate.admit(command, { liveRunIds, now });
+      if (
+        outcome.outcome === 'accepted' &&
+        'policyRef' in request.requestedValue &&
+        request.requestedValue.policyRef !== undefined
+      ) {
+        let submitted = submittedSteeringValues.get(gate);
+        if (submitted === undefined) {
+          submitted = new Map();
+          submittedSteeringValues.set(gate, submitted);
+        }
+        nestedSet(submitted, request.principal, id, request.requestedValue);
+      }
       if (outcome.outcome === 'accepted') dispatchSteeringAccepted(sessionId, outcome);
       return outcome;
     }
@@ -13609,6 +14001,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     session: AgentSession,
     principal: string,
     namedRunId?: string,
+    idleAllowed = false,
   ): Promise<{
     verdict: 'not-found' | 'session-terminal' | 'proceed';
     liveRunIds: string[];
@@ -13667,6 +14060,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         principal,
         liveRunIds,
         namedRunId,
+        idleAllowed,
       ),
       liveRunIds,
     };
@@ -14090,6 +14484,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
         principal,
         liveRunIds,
         command.runId,
+        steersIdleSession(command.requestedValue),
       );
       if (preAdmission === 'not-found') return { outcome: 'not-found' };
       if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
@@ -14171,6 +14566,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
       command.principal,
       liveRunIds,
       command.runId,
+      steersIdleSession(command.requestedValue),
     );
     if (preAdmission === 'not-found') return { outcome: 'not-found' };
     if (preAdmission === 'session-terminal') return { outcome: 'session-terminal', sessionId };
@@ -15076,8 +15472,7 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
             typeof result === 'object' &&
             'outcome' in result &&
             result.outcome === 'error' &&
-            'approvalBindingConsumed' in result &&
-            result.approvalBindingConsumed === false
+            resumeRefusedBeforeExecution(result)
           ) {
             const failedResult = result as {
               error?: { message?: string };
@@ -17572,6 +17967,8 @@ export async function createBureau<const D extends AgentDefinitions = AgentDefin
     whenRunRecorded,
     sessionInputsDeliveredBy,
     submitSteeringCommand,
+    getSessionSteering,
+    forkSession,
     // AB-192: constant, not computed from runtime state — the built-in
     // `agentRun` workflow never registers `ctx.onUpdate`/`ctx.onQuery`
     // handlers, so `update`/`query` are unsupported today regardless of

@@ -27,7 +27,7 @@ import {
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau, removeAgent } from './agent-support.ts';
 import { E2E_BARRIER_URL, E2E_JOURNEY_URL } from './e2e-constants.ts';
-import { ECHO_AGENT_NAME } from './echo-agent.ts';
+import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
 import {
   JOURNEY_AUTHOR_REPLY,
@@ -349,7 +349,7 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
 });
 
 test('attaches an image to the echo agent and sees the image it returns', async ({ page }) => {
-  await page.goto(`/chat/new?agent=${ECHO_AGENT_NAME}`);
+  await page.goto(`/chat/new?agent=${IMAGE_ECHO_AGENT_NAME}`);
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
   await page
     .locator('input[type="file"]')

@@ -135,6 +135,7 @@
     onEdit,
     onArtifactOpen,
     onApprovalResolve,
+    onInputSubmit,
     messageReasoning,
     messageSteps,
     messageSuggestions,
@@ -1691,6 +1692,7 @@
             : undefined}
           {toolCallPresentation}
           onApprovalResolve={canResolveToolApproval ? handleApprovalResolve : undefined}
+          {onInputSubmit}
           reasoning={derivedReasoning}
           entries={derivedEntries}
           steps={derivedSteps}

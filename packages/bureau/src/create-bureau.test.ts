@@ -7292,9 +7292,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
     // The four configuration targets resolve through the shipped AB-64
     // selector rather than a steering-only validation path: one
     // `planSelection` call validates the override against the live catalog.
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },
@@ -7352,9 +7354,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
         { target: Target }
       >;
     };
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },
@@ -7578,9 +7582,11 @@ describe('createBureau submitSteeringCommand (AB-67/AB-199)', () => {
   it('is idempotent at the value: re-steering the same model does not advance configVersion (AB-200)', async () => {
     // A client retrying with a fresh command id must not inflate the
     // version and invalidate every other caller's expectedRevision.
+    // COR-1559: a selectable agent, so the model it is steered to is one it allows.
     const steered = createAgent({
       generate: () => new Promise<never>(() => {}),
       name: 'steered',
+      allowedCandidates: [{ provider: 'anthropic', model: 'claude-sonnet-5' }],
     });
     const bureau = await createBureau({
       agents: { steered },
@@ -23327,12 +23333,13 @@ describe('active skill tool policy narrows the toolbox (COR-1228)', () => {
 
   // `allowed-tools` is the specification's own field, and the client turns it into the active
   // skill's requested tool set. A skill asking for a tool only ever narrows what the run already
-  // had; it can never add one.
+  // had; it can never add one. COR-1628 — the narrowing also refuses a call, so the skill names
+  // `deactivate_skill` for the run to be able to deactivate it again.
   const narrowingSkill = {
     name: 'reader',
     description: 'Read only',
     body: 'Read things.',
-    allowedTools: 'read_file',
+    allowedTools: 'read_file deactivate_skill',
   };
 
   it('hides a tool outside the active skill allow list, and restores it on deactivation', async () => {

@@ -835,7 +835,7 @@ sessions.events.addEventListener('session.outbox-appended', () => {
 
 ### Forking a session through a completed run (COR-816)
 
-`SessionHandle.fork(options?)` creates a new session with a new id and an empty run list. With `throughRun` (a 0-based run sequence), its conversation is rebuilt from that terminal run's immutable `RunRef.conversationBoundary`, so no message from a later run reaches the fork. Tool calls stay paired with their results. Without `throughRun`, the fork copies the session's latest stored history. The fork keeps the source session's owner of record (its `SESSION_OWNER_METADATA_KEY` metadata) and no other metadata, so the rows it copies are claimed and read as the owner who could read them. Nothing else is shared between the two sessions afterwards, and a `SessionForkEvent` (`session.fork`, with `sourceSessionId`, `forkedSessionId`, and `throughRun`) fires once the fork is persisted. Each terminal `RunRef` records its boundary once, as a `RunConversationBoundary` delta-encoded against an earlier run's boundary, and never rewrites it.
+`SessionHandle.fork(options?)` creates a new session with a new id and an empty run list. With `throughRun` (a 0-based run sequence), its conversation is rebuilt from that terminal run's immutable `RunRef.conversationBoundary`, so no message from a later run reaches the fork. Tool calls stay paired with their results. Without `throughRun`, the fork copies the session's latest stored history. The fork keeps the source session's owner of record (its `SESSION_OWNER_METADATA_KEY` metadata) and no other metadata, so the rows it copies are claimed and read as the owner who could read them. With `throughMessageId` (COR-1560), the fork copies the stored history through that message, inclusive, nothing after it, and records its lineage in the reserved metadata keys `SESSION_PARENT_METADATA_KEY` and `SESSION_FORKED_FROM_MESSAGE_METADATA_KEY`, which the summary index carries (`SessionSummary.parentContextId` and `forkedFromMessageId`, at `SUMMARY_FORMAT_VERSION` 3, so a listing shows them before the fork has a run); a message the session does not hold throws `ForkThroughMessageError`, and naming `throughRun` as well is a `TypeError`. `owner` replaces the source's owner of record, and `id` creates the fork under an identifier the caller chose: asking again for the same fork under the same `id` returns the session already there and creates nothing, and any other holder of the `id` throws `ForkIdentifierInUseError`. `parseAssistantMessageIdentifier(id)` reads the run and step an assistant step id (`<runId>:step:<n>`) names, and is `undefined` for every other id a run mints. Nothing else is shared between the two sessions afterwards, and a `SessionForkEvent` (`session.fork`, with `sourceSessionId`, `forkedSessionId`, and `throughRun`) fires once the fork is persisted. Each terminal `RunRef` records its boundary once, as a `RunConversationBoundary` delta-encoded against an earlier run's boundary, and never rewrites it.
 
 ```typescript
 import {
@@ -2564,6 +2564,27 @@ const enforcePolicy = createPolicyEnforcementHook({
 // `toolbox.tools()` returns the registered tools; pass them through enforcePolicy.
 const allTools: ToolLike[] = [...toolbox.tools()];
 const allowedTools = enforcePolicy(allTools);
+```
+
+`withActiveSkillToolPolicy` applies the same allow and deny lists to a whole toolbox, as a filter and as an execution gate. Its `tools()` hides what the policy excludes, and its `execute` refuses a call to any tool `tools()` hides, so a model that names a tool it was shown before a skill narrowed the set, or one it guesses, does not get it run. The refusal is a tool result with `outcome: 'error'`, `errorCategory: 'permission'` and an error coded `SKILL_TOOL_DENIED`, so the conversation keeps a result for every call and the run continues. Under `errorMode: 'failFast'` it throws that error instead, as Armorer does for a policy denial. A call is judged by the tool it reaches, by name, by id, or through Armorer's fuzzy name resolution, so a near-miss name cannot bypass it. A name that resolves to no registered tool is left to the toolbox's own `NOT_FOUND`. The policy is read once per `execute` call, so a batch runs under the policy the model was shown when it generated the step.
+
+```typescript
+import { withActiveSkillToolPolicy } from '@lostgradient/operative';
+import type { Toolbox } from 'armorer';
+
+declare const toolbox: Toolbox;
+
+let activeAllowList: string[] | undefined;
+
+// `search` stays callable while the allow list is `['search']`; a call to any other tool is
+// answered with a `SKILL_TOOL_DENIED` result instead of running.
+const narrowed = withActiveSkillToolPolicy(toolbox, () =>
+  activeAllowList === undefined ? undefined : { allowList: activeAllowList },
+);
+activeAllowList = ['search'];
+
+const refused = await narrowed.execute({ id: 'call-1', name: 'write', arguments: {} });
+refused.error?.code; // 'SKILL_TOOL_DENIED'
 ```
 
 ### Early Stopping

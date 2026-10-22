@@ -42,6 +42,7 @@ import {
   createDurableEventProducer,
   DEFAULT_PAGE_LIMIT,
   DURABLE_HISTORY_GAP_KIND,
+  encodeOwner,
   type DurableEventHistory,
   InvalidRetentionCutoffError,
   ReservedDurableEventKindError,
@@ -2260,6 +2261,200 @@ describe('createDurableEventHistory', () => {
 
       await reader.dispose();
       await writer.dispose();
+    });
+  });
+
+  describe("page() and dedupe lookups read only the owner's index (COR-280)", () => {
+    const runA: DurableEventOwner = { kind: 'run', id: 'run-a' };
+    const runB: DurableEventOwner = { kind: 'run', id: 'run-b' };
+
+    /** The sequences the old global replay-then-filter selected for `owner`. */
+    async function filteredGlobalSequences(
+      storage: Storage,
+      owner: DurableEventOwner,
+      incarnation?: string,
+    ): Promise<number[]> {
+      const feed = createFleetEventFeed(storage);
+      const sequences: number[] = [];
+      for await (const envelope of feed.replay()) {
+        if (envelope.workflowId !== encodeOwner(owner)) continue;
+        const payload: unknown = envelope.payload;
+        const recorded =
+          typeof payload === 'object' && payload !== null
+            ? Reflect.get(payload, 'incarnation')
+            : undefined;
+        if (incarnation !== undefined && recorded !== incarnation) continue;
+        sequences.push(envelope.sequence);
+      }
+      feed.dispose();
+      return sequences;
+    }
+
+    async function pagedSequences(
+      history: DurableEventHistory,
+      owner: DurableEventOwner,
+      options: { limit: number; since?: string; incarnation?: string },
+    ): Promise<number[]> {
+      const sequences: number[] = [];
+      let since = options.since;
+      while (true) {
+        const page = await history.page(owner, {
+          limit: options.limit,
+          ...(since === undefined ? {} : { since }),
+          ...(options.incarnation === undefined ? {} : { incarnation: options.incarnation }),
+        });
+        if ('outcome' in page) throw new Error('expected a page, got a gap');
+        sequences.push(...page.events.map((event) => event.sequence));
+        if (!page.hasMore) return sequences;
+        since = page.nextCursor;
+      }
+    }
+
+    function createScanPrefixRecorder(storage: Storage): {
+      storage: Storage;
+      prefixes: string[];
+    } {
+      const prefixes: string[] = [];
+      const recording = new Proxy(storage, {
+        get(target, property, receiver) {
+          if (property === 'scan') {
+            return (...args: Parameters<Storage['scan']>) => {
+              prefixes.push(args[0]);
+              return target.scan(...args);
+            };
+          }
+          const value = Reflect.get(target, property, receiver);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+      return { storage: recording, prefixes };
+    }
+
+    it('pages the same events as the global filter across nextCursor, without scanning the global fleet log', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const recorder = createScanPrefixRecorder(storage);
+      const history = createDurableEventHistory(recorder.storage, runtime);
+      for (let index = 0; index < 7; index += 1) {
+        await history.record(runA, 'step.completed', { index });
+        await history.record(runB, 'step.completed', { index });
+        if (index % 3 === 0) await history.record(runB, 'tool.started', { index });
+      }
+
+      recorder.prefixes.length = 0;
+      const pagedA = await pagedSequences(history, runA, { limit: 2 });
+      const pagedB = await pagedSequences(history, runB, { limit: 3, since: '4' });
+
+      const globalB = await filteredGlobalSequences(storage, runB);
+      expect(pagedA).toEqual(await filteredGlobalSequences(storage, runA));
+      expect(pagedB).toEqual(globalB.filter((sequence) => sequence > 4));
+      expect(recorder.prefixes).not.toContain(KEYS.fleetEventPrefix());
+      expect(new Set(recorder.prefixes)).toEqual(
+        new Set([
+          KEYS.fleetEventByWorkflowPrefix(encodeOwner(runA)),
+          KEYS.fleetEventByWorkflowPrefix(encodeOwner(runB)),
+        ]),
+      );
+
+      await history.dispose();
+    });
+
+    it('keeps incarnation filtering identical to the global filter when another owner shares the stream', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      const session: DurableEventOwner = { kind: 'session', id: 'sess-1' };
+      await history.record(session, 'session.created', {}, { incarnation: 'one' });
+      await history.record(runA, 'step.completed', {}, { incarnation: 'one' });
+      await history.record(session, 'session.saved', {});
+      await history.record(session, 'session.saved', {}, { incarnation: 'one' });
+      await history.record(session, 'session.created', {}, { incarnation: 'two' });
+      await history.record(runA, 'step.completed', {}, { incarnation: 'two' });
+      await history.record(session, 'session.saved', {}, { incarnation: 'one' });
+
+      for (const incarnation of ['one', 'two']) {
+        expect(await pagedSequences(history, session, { limit: 1, incarnation })).toEqual(
+          await filteredGlobalSequences(storage, session, incarnation),
+        );
+      }
+
+      await history.dispose();
+    });
+
+    it('reports the gap retain() opens mid-history, and pages the retained rest like the global filter', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      for (let index = 0; index < 5; index += 1) {
+        await history.record(runA, 'step.completed', { index }, { emittedAtMs: index });
+        await history.record(runB, 'step.completed', { index }, { emittedAtMs: index });
+      }
+      expect(await history.retainBefore(2)).toBe(4);
+
+      expect(await history.page(runA, { since: '0' })).toEqual({
+        outcome: 'gap',
+        requestedCursor: '0',
+        firstRetainedSequence: 4,
+      });
+      expect(await pagedSequences(history, runA, { limit: 2, since: '3' })).toEqual(
+        await filteredGlobalSequences(storage, runA),
+      );
+
+      await history.dispose();
+    });
+
+    it("resolves a redelivered dedupeKey from the owner's index when another owner's events sit between", async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const recorder = createScanPrefixRecorder(storage);
+      const history = createDurableEventHistory(recorder.storage, runtime);
+      await history.record(runA, 'step.completed', { index: 0 });
+      const first = await history.record(
+        runA,
+        'session.created',
+        { original: true },
+        { dedupeKey: 'key-1' },
+      );
+      // Another owner records the same kind and dedupe key, so only the owner
+      // scoping of the lookup can tell the two apart.
+      await history.record(runB, 'session.created', { other: true }, { dedupeKey: 'key-1' });
+      for (let index = 0; index < 3; index += 1) {
+        await history.record(runB, 'step.completed', { index });
+      }
+
+      recorder.prefixes.length = 0;
+      const redelivered = await history.record(
+        runA,
+        'session.created',
+        { original: false },
+        { dedupeKey: 'key-1' },
+      );
+
+      expect(redelivered).toEqual(first);
+      expect(recorder.prefixes).toEqual([KEYS.fleetEventByWorkflowPrefix(encodeOwner(runA))]);
+
+      await history.dispose();
+    });
+
+    it('skips the gap marker an owner-indexed dedupe lookup opens with after retention', async () => {
+      const storage = await createMemoryStorage();
+      const runtime = createManualRuntimeServices();
+      const history = createDurableEventHistory(storage, runtime);
+      await history.record(runA, 'step.completed', {}, { emittedAtMs: 0 });
+      await history.record(runB, 'step.completed', {}, { emittedAtMs: 0 });
+      const kept = await history.record(
+        runA,
+        'session.created',
+        {},
+        { dedupeKey: 'key-1', emittedAtMs: 5 },
+      );
+      expect(await history.retainBefore(1)).toBe(2);
+
+      expect(
+        await history.record(runA, 'session.created', {}, { dedupeKey: 'key-1', emittedAtMs: 6 }),
+      ).toEqual(kept);
+
+      await history.dispose();
     });
   });
 

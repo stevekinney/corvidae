@@ -20,15 +20,26 @@ import type { CleanupAcknowledgement, ClosedOptions } from '../types';
 import { conversationThroughRun } from './run-conversation-boundary';
 import {
   historyOrEmpty,
+  historyThroughMessage,
   newestRunningRunRef,
   reconcileTerminalRunRef,
 } from './session-handle-support';
 import type {
+  SessionForkOptions,
   SessionHandle,
   SessionHandleContext,
   SessionLivenessSnapshot,
 } from './session-handle-types';
-import { NoDurableEngineError, NoRunningRunError } from './session-handle-types';
+import {
+  ForkIdentifierInUseError,
+  ForkThroughMessageError,
+  NoDurableEngineError,
+  NoRunningRunError,
+} from './session-handle-types';
+import {
+  SESSION_FORKED_FROM_MESSAGE_METADATA_KEY,
+  SESSION_PARENT_METADATA_KEY,
+} from './session-lineage';
 import { createSessionLiveness, type LivenessSubscriberRecord } from './session-liveness';
 import { createSessionMonitor } from './session-monitor';
 import { SESSION_OWNER_METADATA_KEY } from './session-owner';
@@ -36,6 +47,11 @@ import { createSessionRecovery } from './session-recovery';
 import { createSessionRun, type SessionRunState } from './session-run';
 
 export * from './session-handle-types';
+
+/** Throws `error`, as an expression. */
+function fail(error: Error): never {
+  throw error;
+}
 
 /**
  * Parse an ISO-8601 duration into milliseconds. Supports hours, minutes and
@@ -292,30 +308,69 @@ export function createSessionHandle(
       }
     },
 
-    async fork(options?: { throughRun?: number }): Promise<SessionHandle> {
-      const session = await loadOrCreate();
+    async fork(options?: SessionForkOptions): Promise<SessionHandle> {
+      // A fork through a message needs the session to exist: one deleted meanwhile is not
+      // recreated empty, it is a message the session does not hold.
+      const session =
+        options?.throughMessageId === undefined
+          ? await loadOrCreate()
+          : ((await store.load(sessionId)) ??
+            fail(new ForkThroughMessageError(sessionId, options.throughMessageId)));
 
       // Without a fork point, copy the latest stored history. With one, copy
       // that terminal run's immutable boundary (COR-816), which never holds a
       // message from a later run; an unusable fork point throws a typed
       // ForkThroughRunError before anything is persisted.
+      if (options?.throughRun !== undefined && options.throughMessageId !== undefined) {
+        throw new TypeError('fork() takes throughRun or throughMessageId, not both.');
+      }
       const forkedHistory: ConversationHistory =
-        options?.throughRun === undefined
-          ? historyOrEmpty(session.conversationHistory, runtime)
-          : conversationThroughRun(session, options.throughRun);
+        options?.throughMessageId !== undefined
+          ? historyThroughMessage(session, options.throughMessageId)
+          : options?.throughRun === undefined
+            ? historyOrEmpty(session.conversationHistory, runtime)
+            : conversationThroughRun(session, options.throughRun);
 
       // Create the forked session with a new id and empty runs[]. It keeps the source's owner of
       // record and no other metadata (COR-1581): the forked rows reference assets the owner may
       // read, and an owner-less fork would claim them as the local principal, which cannot.
-      const newSessionId = runtime.identifiers.next('session');
-      const sourceOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
+      //
+      // COR-1560: a fork through a message also records where it came from, and may be created
+      // under an identifier the caller chose and for another owner.
+      const owner = options?.owner ?? session.metadata[SESSION_OWNER_METADATA_KEY];
+      const lineage =
+        options?.throughMessageId === undefined
+          ? {}
+          : {
+              [SESSION_PARENT_METADATA_KEY]: sessionId,
+              [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: options.throughMessageId,
+            };
+      const forkedMetadata = {
+        ...(owner === undefined ? {} : { [SESSION_OWNER_METADATA_KEY]: owner }),
+        ...lineage,
+      };
+      if (options?.id !== undefined) {
+        const existing = await store.load(options.id);
+        if (existing !== undefined) {
+          // The same fork asked for again: nothing to create.
+          if (
+            options.throughMessageId !== undefined &&
+            existing.metadata[SESSION_PARENT_METADATA_KEY] === sessionId &&
+            existing.metadata[SESSION_FORKED_FROM_MESSAGE_METADATA_KEY] ===
+              options.throughMessageId &&
+            existing.metadata[SESSION_OWNER_METADATA_KEY] === owner
+          ) {
+            return createSessionHandle(existing.id, context);
+          }
+          throw new ForkIdentifierInUseError(sessionId, options.id);
+        }
+      }
+      const newSessionId = options?.id ?? runtime.identifiers.next('session');
       const forkedSession = createAgentSession({
         agentName: session.agentName,
         conversationHistory: forkedHistory,
         id: newSessionId,
-        ...(sourceOwner === undefined
-          ? {}
-          : { metadata: { [SESSION_OWNER_METADATA_KEY]: sourceOwner } }),
+        ...(Object.keys(forkedMetadata).length === 0 ? {} : { metadata: forkedMetadata }),
         runs: [],
         runtime,
       });

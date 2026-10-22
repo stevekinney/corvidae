@@ -8,7 +8,7 @@
  */
 import type { ReviewListEntry } from '@lostgradient/weft';
 
-import { contextFixture } from './bureau-fixtures.test-support.ts';
+import { contextDetailFixture } from './bureau-fixtures.test-support.ts';
 import type { BureauReview } from './bureau-reviews.ts';
 import {
   StubFault,
@@ -75,7 +75,8 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
   return {
     'bureau.tasks.list': (params) => {
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
-      const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
+      // The token is the position the page starts at: the stub's world does not change mid-listing.
+      const offset = typeof params['pageToken'] === 'string' ? Number(params['pageToken']) : 0;
       const matching = world.tasks.filter(
         (task) =>
           (params['contextId'] === undefined || task.contextId === params['contextId']) &&
@@ -85,7 +86,7 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       const page = matching.slice(offset, offset + limit);
       return {
         tasks: page,
-        nextOffset: offset + page.length < matching.length ? offset + page.length : null,
+        nextPageToken: offset + page.length < matching.length ? String(offset + page.length) : null,
       };
     },
     'bureau.tasks.get': (params) => {
@@ -101,7 +102,7 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
           ? world.tasks.some((task) => task.contextId === id)
           : world.contexts.includes(id);
       if (!known) throw notFound('context', id);
-      return contextFixture(id);
+      return contextDetailFixture(id);
     },
     'bureau.reviews.list': () => ({
       reviews: world.reviews.filter((review) => review.status === 'pending'),

@@ -367,13 +367,13 @@ describe('list', () => {
       held.live.set(`run-${index}`, running);
     }
 
-    const own = await registry.list({ owner: OWNER, limit: 50, offset: 0 });
-    const everyone = await registry.list({ limit: 50, offset: 0 });
-    const writer = await registry.list({ agentName: 'writer', limit: 50, offset: 0 });
-    const context = await registry.list({ contextId: 'context-1', limit: 50, offset: 0 });
-    const paged = await registry.list({ limit: 2, offset: 0 });
-    const last = await registry.list({ limit: 2, offset: 2 });
-    const none = await registry.list({ status: 'completed', limit: 50, offset: 0 });
+    const own = await registry.enumerate({ owner: OWNER, limit: 50, offset: 0 });
+    const everyone = await registry.enumerate({ limit: 50, offset: 0 });
+    const writer = await registry.enumerate({ agentName: 'writer', limit: 50, offset: 0 });
+    const context = await registry.enumerate({ contextId: 'context-1', limit: 50, offset: 0 });
+    const paged = await registry.enumerate({ limit: 2, offset: 0 });
+    const last = await registry.enumerate({ limit: 2, offset: 2 });
+    const none = await registry.enumerate({ status: 'completed', limit: 50, offset: 0 });
 
     expect(own.tasks.map((task) => task.id)).toEqual(['run-3', 'run-1', 'run-0']);
     expect(everyone.tasks).toHaveLength(4);
@@ -389,7 +389,7 @@ describe('list', () => {
     await admit(registry, 'run-old', { incarnation: 'before-delete' });
     await admit(registry, 'run-new', { incarnation: 'incarnation-1' });
 
-    const page = await registry.list({ contextId: 'context-1', limit: 50, offset: 0 });
+    const page = await registry.enumerate({ contextId: 'context-1', limit: 50, offset: 0 });
 
     expect(page.tasks.map((task) => task.id)).toEqual(['run-new']);
   });
@@ -506,7 +506,7 @@ describe('activityOf', () => {
     await admit(registry, 'run-catalog', { contextId: 'context-1', incarnation: '' });
 
     const activity = await registry.activityOf(['context-1']);
-    const listed = await registry.list({ contextId: 'context-1', limit: 10, offset: 0 });
+    const listed = await registry.enumerate({ contextId: 'context-1', limit: 10, offset: 0 });
 
     expect(listed.tasks).toEqual([]);
     expect(activity.get('context-1')).toBe('idle');
@@ -864,7 +864,7 @@ describe('a task record with a malformed field', () => {
       const raw = JSON.stringify(storedRecord(overrides));
       await kv.set(key, raw);
 
-      const listed = await registry.list({ limit: 50, offset: 0 });
+      const listed = await registry.enumerate({ limit: 50, offset: 0 });
       const got = await registry.get('run-bad');
       // Far in the future: a settlement timestamp read as 0 or NaN would qualify at once.
       const removed = await registry.expire(Date.parse('2030-01-01T00:00:00.000Z'), new Set());
@@ -935,7 +935,7 @@ describe('an unreadable task record', () => {
       });
       await kv.set(`${TASK_RECORD_KEY_PREFIX}run-bad`, value);
 
-      const listed = await registry.list({ limit: 50, offset: 0 });
+      const listed = await registry.enumerate({ limit: 50, offset: 0 });
       const removed = await registry.expire(Date.parse('2026-10-01T00:00:00.000Z'), new Set());
       await registry.remove('run-bad');
 
@@ -1010,7 +1010,7 @@ describe('a task started on its owner’s behalf (COR-1482)', () => {
     const awaited19 = await registry.record('fire-1');
     expect(awaited19?.incarnation).toBe('incarnation-1');
     expect(await registry.bindIncarnation('nobody', 'incarnation-1')).toBe(false);
-    const found = await registry.list({ contextId: 'context-1', limit: 10, offset: 0 });
+    const found = await registry.enumerate({ contextId: 'context-1', limit: 10, offset: 0 });
     expect(found.tasks.map((task) => task.id)).toEqual(['fire-1']);
   });
 });

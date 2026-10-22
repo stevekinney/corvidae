@@ -1,10 +1,12 @@
 import { createAgent, createScriptedGenerate, stopWhen } from '@lostgradient/operative';
+import { rejectionOf } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { startHost, type Host } from './host.ts';
+import { SEEDED_AGENT_NAMES } from './seed.ts';
 
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -79,6 +81,21 @@ describe('extra agents', () => {
     expect(types.at(-1)).toBe('RUN_FINISHED');
   });
 
+  test('an extra agent named like a seeded agent stops the host and names the agent, rather than being replaced', async () => {
+    for (const name of SEEDED_AGENT_NAMES) {
+      const home = await mkdtemp(join(tmpdir(), 'interborough-ag-ui-'));
+      directories.push(home);
+      const refusal = await rejectionOf(
+        startHost({
+          environment: { INTERBOROUGH_HOME: home },
+          port: 0,
+          extraAgents: { agents: { [name]: extraAgent }, published: [name] },
+        }),
+      );
+      expect(String(refusal)).toContain(`The extra agent "${name}" has the name of a seeded agent`);
+    }
+  });
+
   test('an extra agent that is not published is refused, and the seeded ones are unchanged', async () => {
     const host = await start({ extraAgents: { agents: { extra: extraAgent }, published: [] } });
     expect(await runEventTypes(host, 'extra', 'thread-hidden')).toEqual(['RUN_ERROR']);
@@ -103,8 +120,10 @@ describe('extra agents', () => {
       .toSorted(([left], [right]) => left.localeCompare(right));
     expect(listed).toEqual([
       ['assistant', 'code', 'published'],
+      ['echo', 'code', 'published'],
       ['extra', 'code', 'published'],
       ['internal', 'code', 'unpublished'],
+      ['model-switcher', 'code', 'published'],
       ['request-human-input', 'code', 'published'],
       ['tool-runner', 'code', 'published'],
     ]);

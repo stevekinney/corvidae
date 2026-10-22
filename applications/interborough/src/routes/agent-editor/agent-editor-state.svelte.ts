@@ -77,6 +77,12 @@ export class AgentEditorState {
   readonly toolChoices: AgentCatalog['tools'];
   /** `skills` is carried through a save untouched. */
   readonly skills: readonly AgentSkill[];
+  /**
+   * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
+   * lists none. Carried through a save untouched, like `skills`: the editor shows no control for
+   * it, and an update that left it out would remove the list.
+   */
+  readonly models: readonly string[] | null;
   /** The model the file wrote, and the option it names, so an unchanged model is written back as it was. */
   readonly #writtenModel: string;
   readonly #writtenModelOption: string;
@@ -109,6 +115,7 @@ export class AgentEditorState {
     const definition = detail?.definition ?? null;
     this.#editedId = detail?.id;
     this.skills = definition?.skills ?? [];
+    this.models = definition?.models ?? null;
     this.#writtenModel = definition?.model ?? '';
     this.#writtenModelOption = canonicalModel(this.#writtenModel, catalog);
     if (definition === null) {
@@ -198,7 +205,7 @@ export class AgentEditorState {
       : this.tools.filter((tool) => tool !== name);
   }
 
-  /** The definition to write: the form's fields, the carried skills, and no `published`. */
+  /** The definition to write: the form's fields, the carried skills and models, and no `published`. */
   toDefinition(): AgentDefinitionInput {
     const name = this.name.trim();
     const offered = this.toolChoices.map((tool) => tool.name);
@@ -206,6 +213,7 @@ export class AgentEditorState {
       ...(name === '' ? {} : { name }),
       description: this.description.trim() === '' ? null : this.description,
       model: this.model === this.#writtenModelOption ? this.#writtenModel : this.model,
+      ...(this.models === null ? {} : { models: this.models }),
       tools: offered.filter((tool) => this.tools.includes(tool)),
       skills: this.skills,
       instructions: this.instructions,

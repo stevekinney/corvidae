@@ -259,6 +259,18 @@ export async function executeTools(
         }
 
         executedResults = Array.isArray(executeResult) ? executeResult : [executeResult];
+        // COR-1628 — a call the toolbox answers without executing it (a refusal by the active
+        // skills' `allowed-tools` gate) never emits a toolbox `settled` event, so settle it
+        // here. A call whose settlement was already forwarded is skipped by the shared set.
+        // A live stream settles when it ends, through the forwarded event, so it is left out.
+        dispatchSettledResults(
+          emitter,
+          deps,
+          step,
+          callsToExecute,
+          executedResults.filter((result) => result.stream === undefined),
+          emittedSettledCallIds,
+        );
         results.push(...executedResults);
       } catch (error) {
         // onError recovery for tool execution phase.

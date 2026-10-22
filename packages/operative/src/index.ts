@@ -67,6 +67,7 @@ export type {
   UnsignedDelegationGrant,
 } from './delegation-grant';
 
+export { SKILL_TOOL_DENIED_CODE } from './active-skill-tool-gate';
 export {
   appendAgentInput,
   assertAgentInput,
@@ -553,10 +554,13 @@ export {
 } from './human-wait-parks';
 export {
   assistantMessageIdentifier,
+  parseAssistantMessageIdentifier,
+  parseStepRowIdentifier,
   signalMessageIdentifier,
   toolCallMessageIdentifiers,
   toolResultMessageIdentifier,
 } from './message-identifiers';
+export type { StepRowIdentifier } from './message-identifiers';
 export * from './session/index';
 export { MissingRunOptionsError } from './session/session-handle-types';
 export * from './store';

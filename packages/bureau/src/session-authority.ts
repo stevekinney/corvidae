@@ -159,14 +159,19 @@ export function isSessionRunTerminal(
  * on the run a request targets; `explicitRunId` is accepted so the verbs'
  * call sites are unchanged. The session is terminal only when its last persisted
  * run is not running and no run is live ({@link isSessionRunTerminal}).
+ *
+ * `idleAllowed` (COR-1559) is for a command that needs no live run: a session with no run in
+ * progress is `'proceed'`, not `'session-terminal'`, so a `model` override can be set on an idle
+ * session, including a new fork that has not run yet. Authorization is checked first either way.
  */
 export function resolveSessionPreAdmission(
   metadata: Record<string, JSONValue>,
   principal: string,
   liveRunIds: readonly string[],
   explicitRunId?: string,
+  idleAllowed = false,
 ): 'not-found' | 'session-terminal' | 'proceed' {
   if (!isSessionAuthorityAuthorized(metadata, principal, explicitRunId)) return 'not-found';
-  if (isSessionRunTerminal(metadata, liveRunIds)) return 'session-terminal';
+  if (!idleAllowed && isSessionRunTerminal(metadata, liveRunIds)) return 'session-terminal';
   return 'proceed';
 }

@@ -91,6 +91,7 @@ import {
   createSeededValidators,
   PUBLISHED_AGENT_NAMES,
   seedBureau,
+  SEEDED_AGENT_NAMES,
   type SeededAgents,
 } from './seed.ts';
 
@@ -271,6 +272,15 @@ type EngineUpstream = { readonly url: string; readonly key: string };
 
 /** Start the host. The caller owns it and must `close()` it. */
 export async function startHost(options: HostOptions = {}): Promise<Host> {
+  // The seeded agents are defined last, so an extra agent that took a seeded name would be replaced
+  // without a word. That is a mistake in whoever named it, so it stops the host before anything opens.
+  for (const name of SEEDED_AGENT_NAMES) {
+    if (options.extraAgents?.agents !== undefined && name in options.extraAgents.agents) {
+      throw new Error(
+        `The extra agent "${name}" has the name of a seeded agent, which would replace it. Give it another name.`,
+      );
+    }
+  }
   const environment = options.environment ?? processEnvironment();
   const bungalow: Bungalow = openBungalow({ name: APPLICATION_NAME, environment });
   const held: Held = { bungalow };
