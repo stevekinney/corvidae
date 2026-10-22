@@ -676,7 +676,7 @@ describe('a restored session-run approval is decided under the snapshot read at 
     // does, so its refusal carries no `approvalBindingConsumed`.
     const runToolbox = scheduledFireReviewStateOf(restarted).runToolboxesByRunId.get(run.id);
     if (runToolbox === undefined) throw new Error('The restored run has no toolbox of its own.');
-    reportNoConsumption(runToolbox as unknown as Toolbox);
+    reportNoConsumption(runToolbox);
 
     const refusal = await refusalOf(restarted, restored.id);
 
