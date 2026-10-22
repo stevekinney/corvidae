@@ -228,6 +228,29 @@ export interface SkillActivationBinding {
 }
 
 /**
+ * The metadata key on the message that carries a governed-memory recall's
+ * evidence (COR-41, COR-771). The recall stamps the bundle's `bundleRevision`
+ * and `contentDigest` (`sha256:<hex>` of the message content) under it, which
+ * is how the sealer learns which bundle a turn consumed without being handed
+ * the bundle itself.
+ */
+export const MEMORY_EVIDENCE_METADATA_KEY = 'memoryEvidence';
+
+/** The fields the sealer reads from a message's {@link MEMORY_EVIDENCE_METADATA_KEY} entry. */
+export interface MemoryEvidenceMessageMetadata {
+  readonly bundleRevision: string;
+  readonly contentDigest: string;
+}
+
+function memoryEvidenceMetadata(message: Message): MemoryEvidenceMessageMetadata | undefined {
+  const entry = message.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
+  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
+  const { bundleRevision, contentDigest } = entry as Record<string, unknown>;
+  if (typeof bundleRevision !== 'string' || typeof contentDigest !== 'string') return undefined;
+  return { bundleRevision, contentDigest };
+}
+
+/**
  * Per-message trust for the conversation source.
  *
  * `role` plus `toolResult` presence recovers most of the distinction a
@@ -252,7 +275,9 @@ function conversationTrustVector(conversation: Conversation): string {
   const sequence: string[] = [];
   for (const message of conversation.getMessages()) {
     let tier: 'o' | 'a' | 'r';
-    if (message.toolResult !== undefined) {
+    // A governed-memory evidence row is retrieved content, exactly as the
+    // memory-evidence source records it, not operator-authored text.
+    if (message.toolResult !== undefined || memoryEvidenceMetadata(message) !== undefined) {
       tier = 'r';
       counts.retrieved += 1;
     } else if (message.role === 'assistant') {
@@ -272,29 +297,6 @@ function conversationTrustVector(conversation: Conversation): string {
 
 const INCLUDED: ContextSourceDisposition = { kind: 'included' };
 const ABSENT: ContextSourceDisposition = { kind: 'absent-by-composition' };
-
-/**
- * The metadata key on the message that carries a governed-memory recall's
- * evidence (COR-41, COR-771). The recall stamps the bundle's `bundleRevision`
- * and `contentDigest` (`sha256:<hex>` of the message content) under it, which
- * is how the sealer learns which bundle a turn consumed without being handed
- * the bundle itself.
- */
-export const MEMORY_EVIDENCE_METADATA_KEY = 'memoryEvidence';
-
-/** The fields the sealer reads from a message's {@link MEMORY_EVIDENCE_METADATA_KEY} entry. */
-export interface MemoryEvidenceMessageMetadata {
-  readonly bundleRevision: string;
-  readonly contentDigest: string;
-}
-
-function memoryEvidenceMetadata(message: Message): MemoryEvidenceMessageMetadata | undefined {
-  const entry = message.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
-  if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return undefined;
-  const { bundleRevision, contentDigest } = entry as Record<string, unknown>;
-  if (typeof bundleRevision !== 'string' || typeof contentDigest !== 'string') return undefined;
-  return { bundleRevision, contentDigest };
-}
 
 /**
  * The memory-evidence source: which governed-memory bundle this turn's

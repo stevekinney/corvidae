@@ -354,6 +354,41 @@ describe('the recall hook during a policy change (COR-771)', () => {
       policyRevision: 'governance:2',
     });
   });
+
+  it('withdraws a row carried from an earlier run when the policy moves mid-recall', async () => {
+    const memory = governedMemory();
+    await seed(memory);
+    const authority = createRunMemoryAuthority(requestContext, {
+      runId: 'run-1',
+      tenantId: 'tenant-a',
+      ownerId: 'owner-a',
+    });
+    const target = { collection: 'scout', sessionId: 'session-1' };
+    // An earlier run recalled this row under governance:1.
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Which automobile?');
+    await createMemoryRecallHook(memory, authority, target)({ step: 0, conversation });
+    let calls = 0;
+    const racing: GovernedMemory = {
+      ...memory,
+      get policyRevision() {
+        return memory.policyRevision;
+      },
+      recallForModel: async (...parameters) => {
+        calls += 1;
+        const bundle = await memory.recallForModel(...parameters);
+        if (calls === 1) await activateNextPolicy(memory);
+        return bundle;
+      },
+    };
+    conversation.appendUserMessage('Which automobile again?');
+    await createMemoryRecallHook(racing, authority, target)({ step: 0, conversation });
+
+    const rows = evidenceRows(conversation);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.content).toContain('withdrawn');
+    expect(rows[1]?.content).toContain('<memory-evidence>');
+  });
 });
 
 describe('a durable run recovered by a restarted Bureau (COR-771)', () => {

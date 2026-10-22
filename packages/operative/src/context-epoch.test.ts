@@ -587,6 +587,14 @@ describe('the memory-evidence source (COR-771)', () => {
     });
   });
 
+  it('counts an evidence row as retrieved in the conversation vector too', () => {
+    const conversation = conversationWith([['user', 'seat?']]);
+    appendBundle(conversation, 'sha256:bundle-1', 'aisle');
+    const epoch = sealContextEpoch({ epochId: 'epoch-1', conversation, consumer: CONSUMER });
+    const digest = epoch.sources.find((source) => source.sourceId === 'conversation')?.digest;
+    expect(digest).toStartWith('operator=1,agent=0,retrieved=1,');
+  });
+
   it('flags a rewritten newest bundle instead of falling back to an older intact one', () => {
     const conversation = conversationWith([['user', 'seat?']]);
     appendBundle(conversation, 'sha256:bundle-1', 'aisle');

@@ -1288,11 +1288,14 @@ export function createMemoryRecallHook(
 
     // Stale rows are withdrawn on every step, step 0 included: a session's
     // next run starts at step 0 with the rows its earlier runs recalled.
-    const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
-    for (const position of stale) {
-      context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
-    }
-    if (context.step !== 0 && stale.length === 0) {
+    const withdrawStale = (): number => {
+      const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
+      for (const position of stale) {
+        context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
+      }
+      return stale.length;
+    };
+    if (withdrawStale() === 0 && context.step !== 0) {
       return;
     }
 
@@ -1311,6 +1314,9 @@ export function createMemoryRecallHook(
     // again, nothing is appended rather than evidence no current policy admitted.
     let bundle = await recall();
     if (bundle.policyRevision !== memory.policyRevision) bundle = await recall();
+    // The scan above ran under the policy recall started with; rows it kept
+    // may be stale under the one in force now, so scan again either way.
+    withdrawStale();
     if (bundle.policyRevision !== memory.policyRevision) return;
     appendMemoryEvidence(context.conversation, target, bundle);
   };
