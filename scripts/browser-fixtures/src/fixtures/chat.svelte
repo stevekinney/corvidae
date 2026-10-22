@@ -82,6 +82,36 @@
     },
   );
 
+  let inputConversation = appendMessages(
+    appendUserMessage(createConversation({ id: 'tool-input-chat' }), 'Book a meeting room.'),
+    {
+      role: 'tool-call',
+      content: '',
+      toolCall: { id: 'call-book-room', name: 'book_meeting_room', arguments: {} },
+    },
+    {
+      role: 'tool-result',
+      content: '',
+      toolResult: {
+        callId: 'call-book-room',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'input',
+          message: 'Which room, and for how many people?',
+          schema: {
+            type: 'object',
+            properties: {
+              room: { type: 'string', title: 'Room', minLength: 1 },
+              attendees: { type: 'integer', title: 'Attendees', minimum: 1 },
+            },
+            required: ['room', 'attendees'],
+          },
+        },
+      },
+    },
+  );
+
   const longArtifactTitle =
     'Exports report with a long generated title that should truncate visually while retaining the full accessible name';
 
@@ -278,6 +308,12 @@
   function handleApprovalResolve(toolCallId: string, resolution: ApprovalResolution): void {
     approvalResolutions = [...approvalResolutions, { toolCallId, resolution }];
   }
+
+  let inputSubmissions = $state.raw<{ toolCallId: string; value: unknown }[]>([]);
+
+  function handleInputSubmit(toolCallId: string, value: unknown): void {
+    inputSubmissions = [...inputSubmissions, { toolCallId, value }];
+  }
 </script>
 
 <div class="chat-fixture-stack">
@@ -299,6 +335,16 @@
       onApprovalResolve={handleApprovalResolve}
     />
     <pre data-testid="approval-resolution-log">{JSON.stringify(approvalResolutions)}</pre>
+  </div>
+
+  <div style="height: 34rem;">
+    <Chat
+      id="fixture-tool-input-chat"
+      conversation={inputConversation}
+      capabilities={{ attachments: false }}
+      onInputSubmit={handleInputSubmit}
+    />
+    <pre data-testid="input-submission-log">{JSON.stringify(inputSubmissions)}</pre>
   </div>
 
   <div class="chat-layout-fixture-container">

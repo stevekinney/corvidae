@@ -381,7 +381,7 @@ describe('C3 — paired tool-call whose result is action_required', () => {
     expect(approval?.type === 'tool-approval' && approval.state).toBe('approved');
   });
 
-  it('keeps a paired input action on the neutral tool-call card and never emits approval controls', () => {
+  it('follows a paired input action with a tool-input part and never emits approval controls', () => {
     const call = { id: 'call-input', name: 'collect_input', arguments: {} };
     const result = {
       callId: 'call-input',
@@ -400,8 +400,15 @@ describe('C3 — paired tool-call whose result is action_required', () => {
     const msg = message({ id: 'tc-input', role: 'tool-call', toolCall: call });
     const parts = deriveMessageParts(msg, { toolCallPair: { call, result } });
 
-    expect(parts.map((part) => part.type)).toEqual(['tool-call']);
-    expect(parts[0]?.type === 'tool-call' && parts[0].pair.result?.action).toEqual(result.action);
+    expect(parts.map((part) => part.type)).toEqual(['tool-call', 'tool-input']);
+    expect(parts[1]).toEqual({
+      type: 'tool-input',
+      key: 'tc-input:tool-input:call-input',
+      toolCallId: 'call-input',
+      toolName: 'collect_input',
+      message: 'Provide a deployment reason',
+      schema: result.action.schema,
+    });
   });
 
   it('a paired SUCCESS result emits only the tool-call card (no approval prompt)', () => {
@@ -439,7 +446,7 @@ describe('C3 — plain tool-result path is unchanged', () => {
     expect(parts[0]?.type).toBe('tool-result');
   });
 
-  it('keeps a standalone input action on the neutral tool-result path with prompt and schema intact', () => {
+  it('routes a standalone input action with an object schema to a tool-input part', () => {
     const action = {
       type: 'input' as const,
       message: 'Provide a deployment reason',
@@ -462,8 +469,26 @@ describe('C3 — plain tool-result path is unchanged', () => {
 
     const parts = deriveMessageParts(msg);
 
-    expect(parts[0]?.type).toBe('tool-result');
-    expect(parts[0]?.type === 'tool-result' && parts[0].result.action).toEqual(action);
+    expect(parts.map((part) => part.type)).toEqual(['tool-input']);
+    expect(parts[0]?.type === 'tool-input' && parts[0].schema).toEqual(action.schema);
+    expect(parts[0]?.type === 'tool-input' && parts[0].toolName).toBe('call-input');
+  });
+
+  it('keeps an input action without an object schema on the neutral tool-result path', () => {
+    for (const schema of [undefined, 'text', ['a'], null]) {
+      const msg = message({
+        id: 'tr-input',
+        role: 'tool-result',
+        toolResult: {
+          callId: 'call-input',
+          outcome: 'action_required',
+          content: null,
+          action: { type: 'input', message: 'Say something', schema },
+        },
+      });
+
+      expect(deriveMessageParts(msg).map((part) => part.type)).toEqual(['tool-result']);
+    }
   });
 
   it('outcome=action_required WITHOUT action still emits a tool-result part', () => {
