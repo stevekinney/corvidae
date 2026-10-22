@@ -13,7 +13,7 @@
 import {
   countHumanWaitParks,
   HumanWaitParkedEvent,
-  parkedSignalName,
+  parkedHumanWait,
 } from '@lostgradient/operative';
 
 /** The part of a checkpoint step this module reads. */
@@ -51,16 +51,11 @@ export function countCheckpointParks(steps: readonly CheckpointStep[]): Checkpoi
   }
   const baseline = priorParks + countHumanWaitParks(lastStep.results);
   for (const result of lastStep.results) {
-    const signalName = parkedSignalName(result);
-    if (signalName === undefined) continue;
-    const value = result.result as { prompt?: unknown };
+    const park = parkedHumanWait(result);
+    if (park === undefined) continue;
     return {
       baseline,
-      outstanding: {
-        signalName,
-        prompt: typeof value.prompt === 'string' ? value.prompt : undefined,
-        ordinal: priorParks,
-      },
+      outstanding: { signalName: park.signalName, prompt: park.prompt, ordinal: priorParks },
     };
   }
   return { baseline };

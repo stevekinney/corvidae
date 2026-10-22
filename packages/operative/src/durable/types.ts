@@ -202,10 +202,11 @@ export interface DurableRunDeps {
    * tool. When present after the main step loop exits, the workflow performs
    * `yield* ctx.sleep(duration)` to park until the timer fires.
    *
-   * Mutable by the `scheduleWakeup` tool (which runs inside `ctx.memo`). Only
-   * the LAST call wins — calling `scheduleWakeup` multiple times overwrites the
-   * previous request. The workflow reads this exactly once, after the loop, so
-   * it is never checkpointed (tools can safely mutate it in-process).
+   * Mutable by the `scheduleWakeup` tool (which runs inside `ctx.memo`). The
+   * FIRST request in a step wins (COR-1578): the tool refuses a request made
+   * while this slot or `pendingHumanWait` is already set, so a step never
+   * overwrites it. The workflow resets it at the start of every step and
+   * reads it from the step's memo result.
    */
   pendingWakeup?: PendingWakeup | undefined;
   /**
@@ -214,9 +215,10 @@ export interface DurableRunDeps {
    * `yield* ctx.waitForSignal(signalName)` to park until a human sends the
    * signal via `session.signal(runId, signalName, payload)`.
    *
-   * Mutually exclusive with `pendingWakeup`; only the LAST assignment (either
-   * wakeup or human-wait) governs parking. Mutable by the `requestHumanInput`
-   * tool inside `ctx.memo`.
+   * Mutually exclusive with `pendingWakeup` within a step: the FIRST request
+   * (either wakeup or human-wait) wins (COR-1578), because each tool refuses a
+   * request made while either slot is already set. Mutable by the
+   * `requestHumanInput` tool inside `ctx.memo`.
    */
   pendingHumanWait?: PendingHumanWait | undefined;
   /**

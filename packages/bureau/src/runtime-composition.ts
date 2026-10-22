@@ -187,6 +187,10 @@ export function createHumanWaitContext(
         servicesRef.current.pendingHumanWait = value;
       }
     },
+    // COR-1578 — read-only: a wakeup already requested in this step refuses a human-input request.
+    get pendingWakeup() {
+      return servicesRef.current?.pendingWakeup;
+    },
     runId,
     // Only ever constructed inside the `options.humanInput && runtime.durable`
     // guard below, so this context always backs a real durable run
@@ -201,7 +205,9 @@ export function createHumanWaitContext(
  * `servicesRef` capture) rather than spreading it, so the tool's `pendingWakeup`
  * writes land where the durable `agentRun` workflow actually reads them.
  * `ScheduleWakeupContext` carries no `runId` field (unlike
- * `RequestHumanInputContext`), so this takes only the shared `servicesRef`.
+ * `RequestHumanInputContext`), so this takes only the shared `servicesRef`. It also forwards a
+ * read-only view of the human-wait slot, so a wakeup request made after a human-input request in the
+ * same step is refused (COR-1578).
  */
 export function createWakeupContext(servicesRef: {
   current?: DurableRunDeps;
@@ -214,6 +220,10 @@ export function createWakeupContext(servicesRef: {
       if (servicesRef.current) {
         servicesRef.current.pendingWakeup = value;
       }
+    },
+    // COR-1578 — read-only: a human-input request already made in this step refuses a wakeup.
+    get pendingHumanWait() {
+      return servicesRef.current?.pendingHumanWait;
     },
     // Only ever constructed inside the `options.wakeup && runtime.durable`
     // guard (below, in `createBureau`'s run composition — same placement as

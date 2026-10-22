@@ -247,15 +247,16 @@ export function createRunWorkflow(
         // where `onMaximumSteps` should run, mirroring `executeLoop` exactly.
         let stoppedEarly = false;
         // === Durable park-request locals (D6 + F3 recovery fix) ===
-        // These accumulate the LAST pending park request (wakeup or human-wait)
-        // from step results. The tool mutations happen inside `ctx.memo` (where
-        // `deps` is live), so the values are captured in the memo return value and
-        // survive a crash+recovery: on replay each memo short-circuits to its
-        // checkpointed result, which carries the park request the tool set. This
+        // These hold the pending park request (wakeup or human-wait) from the
+        // latest step that made one. The tool mutations happen inside `ctx.memo`
+        // (where `deps` is live), so the values are captured in the memo return
+        // value and survive a crash+recovery: on replay each memo short-circuits to
+        // its checkpointed result, which carries the park request the tool set. This
         // is the ONLY source of park state used post-loop — we no longer read
         // `ctx.services` for this purpose, because services are rebuilt fresh on
-        // recovery (with `pendingWakeup`/`pendingHumanWait` unset). Last-write-wins
-        // matches the in-process tool semantics (multiple wakeup calls overwrite).
+        // recovery (with `pendingWakeup`/`pendingHumanWait` unset). Within a step
+        // the first request wins (COR-1578): each park tool refuses a request made
+        // while either slot is already set.
         let pendingWakeup: PendingWakeup | undefined;
         let pendingHumanWait: PendingHumanWait | undefined;
         // AB-44 — F3 signal-payload resume. The signal name a `requestHumanInput`
@@ -324,19 +325,17 @@ export function createRunWorkflow(
             snapshot = conversationAfterStep(snapshot, stepResult);
             lastStepSnapshot = snapshot;
 
-            // Accumulate park requests from this step's memoized result. Last-write-
-            // wins across steps, matching the in-process tool semantics (a later
-            // `scheduleWakeup`/`requestHumanInput` call overwrites a prior one).
+            // Accumulate the park request from this step's memoized result. A step
+            // parks on at most one request, and the first one wins (COR-1578): each
+            // park tool refuses a request made while either slot is already set, so
+            // a step made since that change never sets both.
             //
-            // MUTUAL EXCLUSIVITY INVARIANT: `pendingWakeup` and `pendingHumanWait`
-            // are mutually exclusive — only one park type governs after the loop
-            // (DurableRunDeps contract). Enforced here by clearing the OTHER local
-            // whenever one is set, so the last-set value wins even across steps.
-            // Within a single step's memo result, both could be present if the agent
-            // called both tools (an unusual but valid sequence); the `pendingHumanWait`
-            // check runs second, so it clears a same-step `pendingWakeup`, matching
-            // the reasonable user expectation that an explicit human-input request
-            // supersedes an autonomous wakeup schedule.
+            // The clearing below is kept for REPLAY only. A step memo checkpointed
+            // before that change can hold both slots (a same-step wakeup and human
+            // input), and replaying it must come out as it did then: the
+            // `pendingHumanWait` check runs second, so it clears a same-step
+            // `pendingWakeup`, and across steps the latest request governs. Do not
+            // change that order without a migration for the old checkpoints.
             if (stepResult.pendingWakeup !== undefined) {
               pendingWakeup = stepResult.pendingWakeup;
               pendingHumanWait = undefined;

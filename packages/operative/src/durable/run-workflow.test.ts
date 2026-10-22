@@ -2891,6 +2891,12 @@ describe('durable agentRun workflow', () => {
 
   describe('Park request mutual exclusivity (PRRT_kwDORvupsc6MZ-vk)', () => {
     /**
+     * COR-1578: a new step can no longer hold both park requests. The tools honour the first
+     * request in a step and refuse the rest, so the last-write-wins rule described below is no
+     * longer the live contract. The accumulation loop's clearing stays only to replay a step memo
+     * checkpointed before that change, and this test, whose stand-in tools write both slots
+     * directly, pins that replay path.
+     *
      * REGRESSION TESTS for the "pick only one durable park request" finding.
      *
      * Bug: when a durable run accumulated BOTH `pendingWakeup` (from a

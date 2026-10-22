@@ -2,7 +2,8 @@ import { z } from 'zod';
 
 import { renderDurationLabel } from './durable/continuation-input';
 import { DurableCapabilityUnavailableError } from './durable/durable-capability-unavailable-error';
-import type { PendingWakeup } from './durable/types';
+import type { PendingHumanWait, PendingWakeup } from './durable/types';
+import { refuseIfStepIsParked, type RefusedParkRequest } from './park-refusal';
 
 /**
  * Input shape for the `scheduleWakeup` tool. The agent calls this tool to
@@ -44,6 +45,17 @@ export interface ScheduleWakeupResult {
 }
 
 /**
+ * What `scheduleWakeup` returns for a request made after the step already holds a park (COR-1578):
+ * `scheduled: false` and the park the step holds. The request took no slot.
+ */
+export interface RefusedWakeupResult extends RefusedParkRequest {
+  scheduled: false;
+}
+
+/** Either outcome of a `scheduleWakeup` call: the wakeup was scheduled, or the step's first park stands. */
+export type ScheduleWakeupOutcome = ScheduleWakeupResult | RefusedWakeupResult;
+
+/**
  * The interface the `scheduleWakeup` tool needs from its context. The
  * `pendingWakeup` mutable slot lives on `DurableRunDeps.pendingWakeup` and is
  * injected here via the tool factory.
@@ -54,6 +66,11 @@ export interface ScheduleWakeupResult {
 export interface ScheduleWakeupContext {
   /** Mutable slot — the tool writes the wakeup request here. */
   pendingWakeup: PendingWakeup | undefined;
+  /**
+   * The `requestHumanInput` tool's slot, read-only here: a human-input request already made in this
+   * step refuses a wakeup, because a step parks on at most one request (COR-1578).
+   */
+  readonly pendingHumanWait: PendingHumanWait | undefined;
   /**
    * Whether this run has a compatible durable execution context attached
    * (a bureau with a durable engine, regardless of whether its checkpoint
@@ -76,7 +93,7 @@ export interface CreateScheduleWakeupToolOptions {
    * The mutable context the tool writes the wakeup request into. In production
    * this is the `DurableRunDeps` object (the tool and the workflow share the
    * same in-process reference). In tests, pass a plain `{ pendingWakeup:
-   * undefined }` stub.
+   * undefined, pendingHumanWait: undefined, durable: true }` stub.
    */
   context: ScheduleWakeupContext;
 }
@@ -94,6 +111,11 @@ export interface CreateScheduleWakeupToolOptions {
  * `[wakeup] Resumed after sleeping ...` conversation message carrying the
  * requested duration and this tool's `note` (AB-45) — it never merely delays
  * terminal completion.
+ *
+ * A step parks on at most one request: the first human-input or wakeup request to reach `execute`
+ * in a step is honored, and any later one returns a {@link RefusedWakeupResult} instead of a
+ * scheduled result. A refusal is a normal tool result, so the step completes and the model reads it
+ * in its next request. The durable-capability check still runs first.
  *
  * This is an **opt-in built-in tool** — the bureau or agent explicitly adds it
  * to the toolbox (no ambient grant). It only works in a durable run; calling it
@@ -119,6 +141,9 @@ export interface CreateScheduleWakeupToolOptions {
  *       set pendingWakeup(value) {
  *         durableRunDeps.pendingWakeup = value;
  *       },
+ *       get pendingHumanWait() {
+ *         return durableRunDeps.pendingHumanWait;
+ *       },
  *       durable: true,
  *     },
  *   }),
@@ -128,7 +153,7 @@ export interface CreateScheduleWakeupToolOptions {
  * @example
  * ```ts
  * // Standalone (test):
- * const ctx = { pendingWakeup: undefined, durable: true };
+ * const ctx = { pendingWakeup: undefined, pendingHumanWait: undefined, durable: true };
  * const tool = createScheduleWakeupTool({ context: ctx });
  * await tool.execute({ in: '6h', note: 'Check deploy' });
  * expect(ctx.pendingWakeup?.duration).toBe('6h');
@@ -141,7 +166,8 @@ export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOption
     name: 'scheduleWakeup',
     description:
       'Schedule a wakeup: park this run for the given duration and resume automatically. ' +
-      'Use to sleep until a future event (e.g. "wake me in 6h to check the deploy").',
+      'Use to sleep until a future event (e.g. "wake me in 6h to check the deploy"). ' +
+      'Only the first human-input or wakeup request in a step is honored.',
 
     /**
      * Zod schema for the tool's input arguments. Armorer's `createToolbox`
@@ -170,12 +196,19 @@ export function createScheduleWakeupTool(options: CreateScheduleWakeupToolOption
      * shared context so the durable workflow can park after the step loop exits.
      *
      * @param input - The wakeup request: `in` (duration) + optional `note`.
-     * @returns A confirmation result surfaced to the LLM.
+     * @returns A confirmation result surfaced to the LLM, or a refusal when the step already holds a park.
      */
-    execute(input: ScheduleWakeupInput): ScheduleWakeupResult {
+    execute(input: ScheduleWakeupInput): ScheduleWakeupOutcome {
       if (!context.durable) {
         throw new DurableCapabilityUnavailableError('scheduleWakeup');
       }
+
+      // COR-1578 — first request wins: a step that already holds a park refuses this one.
+      const refusal = refuseIfStepIsParked({
+        pendingHumanWait: context.pendingHumanWait,
+        pendingWakeup: context.pendingWakeup,
+      });
+      if (refusal !== undefined) return { scheduled: false, ...refusal };
 
       context.pendingWakeup = {
         duration: input.in,
