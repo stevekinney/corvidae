@@ -140,7 +140,7 @@ function answer(view: ViewName, outcome: Outcome, input: RequestInfo | URL, init
             ? // The agent editor's probe parses the catalog, so it answers one.
               { models: [], tools: [] }
             : call.method === 'bureau.tasks.list'
-              ? { tasks: empty ? [] : [taskFixture()], nextOffset: null }
+              ? { tasks: empty ? [] : [taskFixture()], nextPageToken: null }
               : call.method === 'bureau.reviews.list'
                 ? { reviews: empty ? [] : [toolApprovalFixture()] }
                 : call.method === 'weft.workflows.definitions.list'
@@ -846,7 +846,7 @@ describe('the Tasks view', () => {
 
   test('the list is empty, in the words copy.ts holds, when the caller has no task', async () => {
     const { methods } = stubBureau({
-      'bureau.tasks.list': () => rpc('bureau.tasks.list', { tasks: [], nextOffset: null }),
+      'bureau.tasks.list': () => rpc('bureau.tasks.list', { tasks: [], nextPageToken: null }),
     });
     const { container, findByRole } = mount('tasks', { pattern: '/tasks' });
     await findByRole('heading', { level: 1, name: VIEW_COPY.tasks.empty?.title ?? '' });
