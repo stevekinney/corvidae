@@ -111,7 +111,8 @@ describe('the boot pass after event retention removed a fire’s settled event',
       current.runtime.setTime(at);
       await current.bureau.runDurableMaintenance(ORIGIN);
       expect(await settledEventsOf(current.bureau, fireId)).toHaveLength(0);
-      expect((await current.bureau.tasks.get(fireId))?.status).toBe('completed');
+      const view = await current.bureau.tasks.get(fireId);
+      expect(view?.status).toBe('completed');
 
       current = await openAt(path, `boot-${round}`, at);
 
