@@ -915,6 +915,33 @@ describe('review fixes', () => {
     expect(diagnostics.some((entry) => entry.message.startsWith('components[0]'))).toBe(true);
     expect(screen.getByRole('button', { name: 'Open' }).hasAttribute('disabled')).toBe(true);
   });
+
+  test('members named constructor or prototype are ordinary data, and still pollute nothing', async () => {
+    const changes: A2uiJsonValue[] = [];
+    render(A2uiSurface, {
+      props: {
+        surfaceId: 'member-names',
+        components: [
+          { id: 'root', component: 'Column', children: ['a', 'b'] },
+          { id: 'a', component: 'TextField', label: 'A', value: { path: '/constructor' } },
+          { id: 'b', component: 'TextField', label: 'B', value: { path: '/product/prototype/x' } },
+        ],
+        onDataModelChange: (model: A2uiJsonValue) => changes.push(model),
+      },
+    });
+    await flush();
+
+    await fireEvent.input(screen.getByLabelText('A'), { target: { value: 'one' } });
+    await fireEvent.input(screen.getByLabelText('B'), { target: { value: 'two' } });
+    await flush();
+
+    // Compared as JSON: an own `constructor` member confuses structural equality.
+    expect(JSON.stringify(changes.at(-1))).toBe(
+      JSON.stringify({ constructor: 'one', product: { prototype: { x: 'two' } } }),
+    );
+    expect(Reflect.get({}, 'x')).toBeUndefined();
+    expect(Reflect.get(Object.prototype, 'x')).toBeUndefined();
+  });
 });
 
 describe('control fixes', () => {
