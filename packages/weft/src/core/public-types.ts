@@ -66,6 +66,7 @@ export type {
   CoordinatedUpdateResult,
   DefinitionSchema,
   DetachedChildWorkflowOptions,
+  DisjointFrom,
   Duration,
   EngineOptions,
   FailureCategory,
@@ -81,6 +82,7 @@ export type {
   ListFilter,
   ListOptions,
   MarkBuilderState,
+  MergeMaps,
   NormalizeActivities,
   NormalizedActivityEntry,
   NormalizedRetentionPolicy,
@@ -182,3 +184,9 @@ export type {
   WorkflowTypeRetentionPolicy,
 } from './types.ts';
 export type { TimerEntry } from './types/checkpoint.ts';
+export {
+  createWorkflowFactory,
+  type WorkflowFactory,
+  type WorkflowFactoryEngineOptions,
+  type WorkflowFactoryEntries,
+} from './workflow-factory.ts';
