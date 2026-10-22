@@ -12,13 +12,8 @@ import {
 } from './governed-administration';
 import { deleteLocated, forget } from './governed-forgetting';
 import type { CreateGovernedMemoryOptions, GovernedMemory } from './governed-memory-types';
-import {
-  exportRecords,
-  getRecord,
-  listRecords,
-  recallForModel,
-  searchRecords,
-} from './governed-reads';
+import { exportRecords, getRecord, listRecords, searchRecords } from './governed-reads';
+import { recallForModel } from './governed-recall';
 import {
   changeLegalHold,
   changeShare,

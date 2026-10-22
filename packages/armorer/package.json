@@ -31,6 +31,7 @@
     "@lostgradient/lifecycle": "workspace:*",
     "@modelcontextprotocol/client": "catalog:",
     "@modelcontextprotocol/core": "catalog:",
+    "@modelcontextprotocol/ext-apps": "catalog:",
     "@modelcontextprotocol/server": "catalog:",
     "@openai/agents": "catalog:",
     "@opentelemetry/api": "catalog:",
