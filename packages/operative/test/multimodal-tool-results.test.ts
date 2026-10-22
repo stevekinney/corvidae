@@ -1,7 +1,7 @@
 import { createTestToolbox, createTool } from 'armorer';
 import { toolContent, type ToolResultPart } from 'armorer/protocol';
 import { describe, expect, it } from 'bun:test';
-import { Conversation, type MultiModalContent } from 'conversationalist';
+import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import { noToolCalls } from '../src/conditions/predicates';
@@ -222,30 +222,29 @@ describe('tool-result media capability', () => {
 describe('sub-agent media', () => {
   const imageResponse: GenerateResponse = {
     content: 'A chart.',
-    parts: [{ type: 'text', text: 'A chart.' }, inlineImage as MultiModalContent],
+    parts: [{ type: 'text', text: 'A chart.' }, inlineImage],
     toolCalls: [],
   };
 
-  function childTool(toToolOutput?: typeof subagentToolContent) {
+  function childOptions() {
     const admitter = createScriptedMediaAdmitter();
     const child = createAgent({
       generate: createMockGenerate([imageResponse]),
       generatedMediaAdmitter: admitter.port,
     });
-    return createSubagentTool({
+    return {
       name: 'draw',
       description: 'Draws',
       input: z.object({ what: z.string() }),
       agent: child,
       agentName: 'artist',
-      toAgentInput: ({ what }) => what,
-      returnMode: 'full',
-      ...(toToolOutput === undefined ? {} : { toToolOutput }),
-    });
+      toAgentInput: ({ what }: { what: string }) => what,
+      returnMode: 'full' as const,
+    };
   }
 
   it('refuses the default text-only projection rather than dropping the media', async () => {
-    const result = await createTestToolbox([childTool()]).execute({
+    const result = await createTestToolbox([createSubagentTool(childOptions())]).execute({
       name: 'draw',
       arguments: { what: 'a chart' },
     });
@@ -254,7 +253,9 @@ describe('sub-agent media', () => {
   });
 
   it('carries the child text and managed-asset media through subagentToolContent', async () => {
-    const result = await createTestToolbox([childTool(subagentToolContent)]).execute({
+    const result = await createTestToolbox([
+      createSubagentTool({ ...childOptions(), toToolOutput: subagentToolContent }),
+    ]).execute({
       name: 'draw',
       arguments: { what: 'a chart' },
     });
