@@ -28,6 +28,9 @@ Declare `"@lostgradient/memory": "workspace:*"` in the consuming workspace's dep
   - [One access predicate](#one-access-predicate)
   - [Writes and admission](#writes-and-admission)
   - [Reads and recall](#reads-and-recall)
+  - [Retrieval plans and evidence bundles](#retrieval-plans-and-evidence-bundles)
+  - [Replaying a recall](#replaying-a-recall)
+  - [The bundle in an effective-context epoch](#the-bundle-in-an-effective-context-epoch)
   - [Operation results](#operation-results)
   - [Sharing, quarantine, and revocation](#sharing-quarantine-and-revocation)
   - [Forgetting](#forgetting)
@@ -1975,6 +1978,80 @@ A record's trust comes from the policy's `sourceTrust` for its source (`MEMORY_T
 | `export(authority, { collection, visibility? })` | `{ status, exportId, records, recordIds }`: every readable record in the collection. It stores an export manifest in the ledger, then reads every exported record again and leaves out, and scrubs from the manifest, any record a deletion removed or claimed meanwhile. |
 
 `recallForModel()` is the only recall path meant for a model. It runs a versioned retrieval plan (`createMemoryRetrievalPlan()`): policy filters first, on persisted governance alone, then scoring, then admission in rank order, so a withheld record never shrinks the evidence returned. A record is withheld before it is scored when it was evicted from `contextId`, when its trust is below the policy's minimum for its class (`procedural` and `identity` need `verified` by default), or when its retention period has ended and no legal hold suspends it, and at admission when a recall detector trips on it, which also quarantines it. `rendered` is a `<memory-evidence>` block: `MEMORY_EVIDENCE_PREAMBLE` followed by one JSON line per record, with `<` and `>` escaped so content cannot close the block. `renderMemoryEvidence(evidence)` builds the same block. Each `MemoryEvidence` item carries `label: 'evidence'` and `authority: 'none'`. The label tells the model what it is reading; the guarantee is that nothing recalled can change the caller's authority, which comes from the persisted request, not from content.
+
+### Retrieval plans and evidence bundles
+
+A recall runs a `MemoryRetrievalPlan`. `createMemoryRetrievalPlan(input?)` builds one and deep-freezes it, and its `revision` is a SHA-256 digest of everything in it. Stages always run in the fixed order of `MEMORY_RETRIEVAL_STAGES`, however the input lists them:
+
+| Stage | What it does |
+| --- | --- |
+| `temporal-filter` | With `constraints.asOf`, leaves out records observed after it, and returns a record superseded after it as `historical-projection`. |
+| `entity-filter` | With `constraints.entities`, keeps records whose content names every entity. |
+| `source-session-constraint` | With `constraints.sources` or `constraints.runId`, keeps records from those sources or that run. |
+| `exact-lexical` | BM25 (or the configured text-search provider), plus 1 for an exact identifier token or verbatim phrase. |
+| `semantic` | Cosine similarity to the embedded query. |
+| `rank-fusion` | 0.7 × semantic + 0.3 × lexical + exact, times the record's retrieval weight. A plan with both scoring stages needs it. |
+| `reformulation` | When a pass leaves candidates below `minimumScore`, rescores them with the query's keywords, up to `maxIterations` passes. |
+| `provenance-expansion` | Adds the sources of a selected derived record, wherever they are stored, held to the same filters. |
+| `context-expansion` | Always `unavailable`: governed memory stores no raw-evidence chunks to expand a record into. |
+| `counterevidence` | Records superseded predecessors of a selected record, and unselected candidates within `conflictSimilarity` of it, as contradictions. |
+
+Before anything is scored, every candidate passes the policy filters in `MEMORY_POLICY_FILTERS` order: principal, tenant, resource, purpose, classification, trust, retention, eviction, quarantine, index, supersession, deletion. The filters read persisted governance only, never content. A record another principal or tenant owns adds to a count and never appears by identifier. The `deletion` filter excludes nothing: a record a deletion has only claimed stays recallable until its synchronous lane removes it.
+
+The budgets (`maxTokens`, `maxLatencyMilliseconds`, `maxCost`, `maxCandidates`, `maxIterations`) bound the recall. Tokens are the whole rendered block at four characters each; cost counts embedder calls and detector scans. Every number in a plan must be finite, `maxCandidates` and `maxIterations` must be whole numbers, and `minimumScore` is `0` (disabled) or positive. One policy snapshot taken when the recall starts governs every filter, detector, and recorded revision. A plan passed in is always rebuilt from its fields, so the recorded `planRevision` digests the plan that ran.
+
+```ts
+import {
+  createMemoryRetrievalPlan,
+  type GovernedMemory,
+  type MemoryAuthority,
+} from '@lostgradient/memory';
+
+declare const memory: GovernedMemory;
+declare const alice: MemoryAuthority;
+
+const plan = createMemoryRetrievalPlan({
+  constraints: { asOf: Date.parse('2026-06-01T00:00:00.000Z') },
+  budgets: { maxCandidates: 200 },
+});
+const bundle = await memory.recallForModel(alice, 'which city', { collection: 'travel', plan });
+
+console.log(bundle.stopReason); // 'sufficient', 'exhausted', 'unavailable', 'canceled', or 'failed'
+for (const exclusion of bundle.exclusions) {
+  console.log(exclusion.recordId, exclusion.stage, exclusion.reason);
+}
+```
+
+The bundle keeps `{ operationId, evidence, withheld, rendered }` and adds:
+
+- **Revisions and digests:** `revision`, `plan`, `planRevision`, `policyRevision`, `queryDigest`, and `contentDigest`. `revision` is content-addressed: it digests the plan and policy revisions, the query digest, the selected records in order with their revisions and kinds, and the exclusions, and nothing time-dependent. Two recalls that select the same evidence for the same reasons share it. `contentDigest` digests `rendered`.
+- **Why:** `candidates` (each authorized record's id, `<version>:<contentDigest>` revision, kind, selection, and scores by stage), `exclusions`, `filters` (how many each policy filter left out), `stages` (`applied`, `skipped`, or `unavailable`, with a reason), `reformulations`, and `contradictions`.
+- **Context:** `redactions`, `freshness` (each selected record's `eventAt`, `updatedAt`, and age), and `spent` against each budget.
+
+Exactly one stop reason ends every recall. `unavailable` means the caller may not search or named no collection, and no ledger event is written. `failed` means the embedder or text-search provider threw: the bundle carries no evidence, and a ledger failure still escapes the call. `withheld` counts only the admission exclusions (`evicted`, `trust-below-minimum`, `retention-expired`, `content-policy`).
+
+`MemoryEvidence.kind` keeps different results apart: `current-projection`, `historical-projection`, `source-evidence`, `conflicting-candidate`, `uncertain-claim` (untrusted content a model wrote through a tool), or `derived-summary`. The rendered line spells out every kind except the default, `source-evidence`.
+
+The `memory.recall.admitted` ledger event records `stopReason`, `planRevision`, `bundleRevision`, `queryDigest`, and `contentDigest`: digests, never content.
+
+### Replaying a recall
+
+`memoryEvidenceManifest(bundle)` reduces a bundle to what a replay must reproduce: its revisions, stop reason, selected records with their revisions and kinds, and exclusions. `compareMemoryEvidenceManifests(recorded, replayed)` names every difference, in a fixed order: plan or policy revision, query, stop reason, record revision, evidence added, removed, or reordered, and exclusion changes. If the bundle revisions differ and nothing else explains it, it reports a `bundle-revision` difference, so a replay never passes while its bundle differs.
+
+`bun scripts/replay-recall.ts <recording.json>...` (run from `packages/memory`) replays recordings against fixed records and a fixed policy revision, using a deterministic clock and identifier sequence. A recording passes when its replay reproduces its `manifest`, or, when it lists `expectedDifferences`, when it produces exactly those differences and exactly its `expectedManifest`. A recording with no manifest never passes. `--record` rewrites a recording as a fresh baseline and drops its expectations. The checked-in recordings are in `test/fixtures/recall/`.
+
+### The bundle in an effective-context epoch
+
+When a run seals effective-context epochs, Operative's sealer records a `memory-evidence` source with trust `untrusted-retrieved`. It reads Bureau's evidence row: the system message whose `MEMORY_EVIDENCE_METADATA_KEY` metadata carries the bundle's `bundleRevision` and `contentDigest`. The source's `revision` is the bundle revision and its `digest` the content digest, which the sealer recomputes against the row:
+
+| What is in context | Disposition |
+| --- | --- |
+| No evidence row | `absent-by-composition` |
+| One intact row | `included` |
+| The newest row rewritten (a compaction or redaction changed it) | `excluded: memory-evidence-modified` |
+| Two different intact bundles | `excluded: stale-memory-evidence-in-context` |
+
+Bureau's recall hook withdraws any row recalled under a memory policy revision that is no longer in force, on every step, including step 0 of a session's next run and the first step of a recovered run, and then recalls again. If the policy moves while that recall runs, it recalls once more and appends nothing when the policy moves again. Steering does not change what memory returns, so the same bundle stays current. An agent that seals epochs passes `createAgent({ createContextEpoch: () => createContextEpochSealer() })`, so each run keeps its own epoch chain. A recovered run starts a new chain: chains are held in memory.
 
 ### Operation results
 
