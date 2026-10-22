@@ -9,6 +9,10 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { agentFileText, KNOWN_MODEL } from '../../testing/agent-file-fixtures.test-support.ts';
 import {
+  agentDefinitionsGetOperation,
+  agentDefinitionsListOperation,
+} from './agent-definitions-operations.ts';
+import {
   callAs,
   DEFINITION,
   disposeServed,
@@ -111,5 +115,35 @@ describe('definitionRevision on the wire', () => {
       listOf(defined, 'agents').find((entry) => entry['id'] === 'broken')?.['definitionRevision'],
     ).toBeNull();
     expect(listOf(listed, 'agents').some((entry) => entry['name'] === 'broken')).toBe(false);
+  });
+
+  it('is never 0 on the wire: a revision starts at 1', () => {
+    const listing = {
+      id: 'x',
+      source: 'file',
+      state: 'ready',
+      name: 'x',
+      description: null,
+      published: false,
+      owner: 'anonymous:local',
+      hash: 'a'.repeat(64),
+      problem: null,
+    };
+    const accepts = (definitionRevision: unknown) =>
+      agentDefinitionsListOperation.outputSchema.safeParse({
+        agents: [{ ...listing, definitionRevision }],
+        nextOffset: null,
+      }).success;
+
+    expect([1, 7, null].map(accepts)).toEqual([true, true, true]);
+    expect([0, -1, 1.5, '1'].map(accepts)).toEqual([false, false, false, false]);
+    expect(
+      agentDefinitionsGetOperation.outputSchema.safeParse({
+        ...listing,
+        definitionRevision: 0,
+        definition: null,
+        text: null,
+      }).success,
+    ).toBe(false);
   });
 });
