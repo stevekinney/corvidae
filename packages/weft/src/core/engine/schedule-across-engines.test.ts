@@ -14,6 +14,7 @@ import { encode } from '../codec.ts';
 import type { Engine } from '../engine.ts';
 import type { ScheduleState } from '../types.ts';
 import { getInternals } from './internals.ts';
+import * as scheduleOccurrence from './schedule-occurrence.ts';
 import { ScheduleStaleRevisionError } from './schedule-stale-revision-error.ts';
 import {
   createEngine,
@@ -393,6 +394,45 @@ describe('a timer tick on one engine while another changes the schedule', () => 
       expect(state.revision).toBe(2);
       expect(state.cronExpression).toBe('*/5 * * * *');
     } finally {
+      consoleError.mockRestore();
+    }
+  });
+});
+
+describe('a timer tick that cannot make sense of a schedule', () => {
+  it('leaves a schedule alone when the occurrence collector finds nothing due at its fire time', async () => {
+    const { clock, shared, engineB } = await openEngines();
+    const before = await stateOf(shared);
+    const due = spyOn(scheduleOccurrence, 'collectDueScheduleOccurrences').mockImplementationOnce(
+      () => [],
+    );
+    try {
+      await tickB(clock, engineB, shared);
+      await drainEngine();
+
+      expect(await stateOf(shared)).toEqual(before);
+      expect(due).toHaveBeenCalledTimes(1);
+    } finally {
+      due.mockRestore();
+    }
+  });
+
+  it('pauses a schedule whose cadence stops advancing while it counts a missed fire', async () => {
+    const { clock, shared, engineB } = await openEngines();
+    const consoleError = spyOn(console, 'error').mockImplementation(() => {});
+    const next = spyOn(scheduleOccurrence, 'getNextScheduleOccurrence').mockImplementationOnce(
+      (_state, from) => from,
+    );
+    try {
+      const ticking = tickB(clock, engineB, shared, 10 * 60_000);
+      await ticking;
+      await drainEngine();
+
+      const state = await stateOf(shared);
+      expect(state.status).toBe('paused');
+      expect(consoleError).toHaveBeenCalled();
+    } finally {
+      next.mockRestore();
       consoleError.mockRestore();
     }
   });
