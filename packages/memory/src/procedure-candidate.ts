@@ -64,8 +64,13 @@ export interface ExtractProcedureCandidateOptions {
   readonly failedEpisodes?: readonly ProjectionReference[];
 }
 
-async function readEpisodes(
-  options: ExtractProcedureCandidateOptions,
+/**
+ * Reads each episode at its exact revision and checks it is still the current,
+ * unrevoked revision, returning their evidence. Promotion runs it again, so an
+ * episode withdrawn after extraction cannot back a procedure.
+ */
+export async function readCurrentEpisodes(
+  options: Pick<ExtractProcedureCandidateOptions, 'storage' | 'tenantId' | 'namespace'>,
   references: readonly ProjectionReference[],
 ): Promise<ProjectionSource[]> {
   const sources: ProjectionSource[] = [];
@@ -126,8 +131,8 @@ export async function extractProcedureCandidate(
     );
   }
   const sources = [
-    ...(await readEpisodes(options, options.successfulEpisodes)),
-    ...(await readEpisodes(options, failedEpisodes)),
+    ...(await readCurrentEpisodes(options, options.successfulEpisodes)),
+    ...(await readCurrentEpisodes(options, failedEpisodes)),
   ];
   const distinct = new Map(sources.map((source) => [source.evidenceId, source]));
   return {

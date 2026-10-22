@@ -1,16 +1,23 @@
-import type { ProcedurePayloadV2, ProjectionReference } from './evidence-projection-schema';
+import {
+  PROCEDURE_REVIEWER_KINDS,
+  type ProcedurePayloadV2,
+  type ProjectionReference,
+} from './evidence-projection-schema';
 import { digestOfText } from './evidence-schema';
-import type { EvidenceProducer } from './evidence-schema-primitives';
 import type { MemoryAuthority, MemoryPrincipal } from './governance/authority';
-import type { ProcedureCandidate } from './procedure-candidate';
+import {
+  type ProcedureCandidate,
+  ProcedureCandidateError,
+  readCurrentEpisodes,
+} from './procedure-candidate';
 import type { TransitionEngine } from './transition-engine';
 import type { TransitionResult } from './transition-outcome';
 import type { TransitionProposal } from './transition-proposal';
 
 /**
- * What one validation run found. `fixture` is the exact fixture it ran, digested
- * into the promoted procedure's provenance; `evidence` is what it observed, kept
- * verbatim in the outcome evidence record.
+ * What one validation run found. `fixture` is the exact fixture it ran and
+ * `evidence` what it observed; both are digested into the promoted procedure's
+ * provenance, and the observation is kept verbatim.
  */
 export interface ProcedureValidationRun {
   readonly outcome: 'passed' | 'failed';
@@ -36,6 +43,7 @@ export interface ProcedureValidator {
 /** A human reviewer's decision on a high-impact promotion. */
 export interface ProcedureReviewDecision {
   readonly reviewId: string;
+  /** A person: a `user` or `governance` principal. Any other kind is refused. */
   readonly reviewer: MemoryPrincipal;
   readonly approved: boolean;
   readonly decidedAt: number;
@@ -44,22 +52,26 @@ export interface ProcedureReviewDecision {
 /** What {@link promoteProcedure} needs: the candidate, its validator, and, for a high-impact one, a review. */
 export interface PromoteProcedureOptions {
   readonly engine: TransitionEngine;
-  /** The authority the promotion is written under; it needs `memory:write`. */
+  /** The authority the promotion is written under; it needs `memory:write` and the candidate's tenant. */
   readonly authority: MemoryAuthority;
   readonly candidate: ProcedureCandidate;
   /** The procedure projection's id. */
   readonly id: string;
-  /** Names the promotion's transitions, so a retried promotion replays instead of writing twice. */
+  /** Names the promotion's transition, so a retried promotion replays instead of writing twice. */
   readonly operationId: string;
   readonly projectorRevision: string;
   /** Without one, nothing validates the candidate, and promotion refuses it. */
   readonly validator?: ProcedureValidator;
   /** Required for a high-impact candidate; without it, promotion stops at `pending-review`. */
   readonly review?: ProcedureReviewDecision;
-  /** The current revision of a validated procedure this one replaces, superseded in the same batch. */
-  readonly supersedes?: ProjectionReference;
+  /**
+   * The current revision of procedure `id` that this validation replaces. The
+   * replacement is a `rebuilt` revision of the same procedure, so the old one
+   * stays in its history; a revision that is no longer current is refused by
+   * the engine.
+   */
+  readonly replaces?: number;
   readonly confidence?: number;
-  readonly now: () => number;
 }
 
 /** What a high-impact promotion waits on: everything a reviewer needs to decide it. */
@@ -78,18 +90,26 @@ export interface ProcedureReviewRequest {
  *
  * - `refused`: nothing was written. `unvalidated` when no validator ran (a
  *   success count is not validation), `validation-failed` when it failed,
- *   `review-declined` when the reviewer said no.
+ *   `review-declined` or `review-not-human` for the review gate,
+ *   `episode-withdrawn` when an episode the candidate rests on is no longer
+ *   current, and `wrong-tenant` when the candidate was extracted for another
+ *   tenant than the authority's.
  * - `pending-review`: validation passed, but a high-impact procedure needs a
  *   reviewer's decision first. Nothing was written; promote again with the
  *   decision. A host routes this through its own approval path.
- * - `promoted`: the procedure is committed. `results` are the engine's
- *   receipts, outcome evidence first.
- * - `rejected`: the engine refused a transition; `result` says why.
+ * - `promoted`: the procedure revision is committed in one transition.
+ * - `rejected`: the engine refused the transition; `result` says why.
  */
 export type ProcedurePromotion =
   | {
       readonly status: 'refused';
-      readonly reason: 'unvalidated' | 'validation-failed' | 'review-declined';
+      readonly reason:
+        | 'unvalidated'
+        | 'validation-failed'
+        | 'review-declined'
+        | 'review-not-human'
+        | 'episode-withdrawn'
+        | 'wrong-tenant';
       readonly detail: string;
       readonly run?: ProcedureValidationRun;
     }
@@ -97,167 +117,197 @@ export type ProcedurePromotion =
   | {
       readonly status: 'promoted';
       readonly procedure: ProjectionReference;
-      readonly results: readonly TransitionResult[];
+      readonly result: TransitionResult;
     }
   | { readonly status: 'rejected'; readonly result: TransitionResult };
 
-function outcomeEvidence(
-  options: PromoteProcedureOptions,
-  validator: ProcedureValidator,
-  run: ProcedureValidationRun,
-  fixtureDigest: string,
-) {
-  const { authority, candidate } = options;
-  const text = JSON.stringify({
-    procedure: `${candidate.namespace}/${options.id}`,
-    validator: { name: validator.name, revision: validator.revision, kind: validator.kind },
-    fixtureDigest,
-    outcome: run.outcome,
-    evidence: run.evidence,
-  });
-  const at = options.now();
-  const producer: EvidenceProducer = {
-    kind: 'service',
-    id: validator.name,
-    version: validator.revision,
-  };
-  return {
-    schemaVersion: 1 as const,
-    id: `${options.operationId}:validation`,
-    tenantId: authority.tenantId,
-    ownerId: authority.ownerId,
-    kind: 'tool-result' as const,
-    sourceLocator: `procedure-validation:${validator.name}@${validator.revision}`,
-    content: { kind: 'inline' as const, text },
-    digest: digestOfText(text),
-    producer,
-    principal: authority.principal,
-    // A deterministic replay is checked evidence; an evaluator's judgment is not.
-    trustTier: validator.kind === 'deterministic' ? ('verified' as const) : ('untrusted' as const),
-    eventAt: at,
-    observedAt: at,
-    classification: 'internal' as const,
-    authorizationScope: { visibility: 'private' as const, sharedWith: [] },
-    retention: { kind: 'source-linked' as const },
-  };
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const nested of Object.values(value)) deepFreeze(nested);
+    Object.freeze(value);
+  }
+  return value;
 }
 
 function procedurePayload(
   options: PromoteProcedureOptions,
+  candidate: ProcedureCandidate,
   validator: ProcedureValidator,
-  fixtureDigest: string,
-  outcomeEvidenceId: string,
+  run: ProcedureValidationRun,
 ): ProcedurePayloadV2 {
-  const { scope, ...draft } = options.candidate.draft;
+  const { scope, ...draft } = candidate.draft;
   const { review } = options;
   return {
     version: 2,
     ...draft,
     approval: { scope, required: scope === 'high-impact' },
     provenance: {
-      successfulEpisodes: [...options.candidate.successfulEpisodes],
-      failedEpisodes: [...options.candidate.failedEpisodes],
+      successfulEpisodes: [...candidate.successfulEpisodes],
+      failedEpisodes: [...candidate.failedEpisodes],
       validation: {
         evaluator: { name: validator.name, revision: validator.revision, kind: validator.kind },
-        fixtureDigest,
+        fixtureDigest: digestOfText(run.fixture),
         outcome: 'passed',
-        outcomeEvidenceId,
+        observation: run.evidence,
+        observationDigest: digestOfText(run.evidence),
       },
       ...(review === undefined
         ? {}
         : {
             review: {
-              reviewer: review.reviewer,
+              reviewer: { kind: review.reviewer.kind, id: review.reviewer.id },
               decidedAt: review.decidedAt,
               reviewId: review.reviewId,
             },
           }),
     },
-  };
-}
-
-/** Reads the outcome evidence id a validated procedure revision rests on, for a superseding promotion. */
-async function supersededOutcomeEvidence(
-  options: PromoteProcedureOptions,
-): Promise<string | undefined> {
-  if (options.supersedes === undefined) return undefined;
-  const previous = await options.engine.storage.getProjectionRevision(
-    options.authority.tenantId,
-    options.candidate.namespace,
-    options.supersedes.id,
-    options.supersedes.revision,
-  );
-  if (previous?.kind !== 'procedure' || !('version' in previous.payload)) return undefined;
-  return previous.payload.provenance.validation.outcomeEvidenceId;
-}
-
-function committed(result: TransitionResult): boolean {
-  return result.outcome === 'committed';
-}
-
-/** The proposals that commit a promotion: one batch when it supersedes, otherwise evidence then procedure. */
-async function promotionProposals(
-  options: PromoteProcedureOptions,
-  validator: ProcedureValidator,
-  run: ProcedureValidationRun,
-  fixtureDigest: string,
-): Promise<TransitionProposal[]> {
-  const { authority, candidate } = options;
-  const evidence = outcomeEvidence(options, validator, run, fixtureDigest);
-  const projection = {
-    id: options.id,
-    tenantId: authority.tenantId,
-    namespace: candidate.namespace,
-    kind: 'procedure' as const,
-    projectorRevision: options.projectorRevision,
-    sources: [...candidate.sources, { evidenceId: evidence.id, digest: evidence.digest }],
-    confidence: options.confidence ?? 0.5,
-    payload: procedurePayload(options, validator, fixtureDigest, evidence.id),
-  };
-  const base = { operationId: options.operationId, tenantId: authority.tenantId, authority };
-  const previousEvidence = await supersededOutcomeEvidence(options);
-  if (options.supersedes !== undefined && previousEvidence !== undefined) {
-    return [
-      {
-        ...base,
-        kind: 'correct-evidence',
-        successor: { ...evidence, supersedes: [previousEvidence] },
-        projections: [{ ...projection, supersedes: [options.supersedes] }],
-        revisions: [
-          {
-            namespace: candidate.namespace,
-            id: options.supersedes.id,
-            expectedRevision: options.supersedes.revision,
-            change: { kind: 'superseded', supersededBy: { id: options.id, revision: 1 } },
-          },
-        ],
-      },
-    ];
-  }
-  return [
-    {
-      ...base,
-      operationId: `${options.operationId}:validation`,
-      kind: 'append-evidence',
-      evidence: [evidence],
-    },
-    { ...base, kind: 'create-projection', projections: [projection] },
-  ];
+  } as ProcedurePayloadV2;
 }
 
 /**
- * Promotes a candidate to a validated procedure. A validator must run and pass,
- * and its exact fixture digest and outcome evidence become the procedure's
- * provenance and one of its sources, so the transition receipt records what the
- * promotion rested on. A high-impact candidate also waits for a reviewer: the
- * first call returns `pending-review`, and only a call carrying an approving
- * decision commits. The engine enforces both again (`procedure.causal-step-claimed`,
+ * The one transition that commits a promotion: a new procedure, or a rebuilt
+ * revision of the one it replaces. Nothing in it reads the clock, so a retried
+ * promotion has the same digest and replays its receipt.
+ */
+function promotionProposal(
+  options: PromoteProcedureOptions,
+  candidate: ProcedureCandidate,
+  validator: ProcedureValidator,
+  run: ProcedureValidationRun,
+): TransitionProposal {
+  const { authority } = options;
+  const payload = procedurePayload(options, candidate, validator, run);
+  const base = { operationId: options.operationId, tenantId: authority.tenantId, authority };
+  const confidence = options.confidence ?? 0.5;
+  if (options.replaces !== undefined) {
+    return {
+      ...base,
+      kind: 'revise-projection',
+      revisions: [
+        {
+          namespace: candidate.namespace,
+          id: options.id,
+          expectedRevision: options.replaces,
+          change: {
+            kind: 'rebuilt',
+            sources: [...candidate.sources],
+            payload,
+            confidence,
+            projectorRevision: options.projectorRevision,
+          },
+        },
+      ],
+    };
+  }
+  return {
+    ...base,
+    kind: 'create-projection',
+    projections: [
+      {
+        id: options.id,
+        tenantId: authority.tenantId,
+        namespace: candidate.namespace,
+        kind: 'procedure',
+        projectorRevision: options.projectorRevision,
+        sources: [...candidate.sources],
+        confidence,
+        payload,
+      },
+    ],
+  };
+}
+
+/** Refuses a candidate that cannot be promoted under this authority before anything runs. */
+async function preconditionRefusal(
+  options: PromoteProcedureOptions,
+  candidate: ProcedureCandidate,
+): Promise<ProcedurePromotion | undefined> {
+  if (candidate.tenantId !== options.authority.tenantId) {
+    return {
+      status: 'refused',
+      reason: 'wrong-tenant',
+      detail: `The candidate was extracted for tenant "${candidate.tenantId}", not "${options.authority.tenantId}".`,
+    };
+  }
+  const reviewer = options.review?.reviewer.kind;
+  if (
+    reviewer !== undefined &&
+    !(PROCEDURE_REVIEWER_KINDS as readonly string[]).includes(reviewer)
+  ) {
+    return {
+      status: 'refused',
+      reason: 'review-not-human',
+      detail: `A ${reviewer} principal cannot review a procedure; only a person can.`,
+    };
+  }
+  try {
+    await readCurrentEpisodes(
+      {
+        storage: options.engine.storage,
+        tenantId: candidate.tenantId,
+        namespace: candidate.namespace,
+      },
+      [...candidate.successfulEpisodes, ...candidate.failedEpisodes],
+    );
+  } catch (error) {
+    if (!(error instanceof ProcedureCandidateError)) throw error;
+    return { status: 'refused', reason: 'episode-withdrawn', detail: error.message };
+  }
+  return undefined;
+}
+
+/** The review gate: a high-impact candidate waits for an approving decision from a person. */
+function reviewGate(
+  options: PromoteProcedureOptions,
+  candidate: ProcedureCandidate,
+  validator: ProcedureValidator,
+  run: ProcedureValidationRun,
+): ProcedurePromotion | undefined {
+  if (candidate.draft.scope !== 'high-impact') return undefined;
+  const { review } = options;
+  if (review === undefined) {
+    return {
+      status: 'pending-review',
+      request: {
+        procedureId: options.id,
+        operationId: options.operationId,
+        title: candidate.draft.title,
+        scope: 'high-impact',
+        sideEffects: candidate.draft.sideEffects,
+        validator: { name: validator.name, revision: validator.revision },
+        fixtureDigest: digestOfText(run.fixture),
+      },
+    };
+  }
+  return review.approved
+    ? undefined
+    : {
+        status: 'refused',
+        reason: 'review-declined',
+        detail: `Review ${review.reviewId} declined it.`,
+      };
+}
+
+/**
+ * Promotes a candidate to a validated procedure, in one transition. A validator
+ * must run and pass; its fixture digest and its observation become the
+ * procedure's provenance, which the receipt's record digest covers. A
+ * high-impact candidate also waits for a person: the first call returns
+ * `pending-review`, and only a call carrying an approving decision commits.
+ *
+ * The candidate is snapshotted and frozen first, so neither the caller nor the
+ * validator can change what is stored after it was validated; its episodes are
+ * read again, so one withdrawn since extraction refuses the promotion. The
+ * engine enforces the invariants again (`procedure.causal-step-claimed`,
  * `procedure.high-impact-reviewed`), so a proposal written by hand cannot skip them.
  */
 export async function promoteProcedure(
   options: PromoteProcedureOptions,
 ): Promise<ProcedurePromotion> {
-  const { validator, candidate, review } = options;
+  const candidate = deepFreeze(structuredClone(options.candidate));
+  const refusal = await preconditionRefusal(options, candidate);
+  if (refusal !== undefined) return refusal;
+  const { validator } = options;
   if (validator === undefined) {
     return {
       status: 'refused',
@@ -269,35 +319,16 @@ export async function promoteProcedure(
   if (run.outcome !== 'passed') {
     return { status: 'refused', reason: 'validation-failed', detail: run.evidence, run };
   }
-  const fixtureDigest = digestOfText(run.fixture);
-  if (candidate.draft.scope === 'high-impact') {
-    if (review === undefined) {
-      return {
-        status: 'pending-review',
-        request: {
-          procedureId: options.id,
-          operationId: options.operationId,
-          title: candidate.draft.title,
-          scope: 'high-impact',
-          sideEffects: candidate.draft.sideEffects,
-          validator: { name: validator.name, revision: validator.revision },
-          fixtureDigest,
-        },
-      };
-    }
-    if (!review.approved) {
-      return {
-        status: 'refused',
-        reason: 'review-declined',
-        detail: `Review ${review.reviewId} declined it.`,
-      };
-    }
-  }
-  const results: TransitionResult[] = [];
-  for (const proposal of await promotionProposals(options, validator, run, fixtureDigest)) {
-    const result = await options.engine.submit(proposal);
-    if (!committed(result)) return { status: 'rejected', result };
-    results.push(result);
-  }
-  return { status: 'promoted', procedure: { id: options.id, revision: 1 }, results };
+  const gate = reviewGate(options, candidate, validator, run);
+  if (gate !== undefined) return gate;
+  const result = await options.engine.submit(promotionProposal(options, candidate, validator, run));
+  if (result.outcome !== 'committed') return { status: 'rejected', result };
+  return {
+    status: 'promoted',
+    procedure: {
+      id: options.id,
+      revision: options.replaces === undefined ? 1 : options.replaces + 1,
+    },
+    result,
+  };
 }

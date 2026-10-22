@@ -5,7 +5,6 @@ import {
   digestSchema,
   epochMilliseconds,
   nonEmpty,
-  principalSchema,
   producerSchema,
 } from './evidence-schema-primitives';
 
@@ -151,8 +150,15 @@ const procedureStepSchema = z
     'a tool step names its tool, and only a tool step',
   );
 
+/** The principal kinds that stand for a person, the only ones that may review a high-impact procedure. */
+export const PROCEDURE_REVIEWER_KINDS = ['user', 'governance'] as const;
+
 const procedureReviewSchema = z
-  .object({ reviewer: principalSchema, decidedAt: epochMilliseconds, reviewId: nonEmpty })
+  .object({
+    reviewer: z.object({ kind: z.enum(PROCEDURE_REVIEWER_KINDS), id: nonEmpty }).strict(),
+    decidedAt: epochMilliseconds,
+    reviewId: nonEmpty,
+  })
   .strict();
 
 const procedureValidationSchema = z
@@ -163,8 +169,9 @@ const procedureValidationSchema = z
     /** Digest of the exact fixture the validation ran. */
     fixtureDigest: digestSchema,
     outcome: z.literal('passed'),
-    /** The evidence record that holds the outcome; it is also one of the projection's sources. */
-    outcomeEvidenceId: nonEmpty,
+    /** What the validation observed, verbatim, and its digest. */
+    observation: nonEmpty,
+    observationDigest: digestSchema,
   })
   .strict();
 
@@ -209,6 +216,28 @@ export type ProcedureStep = ProcedurePayloadV2['steps'][number];
 /** One step's identity: two steps with the same key are the same step. */
 export function procedureStepKey(step: string | ProcedureStep): string {
   return typeof step === 'string' ? step : JSON.stringify([step.kind, step.tool ?? '', step.text]);
+}
+
+/**
+ * A procedure's searchable text. A validated procedure includes what it is for,
+ * the tools it calls, and the failures it is known for, so a query that names
+ * only an objective, a tool, or a failure signature still finds it.
+ */
+function procedureText(payload: z.infer<typeof procedurePayload>): string {
+  if (!('version' in payload)) return [payload.title, ...payload.steps].join('\n');
+  return [
+    payload.title,
+    payload.objective,
+    payload.taskClass,
+    ...payload.preconditions,
+    ...payload.steps.flatMap((step) =>
+      step.tool === undefined ? [step.text] : [step.text, step.tool],
+    ),
+    ...payload.expectedEvidence,
+    ...payload.postconditions,
+    ...payload.knownFailures.map((failure) => failure.signature),
+    ...payload.sideEffects,
+  ].join('\n');
 }
 
 /** The text of each step, for search and for the `steps-distinct` title check. */
@@ -408,7 +437,7 @@ export function projectionText(record: EvidenceProjectionRecord): string {
     case 'episode':
       return record.payload.summary;
     case 'procedure':
-      return [record.payload.title, ...record.payload.steps.map(procedureStepText)].join('\n');
+      return procedureText(record.payload);
     case 'preference':
       return `${record.payload.subject} ${record.payload.statement}`;
     case 'summary':

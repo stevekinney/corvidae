@@ -25,7 +25,11 @@ export interface RecordProcedureOutcomeOptions {
   readonly failureSignature?: string;
   readonly runId?: string;
   readonly projectorRevision: string;
-  readonly now: () => number;
+  /**
+   * When the application ended. It is part of what is recorded, not the time of
+   * recording, so a retried call proposes the same transitions and replays them.
+   */
+  readonly at: number;
 }
 
 /** What recording an outcome wrote: the episode, and whether it demoted the procedure. */
@@ -58,7 +62,10 @@ async function submitAll(
 
 /**
  * Feeds an application's outcome back into memory as a new episode resting on
- * new evidence; the procedure itself is never edited. A failure of a procedure
+ * new evidence; the procedure itself is never edited. The evidence, the
+ * episode, and a demotion are separate transitions on purpose: the first two
+ * are facts about what happened and stay true whether or not the demotion
+ * lands, and each replays on retry. A failure of a procedure
  * that is still active demotes it, by that episode, so it stays recallable at
  * lower rank and its history says why. Retiring it for good is
  * {@link retireProcedure}'s.
@@ -67,7 +74,20 @@ export async function recordProcedureOutcome(
   options: RecordProcedureOutcomeOptions,
 ): Promise<ProcedureOutcomeRecord> {
   const { authority, engine, namespace } = options;
-  const at = options.now();
+  const { at } = options;
+  const target = await engine.storage.getProjectionRevision(
+    authority.tenantId,
+    namespace,
+    options.procedure.id,
+    options.procedure.revision,
+  );
+  if (target?.kind !== 'procedure') {
+    throw new ProcedureLifecycleError({
+      outcome: 'rejected',
+      reason: 'projection-not-found',
+      detail: `${namespace}/${options.procedure.id}@${options.procedure.revision} is not a procedure revision.`,
+    });
+  }
   const text = JSON.stringify({
     procedure: `${namespace}/${options.procedure.id}@${options.procedure.revision}`,
     outcome: options.outcome,

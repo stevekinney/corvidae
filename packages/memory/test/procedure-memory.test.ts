@@ -7,19 +7,24 @@ import type {
   ProjectionReference,
 } from '../src/evidence-projection-schema';
 import { procedurePayload } from '../src/evidence-projection-schema';
-import type { EvidenceRecord } from '../src/evidence-schema';
+import { digestOfText, type EvidenceRecord } from '../src/evidence-schema';
 import {
   extractProcedureCandidate,
   type ProcedureCandidate,
   ProcedureCandidateError,
   type ProcedureDraft,
 } from '../src/procedure-candidate';
-import { recordProcedureOutcome, retireProcedure } from '../src/procedure-lifecycle';
+import {
+  ProcedureLifecycleError,
+  recordProcedureOutcome,
+  retireProcedure,
+} from '../src/procedure-lifecycle';
 import {
   type ProcedureReviewDecision,
   type ProcedureValidator,
   promoteProcedure,
 } from '../src/procedure-promotion';
+import { rejectionOf } from '../src/testing/promise-outcome.test-support.ts';
 import { createTransitionEngine, type TransitionEngine } from '../src/transition-engine';
 import {
   FIXED_AT,
@@ -154,7 +159,6 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
         id: 'procedure-1',
         operationId: 'promote-1',
         projectorRevision: 'procedure-projector:1',
-        now: harness.clock.now,
         ...overrides,
       });
 
@@ -184,34 +188,29 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
     });
 
     it('refuses a draft whose only claimed success is a step that caused nothing', async () => {
-      await expect(
+      const error = await rejectionOf(
         candidateFrom(3, 0, {
           steps: [{ kind: 'check', text: 'the run happened to succeed', causal: false }],
         }),
-      ).rejects.toMatchObject({ code: 'no-causal-step' });
+      );
+      expect(error).toMatchObject({ code: 'no-causal-step' });
     });
 
-    it('promotes a verified command sequence and records the fixture and outcome evidence', async () => {
+    it('promotes a verified command sequence in one transition, recording its fixture and outcome', async () => {
       const candidate = await candidateFrom(2);
       const promotion = await promote(candidate, { validator: validator() });
       expect(promotion.status).toBe('promoted');
       const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
       expect(stored).toMatchObject({ kind: 'procedure', status: 'active' });
       if (stored?.kind !== 'procedure' || !('version' in stored.payload)) throw new Error('v2');
-      const { validation } = stored.payload.provenance;
-      expect(validation).toMatchObject({
+      expect(stored.payload.provenance.validation).toMatchObject({
         evaluator: { name: 'replay', revision: 'replay:1', kind: 'deterministic' },
         outcome: 'passed',
-        outcomeEvidenceId: 'promote-1:validation',
+        observation: 'renewed; expires in 89 days',
+        fixtureDigest: digestOfText('staging certificate expiring in 3 days'),
+        observationDigest: digestOfText('renewed; expires in 89 days'),
       });
-      expect(validation.fixtureDigest).toStartWith('sha256:');
-      expect(stored.sources.map((source) => source.evidenceId)).toContain('promote-1:validation');
-      const outcome = await harness.storage.getEvidence(TENANT, 'promote-1:validation');
-      expect(outcome).toMatchObject({ kind: 'tool-result', trustTier: 'verified' });
-      // Both receipts are stored: the outcome evidence's, and the procedure's, whose
-      // record digest covers the sources it rests on, the outcome evidence among them.
-      const evidenceReceipt = await harness.engine.getReceipt(TENANT, 'promote-1:validation');
-      expect(JSON.stringify(evidenceReceipt)).toContain('promote-1:validation');
+      // One receipt, whose record digest covers the payload and so the validation it carries.
       const receipt = await harness.engine.getReceipt(TENANT, 'promote-1');
       expect(receipt?.projections).toMatchObject([{ id: 'procedure-1', transition: 'created' }]);
     });
@@ -219,7 +218,7 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
     it('refuses a candidate whose validation fails, and stores nothing', async () => {
       const promotion = await promote(await candidateFrom(2), { validator: validator('failed') });
       expect(promotion).toMatchObject({ status: 'refused', reason: 'validation-failed' });
-      expect(await harness.storage.getEvidence(TENANT, 'promote-1:validation')).toBeUndefined();
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toBeUndefined();
     });
 
     it('routes a high-impact promotion through a required human review', async () => {
@@ -275,6 +274,85 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       expect(JSON.stringify(result)).toContain('procedure.high-impact-reviewed');
     });
 
+    it('refuses a reviewer that is not a person before validating anything', async () => {
+      const candidate = await candidateFrom(1, 0, { scope: 'high-impact' });
+      const byAgent = await promote(candidate, {
+        validator: validator(),
+        review: { ...review(true), reviewer: { kind: 'agent', id: 'planner' } },
+      });
+      expect(byAgent).toMatchObject({ status: 'refused', reason: 'review-not-human' });
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toBeUndefined();
+    });
+
+    it('refuses a candidate extracted for another tenant', async () => {
+      const candidate = await candidateFrom(1);
+      const promotion = await promote(
+        { ...candidate, tenantId: 'tenant-b' },
+        { validator: validator() },
+      );
+      expect(promotion).toMatchObject({ status: 'refused', reason: 'wrong-tenant' });
+    });
+
+    it('stores the candidate that was validated, whatever the validator does to it meanwhile', async () => {
+      const candidate = await candidateFrom(1, 0, { scope: 'high-impact' });
+      const tampering: ProcedureValidator = {
+        ...validator(),
+        validate: async (seen) => {
+          // A snapshot is frozen, so a validator cannot downgrade the scope it was shown.
+          expect(Object.isFrozen(seen.draft)).toBe(true);
+          return validator().validate(seen);
+        },
+      };
+      const promotion = await promote(candidate, { validator: tampering });
+      expect(promotion.status).toBe('pending-review');
+      (candidate.draft as { scope: string }).scope = 'routine';
+      expect(promotion).toMatchObject({ request: { scope: 'high-impact' } });
+    });
+
+    it('refuses to promote from an episode revoked since extraction', async () => {
+      const candidate = await candidateFrom(1);
+      harness.clock.advance(1000);
+      const revoked = await harness.engine.submit({
+        kind: 'revise-projection',
+        operationId: 'revoke-episode',
+        tenantId: TENANT,
+        authority,
+        revisions: [
+          {
+            namespace: NAMESPACE,
+            id: 'episode-0',
+            expectedRevision: 1,
+            change: { kind: 'revoked', reasonCode: 'poisoned' },
+          },
+        ],
+      });
+      expect(revoked.outcome).toBe('committed');
+      const promotion = await promote(candidate, { validator: validator() });
+      expect(promotion).toMatchObject({ status: 'refused', reason: 'episode-withdrawn' });
+    });
+
+    it('refuses to record an outcome against anything but a procedure', async () => {
+      await candidateFrom(1);
+      const error = await rejectionOf(
+        recordProcedureOutcome({
+          engine: harness.engine,
+          authority,
+          namespace: NAMESPACE,
+          procedure: { id: 'episode-0', revision: 1 },
+          operationId: 'outcome-1',
+          episodeId: 'episode-failure-1',
+          outcome: 'failed',
+          summary: 'Not a procedure.',
+          projectorRevision: 'episode-projector:1',
+          at: harness.clock.now(),
+        }),
+      );
+      expect(error).toBeInstanceOf(ProcedureLifecycleError);
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'episode-0')).toMatchObject({
+        status: 'active',
+      });
+    });
+
     it('demotes a promoted procedure that fails, recording the failure as a new episode', async () => {
       await promote(await candidateFrom(2), { validator: validator() });
       const record = await recordProcedureOutcome({
@@ -288,7 +366,7 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
         summary: 'Renewal hit the rate limit.',
         failureSignature: 'rate limit exceeded',
         projectorRevision: 'episode-projector:1',
-        now: harness.clock.now,
+        at: harness.clock.now(),
       });
       expect(record.demoted).toBe(true);
       const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
@@ -319,7 +397,7 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
         outcome: 'succeeded',
         summary: 'Renewed cleanly.',
         projectorRevision: 'episode-projector:1',
-        now: harness.clock.now,
+        at: harness.clock.now(),
       });
       expect(record.demoted).toBe(false);
       expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toMatchObject({
@@ -346,38 +424,58 @@ for (const [backend, makeBackend] of TRANSITION_BACKENDS) {
       });
     });
 
-    it('supersedes a validated procedure atomically with its replacement', async () => {
+    it('replaces a validated procedure with a rebuilt revision, keeping the old one in history', async () => {
       await promote(await candidateFrom(1), { validator: validator() });
       harness.clock.advance(1000);
-      const replacement = await promote(
-        await extractProcedureCandidate({
-          storage: harness.storage,
-          tenantId: TENANT,
-          namespace: NAMESPACE,
-          draft: draft({ environment: [{ name: 'certbot', version: '3.0' }] }),
-          successfulEpisodes: [{ id: 'episode-0', revision: 1 }],
-        }),
-        {
-          validator: validator(),
-          id: 'procedure-2',
-          operationId: 'promote-2',
-          supersedes: { id: 'procedure-1', revision: 1 },
-        },
-      );
-      expect(replacement.status).toBe('promoted');
-      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toMatchObject({
-        status: 'superseded',
-        transition: { kind: 'superseded', supersededBy: { id: 'procedure-2', revision: 1 } },
+      const revalidated = await extractProcedureCandidate({
+        storage: harness.storage,
+        tenantId: TENANT,
+        namespace: NAMESPACE,
+        draft: draft({ environment: [{ name: 'certbot', version: '3.0' }] }),
+        successfulEpisodes: [{ id: 'episode-0', revision: 1 }],
       });
-      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-2')).toMatchObject({
+      const replacement = await promote(revalidated, {
+        validator: validator(),
+        operationId: 'promote-2',
+        replaces: 1,
+      });
+      expect(replacement).toMatchObject({
+        status: 'promoted',
+        procedure: { id: 'procedure-1', revision: 2 },
+      });
+      const current = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
+      expect(current).toMatchObject({
+        revision: 2,
         status: 'active',
-        transition: { kind: 'created', supersedes: [{ id: 'procedure-1', revision: 1 }] },
+        transition: { kind: 'rebuilt', rebuiltFromRevision: 1 },
+        payload: { environment: [{ name: 'certbot', version: '3.0' }] },
+      });
+      const previous = await harness.storage.getProjectionRevision(
+        TENANT,
+        NAMESPACE,
+        'procedure-1',
+        1,
+      );
+      expect(previous?.payload).toMatchObject({
+        environment: [{ name: 'certbot', version: '2.11' }],
+      });
+
+      // Naming a revision that is no longer current is the engine's refusal, never a silent new procedure.
+      const stale = await promote(revalidated, {
+        validator: validator(),
+        operationId: 'promote-3',
+        replaces: 1,
+      });
+      expect(stale.status).toBe('rejected');
+      expect(await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1')).toMatchObject({
+        revision: 2,
       });
     });
 
-    it('replays a retried promotion instead of writing it twice', async () => {
+    it('replays a retried promotion instead of writing it twice, even after the clock moved', async () => {
       const candidate = await candidateFrom(1);
       await promote(candidate, { validator: validator() });
+      harness.clock.advance(60_000);
       const again = await promote(candidate, { validator: validator() });
       expect(again.status).toBe('promoted');
       const stored = await harness.storage.getProjection(TENANT, NAMESPACE, 'procedure-1');
@@ -418,7 +516,6 @@ describe('procedure state across a process restart (COR-770)', () => {
       operationId: 'promote-1',
       projectorRevision: 'procedure-projector:1',
       validator: validator(),
-      now: clock.now,
     });
 
     // A new process: a new engine and store over the same durable state.
@@ -436,7 +533,7 @@ describe('procedure state across a process restart (COR-770)', () => {
       outcome: 'failed',
       summary: 'It failed after the restart.',
       projectorRevision: 'episode-projector:1',
-      now: clock.now,
+      at: clock.now(),
     });
     expect(record.demoted).toBe(true);
     const third = open();
@@ -453,14 +550,13 @@ describe('procedure state across a process restart (COR-770)', () => {
       operationId: 'promote-1',
       projectorRevision: 'procedure-projector:1',
       validator: validator(),
-      now: clock.now,
     });
     expect(replay).toMatchObject({ status: 'promoted' });
   });
 
   it('refuses an episode that no longer exists, so a candidate cannot rest on nothing', async () => {
     const harness = createHarness(TRANSITION_BACKENDS[0]![1]);
-    await expect(
+    const error = await rejectionOf(
       extractProcedureCandidate({
         storage: harness.storage,
         tenantId: TENANT,
@@ -468,7 +564,8 @@ describe('procedure state across a process restart (COR-770)', () => {
         draft: draft(),
         successfulEpisodes: [{ id: 'missing', revision: 1 }],
       }),
-    ).rejects.toBeInstanceOf(ProcedureCandidateError);
+    );
+    expect(error).toBeInstanceOf(ProcedureCandidateError);
   });
 });
 
@@ -480,7 +577,7 @@ describe('procedure payload versions (COR-770)', () => {
     });
   });
 
-  it('requires a tool step to name its tool, and no other step to', () => {
+  it('requires a tool step to name its tool, and a reviewer to be a person', () => {
     const step = (overrides: Record<string, unknown>) => ({
       ...draft(),
       version: 2,
@@ -492,7 +589,8 @@ describe('procedure payload versions (COR-770)', () => {
           evaluator: { name: 'replay', revision: 'replay:1', kind: 'deterministic' },
           fixtureDigest: `sha256:${'0'.repeat(64)}`,
           outcome: 'passed',
-          outcomeEvidenceId: 'evidence-1',
+          observation: 'renewed',
+          observationDigest: `sha256:${'1'.repeat(64)}`,
         },
       },
       scope: undefined,
@@ -502,5 +600,15 @@ describe('procedure payload versions (COR-770)', () => {
     expect(procedurePayload.safeParse(valid).success).toBe(true);
     const { scope: _missing, ...missing } = step({});
     expect(procedurePayload.safeParse(missing).success).toBe(false);
+    // The persisted shape only admits a person as reviewer, so no proposal can carry an agent's.
+    const reviewed = (kind: string) => ({
+      ...valid,
+      provenance: {
+        ...valid.provenance,
+        review: { reviewer: { kind, id: 'reviewer' }, decidedAt: 1, reviewId: 'review-1' },
+      },
+    });
+    expect(procedurePayload.safeParse(reviewed('user')).success).toBe(true);
+    expect(procedurePayload.safeParse(reviewed('agent')).success).toBe(false);
   });
 });
